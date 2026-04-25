@@ -26,6 +26,7 @@ import {
   X,
   DollarSign,
 } from "lucide-react";
+import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
