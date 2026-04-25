@@ -516,7 +516,9 @@ function ConversationPage() {
         </div>
 
         <div className="p-4 space-y-1.5">
-          <ActionButton icon={FileText}>Criar orçamento</ActionButton>
+          <ActionButton icon={FileText} onClick={openNewQuote} disabled={!!closedInfo}>
+            Criar orçamento
+          </ActionButton>
           <ActionButton icon={Calendar}>Agendar visita</ActionButton>
           <ActionButton icon={Target}>Definir próxima ação</ActionButton>
           <ActionButton
