@@ -353,8 +353,14 @@ function QuoteFormModal({
           <Field label="Produto" icon={PackageIcon}>
             <select
               value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              onChange={(e) => {
+                setProductId(e.target.value);
+                setShowSuggestion(false);
+              }}
+              className={cn(
+                "w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring",
+                showSuggestion && "ring-2 ring-primary/40",
+              )}
             >
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -362,6 +368,21 @@ function QuoteFormModal({
                 </option>
               ))}
             </select>
+            {showSuggestion && suggestionReason && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-primary">
+                <Sparkles className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Sugerido pela IA: {suggestionReason}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowSuggestion(false)}
+                    className="underline text-muted-foreground hover:text-foreground"
+                  >
+                    trocar
+                  </button>
+                </span>
+              </div>
+            )}
           </Field>
 
           {/* Preço base */}
