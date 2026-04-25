@@ -18,6 +18,7 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 
 const RelatoriosRoute = RelatoriosRouteImport.update({
   id: '/relatorios',
@@ -64,6 +65,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
 } as any)
+const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
+  id: '/api/ai/suggest',
+  path: '/api/ai/suggest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/relatorios': typeof RelatoriosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/suggest': typeof ApiAiSuggestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/relatorios': typeof RelatoriosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox': typeof InboxIndexRoute
+  '/api/ai/suggest': typeof ApiAiSuggestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/relatorios': typeof RelatoriosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/suggest': typeof ApiAiSuggestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/inbox/$conversationId'
     | '/inbox/'
+    | '/api/ai/suggest'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/inbox/$conversationId'
     | '/inbox'
+    | '/api/ai/suggest'
   id:
     | '__root__'
     | '/'
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/inbox/$conversationId'
     | '/inbox/'
+    | '/api/ai/suggest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   OrcamentosRoute: typeof OrcamentosRoute
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
+  ApiAiSuggestRoute: typeof ApiAiSuggestRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
     }
+    '/api/ai/suggest': {
+      id: '/api/ai/suggest'
+      path: '/api/ai/suggest'
+      fullPath: '/api/ai/suggest'
+      preLoaderRoute: typeof ApiAiSuggestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -231,6 +251,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrcamentosRoute: OrcamentosRoute,
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
+  ApiAiSuggestRoute: ApiAiSuggestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
