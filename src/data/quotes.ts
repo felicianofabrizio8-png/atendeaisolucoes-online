@@ -25,8 +25,14 @@ export interface Quote {
 
 const quotes: Quote[] = [];
 const listeners = new Set<() => void>();
+let snapshot: Quote[] = [];
+
+function rebuildSnapshot() {
+  snapshot = [...quotes].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
 
 function notify() {
+  rebuildSnapshot();
   for (const l of listeners) l();
 }
 
@@ -37,12 +43,14 @@ export function subscribeQuotes(cb: () => void) {
   };
 }
 
+// CRITICAL: returns a stable reference between mutations so useSyncExternalStore
+// doesn't loop. The snapshot is rebuilt only inside notify().
 export function listQuotes(): Quote[] {
-  return [...quotes].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  return snapshot;
 }
 
 export function quotesForLead(leadId: string): Quote[] {
-  return listQuotes().filter((q) => q.leadId === leadId);
+  return snapshot.filter((q) => q.leadId === leadId);
 }
 
 export function getQuote(id: string): Quote | undefined {
