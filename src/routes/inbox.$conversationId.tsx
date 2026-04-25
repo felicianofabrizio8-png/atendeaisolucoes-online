@@ -26,9 +26,14 @@ import {
   X,
   DollarSign,
 } from "lucide-react";
+import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
+  validateSearch: (search: Record<string, unknown>): { quote?: string } => {
+    if (typeof search.quote === "string") return { quote: search.quote };
+    return {};
+  },
 });
 
 interface AISuggestion {
@@ -45,6 +50,7 @@ const HOT_STALE_MINUTES = 5;
 
 function ConversationPage() {
   const { conversationId } = Route.useParams();
+  const search = Route.useSearch();
   const navigate = useNavigate();
   const conversation = getConversation(conversationId);
   const lead = conversation ? getLead(conversation.leadId) : undefined;
@@ -57,11 +63,27 @@ function ConversationPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
+  const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
+  // pronto para envio acima do campo de mensagem.
+  useEffect(() => {
+    if (search.quote) {
+      const q = getQuote(search.quote);
+      if (q) setPendingQuote(q);
+      navigate({
+        to: "/inbox/$conversationId",
+        params: { conversationId },
+        search: {},
+        replace: true,
+      });
+    }
+  }, [search.quote, conversationId, navigate]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, ai]);
+  }, [messages.length, ai, pendingQuote]);
 
   const isHotStale = useMemo(() => {
     if (!lead || !conversation) return false;
@@ -146,6 +168,30 @@ function ConversationPage() {
         at: new Date().toISOString(),
       },
     ]);
+  };
+
+  const sendPendingQuote = () => {
+    if (!pendingQuote) return;
+    sendMessage(pendingQuote.message);
+    markQuoteSent(pendingQuote.id);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-${Date.now()}`,
+        conversationId,
+        role: "system",
+        text: `📄 Orçamento enviado — ${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`,
+        at: new Date().toISOString(),
+      },
+    ]);
+    setPendingQuote(null);
+  };
+
+  const openNewQuote = () => {
+    navigate({
+      to: "/orcamentos",
+      search: { new: "1", leadId: lead.id, conversationId },
+    });
   };
 
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
@@ -247,6 +293,54 @@ function ConversationPage() {
             );
           })}
         </div>
+
+        {/* Pending quote panel — appears above the composer when a quote was just created */}
+        {pendingQuote && !closedInfo && (
+          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="h-4 w-4 text-[var(--status-won)]" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--status-won)]">
+                Orçamento pronto para envio
+              </span>
+              <span className="ml-auto text-xs font-bold">
+                {formatBRL(pendingQuote.finalValue)}
+                {pendingQuote.installments > 1 && (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    • {pendingQuote.installments}x
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={() => setPendingQuote(null)}
+                className="p-1 rounded hover:bg-accent"
+                title="Descartar"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="rounded-md bg-card border border-border p-3 text-sm whitespace-pre-wrap leading-relaxed mb-2">
+              {pendingQuote.message}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={sendPendingQuote}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--status-won)] text-white px-3 py-1.5 text-xs font-semibold hover:opacity-90"
+              >
+                <Send className="h-3.5 w-3.5" /> Enviar na conversa
+              </button>
+              <button
+                onClick={() => {
+                  setInput(pendingQuote.message);
+                  setPendingQuote(null);
+                }}
+                className="text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
+              >
+                Editar antes
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* AI suggestion panel — appears right above the composer */}
         {(ai || aiLoading || aiError) && (
@@ -422,7 +516,9 @@ function ConversationPage() {
         </div>
 
         <div className="p-4 space-y-1.5">
-          <ActionButton icon={FileText}>Criar orçamento</ActionButton>
+          <ActionButton icon={FileText} onClick={openNewQuote} disabled={!!closedInfo}>
+            Criar orçamento
+          </ActionButton>
           <ActionButton icon={Calendar}>Agendar visita</ActionButton>
           <ActionButton icon={Target}>Definir próxima ação</ActionButton>
           <ActionButton
