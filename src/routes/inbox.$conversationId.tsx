@@ -50,6 +50,7 @@ const HOT_STALE_MINUTES = 5;
 
 function ConversationPage() {
   const { conversationId } = Route.useParams();
+  const search = Route.useSearch();
   const navigate = useNavigate();
   const conversation = getConversation(conversationId);
   const lead = conversation ? getLead(conversation.leadId) : undefined;
@@ -62,11 +63,27 @@ function ConversationPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
+  const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
+  // pronto para envio acima do campo de mensagem.
+  useEffect(() => {
+    if (search.quote) {
+      const q = getQuote(search.quote);
+      if (q) setPendingQuote(q);
+      navigate({
+        to: "/inbox/$conversationId",
+        params: { conversationId },
+        search: {},
+        replace: true,
+      });
+    }
+  }, [search.quote, conversationId, navigate]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, ai]);
+  }, [messages.length, ai, pendingQuote]);
 
   const isHotStale = useMemo(() => {
     if (!lead || !conversation) return false;
