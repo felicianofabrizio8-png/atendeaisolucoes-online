@@ -29,6 +29,10 @@ import {
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
+  validateSearch: (search: Record<string, unknown>): { quote?: string } => {
+    if (typeof search.quote === "string") return { quote: search.quote };
+    return {};
+  },
 });
 
 interface AISuggestion {
