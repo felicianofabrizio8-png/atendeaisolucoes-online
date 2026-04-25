@@ -80,7 +80,11 @@ function ProductsPage() {
         ))}
 
         <div className="pt-2">
-          <Link to="/orcamentos" className="text-xs text-primary hover:underline">
+          <Link
+            to="/orcamentos"
+            search={{ new: undefined, leadId: undefined, conversationId: undefined }}
+            className="text-xs text-primary hover:underline"
+          >
             → Criar orçamento com estes produtos
           </Link>
         </div>

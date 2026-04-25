@@ -63,7 +63,11 @@ function QuotesPage() {
       setPrefillLeadId(search.leadId);
       setPrefillConvId(search.conversationId);
       setOpen(true);
-      navigate({ to: "/orcamentos", search: {}, replace: true });
+          navigate({
+            to: "/orcamentos",
+            search: { new: undefined, leadId: undefined, conversationId: undefined },
+            replace: true,
+          });
     }
   }, [search.new, search.leadId, search.conversationId, navigate]);
 
