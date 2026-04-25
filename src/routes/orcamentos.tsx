@@ -12,7 +12,7 @@ import {
   Package as PackageIcon,
   Sparkles,
 } from "lucide-react";
-import { leads, formatBRL, timeAgo } from "@/data/mock";
+import { leads, conversations, formatBRL, timeAgo } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
 import {
   createQuote,
@@ -155,6 +155,19 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function QuoteCard({ quote }: { quote: Quote }) {
   const lead = leads.find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
+  // Resolve a conversa: a vinculada ao orçamento, ou a primeira conversa do lead.
+  const targetConversationId =
+    quote.conversationId ?? conversations.find((c) => c.leadId === quote.leadId)?.id;
+
+  const sendInConversation = () => {
+    if (!targetConversationId) return;
+    navigate({
+      to: "/inbox/$conversationId",
+      params: { conversationId: targetConversationId },
+      search: { quote: quote.id },
+    });
+  };
+
   return (
     <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
@@ -189,20 +202,21 @@ function QuoteCard({ quote }: { quote: Quote }) {
         )}
       </div>
 
-      {quote.conversationId && (
-        <button
-          onClick={() =>
-            navigate({
-              to: "/inbox/$conversationId",
-              params: { conversationId: quote.conversationId! },
-              search: { quote: quote.id },
-            })
-          }
-          className="self-start inline-flex items-center gap-1.5 text-xs rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 font-semibold"
-        >
-          <Send className="h-3.5 w-3.5" /> Enviar na conversa
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {targetConversationId ? (
+          <button
+            onClick={sendInConversation}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 font-semibold"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {quote.sent ? "Reenviar na conversa" : "Enviar na conversa"}
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            Lead sem conversa ativa — abra uma conversa para enviar.
+          </span>
+        )}
+      </div>
     </div>
   );
 }
