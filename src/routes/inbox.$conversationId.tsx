@@ -64,6 +64,7 @@ function ConversationPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
+  const [quoteSuggesting, setQuoteSuggesting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
@@ -187,10 +188,40 @@ function ConversationPage() {
     setPendingQuote(null);
   };
 
-  const openNewQuote = () => {
+  const openNewQuote = async () => {
+    if (!lead) return;
+    setQuoteSuggesting(true);
+    let suggestedProductId: string | undefined;
+    let suggestionReason: string | undefined;
+    try {
+      const res = await fetch("/api/ai/suggest-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadName: lead.name,
+          product: lead.product,
+          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { productId: string; reason: string };
+        suggestedProductId = data.productId;
+        suggestionReason = data.reason;
+      }
+    } catch {
+      // segue sem sugestão — usuário escolhe manualmente
+    } finally {
+      setQuoteSuggesting(false);
+    }
     navigate({
       to: "/orcamentos",
-      search: { new: "1", leadId: lead.id, conversationId },
+      search: {
+        new: "1",
+        leadId: lead.id,
+        conversationId,
+        ...(suggestedProductId ? { suggestedProductId } : {}),
+        ...(suggestionReason ? { suggestionReason } : {}),
+      },
     });
   };
 
@@ -516,8 +547,12 @@ function ConversationPage() {
         </div>
 
         <div className="p-4 space-y-1.5">
-          <ActionButton icon={FileText} onClick={openNewQuote} disabled={!!closedInfo}>
-            Criar orçamento
+          <ActionButton
+            icon={quoteSuggesting ? Loader2 : FileText}
+            onClick={openNewQuote}
+            disabled={!!closedInfo || quoteSuggesting}
+          >
+            {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
           </ActionButton>
           <ActionButton icon={Calendar}>Agendar visita</ActionButton>
           <ActionButton icon={Target}>Definir próxima ação</ActionButton>

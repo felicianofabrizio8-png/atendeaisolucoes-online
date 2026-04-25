@@ -31,6 +31,10 @@ export const Route = createFileRoute("/orcamentos")({
     if (search.new === "1") out.new = "1";
     if (typeof search.leadId === "string") out.leadId = search.leadId;
     if (typeof search.conversationId === "string") out.conversationId = search.conversationId;
+    if (typeof search.suggestedProductId === "string")
+      out.suggestedProductId = search.suggestedProductId;
+    if (typeof search.suggestionReason === "string")
+      out.suggestionReason = search.suggestionReason;
     return out;
   },
 });
@@ -39,6 +43,8 @@ interface QuotesSearch {
   new?: "1";
   leadId?: string;
   conversationId?: string;
+  suggestedProductId?: string;
+  suggestionReason?: string;
 }
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -64,16 +70,27 @@ function QuotesPage() {
   const [open, setOpen] = useState(false);
   const [prefillLeadId, setPrefillLeadId] = useState<string | undefined>();
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
+  const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
+  const [suggestionReason, setSuggestionReason] = useState<string | undefined>();
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
     if (search.new === "1") {
       setPrefillLeadId(search.leadId);
       setPrefillConvId(search.conversationId);
+      setPrefillProductId(search.suggestedProductId);
+      setSuggestionReason(search.suggestionReason);
       setOpen(true);
-          navigate({ to: "/orcamentos", search: {}, replace: true });
+      navigate({ to: "/orcamentos", search: {}, replace: true });
     }
-  }, [search.new, search.leadId, search.conversationId, navigate]);
+  }, [
+    search.new,
+    search.leadId,
+    search.conversationId,
+    search.suggestedProductId,
+    search.suggestionReason,
+    navigate,
+  ]);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -113,6 +130,8 @@ function QuotesPage() {
         <QuoteFormModal
           defaultLeadId={prefillLeadId}
           defaultConversationId={prefillConvId}
+          defaultProductId={prefillProductId}
+          suggestionReason={suggestionReason}
           onCancel={() => setOpen(false)}
           onCreated={(q) => {
             setOpen(false);
@@ -230,6 +249,8 @@ function Chip({ children }: { children: React.ReactNode }) {
 interface QuoteFormModalProps {
   defaultLeadId?: string;
   defaultConversationId?: string;
+  defaultProductId?: string;
+  suggestionReason?: string;
   onCancel: () => void;
   onCreated: (q: Quote) => void;
 }
@@ -243,11 +264,19 @@ function todayPlusDays(days: number): string {
 function QuoteFormModal({
   defaultLeadId,
   defaultConversationId,
+  defaultProductId,
+  suggestionReason,
   onCancel,
   onCreated,
 }: QuoteFormModalProps) {
   const [leadId, setLeadId] = useState(defaultLeadId ?? leads[0]?.id ?? "");
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const [productId, setProductId] = useState(
+    defaultProductId && getProduct(defaultProductId) ? defaultProductId : products[0]?.id ?? "",
+  );
+  // O aviso "sugerido pela IA" some assim que o usuário troca o produto
+  const [showSuggestion, setShowSuggestion] = useState(
+    !!defaultProductId && !!suggestionReason,
+  );
   const [discountRaw, setDiscountRaw] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
   const [installments, setInstallments] = useState(1);
@@ -324,8 +353,14 @@ function QuoteFormModal({
           <Field label="Produto" icon={PackageIcon}>
             <select
               value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              onChange={(e) => {
+                setProductId(e.target.value);
+                setShowSuggestion(false);
+              }}
+              className={cn(
+                "w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring",
+                showSuggestion && "ring-2 ring-primary/40",
+              )}
             >
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -333,6 +368,21 @@ function QuoteFormModal({
                 </option>
               ))}
             </select>
+            {showSuggestion && suggestionReason && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-primary">
+                <Sparkles className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Sugerido pela IA: {suggestionReason}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowSuggestion(false)}
+                    className="underline text-muted-foreground hover:text-foreground"
+                  >
+                    trocar
+                  </button>
+                </span>
+              </div>
+            )}
           </Field>
 
           {/* Preço base */}
