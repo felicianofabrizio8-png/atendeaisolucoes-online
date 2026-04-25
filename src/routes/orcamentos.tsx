@@ -26,12 +26,20 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    new: search.new === "1" ? "1" : undefined,
-    leadId: typeof search.leadId === "string" ? search.leadId : undefined,
-    conversationId: typeof search.conversationId === "string" ? search.conversationId : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): QuotesSearch => {
+    const out: QuotesSearch = {};
+    if (search.new === "1") out.new = "1";
+    if (typeof search.leadId === "string") out.leadId = search.leadId;
+    if (typeof search.conversationId === "string") out.conversationId = search.conversationId;
+    return out;
+  },
 });
+
+interface QuotesSearch {
+  new?: "1";
+  leadId?: string;
+  conversationId?: string;
+}
 
 const PAYMENT_METHODS: PaymentMethod[] = [
   "Pix",
