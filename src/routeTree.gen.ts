@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
+import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 
 const RelatoriosRoute = RelatoriosRouteImport.update({
   id: '/relatorios',
@@ -29,6 +31,11 @@ const ProdutosRoute = ProdutosRouteImport.update({
 const OrcamentosRoute = OrcamentosRouteImport.update({
   id: '/orcamentos',
   path: '/orcamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -46,14 +53,21 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InboxIndexRoute = InboxIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => InboxRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/inbox': typeof InboxRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/inbox/': typeof InboxIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,15 +76,18 @@ export interface FileRoutesByTo {
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/inbox': typeof InboxIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/inbox': typeof InboxRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/inbox/': typeof InboxIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,9 +95,11 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/inbox'
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
+    | '/inbox/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,20 +108,24 @@ export interface FileRouteTypes {
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
+    | '/inbox'
   id:
     | '__root__'
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/inbox'
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
+    | '/inbox/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
+  InboxRoute: typeof InboxRouteWithChildren
   OrcamentosRoute: typeof OrcamentosRoute
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
@@ -131,6 +154,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrcamentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/configuracoes': {
       id: '/configuracoes'
       path: '/configuracoes'
@@ -152,13 +182,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/inbox/': {
+      id: '/inbox/'
+      path: '/'
+      fullPath: '/inbox/'
+      preLoaderRoute: typeof InboxIndexRouteImport
+      parentRoute: typeof InboxRoute
+    }
   }
 }
+
+interface InboxRouteChildren {
+  InboxIndexRoute: typeof InboxIndexRoute
+}
+
+const InboxRouteChildren: InboxRouteChildren = {
+  InboxIndexRoute: InboxIndexRoute,
+}
+
+const InboxRouteWithChildren = InboxRoute._addFileChildren(InboxRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
+  InboxRoute: InboxRouteWithChildren,
   OrcamentosRoute: OrcamentosRoute,
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
