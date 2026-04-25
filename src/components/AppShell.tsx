@@ -11,15 +11,22 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const nav = [
+type NavItem = {
+  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
+  label: string;
+  icon: typeof LayoutDashboard;
+  badge?: number;
+};
+
+const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare, badge: true },
+  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare, badge: 3 },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
-] as const;
+];
 
 export function AppShell() {
   const location = useLocation();
@@ -56,11 +63,11 @@ export function AppShell() {
               >
                 <Icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
-                {item.badge && (
+                {item.badge ? (
                   <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
-                    3
+                    {item.badge}
                   </span>
-                )}
+                ) : null}
               </Link>
             );
           })}
