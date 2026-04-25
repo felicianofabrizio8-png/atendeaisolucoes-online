@@ -170,6 +170,30 @@ function ConversationPage() {
     ]);
   };
 
+  const sendPendingQuote = () => {
+    if (!pendingQuote) return;
+    sendMessage(pendingQuote.message);
+    markQuoteSent(pendingQuote.id);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-${Date.now()}`,
+        conversationId,
+        role: "system",
+        text: `📄 Orçamento enviado — ${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`,
+        at: new Date().toISOString(),
+      },
+    ]);
+    setPendingQuote(null);
+  };
+
+  const openNewQuote = () => {
+    navigate({
+      to: "/orcamentos",
+      search: { new: "1", leadId: lead.id, conversationId },
+    });
+  };
+
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
   return (
