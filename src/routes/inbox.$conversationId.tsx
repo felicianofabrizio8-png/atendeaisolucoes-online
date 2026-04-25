@@ -294,6 +294,54 @@ function ConversationPage() {
           })}
         </div>
 
+        {/* Pending quote panel — appears above the composer when a quote was just created */}
+        {pendingQuote && !closedInfo && (
+          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="h-4 w-4 text-[var(--status-won)]" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--status-won)]">
+                Orçamento pronto para envio
+              </span>
+              <span className="ml-auto text-xs font-bold">
+                {formatBRL(pendingQuote.finalValue)}
+                {pendingQuote.installments > 1 && (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    • {pendingQuote.installments}x
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={() => setPendingQuote(null)}
+                className="p-1 rounded hover:bg-accent"
+                title="Descartar"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="rounded-md bg-card border border-border p-3 text-sm whitespace-pre-wrap leading-relaxed mb-2">
+              {pendingQuote.message}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={sendPendingQuote}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--status-won)] text-white px-3 py-1.5 text-xs font-semibold hover:opacity-90"
+              >
+                <Send className="h-3.5 w-3.5" /> Enviar na conversa
+              </button>
+              <button
+                onClick={() => {
+                  setInput(pendingQuote.message);
+                  setPendingQuote(null);
+                }}
+                className="text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
+              >
+                Editar antes
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* AI suggestion panel — appears right above the composer */}
         {(ai || aiLoading || aiError) && (
           <div className="border-t border-primary/30 bg-primary/5 p-3">
