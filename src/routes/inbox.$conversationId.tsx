@@ -1,13 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
-  getConversation,
-  getLead,
-  getMessages,
-  timeAgo,
-  formatBRL,
-  type Message,
-} from "@/data/mock";
+  getConversationById,
+  getLeadById,
+  getMessagesFor,
+  appendMessage,
+  markLeadLost,
+  markLeadWon,
+  subscribeRepo,
+} from "@/data/leadRepo";
+import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +30,6 @@ import {
   DollarSign,
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
-import { appendMessage, markLeadLost, markLeadWon } from "@/data/leadStore";
 import { getSettings, subscribeSettings } from "@/data/settings";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
@@ -53,9 +55,12 @@ function ConversationPage() {
   const { conversationId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const conversation = getConversation(conversationId);
-  const lead = conversation ? getLead(conversation.leadId) : undefined;
-  const initialMessages = conversation ? getMessages(conversationId) : [];
+  const { profile } = useAuth();
+  // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
+  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  const conversation = getConversationById(conversationId);
+  const lead = conversation ? getLeadById(conversation.leadId) : undefined;
+  const initialMessages = conversation ? getMessagesFor(conversationId) : [];
 
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -120,7 +125,7 @@ function ConversationPage() {
       at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, msg]);
-    appendMessage(msg);
+    void appendMessage(msg, profile?.company_id);
     setInput("");
   };
 
@@ -162,7 +167,7 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
-    if (lead) markLeadWon(lead.id, value);
+    if (lead) void markLeadWon(lead.id, value);
     setMessages((prev) => [
       ...prev,
       {
@@ -177,7 +182,7 @@ function ConversationPage() {
 
   const confirmLost = (reason: string) => {
     if (!lead) return;
-    markLeadLost(lead.id, reason);
+    void markLeadLost(lead.id, reason);
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
     setMessages((prev) => [
@@ -559,7 +564,7 @@ function ConversationPage() {
           </div>
           <div className="flex flex-wrap gap-1">
             {lead.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma</span>}
-            {lead.tags.map((t) => (
+            {lead.tags.map((t: string) => (
               <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
                 #{t}
               </span>

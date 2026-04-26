@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -9,7 +9,12 @@ import {
   BarChart3,
   Settings,
   Sparkles,
+  LogOut,
+  LogIn,
 } from "lucide-react";
+import { useAuth } from "@/auth/AuthContext";
+import { useEffect, useState } from "react";
+import { loadRemote, setRepoMode } from "@/data/leadRepo";
 
 type NavItem = {
   to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
@@ -20,7 +25,7 @@ type NavItem = {
 
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare, badge: 3 },
+  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/produtos", label: "Produtos", icon: Package },
@@ -30,6 +35,49 @@ const nav: NavItem[] = [
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, profile, company, signOut } = useAuth();
+  const [demoMode, setDemoMode] = useState(false);
+
+  // Detecta modo demo do localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDemoMode(window.localStorage.getItem("atendeai.demo") === "1");
+  }, [user]);
+
+  // Quando logar, carrega dados reais e desativa demo. Quando deslogar/demo, volta pro mock.
+  useEffect(() => {
+    if (user && profile) {
+      window.localStorage.removeItem("atendeai.demo");
+      setDemoMode(false);
+      loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+    } else {
+      setRepoMode("demo");
+    }
+  }, [user, profile]);
+
+  // /login não usa o shell.
+  if (location.pathname === "/login") {
+    return <Outlet />;
+  }
+
+  const initials = (profile?.display_name ?? user?.email ?? "DM")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase())
+    .join("");
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.localStorage.removeItem("atendeai.demo");
+    navigate({ to: "/login" });
+  };
+
+  const enableDemo = () => {
+    window.localStorage.setItem("atendeai.demo", "1");
+    setDemoMode(true);
+  };
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -43,6 +91,13 @@ export function AppShell() {
             <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
           </div>
         </div>
+
+        {demoMode && !user && (
+          <div className="mx-2 mt-2 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2 py-1.5 text-[10px] text-primary">
+            <div className="font-semibold">Modo demo</div>
+            <div className="text-primary/70">Dados de exemplo locais</div>
+          </div>
+        )}
 
         <nav className="flex-1 p-2 space-y-0.5">
           {nav.map((item) => {
@@ -74,15 +129,57 @@ export function AppShell() {
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-              VC
+          {user ? (
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
+                {initials || "U"}
+              </div>
+              <div className="leading-tight min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">
+                  {profile?.display_name ?? user.email?.split("@")[0]}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {company?.name ?? "Carregando…"}
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                title="Sair"
+                className="p-1.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
-            <div className="leading-tight min-w-0">
-              <div className="text-sm font-medium truncate">Você</div>
-              <div className="text-[11px] text-muted-foreground truncate">Vendedor • Empresa Demo</div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                  DM
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">Visitante</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    Modo demo
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate({ to: "/login" })}
+                className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Entrar / Criar conta
+              </button>
+              {!demoMode && (
+                <button
+                  onClick={enableDemo}
+                  className="w-full text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                >
+                  Continuar como demo
+                </button>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </aside>
 

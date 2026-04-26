@@ -1,5 +1,7 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { Loader2 } from "lucide-react";
 
 import appCss from "../styles.css?url";
 
@@ -65,8 +67,40 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+function AuthGate() {
+  const { loading, user } = useAuth();
+  const location = useLocation();
+  const isLoginRoute = location.pathname === "/login";
+  const demo =
+    typeof window !== "undefined" && window.localStorage.getItem("atendeai.demo") === "1";
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user && !demo && !isLoginRoute) {
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return <AppShell />;
 }
 
-// Render outlet inside AppShell — exported for use, but AppShell uses <Outlet /> internally
 export { Outlet };
