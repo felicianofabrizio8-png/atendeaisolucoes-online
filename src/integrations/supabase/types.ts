@@ -274,6 +274,13 @@ export type Database = {
             referencedRelation: "integrations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "leads_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       loss_reasons: {
@@ -362,6 +369,13 @@ export type Database = {
             columns: ["integration_id"]
             isOneToOne: false
             referencedRelation: "integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -591,7 +605,62 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      integrations_safe: {
+        Row: {
+          account_metadata: Json | null
+          active: boolean | null
+          channel: Database["public"]["Enums"]["channel"] | null
+          company_id: string | null
+          created_at: string | null
+          display_name: string | null
+          external_account_id: string | null
+          has_access_token: boolean | null
+          has_webhook_secret: boolean | null
+          id: string | null
+          last_error: string | null
+          last_synced_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          account_metadata?: Json | null
+          active?: boolean | null
+          channel?: Database["public"]["Enums"]["channel"] | null
+          company_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          external_account_id?: string | null
+          has_access_token?: never
+          has_webhook_secret?: never
+          id?: string | null
+          last_error?: string | null
+          last_synced_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          account_metadata?: Json | null
+          active?: boolean | null
+          channel?: Database["public"]["Enums"]["channel"] | null
+          company_id?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          external_account_id?: string | null
+          has_access_token?: never
+          has_webhook_secret?: never
+          id?: string | null
+          last_error?: string | null
+          last_synced_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       current_company_id: { Args: never; Returns: string }
