@@ -31,6 +31,10 @@ export interface Lead {
   nextAction?: NextAction;
   assignedTo?: string;
   createdAt: string;
+  closedAt?: string;
+  closedValue?: number;
+  lostAt?: string;
+  lossReason?: string;
 }
 
 export interface Conversation {
