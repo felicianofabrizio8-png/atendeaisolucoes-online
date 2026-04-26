@@ -37,10 +37,11 @@ function useSettings() {
 
 // Subscribe to lead store mutations so the list re-renders when messages are
 // appended, leads are closed/lost etc. We don't read the snapshot — we just
-// trigger a re-render so the SLA computation below runs again.
-function useLeadStoreVersion() {
+// Subscribe to repo mutations so the list re-renders when messages are
+// appended, leads are closed/lost etc.
+function useRepoVersion() {
   return useSyncExternalStore(
-    subscribeLeadStore,
+    subscribeRepo,
     () => 0,
     () => 0,
   );
@@ -58,9 +59,9 @@ function buildSortedItems(
   lossReasonFilter: string,
 ) {
   const now = Date.now();
-  return [...conversations]
+  return [...getConversations()]
     .map((c) => {
-      const lead = getLead(c.leadId);
+      const lead = getLeadById(c.leadId);
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
       // Score: atrasados (SLA estourado) vão pro topo, mais atrasados primeiro.
@@ -91,21 +92,20 @@ function buildSortedItems(
 function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
-  useLeadStoreVersion();
+  useRepoVersion();
+  const { profile } = useAuth();
   const { status: statusFilter, lossReason: lossReasonFilter } = Route.useSearch();
+  const [seeding, setSeeding] = useState(false);
 
   const items = buildSortedItems(settings.slaMinutes, statusFilter, lossReasonFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
-  // Contagens por status, calculadas sobre TODAS as conversas (ignorando o
-  // filtro de status atual) mas respeitando o filtro de motivo se ativo.
-  // Assim cada aba mostra quantos leads ela conteria se selecionada.
+  // Contagens por status — ignora o filtro de status atual mas respeita motivo.
   const statusCounts = useMemo(() => {
     const counts = { todos: 0, quentes: 0, parados: 0, perdidos: 0 };
-    for (const c of conversations) {
-      const lead = getLead(c.leadId);
+    for (const c of getConversations()) {
+      const lead = getLeadById(c.leadId);
       const breached = isSlaBreached(c, settings.slaMinutes);
-      // Aplica filtro de motivo (combina com qualquer aba)
       if (lossReasonFilter) {
         if (lead?.status !== "perdido" || lead.lossReason !== lossReasonFilter) {
           continue;
@@ -117,23 +117,39 @@ function InboxPage() {
       if (lead?.status === "perdido") counts.perdidos += 1;
     }
     return counts;
-    // Reavalia quando lead store muda (via useLeadStoreVersion acima dispara re-render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.slaMinutes, lossReasonFilter, items]);
 
   const breachedCount = statusCounts.parados;
 
-  // Lista de motivos de perda presentes nos leads atuais (para o filtro).
   const availableLossReasons = useMemo(() => {
     const set = new Set<string>();
-    for (const c of conversations) {
-      const lead = getLead(c.leadId);
+    for (const c of getConversations()) {
+      const lead = getLeadById(c.leadId);
       if (lead?.status === "perdido" && lead.lossReason) {
         set.add(lead.lossReason);
       }
     }
     return [...set].sort();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
+  const handleSeed = async () => {
+    if (!profile) return;
+    setSeeding(true);
+    try {
+      await seedMockIntoCompany(profile.company_id);
+      await loadRemote(profile.company_id);
+    } catch (e) {
+      console.error("seed failed", e);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const isRemote = getRepoMode() === "remote";
+  const isEmpty = items.length === 0 && statusCounts.todos === 0;
+  const showSeed = isRemote && isEmpty && !!profile;
 
   // Filtro por motivo só aparece quando o usuário está vendo Todos ou Perdidos.
   const showLossReasonFilter =
