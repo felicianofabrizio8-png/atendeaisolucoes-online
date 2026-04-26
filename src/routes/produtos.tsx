@@ -9,6 +9,7 @@ export const Route = createFileRoute("/produtos")({
 });
 
 function ProductsPage() {
+  const navigate = useNavigate();
   const grouped = useMemo(() => {
     const map = new Map<ProductCategory, typeof products>();
     for (const p of products) {
