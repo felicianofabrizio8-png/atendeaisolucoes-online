@@ -1,19 +1,22 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
+import { timeAgo, type Conversation } from "@/data/mock";
 import {
-  conversations,
-  getLead,
-  getMessages,
-  timeAgo,
-  type Conversation,
-} from "@/data/mock";
-import { subscribeLeadStore } from "@/data/leadStore";
+  getConversations,
+  getLeadById,
+  getMessagesFor,
+  subscribeRepo,
+  seedMockIntoCompany,
+  loadRemote,
+  getRepoMode,
+} from "@/data/leadRepo";
+import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
-import { Search, AlertTriangle, XCircle, Filter, X } from "lucide-react";
+import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2 } from "lucide-react";
 
 const STATUS_FILTERS = ["todos", "quentes", "parados", "perdidos"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
