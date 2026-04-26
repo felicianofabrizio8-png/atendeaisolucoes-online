@@ -1,10 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useSyncExternalStore, useState, useEffect } from "react";
-import { Settings as SettingsIcon, Clock, Check } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  Clock,
+  Check,
+  XCircle,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   getSettings,
   subscribeSettings,
   updateSettings,
+  addLossReason,
+  updateLossReason,
+  removeLossReason,
   SLA_OPTIONS,
 } from "@/data/settings";
 import { cn } from "@/lib/utils";
