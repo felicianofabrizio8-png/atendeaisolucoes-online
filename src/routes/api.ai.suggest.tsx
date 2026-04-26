@@ -18,7 +18,7 @@ interface RequestBody {
 export const Route = createFileRoute("/api/ai/suggest")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request }: { request: Request }) => {
         const apiKey = process.env.LOVABLE_API_KEY;
         if (!apiKey) {
           return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
