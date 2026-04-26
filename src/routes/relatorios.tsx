@@ -200,9 +200,13 @@ function ReportsPage() {
             />
             <KpiCard
               icon={TrendingUp}
-              label="Orçamentos enviados"
+              label="Orçamentos: Enviados / Criados"
               value={`${stats.quoteSentCount} / ${stats.quoteCount}`}
-              hint="Enviados ao cliente / criados"
+              hint={
+                stats.quoteCount > 0
+                  ? `${Math.round((stats.quoteSentCount / stats.quoteCount) * 100)}% enviados na conversa`
+                  : "Nenhum orçamento criado ainda"
+              }
             />
           </div>
         </section>
