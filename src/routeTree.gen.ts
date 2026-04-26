@@ -21,6 +21,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
+import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
@@ -85,6 +86,11 @@ const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
   path: '/api/whatsapp/send',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappIntegrationRoute = ApiWhatsappIntegrationRouteImport.update({
+  id: '/api/whatsapp/integration',
+  path: '/api/whatsapp/integration',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
   id: '/api/ai/suggest-product',
   path: '/api/ai/suggest-product',
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/public/whatsapp/webhook'
   id:
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
@@ -218,6 +230,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
+  ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
@@ -308,6 +321,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappSendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/integration': {
+      id: '/api/whatsapp/integration'
+      path: '/api/whatsapp/integration'
+      fullPath: '/api/whatsapp/integration'
+      preLoaderRoute: typeof ApiWhatsappIntegrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/suggest-product': {
       id: '/api/ai/suggest-product'
       path: '/api/ai/suggest-product'
@@ -356,6 +376,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
+  ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
