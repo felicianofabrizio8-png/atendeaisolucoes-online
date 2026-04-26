@@ -55,9 +55,12 @@ function ConversationPage() {
   const { conversationId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const conversation = getConversation(conversationId);
-  const lead = conversation ? getLead(conversation.leadId) : undefined;
-  const initialMessages = conversation ? getMessages(conversationId) : [];
+  const { profile } = useAuth();
+  // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
+  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  const conversation = getConversationById(conversationId);
+  const lead = conversation ? getLeadById(conversation.leadId) : undefined;
+  const initialMessages = conversation ? getMessagesFor(conversationId) : [];
 
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -561,7 +564,7 @@ function ConversationPage() {
           </div>
           <div className="flex flex-wrap gap-1">
             {lead.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma</span>}
-            {lead.tags.map((t) => (
+            {lead.tags.map((t: string) => (
               <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
                 #{t}
               </span>
