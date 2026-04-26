@@ -181,6 +181,7 @@ export function getConversationById(id: string): Conversation | undefined {
 // ---------- carga remota ----------
 export async function loadRemote(companyId: string, slaMinutes = 30) {
   if (loadingPromise) return loadingPromise;
+  currentSlaMinutes = slaMinutes;
   loadingPromise = (async () => {
     const [{ data: ls }, { data: cs }, { data: ms }] = await Promise.all([
       supabase
@@ -207,6 +208,7 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
     remoteLoaded = true;
     mode = "remote";
     notify();
+    subscribeRealtime(companyId);
   })();
   try {
     await loadingPromise;
@@ -217,6 +219,83 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
 
 export function isRemoteLoaded() {
   return remoteLoaded;
+}
+
+// ---------- realtime (mensagens chegando via webhook) ----------
+function subscribeRealtime(companyId: string) {
+  if (realtimeCompanyId === companyId && realtimeChannel) return;
+  if (realtimeChannel) {
+    void supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  realtimeCompanyId = companyId;
+  realtimeChannel = supabase
+    .channel(`inbox-${companyId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const row = payload.new as DbMessage & { company_id: string };
+        // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
+        if (remoteMessages.some((m) => m.id === row.id)) return;
+        remoteMessages = [...remoteMessages, toMessage(row)];
+        notify();
+      },
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "leads",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const row = payload.new as DbLead;
+        if (remoteLeads.some((l) => l.id === row.id)) return;
+        remoteLeads = [...remoteLeads, toLead(row)];
+        notify();
+      },
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "conversations",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        if (payload.eventType === "DELETE") {
+          const old = payload.old as { id?: string };
+          if (!old.id) return;
+          remoteConversations = remoteConversations.filter((c) => c.id !== old.id);
+          notify();
+          return;
+        }
+        const row = payload.new as DbConversation;
+        const next = toConversation(row, currentSlaMinutes);
+        const exists = remoteConversations.some((c) => c.id === next.id);
+        remoteConversations = exists
+          ? remoteConversations.map((c) => (c.id === next.id ? next : c))
+          : [...remoteConversations, next];
+        notify();
+      },
+    )
+    .subscribe();
+}
+
+export function unsubscribeRealtime() {
+  if (realtimeChannel) {
+    void supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+    realtimeCompanyId = null;
+  }
 }
 
 // ---------- mutations ----------
