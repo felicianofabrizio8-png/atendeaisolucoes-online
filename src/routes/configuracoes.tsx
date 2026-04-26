@@ -370,7 +370,39 @@ function WhatsAppForm({
   const [wabaId, setWabaId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [verifyToken, setVerifyToken] = useState(() => randomToken());
-  const [webhookSecret, setWebhookSecret] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState(() => randomToken(32));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    setErr(null);
+    if (!phoneNumberId.trim() || !accessToken.trim() || !verifyToken.trim()) {
+      setErr("phone_number_id, access_token e verify_token são obrigatórios.");
+      return;
+    }
+    if (webhookSecret.trim().length < 16) {
+      setErr("App secret precisa ter pelo menos 16 caracteres.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertWhatsAppIntegration({
+        companyId,
+        displayName: displayName.trim() || "WhatsApp",
+        phoneNumberId: phoneNumberId.trim(),
+        phoneNumber: phoneNumber.trim() || undefined,
+        wabaId: wabaId.trim() || undefined,
+        accessToken: accessToken.trim(),
+        verifyToken: verifyToken.trim(),
+        webhookSecret: webhookSecret.trim(),
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
