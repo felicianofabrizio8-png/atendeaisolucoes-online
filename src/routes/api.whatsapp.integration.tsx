@@ -97,7 +97,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           },
           access_token: body.accessToken,
           verify_token: body.verifyToken,
-          webhook_secret: body.webhookSecret ?? null,
+          webhook_secret: body.webhookSecret,
         };
 
         const { data: existing } = await supabaseAdmin
