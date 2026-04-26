@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   getConversation,
   getLead,
@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { appendMessage, markLeadLost, markLeadWon } from "@/data/leadStore";
+import { getSettings, subscribeSettings } from "@/data/settings";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -46,8 +47,7 @@ interface AISuggestion {
 }
 
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
-// aguardando resposta há pelo menos 5 minutos.
-const HOT_STALE_MINUTES = 5;
+// aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
 function ConversationPage() {
   const { conversationId } = Route.useParams();
@@ -87,6 +87,8 @@ function ConversationPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, ai, pendingQuote]);
 
+  const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
+
   const isHotStale = useMemo(() => {
     if (!lead || !conversation) return false;
     if (closedInfo) return false;
@@ -95,8 +97,8 @@ function ConversationPage() {
     const lastLead = [...messages].reverse().find((m) => m.role === "lead");
     const ref = lastLead?.at ?? conversation.lastMessageAt;
     const minutes = (Date.now() - new Date(ref).getTime()) / 60_000;
-    return minutes >= HOT_STALE_MINUTES;
-  }, [lead, conversation, messages, closedInfo]);
+    return minutes >= settings.slaMinutes;
+  }, [lead, conversation, messages, closedInfo, settings.slaMinutes]);
 
   if (!conversation || !lead) {
     return (
