@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
+import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import {
   conversations,
@@ -11,9 +13,14 @@ import {
 import { subscribeLeadStore } from "@/data/leadStore";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, XCircle, Filter, X } from "lucide-react";
+
+const searchSchema = z.object({
+  lossReason: fallback(z.string(), "").default(""),
+});
 
 export const Route = createFileRoute("/inbox/")({
+  validateSearch: zodValidator(searchSchema),
   component: InboxPage,
 });
 
@@ -38,7 +45,7 @@ function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
   return ageMin >= slaMinutes;
 }
 
-function buildSortedItems(slaMinutes: number) {
+function buildSortedItems(slaMinutes: number, lossReasonFilter: string) {
   const now = Date.now();
   return [...conversations]
     .map((c) => {
@@ -52,7 +59,11 @@ function buildSortedItems(slaMinutes: number) {
       if (lead?.status === "quente") score += 300;
       if (lead?.status === "novo") score += 100;
       score += -ageMin / 1000; // desempate por recência
-      return { conv: c, breached, ageMin, score };
+      return { conv: c, lead, breached, ageMin, score };
+    })
+    .filter(({ lead }) => {
+      if (!lossReasonFilter) return true;
+      return lead?.status === "perdido" && lead.lossReason === lossReasonFilter;
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -61,10 +72,23 @@ function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
   useLeadStoreVersion();
+  const { lossReason: lossReasonFilter } = Route.useSearch();
 
-  const items = buildSortedItems(settings.slaMinutes);
+  const items = buildSortedItems(settings.slaMinutes, lossReasonFilter);
   const breachedCount = items.filter((i) => i.breached).length;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
+
+  // Lista de motivos de perda presentes nos leads atuais (para o filtro).
+  const availableLossReasons = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of conversations) {
+      const lead = getLead(c.leadId);
+      if (lead?.status === "perdido" && lead.lossReason) {
+        set.add(lead.lossReason);
+      }
+    }
+    return [...set].sort();
+  }, []);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -84,12 +108,54 @@ function InboxPage() {
             {" · "}SLA {settings.slaMinutes} min
           </p>
         </div>
-        <div className="relative w-72 hidden md:block">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            placeholder="Buscar por nome, telefone, tag…"
-            className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+        <div className="flex items-center gap-2">
+          {availableLossReasons.length > 0 && (
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <select
+                value={lossReasonFilter}
+                onChange={(e) =>
+                  navigate({
+                    to: "/inbox",
+                    search: { lossReason: e.target.value },
+                  })
+                }
+                className={cn(
+                  "h-9 rounded-md bg-input pl-8 pr-7 text-xs outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer",
+                  lossReasonFilter && "ring-1 ring-[var(--status-lost)]/40",
+                )}
+              >
+                <option value="">Filtrar por motivo de perda…</option>
+                {availableLossReasons.map((r) => (
+                  <option key={r} value={r}>
+                    ❌ {r}
+                  </option>
+                ))}
+              </select>
+              {lossReasonFilter && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate({
+                      to: "/inbox",
+                      search: { lossReason: "" },
+                    })
+                  }
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent"
+                  aria-label="Limpar filtro"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="relative w-72 hidden md:block">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              placeholder="Buscar por nome, telefone, tag…"
+              className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
       </header>
 
@@ -146,7 +212,16 @@ function InboxPage() {
                           Cliente aguardando
                         </span>
                       )}
-                      {!breached && !lead.nextAction && (
+                      {lead.status === "perdido" && lead.lossReason && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[220px]"
+                          title={`Motivo da perda: ${lead.lossReason}`}
+                        >
+                          <XCircle className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">Perdido: {lead.lossReason}</span>
+                        </span>
+                      )}
+                      {!breached && !lead.nextAction && lead.status !== "perdido" && (
                         <span className="text-[10px] uppercase tracking-wide text-[var(--status-warm)]">
                           ⚠ sem próxima ação
                         </span>
