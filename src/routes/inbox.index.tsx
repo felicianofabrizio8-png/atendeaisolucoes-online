@@ -138,7 +138,7 @@ function InboxPage() {
                   onClick={() =>
                     navigate({
                       to: "/inbox",
-                      search: (prev) => ({ ...prev, lossReason: "" }),
+                      search: { lossReason: "" },
                     })
                   }
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent"
