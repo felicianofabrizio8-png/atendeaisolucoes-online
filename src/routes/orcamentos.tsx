@@ -12,8 +12,9 @@ import {
   Package as PackageIcon,
   Sparkles,
 } from "lucide-react";
-import { leads, conversations, formatBRL, timeAgo } from "@/data/mock";
+import { formatBRL, timeAgo } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
+import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
 import {
   createQuote,
   listQuotes,
