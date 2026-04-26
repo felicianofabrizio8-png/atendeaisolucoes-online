@@ -117,7 +117,7 @@ function InboxPage() {
                 onChange={(e) =>
                   navigate({
                     to: "/inbox",
-                    search: (prev) => ({ ...prev, lossReason: e.target.value }),
+                    search: { lossReason: e.target.value },
                   })
                 }
                 className={cn(
