@@ -205,7 +205,9 @@ function InboxPage() {
                         {lead.name}
                       </span>
                       <ChannelBadge channel={c.channel} />
-                      <StatusBadge status={lead.status} />
+                      {!(lead.status === "perdido" && lead.lossReason) && (
+                        <StatusBadge status={lead.status} />
+                      )}
                       {breached && (
                         <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[var(--status-urgent)] text-white">
                           <AlertTriangle className="h-2.5 w-2.5" />
@@ -214,11 +216,13 @@ function InboxPage() {
                       )}
                       {lead.status === "perdido" && lead.lossReason && (
                         <span
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[220px]"
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[240px]"
                           title={`Motivo da perda: ${lead.lossReason}`}
                         >
                           <XCircle className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">Perdido: {lead.lossReason}</span>
+                          <span className="truncate">
+                            Perdido <span className="opacity-60">•</span> {lead.lossReason}
+                          </span>
                         </span>
                       )}
                       {!breached && !lead.nextAction && lead.status !== "perdido" && (
