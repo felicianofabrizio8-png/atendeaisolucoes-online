@@ -15,6 +15,8 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
 import { loadRemote, setRepoMode } from "@/data/leadRepo";
+import { loadProductsRemote, setProductsMode } from "@/data/products";
+import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 
 type NavItem = {
   to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
