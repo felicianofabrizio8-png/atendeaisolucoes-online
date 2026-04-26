@@ -73,6 +73,22 @@ function ProductsPage() {
                         <Tag className="h-3 w-3" /> {p.notes}
                       </div>
                     )}
+                    <div className="pt-1.5 mt-auto">
+                      <button
+                        onClick={() =>
+                          navigate({
+                            to: "/orcamentos",
+                            search: {
+                              new: "1",
+                              suggestedProductId: p.id,
+                            },
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2.5 py-1.5 hover:opacity-90"
+                      >
+                        <FileText className="h-3 w-3" /> Criar orçamento
+                      </button>
+                    </div>
                   </div>
                 );
               })}
