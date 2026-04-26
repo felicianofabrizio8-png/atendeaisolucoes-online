@@ -123,7 +123,7 @@ function ReportsPage() {
       quoteCount: quotes.length,
       quoteSentCount: quotes.filter((q) => q.sent).length,
     };
-  }, [quotes]);
+  }, [quotes, leads, messages]);
 
   const totalLossValue = stats.lossReasons.reduce((s, r) => s + r.value, 0);
 
