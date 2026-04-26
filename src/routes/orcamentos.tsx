@@ -301,9 +301,9 @@ function QuoteFormModal({
 
   const canSubmit = !!product && !!leadId && finalValue > 0 && installments >= 1;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSubmit) return;
-    const q = createQuote({
+    const q = await createQuote({
       leadId,
       conversationId: defaultConversationId,
       productId,
