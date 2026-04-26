@@ -212,7 +212,16 @@ function InboxPage() {
                           Cliente aguardando
                         </span>
                       )}
-                      {!breached && !lead.nextAction && (
+                      {lead.status === "perdido" && lead.lossReason && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[220px]"
+                          title={`Motivo da perda: ${lead.lossReason}`}
+                        >
+                          <XCircle className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">Perdido: {lead.lossReason}</span>
+                        </span>
+                      )}
+                      {!breached && !lead.nextAction && lead.status !== "perdido" && (
                         <span className="text-[10px] uppercase tracking-wide text-[var(--status-warm)]">
                           ⚠ sem próxima ação
                         </span>
