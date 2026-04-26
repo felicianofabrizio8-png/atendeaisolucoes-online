@@ -10,8 +10,13 @@ import {
   DollarSign,
   TrendingUp,
 } from "lucide-react";
-import { leads, conversations, messages, formatBRL } from "@/data/mock";
+import { conversations, formatBRL } from "@/data/mock";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
+import {
+  getLeadsSnapshot,
+  getMessagesSnapshot,
+  subscribeLeadStore,
+} from "@/data/leadStore";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/relatorios")({
@@ -22,11 +27,28 @@ function useQuotes() {
   return useSyncExternalStore(subscribeQuotes, listQuotes, listQuotes);
 }
 
+function useLeadStore() {
+  // Inscreve em mutações de leads/mensagens. O snapshot é uma referência estável
+  // entre mutações (rebuild só ocorre dentro do notify()), evitando loops em useSyncExternalStore.
+  const leads = useSyncExternalStore(
+    subscribeLeadStore,
+    getLeadsSnapshot,
+    getLeadsSnapshot,
+  );
+  const messages = useSyncExternalStore(
+    subscribeLeadStore,
+    getMessagesSnapshot,
+    getMessagesSnapshot,
+  );
+  return { leads, messages };
+}
+
 function ReportsPage() {
   const quotes = useQuotes();
+  const { leads, messages } = useLeadStore();
 
   const stats = useMemo(() => {
-    const received = leads.length;
+    const received = conversations.length;
     const closed = leads.filter((l) => l.status === "fechado");
     const lost = leads.filter((l) => l.status === "perdido");
 
@@ -101,7 +123,7 @@ function ReportsPage() {
       quoteCount: quotes.length,
       quoteSentCount: quotes.filter((q) => q.sent).length,
     };
-  }, [quotes]);
+  }, [quotes, leads, messages]);
 
   const totalLossValue = stats.lossReasons.reduce((s, r) => s + r.value, 0);
 
