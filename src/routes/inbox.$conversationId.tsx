@@ -740,7 +740,8 @@ function MarkLostModal({
 }) {
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
   const reasons = settings.lossReasons;
-  const [selected, setSelected] = useState<string>(reasons[0] ?? "");
+  // Não pré-seleciona — força a vendedora a escolher um motivo conscientemente.
+  const [selected, setSelected] = useState<string>("");
   const [custom, setCustom] = useState("");
   const useCustom = selected === "__custom__";
   const finalReason = useCustom ? custom.trim() : selected;
