@@ -1,14 +1,15 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { Sparkles, Loader2, Eye, EyeOff } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Sparkles, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ function LoginPage() {
       if (mode === "signin") {
         await signIn(email, password);
         navigate({ to: "/" });
-      } else {
+      } else if (mode === "signup") {
         await signUp({
           email,
           password,
@@ -48,6 +49,19 @@ function LoginPage() {
           "Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa. Se não, já pode entrar.",
         );
         setMode("signin");
+      } else {
+        // forgot
+        const redirectTo =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/reset-password`
+            : undefined;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        });
+        if (error) throw error;
+        setInfo(
+          "Se o email existir, você receberá um link para redefinir sua senha.",
+        );
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro inesperado";
@@ -80,27 +94,51 @@ function LoginPage() {
         </div>
 
         <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-          <div className="flex gap-1 p-1 bg-secondary rounded-md mb-5">
-            {(["signin", "signup"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setError(null);
-                  setInfo(null);
-                }}
-                className={cn(
-                  "flex-1 h-8 text-xs font-medium rounded transition-colors",
-                  mode === m
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m === "signin" ? "Entrar" : "Criar conta"}
-              </button>
-            ))}
-          </div>
+          {mode !== "forgot" ? (
+            <div className="flex gap-1 p-1 bg-secondary rounded-md mb-5">
+              {(["signin", "signup"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m);
+                    setError(null);
+                    setInfo(null);
+                  }}
+                  className={cn(
+                    "flex-1 h-8 text-xs font-medium rounded transition-colors",
+                    mode === m
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {m === "signin" ? "Entrar" : "Criar conta"}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signin");
+                setError(null);
+                setInfo(null);
+              }}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Voltar para login
+            </button>
+          )}
+
+          {mode === "forgot" && (
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Recuperar senha</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Informe seu email e enviaremos um link para redefinir sua senha.
+              </p>
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-3">
             {mode === "signup" && (
@@ -143,29 +181,48 @@ function LoginPage() {
                 required
               />
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">Senha</label>
-              <div className="relative mt-1">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                  minLength={6}
-                  className="w-full h-10 rounded-md bg-input px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            {mode !== "forgot" && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Senha
+                  </label>
+                  {mode === "signin" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("forgot");
+                        setError(null);
+                        setInfo(null);
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Esqueci minha senha
+                    </button>
+                  )}
+                </div>
+                <div className="relative mt-1">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                    minLength={6}
+                    className="w-full h-10 rounded-md bg-input px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {error && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive border border-destructive/20">
@@ -184,7 +241,11 @@ function LoginPage() {
               className="w-full h-10 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "signin" ? "Entrar" : "Criar conta"}
+              {mode === "signin"
+                ? "Entrar"
+                : mode === "signup"
+                  ? "Criar conta"
+                  : "Enviar link de recuperação"}
             </button>
           </form>
         </div>
