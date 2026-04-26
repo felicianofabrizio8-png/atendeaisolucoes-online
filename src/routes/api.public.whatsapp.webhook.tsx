@@ -79,14 +79,17 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
 
               if (!integration) continue;
 
-              // Valida assinatura HMAC se houver segredo configurado
-              if (integration.webhook_secret) {
-                if (!verifySignature(rawBody, signatureHeader, integration.webhook_secret)) {
-                  console.warn("WhatsApp webhook: assinatura inválida", {
-                    integrationId: integration.id,
-                  });
-                  continue;
-                }
+              // HMAC OBRIGATÓRIO. Sem segredo configurado ou assinatura
+              // inválida → ignoramos o evento. Isso impede que terceiros que
+              // conheçam o phone_number_id injetem leads/mensagens falsas.
+              if (
+                !integration.webhook_secret ||
+                !verifySignature(rawBody, signatureHeader, integration.webhook_secret)
+              ) {
+                console.warn("WhatsApp webhook: HMAC ausente ou inválido", {
+                  integrationId: integration.id,
+                });
+                continue;
               }
 
               await processMessages({
