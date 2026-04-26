@@ -140,7 +140,9 @@ function InboxPage() {
     setSeeding(true);
     try {
       await seedMockIntoCompany(profile.company_id);
+      await seedMockProductsIntoCompany(profile.company_id);
       await loadRemote(profile.company_id);
+      await loadProductsRemote(profile.company_id);
     } catch (e) {
       console.error("seed failed", e);
     } finally {
