@@ -45,7 +45,7 @@ function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
   return ageMin >= slaMinutes;
 }
 
-function buildSortedItems(slaMinutes: number) {
+function buildSortedItems(slaMinutes: number, lossReasonFilter: string) {
   const now = Date.now();
   return [...conversations]
     .map((c) => {
@@ -59,7 +59,11 @@ function buildSortedItems(slaMinutes: number) {
       if (lead?.status === "quente") score += 300;
       if (lead?.status === "novo") score += 100;
       score += -ageMin / 1000; // desempate por recência
-      return { conv: c, breached, ageMin, score };
+      return { conv: c, lead, breached, ageMin, score };
+    })
+    .filter(({ lead }) => {
+      if (!lossReasonFilter) return true;
+      return lead?.status === "perdido" && lead.lossReason === lossReasonFilter;
     })
     .sort((a, b) => b.score - a.score);
 }
