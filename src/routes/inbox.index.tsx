@@ -72,10 +72,23 @@ function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
   useLeadStoreVersion();
+  const { lossReason: lossReasonFilter } = Route.useSearch();
 
-  const items = buildSortedItems(settings.slaMinutes);
+  const items = buildSortedItems(settings.slaMinutes, lossReasonFilter);
   const breachedCount = items.filter((i) => i.breached).length;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
+
+  // Lista de motivos de perda presentes nos leads atuais (para o filtro).
+  const availableLossReasons = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of conversations) {
+      const lead = getLead(c.leadId);
+      if (lead?.status === "perdido" && lead.lossReason) {
+        set.add(lead.lossReason);
+      }
+    }
+    return [...set].sort();
+  }, []);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -95,12 +108,54 @@ function InboxPage() {
             {" · "}SLA {settings.slaMinutes} min
           </p>
         </div>
-        <div className="relative w-72 hidden md:block">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            placeholder="Buscar por nome, telefone, tag…"
-            className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+        <div className="flex items-center gap-2">
+          {availableLossReasons.length > 0 && (
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <select
+                value={lossReasonFilter}
+                onChange={(e) =>
+                  navigate({
+                    to: "/inbox",
+                    search: (prev) => ({ ...prev, lossReason: e.target.value }),
+                  })
+                }
+                className={cn(
+                  "h-9 rounded-md bg-input pl-8 pr-7 text-xs outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer",
+                  lossReasonFilter && "ring-1 ring-[var(--status-lost)]/40",
+                )}
+              >
+                <option value="">Filtrar por motivo de perda…</option>
+                {availableLossReasons.map((r) => (
+                  <option key={r} value={r}>
+                    ❌ {r}
+                  </option>
+                ))}
+              </select>
+              {lossReasonFilter && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate({
+                      to: "/inbox",
+                      search: (prev) => ({ ...prev, lossReason: "" }),
+                    })
+                  }
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent"
+                  aria-label="Limpar filtro"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="relative w-72 hidden md:block">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              placeholder="Buscar por nome, telefone, tag…"
+              className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
       </header>
 
