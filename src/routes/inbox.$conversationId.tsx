@@ -27,6 +27,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
+import { appendMessage, markLeadLost, markLeadWon } from "@/data/leadStore";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -108,16 +109,15 @@ function ConversationPage() {
 
   const sendMessage = (text: string) => {
     if (!text.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `local-${Date.now()}`,
-        conversationId,
-        role: "agent",
-        text: text.trim(),
-        at: new Date().toISOString(),
-      },
-    ]);
+    const msg: Message = {
+      id: `local-${Date.now()}`,
+      conversationId,
+      role: "agent",
+      text: text.trim(),
+      at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, msg]);
+    appendMessage(msg);
     setInput("");
   };
 
@@ -159,6 +159,7 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
+    if (lead) markLeadWon(lead.id, value);
     setMessages((prev) => [
       ...prev,
       {
@@ -166,6 +167,27 @@ function ConversationPage() {
         conversationId,
         role: "system",
         text: `✅ Venda fechada — ${formatBRL(value)}`,
+        at: new Date().toISOString(),
+      },
+    ]);
+  };
+
+  const handleMarkLost = () => {
+    if (!lead) return;
+    const reason = window.prompt(
+      "Motivo da perda:",
+      "Sem retorno do cliente",
+    );
+    if (!reason || !reason.trim()) return;
+    markLeadLost(lead.id, reason.trim());
+    setClosedInfo({ value: 0, at: new Date().toISOString() });
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-${Date.now()}`,
+        conversationId,
+        role: "system",
+        text: `❌ Lead marcado como perdido — ${reason.trim()}`,
         at: new Date().toISOString(),
       },
     ]);
@@ -564,7 +586,12 @@ function ConversationPage() {
           >
             Fechar venda
           </ActionButton>
-          <ActionButton icon={XCircle} variant="lost" disabled={!!closedInfo}>
+          <ActionButton
+            icon={XCircle}
+            variant="lost"
+            onClick={handleMarkLost}
+            disabled={!!closedInfo}
+          >
             Marcar como perdido
           </ActionButton>
         </div>
