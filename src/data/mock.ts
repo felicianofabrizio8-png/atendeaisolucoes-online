@@ -31,6 +31,10 @@ export interface Lead {
   nextAction?: NextAction;
   assignedTo?: string;
   createdAt: string;
+  closedAt?: string;
+  closedValue?: number;
+  lostAt?: string;
+  lossReason?: string;
 }
 
 export interface Conversation {
@@ -130,6 +134,97 @@ export const leads: Lead[] = [
     estimatedValue: 18700,
     product: "Piscina de vinil 5x2,5",
     createdAt: minutesAgo(12),
+  },
+  {
+    id: "l8",
+    name: "Helena Costa",
+    phone: "+55 11 95544-3322",
+    channel: "whatsapp",
+    status: "fechado",
+    tags: ["fechou rápido"],
+    estimatedValue: 27500,
+    closedValue: 27500,
+    closedAt: hoursAgo(48),
+    product: "Piscina de fibra 6x3",
+    createdAt: hoursAgo(96),
+  },
+  {
+    id: "l9",
+    name: "Lucas Andrade",
+    phone: "+55 11 94433-2211",
+    channel: "whatsapp",
+    status: "fechado",
+    tags: ["upgrade"],
+    estimatedValue: 14200,
+    closedValue: 12900,
+    closedAt: hoursAgo(20),
+    product: "Aquecedor solar para piscina pequena",
+    createdAt: hoursAgo(72),
+  },
+  {
+    id: "l10",
+    name: "Patricia Nunes",
+    phone: "+55 11 93322-1100",
+    channel: "whatsapp",
+    status: "fechado",
+    tags: [],
+    estimatedValue: 4800,
+    closedValue: 4800,
+    closedAt: hoursAgo(5),
+    product: "Troca de vinil 4x2",
+    createdAt: hoursAgo(50),
+  },
+  {
+    id: "l11",
+    name: "Gabriel Souza",
+    phone: "+55 21 92211-0099",
+    channel: "whatsapp",
+    status: "perdido",
+    tags: ["sem retorno"],
+    estimatedValue: 18700,
+    product: "Piscina de vinil 5x2,5",
+    lossReason: "Sem retorno do cliente",
+    lostAt: hoursAgo(72),
+    createdAt: hoursAgo(200),
+  },
+  {
+    id: "l12",
+    name: "Marcia Oliveira",
+    handle: "@marcia.dec",
+    channel: "instagram",
+    status: "perdido",
+    tags: [],
+    estimatedValue: 28500,
+    product: "Piscina de fibra 6x3",
+    lossReason: "Preço acima do orçamento",
+    lostAt: hoursAgo(36),
+    createdAt: hoursAgo(140),
+  },
+  {
+    id: "l13",
+    name: "Rafael Lima",
+    phone: "+55 31 91100-9988",
+    channel: "facebook",
+    status: "perdido",
+    tags: [],
+    estimatedValue: 8900,
+    product: "Trocador de calor 75.000 BTU",
+    lossReason: "Comprou do concorrente",
+    lostAt: hoursAgo(80),
+    createdAt: hoursAgo(180),
+  },
+  {
+    id: "l14",
+    name: "Beatriz Alves",
+    phone: "+55 11 98899-7766",
+    channel: "whatsapp",
+    status: "perdido",
+    tags: [],
+    estimatedValue: 6400,
+    product: "Acessórios",
+    lossReason: "Preço acima do orçamento",
+    lostAt: hoursAgo(60),
+    createdAt: hoursAgo(150),
   },
 ];
 
