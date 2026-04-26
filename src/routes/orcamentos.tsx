@@ -271,6 +271,8 @@ function QuoteFormModal({
   onCancel,
   onCreated,
 }: QuoteFormModalProps) {
+  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  const leads = getLeads();
   const [leadId, setLeadId] = useState(defaultLeadId ?? leads[0]?.id ?? "");
   const [productId, setProductId] = useState(
     defaultProductId && getProduct(defaultProductId) ? defaultProductId : products[0]?.id ?? "",
