@@ -1,5 +1,5 @@
 // Catálogo de produtos do Atende Ai!
-// Mock — substituir por backend depois. Categorias configuráveis para qualquer negócio.
+// Store reativo com persistência em localStorage. Permite criar, editar e excluir.
 
 export type ProductCategory =
   | "Piscinas de fibra"
@@ -9,6 +9,16 @@ export type ProductCategory =
   | "Spas e banheiras"
   | "Acessórios"
   | "Tratamento de água";
+
+export const PRODUCT_CATEGORIES: ProductCategory[] = [
+  "Piscinas de fibra",
+  "Piscinas de vinil",
+  "Troca de vinil",
+  "Aquecedores",
+  "Spas e banheiras",
+  "Acessórios",
+  "Tratamento de água",
+];
 
 export interface Product {
   id: string;
@@ -20,7 +30,9 @@ export interface Product {
   notes?: string;
 }
 
-export const products: Product[] = [
+const STORAGE_KEY = "atendeai.products.v1";
+
+const seed: Product[] = [
   {
     id: "p1",
     name: "Piscina de fibra 6x3",
@@ -88,10 +100,87 @@ export const products: Product[] = [
   },
 ];
 
+function loadFromStorage(): Product[] {
+  if (typeof window === "undefined") return seed;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as Product[];
+    if (!Array.isArray(parsed)) return seed;
+    return parsed;
+  } catch {
+    return seed;
+  }
+}
+
+function saveToStorage(items: Product[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+let _products: Product[] = loadFromStorage();
+const listeners = new Set<() => void>();
+
+function emit() {
+  saveToStorage(_products);
+  for (const l of listeners) l();
+}
+
+// Lista exportada — mantida como referência mutável para compatibilidade,
+// mas componentes devem usar useProducts() para reatividade.
+export const products: Product[] = _products;
+
+export function listProducts(): Product[] {
+  return _products;
+}
+
+export function subscribeProducts(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
 export function getProduct(id: string): Product | undefined {
-  return products.find((p) => p.id === id);
+  return _products.find((p) => p.id === id);
 }
 
 export function activePrice(p: Product): number {
   return p.promoPrice ?? p.price;
+}
+
+function genId(): string {
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function createProduct(input: Omit<Product, "id">): Product {
+  const product: Product = { id: genId(), ...input };
+  _products = [product, ..._products];
+  // manter referência exportada sincronizada
+  products.length = 0;
+  products.push(..._products);
+  emit();
+  return product;
+}
+
+export function updateProduct(id: string, patch: Partial<Omit<Product, "id">>): Product | undefined {
+  let updated: Product | undefined;
+  _products = _products.map((p) => {
+    if (p.id !== id) return p;
+    updated = { ...p, ...patch };
+    return updated;
+  });
+  products.length = 0;
+  products.push(..._products);
+  emit();
+  return updated;
+}
+
+export function deleteProduct(id: string): void {
+  _products = _products.filter((p) => p.id !== id);
+  products.length = 0;
+  products.push(..._products);
+  emit();
 }
