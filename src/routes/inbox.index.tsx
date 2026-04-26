@@ -92,8 +92,33 @@ function InboxPage() {
   const { status: statusFilter, lossReason: lossReasonFilter } = Route.useSearch();
 
   const items = buildSortedItems(settings.slaMinutes, statusFilter, lossReasonFilter);
-  const breachedCount = items.filter((i) => i.breached).length;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
+
+  // Contagens por status, calculadas sobre TODAS as conversas (ignorando o
+  // filtro de status atual) mas respeitando o filtro de motivo se ativo.
+  // Assim cada aba mostra quantos leads ela conteria se selecionada.
+  const statusCounts = useMemo(() => {
+    const counts = { todos: 0, quentes: 0, parados: 0, perdidos: 0 };
+    for (const c of conversations) {
+      const lead = getLead(c.leadId);
+      const breached = isSlaBreached(c, settings.slaMinutes);
+      // Aplica filtro de motivo (combina com qualquer aba)
+      if (lossReasonFilter) {
+        if (lead?.status !== "perdido" || lead.lossReason !== lossReasonFilter) {
+          continue;
+        }
+      }
+      counts.todos += 1;
+      if (lead?.status === "quente") counts.quentes += 1;
+      if (breached) counts.parados += 1;
+      if (lead?.status === "perdido") counts.perdidos += 1;
+    }
+    return counts;
+    // Reavalia quando lead store muda (via useLeadStoreVersion acima dispara re-render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.slaMinutes, lossReasonFilter, items]);
+
+  const breachedCount = statusCounts.parados;
 
   // Lista de motivos de perda presentes nos leads atuais (para o filtro).
   const availableLossReasons = useMemo(() => {
@@ -124,11 +149,11 @@ function InboxPage() {
     });
   };
 
-  const statusTabs: { key: StatusFilter; label: string; count?: number }[] = [
-    { key: "todos", label: "Todos", count: items.length },
-    { key: "quentes", label: "Quentes" },
-    { key: "parados", label: "Parados", count: breachedCount },
-    { key: "perdidos", label: "Perdidos" },
+  const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
+    { key: "todos", label: "Todos", count: statusCounts.todos },
+    { key: "quentes", label: "Quentes", count: statusCounts.quentes },
+    { key: "parados", label: "Parados", count: statusCounts.parados },
+    { key: "perdidos", label: "Perdidos", count: statusCounts.perdidos },
   ];
 
   return (
@@ -177,17 +202,17 @@ function InboxPage() {
                   )}
                 >
                   {tab.label}
-                  {typeof tab.count === "number" && tab.count > 0 && (
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums",
-                        active ? "bg-secondary" : "bg-background/60",
-                        tab.key === "parados" && "text-[var(--status-urgent)]",
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  )}
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[18px] text-center",
+                      active ? "bg-secondary" : "bg-background/60",
+                      tab.count === 0 && "opacity-40",
+                      tab.key === "parados" && tab.count > 0 && "text-[var(--status-urgent)]",
+                      tab.key === "perdidos" && tab.count > 0 && active && "text-[var(--status-lost)]",
+                    )}
+                  >
+                    {tab.count}
+                  </span>
                 </button>
               );
             })}
