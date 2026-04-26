@@ -53,8 +53,16 @@ export function AppShell() {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
       loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+      loadProductsRemote(profile.company_id).catch((e) =>
+        console.error("loadProductsRemote failed", e),
+      );
+      loadQuotesRemote(profile.company_id).catch((e) =>
+        console.error("loadQuotesRemote failed", e),
+      );
     } else {
       setRepoMode("demo");
+      setProductsMode("demo");
+      setQuotesMode("demo");
     }
   }, [user, profile]);
 
