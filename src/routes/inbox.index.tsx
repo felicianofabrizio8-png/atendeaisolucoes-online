@@ -295,6 +295,26 @@ function InboxPage() {
 
 
       <div className="flex-1 overflow-y-auto">
+        {showSeed && (
+          <div className="mx-6 my-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex items-start gap-3">
+            <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold">Sua caixa está vazia</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Carregue dados de exemplo para explorar o app, ou conecte seus canais
+                (WhatsApp, Instagram, Facebook) — em breve.
+              </p>
+              <button
+                onClick={handleSeed}
+                disabled={seeding}
+                className="mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-60"
+              >
+                {seeding && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Carregar dados de exemplo
+              </button>
+            </div>
+          </div>
+        )}
         <ul className="divide-y divide-border">
           {items.map(({ conv: c, breached, ageMin }) => {
             const lead = getLeadById(c.leadId)!;
