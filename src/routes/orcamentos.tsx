@@ -173,11 +173,12 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 }
 
 function QuoteCard({ quote }: { quote: Quote }) {
-  const lead = leads.find((l) => l.id === quote.leadId);
+  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  const lead = getLeads().find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
   // Resolve a conversa: a vinculada ao orçamento, ou a primeira conversa do lead.
   const targetConversationId =
-    quote.conversationId ?? conversations.find((c) => c.leadId === quote.leadId)?.id;
+    quote.conversationId ?? getConversations().find((c) => c.leadId === quote.leadId)?.id;
 
   const sendInConversation = () => {
     if (!targetConversationId) return;
