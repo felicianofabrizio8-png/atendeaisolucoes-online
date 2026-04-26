@@ -87,6 +87,8 @@ function ConversationPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, ai, pendingQuote]);
 
+  const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
+
   const isHotStale = useMemo(() => {
     if (!lead || !conversation) return false;
     if (closedInfo) return false;
@@ -95,8 +97,8 @@ function ConversationPage() {
     const lastLead = [...messages].reverse().find((m) => m.role === "lead");
     const ref = lastLead?.at ?? conversation.lastMessageAt;
     const minutes = (Date.now() - new Date(ref).getTime()) / 60_000;
-    return minutes >= HOT_STALE_MINUTES;
-  }, [lead, conversation, messages, closedInfo]);
+    return minutes >= settings.slaMinutes;
+  }, [lead, conversation, messages, closedInfo, settings.slaMinutes]);
 
   if (!conversation || !lead) {
     return (
