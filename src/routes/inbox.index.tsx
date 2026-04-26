@@ -1,16 +1,70 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ChannelBadge, StatusBadge, UrgentDot } from "@/components/Badges";
-import { sortedConversations, getLead, getMessages, timeAgo } from "@/data/mock";
+import { useSyncExternalStore } from "react";
+import { ChannelBadge, StatusBadge } from "@/components/Badges";
+import {
+  conversations,
+  getLead,
+  getMessages,
+  timeAgo,
+  type Conversation,
+} from "@/data/mock";
+import { subscribeLeadStore } from "@/data/leadStore";
+import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
-import { Search } from "lucide-react";
+import { Search, AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/inbox/")({
   component: InboxPage,
 });
 
+function useSettings() {
+  return useSyncExternalStore(subscribeSettings, getSettings, getSettings);
+}
+
+// Subscribe to lead store mutations so the list re-renders when messages are
+// appended, leads are closed/lost etc. We don't read the snapshot — we just
+// trigger a re-render so the SLA computation below runs again.
+function useLeadStoreVersion() {
+  return useSyncExternalStore(
+    subscribeLeadStore,
+    () => 0,
+    () => 0,
+  );
+}
+
+function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
+  if (!c.awaitingReply) return false;
+  const ageMin = (Date.now() - new Date(c.lastMessageAt).getTime()) / 60_000;
+  return ageMin >= slaMinutes;
+}
+
+function buildSortedItems(slaMinutes: number) {
+  const now = Date.now();
+  return [...conversations]
+    .map((c) => {
+      const lead = getLead(c.leadId);
+      const breached = isSlaBreached(c, slaMinutes);
+      const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
+      // Score: atrasados (SLA estourado) vão pro topo, mais atrasados primeiro.
+      let score = 0;
+      if (breached) score += 100_000 + ageMin; // atraso pesa proporcional ao tempo
+      else if (c.awaitingReply) score += 5_000 - ageMin / 1000;
+      if (lead?.status === "quente") score += 300;
+      if (lead?.status === "novo") score += 100;
+      score += -ageMin / 1000; // desempate por recência
+      return { conv: c, breached, ageMin, score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
 function InboxPage() {
   const navigate = useNavigate();
-  const items = sortedConversations();
+  const settings = useSettings();
+  useLeadStoreVersion();
+
+  const items = buildSortedItems(settings.slaMinutes);
+  const breachedCount = items.filter((i) => i.breached).length;
+  const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -18,7 +72,16 @@ function InboxPage() {
         <div>
           <h1 className="text-base font-semibold leading-none">Caixa de atendimento</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            {items.filter((c) => c.awaitingReply).length} aguardando resposta · ordenado por urgência
+            {awaitingCount} aguardando resposta
+            {breachedCount > 0 && (
+              <>
+                {" · "}
+                <span className="text-[var(--status-urgent)] font-semibold">
+                  {breachedCount} atrasado{breachedCount === 1 ? "" : "s"}
+                </span>
+              </>
+            )}
+            {" · "}SLA {settings.slaMinutes} min
           </p>
         </div>
         <div className="relative w-72 hidden md:block">
@@ -32,24 +95,32 @@ function InboxPage() {
 
       <div className="flex-1 overflow-y-auto">
         <ul className="divide-y divide-border">
-          {items.map((c) => {
+          {items.map(({ conv: c, breached, ageMin }) => {
             const lead = getLead(c.leadId)!;
             const msgs = getMessages(c.id);
             const last = msgs[msgs.length - 1];
-            const urgent = c.awaitingReply && c.slaBreached;
 
             return (
               <li key={c.id}>
                 <button
-                  onClick={() => navigate({ to: "/inbox/$conversationId", params: { conversationId: c.id } })}
+                  onClick={() =>
+                    navigate({
+                      to: "/inbox/$conversationId",
+                      params: { conversationId: c.id },
+                    })
+                  }
                   className={cn(
-                    "w-full text-left px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start",
-                    urgent && "bg-[var(--status-urgent)]/5",
+                    "w-full text-left px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start relative",
+                    breached &&
+                      "bg-[var(--status-urgent)]/10 border-l-4 border-[var(--status-urgent)] pl-5",
                   )}
                 >
                   <div className="flex flex-col items-center pt-1 gap-1.5 w-6">
-                    {urgent ? (
-                      <UrgentDot />
+                    {breached ? (
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--status-urgent)] opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--status-urgent)]" />
+                      </span>
                     ) : c.awaitingReply ? (
                       <span className="h-2 w-2 rounded-full bg-primary" />
                     ) : (
@@ -58,23 +129,41 @@ function InboxPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{lead.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={cn(
+                          "font-medium truncate",
+                          breached && "text-[var(--status-urgent)]",
+                        )}
+                      >
+                        {lead.name}
+                      </span>
                       <ChannelBadge channel={c.channel} />
                       <StatusBadge status={lead.status} />
-                      {!lead.nextAction && (
+                      {breached && (
+                        <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[var(--status-urgent)] text-white">
+                          <AlertTriangle className="h-2.5 w-2.5" />
+                          Cliente aguardando
+                        </span>
+                      )}
+                      {!breached && !lead.nextAction && (
                         <span className="text-[10px] uppercase tracking-wide text-[var(--status-warm)]">
                           ⚠ sem próxima ação
                         </span>
                       )}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground truncate">
-                      {last?.role === "agent" && <span className="text-foreground/60">Você: </span>}
+                      {last?.role === "agent" && (
+                        <span className="text-foreground/60">Você: </span>
+                      )}
                       {last?.text ?? "—"}
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {lead.tags.map((t) => (
-                        <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span
+                          key={t}
+                          className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                        >
                           #{t}
                         </span>
                       ))}
@@ -82,9 +171,21 @@ function InboxPage() {
                   </div>
 
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={cn("text-xs tabular-nums", urgent ? "text-[var(--status-urgent)] font-semibold" : "text-muted-foreground")}>
+                    <span
+                      className={cn(
+                        "text-xs tabular-nums",
+                        breached
+                          ? "text-[var(--status-urgent)] font-bold"
+                          : "text-muted-foreground",
+                      )}
+                    >
                       {timeAgo(c.lastMessageAt)}
                     </span>
+                    {breached && (
+                      <span className="text-[10px] font-semibold text-[var(--status-urgent)]">
+                        +{Math.max(1, Math.round(ageMin - settings.slaMinutes))}min do SLA
+                      </span>
+                    )}
                     {c.unread > 0 && (
                       <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 min-w-[18px] text-center">
                         {c.unread}
