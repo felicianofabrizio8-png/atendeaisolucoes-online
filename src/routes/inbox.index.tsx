@@ -20,6 +20,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute("/inbox/")({
+  validateSearch: zodValidator(searchSchema),
   component: InboxPage,
 });
 
