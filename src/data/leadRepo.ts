@@ -5,6 +5,7 @@
 // refatoração nas telas.
 
 import { supabase } from "@/integrations/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   conversations as mockConversations,
   leads as mockLeads,
@@ -31,6 +32,9 @@ let remoteConversations: Conversation[] = [];
 let remoteMessages: Message[] = [];
 let remoteLoaded = false;
 let loadingPromise: Promise<void> | null = null;
+let realtimeChannel: RealtimeChannel | null = null;
+let realtimeCompanyId: string | null = null;
+let currentSlaMinutes = 30;
 
 const listeners = new Set<() => void>();
 
