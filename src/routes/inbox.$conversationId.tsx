@@ -11,7 +11,6 @@ import {
   subscribeRepo,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { cn } from "@/lib/utils";
 import {
