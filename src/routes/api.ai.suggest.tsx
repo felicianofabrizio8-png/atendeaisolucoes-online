@@ -16,6 +16,7 @@ interface RequestBody {
 }
 
 export const Route = createFileRoute("/api/ai/suggest")({
+  // @ts-expect-error — `server` é fornecido em runtime pelo TanStack Start
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
