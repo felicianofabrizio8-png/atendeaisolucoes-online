@@ -254,9 +254,15 @@ function ConversationPage() {
     let suggestedProductId: string | undefined;
     let suggestionReason: string | undefined;
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada");
       const res = await fetch("/api/ai/suggest-product", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           leadName: lead.name,
           product: lead.product,
