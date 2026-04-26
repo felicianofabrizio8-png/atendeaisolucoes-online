@@ -1,12 +1,23 @@
-// Store de configurações da loja (SLA etc.). Persistência em localStorage,
-// pub/sub para componentes React reagirem.
+// Store de configurações da loja (SLA, motivos de perda etc.).
+// Persistência em localStorage, pub/sub para componentes React reagirem.
 
 export interface Settings {
   slaMinutes: number; // tempo máximo de resposta antes de marcar lead como "parado"
+  lossReasons: string[]; // motivos de perda configurados pela loja
 }
 
 const STORAGE_KEY = "atendeai.settings.v1";
-const DEFAULTS: Settings = { slaMinutes: 5 };
+const DEFAULT_LOSS_REASONS = [
+  "Sem retorno do cliente",
+  "Preço acima do orçamento",
+  "Comprou do concorrente",
+  "Mudou de ideia",
+  "Fora da região de atendimento",
+];
+const DEFAULTS: Settings = {
+  slaMinutes: 5,
+  lossReasons: DEFAULT_LOSS_REASONS,
+};
 
 function loadFromStorage(): Settings {
   if (typeof window === "undefined") return DEFAULTS;
@@ -14,7 +25,13 @@ function loadFromStorage(): Settings {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULTS, ...parsed };
+    return {
+      slaMinutes: parsed.slaMinutes ?? DEFAULTS.slaMinutes,
+      lossReasons:
+        Array.isArray(parsed.lossReasons) && parsed.lossReasons.length > 0
+          ? parsed.lossReasons
+          : DEFAULTS.lossReasons,
+    };
   } catch {
     return DEFAULTS;
   }
@@ -49,7 +66,34 @@ export function subscribeSettings(cb: () => void): () => void {
 }
 
 export function updateSettings(patch: Partial<Settings>) {
-  _settings = { ...DEFAULTS, ..._settings, ...patch };
+  _settings = { ..._settings, ...patch };
+  emit();
+}
+
+export function addLossReason(reason: string) {
+  const trimmed = reason.trim();
+  if (!trimmed) return;
+  if (_settings.lossReasons.some((r) => r.toLowerCase() === trimmed.toLowerCase())) return;
+  _settings = { ..._settings, lossReasons: [..._settings.lossReasons, trimmed] };
+  emit();
+}
+
+export function updateLossReason(index: number, reason: string) {
+  const trimmed = reason.trim();
+  if (!trimmed) return;
+  if (index < 0 || index >= _settings.lossReasons.length) return;
+  const next = [..._settings.lossReasons];
+  next[index] = trimmed;
+  _settings = { ..._settings, lossReasons: next };
+  emit();
+}
+
+export function removeLossReason(index: number) {
+  if (index < 0 || index >= _settings.lossReasons.length) return;
+  // não permitir esvaziar — motivos de perda são essenciais
+  if (_settings.lossReasons.length === 1) return;
+  const next = _settings.lossReasons.filter((_, i) => i !== index);
+  _settings = { ..._settings, lossReasons: next };
   emit();
 }
 
