@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
@@ -34,6 +35,11 @@ const ProdutosRoute = ProdutosRouteImport.update({
 const OrcamentosRoute = OrcamentosRouteImport.update({
   id: '/orcamentos',
   path: '/orcamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InboxRoute = InboxRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/inbox': typeof InboxRouteWithChildren
+  '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/inbox': typeof InboxRouteWithChildren
+  '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/agenda'
     | '/configuracoes'
     | '/inbox'
+    | '/login'
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/login'
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/agenda'
     | '/configuracoes'
     | '/inbox'
+    | '/login'
     | '/orcamentos'
     | '/produtos'
     | '/relatorios'
@@ -162,6 +174,7 @@ export interface RootRouteChildren {
   AgendaRoute: typeof AgendaRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   InboxRoute: typeof InboxRouteWithChildren
+  LoginRoute: typeof LoginRoute
   OrcamentosRoute: typeof OrcamentosRoute
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
@@ -190,6 +203,13 @@ declare module '@tanstack/react-router' {
       path: '/orcamentos'
       fullPath: '/orcamentos'
       preLoaderRoute: typeof OrcamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inbox': {
@@ -268,6 +288,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgendaRoute: AgendaRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   InboxRoute: InboxRouteWithChildren,
+  LoginRoute: LoginRoute,
   OrcamentosRoute: OrcamentosRoute,
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
