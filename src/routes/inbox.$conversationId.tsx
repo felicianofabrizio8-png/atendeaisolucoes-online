@@ -11,6 +11,7 @@ import {
   subscribeRepo,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { cn } from "@/lib/utils";
 import {
@@ -168,9 +169,15 @@ function ConversationPage() {
     setAiError(null);
     setAi(null);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
       const res = await fetch("/api/ai/suggest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           leadName: lead.name,
           channel: lead.channel,
