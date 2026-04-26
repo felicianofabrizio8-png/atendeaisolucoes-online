@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -19,6 +20,28 @@ export const Route = createFileRoute("/api/ai/suggest")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
+        // Auth obrigatória
+        const authHeader = request.headers.get("authorization") ?? "";
+        const accessToken = authHeader.startsWith("Bearer ")
+          ? authHeader.slice("Bearer ".length)
+          : "";
+        if (!accessToken) {
+          return Response.json({ error: "não autenticado" }, { status: 401 });
+        }
+        const { data: userRes, error: userErr } =
+          await supabaseAdmin.auth.getUser(accessToken);
+        if (userErr || !userRes.user) {
+          return Response.json({ error: "sessão inválida" }, { status: 401 });
+        }
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("company_id")
+          .eq("id", userRes.user.id)
+          .maybeSingle();
+        if (!profile?.company_id) {
+          return Response.json({ error: "perfil sem empresa" }, { status: 403 });
+        }
+
         const apiKey = process.env.LOVABLE_API_KEY;
         if (!apiKey) {
           return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
