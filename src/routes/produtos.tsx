@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { products, type ProductCategory } from "@/data/products";
 import { formatBRL } from "@/data/mock";
-import { Package, Tag } from "lucide-react";
+import { FileText, Package, Tag } from "lucide-react";
 import { useMemo } from "react";
 
 export const Route = createFileRoute("/produtos")({
