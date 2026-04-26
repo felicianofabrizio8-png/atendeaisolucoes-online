@@ -15,7 +15,11 @@ import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X } from "lucide-react";
 
+const STATUS_FILTERS = ["todos", "quentes", "parados", "perdidos"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 const searchSchema = z.object({
+  status: fallback(z.enum(STATUS_FILTERS), "todos").default("todos"),
   lossReason: fallback(z.string(), "").default(""),
 });
 
@@ -45,7 +49,11 @@ function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
   return ageMin >= slaMinutes;
 }
 
-function buildSortedItems(slaMinutes: number, lossReasonFilter: string) {
+function buildSortedItems(
+  slaMinutes: number,
+  statusFilter: StatusFilter,
+  lossReasonFilter: string,
+) {
   const now = Date.now();
   return [...conversations]
     .map((c) => {
@@ -61,9 +69,18 @@ function buildSortedItems(slaMinutes: number, lossReasonFilter: string) {
       score += -ageMin / 1000; // desempate por recência
       return { conv: c, lead, breached, ageMin, score };
     })
-    .filter(({ lead }) => {
-      if (!lossReasonFilter) return true;
-      return lead?.status === "perdido" && lead.lossReason === lossReasonFilter;
+    .filter(({ lead, breached }) => {
+      // Filtro por status
+      if (statusFilter === "quentes" && lead?.status !== "quente") return false;
+      if (statusFilter === "parados" && !breached) return false;
+      if (statusFilter === "perdidos" && lead?.status !== "perdido") return false;
+      // Filtro por motivo (combina com status — só leads perdidos com o motivo escolhido)
+      if (lossReasonFilter) {
+        if (lead?.status !== "perdido" || lead.lossReason !== lossReasonFilter) {
+          return false;
+        }
+      }
+      return true;
     })
     .sort((a, b) => b.score - a.score);
 }
