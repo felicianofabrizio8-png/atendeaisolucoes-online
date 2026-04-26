@@ -63,6 +63,7 @@ function ConversationPage() {
   const [ai, setAi] = useState<AISuggestion | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [lostOpen, setLostOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
@@ -174,14 +175,10 @@ function ConversationPage() {
     ]);
   };
 
-  const handleMarkLost = () => {
+  const confirmLost = (reason: string) => {
     if (!lead) return;
-    const reason = window.prompt(
-      "Motivo da perda:",
-      "Sem retorno do cliente",
-    );
-    if (!reason || !reason.trim()) return;
-    markLeadLost(lead.id, reason.trim());
+    markLeadLost(lead.id, reason);
+    setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
     setMessages((prev) => [
       ...prev,
@@ -189,7 +186,7 @@ function ConversationPage() {
         id: `sys-${Date.now()}`,
         conversationId,
         role: "system",
-        text: `❌ Lead marcado como perdido — ${reason.trim()}`,
+        text: `❌ Lead marcado como perdido — ${reason}`,
         at: new Date().toISOString(),
       },
     ]);
@@ -591,7 +588,7 @@ function ConversationPage() {
           <ActionButton
             icon={XCircle}
             variant="lost"
-            onClick={handleMarkLost}
+            onClick={() => setLostOpen(true)}
             disabled={!!closedInfo}
           >
             Marcar como perdido
@@ -605,6 +602,14 @@ function ConversationPage() {
           leadName={lead.name}
           onCancel={() => setCloseOpen(false)}
           onConfirm={handleConfirmClose}
+        />
+      )}
+
+      {lostOpen && (
+        <MarkLostModal
+          leadName={lead.name}
+          onCancel={() => setLostOpen(false)}
+          onConfirm={confirmLost}
         />
       )}
     </div>
