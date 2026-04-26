@@ -125,7 +125,7 @@ function ConversationPage() {
       at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, msg]);
-    appendMessage(msg);
+    void appendMessage(msg, profile?.company_id);
     setInput("");
   };
 
@@ -167,7 +167,7 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
-    if (lead) markLeadWon(lead.id, value);
+    if (lead) void markLeadWon(lead.id, value);
     setMessages((prev) => [
       ...prev,
       {
@@ -182,7 +182,7 @@ function ConversationPage() {
 
   const confirmLost = (reason: string) => {
     if (!lead) return;
-    markLeadLost(lead.id, reason);
+    void markLeadLost(lead.id, reason);
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
     setMessages((prev) => [
