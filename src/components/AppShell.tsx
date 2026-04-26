@@ -15,6 +15,8 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
 import { loadRemote, setRepoMode } from "@/data/leadRepo";
+import { loadProductsRemote, setProductsMode } from "@/data/products";
+import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 
 type NavItem = {
   to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
@@ -51,8 +53,16 @@ export function AppShell() {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
       loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+      loadProductsRemote(profile.company_id).catch((e) =>
+        console.error("loadProductsRemote failed", e),
+      );
+      loadQuotesRemote(profile.company_id).catch((e) =>
+        console.error("loadQuotesRemote failed", e),
+      );
     } else {
       setRepoMode("demo");
+      setProductsMode("demo");
+      setQuotesMode("demo");
     }
   }, [user, profile]);
 
@@ -103,9 +113,7 @@ export function AppShell() {
           {nav.map((item) => {
             const Icon = item.icon;
             const active =
-              item.to === "/"
-                ? location.pathname === "/"
-                : location.pathname.startsWith(item.to);
+              item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
             return (
               <Link
                 key={item.to}
@@ -158,9 +166,7 @@ export function AppShell() {
                 </div>
                 <div className="leading-tight min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">Visitante</div>
-                  <div className="text-[11px] text-muted-foreground truncate">
-                    Modo demo
-                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">Modo demo</div>
                 </div>
               </div>
               <button

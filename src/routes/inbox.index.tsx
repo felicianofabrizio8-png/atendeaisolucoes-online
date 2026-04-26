@@ -13,6 +13,7 @@ import {
   loadRemote,
   getRepoMode,
 } from "@/data/leadRepo";
+import { seedMockProductsIntoCompany, loadProductsRemote } from "@/data/products";
 import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
@@ -139,7 +140,9 @@ function InboxPage() {
     setSeeding(true);
     try {
       await seedMockIntoCompany(profile.company_id);
+      await seedMockProductsIntoCompany(profile.company_id);
       await loadRemote(profile.company_id);
+      await loadProductsRemote(profile.company_id);
     } catch (e) {
       console.error("seed failed", e);
     } finally {

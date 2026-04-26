@@ -232,9 +232,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
         className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-sm font-semibold">
-            {isEdit ? "Editar produto" : "Novo produto"}
-          </h2>
+          <h2 className="text-sm font-semibold">{isEdit ? "Editar produto" : "Novo produto"}</h2>
           <button
             type="button"
             onClick={onClose}

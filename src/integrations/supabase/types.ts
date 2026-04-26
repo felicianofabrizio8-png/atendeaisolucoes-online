@@ -284,32 +284,41 @@ export type Database = {
       products: {
         Row: {
           active: boolean
+          category: string | null
           company_id: string
           created_at: string
           description: string | null
           id: string
           name: string
+          notes: string | null
           price: number | null
+          promo_price: number | null
           updated_at: string
         }
         Insert: {
           active?: boolean
+          category?: string | null
           company_id: string
           created_at?: string
           description?: string | null
           id?: string
           name: string
+          notes?: string | null
           price?: number | null
+          promo_price?: number | null
           updated_at?: string
         }
         Update: {
           active?: boolean
+          category?: string | null
           company_id?: string
           created_at?: string
           description?: string | null
           id?: string
           name?: string
+          notes?: string | null
           price?: number | null
+          promo_price?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -360,37 +369,67 @@ export type Database = {
       quotes: {
         Row: {
           company_id: string
+          conversation_id: string | null
           created_at: string
+          discount: number
+          final_value: number
           id: string
+          installments: number
           items: Json
           lead_id: string | null
+          message: string | null
           notes: string | null
+          payment_method: string | null
+          product_id: string | null
+          product_name: string | null
+          sent: boolean
           status: Database["public"]["Enums"]["quote_status"]
           total: number
+          unit_price: number
           updated_at: string
           valid_until: string | null
         }
         Insert: {
           company_id: string
+          conversation_id?: string | null
           created_at?: string
+          discount?: number
+          final_value?: number
           id?: string
+          installments?: number
           items?: Json
           lead_id?: string | null
+          message?: string | null
           notes?: string | null
+          payment_method?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          sent?: boolean
           status?: Database["public"]["Enums"]["quote_status"]
           total?: number
+          unit_price?: number
           updated_at?: string
           valid_until?: string | null
         }
         Update: {
           company_id?: string
+          conversation_id?: string | null
           created_at?: string
+          discount?: number
+          final_value?: number
           id?: string
+          installments?: number
           items?: Json
           lead_id?: string | null
+          message?: string | null
           notes?: string | null
+          payment_method?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          sent?: boolean
           status?: Database["public"]["Enums"]["quote_status"]
           total?: number
+          unit_price?: number
           updated_at?: string
           valid_until?: string | null
         }
