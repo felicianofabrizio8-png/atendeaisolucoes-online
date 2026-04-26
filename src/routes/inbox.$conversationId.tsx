@@ -728,3 +728,119 @@ function CloseSaleModal({
     </div>
   );
 }
+
+function MarkLostModal({
+  leadName,
+  onCancel,
+  onConfirm,
+}: {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
+  const reasons = settings.lossReasons;
+  const [selected, setSelected] = useState<string>(reasons[0] ?? "");
+  const [custom, setCustom] = useState("");
+  const useCustom = selected === "__custom__";
+  const finalReason = useCustom ? custom.trim() : selected;
+  const valid = !!finalReason;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <XCircle className="h-4 w-4 text-[var(--status-lost)]" />
+          <h2 className="text-sm font-semibold">Marcar como perdido — {leadName}</h2>
+          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Selecione o motivo para entrar nos relatórios automaticamente.
+          </p>
+          <div className="space-y-1.5">
+            {reasons.map((r) => (
+              <label
+                key={r}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer transition-colors",
+                  selected === r
+                    ? "border-[var(--status-lost)] bg-[var(--status-lost)]/10"
+                    : "border-border hover:bg-accent",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="loss-reason"
+                  value={r}
+                  checked={selected === r}
+                  onChange={() => setSelected(r)}
+                  className="accent-[var(--status-lost)]"
+                />
+                <span className="flex-1">{r}</span>
+              </label>
+            ))}
+            <label
+              className={cn(
+                "flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer transition-colors",
+                useCustom
+                  ? "border-[var(--status-lost)] bg-[var(--status-lost)]/10"
+                  : "border-border hover:bg-accent",
+              )}
+            >
+              <input
+                type="radio"
+                name="loss-reason"
+                value="__custom__"
+                checked={useCustom}
+                onChange={() => setSelected("__custom__")}
+                className="accent-[var(--status-lost)]"
+              />
+              <span className="flex-1">Outro…</span>
+            </label>
+            {useCustom && (
+              <input
+                autoFocus
+                type="text"
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && valid) onConfirm(finalReason);
+                }}
+                placeholder="Descreva o motivo"
+                className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Você pode gerenciar a lista em{" "}
+            <span className="font-semibold">Configurações → Motivos de perda</span>.
+          </p>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!valid}
+            onClick={() => onConfirm(finalReason)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[var(--status-lost)] text-white px-3 py-2 hover:opacity-90 disabled:opacity-40"
+          >
+            <XCircle className="h-3.5 w-3.5" /> Confirmar perda
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
