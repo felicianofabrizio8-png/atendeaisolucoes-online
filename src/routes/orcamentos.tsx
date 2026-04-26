@@ -332,6 +332,19 @@ function QuoteFormModal({
           </button>
         </div>
 
+        {defaultProductId && product && (
+          <div className="px-4 pt-3">
+            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center gap-2 text-xs">
+              <PackageIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="text-muted-foreground">Produto selecionado:</span>
+              <span className="font-semibold truncate">{product.name}</span>
+              <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
+                Você pode trocar abaixo
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Lead */}
           <Field label="Cliente / Lead">
