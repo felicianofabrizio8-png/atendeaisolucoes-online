@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
-import { ChannelBadge, StatusBadge, UrgentDot } from "@/components/Badges";
+import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import {
   conversations,
   getLead,
@@ -192,8 +192,6 @@ function InboxPage() {
                       </span>
                     )}
                   </div>
-                  {/* Avoid unused import for UrgentDot when not breached */}
-                  {false && <UrgentDot />}
                 </button>
               </li>
             );
