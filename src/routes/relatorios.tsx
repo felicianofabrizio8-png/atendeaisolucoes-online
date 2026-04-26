@@ -48,7 +48,7 @@ function ReportsPage() {
   const { leads, messages } = useLeadStore();
 
   const stats = useMemo(() => {
-    const received = leads.length;
+    const received = conversations.length;
     const closed = leads.filter((l) => l.status === "fechado");
     const lost = leads.filter((l) => l.status === "perdido");
 
