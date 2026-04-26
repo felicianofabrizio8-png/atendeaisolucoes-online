@@ -223,63 +223,126 @@ function ReportsPage() {
               </p>
             </div>
           ) : (
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/40">
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2 font-semibold">Motivo</th>
-                    <th className="px-4 py-2 font-semibold w-24 text-right">Leads</th>
-                    <th className="px-4 py-2 font-semibold w-32 text-right">
-                      Valor estimado
-                    </th>
-                    <th className="px-4 py-2 font-semibold w-40">% do total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.lossReasons.map((r) => {
-                    const pct =
-                      stats.lostCount > 0 ? (r.count / stats.lostCount) * 100 : 0;
-                    return (
-                      <tr key={r.reason} className="border-t border-border">
-                        <td className="px-4 py-2.5 text-sm">{r.reason}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">
-                          {r.count}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                          {formatBRL(r.value)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
-                              <div
-                                className="h-full bg-[var(--status-lost)]"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] tabular-nums text-muted-foreground w-10 text-right">
-                              {pct.toFixed(0)}%
+            <div className="space-y-3">
+              {/* Card destacando o ofensor #1 */}
+              {(() => {
+                const top = stats.lossReasons[0];
+                const pct =
+                  stats.lostCount > 0 ? (top.count / stats.lostCount) * 100 : 0;
+                return (
+                  <div className="rounded-lg border border-[var(--status-lost)]/40 bg-[var(--status-lost)]/10 p-4 flex items-start gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--status-lost)]/20 text-[var(--status-lost)] shrink-0">
+                      <XCircle className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] uppercase tracking-wide font-semibold text-[var(--status-lost)]">
+                        Maior motivo de perda
+                      </div>
+                      <div className="mt-0.5 text-base font-bold truncate">
+                        {top.reason}
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {top.count} {top.count === 1 ? "lead perdido" : "leads perdidos"} ·{" "}
+                        {pct.toFixed(0)}% do total · {formatBRL(top.value)} estimados
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40">
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-2 font-semibold">Motivo</th>
+                      <th className="px-4 py-2 font-semibold w-24 text-right">Leads</th>
+                      <th className="px-4 py-2 font-semibold w-32 text-right">
+                        Valor estimado
+                      </th>
+                      <th className="px-4 py-2 font-semibold w-40">% do total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.lossReasons.map((r, idx) => {
+                      const pct =
+                        stats.lostCount > 0 ? (r.count / stats.lostCount) * 100 : 0;
+                      const isTop = idx === 0;
+                      return (
+                        <tr
+                          key={r.reason}
+                          className={cn(
+                            "border-t border-border",
+                            isTop && "bg-[var(--status-lost)]/5",
+                          )}
+                        >
+                          <td className="px-4 py-2.5 text-sm">
+                            <span className="inline-flex items-center gap-2">
+                              {isTop && (
+                                <span className="rounded bg-[var(--status-lost)] text-white text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5">
+                                  Top
+                                </span>
+                              )}
+                              <span className={cn(isTop && "font-semibold")}>
+                                {r.reason}
+                              </span>
                             </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-border bg-secondary/20">
-                    <td className="px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
-                      Total
-                    </td>
-                    <td className="px-4 py-2 text-right text-sm font-semibold tabular-nums">
-                      {stats.lostCount}
-                    </td>
-                    <td className="px-4 py-2 text-right text-sm font-semibold tabular-nums">
-                      {formatBRL(totalLossValue)}
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
+                          </td>
+                          <td
+                            className={cn(
+                              "px-4 py-2.5 text-right tabular-nums",
+                              isTop && "font-semibold",
+                            )}
+                          >
+                            {r.count}
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                            {formatBRL(r.value)}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
+                                <div
+                                  className={cn(
+                                    "h-full",
+                                    isTop
+                                      ? "bg-[var(--status-lost)]"
+                                      : "bg-[var(--status-lost)]/60",
+                                  )}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span
+                                className={cn(
+                                  "text-[11px] tabular-nums w-10 text-right",
+                                  isTop
+                                    ? "text-[var(--status-lost)] font-semibold"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {pct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-border bg-secondary/20">
+                      <td className="px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                        Total
+                      </td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold tabular-nums">
+                        {stats.lostCount}
+                      </td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold tabular-nums">
+                        {formatBRL(totalLossValue)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           )}
         </section>
