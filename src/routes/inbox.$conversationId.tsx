@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -115,18 +116,45 @@ function ConversationPage() {
     );
   }
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
+  const sendMessage = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
     const msg: Message = {
       id: `local-${Date.now()}`,
       conversationId,
       role: "agent",
-      text: text.trim(),
+      text: trimmed,
       at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, msg]);
-    void appendMessage(msg, profile?.company_id);
     setInput("");
+
+    // Se o lead é WhatsApp e o usuário está logado, tenta envio real via Cloud API.
+    // Em qualquer falha (sem integração, sem token, erro de rede) faz fallback
+    // para gravar localmente e não bloquear a operação.
+    const isWhatsApp = lead?.channel === "whatsapp";
+    if (isWhatsApp && profile?.company_id) {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (token) {
+          const res = await fetch("/api/whatsapp/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ conversationId, text: trimmed }),
+          });
+          if (res.ok) return; // server já gravou no banco
+          // 400 com "WhatsApp não conectado" → cai para fallback silencioso
+        }
+      } catch {
+        // fallback abaixo
+      }
+    }
+
+    void appendMessage(msg, profile?.company_id);
   };
 
   const sendSuggestion = () => {
