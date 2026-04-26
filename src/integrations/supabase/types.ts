@@ -130,6 +130,65 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: {
+          access_token: string | null
+          account_metadata: Json
+          active: boolean
+          channel: Database["public"]["Enums"]["channel"]
+          company_id: string
+          created_at: string
+          display_name: string
+          external_account_id: string | null
+          id: string
+          last_error: string | null
+          last_synced_at: string | null
+          updated_at: string
+          verify_token: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          account_metadata?: Json
+          active?: boolean
+          channel: Database["public"]["Enums"]["channel"]
+          company_id: string
+          created_at?: string
+          display_name: string
+          external_account_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          updated_at?: string
+          verify_token?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          account_metadata?: Json
+          active?: boolean
+          channel?: Database["public"]["Enums"]["channel"]
+          company_id?: string
+          created_at?: string
+          display_name?: string
+          external_account_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          updated_at?: string
+          verify_token?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
@@ -139,8 +198,10 @@ export type Database = {
           company_id: string
           created_at: string
           estimated_value: number | null
+          external_id: string | null
           handle: string | null
           id: string
+          integration_id: string | null
           loss_reason: string | null
           lost_at: string | null
           name: string
@@ -160,8 +221,10 @@ export type Database = {
           company_id: string
           created_at?: string
           estimated_value?: number | null
+          external_id?: string | null
           handle?: string | null
           id?: string
+          integration_id?: string | null
           loss_reason?: string | null
           lost_at?: string | null
           name: string
@@ -181,8 +244,10 @@ export type Database = {
           company_id?: string
           created_at?: string
           estimated_value?: number | null
+          external_id?: string | null
           handle?: string | null
           id?: string
+          integration_id?: string | null
           loss_reason?: string | null
           lost_at?: string | null
           name?: string
@@ -200,6 +265,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
             referencedColumns: ["id"]
           },
         ]
@@ -242,7 +314,9 @@ export type Database = {
           company_id: string
           conversation_id: string
           created_at: string
+          external_id: string | null
           id: string
+          integration_id: string | null
           role: Database["public"]["Enums"]["message_role"]
           text: string
         }
@@ -251,7 +325,9 @@ export type Database = {
           company_id: string
           conversation_id: string
           created_at?: string
+          external_id?: string | null
           id?: string
+          integration_id?: string | null
           role: Database["public"]["Enums"]["message_role"]
           text: string
         }
@@ -260,7 +336,9 @@ export type Database = {
           company_id?: string
           conversation_id?: string
           created_at?: string
+          external_id?: string | null
           id?: string
+          integration_id?: string | null
           role?: Database["public"]["Enums"]["message_role"]
           text?: string
         }
@@ -277,6 +355,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
             referencedColumns: ["id"]
           },
         ]

@@ -1,0 +1,177 @@
+// Envia uma mensagem real via WhatsApp Cloud API usando o token salvo
+// na integração da empresa do usuário autenticado.
+// Também persiste a mensagem em `messages` (role=agent) e atualiza a conversa.
+
+import { createFileRoute } from "@tanstack/react-router";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+interface SendBody {
+  conversationId: string;
+  text: string;
+}
+
+export const Route = createFileRoute("/api/whatsapp/send")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        // Autenticação via Bearer do usuário
+        const authHeader = request.headers.get("authorization") ?? "";
+        const accessToken = authHeader.startsWith("Bearer ")
+          ? authHeader.slice("Bearer ".length)
+          : "";
+        if (!accessToken) {
+          return Response.json({ error: "não autenticado" }, { status: 401 });
+        }
+
+        const { data: userRes, error: userErr } =
+          await supabaseAdmin.auth.getUser(accessToken);
+        if (userErr || !userRes.user) {
+          return Response.json({ error: "sessão inválida" }, { status: 401 });
+        }
+        const userId = userRes.user.id;
+
+        let body: SendBody;
+        try {
+          body = (await request.json()) as SendBody;
+        } catch {
+          return Response.json({ error: "JSON inválido" }, { status: 400 });
+        }
+        if (!body.conversationId || !body.text?.trim()) {
+          return Response.json({ error: "conversationId e text obrigatórios" }, { status: 400 });
+        }
+
+        // Pega company_id do perfil
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("company_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!profile?.company_id) {
+          return Response.json({ error: "perfil sem empresa" }, { status: 403 });
+        }
+        const companyId = profile.company_id;
+
+        // Conversa precisa pertencer à empresa
+        const { data: conv } = await supabaseAdmin
+          .from("conversations")
+          .select("id, company_id, lead_id, channel")
+          .eq("id", body.conversationId)
+          .maybeSingle();
+        if (!conv || conv.company_id !== companyId) {
+          return Response.json({ error: "conversa não encontrada" }, { status: 404 });
+        }
+        if (conv.channel !== "whatsapp") {
+          return Response.json({ error: "conversa não é WhatsApp" }, { status: 400 });
+        }
+
+        // Lead pra pegar telefone destino
+        const { data: lead } = await supabaseAdmin
+          .from("leads")
+          .select("id, phone, external_id, integration_id")
+          .eq("id", conv.lead_id)
+          .maybeSingle();
+        if (!lead) {
+          return Response.json({ error: "lead não encontrado" }, { status: 404 });
+        }
+        const recipient = lead.external_id ?? lead.phone;
+        if (!recipient) {
+          return Response.json({ error: "lead sem telefone" }, { status: 400 });
+        }
+
+        // Integração: usa a vinculada ao lead, senão a primeira ativa da empresa
+        let integrationId = lead.integration_id ?? null;
+        const integrationQuery = supabaseAdmin
+          .from("integrations")
+          .select("id, access_token, external_account_id")
+          .eq("company_id", companyId)
+          .eq("channel", "whatsapp")
+          .eq("active", true);
+        const { data: integration } = integrationId
+          ? await integrationQuery.eq("id", integrationId).maybeSingle()
+          : await integrationQuery.limit(1).maybeSingle();
+
+        if (!integration?.access_token || !integration.external_account_id) {
+          return Response.json(
+            { error: "WhatsApp não conectado para esta empresa" },
+            { status: 400 },
+          );
+        }
+        integrationId = integration.id;
+
+        // Envia via Cloud API
+        const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
+        const sentAt = new Date().toISOString();
+        let externalId: string | null = null;
+        try {
+          const apiRes = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${integration.access_token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: recipient,
+              type: "text",
+              text: { body: body.text },
+            }),
+          });
+          const apiJson = (await apiRes.json()) as {
+            messages?: Array<{ id: string }>;
+            error?: { message?: string };
+          };
+          if (!apiRes.ok) {
+            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
+            await supabaseAdmin
+              .from("integrations")
+              .update({ last_error: msg })
+              .eq("id", integrationId!);
+            return Response.json({ error: `WhatsApp API: ${msg}` }, { status: 502 });
+          }
+          externalId = apiJson.messages?.[0]?.id ?? null;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "falha de rede";
+          return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
+        }
+
+        // Persiste mensagem
+        const { data: inserted, error: insertErr } = await supabaseAdmin
+          .from("messages")
+          .insert({
+            company_id: companyId,
+            conversation_id: body.conversationId,
+            role: "agent",
+            text: body.text,
+            at: sentAt,
+            external_id: externalId,
+            integration_id: integrationId,
+          })
+          .select("id, conversation_id, role, text, at")
+          .single();
+        if (insertErr) {
+          return Response.json({ error: insertErr.message }, { status: 500 });
+        }
+
+        await supabaseAdmin
+          .from("conversations")
+          .update({
+            last_message_at: sentAt,
+            awaiting_reply: false,
+            unread: 0,
+          })
+          .eq("id", body.conversationId);
+
+        await supabaseAdmin
+          .from("integrations")
+          .update({ last_synced_at: sentAt, last_error: null })
+          .eq("id", integrationId!);
+
+        return Response.json({
+          id: inserted.id,
+          externalId,
+          at: sentAt,
+        });
+      },
+    },
+  },
+});

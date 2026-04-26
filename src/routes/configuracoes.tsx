@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSyncExternalStore, useState, useEffect } from "react";
+import { useSyncExternalStore, useState, useEffect, useCallback } from "react";
 import {
   Settings as SettingsIcon,
   Clock,
@@ -9,6 +9,12 @@ import {
   Pencil,
   Trash2,
   X,
+  MessageCircle,
+  Plug,
+  Power,
+  PowerOff,
+  Copy,
+  Loader2,
 } from "lucide-react";
 import {
   getSettings,
@@ -19,6 +25,14 @@ import {
   removeLossReason,
   SLA_OPTIONS,
 } from "@/data/settings";
+import {
+  listIntegrations,
+  upsertWhatsAppIntegration,
+  setIntegrationActive,
+  deleteIntegration,
+  type Integration,
+} from "@/data/integrationRepo";
+import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/configuracoes")({
@@ -133,13 +147,367 @@ function ConfigPage() {
 
         <LossReasonsSection reasons={settings.lossReasons} />
 
-        <section className="rounded-lg border border-dashed border-border p-5 text-center">
-          <p className="text-xs text-muted-foreground">
-            Em breve: integrações com WhatsApp, Instagram e Facebook.
-          </p>
-        </section>
+        <IntegrationsSection />
       </div>
     </div>
+  );
+}
+
+function IntegrationsSection() {
+  const { profile } = useAuth();
+  const companyId = profile?.company_id ?? null;
+  const [items, setItems] = useState<Integration[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!companyId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setItems(await listIntegrations(companyId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao carregar integrações");
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  if (!companyId) {
+    return (
+      <section className="rounded-lg border border-dashed border-border p-5 text-center">
+        <p className="text-xs text-muted-foreground">
+          Faça login para conectar WhatsApp, Instagram e Facebook.
+        </p>
+      </section>
+    );
+  }
+
+  const webhookUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/public/whatsapp/webhook`
+      : "/api/public/whatsapp/webhook";
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Plug className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">Integrações de canais</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Conecte o WhatsApp da sua empresa para receber mensagens reais no inbox e
+        responder sem sair do sistema. Use a Cloud API da Meta.
+      </p>
+
+      <div className="rounded-md bg-secondary/40 border border-border p-3 mb-4 text-[11px] space-y-1">
+        <div className="font-semibold text-muted-foreground uppercase tracking-wide">
+          URL do webhook (cole no Meta Developer Console)
+        </div>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs break-all">{webhookUrl}</code>
+          <button
+            onClick={() => navigator.clipboard?.writeText(webhookUrl)}
+            className="p-1.5 rounded hover:bg-accent"
+            title="Copiar"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-3 rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
+          {error}
+        </div>
+      )}
+
+      <ul className="space-y-2">
+        {loading && (
+          <li className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
+          </li>
+        )}
+        {!loading && items.length === 0 && (
+          <li className="text-xs text-muted-foreground">
+            Nenhuma integração configurada ainda.
+          </li>
+        )}
+        {items.map((it) => (
+          <IntegrationItem key={it.id} item={it} onChanged={reload} />
+        ))}
+      </ul>
+
+      <div className="mt-4 pt-4 border-t border-border">
+        {showForm ? (
+          <WhatsAppForm
+            companyId={companyId}
+            onCancel={() => setShowForm(false)}
+            onSaved={() => {
+              setShowForm(false);
+              void reload();
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+          >
+            <MessageCircle className="h-3.5 w-3.5" /> Conectar WhatsApp
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function IntegrationItem({
+  item,
+  onChanged,
+}: {
+  item: Integration;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setIntegrationActive(item.id, !item.active);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    if (!confirm("Remover esta integração? As conversas existentes não serão apagadas."))
+      return;
+    setBusy(true);
+    try {
+      await deleteIntegration(item.id);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <li className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
+      <div
+        className={cn(
+          "h-8 w-8 rounded-md inline-flex items-center justify-center text-white",
+          item.channel === "whatsapp" && "bg-[#25D366]",
+          item.channel === "instagram" && "bg-[#E1306C]",
+          item.channel === "facebook" && "bg-[#1877F2]",
+        )}
+      >
+        <MessageCircle className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold truncate">{item.displayName}</div>
+        <div className="text-[11px] text-muted-foreground truncate">
+          {item.channel.toUpperCase()}
+          {item.externalAccountId && <> • ID {item.externalAccountId}</>}
+          {!item.hasAccessToken && (
+            <span className="ml-2 text-[var(--status-urgent)]">sem token</span>
+          )}
+          {item.lastError && (
+            <span className="ml-2 text-[var(--status-urgent)]">erro: {item.lastError}</span>
+          )}
+        </div>
+      </div>
+      <span
+        className={cn(
+          "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
+          item.active
+            ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
+            : "bg-secondary text-muted-foreground",
+        )}
+      >
+        {item.active ? "Ativa" : "Inativa"}
+      </span>
+      <button
+        onClick={toggle}
+        disabled={busy}
+        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+        title={item.active ? "Desativar" : "Ativar"}
+      >
+        {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+      </button>
+      <button
+        onClick={remove}
+        disabled={busy}
+        className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+        title="Remover"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </li>
+  );
+}
+
+function randomToken(len = 24) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function WhatsAppForm({
+  companyId,
+  onCancel,
+  onSaved,
+}: {
+  companyId: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [displayName, setDisplayName] = useState("WhatsApp principal");
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [wabaId, setWabaId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [verifyToken, setVerifyToken] = useState(() => randomToken());
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    setErr(null);
+    if (!phoneNumberId.trim() || !accessToken.trim() || !verifyToken.trim()) {
+      setErr("phone_number_id, access_token e verify_token são obrigatórios.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertWhatsAppIntegration({
+        companyId,
+        displayName: displayName.trim() || "WhatsApp",
+        phoneNumberId: phoneNumberId.trim(),
+        phoneNumber: phoneNumber.trim() || undefined,
+        wabaId: wabaId.trim() || undefined,
+        accessToken: accessToken.trim(),
+        verifyToken: verifyToken.trim(),
+        webhookSecret: webhookSecret.trim() || undefined,
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-muted-foreground">
+        Pegue os valores em <strong>Meta for Developers → seu app → WhatsApp →
+        API Setup</strong>. Use um token <em>permanente</em> (System User) em
+        produção. O <em>verify token</em> é apenas um segredo que você define e
+        cola na Meta junto com a URL do webhook.
+      </div>
+      <Field label="Nome de exibição">
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="phone_number_id *">
+          <input
+            value={phoneNumberId}
+            onChange={(e) => setPhoneNumberId(e.target.value)}
+            placeholder="123456789012345"
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+        <Field label="Número (opcional)">
+          <input
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            placeholder="+55 11 9..."
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+      </div>
+      <Field label="WhatsApp Business Account ID (opcional)">
+        <input
+          value={wabaId}
+          onChange={(e) => setWabaId(e.target.value)}
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </Field>
+      <Field label="Access token *">
+        <textarea
+          value={accessToken}
+          onChange={(e) => setAccessToken(e.target.value)}
+          rows={2}
+          placeholder="EAAG..."
+          className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none font-mono"
+        />
+      </Field>
+      <Field label="Verify token *">
+        <div className="flex items-center gap-2">
+          <input
+            value={verifyToken}
+            onChange={(e) => setVerifyToken(e.target.value)}
+            className="flex-1 h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => setVerifyToken(randomToken())}
+            className="text-[11px] rounded-md bg-secondary px-2 py-1.5 hover:bg-accent"
+          >
+            Gerar
+          </button>
+        </div>
+      </Field>
+      <Field label="App secret (opcional, para validar HMAC do webhook)">
+        <input
+          value={webhookSecret}
+          onChange={(e) => setWebhookSecret(e.target.value)}
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </Field>
+
+      {err && (
+        <div className="rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
+          {err}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Salvar conexão
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+        {label}
+      </span>
+      <div className="mt-1">{children}</div>
+    </label>
   );
 }
 
