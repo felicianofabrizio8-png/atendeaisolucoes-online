@@ -38,7 +38,7 @@ function LoginPage() {
       if (mode === "signin") {
         await signIn(email, password);
         navigate({ to: "/" });
-      } else {
+      } else if (mode === "signup") {
         await signUp({
           email,
           password,
@@ -49,6 +49,19 @@ function LoginPage() {
           "Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa. Se não, já pode entrar.",
         );
         setMode("signin");
+      } else {
+        // forgot
+        const redirectTo =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/reset-password`
+            : undefined;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        });
+        if (error) throw error;
+        setInfo(
+          "Se o email existir, você receberá um link para redefinir sua senha.",
+        );
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro inesperado";
