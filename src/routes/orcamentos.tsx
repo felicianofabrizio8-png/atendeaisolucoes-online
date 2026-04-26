@@ -34,8 +34,7 @@ export const Route = createFileRoute("/orcamentos")({
     if (typeof search.conversationId === "string") out.conversationId = search.conversationId;
     if (typeof search.suggestedProductId === "string")
       out.suggestedProductId = search.suggestedProductId;
-    if (typeof search.suggestionReason === "string")
-      out.suggestionReason = search.suggestionReason;
+    if (typeof search.suggestionReason === "string") out.suggestionReason = search.suggestionReason;
     return out;
   },
 });
@@ -100,7 +99,8 @@ function QuotesPage() {
         <div className="flex-1">
           <h1 className="text-sm font-semibold">Orçamentos</h1>
           <p className="text-[11px] text-muted-foreground">
-            {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado{quotes.length === 1 ? "" : "s"}
+            {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
+            {quotes.length === 1 ? "" : "s"}
           </p>
         </div>
         <button
@@ -173,7 +173,11 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 }
 
 function QuoteCard({ quote }: { quote: Quote }) {
-  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  useSyncExternalStore(
+    subscribeRepo,
+    () => Date.now(),
+    () => 0,
+  );
   const lead = getLeads().find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
   // Resolve a conversa: a vinculada ao orçamento, ou a primeira conversa do lead.
@@ -271,16 +275,18 @@ function QuoteFormModal({
   onCancel,
   onCreated,
 }: QuoteFormModalProps) {
-  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  useSyncExternalStore(
+    subscribeRepo,
+    () => Date.now(),
+    () => 0,
+  );
   const leads = getLeads();
   const [leadId, setLeadId] = useState(defaultLeadId ?? leads[0]?.id ?? "");
   const [productId, setProductId] = useState(
-    defaultProductId && getProduct(defaultProductId) ? defaultProductId : products[0]?.id ?? "",
+    defaultProductId && getProduct(defaultProductId) ? defaultProductId : (products[0]?.id ?? ""),
   );
   // O aviso "sugerido pela IA" some assim que o usuário troca o produto
-  const [showSuggestion, setShowSuggestion] = useState(
-    !!defaultProductId && !!suggestionReason,
-  );
+  const [showSuggestion, setShowSuggestion] = useState(!!defaultProductId && !!suggestionReason);
   const [discountRaw, setDiscountRaw] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
   const [installments, setInstallments] = useState(1);

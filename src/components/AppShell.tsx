@@ -113,9 +113,7 @@ export function AppShell() {
           {nav.map((item) => {
             const Icon = item.icon;
             const active =
-              item.to === "/"
-                ? location.pathname === "/"
-                : location.pathname.startsWith(item.to);
+              item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
             return (
               <Link
                 key={item.to}
@@ -168,9 +166,7 @@ export function AppShell() {
                 </div>
                 <div className="leading-tight min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">Visitante</div>
-                  <div className="text-[11px] text-muted-foreground truncate">
-                    Modo demo
-                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">Modo demo</div>
                 </div>
               </div>
               <button
