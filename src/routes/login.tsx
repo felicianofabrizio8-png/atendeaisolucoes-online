@@ -1,14 +1,15 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { Sparkles, Loader2, Eye, EyeOff } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Sparkles, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 function LoginPage() {
   const navigate = useNavigate();
