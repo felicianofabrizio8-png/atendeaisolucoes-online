@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { appendMessage, markLeadLost, markLeadWon } from "@/data/leadStore";
+import { getSettings, subscribeSettings } from "@/data/settings";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -46,8 +47,7 @@ interface AISuggestion {
 }
 
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
-// aguardando resposta há pelo menos 5 minutos.
-const HOT_STALE_MINUTES = 5;
+// aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
 function ConversationPage() {
   const { conversationId } = Route.useParams();
