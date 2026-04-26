@@ -297,8 +297,8 @@ function InboxPage() {
       <div className="flex-1 overflow-y-auto">
         <ul className="divide-y divide-border">
           {items.map(({ conv: c, breached, ageMin }) => {
-            const lead = getLead(c.leadId)!;
-            const msgs = getMessages(c.id);
+            const lead = getLeadById(c.leadId)!;
+            const msgs = getMessagesFor(c.id);
             const last = msgs[msgs.length - 1];
 
             return (
@@ -373,7 +373,7 @@ function InboxPage() {
                       {last?.text ?? "—"}
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {lead.tags.map((t) => (
+                      {lead.tags.map((t: string) => (
                         <span
                           key={t}
                           className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground"
