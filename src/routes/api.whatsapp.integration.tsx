@@ -65,10 +65,22 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           !body.displayName?.trim() ||
           !body.phoneNumberId?.trim() ||
           !body.accessToken?.trim() ||
-          !body.verifyToken?.trim()
+          !body.verifyToken?.trim() ||
+          !body.webhookSecret?.trim()
         ) {
           return Response.json(
-            { error: "campos obrigatórios: displayName, phoneNumberId, accessToken, verifyToken" },
+            {
+              error:
+                "campos obrigatórios: displayName, phoneNumberId, accessToken, verifyToken, webhookSecret",
+            },
+            { status: 400 },
+          );
+        }
+        // O webhook secret deve ter entropia mínima — Meta envia HMAC SHA-256
+        // baseado nele, então um valor curto seria trivial de forjar.
+        if (body.webhookSecret.trim().length < 16) {
+          return Response.json(
+            { error: "webhookSecret deve ter pelo menos 16 caracteres" },
             { status: 400 },
           );
         }
