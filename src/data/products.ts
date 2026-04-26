@@ -315,7 +315,14 @@ export async function updateProduct(
   patch: Partial<Omit<Product, "id">>,
 ): Promise<Product | undefined> {
   if (mode === "remote" && companyId) {
-    const dbPatch: Record<string, unknown> = {};
+    const dbPatch: {
+      name?: string;
+      category?: string | null;
+      description?: string | null;
+      price?: number;
+      promo_price?: number | null;
+      notes?: string | null;
+    } = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.category !== undefined) dbPatch.category = patch.category;
     if (patch.description !== undefined) dbPatch.description = patch.description ?? null;
