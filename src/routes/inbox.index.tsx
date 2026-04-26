@@ -13,6 +13,7 @@ import {
   loadRemote,
   getRepoMode,
 } from "@/data/leadRepo";
+import { seedMockProductsIntoCompany, loadProductsRemote } from "@/data/products";
 import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
