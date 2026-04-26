@@ -1,5 +1,7 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { Loader2 } from "lucide-react";
 
 import appCss from "../styles.css?url";
 
