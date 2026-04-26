@@ -469,12 +469,21 @@ function WhatsAppForm({
           </button>
         </div>
       </Field>
-      <Field label="App secret (opcional, para validar HMAC do webhook)">
-        <input
-          value={webhookSecret}
-          onChange={(e) => setWebhookSecret(e.target.value)}
-          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+      <Field label="App secret * (HMAC do webhook — obrigatório)">
+        <div className="flex items-center gap-2">
+          <input
+            value={webhookSecret}
+            onChange={(e) => setWebhookSecret(e.target.value)}
+            className="flex-1 h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => setWebhookSecret(randomToken(32))}
+            className="text-[11px] rounded-md bg-secondary px-2 py-1.5 hover:bg-accent"
+          >
+            Gerar
+          </button>
+        </div>
       </Field>
 
       {err && (
