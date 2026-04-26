@@ -765,7 +765,7 @@ function MarkLostModal({
         </div>
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            Selecione o motivo para entrar nos relatórios automaticamente.
+            Selecione um motivo <span className="font-semibold text-foreground">(obrigatório)</span> para entrar nos relatórios automaticamente.
           </p>
           <div className="space-y-1.5">
             {reasons.map((r) => (
