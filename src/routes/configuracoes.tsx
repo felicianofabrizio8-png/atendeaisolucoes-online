@@ -412,7 +412,7 @@ function WhatsAppForm({
         <input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          className="form-input"
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
@@ -421,7 +421,7 @@ function WhatsAppForm({
             value={phoneNumberId}
             onChange={(e) => setPhoneNumberId(e.target.value)}
             placeholder="123456789012345"
-            className="form-input"
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </Field>
         <Field label="Número (opcional)">
@@ -429,7 +429,7 @@ function WhatsAppForm({
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
             placeholder="+55 11 9..."
-            className="form-input"
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </Field>
       </div>
@@ -437,7 +437,7 @@ function WhatsAppForm({
         <input
           value={wabaId}
           onChange={(e) => setWabaId(e.target.value)}
-          className="form-input"
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </Field>
       <Field label="Access token *">
@@ -446,7 +446,7 @@ function WhatsAppForm({
           onChange={(e) => setAccessToken(e.target.value)}
           rows={2}
           placeholder="EAAG..."
-          className="form-input resize-none"
+          className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none font-mono"
         />
       </Field>
       <Field label="Verify token *">
@@ -454,7 +454,7 @@ function WhatsAppForm({
           <input
             value={verifyToken}
             onChange={(e) => setVerifyToken(e.target.value)}
-            className="form-input flex-1"
+            className="flex-1 h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <button
             type="button"
@@ -469,7 +469,7 @@ function WhatsAppForm({
         <input
           value={webhookSecret}
           onChange={(e) => setWebhookSecret(e.target.value)}
-          className="form-input"
+          className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </Field>
 
