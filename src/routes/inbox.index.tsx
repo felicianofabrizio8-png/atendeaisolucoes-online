@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
+import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import {
   conversations,
@@ -11,7 +13,11 @@ import {
 import { subscribeLeadStore } from "@/data/leadStore";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, XCircle, Filter, X } from "lucide-react";
+
+const searchSchema = z.object({
+  lossReason: fallback(z.string(), "").default(""),
+});
 
 export const Route = createFileRoute("/inbox/")({
   component: InboxPage,
