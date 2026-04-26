@@ -371,34 +371,6 @@ function WhatsAppForm({
   const [accessToken, setAccessToken] = useState("");
   const [verifyToken, setVerifyToken] = useState(() => randomToken());
   const [webhookSecret, setWebhookSecret] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const submit = async () => {
-    setErr(null);
-    if (!phoneNumberId.trim() || !accessToken.trim() || !verifyToken.trim()) {
-      setErr("phone_number_id, access_token e verify_token são obrigatórios.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await upsertWhatsAppIntegration({
-        companyId,
-        displayName: displayName.trim() || "WhatsApp",
-        phoneNumberId: phoneNumberId.trim(),
-        phoneNumber: phoneNumber.trim() || undefined,
-        wabaId: wabaId.trim() || undefined,
-        accessToken: accessToken.trim(),
-        verifyToken: verifyToken.trim(),
-        webhookSecret: webhookSecret.trim() || undefined,
-      });
-      onSaved();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao salvar");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="space-y-3">
