@@ -202,17 +202,17 @@ function InboxPage() {
                   )}
                 >
                   {tab.label}
-                  {typeof tab.count === "number" && tab.count > 0 && (
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums",
-                        active ? "bg-secondary" : "bg-background/60",
-                        tab.key === "parados" && "text-[var(--status-urgent)]",
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  )}
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[18px] text-center",
+                      active ? "bg-secondary" : "bg-background/60",
+                      tab.count === 0 && "opacity-40",
+                      tab.key === "parados" && tab.count > 0 && "text-[var(--status-urgent)]",
+                      tab.key === "perdidos" && tab.count > 0 && active && "text-[var(--status-lost)]",
+                    )}
+                  >
+                    {tab.count}
+                  </span>
                 </button>
               );
             })}
