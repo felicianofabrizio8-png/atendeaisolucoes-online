@@ -89,9 +89,9 @@ function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
   useLeadStoreVersion();
-  const { lossReason: lossReasonFilter } = Route.useSearch();
+  const { status: statusFilter, lossReason: lossReasonFilter } = Route.useSearch();
 
-  const items = buildSortedItems(settings.slaMinutes, lossReasonFilter);
+  const items = buildSortedItems(settings.slaMinutes, statusFilter, lossReasonFilter);
   const breachedCount = items.filter((i) => i.breached).length;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
@@ -107,26 +107,92 @@ function InboxPage() {
     return [...set].sort();
   }, []);
 
+  // Filtro por motivo só aparece quando o usuário está vendo Todos ou Perdidos.
+  const showLossReasonFilter =
+    (statusFilter === "todos" || statusFilter === "perdidos") &&
+    availableLossReasons.length > 0;
+
+  const setStatus = (next: StatusFilter) => {
+    navigate({
+      to: "/inbox",
+      search: {
+        status: next,
+        // Se sair de "perdidos"/"todos", limpa motivo para evitar combinação inválida.
+        lossReason:
+          next === "perdidos" || next === "todos" ? lossReasonFilter : "",
+      },
+    });
+  };
+
+  const statusTabs: { key: StatusFilter; label: string; count?: number }[] = [
+    { key: "todos", label: "Todos", count: items.length },
+    { key: "quentes", label: "Quentes" },
+    { key: "parados", label: "Parados", count: breachedCount },
+    { key: "perdidos", label: "Perdidos" },
+  ];
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="flex h-14 items-center justify-between border-b border-border px-6">
-        <div>
-          <h1 className="text-base font-semibold leading-none">Caixa de atendimento</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {awaitingCount} aguardando resposta
-            {breachedCount > 0 && (
-              <>
-                {" · "}
-                <span className="text-[var(--status-urgent)] font-semibold">
-                  {breachedCount} atrasado{breachedCount === 1 ? "" : "s"}
-                </span>
-              </>
-            )}
-            {" · "}SLA {settings.slaMinutes} min
-          </p>
+      <header className="flex flex-col gap-2 border-b border-border px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-base font-semibold leading-none">Caixa de atendimento</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {awaitingCount} aguardando resposta
+              {breachedCount > 0 && (
+                <>
+                  {" · "}
+                  <span className="text-[var(--status-urgent)] font-semibold">
+                    {breachedCount} atrasado{breachedCount === 1 ? "" : "s"}
+                  </span>
+                </>
+              )}
+              {" · "}SLA {settings.slaMinutes} min
+            </p>
+          </div>
+          <div className="relative w-72 hidden md:block">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              placeholder="Buscar por nome, telefone, tag…"
+              className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {availableLossReasons.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center rounded-md bg-secondary p-0.5 text-xs">
+            {statusTabs.map((tab) => {
+              const active = statusFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setStatus(tab.key)}
+                  className={cn(
+                    "px-3 h-7 rounded font-medium transition-colors flex items-center gap-1.5",
+                    active
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                    tab.key === "parados" && active && "text-[var(--status-urgent)]",
+                    tab.key === "perdidos" && active && "text-[var(--status-lost)]",
+                  )}
+                >
+                  {tab.label}
+                  {typeof tab.count === "number" && tab.count > 0 && (
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                        active ? "bg-secondary" : "bg-background/60",
+                        tab.key === "parados" && "text-[var(--status-urgent)]",
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {showLossReasonFilter && (
             <div className="relative">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <select
@@ -134,15 +200,15 @@ function InboxPage() {
                 onChange={(e) =>
                   navigate({
                     to: "/inbox",
-                    search: { lossReason: e.target.value },
+                    search: { status: statusFilter, lossReason: e.target.value },
                   })
                 }
                 className={cn(
-                  "h-9 rounded-md bg-input pl-8 pr-7 text-xs outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer",
+                  "h-7 rounded-md bg-input pl-8 pr-7 text-xs outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer",
                   lossReasonFilter && "ring-1 ring-[var(--status-lost)]/40",
                 )}
               >
-                <option value="">Filtrar por motivo de perda…</option>
+                <option value="">Todos os motivos…</option>
                 {availableLossReasons.map((r) => (
                   <option key={r} value={r}>
                     ❌ {r}
@@ -155,7 +221,7 @@ function InboxPage() {
                   onClick={() =>
                     navigate({
                       to: "/inbox",
-                      search: { lossReason: "" },
+                      search: { status: statusFilter, lossReason: "" },
                     })
                   }
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent"
@@ -166,15 +232,23 @@ function InboxPage() {
               )}
             </div>
           )}
-          <div className="relative w-72 hidden md:block">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              placeholder="Buscar por nome, telefone, tag…"
-              className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
+          {(statusFilter !== "todos" || lossReasonFilter) && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate({
+                  to: "/inbox",
+                  search: { status: "todos", lossReason: "" },
+                })
+              }
+              className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       </header>
+
 
       <div className="flex-1 overflow-y-auto">
         <ul className="divide-y divide-border">
