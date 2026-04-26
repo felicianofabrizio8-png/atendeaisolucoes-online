@@ -1,13 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
-  getConversation,
-  getLead,
-  getMessages,
-  timeAgo,
-  formatBRL,
-  type Message,
-} from "@/data/mock";
+  getConversationById,
+  getLeadById,
+  getMessagesFor,
+  appendMessage,
+  markLeadLost,
+  markLeadWon,
+  subscribeRepo,
+} from "@/data/leadRepo";
+import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +30,6 @@ import {
   DollarSign,
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
-import { appendMessage, markLeadLost, markLeadWon } from "@/data/leadStore";
 import { getSettings, subscribeSettings } from "@/data/settings";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
