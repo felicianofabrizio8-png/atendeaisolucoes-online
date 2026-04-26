@@ -19,8 +19,10 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 
 const RelatoriosRoute = RelatoriosRouteImport.update({
   id: '/relatorios',
@@ -72,6 +74,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
 } as any)
+const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
+  id: '/api/whatsapp/send',
+  path: '/api/whatsapp/send',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
   id: '/api/ai/suggest-product',
   path: '/api/ai/suggest-product',
@@ -82,6 +89,12 @@ const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
   path: '/api/ai/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWhatsappWebhookRoute =
+  ApiPublicWhatsappWebhookRouteImport.update({
+    id: '/api/public/whatsapp/webhook',
+    path: '/api/public/whatsapp/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +109,8 @@ export interface FileRoutesByFullPath {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -109,6 +124,8 @@ export interface FileRoutesByTo {
   '/inbox': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,6 +141,8 @@ export interface FileRoutesById {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -140,6 +159,8 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/send'
+    | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -153,6 +174,8 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/send'
+    | '/api/public/whatsapp/webhook'
   id:
     | '__root__'
     | '/'
@@ -167,6 +190,8 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/whatsapp/send'
+    | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -180,6 +205,8 @@ export interface RootRouteChildren {
   RelatoriosRoute: typeof RelatoriosRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
+  ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
+  ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -254,6 +281,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
     }
+    '/api/whatsapp/send': {
+      id: '/api/whatsapp/send'
+      path: '/api/whatsapp/send'
+      fullPath: '/api/whatsapp/send'
+      preLoaderRoute: typeof ApiWhatsappSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/suggest-product': {
       id: '/api/ai/suggest-product'
       path: '/api/ai/suggest-product'
@@ -266,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/api/ai/suggest'
       fullPath: '/api/ai/suggest'
       preLoaderRoute: typeof ApiAiSuggestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/whatsapp/webhook': {
+      id: '/api/public/whatsapp/webhook'
+      path: '/api/public/whatsapp/webhook'
+      fullPath: '/api/public/whatsapp/webhook'
+      preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -294,6 +335,8 @@ const rootRouteChildren: RootRouteChildren = {
   RelatoriosRoute: RelatoriosRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
+  ApiWhatsappSendRoute: ApiWhatsappSendRoute,
+  ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
