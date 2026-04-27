@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useSyncExternalStore, useState, useEffect, useCallback } from "react";
 import {
   Settings as SettingsIcon,
