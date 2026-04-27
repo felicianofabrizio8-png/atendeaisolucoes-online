@@ -482,6 +482,8 @@ function QrCodePanel({ onBack }: { onBack: () => void }) {
     </div>
   );
 }
+
+function IntegrationItem({
   item,
   onChanged,
 }: {
