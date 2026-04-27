@@ -321,7 +321,7 @@ function ConnectionOption({
   recommended,
   onClick,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   iconBg: string;
   title: string;
   description: string;
@@ -732,7 +732,7 @@ function WhatsAppForm({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
