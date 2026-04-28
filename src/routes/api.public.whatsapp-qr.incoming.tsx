@@ -32,6 +32,8 @@ const IncomingSchema = z.object({
       (v) => /^[0-9+\-\s()]+$/.test(v) || /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(v),
       { message: "must be a phone number or WhatsApp JID" },
     ),
+  whatsapp_jid: z.string().trim().max(128).optional(),
+  push_name: z.string().trim().max(120).optional(),
   mensagem: z.string().trim().min(1).max(4000),
   direction: z.enum(["in", "out"]).default("in"),
   origem: z.string().max(64).optional(),

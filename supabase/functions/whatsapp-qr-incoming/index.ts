@@ -138,6 +138,8 @@ Deno.serve(async (req) => {
       mensagem,
       direction,
       origem,
+      ...(whatsapp_jid ? { whatsapp_jid } : {}),
+      ...(pushName ? { push_name: pushName } : {}),
       ...(created_at ? { created_at } : {}),
     });
 
