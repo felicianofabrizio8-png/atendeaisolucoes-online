@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WhatsappRouteImport } from './routes/whatsapp'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
@@ -26,6 +27,11 @@ import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 
+const WhatsappRoute = WhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByTo {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -154,6 +162,7 @@ export interface FileRoutesById {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/whatsapp'
     | '/inbox/$conversationId'
     | '/inbox/'
     | '/api/ai/suggest'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/whatsapp'
     | '/inbox/$conversationId'
     | '/inbox'
     | '/api/ai/suggest'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/whatsapp'
     | '/inbox/$conversationId'
     | '/inbox/'
     | '/api/ai/suggest'
@@ -228,6 +240,7 @@ export interface RootRouteChildren {
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  WhatsappRoute: typeof WhatsappRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
@@ -237,6 +250,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/whatsapp': {
+      id: '/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/whatsapp'
+      preLoaderRoute: typeof WhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -374,6 +394,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  WhatsappRoute: WhatsappRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
