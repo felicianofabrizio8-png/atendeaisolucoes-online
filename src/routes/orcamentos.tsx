@@ -326,7 +326,7 @@ function QuoteFormModal({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-8"
+        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 md:my-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-border flex items-center gap-2">
