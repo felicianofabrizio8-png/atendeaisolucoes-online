@@ -99,13 +99,35 @@ export const Route = createFileRoute("/api/public/whatsapp-qr/incoming")({
           companyId = company.id;
         }
 
+        // Normaliza: prioriza telefone real, mantém JID como fallback técnico
+        const isPhone = (v: string) => /^[0-9+\-\s()]{5,32}$/.test(v);
+        const isJid = (v: string) =>
+          /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(v);
+
+        let numeroFinal = "";
+        let jidFinal = "";
+        if (isPhone(data.numero)) {
+          numeroFinal = data.numero.replace(/\D/g, "");
+          jidFinal = data.whatsapp_jid && isJid(data.whatsapp_jid) ? data.whatsapp_jid : "";
+        } else if (isJid(data.numero)) {
+          jidFinal = data.numero;
+          numeroFinal = data.numero;
+        } else if (data.whatsapp_jid && isJid(data.whatsapp_jid)) {
+          jidFinal = data.whatsapp_jid;
+          numeroFinal = data.whatsapp_jid;
+        } else {
+          return json({ ok: false, error: "Invalid 'numero'" }, 400);
+        }
+
         const { error: insertErr } = await supabaseAdmin
           .from("whatsapp_messages")
           .insert({
             company_id: companyId,
-            numero: data.numero,
+            numero: numeroFinal,
             mensagem: data.mensagem,
             direction: data.direction,
+            ...(jidFinal ? { whatsapp_jid: jidFinal } : {}),
+            ...(data.push_name ? { push_name: data.push_name } : {}),
             ...(data.created_at ? { created_at: data.created_at } : {}),
           });
 
