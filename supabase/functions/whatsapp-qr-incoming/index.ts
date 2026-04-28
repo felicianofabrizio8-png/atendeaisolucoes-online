@@ -1,14 +1,25 @@
 // Edge Function: whatsapp-qr-incoming
-// Recebe mensagens do servidor WhatsApp QR Code externo e insere em whatsapp_messages.
+// Recebe mensagens do servidor WhatsApp QR Code externo (POST JSON)
+// e insere na tabela public.whatsapp_messages do banco interno do Lovable.
 //
 // Endpoint público (sem JWT) — configurado em supabase/config.toml.
+//
+// Payload esperado:
+// {
+//   numero: string,
+//   mensagem: string,
+//   direction: "in" | "out",
+//   origem?: string,
+//   created_at?: string (ISO)
+// }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, x-qr-token, x-company-id, authorization, apikey",
+  "Access-Control-Allow-Headers":
+    "Content-Type, x-qr-token, x-company-id, authorization, apikey",
 };
 
 function json(body: unknown, status = 200) {
@@ -19,6 +30,7 @@ function json(body: unknown, status = 200) {
 }
 
 Deno.serve(async (req) => {
+  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -36,6 +48,7 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Parse body
   let payload: any;
   try {
     payload = await req.json();
@@ -43,12 +56,19 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  const numero = typeof payload?.numero === "string" ? payload.numero.trim() : "";
-  const mensagem = typeof payload?.mensagem === "string" ? payload.mensagem.trim() : "";
+  const numero =
+    typeof payload?.numero === "string" ? payload.numero.trim() : "";
+  const mensagem =
+    typeof payload?.mensagem === "string" ? payload.mensagem.trim() : "";
   const direction = payload?.direction === "out" ? "out" : "in";
-  const origem = typeof payload?.origem === "string" ? payload.origem.trim().slice(0, 64) : undefined;
-  const created_at = typeof payload?.created_at === "string" ? payload.created_at : undefined;
+  const origem =
+    typeof payload?.origem === "string"
+      ? payload.origem.trim().slice(0, 64)
+      : "whatsapp_qr";
+  const created_at =
+    typeof payload?.created_at === "string" ? payload.created_at : undefined;
 
+  // Validações
   if (!numero || numero.length > 32 || !/^[0-9+\-\s()]+$/.test(numero)) {
     return json({ ok: false, error: "Invalid 'numero'" }, 400);
   }
@@ -56,12 +76,13 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Invalid 'mensagem'" }, 400);
   }
 
+  // Cliente admin (service role) para bypass de RLS
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Resolver company_id (header ou empresa default)
+  // Resolve company_id (header opcional ou primeira empresa cadastrada)
   let companyId = req.headers.get("x-company-id") ?? "";
   if (!companyId) {
     const { data: company, error: companyErr } = await supabase
@@ -70,6 +91,7 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
+
     if (companyErr || !company) {
       console.error("[whatsapp-qr-incoming] no company", companyErr);
       return json({ ok: false, error: "No company found" }, 500);
@@ -77,6 +99,7 @@ Deno.serve(async (req) => {
     companyId = company.id;
   }
 
+  // Insert na tabela whatsapp_messages
   const { error: insertErr } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -84,7 +107,7 @@ Deno.serve(async (req) => {
       numero,
       mensagem,
       direction,
-      ...(origem ? { origem } : {}),
+      origem,
       ...(created_at ? { created_at } : {}),
     });
 
