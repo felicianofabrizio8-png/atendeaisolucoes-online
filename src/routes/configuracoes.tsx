@@ -69,7 +69,7 @@ function ConfigPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="h-14 px-6 border-b border-border flex items-center gap-3">
+      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
         <SettingsIcon className="h-4 w-4 text-primary" />
         <div>
           <h1 className="text-sm font-semibold">Configurações</h1>

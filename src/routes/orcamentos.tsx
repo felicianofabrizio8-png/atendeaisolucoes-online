@@ -94,7 +94,7 @@ function QuotesPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="h-14 px-6 border-b border-border flex items-center gap-3">
+      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
         <FileText className="h-4 w-4 text-primary" />
         <div className="flex-1">
           <h1 className="text-sm font-semibold">Orçamentos</h1>
