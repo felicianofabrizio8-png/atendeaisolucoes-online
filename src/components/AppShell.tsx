@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   MessageSquare,
+  MessagesSquare,
   Calendar,
   FileText,
   Package,
@@ -19,7 +20,7 @@ import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
+  to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -28,6 +29,7 @@ type NavItem = {
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
+  { to: "/whatsapp", label: "WhatsApp", icon: MessagesSquare },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/produtos", label: "Produtos", icon: Package },
