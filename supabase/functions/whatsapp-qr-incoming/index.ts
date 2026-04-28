@@ -69,12 +69,19 @@ Deno.serve(async (req) => {
     typeof payload?.created_at === "string" ? payload.created_at : undefined;
 
   // Validações
-  if (!numero || numero.length > 32 || !/^[0-9+\-\s()]+$/.test(numero)) {
+  // Aceita: telefone normal OU JID do WhatsApp (ex.: 12345@lid, 5511...@s.whatsapp.net, ...@g.us)
+  const isPhone = /^[0-9+\-\s()]+$/.test(numero);
+  const isJid = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(numero);
+  if (!numero || numero.length > 128 || (!isPhone && !isJid)) {
     return json({ ok: false, error: "Invalid 'numero'" }, 400);
   }
   if (!mensagem || mensagem.length > 4000) {
     return json({ ok: false, error: "Invalid 'mensagem'" }, 400);
   }
+
+  // Se for JID sem telefone real, normaliza para preservar o identificador único
+  // O campo `numero` aceita texto, então salvamos o JID inteiro como identificador.
+  // Mensagens antigas com telefone continuam funcionando normalmente.
 
   // Cliente admin (service role) para bypass de RLS
   const supabase = createClient(
