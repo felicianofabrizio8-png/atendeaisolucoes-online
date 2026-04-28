@@ -26,6 +26,7 @@ import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsap
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
+import { Route as ApiPublicWhatsappQrIncomingRouteImport } from './routes/api.public.whatsapp-qr.incoming'
 
 const WhatsappRoute = WhatsappRouteImport.update({
   id: '/whatsapp',
@@ -113,6 +114,12 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicWhatsappQrIncomingRoute =
+  ApiPublicWhatsappQrIncomingRouteImport.update({
+    id: '/api/public/whatsapp-qr/incoming',
+    path: '/api/public/whatsapp-qr/incoming',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -149,6 +157,7 @@ export interface FileRoutesByTo {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesById {
@@ -169,6 +178,7 @@ export interface FileRoutesById {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
+  '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRouteTypes {
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
+    | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
+    | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   id:
     | '__root__'
@@ -227,6 +239,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
+    | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -245,6 +258,7 @@ export interface RootRouteChildren {
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
+  ApiPublicWhatsappQrIncomingRoute: typeof ApiPublicWhatsappQrIncomingRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
 
@@ -369,6 +383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/whatsapp-qr/incoming': {
+      id: '/api/public/whatsapp-qr/incoming'
+      path: '/api/public/whatsapp-qr/incoming'
+      fullPath: '/api/public/whatsapp-qr/incoming'
+      preLoaderRoute: typeof ApiPublicWhatsappQrIncomingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -399,6 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,
+  ApiPublicWhatsappQrIncomingRoute: ApiPublicWhatsappQrIncomingRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
 export const routeTree = rootRouteImport
