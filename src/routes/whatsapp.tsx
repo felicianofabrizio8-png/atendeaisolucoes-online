@@ -329,7 +329,7 @@ function WhatsAppInbox() {
                   placeholder="Digite uma mensagem"
                   className="flex-1"
                 />
-                <Button type="submit" size="icon" disabled={!draft.trim()}>
+                <Button type="submit" size="icon" disabled={!draft.trim() || sending}>
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
