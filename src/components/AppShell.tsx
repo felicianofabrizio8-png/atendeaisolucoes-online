@@ -12,12 +12,14 @@ import {
   Sparkles,
   LogOut,
   LogIn,
+  Menu,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
 import { loadRemote, setRepoMode } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 
 type NavItem = {
   to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
@@ -42,12 +44,18 @@ export function AppShell() {
   const navigate = useNavigate();
   const { user, profile, company, signOut } = useAuth();
   const [demoMode, setDemoMode] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Detecta modo demo do localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     setDemoMode(window.localStorage.getItem("atendeai.demo") === "1");
   }, [user]);
+
+  // Fecha o menu mobile ao navegar
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   // Quando logar, carrega dados reais e desativa demo. Quando deslogar/demo, volta pro mock.
   useEffect(() => {
@@ -91,108 +99,146 @@ export function AppShell() {
     setDemoMode(true);
   };
 
-  return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold">Atende Ai!</div>
-            <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
-          </div>
-        </div>
+  const NavList = (
+    <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+      {nav.map((item) => {
+        const Icon = item.icon;
+        const active =
+          item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={cn(
+              "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-sm transition-colors",
+              "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            <span className="flex-1">{item.label}</span>
+            {item.badge ? (
+              <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
+                {item.badge}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
+    </nav>
+  );
 
+  const FooterPanel = (
+    <div className="border-t border-sidebar-border p-3">
+      {user ? (
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
+            {initials || "U"}
+          </div>
+          <div className="leading-tight min-w-0 flex-1">
+            <div className="text-sm font-medium truncate">
+              {profile?.display_name ?? user.email?.split("@")[0]}
+            </div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {company?.name ?? "Carregando…"}
+            </div>
+          </div>
+          <button
+            onClick={handleSignOut}
+            title="Sair"
+            className="p-1.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
+              DM
+            </div>
+            <div className="leading-tight min-w-0 flex-1">
+              <div className="text-sm font-medium truncate">Visitante</div>
+              <div className="text-[11px] text-muted-foreground truncate">Modo demo</div>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate({ to: "/login" })}
+            className="w-full inline-flex items-center justify-center gap-1.5 h-9 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Entrar / Criar conta
+          </button>
+          {!demoMode && (
+            <button
+              onClick={enableDemo}
+              className="w-full text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              Continuar como demo
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const Brand = (
+    <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
+      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="leading-tight">
+        <div className="text-sm font-semibold">Atende Ai!</div>
+        <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-screen w-full bg-background text-foreground">
+      {/* Sidebar desktop */}
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+        {Brand}
         {demoMode && !user && (
           <div className="mx-2 mt-2 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2 py-1.5 text-[10px] text-primary">
             <div className="font-semibold">Modo demo</div>
             <div className="text-primary/70">Dados de exemplo locais</div>
           </div>
         )}
-
-        <nav className="flex-1 p-2 space-y-0.5">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            const active =
-              item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{item.label}</span>
-                {item.badge ? (
-                  <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="border-t border-sidebar-border p-3">
-          {user ? (
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-                {initials || "U"}
-              </div>
-              <div className="leading-tight min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">
-                  {profile?.display_name ?? user.email?.split("@")[0]}
-                </div>
-                <div className="text-[11px] text-muted-foreground truncate">
-                  {company?.name ?? "Carregando…"}
-                </div>
-              </div>
-              <button
-                onClick={handleSignOut}
-                title="Sair"
-                className="p-1.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
-                  DM
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">Visitante</div>
-                  <div className="text-[11px] text-muted-foreground truncate">Modo demo</div>
-                </div>
-              </div>
-              <button
-                onClick={() => navigate({ to: "/login" })}
-                className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
-              >
-                <LogIn className="h-3.5 w-3.5" />
-                Entrar / Criar conta
-              </button>
-              {!demoMode && (
-                <button
-                  onClick={enableDemo}
-                  className="w-full text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                >
-                  Continuar como demo
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {NavList}
+        {FooterPanel}
       </aside>
 
       <main className="flex-1 min-w-0 flex flex-col">
-        <Outlet />
+        {/* Topbar mobile */}
+        <div className="md:hidden h-12 px-3 border-b border-border flex items-center gap-2 bg-sidebar">
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <button
+                aria-label="Abrir menu"
+                className="h-9 w-9 inline-flex items-center justify-center rounded-md hover:bg-accent"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72 p-0 flex flex-col bg-sidebar">
+              <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+              {Brand}
+              {NavList}
+              {FooterPanel}
+            </SheetContent>
+          </Sheet>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
+              <Sparkles className="h-3.5 w-3.5" />
+            </div>
+            <span className="text-sm font-semibold truncate">Atende Ai!</span>
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0 flex flex-col">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
