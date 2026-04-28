@@ -155,22 +155,39 @@ function WhatsAppInbox() {
     if (!text || !current || !companyId || sending) return;
     setSending(true);
     const numero = current.numero;
+    console.log("[whatsapp] sending", { numero, len: text.length });
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-whatsapp-message",
         {
           body: { number: numero, message: text },
-          headers: { "x-company-id": companyId },
         },
       );
-      if (error || !data?.ok) {
-        throw new Error(error?.message || data?.error || "send failed");
+      console.log("[whatsapp] invoke result", { data, error });
+      if (error) {
+        // Tenta extrair o body real do erro (FunctionsHttpError tem .context.response)
+        let detail = error.message;
+        try {
+          const ctx = (error as unknown as { context?: { response?: Response } })
+            .context;
+          if (ctx?.response) {
+            const body = await ctx.response.clone().text();
+            if (body) detail = body;
+          }
+        } catch {
+          /* noop */
+        }
+        throw new Error(detail);
+      }
+      if (!data?.ok) {
+        throw new Error(data?.error || "send failed");
       }
       setDraft("");
       // Realtime/polling vai trazer a mensagem inserida pela edge function.
     } catch (e) {
-      console.error("send failed", e);
-      toast.error("Não foi possível enviar a mensagem pelo WhatsApp.");
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("send failed", msg, e);
+      toast.error(`Falha ao enviar: ${msg}`);
     } finally {
       setSending(false);
     }
