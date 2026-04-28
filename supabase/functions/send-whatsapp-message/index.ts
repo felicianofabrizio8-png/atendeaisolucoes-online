@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     const res = await fetch(target, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ number, message }),
+      body: JSON.stringify({ numero: number, mensagem: message }),
     });
     const txt = await res.text();
     if (!res.ok) {
