@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
   if (insertErr) {
     console.error("[whatsapp-qr-incoming] insert error", insertErr);
-    return json({ ok: false, error: insertErr.message }, 500);
+    return json({ ok: false, error: "internal error" }, 500);
   }
 
   return json({ ok: true });
