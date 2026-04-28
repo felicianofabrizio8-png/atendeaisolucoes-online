@@ -123,19 +123,32 @@ function WhatsAppInbox() {
     };
   }, [companyId]);
 
-  // Agrupar por número
+  // Agrupar por contato — mescla telefone e JID quando ambos referem-se ao mesmo contato.
+  // Chave de agrupamento: telefone real (preferido) > whatsapp_jid > numero.
   const conversations = useMemo(() => {
     const map = new Map<string, WaMessage[]>();
     for (const m of messages) {
-      if (!map.has(m.numero)) map.set(m.numero, []);
-      map.get(m.numero)!.push(m);
+      const phoneish =
+        m.numero && !isRawJid(m.numero) && /^[0-9+\-\s()]+$/.test(m.numero)
+          ? m.numero.replace(/\D/g, "")
+          : "";
+      const key = phoneish || m.whatsapp_jid || m.numero;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
     }
-    const list = Array.from(map.entries()).map(([numero, msgs]) => {
+    const list = Array.from(map.entries()).map(([key, msgs]) => {
       const sorted = [...msgs].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
       const last = sorted[sorted.length - 1];
-      return { numero, last, messages: sorted };
+      // Para envio: preferir um telefone real qualquer encontrado nas mensagens
+      const phoneMsg = sorted.find(
+        (x) => x.numero && !isRawJid(x.numero) && /^[0-9+\-\s()]+$/.test(x.numero),
+      );
+      const sendNumero = phoneMsg?.numero ?? last.numero;
+      const pushName =
+        sorted.map((x) => x.push_name).filter(Boolean).pop() ?? null;
+      return { key, sendNumero, pushName, last, messages: sorted };
     });
     list.sort(
       (a, b) =>
@@ -149,7 +162,8 @@ function WhatsAppInbox() {
     if (!q) return conversations;
     return conversations.filter(
       (c) =>
-        c.numero.toLowerCase().includes(q) ||
+        c.sendNumero.toLowerCase().includes(q) ||
+        (c.pushName ?? "").toLowerCase().includes(q) ||
         c.last.mensagem.toLowerCase().includes(q),
     );
   }, [conversations, search]);
