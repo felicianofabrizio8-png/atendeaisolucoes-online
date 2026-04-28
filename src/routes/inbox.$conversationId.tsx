@@ -58,7 +58,11 @@ function ConversationPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
-  useSyncExternalStore(subscribeRepo, () => Date.now(), () => 0);
+  useSyncExternalStore(
+    subscribeRepo,
+    () => 0,
+    () => 0,
+  );
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const initialMessages = conversation ? getMessagesFor(conversationId) : [];
