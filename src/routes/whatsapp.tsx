@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Search, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/whatsapp")({
   head: () => ({
@@ -147,29 +148,31 @@ function WhatsAppInbox() {
     }
   }, [conversations, selected]);
 
+  const [sending, setSending] = useState(false);
+
   async function handleSend() {
     const text = draft.trim();
-    if (!text || !current || !companyId) return;
-    setDraft("");
-    // Insert otimista — backend de envio real virá depois
-    const optimistic: WaMessage = {
-      id: crypto.randomUUID(),
-      company_id: companyId,
-      numero: current.numero,
-      mensagem: text,
-      direction: "out",
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optimistic]);
-    const { error } = await supabase.from("whatsapp_messages").insert({
-      company_id: companyId,
-      numero: current.numero,
-      mensagem: text,
-      direction: "out",
-    });
-    if (error) {
-      console.error("send failed", error);
-      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+    if (!text || !current || !companyId || sending) return;
+    setSending(true);
+    const numero = current.numero;
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "send-whatsapp-message",
+        {
+          body: { number: numero, message: text },
+          headers: { "x-company-id": companyId },
+        },
+      );
+      if (error || !data?.ok) {
+        throw new Error(error?.message || data?.error || "send failed");
+      }
+      setDraft("");
+      // Realtime/polling vai trazer a mensagem inserida pela edge function.
+    } catch (e) {
+      console.error("send failed", e);
+      toast.error("Não foi possível enviar a mensagem pelo WhatsApp.");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -326,7 +329,7 @@ function WhatsAppInbox() {
                   placeholder="Digite uma mensagem"
                   className="flex-1"
                 />
-                <Button type="submit" size="icon" disabled={!draft.trim()}>
+                <Button type="submit" size="icon" disabled={!draft.trim() || sending}>
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
