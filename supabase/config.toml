@@ -2,3 +2,6 @@ project_id = "ubnlvxkjemzhvmulowhj"
 
 [functions.whatsapp-qr-incoming]
 verify_jwt = false
+
+[functions.send-whatsapp-message]
+verify_jwt = false
