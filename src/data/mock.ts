@@ -52,10 +52,13 @@ const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString();
 const hoursAgo = (h: number) => new Date(now - h * 3_600_000).toISOString();
 const inHours = (h: number) => new Date(now + h * 3_600_000).toISOString();
 
-export const leads: Lead[] = [
-  {
-    id: "l1",
-    name: "Marina Souza",
+// Sem dados mockados — o app usa apenas dados reais vindos do Supabase via leadRepo.
+// Helpers de tempo (minutesAgo/hoursAgo/inHours) são mantidos para uso futuro.
+void minutesAgo; void hoursAgo; void inHours;
+
+export const leads: Lead[] = [];
+export const conversations: Conversation[] = [];
+export const messages: Message[] = [];
     phone: "+55 11 98123-4521",
     channel: "whatsapp",
     status: "quente",
