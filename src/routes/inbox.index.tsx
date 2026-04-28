@@ -180,7 +180,7 @@ function InboxPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="flex flex-col gap-2 border-b border-border px-6 py-3">
+      <header className="flex flex-col gap-2 border-b border-border px-4 md:px-6 py-3">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-base font-semibold leading-none">Caixa de atendimento</h1>
@@ -334,9 +334,9 @@ function InboxPage() {
                     })
                   }
                   className={cn(
-                    "w-full text-left px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start relative",
+                    "w-full text-left px-4 md:px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start relative",
                     breached &&
-                      "bg-[var(--status-urgent)]/10 border-l-4 border-[var(--status-urgent)] pl-5",
+                      "bg-[var(--status-urgent)]/10 border-l-4 border-[var(--status-urgent)] pl-3 md:pl-5",
                   )}
                 >
                   <div className="flex flex-col items-center pt-1 gap-1.5 w-6">
