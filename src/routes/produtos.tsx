@@ -44,7 +44,7 @@ function ProductsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="h-14 px-6 border-b border-border flex items-center gap-3">
+      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
         <Package className="h-4 w-4 text-primary" />
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold">Catálogo de produtos</h1>
@@ -60,7 +60,7 @@ function ProductsPage() {
         </button>
       </header>
 
-      <div className="p-6 space-y-8 max-w-5xl">
+      <div className="p-4 md:p-6 space-y-8 max-w-5xl">
         {products.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />

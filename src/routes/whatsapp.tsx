@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Search, MessageSquare } from "lucide-react";
+import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/whatsapp")({
@@ -185,9 +185,14 @@ function WhatsAppInbox() {
   }
 
   return (
-    <div className="flex-1 flex h-screen min-h-0 overflow-hidden bg-background">
-      {/* Sidebar de conversas */}
-      <aside className="w-80 shrink-0 border-r border-border flex flex-col bg-card">
+    <div className="flex-1 flex min-h-0 overflow-hidden bg-background">
+      {/* Sidebar de conversas — esconde no mobile quando há conversa selecionada */}
+      <aside
+        className={cn(
+          "w-full md:w-80 shrink-0 border-r border-border flex-col bg-card",
+          selected ? "hidden md:flex" : "flex",
+        )}
+      >
         <div className="h-14 px-4 flex items-center border-b border-border">
           <h1 className="text-base font-semibold">Conversas</h1>
         </div>
@@ -244,7 +249,12 @@ function WhatsAppInbox() {
       </aside>
 
       {/* Chat */}
-      <section className="flex-1 min-w-0 flex flex-col">
+      <section
+        className={cn(
+          "flex-1 min-w-0 flex-col",
+          selected ? "flex" : "hidden md:flex",
+        )}
+      >
         {!current ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
             <MessageSquare className="h-10 w-10 opacity-40" />
@@ -252,12 +262,19 @@ function WhatsAppInbox() {
           </div>
         ) : (
           <>
-            <header className="h-14 px-4 border-b border-border flex items-center gap-3 bg-card">
+            <header className="h-14 px-3 md:px-4 border-b border-border flex items-center gap-3 bg-card">
+              <button
+                onClick={() => setSelected(null)}
+                className="md:hidden p-1.5 rounded-md hover:bg-accent"
+                aria-label="Voltar"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
               <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
                 {current.numero.slice(-2)}
               </div>
-              <div className="leading-tight">
-                <div className="text-sm font-semibold">{current.numero}</div>
+              <div className="leading-tight min-w-0">
+                <div className="text-sm font-semibold truncate">{current.numero}</div>
                 <div className="text-[11px] text-muted-foreground">WhatsApp</div>
               </div>
             </header>

@@ -94,7 +94,7 @@ function QuotesPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="h-14 px-6 border-b border-border flex items-center gap-3">
+      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
         <FileText className="h-4 w-4 text-primary" />
         <div className="flex-1">
           <h1 className="text-sm font-semibold">Orçamentos</h1>
@@ -115,7 +115,7 @@ function QuotesPage() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {quotes.length === 0 ? (
           <EmptyState onCreate={() => setOpen(true)} />
         ) : (
@@ -326,7 +326,7 @@ function QuoteFormModal({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-8"
+        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 md:my-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-border flex items-center gap-2">

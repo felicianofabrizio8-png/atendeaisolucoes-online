@@ -69,7 +69,7 @@ function ConfigPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="h-14 px-6 border-b border-border flex items-center gap-3">
+      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
         <SettingsIcon className="h-4 w-4 text-primary" />
         <div>
           <h1 className="text-sm font-semibold">Configurações</h1>
@@ -79,7 +79,7 @@ function ConfigPage() {
         </div>
       </header>
 
-      <div className="p-6 max-w-2xl space-y-8">
+      <div className="p-4 md:p-6 max-w-2xl space-y-8">
         <section className="rounded-lg border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="h-4 w-4 text-primary" />
