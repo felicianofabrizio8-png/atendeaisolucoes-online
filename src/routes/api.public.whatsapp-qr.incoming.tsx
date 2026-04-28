@@ -23,7 +23,15 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { z } from "zod";
 
 const IncomingSchema = z.object({
-  numero: z.string().trim().min(1).max(32).regex(/^[0-9+\-\s()]+$/),
+  numero: z
+    .string()
+    .trim()
+    .min(1)
+    .max(128)
+    .refine(
+      (v) => /^[0-9+\-\s()]+$/.test(v) || /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(v),
+      { message: "must be a phone number or WhatsApp JID" },
+    ),
   mensagem: z.string().trim().min(1).max(4000),
   direction: z.enum(["in", "out"]).default("in"),
   origem: z.string().max(64).optional(),
