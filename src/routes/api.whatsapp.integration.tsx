@@ -158,7 +158,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .from("integrations")
           .update({ active: body.active })
           .eq("id", body.id);
-        if (error) return Response.json({ error: error.message }, { status: 500 });
+        if (error) {
+          console.error("integrations patch error", error);
+          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+        }
         return Response.json({ ok: true });
       },
 
