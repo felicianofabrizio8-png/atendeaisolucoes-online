@@ -26,7 +26,31 @@ type WaMessage = {
   mensagem: string;
   direction: "in" | "out";
   created_at: string;
+  whatsapp_jid?: string | null;
+  push_name?: string | null;
 };
+
+// Identificador "raw" — JID interno do WhatsApp (não exibir)
+function isRawJid(v: string) {
+  return /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i.test(v);
+}
+
+// Nome amigável para exibição: pushName > telefone formatado > "Contato WhatsApp"
+function displayName(numero: string, pushName?: string | null) {
+  if (pushName && pushName.trim()) return pushName.trim();
+  if (!isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) return numero;
+  return "Contato WhatsApp";
+}
+
+// Iniciais para avatar
+function avatarInitials(numero: string, pushName?: string | null) {
+  if (pushName && pushName.trim()) {
+    const parts = pushName.trim().split(/\s+/);
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+  }
+  if (!isRawJid(numero)) return numero.slice(-2);
+  return "WA";
+}
 
 function formatTime(iso: string) {
   const d = new Date(iso);
