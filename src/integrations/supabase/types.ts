@@ -603,6 +603,33 @@ export type Database = {
           },
         ]
       }
+      whatsapp_messages: {
+        Row: {
+          company_id: string
+          created_at: string
+          direction: string
+          id: string
+          mensagem: string
+          numero: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          direction?: string
+          id?: string
+          mensagem: string
+          numero: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          mensagem?: string
+          numero?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       integrations_safe: {
