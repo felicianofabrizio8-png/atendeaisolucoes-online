@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
       numero,
       mensagem,
       direction,
+      ...(origem ? { origem } : {}),
       ...(created_at ? { created_at } : {}),
     });
 
