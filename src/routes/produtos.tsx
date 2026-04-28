@@ -60,7 +60,7 @@ function ProductsPage() {
         </button>
       </header>
 
-      <div className="p-6 space-y-8 max-w-5xl">
+      <div className="p-4 md:p-6 space-y-8 max-w-5xl">
         {products.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />

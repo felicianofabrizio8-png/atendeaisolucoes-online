@@ -139,7 +139,7 @@ function ReportsPage() {
         </div>
       </header>
 
-      <div className="p-6 space-y-6 max-w-6xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
         {/* Funil de leads */}
         <section>
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
