@@ -611,6 +611,7 @@ export type Database = {
           id: string
           mensagem: string
           numero: string
+          origem: string | null
         }
         Insert: {
           company_id: string
@@ -619,6 +620,7 @@ export type Database = {
           id?: string
           mensagem: string
           numero: string
+          origem?: string | null
         }
         Update: {
           company_id?: string
@@ -627,6 +629,7 @@ export type Database = {
           id?: string
           mensagem?: string
           numero?: string
+          origem?: string | null
         }
         Relationships: []
       }
