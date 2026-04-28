@@ -26,7 +26,31 @@ type WaMessage = {
   mensagem: string;
   direction: "in" | "out";
   created_at: string;
+  whatsapp_jid?: string | null;
+  push_name?: string | null;
 };
+
+// Identificador "raw" — JID interno do WhatsApp (não exibir)
+function isRawJid(v: string) {
+  return /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i.test(v);
+}
+
+// Nome amigável para exibição: pushName > telefone formatado > "Contato WhatsApp"
+function displayName(numero: string, pushName?: string | null) {
+  if (pushName && pushName.trim()) return pushName.trim();
+  if (!isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) return numero;
+  return "Contato WhatsApp";
+}
+
+// Iniciais para avatar
+function avatarInitials(numero: string, pushName?: string | null) {
+  if (pushName && pushName.trim()) {
+    const parts = pushName.trim().split(/\s+/);
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+  }
+  if (!isRawJid(numero)) return numero.slice(-2);
+  return "WA";
+}
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -99,19 +123,32 @@ function WhatsAppInbox() {
     };
   }, [companyId]);
 
-  // Agrupar por número
+  // Agrupar por contato — mescla telefone e JID quando ambos referem-se ao mesmo contato.
+  // Chave de agrupamento: telefone real (preferido) > whatsapp_jid > numero.
   const conversations = useMemo(() => {
     const map = new Map<string, WaMessage[]>();
     for (const m of messages) {
-      if (!map.has(m.numero)) map.set(m.numero, []);
-      map.get(m.numero)!.push(m);
+      const phoneish =
+        m.numero && !isRawJid(m.numero) && /^[0-9+\-\s()]+$/.test(m.numero)
+          ? m.numero.replace(/\D/g, "")
+          : "";
+      const key = phoneish || m.whatsapp_jid || m.numero;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
     }
-    const list = Array.from(map.entries()).map(([numero, msgs]) => {
+    const list = Array.from(map.entries()).map(([key, msgs]) => {
       const sorted = [...msgs].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
       const last = sorted[sorted.length - 1];
-      return { numero, last, messages: sorted };
+      // Para envio: preferir um telefone real qualquer encontrado nas mensagens
+      const phoneMsg = sorted.find(
+        (x) => x.numero && !isRawJid(x.numero) && /^[0-9+\-\s()]+$/.test(x.numero),
+      );
+      const sendNumero = phoneMsg?.numero ?? last.numero;
+      const pushName =
+        sorted.map((x) => x.push_name).filter(Boolean).pop() ?? null;
+      return { key, sendNumero, pushName, last, messages: sorted };
     });
     list.sort(
       (a, b) =>
@@ -125,13 +162,14 @@ function WhatsAppInbox() {
     if (!q) return conversations;
     return conversations.filter(
       (c) =>
-        c.numero.toLowerCase().includes(q) ||
+        c.sendNumero.toLowerCase().includes(q) ||
+        (c.pushName ?? "").toLowerCase().includes(q) ||
         c.last.mensagem.toLowerCase().includes(q),
     );
   }, [conversations, search]);
 
   const current = useMemo(
-    () => conversations.find((c) => c.numero === selected) ?? null,
+    () => conversations.find((c) => c.key === selected) ?? null,
     [conversations, selected],
   );
 
@@ -144,7 +182,7 @@ function WhatsAppInbox() {
   // Auto-selecionar primeira conversa
   useEffect(() => {
     if (!selected && conversations.length > 0) {
-      setSelected(conversations[0].numero);
+      setSelected(conversations[0].key);
     }
   }, [conversations, selected]);
 
@@ -154,7 +192,7 @@ function WhatsAppInbox() {
     const text = draft.trim();
     if (!text || !current || !companyId || sending) return;
     setSending(true);
-    const numero = current.numero;
+    const numero = current.sendNumero;
     console.log("[whatsapp] sending", { numero, len: text.length });
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -234,22 +272,23 @@ function WhatsAppInbox() {
             </div>
           )}
           {filtered.map((c) => {
-            const active = c.numero === selected;
+            const active = c.key === selected;
+            const name = displayName(c.sendNumero, c.pushName);
             return (
               <button
-                key={c.numero}
-                onClick={() => setSelected(c.numero)}
+                key={c.key}
+                onClick={() => setSelected(c.key)}
                 className={cn(
                   "w-full text-left px-3 py-2.5 flex gap-3 items-start border-b border-border/50 hover:bg-accent/50 transition-colors",
                   active && "bg-accent",
                 )}
               >
                 <div className="h-10 w-10 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
-                  {c.numero.slice(-2)}
+                  {avatarInitials(c.sendNumero, c.pushName)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium truncate">{c.numero}</span>
+                    <span className="text-sm font-medium truncate">{name}</span>
                     <span className="text-[10px] text-muted-foreground shrink-0">
                       {formatTime(c.last.created_at)}
                     </span>
@@ -288,10 +327,12 @@ function WhatsAppInbox() {
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
-                {current.numero.slice(-2)}
+                {avatarInitials(current.sendNumero, current.pushName)}
               </div>
               <div className="leading-tight min-w-0">
-                <div className="text-sm font-semibold truncate">{current.numero}</div>
+                <div className="text-sm font-semibold truncate">
+                  {displayName(current.sendNumero, current.pushName)}
+                </div>
                 <div className="text-[11px] text-muted-foreground">WhatsApp</div>
               </div>
             </header>

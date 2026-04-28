@@ -56,8 +56,16 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  const numero =
+  const rawNumero =
     typeof payload?.numero === "string" ? payload.numero.trim() : "";
+  const rawJid =
+    typeof payload?.whatsapp_jid === "string"
+      ? payload.whatsapp_jid.trim()
+      : "";
+  const pushName =
+    typeof payload?.push_name === "string"
+      ? payload.push_name.trim().slice(0, 120)
+      : "";
   const mensagem =
     typeof payload?.mensagem === "string" ? payload.mensagem.trim() : "";
   const direction = payload?.direction === "out" ? "out" : "in";
@@ -68,20 +76,35 @@ Deno.serve(async (req) => {
   const created_at =
     typeof payload?.created_at === "string" ? payload.created_at : undefined;
 
-  // Validações
-  // Aceita: telefone normal OU JID do WhatsApp (ex.: 12345@lid, 5511...@s.whatsapp.net, ...@g.us)
-  const isPhone = /^[0-9+\-\s()]+$/.test(numero);
-  const isJid = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(numero);
-  if (!numero || numero.length > 128 || (!isPhone && !isJid)) {
+  // Helpers para classificar identificador
+  const isPhone = (v: string) => /^[0-9+\-\s()]{5,32}$/.test(v);
+  const isJid = (v: string) => /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(v);
+
+  // Estratégia de prioridade:
+  // 1) Se veio whatsapp_jid explícito, ele é o identificador técnico.
+  // 2) Se veio numero válido (telefone), usamos como `numero` principal.
+  // 3) Se numero veio como JID e não há whatsapp_jid, promovemos para whatsapp_jid.
+  let numero = "";
+  let whatsapp_jid = "";
+
+  if (isPhone(rawNumero)) {
+    numero = rawNumero.replace(/\D/g, "");
+    whatsapp_jid = isJid(rawJid) ? rawJid : "";
+  } else if (isJid(rawNumero)) {
+    whatsapp_jid = rawNumero;
+    // sem telefone real, usamos o JID como `numero` (legado)
+    numero = rawNumero;
+  } else if (isJid(rawJid)) {
+    whatsapp_jid = rawJid;
+    numero = rawJid;
+  }
+
+  if (!numero || numero.length > 128) {
     return json({ ok: false, error: "Invalid 'numero'" }, 400);
   }
   if (!mensagem || mensagem.length > 4000) {
     return json({ ok: false, error: "Invalid 'mensagem'" }, 400);
   }
-
-  // Se for JID sem telefone real, normaliza para preservar o identificador único
-  // O campo `numero` aceita texto, então salvamos o JID inteiro como identificador.
-  // Mensagens antigas com telefone continuam funcionando normalmente.
 
   // Cliente admin (service role) para bypass de RLS
   const supabase = createClient(
@@ -115,6 +138,8 @@ Deno.serve(async (req) => {
       mensagem,
       direction,
       origem,
+      ...(whatsapp_jid ? { whatsapp_jid } : {}),
+      ...(pushName ? { push_name: pushName } : {}),
       ...(created_at ? { created_at } : {}),
     });
 

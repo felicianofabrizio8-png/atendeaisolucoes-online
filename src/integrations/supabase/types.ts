@@ -612,6 +612,8 @@ export type Database = {
           mensagem: string
           numero: string
           origem: string | null
+          push_name: string | null
+          whatsapp_jid: string | null
         }
         Insert: {
           company_id: string
@@ -621,6 +623,8 @@ export type Database = {
           mensagem: string
           numero: string
           origem?: string | null
+          push_name?: string | null
+          whatsapp_jid?: string | null
         }
         Update: {
           company_id?: string
@@ -630,6 +634,8 @@ export type Database = {
           mensagem?: string
           numero?: string
           origem?: string | null
+          push_name?: string | null
+          whatsapp_jid?: string | null
         }
         Relationships: []
       }
