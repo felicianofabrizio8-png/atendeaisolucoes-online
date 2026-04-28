@@ -132,23 +132,39 @@ Deno.serve(async (req) => {
   }
 
   // -------- Envia ao servidor Baileys --------
+  // Normaliza a URL: remove trailing slashes e remove /send se já vier no final.
+  const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
+  const target = `${baseUrl}/send`;
+
+  console.log("[send-whatsapp-message] config", {
+    serverUrl,
+    target,
+    hasApiKey: Boolean(apiKey),
+    apiKeyLen: apiKey?.length ?? 0,
+    number,
+    messageLen: message.length,
+  });
+
   let sendOk = false;
   let sendError: string | null = null;
   try {
-    const target = `${serverUrl.replace(/\/+$/, "")}/send`;
     const res = await fetch(target, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "ngrok-skip-browser-warning": "true",
-        "User-Agent": "lovable-edge-function",
       },
       body: JSON.stringify({ numero: number, mensagem: message }),
     });
     const txt = await res.text();
+    console.log("[send-whatsapp-message] baileys response", {
+      status: res.status,
+      ok: res.ok,
+      body: txt.slice(0, 500),
+    });
     if (!res.ok) {
-      sendError = `Baileys ${res.status}`;
+      sendError = `Baileys ${res.status}: ${txt.slice(0, 200)}`;
       console.error("[send-whatsapp-message] baileys error", {
         userId,
         companyId,
