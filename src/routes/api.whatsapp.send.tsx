@@ -149,7 +149,8 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           .select("id, conversation_id, role, text, at")
           .single();
         if (insertErr) {
-          return Response.json({ error: insertErr.message }, { status: 500 });
+          console.error("messages insert error", insertErr);
+          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
         }
 
         await supabaseAdmin

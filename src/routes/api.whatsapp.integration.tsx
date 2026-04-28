@@ -113,7 +113,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
             .from("integrations")
             .update(payload)
             .eq("id", existing.id);
-          if (error) return Response.json({ error: error.message }, { status: 500 });
+          if (error) {
+            console.error("integrations update error", error);
+            return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+          }
           return Response.json({ id: existing.id, updated: true });
         }
 
@@ -122,7 +125,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .insert(payload)
           .select("id")
           .single();
-        if (error) return Response.json({ error: error.message }, { status: 500 });
+        if (error) {
+          console.error("integrations insert error", error);
+          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+        }
         return Response.json({ id: data.id, created: true });
       },
 
@@ -152,7 +158,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .from("integrations")
           .update({ active: body.active })
           .eq("id", body.id);
-        if (error) return Response.json({ error: error.message }, { status: 500 });
+        if (error) {
+          console.error("integrations patch error", error);
+          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+        }
         return Response.json({ ok: true });
       },
 
@@ -181,7 +190,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .from("integrations")
           .delete()
           .eq("id", body.id);
-        if (error) return Response.json({ error: error.message }, { status: 500 });
+        if (error) {
+          console.error("integrations delete error", error);
+          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+        }
         return Response.json({ ok: true });
       },
     },
