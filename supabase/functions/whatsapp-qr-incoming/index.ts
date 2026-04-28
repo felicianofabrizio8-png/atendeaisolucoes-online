@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
   const numero = typeof payload?.numero === "string" ? payload.numero.trim() : "";
   const mensagem = typeof payload?.mensagem === "string" ? payload.mensagem.trim() : "";
   const direction = payload?.direction === "out" ? "out" : "in";
+  const origem = typeof payload?.origem === "string" ? payload.origem.trim().slice(0, 64) : undefined;
   const created_at = typeof payload?.created_at === "string" ? payload.created_at : undefined;
 
   if (!numero || numero.length > 32 || !/^[0-9+\-\s()]+$/.test(numero)) {
