@@ -1,6 +1,6 @@
 // Tipos compartilhados do app. Sem dados mockados — todos os dados reais vêm
 // do Supabase via leadRepo. Os arrays vazios existem apenas para compatibilidade
-// com imports antigos.
+// com imports antigos do projeto.
 
 export type Channel = "whatsapp" | "instagram" | "facebook";
 export type LeadStatus = "novo" | "aguardando" | "quente" | "morno" | "frio" | "fechado" | "perdido";
