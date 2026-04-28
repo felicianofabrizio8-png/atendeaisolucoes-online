@@ -112,7 +112,15 @@ Deno.serve(async (req) => {
   const message =
     typeof payload.message === "string" ? payload.message.trim() : "";
 
-  if (!number || !NUMBER_RE.test(number)) {
+  console.log("[send-whatsapp-message] input", {
+    userId,
+    companyId,
+    number,
+    messageLen: message.length,
+  });
+
+  if (!number || number.length > MAX_NUMBER_LEN || (!PHONE_RE.test(number) && !JID_RE.test(number))) {
+    console.warn("[send-whatsapp-message] invalid number", { number });
     return json({ ok: false, error: "invalid number" }, 400);
   }
   if (!message || message.length > MAX_MESSAGE_LEN) {
