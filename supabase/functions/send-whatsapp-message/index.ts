@@ -55,7 +55,11 @@ Deno.serve(async (req) => {
     const target = `${serverUrl.replace(/\/+$/, "")}/send`;
     const res = await fetch(target, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+        "User-Agent": "lovable-edge-function",
+      },
       body: JSON.stringify({ numero: number, mensagem: message }),
     });
     const txt = await res.text();
