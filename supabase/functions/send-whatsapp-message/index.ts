@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
   // -------- Persiste mensagem enviada --------
   const { error: insertErr } = await supabase.from("whatsapp_messages").insert({
     company_id: companyId,
-    numero: number,
+    numero: normalizedNumber,
     mensagem: message,
     direction: "out",
     origem: "app",
