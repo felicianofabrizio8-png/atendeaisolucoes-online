@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
         "x-api-key": apiKey,
         "ngrok-skip-browser-warning": "true",
       },
-      body: JSON.stringify({ numero: number, mensagem: message }),
+      body: JSON.stringify({ numero: normalizedNumber, mensagem: message }),
     });
     const txt = await res.text();
     console.log("[send-whatsapp-message] baileys response", {
