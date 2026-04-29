@@ -127,6 +127,30 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "invalid message" }, 400);
   }
 
+  // Normaliza para o formato que o Baileys aceita (somente dígitos).
+  // Para JIDs @s.whatsapp.net extrai a parte numérica.
+  // JIDs @lid / @g.us não são telefones reais — não dá pra enviar.
+  let normalizedNumber = number;
+  if (JID_RE.test(number)) {
+    const [local, domain] = number.split("@");
+    if (domain === "s.whatsapp.net" && /^\d+$/.test(local)) {
+      normalizedNumber = local;
+    } else {
+      console.warn("[send-whatsapp-message] cannot send to JID", { number });
+      return json(
+        { ok: false, error: "Não é possível enviar para este contato (sem telefone real)." },
+        400,
+      );
+    }
+  } else {
+    // telefone com símbolos: remove tudo que não for dígito
+    normalizedNumber = number.replace(/\D/g, "");
+  }
+
+  if (!normalizedNumber || normalizedNumber.length < 8) {
+    return json({ ok: false, error: "invalid number" }, 400);
+  }
+
   // -------- Config do servidor Baileys --------
   const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
   const apiKey = Deno.env.get("WHATSAPP_API_KEY");
