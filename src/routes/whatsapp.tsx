@@ -41,9 +41,9 @@ function isJid(v: unknown): v is string {
 function extractPhone(v: unknown): string {
   if (typeof v !== "string" || !v) return "";
   const trimmed = v.trim();
-  if (isJid(trimmed)) {
+  if (JID_RE.test(trimmed)) {
     const [local, domain] = trimmed.split("@");
-    if (domain?.toLowerCase() === "s.whatsapp.net" && /^\d+$/.test(local)) {
+    if (domain?.toLowerCase() === "s.whatsapp.net" && /^\d+$/.test(local ?? "")) {
       return local.length >= 8 && local.length <= 15 ? local : "";
     }
     return ""; // @lid, @g.us, @broadcast não têm telefone real
