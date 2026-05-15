@@ -81,6 +81,10 @@ function avatarInitials(phone: string, pushName?: string | null): string {
   return "WA";
 }
 
+function normalizeContactName(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+/g, " ") : "";
+}
+
 function formatTime(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -132,13 +136,33 @@ function WhatsAppInbox() {
     let cancelled = false;
 
     async function load() {
-      const { data, error } = await supabase
-        .from("whatsapp_messages")
-        .select("*")
-        .order("created_at", { ascending: true })
-        .limit(2000);
+      const pageSize = 1000;
+      const all: WaMessage[] = [];
+      let errorMsg = "";
+
+      for (let from = 0; from < 10000; from += pageSize) {
+        const { data, error } = await supabase
+          .from("whatsapp_messages")
+          .select("*")
+          .order("created_at", { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          errorMsg = error.message;
+          break;
+        }
+
+        all.push(...((data ?? []) as WaMessage[]));
+        if (!data || data.length < pageSize) break;
+      }
+
       if (cancelled) return;
-      if (!error && data) setMessages(data as WaMessage[]);
+      if (errorMsg) {
+        console.error("WHATSAPP_LOAD_ERROR", errorMsg);
+        toast.error(`Erro ao carregar contatos: ${errorMsg}`);
+      } else {
+        setMessages(all);
+      }
       setLoading(false);
     }
 
@@ -169,13 +193,18 @@ function WhatsAppInbox() {
   // Agrupar conversas — chave preferencial = telefone real; fallback = jid; último = numero cru.
   // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
   const conversations = useMemo<Conversation[]>(() => {
-    // 1) primeiro passo: descobrir telefone real por jid (mapping jid -> phone)
+    // 1) primeiro passo: descobrir telefone real por jid e por nome exato.
     const jidToPhone = new Map<string, string>();
+    const nameToPhone = new Map<string, string>();
     for (const m of messages) {
       const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
       const phoneFromNumero = extractPhone(m.numero);
       if (jid && phoneFromNumero && !jidToPhone.has(jid)) {
         jidToPhone.set(jid, phoneFromNumero);
+      }
+      const nameKey = normalizeContactName(m.push_name);
+      if (nameKey && phoneFromNumero && !nameToPhone.has(nameKey)) {
+        nameToPhone.set(nameKey, phoneFromNumero);
       }
     }
 
@@ -185,7 +214,8 @@ function WhatsAppInbox() {
       if (!m) continue;
       const phoneFromNumero = extractPhone(m.numero);
       const phoneFromJid = m.whatsapp_jid ? jidToPhone.get(m.whatsapp_jid) ?? "" : "";
-      const phone = phoneFromNumero || phoneFromJid;
+      const phoneFromName = nameToPhone.get(normalizeContactName(m.push_name)) ?? "";
+      const phone = phoneFromNumero || phoneFromJid || phoneFromName;
       const jid = typeof m.whatsapp_jid === "string" && m.whatsapp_jid ? m.whatsapp_jid : "";
       const numero = typeof m.numero === "string" ? m.numero : "";
       const key = phone ? `p:${phone}` : jid ? `j:${jid}` : numero ? `n:${numero}` : `id:${m.id}`;
