@@ -31,34 +31,41 @@ type WaMessage = {
 };
 
 // Identificador "raw" — JID interno do WhatsApp (não exibir)
-function isRawJid(v: string) {
+function isRawJid(v: unknown): boolean {
+  if (typeof v !== "string" || !v) return false;
   return /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i.test(v);
 }
 
 // Nome amigável para exibição: pushName > telefone formatado > "Contato WhatsApp"
-function displayName(numero: string, pushName?: string | null) {
+function displayName(numero: unknown, pushName?: string | null) {
   if (pushName && pushName.trim()) return pushName.trim();
-  if (!isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) return numero;
+  if (typeof numero === "string" && !isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) {
+    return numero;
+  }
   return "Contato WhatsApp";
 }
 
 // Iniciais para avatar
-function avatarInitials(numero: string, pushName?: string | null) {
+function avatarInitials(numero: unknown, pushName?: string | null) {
   if (pushName && pushName.trim()) {
     const parts = pushName.trim().split(/\s+/);
     return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
   }
-  if (!isRawJid(numero)) return numero.slice(-2);
+  if (typeof numero === "string" && !isRawJid(numero)) return numero.slice(-2) || "WA";
   return "WA";
 }
 
-function formatTime(iso: string) {
+function formatTime(iso?: string | null) {
+  if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatDay(iso: string) {
+function formatDay(iso?: string | null) {
+  if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   const today = new Date();
   const yest = new Date();
   yest.setDate(today.getDate() - 1);
