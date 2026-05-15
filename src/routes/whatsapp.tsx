@@ -331,7 +331,14 @@ function WhatsAppInbox() {
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-whatsapp-message",
-        { body: { number: target, message: text } },
+        {
+          body: {
+            number: target,
+            message: text,
+            whatsapp_jid: current.jid || undefined,
+            contactName: current.pushName || undefined,
+          },
+        },
       );
       console.log("SEND_SERVER_RESPONSE", { data, error });
 
