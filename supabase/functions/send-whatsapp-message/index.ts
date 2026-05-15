@@ -133,6 +133,62 @@ Deno.serve(async (req) => {
     messageLen: message.length,
   });
 
+  const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
+  const apiKey = Deno.env.get("WHATSAPP_API_KEY");
+  if (!serverUrl) {
+    return json(
+      { ok: false, error: "WHATSAPP_SERVER_URL not configured" },
+      500,
+    );
+  }
+  if (!apiKey) {
+    return json(
+      { ok: false, error: "WHATSAPP_API_KEY not configured" },
+      500,
+    );
+  }
+
+  const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
+
+  if (payload.action === "contacts") {
+    try {
+      const res = await fetch(`${baseUrl}/contacts`, {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "ngrok-skip-browser-warning": "true",
+        },
+      });
+      const txt = await res.text();
+      console.log("[send-whatsapp-message] contacts response", {
+        status: res.status,
+        ok: res.ok,
+        body: txt.slice(0, 300),
+      });
+      if (!res.ok) {
+        return json({ ok: false, contacts: [], error: `Contacts ${res.status}: ${txt.slice(0, 200)}` }, 200);
+      }
+      const parsed = JSON.parse(txt) as unknown;
+      const rawContacts = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { contacts?: unknown[] })?.contacts)
+          ? (parsed as { contacts: unknown[] }).contacts
+          : Array.isArray((parsed as { data?: unknown[] })?.data)
+            ? (parsed as { data: unknown[] }).data
+            : [];
+      const contacts = rawContacts.slice(0, 5000).map((item) => {
+        const row = item as Record<string, unknown>;
+        const id = typeof row.id === "string" ? row.id : typeof row.jid === "string" ? row.jid : typeof row.number === "string" ? row.number : "";
+        const numero = typeof row.number === "string" ? row.number : typeof row.numero === "string" ? row.numero : id;
+        const push_name = typeof row.name === "string" ? row.name : typeof row.notify === "string" ? row.notify : typeof row.push_name === "string" ? row.push_name : "";
+        return { id, numero, whatsapp_jid: JID_RE.test(id) ? id : "", push_name };
+      }).filter((c) => c.id || c.numero || c.push_name);
+      return json({ ok: true, contacts });
+    } catch (e) {
+      return json({ ok: false, contacts: [], error: e instanceof Error ? e.message : String(e) }, 200);
+    }
+  }
+
   if (!number || number.length > MAX_NUMBER_LEN || (!PHONE_RE.test(number) && !JID_RE.test(number))) {
     console.warn("[send-whatsapp-message] invalid number", { number });
     return json({ ok: false, error: "invalid number" }, 400);
@@ -144,9 +200,10 @@ Deno.serve(async (req) => {
   // Normalização do destinatário:
   // - telefone (com símbolos): manda só dígitos.
   // - JID @s.whatsapp.net: extrai a parte numérica.
-  // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, não chama Baileys.
+  // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, tenta enviar pelo próprio JID.
   const originalJid = JID_RE.test(number) ? number : JID_RE.test(payloadJid) ? payloadJid : "";
   let resolvedFromDb = false;
+  let sendByJidFallback = false;
   let normalizedNumber = number;
   if (JID_RE.test(number)) {
     const [local, domain] = number.split("@");
@@ -201,24 +258,16 @@ Deno.serve(async (req) => {
       }
 
       if (!resolved) {
-        console.warn("[send-whatsapp-message] missing real phone for jid", {
+        console.warn("[send-whatsapp-message] missing real phone for jid; trying jid fallback", {
           companyId,
           number,
         });
-        return json(
-          {
-            ok: false,
-            code: "missing_real_phone",
-            error:
-              "Não foi possível enviar: este contato ainda não possui telefone real. Aguarde uma nova mensagem com telefone real ou ajuste o servidor WhatsApp para resolver o @lid antes do envio.",
-            whatsapp_jid: number,
-          },
-          200,
-        );
+        normalizedNumber = number;
+        sendByJidFallback = true;
+      } else {
+        normalizedNumber = resolved;
+        resolvedFromDb = true;
       }
-
-      normalizedNumber = resolved;
-      resolvedFromDb = true;
     }
   } else {
     normalizedNumber = number.replace(/\D/g, "");
@@ -227,25 +276,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  // -------- Config do servidor Baileys --------
-  const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
-  const apiKey = Deno.env.get("WHATSAPP_API_KEY");
-  if (!serverUrl) {
-    return json(
-      { ok: false, error: "WHATSAPP_SERVER_URL not configured" },
-      500,
-    );
-  }
-  if (!apiKey) {
-    return json(
-      { ok: false, error: "WHATSAPP_API_KEY not configured" },
-      500,
-    );
-  }
-
   // -------- Envia ao servidor Baileys --------
   // Normaliza a URL: remove trailing slashes e remove /send se já vier no final.
-  const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
   const target = `${baseUrl}/send`;
 
   console.log("[send-whatsapp-message] config", {
@@ -256,6 +288,7 @@ Deno.serve(async (req) => {
     number,
     normalizedNumber,
     resolvedFromDb,
+    sendByJidFallback,
     messageLen: message.length,
   });
 
