@@ -397,7 +397,7 @@ function WhatsAppInbox() {
                         )}
                       >
                         <div className="whitespace-pre-wrap break-words">
-                          {m.mensagem}
+                          {m.mensagem ?? ""}
                         </div>
                         <div
                           className={cn(
