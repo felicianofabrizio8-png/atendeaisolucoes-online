@@ -51,6 +51,10 @@ const JID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 const MAX_NUMBER_LEN = 128;
 const MAX_MESSAGE_LEN = 4000;
 
+function normalizeName(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+/g, " ") : "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -100,7 +104,12 @@ Deno.serve(async (req) => {
   }
 
   // -------- Body + validação --------
-  let payload: { number?: unknown; message?: unknown };
+  let payload: {
+    number?: unknown;
+    message?: unknown;
+    whatsapp_jid?: unknown;
+    contactName?: unknown;
+  };
   try {
     payload = await req.json();
   } catch {
@@ -111,11 +120,16 @@ Deno.serve(async (req) => {
     typeof payload.number === "string" ? payload.number.trim() : "";
   const message =
     typeof payload.message === "string" ? payload.message.trim() : "";
+  const payloadJid =
+    typeof payload.whatsapp_jid === "string" ? payload.whatsapp_jid.trim() : "";
+  const contactName = normalizeName(payload.contactName);
 
   console.log("[send-whatsapp-message] input", {
     userId,
     companyId,
     number,
+    payloadJid,
+    contactName,
     messageLen: message.length,
   });
 
