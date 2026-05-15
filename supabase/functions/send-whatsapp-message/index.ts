@@ -105,6 +105,7 @@ Deno.serve(async (req) => {
 
   // -------- Body + validação --------
   let payload: {
+    action?: unknown;
     number?: unknown;
     message?: unknown;
     whatsapp_jid?: unknown;
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
     typeof payload.number === "string" ? payload.number.trim() : "";
   const message =
     typeof payload.message === "string" ? payload.message.trim() : "";
+  const action = typeof payload.action === "string" ? payload.action.trim() : "";
   const payloadJid =
     typeof payload.whatsapp_jid === "string" ? payload.whatsapp_jid.trim() : "";
   const contactName = normalizeName(payload.contactName);
@@ -150,7 +152,7 @@ Deno.serve(async (req) => {
 
   const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
 
-  if (payload.action === "contacts") {
+  if (action === "contacts") {
     try {
       const res = await fetch(`${baseUrl}/contacts`, {
         method: "GET",
