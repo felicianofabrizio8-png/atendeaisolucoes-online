@@ -166,6 +166,36 @@ function WhatsAppInbox() {
         setMessages(all);
       }
 
+      const { data: leads, error: leadsError } = await supabase
+        .from("leads")
+        .select("id, name, phone, external_id, created_at")
+        .eq("channel", "whatsapp")
+        .order("created_at", { ascending: false })
+        .limit(1000);
+
+      if (leadsError) {
+        console.warn("WHATSAPP_LEADS_LOAD_ERROR", leadsError.message);
+      } else {
+        const leadRows = (leads ?? [])
+          .map((lead) => {
+            const phone = typeof lead.phone === "string" ? lead.phone : "";
+            const externalId = typeof lead.external_id === "string" ? lead.external_id : "";
+            const numero = phone || externalId;
+            return {
+              id: `lead:${lead.id}`,
+              company_id: companyId,
+              numero,
+              mensagem: "",
+              direction: "in" as const,
+              created_at: "1970-01-01T00:00:00.000Z",
+              whatsapp_jid: isJid(externalId) ? externalId : null,
+              push_name: typeof lead.name === "string" ? lead.name : null,
+            };
+          })
+          .filter((row) => row.numero || row.push_name);
+        setContactRows(leadRows as WaMessage[]);
+      }
+
       if (!contactsLoadedRef.current) {
         contactsLoadedRef.current = true;
         const { data: contactsData, error: contactsError } = await supabase.functions.invoke(
@@ -192,7 +222,7 @@ function WhatsAppInbox() {
               };
             })
             .filter((row: WaMessage) => row.numero || row.whatsapp_jid || row.push_name);
-          setContactRows(rows);
+          setContactRows((prev) => [...prev, ...rows]);
         } else if (contactsData?.error) {
           console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsData.error);
         }
