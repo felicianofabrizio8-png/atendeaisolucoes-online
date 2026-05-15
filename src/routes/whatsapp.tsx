@@ -239,6 +239,10 @@ function WhatsAppInbox() {
           break;
         }
       }
+      if (!phoneReal) {
+        const byName = nameToPhone.get(normalizeContactName(pushName));
+        if (byName) phoneReal = byName;
+      }
       // jid técnico
       const jid =
         sorted.map((m) => (typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : ""))
