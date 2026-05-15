@@ -175,21 +175,23 @@ function WhatsAppInbox() {
         if (contactsError) {
           console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsError.message);
         } else if (contactsData?.ok && Array.isArray(contactsData.contacts)) {
-          const rows = contactsData.contacts.map((contact: Record<string, unknown>, idx: number) => {
-            const numero = typeof contact.numero === "string" ? contact.numero : "";
-            const jid = typeof contact.whatsapp_jid === "string" ? contact.whatsapp_jid : "";
-            const pushName = typeof contact.push_name === "string" ? contact.push_name : "";
-            return {
-              id: `contact:${jid || numero || idx}`,
-              company_id: companyId,
-              numero: numero || jid,
-              mensagem: "",
-              direction: "in" as const,
-              created_at: "1970-01-01T00:00:00.000Z",
-              whatsapp_jid: jid || null,
-              push_name: pushName || null,
-            };
-          }).filter((row: WaMessage) => row.numero || row.whatsapp_jid || row.push_name);
+          const rows = contactsData.contacts
+            .map((contact: Record<string, unknown>, idx: number) => {
+              const numero = typeof contact.numero === "string" ? contact.numero : "";
+              const jid = typeof contact.whatsapp_jid === "string" ? contact.whatsapp_jid : "";
+              const pushName = typeof contact.push_name === "string" ? contact.push_name : "";
+              return {
+                id: `contact:${jid || numero || idx}`,
+                company_id: companyId,
+                numero: numero || jid,
+                mensagem: "",
+                direction: "in" as const,
+                created_at: "1970-01-01T00:00:00.000Z",
+                whatsapp_jid: jid || null,
+                push_name: pushName || null,
+              };
+            })
+            .filter((row: WaMessage) => row.numero || row.whatsapp_jid || row.push_name);
           setContactRows(rows);
         } else if (contactsData?.error) {
           console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsData.error);
@@ -208,9 +210,7 @@ function WhatsAppInbox() {
         { event: "INSERT", schema: "public", table: "whatsapp_messages" },
         (payload) => {
           const m = payload.new as WaMessage;
-          setMessages((prev) =>
-            prev.some((x) => x.id === m.id) ? prev : [...prev, m],
-          );
+          setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
         },
       )
       .subscribe();
@@ -246,7 +246,7 @@ function WhatsAppInbox() {
     for (const m of allMessages) {
       if (!m) continue;
       const phoneFromNumero = extractPhone(m.numero);
-      const phoneFromJid = m.whatsapp_jid ? jidToPhone.get(m.whatsapp_jid) ?? "" : "";
+      const phoneFromJid = m.whatsapp_jid ? (jidToPhone.get(m.whatsapp_jid) ?? "") : "";
       const phoneFromName = nameToPhone.get(normalizeContactName(m.push_name)) ?? "";
       const phone = phoneFromNumero || phoneFromJid || phoneFromName;
       const jid = typeof m.whatsapp_jid === "string" && m.whatsapp_jid ? m.whatsapp_jid : "";
@@ -259,8 +259,7 @@ function WhatsAppInbox() {
     const list: Conversation[] = [];
     for (const [key, msgs] of groups) {
       const sorted = [...msgs].sort(
-        (a, b) =>
-          new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime(),
+        (a, b) => new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime(),
       );
       const last = sorted[sorted.length - 1];
       // Telefone real: melhor candidato em qualquer mensagem do grupo
@@ -274,10 +273,14 @@ function WhatsAppInbox() {
       }
       // jid técnico
       const jid =
-        sorted.map((m) => (typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : ""))
+        sorted
+          .map((m) => (typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : ""))
           .find((v) => isJid(v)) ?? "";
       const pushName =
-        sorted.map((m) => m?.push_name).filter((v): v is string => !!v && !!v.trim()).pop() ?? null;
+        sorted
+          .map((m) => m?.push_name)
+          .filter((v): v is string => !!v && !!v.trim())
+          .pop() ?? null;
       if (!phoneReal) {
         const byName = nameToPhone.get(normalizeContactName(pushName));
         if (byName) phoneReal = byName;
@@ -288,8 +291,7 @@ function WhatsAppInbox() {
 
     list.sort(
       (a, b) =>
-        new Date(b?.last?.created_at ?? 0).getTime() -
-        new Date(a?.last?.created_at ?? 0).getTime(),
+        new Date(b?.last?.created_at ?? 0).getTime() - new Date(a?.last?.created_at ?? 0).getTime(),
     );
     return list;
   }, [messages, contactRows]);
@@ -319,7 +321,12 @@ function WhatsAppInbox() {
 
   // Auto-selecionar primeira conversa (apenas desktop)
   useEffect(() => {
-    if (!selected && conversations.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+    if (
+      !selected &&
+      conversations.length > 0 &&
+      typeof window !== "undefined" &&
+      window.innerWidth >= 768
+    ) {
       setSelected(conversations[0].key);
     }
   }, [conversations, selected]);
@@ -362,17 +369,14 @@ function WhatsAppInbox() {
 
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "send-whatsapp-message",
-        {
-          body: {
-            number: target,
-            message: text,
-            whatsapp_jid: current.jid || undefined,
-            contactName: current.pushName || undefined,
-          },
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          number: target,
+          message: text,
+          whatsapp_jid: current.jid || undefined,
+          contactName: current.pushName || undefined,
         },
-      );
+      });
       console.log("SEND_SERVER_RESPONSE", { data, error });
 
       if (error) {
@@ -427,9 +431,7 @@ function WhatsAppInbox() {
       >
         <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <h1 className="text-base font-semibold">Conversas</h1>
-          <span className="text-[11px] text-muted-foreground">
-            {conversations.length}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
         </div>
         <div className="p-2 border-b border-border shrink-0">
           <div className="relative">
@@ -443,9 +445,7 @@ function WhatsAppInbox() {
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {loading && (
-            <div className="p-4 text-xs text-muted-foreground">Carregando…</div>
-          )}
+          {loading && <div className="p-4 text-xs text-muted-foreground">Carregando…</div>}
           {!loading && filtered.length === 0 && (
             <div className="p-6 text-center text-xs text-muted-foreground">
               Nenhuma conversa encontrada.
@@ -454,7 +454,11 @@ function WhatsAppInbox() {
           {filtered.map((c) => {
             const active = c.key === selected;
             const name = displayName(c.phoneReal, c.pushName);
-            const sub = c.phoneReal ? formatPhone(c.phoneReal) : c.isGroup ? "Grupo" : "Sem telefone real";
+            const sub = c.phoneReal
+              ? formatPhone(c.phoneReal)
+              : c.isGroup
+                ? "Grupo"
+                : "Sem telefone real";
             return (
               <button
                 key={c.key}
@@ -488,10 +492,7 @@ function WhatsAppInbox() {
 
       {/* Chat */}
       <section
-        className={cn(
-          "flex-1 min-w-0 min-h-0 flex-col",
-          selected ? "flex" : "hidden md:flex",
-        )}
+        className={cn("flex-1 min-w-0 min-h-0 flex-col", selected ? "flex" : "hidden md:flex")}
       >
         {!current ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
@@ -531,8 +532,7 @@ function WhatsAppInbox() {
             >
               {current.messages.map((m, idx) => {
                 const prev = current.messages[idx - 1];
-                const showDay =
-                  !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
+                const showDay = !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
                 const mine = m.direction === "out";
                 return (
                   <div key={m.id}>
@@ -552,9 +552,7 @@ function WhatsAppInbox() {
                             : "bg-card border border-border rounded-bl-sm",
                         )}
                       >
-                        <div className="whitespace-pre-wrap break-words">
-                          {m.mensagem ?? ""}
-                        </div>
+                        <div className="whitespace-pre-wrap break-words">{m.mensagem ?? ""}</div>
                         <div
                           className={cn(
                             "text-[10px] mt-0.5 text-right",
@@ -582,9 +580,7 @@ function WhatsAppInbox() {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder={
-                    current.isGroup
-                      ? "Envio para grupos desabilitado"
-                      : "Digite uma mensagem"
+                    current.isGroup ? "Envio para grupos desabilitado" : "Digite uma mensagem"
                   }
                   disabled={current.isGroup}
                   className="flex-1"

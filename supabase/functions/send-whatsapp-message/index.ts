@@ -11,8 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -31,9 +30,7 @@ const rateBuckets = new Map<string, number[]>();
 
 function rateLimit(userId: string): boolean {
   const now = Date.now();
-  const arr = (rateBuckets.get(userId) ?? []).filter(
-    (t) => now - t < RATE_LIMIT_WINDOW_MS,
-  );
+  const arr = (rateBuckets.get(userId) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
   if (arr.length >= RATE_LIMIT_MAX) {
     rateBuckets.set(userId, arr);
     return false;
@@ -65,9 +62,7 @@ Deno.serve(async (req) => {
 
   // -------- Auth (JWT do Supabase) --------
   const authHeader = req.headers.get("Authorization") ?? "";
-  const accessToken = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : "";
+  const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!accessToken) {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
@@ -78,8 +73,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: userRes, error: userErr } =
-    await supabase.auth.getUser(accessToken);
+  const { data: userRes, error: userErr } = await supabase.auth.getUser(accessToken);
   if (userErr || !userRes.user) {
     console.warn("[send-whatsapp-message] invalid session");
     return json({ ok: false, error: "invalid session" }, 401);
@@ -117,13 +111,10 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "invalid JSON" }, 400);
   }
 
-  const number =
-    typeof payload.number === "string" ? payload.number.trim() : "";
-  const message =
-    typeof payload.message === "string" ? payload.message.trim() : "";
+  const number = typeof payload.number === "string" ? payload.number.trim() : "";
+  const message = typeof payload.message === "string" ? payload.message.trim() : "";
   const action = typeof payload.action === "string" ? payload.action.trim() : "";
-  const payloadJid =
-    typeof payload.whatsapp_jid === "string" ? payload.whatsapp_jid.trim() : "";
+  const payloadJid = typeof payload.whatsapp_jid === "string" ? payload.whatsapp_jid.trim() : "";
   const contactName = normalizeName(payload.contactName);
 
   console.log("[send-whatsapp-message] input", {
@@ -138,16 +129,10 @@ Deno.serve(async (req) => {
   const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
   const apiKey = Deno.env.get("WHATSAPP_API_KEY");
   if (!serverUrl) {
-    return json(
-      { ok: false, error: "WHATSAPP_SERVER_URL not configured" },
-      500,
-    );
+    return json({ ok: false, error: "WHATSAPP_SERVER_URL not configured" }, 500);
   }
   if (!apiKey) {
-    return json(
-      { ok: false, error: "WHATSAPP_API_KEY not configured" },
-      500,
-    );
+    return json({ ok: false, error: "WHATSAPP_API_KEY not configured" }, 500);
   }
 
   const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
@@ -168,7 +153,10 @@ Deno.serve(async (req) => {
         body: txt.slice(0, 300),
       });
       if (!res.ok) {
-        return json({ ok: false, contacts: [], error: `Contacts ${res.status}: ${txt.slice(0, 200)}` }, 200);
+        return json(
+          { ok: false, contacts: [], error: `Contacts ${res.status}: ${txt.slice(0, 200)}` },
+          200,
+        );
       }
       const parsed = JSON.parse(txt) as unknown;
       const rawContacts = Array.isArray(parsed)
@@ -178,20 +166,49 @@ Deno.serve(async (req) => {
           : Array.isArray((parsed as { data?: unknown[] })?.data)
             ? (parsed as { data: unknown[] }).data
             : [];
-      const contacts = rawContacts.slice(0, 5000).map((item) => {
-        const row = item as Record<string, unknown>;
-        const id = typeof row.id === "string" ? row.id : typeof row.jid === "string" ? row.jid : typeof row.number === "string" ? row.number : "";
-        const numero = typeof row.number === "string" ? row.number : typeof row.numero === "string" ? row.numero : id;
-        const push_name = typeof row.name === "string" ? row.name : typeof row.notify === "string" ? row.notify : typeof row.push_name === "string" ? row.push_name : "";
-        return { id, numero, whatsapp_jid: JID_RE.test(id) ? id : "", push_name };
-      }).filter((c) => c.id || c.numero || c.push_name);
+      const contacts = rawContacts
+        .slice(0, 5000)
+        .map((item) => {
+          const row = item as Record<string, unknown>;
+          const id =
+            typeof row.id === "string"
+              ? row.id
+              : typeof row.jid === "string"
+                ? row.jid
+                : typeof row.number === "string"
+                  ? row.number
+                  : "";
+          const numero =
+            typeof row.number === "string"
+              ? row.number
+              : typeof row.numero === "string"
+                ? row.numero
+                : id;
+          const push_name =
+            typeof row.name === "string"
+              ? row.name
+              : typeof row.notify === "string"
+                ? row.notify
+                : typeof row.push_name === "string"
+                  ? row.push_name
+                  : "";
+          return { id, numero, whatsapp_jid: JID_RE.test(id) ? id : "", push_name };
+        })
+        .filter((c) => c.id || c.numero || c.push_name);
       return json({ ok: true, contacts });
     } catch (e) {
-      return json({ ok: false, contacts: [], error: e instanceof Error ? e.message : String(e) }, 200);
+      return json(
+        { ok: false, contacts: [], error: e instanceof Error ? e.message : String(e) },
+        200,
+      );
     }
   }
 
-  if (!number || number.length > MAX_NUMBER_LEN || (!PHONE_RE.test(number) && !JID_RE.test(number))) {
+  if (
+    !number ||
+    number.length > MAX_NUMBER_LEN ||
+    (!PHONE_RE.test(number) && !JID_RE.test(number))
+  ) {
     console.warn("[send-whatsapp-message] invalid number", { number });
     return json({ ok: false, error: "invalid number" }, 400);
   }
