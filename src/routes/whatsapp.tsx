@@ -5,7 +5,6 @@ import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,28 +29,55 @@ type WaMessage = {
   push_name?: string | null;
 };
 
-// Identificador "raw" — JID interno do WhatsApp (não exibir)
-function isRawJid(v: unknown): boolean {
-  if (typeof v !== "string" || !v) return false;
-  return /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i.test(v);
+// ===== Identidade do contato =====
+const JID_RE = /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i;
+
+function isJid(v: unknown): v is string {
+  return typeof v === "string" && JID_RE.test(v);
 }
 
-// Nome amigável para exibição: pushName > telefone formatado > "Contato WhatsApp"
-function displayName(numero: unknown, pushName?: string | null) {
-  if (pushName && pushName.trim()) return pushName.trim();
-  if (typeof numero === "string" && !isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) {
-    return numero;
+// Extrai telefone real (apenas dígitos, 8-15) de um valor que pode ser
+// telefone, JID @s.whatsapp.net, ou nada.
+function extractPhone(v: unknown): string {
+  if (typeof v !== "string" || !v) return "";
+  const trimmed = v.trim();
+  if (JID_RE.test(trimmed)) {
+    const [local, domain] = trimmed.split("@");
+    if (domain?.toLowerCase() === "s.whatsapp.net" && /^\d+$/.test(local ?? "")) {
+      return local.length >= 8 && local.length <= 15 ? local : "";
+    }
+    return ""; // @lid, @g.us, @broadcast não têm telefone real
   }
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : "";
+}
+
+// Formata telefone como +55 (DD) NNNNN-NNNN quando possível.
+function formatPhone(digits: string): string {
+  if (!digits) return "";
+  // BR: 55 + DDD(2) + 8 ou 9 dígitos
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  }
+  // Fallback genérico
+  return `+${digits}`;
+}
+
+function displayName(phone: string, pushName?: string | null): string {
+  if (pushName && pushName.trim()) return pushName.trim();
+  if (phone) return formatPhone(phone);
   return "Contato WhatsApp";
 }
 
-// Iniciais para avatar
-function avatarInitials(numero: unknown, pushName?: string | null) {
+function avatarInitials(phone: string, pushName?: string | null): string {
   if (pushName && pushName.trim()) {
     const parts = pushName.trim().split(/\s+/);
     return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
   }
-  if (typeof numero === "string" && !isRawJid(numero)) return numero.slice(-2) || "WA";
+  if (phone) return phone.slice(-2);
   return "WA";
 }
 
@@ -78,6 +104,16 @@ function formatDay(iso?: string | null) {
   return d.toLocaleDateString("pt-BR");
 }
 
+type Conversation = {
+  key: string;
+  phoneReal: string; // só dígitos, "" se não houver
+  jid: string; // identificador técnico, "" se não houver
+  pushName: string | null;
+  last: WaMessage | undefined;
+  messages: WaMessage[];
+  isGroup: boolean;
+};
+
 function WhatsAppInbox() {
   const { profile } = useAuth();
   const companyId = profile?.company_id;
@@ -87,9 +123,10 @@ function WhatsAppInbox() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Carga inicial + polling 3s (fallback caso realtime falhe)
+  // Carga inicial + polling 3s + realtime
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
@@ -108,7 +145,6 @@ function WhatsAppInbox() {
     load();
     const interval = setInterval(load, 3000);
 
-    // Realtime
     const channel = supabase
       .channel("whatsapp_messages_rt")
       .on(
@@ -130,39 +166,59 @@ function WhatsAppInbox() {
     };
   }, [companyId]);
 
-  // Agrupar por contato — mescla telefone e JID quando ambos referem-se ao mesmo contato.
-  const conversations = useMemo(() => {
-    const map = new Map<string, WaMessage[]>();
+  // Agrupar conversas — chave preferencial = telefone real; fallback = jid; último = numero cru.
+  // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
+  const conversations = useMemo<Conversation[]>(() => {
+    // 1) primeiro passo: descobrir telefone real por jid (mapping jid -> phone)
+    const jidToPhone = new Map<string, string>();
+    for (const m of messages) {
+      const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
+      const phoneFromNumero = extractPhone(m.numero);
+      if (jid && phoneFromNumero && !jidToPhone.has(jid)) {
+        jidToPhone.set(jid, phoneFromNumero);
+      }
+    }
+
+    // 2) agrupar por chave canônica
+    const groups = new Map<string, WaMessage[]>();
     for (const m of messages) {
       if (!m) continue;
+      const phoneFromNumero = extractPhone(m.numero);
+      const phoneFromJid = m.whatsapp_jid ? jidToPhone.get(m.whatsapp_jid) ?? "" : "";
+      const phone = phoneFromNumero || phoneFromJid;
+      const jid = typeof m.whatsapp_jid === "string" && m.whatsapp_jid ? m.whatsapp_jid : "";
       const numero = typeof m.numero === "string" ? m.numero : "";
-      const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
-      const phoneish =
-        numero && !isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)
-          ? numero.replace(/\D/g, "")
-          : "";
-      const key = phoneish || jid || numero || m.id || "unknown";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(m);
+      const key = phone ? `p:${phone}` : jid ? `j:${jid}` : numero ? `n:${numero}` : `id:${m.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(m);
     }
-    const list = Array.from(map.entries()).map(([key, msgs]) => {
+
+    const list: Conversation[] = [];
+    for (const [key, msgs] of groups) {
       const sorted = [...msgs].sort(
         (a, b) =>
-          new Date(a?.created_at ?? 0).getTime() -
-          new Date(b?.created_at ?? 0).getTime(),
+          new Date(a?.created_at ?? 0).getTime() - new Date(b?.created_at ?? 0).getTime(),
       );
       const last = sorted[sorted.length - 1];
-      const phoneMsg = sorted.find(
-        (x) =>
-          typeof x?.numero === "string" &&
-          !isRawJid(x.numero) &&
-          /^[0-9+\-\s()]+$/.test(x.numero),
-      );
-      const sendNumero = phoneMsg?.numero ?? last?.numero ?? "";
+      // Telefone real: melhor candidato em qualquer mensagem do grupo
+      let phoneReal = "";
+      for (const m of sorted) {
+        const p = extractPhone(m.numero);
+        if (p) {
+          phoneReal = p;
+          break;
+        }
+      }
+      // jid técnico
+      const jid =
+        sorted.map((m) => (typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : ""))
+          .find((v) => isJid(v)) ?? "";
       const pushName =
-        sorted.map((x) => x?.push_name).filter(Boolean).pop() ?? null;
-      return { key, sendNumero, pushName, last, messages: sorted };
-    });
+        sorted.map((m) => m?.push_name).filter((v): v is string => !!v && !!v.trim()).pop() ?? null;
+      const isGroup = jid.endsWith("@g.us") || jid.endsWith("@broadcast");
+      list.push({ key, phoneReal, jid, pushName, last, messages: sorted, isGroup });
+    }
+
     list.sort(
       (a, b) =>
         new Date(b?.last?.created_at ?? 0).getTime() -
@@ -174,12 +230,13 @@ function WhatsAppInbox() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return conversations;
-    return conversations.filter(
-      (c) =>
-        (c.sendNumero ?? "").toLowerCase().includes(q) ||
-        (c.pushName ?? "").toLowerCase().includes(q) ||
-        (c.last?.mensagem ?? "").toLowerCase().includes(q),
-    );
+    const qDigits = q.replace(/\D/g, "");
+    return conversations.filter((c) => {
+      const name = displayName(c.phoneReal, c.pushName).toLowerCase();
+      const phoneMatch = qDigits && c.phoneReal.includes(qDigits);
+      const lastMsg = (c.last?.mensagem ?? "").toLowerCase();
+      return name.includes(q) || phoneMatch || lastMsg.includes(q);
+    });
   }, [conversations, search]);
 
   const current = useMemo(
@@ -187,26 +244,21 @@ function WhatsAppInbox() {
     [conversations, selected],
   );
 
-  // Auto-scroll bottom
+  // Auto-scroll quando trocar conversa ou chegar mensagem nova
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [current?.messages.length, selected]);
 
-  // Auto-selecionar primeira conversa
+  // Auto-selecionar primeira conversa (apenas desktop)
   useEffect(() => {
-    if (!selected && conversations.length > 0) {
+    if (!selected && conversations.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
       setSelected(conversations[0].key);
     }
   }, [conversations, selected]);
 
-  const [sending, setSending] = useState(false);
-
   async function handleSend() {
     const text = draft.trim();
-    console.log("SEND_CONVERSATION", current);
-    console.log("SEND_TARGET", current?.sendNumero);
-    console.log("SEND_MESSAGE", text);
     if (sending) return;
     if (!current) {
       toast.error("Nenhuma conversa selecionada.");
@@ -216,25 +268,43 @@ function WhatsAppInbox() {
       toast.error("Sessão sem empresa vinculada.");
       return;
     }
-    const numero =
-      typeof current.sendNumero === "string" ? current.sendNumero.trim() : "";
-    if (!numero) {
-      toast.error("Conversa sem número/destinatário válido.");
+    if (!text) return;
+
+    // Decide o destinatário: phone_real > jid (não-grupo) > erro.
+    let target = "";
+    if (current.phoneReal) {
+      target = current.phoneReal;
+    } else if (current.jid && !current.isGroup) {
+      target = current.jid;
+    } else {
+      toast.error(
+        current.isGroup
+          ? "Envio para grupos não é suportado."
+          : "Conversa sem telefone real ou JID válido.",
+      );
       return;
     }
-    if (!text) return;
+
+    console.log("SEND_SELECTED_CONTACT", {
+      key: current.key,
+      phoneReal: current.phoneReal,
+      jid: current.jid,
+      pushName: current.pushName,
+    });
+    console.log("SEND_TARGET_FINAL", target);
+
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-whatsapp-message",
-        { body: { number: numero, message: text } },
+        { body: { number: target, message: text } },
       );
-      console.log("[whatsapp] invoke result", { data, error });
+      console.log("SEND_SERVER_RESPONSE", { data, error });
+
       if (error) {
         let detail = error.message;
         try {
-          const ctx = (error as unknown as { context?: { response?: Response } })
-            .context;
+          const ctx = (error as unknown as { context?: { response?: Response } }).context;
           if (ctx?.response) {
             const body = await ctx.response.clone().text();
             if (body) detail = body;
@@ -242,17 +312,21 @@ function WhatsAppInbox() {
         } catch {
           /* noop */
         }
-        throw new Error(detail);
-      }
-      if (!data?.ok) {
-        const detail = data?.error || "send failed";
+        console.error("BAILEYS_SEND_ERROR", detail);
         toast.error(`Erro ao enviar: ${detail}`);
         return;
       }
+      if (!data?.ok) {
+        const detail = data?.error || "send failed";
+        console.error("BAILEYS_SEND_ERROR", detail);
+        toast.error(`Erro ao enviar: ${detail}`);
+        return;
+      }
+      console.log("BAILEYS_SEND_SUCCESS", data);
       setDraft("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("send failed", msg, e);
+      console.error("BAILEYS_SEND_ERROR", msg);
       toast.error(`Erro ao enviar: ${msg}`);
     } finally {
       setSending(false);
@@ -267,41 +341,46 @@ function WhatsAppInbox() {
     );
   }
 
+  // Container ocupa toda a viewport disponível (descontado o topbar mobile de 3rem).
   return (
-    <div className="flex-1 flex min-h-0 overflow-hidden bg-background">
-      {/* Sidebar de conversas — esconde no mobile quando há conversa selecionada */}
+    <div className="flex w-full overflow-hidden bg-background h-[calc(100dvh-3rem)] md:h-screen">
+      {/* Lista de conversas */}
       <aside
         className={cn(
-          "w-full md:w-80 shrink-0 border-r border-border flex-col bg-card",
+          "w-full md:w-80 shrink-0 border-r border-border flex-col bg-card min-h-0",
           selected ? "hidden md:flex" : "flex",
         )}
       >
-        <div className="h-14 px-4 flex items-center border-b border-border">
+        <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <h1 className="text-base font-semibold">Conversas</h1>
+          <span className="text-[11px] text-muted-foreground">
+            {conversations.length}
+          </span>
         </div>
-        <div className="p-2 border-b border-border">
+        <div className="p-2 border-b border-border shrink-0">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Buscar número ou mensagem"
+              placeholder="Buscar nome ou telefone"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-7 h-8 text-sm"
             />
           </div>
         </div>
-        <ScrollArea className="flex-1">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {loading && (
             <div className="p-4 text-xs text-muted-foreground">Carregando…</div>
           )}
           {!loading && filtered.length === 0 && (
             <div className="p-6 text-center text-xs text-muted-foreground">
-              Nenhuma conversa ainda.
+              Nenhuma conversa encontrada.
             </div>
           )}
           {filtered.map((c) => {
             const active = c.key === selected;
-            const name = displayName(c.sendNumero, c.pushName);
+            const name = displayName(c.phoneReal, c.pushName);
+            const sub = c.phoneReal ? formatPhone(c.phoneReal) : c.isGroup ? "Grupo" : "Sem telefone real";
             return (
               <button
                 key={c.key}
@@ -312,7 +391,7 @@ function WhatsAppInbox() {
                 )}
               >
                 <div className="h-10 w-10 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
-                  {avatarInitials(c.sendNumero, c.pushName)}
+                  {avatarInitials(c.phoneReal, c.pushName)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
@@ -321,6 +400,7 @@ function WhatsAppInbox() {
                       {formatTime(c.last?.created_at)}
                     </span>
                   </div>
+                  <div className="text-[10px] text-muted-foreground truncate">{sub}</div>
                   <p className="text-xs text-muted-foreground truncate">
                     {c.last?.direction === "out" ? "Você: " : ""}
                     {c.last?.mensagem ?? ""}
@@ -329,13 +409,13 @@ function WhatsAppInbox() {
               </button>
             );
           })}
-        </ScrollArea>
+        </div>
       </aside>
 
       {/* Chat */}
       <section
         className={cn(
-          "flex-1 min-w-0 flex-col",
+          "flex-1 min-w-0 min-h-0 flex-col",
           selected ? "flex" : "hidden md:flex",
         )}
       >
@@ -346,7 +426,7 @@ function WhatsAppInbox() {
           </div>
         ) : (
           <>
-            <header className="h-14 px-3 md:px-4 border-b border-border flex items-center gap-3 bg-card">
+            <header className="h-14 px-3 md:px-4 border-b border-border flex items-center gap-3 bg-card shrink-0">
               <button
                 onClick={() => setSelected(null)}
                 className="md:hidden p-1.5 rounded-md hover:bg-accent"
@@ -355,25 +435,30 @@ function WhatsAppInbox() {
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
-                {avatarInitials(current.sendNumero, current.pushName)}
+                {avatarInitials(current.phoneReal, current.pushName)}
               </div>
               <div className="leading-tight min-w-0">
                 <div className="text-sm font-semibold truncate">
-                  {displayName(current.sendNumero, current.pushName)}
+                  {displayName(current.phoneReal, current.pushName)}
                 </div>
-                <div className="text-[11px] text-muted-foreground">WhatsApp</div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {current.phoneReal
+                    ? formatPhone(current.phoneReal)
+                    : current.isGroup
+                      ? "Grupo — envio desabilitado"
+                      : "Sem telefone real — envio limitado"}
+                </div>
               </div>
             </header>
 
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-4 py-4 space-y-2 bg-background"
+              className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 bg-background"
             >
               {current.messages.map((m, idx) => {
                 const prev = current.messages[idx - 1];
                 const showDay =
-                  !prev ||
-                  formatDay(prev.created_at) !== formatDay(m.created_at);
+                  !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
                 const mine = m.direction === "out";
                 return (
                   <div key={m.id}>
@@ -384,12 +469,7 @@ function WhatsAppInbox() {
                         </span>
                       </div>
                     )}
-                    <div
-                      className={cn(
-                        "flex",
-                        mine ? "justify-end" : "justify-start",
-                      )}
-                    >
+                    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
                       <div
                         className={cn(
                           "max-w-[70%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
@@ -404,9 +484,7 @@ function WhatsAppInbox() {
                         <div
                           className={cn(
                             "text-[10px] mt-0.5 text-right",
-                            mine
-                              ? "text-primary-foreground/70"
-                              : "text-muted-foreground",
+                            mine ? "text-primary-foreground/70" : "text-muted-foreground",
                           )}
                         >
                           {formatTime(m.created_at)}
@@ -418,7 +496,7 @@ function WhatsAppInbox() {
               })}
             </div>
 
-            <footer className="p-3 border-t border-border bg-card">
+            <footer className="p-3 border-t border-border bg-card shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -429,10 +507,19 @@ function WhatsAppInbox() {
                 <Input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Digite uma mensagem"
+                  placeholder={
+                    current.isGroup
+                      ? "Envio para grupos desabilitado"
+                      : "Digite uma mensagem"
+                  }
+                  disabled={current.isGroup}
                   className="flex-1"
                 />
-                <Button type="submit" size="icon" disabled={!draft.trim() || sending}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!draft.trim() || sending || current.isGroup}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
