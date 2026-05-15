@@ -11,8 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -31,9 +30,7 @@ const rateBuckets = new Map<string, number[]>();
 
 function rateLimit(userId: string): boolean {
   const now = Date.now();
-  const arr = (rateBuckets.get(userId) ?? []).filter(
-    (t) => now - t < RATE_LIMIT_WINDOW_MS,
-  );
+  const arr = (rateBuckets.get(userId) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
   if (arr.length >= RATE_LIMIT_MAX) {
     rateBuckets.set(userId, arr);
     return false;
@@ -51,6 +48,10 @@ const JID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 const MAX_NUMBER_LEN = 128;
 const MAX_MESSAGE_LEN = 4000;
 
+function normalizeName(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+/g, " ") : "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -61,9 +62,7 @@ Deno.serve(async (req) => {
 
   // -------- Auth (JWT do Supabase) --------
   const authHeader = req.headers.get("Authorization") ?? "";
-  const accessToken = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : "";
+  const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!accessToken) {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
@@ -74,8 +73,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: userRes, error: userErr } =
-    await supabase.auth.getUser(accessToken);
+  const { data: userRes, error: userErr } = await supabase.auth.getUser(accessToken);
   if (userErr || !userRes.user) {
     console.warn("[send-whatsapp-message] invalid session");
     return json({ ok: false, error: "invalid session" }, 401);
@@ -100,26 +98,117 @@ Deno.serve(async (req) => {
   }
 
   // -------- Body + validação --------
-  let payload: { number?: unknown; message?: unknown };
+  let payload: {
+    action?: unknown;
+    number?: unknown;
+    message?: unknown;
+    whatsapp_jid?: unknown;
+    contactName?: unknown;
+  };
   try {
     payload = await req.json();
   } catch {
     return json({ ok: false, error: "invalid JSON" }, 400);
   }
 
-  const number =
-    typeof payload.number === "string" ? payload.number.trim() : "";
-  const message =
-    typeof payload.message === "string" ? payload.message.trim() : "";
+  const number = typeof payload.number === "string" ? payload.number.trim() : "";
+  const message = typeof payload.message === "string" ? payload.message.trim() : "";
+  const action = typeof payload.action === "string" ? payload.action.trim() : "";
+  const payloadJid = typeof payload.whatsapp_jid === "string" ? payload.whatsapp_jid.trim() : "";
+  const contactName = normalizeName(payload.contactName);
 
   console.log("[send-whatsapp-message] input", {
     userId,
     companyId,
     number,
+    payloadJid,
+    contactName,
     messageLen: message.length,
   });
 
-  if (!number || number.length > MAX_NUMBER_LEN || (!PHONE_RE.test(number) && !JID_RE.test(number))) {
+  const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
+  const apiKey = Deno.env.get("WHATSAPP_API_KEY");
+  if (!serverUrl) {
+    return json({ ok: false, error: "WHATSAPP_SERVER_URL not configured" }, 500);
+  }
+  if (!apiKey) {
+    return json({ ok: false, error: "WHATSAPP_API_KEY not configured" }, 500);
+  }
+
+  const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
+
+  if (action === "contacts") {
+    try {
+      const res = await fetch(`${baseUrl}/contacts`, {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "ngrok-skip-browser-warning": "true",
+        },
+      });
+      const txt = await res.text();
+      console.log("[send-whatsapp-message] contacts response", {
+        status: res.status,
+        ok: res.ok,
+        body: txt.slice(0, 300),
+      });
+      if (!res.ok) {
+        return json(
+          { ok: false, contacts: [], error: `Contacts ${res.status}: ${txt.slice(0, 200)}` },
+          200,
+        );
+      }
+      const parsed = JSON.parse(txt) as unknown;
+      const rawContacts = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { contacts?: unknown[] })?.contacts)
+          ? (parsed as { contacts: unknown[] }).contacts
+          : Array.isArray((parsed as { data?: unknown[] })?.data)
+            ? (parsed as { data: unknown[] }).data
+            : [];
+      const contacts = rawContacts
+        .slice(0, 5000)
+        .map((item) => {
+          const row = item as Record<string, unknown>;
+          const id =
+            typeof row.id === "string"
+              ? row.id
+              : typeof row.jid === "string"
+                ? row.jid
+                : typeof row.number === "string"
+                  ? row.number
+                  : "";
+          const numero =
+            typeof row.number === "string"
+              ? row.number
+              : typeof row.numero === "string"
+                ? row.numero
+                : id;
+          const push_name =
+            typeof row.name === "string"
+              ? row.name
+              : typeof row.notify === "string"
+                ? row.notify
+                : typeof row.push_name === "string"
+                  ? row.push_name
+                  : "";
+          return { id, numero, whatsapp_jid: JID_RE.test(id) ? id : "", push_name };
+        })
+        .filter((c) => c.id || c.numero || c.push_name);
+      return json({ ok: true, contacts });
+    } catch (e) {
+      return json(
+        { ok: false, contacts: [], error: e instanceof Error ? e.message : String(e) },
+        200,
+      );
+    }
+  }
+
+  if (
+    !number ||
+    number.length > MAX_NUMBER_LEN ||
+    (!PHONE_RE.test(number) && !JID_RE.test(number))
+  ) {
     console.warn("[send-whatsapp-message] invalid number", { number });
     return json({ ok: false, error: "invalid number" }, 400);
   }
@@ -130,9 +219,10 @@ Deno.serve(async (req) => {
   // Normalização do destinatário:
   // - telefone (com símbolos): manda só dígitos.
   // - JID @s.whatsapp.net: extrai a parte numérica.
-  // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, não chama Baileys.
-  const originalJid = JID_RE.test(number) ? number : "";
+  // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, tenta enviar pelo próprio JID.
+  const originalJid = JID_RE.test(number) ? number : JID_RE.test(payloadJid) ? payloadJid : "";
   let resolvedFromDb = false;
+  let sendByJidFallback = false;
   let normalizedNumber = number;
   if (JID_RE.test(number)) {
     const [local, domain] = number.split("@");
@@ -141,11 +231,11 @@ Deno.serve(async (req) => {
     } else {
       const { data: candidates, error: resolveErr } = await supabase
         .from("whatsapp_messages")
-        .select("numero, created_at")
+        .select("numero, whatsapp_jid, push_name, created_at")
         .eq("company_id", companyId)
-        .eq("whatsapp_jid", number)
+        .or(`whatsapp_jid.eq.${number},numero.eq.${number}`)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(300);
 
       if (resolveErr) {
         console.warn("[send-whatsapp-message] jid resolve failed", {
@@ -155,31 +245,48 @@ Deno.serve(async (req) => {
         });
       }
 
-      const resolved = (candidates ?? [])
+      let resolved = (candidates ?? [])
         .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
         .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
         .map((value) => value.replace(/\D/g, ""))
         .find((digits) => digits.length >= 8 && digits.length <= 15);
 
+      if (!resolved && contactName) {
+        const { data: byName, error: nameErr } = await supabase
+          .from("whatsapp_messages")
+          .select("numero, push_name, created_at")
+          .eq("company_id", companyId)
+          .not("push_name", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+
+        if (nameErr) {
+          console.warn("[send-whatsapp-message] name resolve failed", {
+            companyId,
+            number,
+            err: nameErr.message,
+          });
+        }
+
+        resolved = (byName ?? [])
+          .filter((row) => normalizeName(row?.push_name) === contactName)
+          .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
+          .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
+          .map((value) => value.replace(/\D/g, ""))
+          .find((digits) => digits.length >= 8 && digits.length <= 15);
+      }
+
       if (!resolved) {
-        console.warn("[send-whatsapp-message] missing real phone for jid", {
+        console.warn("[send-whatsapp-message] missing real phone for jid; trying jid fallback", {
           companyId,
           number,
         });
-        return json(
-          {
-            ok: false,
-            code: "missing_real_phone",
-            error:
-              "Não foi possível enviar: este contato ainda não possui telefone real. Aguarde uma nova mensagem com telefone real ou ajuste o servidor WhatsApp para resolver o @lid antes do envio.",
-            whatsapp_jid: number,
-          },
-          200,
-        );
+        normalizedNumber = number;
+        sendByJidFallback = true;
+      } else {
+        normalizedNumber = resolved;
+        resolvedFromDb = true;
       }
-
-      normalizedNumber = resolved;
-      resolvedFromDb = true;
     }
   } else {
     normalizedNumber = number.replace(/\D/g, "");
@@ -188,25 +295,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  // -------- Config do servidor Baileys --------
-  const serverUrl = Deno.env.get("WHATSAPP_SERVER_URL");
-  const apiKey = Deno.env.get("WHATSAPP_API_KEY");
-  if (!serverUrl) {
-    return json(
-      { ok: false, error: "WHATSAPP_SERVER_URL not configured" },
-      500,
-    );
-  }
-  if (!apiKey) {
-    return json(
-      { ok: false, error: "WHATSAPP_API_KEY not configured" },
-      500,
-    );
-  }
-
   // -------- Envia ao servidor Baileys --------
   // Normaliza a URL: remove trailing slashes e remove /send se já vier no final.
-  const baseUrl = serverUrl.replace(/\/+$/, "").replace(/\/send$/i, "");
   const target = `${baseUrl}/send`;
 
   console.log("[send-whatsapp-message] config", {
@@ -217,6 +307,7 @@ Deno.serve(async (req) => {
     number,
     normalizedNumber,
     resolvedFromDb,
+    sendByJidFallback,
     messageLen: message.length,
   });
 
@@ -230,7 +321,11 @@ Deno.serve(async (req) => {
         "x-api-key": apiKey,
         "ngrok-skip-browser-warning": "true",
       },
-      body: JSON.stringify({ numero: normalizedNumber, mensagem: message }),
+      body: JSON.stringify({
+        numero: normalizedNumber,
+        mensagem: message,
+        ...(sendByJidFallback ? { jid: normalizedNumber, whatsapp_jid: normalizedNumber } : {}),
+      }),
     });
     const txt = await res.text();
     console.log("[send-whatsapp-message] baileys response", {
