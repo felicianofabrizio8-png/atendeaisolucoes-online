@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
   // - telefone (com símbolos): manda só dígitos.
   // - JID @s.whatsapp.net: extrai a parte numérica.
   // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, não chama Baileys.
-  const originalJid = JID_RE.test(number) ? number : "";
+  const originalJid = JID_RE.test(number) ? number : JID_RE.test(payloadJid) ? payloadJid : "";
   let resolvedFromDb = false;
   let normalizedNumber = number;
   if (JID_RE.test(number)) {
@@ -155,11 +155,11 @@ Deno.serve(async (req) => {
     } else {
       const { data: candidates, error: resolveErr } = await supabase
         .from("whatsapp_messages")
-        .select("numero, created_at")
+        .select("numero, whatsapp_jid, push_name, created_at")
         .eq("company_id", companyId)
-        .eq("whatsapp_jid", number)
+        .or(`whatsapp_jid.eq.${number},numero.eq.${number}`)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(300);
 
       if (resolveErr) {
         console.warn("[send-whatsapp-message] jid resolve failed", {
@@ -169,11 +169,36 @@ Deno.serve(async (req) => {
         });
       }
 
-      const resolved = (candidates ?? [])
+      let resolved = (candidates ?? [])
         .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
         .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
         .map((value) => value.replace(/\D/g, ""))
         .find((digits) => digits.length >= 8 && digits.length <= 15);
+
+      if (!resolved && contactName) {
+        const { data: byName, error: nameErr } = await supabase
+          .from("whatsapp_messages")
+          .select("numero, push_name, created_at")
+          .eq("company_id", companyId)
+          .not("push_name", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+
+        if (nameErr) {
+          console.warn("[send-whatsapp-message] name resolve failed", {
+            companyId,
+            number,
+            err: nameErr.message,
+          });
+        }
+
+        resolved = (byName ?? [])
+          .filter((row) => normalizeName(row?.push_name) === contactName)
+          .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
+          .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
+          .map((value) => value.replace(/\D/g, ""))
+          .find((digits) => digits.length >= 8 && digits.length <= 15);
+      }
 
       if (!resolved) {
         console.warn("[send-whatsapp-message] missing real phone for jid", {
