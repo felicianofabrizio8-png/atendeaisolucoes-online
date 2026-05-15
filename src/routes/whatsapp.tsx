@@ -245,13 +245,15 @@ function WhatsAppInbox() {
         throw new Error(detail);
       }
       if (!data?.ok) {
-        throw new Error(data?.error || "send failed");
+        const detail = data?.error || "send failed";
+        toast.error(`Erro ao enviar: ${detail}`);
+        return;
       }
       setDraft("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("send failed", msg, e);
-      toast.error(`Falha ao enviar: ${msg}`);
+      toast.error(`Erro ao enviar: ${msg}`);
     } finally {
       setSending(false);
     }

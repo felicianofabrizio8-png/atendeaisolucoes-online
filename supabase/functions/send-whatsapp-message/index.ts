@@ -130,15 +130,56 @@ Deno.serve(async (req) => {
   // Normalização do destinatário:
   // - telefone (com símbolos): manda só dígitos.
   // - JID @s.whatsapp.net: extrai a parte numérica.
-  // - JID @lid / @g.us / outros: repassa cru ao Baileys (a sessão pode rotear).
+  // - JID @lid / outros: tenta resolver telefone real salvo; sem telefone, não chama Baileys.
+  const originalJid = JID_RE.test(number) ? number : "";
+  let resolvedFromDb = false;
   let normalizedNumber = number;
   if (JID_RE.test(number)) {
     const [local, domain] = number.split("@");
     if (domain === "s.whatsapp.net" && /^\d+$/.test(local)) {
       normalizedNumber = local;
     } else {
-      // mantém o JID original — Baileys decide se consegue enviar
-      normalizedNumber = number;
+      const { data: candidates, error: resolveErr } = await supabase
+        .from("whatsapp_messages")
+        .select("numero, created_at")
+        .eq("company_id", companyId)
+        .eq("whatsapp_jid", number)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (resolveErr) {
+        console.warn("[send-whatsapp-message] jid resolve failed", {
+          companyId,
+          number,
+          err: resolveErr.message,
+        });
+      }
+
+      const resolved = (candidates ?? [])
+        .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
+        .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
+        .map((value) => value.replace(/\D/g, ""))
+        .find((digits) => digits.length >= 8 && digits.length <= 15);
+
+      if (!resolved) {
+        console.warn("[send-whatsapp-message] missing real phone for jid", {
+          companyId,
+          number,
+        });
+        return json(
+          {
+            ok: false,
+            code: "missing_real_phone",
+            error:
+              "Não foi possível enviar: este contato ainda não possui telefone real. Aguarde uma nova mensagem com telefone real ou ajuste o servidor WhatsApp para resolver o @lid antes do envio.",
+            whatsapp_jid: number,
+          },
+          200,
+        );
+      }
+
+      normalizedNumber = resolved;
+      resolvedFromDb = true;
     }
   } else {
     normalizedNumber = number.replace(/\D/g, "");
@@ -174,6 +215,8 @@ Deno.serve(async (req) => {
     hasApiKey: Boolean(apiKey),
     apiKeyLen: apiKey?.length ?? 0,
     number,
+    normalizedNumber,
+    resolvedFromDb,
     messageLen: message.length,
   });
 
@@ -231,6 +274,7 @@ Deno.serve(async (req) => {
     mensagem: message,
     direction: "out",
     origem: "app",
+    ...(originalJid ? { whatsapp_jid: originalJid } : {}),
   });
 
   if (insertErr) {
