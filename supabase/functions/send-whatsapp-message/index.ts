@@ -156,9 +156,9 @@ Deno.serve(async (req) => {
       }
 
       const resolved = (candidates ?? [])
-        .map((row) =>
-          typeof row?.numero === "string" ? row.numero.replace(/\D/g, "") : "",
-        )
+        .map((row) => (typeof row?.numero === "string" ? row.numero.trim() : ""))
+        .filter((value) => PHONE_RE.test(value) && !JID_RE.test(value))
+        .map((value) => value.replace(/\D/g, ""))
         .find((digits) => digits.length >= 8 && digits.length <= 15);
 
       if (!resolved) {
