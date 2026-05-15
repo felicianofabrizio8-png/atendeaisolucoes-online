@@ -124,6 +124,7 @@ function WhatsAppInbox() {
 
   const [messages, setMessages] = useState<WaMessage[]>([]);
   const [contactRows, setContactRows] = useState<WaMessage[]>([]);
+  const [serverContactRows, setServerContactRows] = useState<WaMessage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -222,7 +223,7 @@ function WhatsAppInbox() {
               };
             })
             .filter((row: WaMessage) => row.numero || row.whatsapp_jid || row.push_name);
-          setContactRows((prev) => [...prev, ...rows]);
+          setServerContactRows(rows);
         } else if (contactsData?.error) {
           console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsData.error);
         }
@@ -255,7 +256,7 @@ function WhatsAppInbox() {
   // Agrupar conversas — chave preferencial = telefone real; fallback = jid; último = numero cru.
   // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
   const conversations = useMemo<Conversation[]>(() => {
-    const allMessages = [...contactRows, ...messages];
+    const allMessages = [...contactRows, ...serverContactRows, ...messages];
     // 1) primeiro passo: descobrir telefone real por jid e por nome exato.
     const jidToPhone = new Map<string, string>();
     const nameToPhone = new Map<string, string>();
@@ -324,7 +325,7 @@ function WhatsAppInbox() {
         new Date(b?.last?.created_at ?? 0).getTime() - new Date(a?.last?.created_at ?? 0).getTime(),
     );
     return list;
-  }, [messages, contactRows]);
+  }, [messages, contactRows, serverContactRows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
