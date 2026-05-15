@@ -204,20 +204,33 @@ function WhatsAppInbox() {
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text || !current || !companyId || sending) return;
+    console.log("SEND_CONVERSATION", current);
+    console.log("SEND_TARGET", current?.sendNumero);
+    console.log("SEND_MESSAGE", text);
+    if (sending) return;
+    if (!current) {
+      toast.error("Nenhuma conversa selecionada.");
+      return;
+    }
+    if (!companyId) {
+      toast.error("Sessão sem empresa vinculada.");
+      return;
+    }
+    const numero =
+      typeof current.sendNumero === "string" ? current.sendNumero.trim() : "";
+    if (!numero) {
+      toast.error("Conversa sem número/destinatário válido.");
+      return;
+    }
+    if (!text) return;
     setSending(true);
-    const numero = current.sendNumero;
-    console.log("[whatsapp] sending", { numero, len: text.length });
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-whatsapp-message",
-        {
-          body: { number: numero, message: text },
-        },
+        { body: { number: numero, message: text } },
       );
       console.log("[whatsapp] invoke result", { data, error });
       if (error) {
-        // Tenta extrair o body real do erro (FunctionsHttpError tem .context.response)
         let detail = error.message;
         try {
           const ctx = (error as unknown as { context?: { response?: Response } })
@@ -235,6 +248,7 @@ function WhatsAppInbox() {
         throw new Error(data?.error || "send failed");
       }
       setDraft("");
+    } catch (e) {
       // Realtime/polling vai trazer a mensagem inserida pela edge function.
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
