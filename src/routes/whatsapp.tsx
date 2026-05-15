@@ -123,12 +123,14 @@ function WhatsAppInbox() {
   const companyId = profile?.company_id;
 
   const [messages, setMessages] = useState<WaMessage[]>([]);
+  const [contactRows, setContactRows] = useState<WaMessage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contactsLoadedRef = useRef(false);
 
   // Carga inicial + polling 3s + realtime
   useEffect(() => {
@@ -163,6 +165,36 @@ function WhatsAppInbox() {
       } else {
         setMessages(all);
       }
+
+      if (!contactsLoadedRef.current) {
+        contactsLoadedRef.current = true;
+        const { data: contactsData, error: contactsError } = await supabase.functions.invoke(
+          "send-whatsapp-message",
+          { body: { action: "contacts" } },
+        );
+        if (contactsError) {
+          console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsError.message);
+        } else if (contactsData?.ok && Array.isArray(contactsData.contacts)) {
+          const rows = contactsData.contacts.map((contact: Record<string, unknown>, idx: number) => {
+            const numero = typeof contact.numero === "string" ? contact.numero : "";
+            const jid = typeof contact.whatsapp_jid === "string" ? contact.whatsapp_jid : "";
+            const pushName = typeof contact.push_name === "string" ? contact.push_name : "";
+            return {
+              id: `contact:${jid || numero || idx}`,
+              company_id: companyId,
+              numero: numero || jid,
+              mensagem: "",
+              direction: "in" as const,
+              created_at: "1970-01-01T00:00:00.000Z",
+              whatsapp_jid: jid || null,
+              push_name: pushName || null,
+            };
+          }).filter((row: WaMessage) => row.numero || row.whatsapp_jid || row.push_name);
+          setContactRows(rows);
+        } else if (contactsData?.error) {
+          console.warn("WHATSAPP_CONTACTS_LOAD_ERROR", contactsData.error);
+        }
+      }
       setLoading(false);
     }
 
@@ -193,10 +225,11 @@ function WhatsAppInbox() {
   // Agrupar conversas — chave preferencial = telefone real; fallback = jid; último = numero cru.
   // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
   const conversations = useMemo<Conversation[]>(() => {
+    const allMessages = [...contactRows, ...messages];
     // 1) primeiro passo: descobrir telefone real por jid e por nome exato.
     const jidToPhone = new Map<string, string>();
     const nameToPhone = new Map<string, string>();
-    for (const m of messages) {
+    for (const m of allMessages) {
       const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
       const phoneFromNumero = extractPhone(m.numero);
       if (jid && phoneFromNumero && !jidToPhone.has(jid)) {
@@ -210,7 +243,7 @@ function WhatsAppInbox() {
 
     // 2) agrupar por chave canônica
     const groups = new Map<string, WaMessage[]>();
-    for (const m of messages) {
+    for (const m of allMessages) {
       if (!m) continue;
       const phoneFromNumero = extractPhone(m.numero);
       const phoneFromJid = m.whatsapp_jid ? jidToPhone.get(m.whatsapp_jid) ?? "" : "";
@@ -259,7 +292,7 @@ function WhatsAppInbox() {
         new Date(a?.last?.created_at ?? 0).getTime(),
     );
     return list;
-  }, [messages]);
+  }, [messages, contactRows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
