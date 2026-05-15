@@ -239,16 +239,16 @@ function WhatsAppInbox() {
           break;
         }
       }
-      if (!phoneReal) {
-        const byName = nameToPhone.get(normalizeContactName(pushName));
-        if (byName) phoneReal = byName;
-      }
       // jid técnico
       const jid =
         sorted.map((m) => (typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : ""))
           .find((v) => isJid(v)) ?? "";
       const pushName =
         sorted.map((m) => m?.push_name).filter((v): v is string => !!v && !!v.trim()).pop() ?? null;
+      if (!phoneReal) {
+        const byName = nameToPhone.get(normalizeContactName(pushName));
+        if (byName) phoneReal = byName;
+      }
       const isGroup = jid.endsWith("@g.us") || jid.endsWith("@broadcast");
       list.push({ key, phoneReal, jid, pushName, last, messages: sorted, isGroup });
     }
