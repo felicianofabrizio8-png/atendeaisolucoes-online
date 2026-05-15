@@ -31,34 +31,41 @@ type WaMessage = {
 };
 
 // Identificador "raw" — JID interno do WhatsApp (não exibir)
-function isRawJid(v: string) {
+function isRawJid(v: unknown): boolean {
+  if (typeof v !== "string" || !v) return false;
   return /@(lid|s\.whatsapp\.net|g\.us|broadcast)$/i.test(v);
 }
 
 // Nome amigável para exibição: pushName > telefone formatado > "Contato WhatsApp"
-function displayName(numero: string, pushName?: string | null) {
+function displayName(numero: unknown, pushName?: string | null) {
   if (pushName && pushName.trim()) return pushName.trim();
-  if (!isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) return numero;
+  if (typeof numero === "string" && !isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)) {
+    return numero;
+  }
   return "Contato WhatsApp";
 }
 
 // Iniciais para avatar
-function avatarInitials(numero: string, pushName?: string | null) {
+function avatarInitials(numero: unknown, pushName?: string | null) {
   if (pushName && pushName.trim()) {
     const parts = pushName.trim().split(/\s+/);
     return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
   }
-  if (!isRawJid(numero)) return numero.slice(-2);
+  if (typeof numero === "string" && !isRawJid(numero)) return numero.slice(-2) || "WA";
   return "WA";
 }
 
-function formatTime(iso: string) {
+function formatTime(iso?: string | null) {
+  if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatDay(iso: string) {
+function formatDay(iso?: string | null) {
+  if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   const today = new Date();
   const yest = new Date();
   yest.setDate(today.getDate() - 1);
@@ -124,35 +131,42 @@ function WhatsAppInbox() {
   }, [companyId]);
 
   // Agrupar por contato — mescla telefone e JID quando ambos referem-se ao mesmo contato.
-  // Chave de agrupamento: telefone real (preferido) > whatsapp_jid > numero.
   const conversations = useMemo(() => {
     const map = new Map<string, WaMessage[]>();
     for (const m of messages) {
+      if (!m) continue;
+      const numero = typeof m.numero === "string" ? m.numero : "";
+      const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
       const phoneish =
-        m.numero && !isRawJid(m.numero) && /^[0-9+\-\s()]+$/.test(m.numero)
-          ? m.numero.replace(/\D/g, "")
+        numero && !isRawJid(numero) && /^[0-9+\-\s()]+$/.test(numero)
+          ? numero.replace(/\D/g, "")
           : "";
-      const key = phoneish || m.whatsapp_jid || m.numero;
+      const key = phoneish || jid || numero || m.id || "unknown";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(m);
     }
     const list = Array.from(map.entries()).map(([key, msgs]) => {
       const sorted = [...msgs].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        (a, b) =>
+          new Date(a?.created_at ?? 0).getTime() -
+          new Date(b?.created_at ?? 0).getTime(),
       );
       const last = sorted[sorted.length - 1];
-      // Para envio: preferir um telefone real qualquer encontrado nas mensagens
       const phoneMsg = sorted.find(
-        (x) => x.numero && !isRawJid(x.numero) && /^[0-9+\-\s()]+$/.test(x.numero),
+        (x) =>
+          typeof x?.numero === "string" &&
+          !isRawJid(x.numero) &&
+          /^[0-9+\-\s()]+$/.test(x.numero),
       );
-      const sendNumero = phoneMsg?.numero ?? last.numero;
+      const sendNumero = phoneMsg?.numero ?? last?.numero ?? "";
       const pushName =
-        sorted.map((x) => x.push_name).filter(Boolean).pop() ?? null;
+        sorted.map((x) => x?.push_name).filter(Boolean).pop() ?? null;
       return { key, sendNumero, pushName, last, messages: sorted };
     });
     list.sort(
       (a, b) =>
-        new Date(b.last.created_at).getTime() - new Date(a.last.created_at).getTime(),
+        new Date(b?.last?.created_at ?? 0).getTime() -
+        new Date(a?.last?.created_at ?? 0).getTime(),
     );
     return list;
   }, [messages]);
@@ -162,9 +176,9 @@ function WhatsAppInbox() {
     if (!q) return conversations;
     return conversations.filter(
       (c) =>
-        c.sendNumero.toLowerCase().includes(q) ||
+        (c.sendNumero ?? "").toLowerCase().includes(q) ||
         (c.pushName ?? "").toLowerCase().includes(q) ||
-        c.last.mensagem.toLowerCase().includes(q),
+        (c.last?.mensagem ?? "").toLowerCase().includes(q),
     );
   }, [conversations, search]);
 
@@ -190,20 +204,33 @@ function WhatsAppInbox() {
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text || !current || !companyId || sending) return;
+    console.log("SEND_CONVERSATION", current);
+    console.log("SEND_TARGET", current?.sendNumero);
+    console.log("SEND_MESSAGE", text);
+    if (sending) return;
+    if (!current) {
+      toast.error("Nenhuma conversa selecionada.");
+      return;
+    }
+    if (!companyId) {
+      toast.error("Sessão sem empresa vinculada.");
+      return;
+    }
+    const numero =
+      typeof current.sendNumero === "string" ? current.sendNumero.trim() : "";
+    if (!numero) {
+      toast.error("Conversa sem número/destinatário válido.");
+      return;
+    }
+    if (!text) return;
     setSending(true);
-    const numero = current.sendNumero;
-    console.log("[whatsapp] sending", { numero, len: text.length });
     try {
       const { data, error } = await supabase.functions.invoke(
         "send-whatsapp-message",
-        {
-          body: { number: numero, message: text },
-        },
+        { body: { number: numero, message: text } },
       );
       console.log("[whatsapp] invoke result", { data, error });
       if (error) {
-        // Tenta extrair o body real do erro (FunctionsHttpError tem .context.response)
         let detail = error.message;
         try {
           const ctx = (error as unknown as { context?: { response?: Response } })
@@ -221,7 +248,6 @@ function WhatsAppInbox() {
         throw new Error(data?.error || "send failed");
       }
       setDraft("");
-      // Realtime/polling vai trazer a mensagem inserida pela edge function.
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("send failed", msg, e);
@@ -290,12 +316,12 @@ function WhatsAppInbox() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium truncate">{name}</span>
                     <span className="text-[10px] text-muted-foreground shrink-0">
-                      {formatTime(c.last.created_at)}
+                      {formatTime(c.last?.created_at)}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
-                    {c.last.direction === "out" ? "Você: " : ""}
-                    {c.last.mensagem}
+                    {c.last?.direction === "out" ? "Você: " : ""}
+                    {c.last?.mensagem ?? ""}
                   </p>
                 </div>
               </button>
@@ -371,7 +397,7 @@ function WhatsAppInbox() {
                         )}
                       >
                         <div className="whitespace-pre-wrap break-words">
-                          {m.mensagem}
+                          {m.mensagem ?? ""}
                         </div>
                         <div
                           className={cn(
