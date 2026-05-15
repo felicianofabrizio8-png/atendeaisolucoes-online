@@ -316,12 +316,12 @@ function WhatsAppInbox() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium truncate">{name}</span>
                     <span className="text-[10px] text-muted-foreground shrink-0">
-                      {formatTime(c.last.created_at)}
+                      {formatTime(c.last?.created_at)}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
-                    {c.last.direction === "out" ? "Você: " : ""}
-                    {c.last.mensagem}
+                    {c.last?.direction === "out" ? "Você: " : ""}
+                    {c.last?.mensagem ?? ""}
                   </p>
                 </div>
               </button>
