@@ -249,8 +249,6 @@ function WhatsAppInbox() {
       }
       setDraft("");
     } catch (e) {
-      // Realtime/polling vai trazer a mensagem inserida pela edge function.
-    } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("send failed", msg, e);
       toast.error(`Falha ao enviar: ${msg}`);
