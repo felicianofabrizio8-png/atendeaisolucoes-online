@@ -215,6 +215,8 @@ Deno.serve(async (req) => {
     hasApiKey: Boolean(apiKey),
     apiKeyLen: apiKey?.length ?? 0,
     number,
+    normalizedNumber,
+    resolvedFromDb,
     messageLen: message.length,
   });
 
@@ -272,6 +274,7 @@ Deno.serve(async (req) => {
     mensagem: message,
     direction: "out",
     origem: "app",
+    ...(originalJid ? { whatsapp_jid: originalJid } : {}),
   });
 
   if (insertErr) {
