@@ -293,29 +293,24 @@ function WhatsAppInbox() {
   // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
   const conversations = useMemo<Conversation[]>(() => {
     const allMessages = [...contactRows, ...serverContactRows, ...messages];
-    // 1) primeiro passo: descobrir telefone real por jid e por nome exato.
+    // 1) descobrir telefone real APENAS por jid (não por nome — nomes duplicados
+    //    mesclavam contatos diferentes na mesma conversa).
     const jidToPhone = new Map<string, string>();
-    const nameToPhone = new Map<string, string>();
     for (const m of allMessages) {
       const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
       const phoneFromNumero = extractPhone(m.numero);
       if (jid && phoneFromNumero && !jidToPhone.has(jid)) {
         jidToPhone.set(jid, phoneFromNumero);
       }
-      const nameKey = normalizeContactName(m.push_name);
-      if (nameKey && phoneFromNumero && !nameToPhone.has(nameKey)) {
-        nameToPhone.set(nameKey, phoneFromNumero);
-      }
     }
 
-    // 2) agrupar por chave canônica
+    // 2) agrupar por chave canônica (telefone real > jid > numero cru)
     const groups = new Map<string, WaMessage[]>();
     for (const m of allMessages) {
       if (!m) continue;
       const phoneFromNumero = extractPhone(m.numero);
       const phoneFromJid = m.whatsapp_jid ? (jidToPhone.get(m.whatsapp_jid) ?? "") : "";
-      const phoneFromName = nameToPhone.get(normalizeContactName(m.push_name)) ?? "";
-      const phone = phoneFromNumero || phoneFromJid || phoneFromName;
+      const phone = phoneFromNumero || phoneFromJid;
       const jid = typeof m.whatsapp_jid === "string" && m.whatsapp_jid ? m.whatsapp_jid : "";
       const numero = typeof m.numero === "string" ? m.numero : "";
       const key = phone ? `p:${phone}` : jid ? `j:${jid}` : numero ? `n:${numero}` : `id:${m.id}`;
@@ -349,8 +344,7 @@ function WhatsAppInbox() {
           .filter((v): v is string => !!v && !!v.trim())
           .pop() ?? null;
       if (!phoneReal) {
-        const byName = nameToPhone.get(normalizeContactName(pushName));
-        if (byName) phoneReal = byName;
+        // sem fallback por nome — evita merge entre contatos homônimos
       }
       const isGroup = jid.endsWith("@g.us") || jid.endsWith("@broadcast");
       list.push({ key, phoneReal, jid, pushName, last, messages: sorted, isGroup });
@@ -385,6 +379,11 @@ function WhatsAppInbox() {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [current?.messages.length, selected]);
+
+  // Limpa rascunho ao trocar de conversa — evita reusar texto/contexto antigo
+  useEffect(() => {
+    setDraft("");
+  }, [selected]);
 
   // Auto-selecionar primeira conversa (apenas desktop)
   useEffect(() => {
@@ -426,13 +425,15 @@ function WhatsAppInbox() {
       return;
     }
 
-    console.log("SEND_SELECTED_CONTACT", {
+    console.log("CHAT_ATUAL", {
       key: current.key,
       phoneReal: current.phoneReal,
       jid: current.jid,
       pushName: current.pushName,
+      selectedKey: selected,
     });
-    console.log("SEND_TARGET_FINAL", target);
+    console.log("NUMERO_ENVIO", target);
+    console.log("REMOTE_JID", current.jid);
 
     setSending(true);
     try {
