@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { whatsappProvider, type WhatsAppQr, type WhatsAppStatus } from "@/services/whatsappProvider";
 
 export const Route = createFileRoute("/whatsapp")({
   head: () => ({
@@ -132,6 +133,41 @@ function WhatsAppInbox() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contactsLoadedRef = useRef(false);
+  const [status, setStatus] = useState<WhatsAppStatus | null>(null);
+  const [qr, setQr] = useState<WhatsAppQr | null>(null);
+  const [showQr, setShowQr] = useState(false);
+
+  // Polling de status Evolution a cada 10s
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      const s = await whatsappProvider.getStatus();
+      if (!cancelled) setStatus(s);
+      if (s.connected && showQr) setShowQr(false);
+    }
+    tick();
+    const id = setInterval(tick, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [showQr]);
+
+  // Carrega QR sob demanda quando o usuário pedir
+  useEffect(() => {
+    if (!showQr) return;
+    let cancelled = false;
+    async function load() {
+      const q = await whatsappProvider.getQrCode();
+      if (!cancelled) setQr(q);
+    }
+    load();
+    const id = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [showQr]);
 
   // Carga inicial + polling 3s + realtime
   useEffect(() => {
@@ -200,7 +236,7 @@ function WhatsAppInbox() {
       if (!contactsLoadedRef.current) {
         contactsLoadedRef.current = true;
         const { data: contactsData, error: contactsError } = await supabase.functions.invoke(
-          "send-whatsapp-message",
+          "whatsapp-status",
           { body: { action: "contacts" } },
         );
         if (contactsError) {
@@ -462,8 +498,68 @@ function WhatsAppInbox() {
       >
         <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <h1 className="text-base font-semibold">Conversas</h1>
-          <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border",
+                status?.connected
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                  : "bg-amber-500/10 text-amber-600 border-amber-500/30",
+              )}
+              title={status?.state ?? ""}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  status?.connected ? "bg-emerald-500" : "bg-amber-500",
+                )}
+              />
+              {status?.connected ? "Conectado" : "Desconectado"}
+            </span>
+            <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
+          </div>
         </div>
+        {!status?.connected && (
+          <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
+            {!showQr ? (
+              <Button size="sm" variant="outline" className="w-full" onClick={() => setShowQr(true)}>
+                Conectar WhatsApp (Evolution)
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Escaneie o QR no seu WhatsApp
+                </p>
+                {qr?.qrcode ? (
+                  <img
+                    src={
+                      qr.qrcode.startsWith("data:")
+                        ? qr.qrcode
+                        : `data:image/png;base64,${qr.qrcode}`
+                    }
+                    alt="QR Code"
+                    className="mx-auto h-40 w-40 rounded bg-white p-1"
+                  />
+                ) : (
+                  <div className="text-center text-[11px] text-muted-foreground">
+                    {qr?.error ?? "Gerando QR…"}
+                  </div>
+                )}
+                {qr?.pairingCode && (
+                  <div className="text-center text-xs font-mono">{qr.pairingCode}</div>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setShowQr(false)}
+                >
+                  Fechar
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="p-2 border-b border-border shrink-0">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
