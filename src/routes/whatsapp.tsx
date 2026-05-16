@@ -864,7 +864,7 @@ function WhatsAppInbox() {
               <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
                 {avatarInitials(current.phoneReal, current.pushName)}
               </div>
-              <div className="leading-tight min-w-0">
+              <div className="leading-tight min-w-0 flex-1">
                 <div className="text-sm font-semibold truncate">
                   {displayName(current.phoneReal, current.pushName)}
                 </div>
@@ -873,11 +873,20 @@ function WhatsAppInbox() {
                     ? formatPhone(current.phoneReal)
                     : current.isGroup
                       ? "Grupo — envio desabilitado"
-                      : jidLocalNumber(current.jid)
-                        ? `ID WhatsApp ${jidLocalNumber(current.jid)}`
-                        : "Sem telefone real — envio limitado"}
+                      : "Sem telefone real — envio limitado"}
                 </div>
               </div>
+              {!current.isGroup && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={openEditPhone}
+                  className="shrink-0"
+                  title="Editar telefone"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Editar telefone
+                </Button>
+              )}
             </header>
 
             <div
