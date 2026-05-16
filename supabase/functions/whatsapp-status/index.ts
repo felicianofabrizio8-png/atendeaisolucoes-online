@@ -336,7 +336,6 @@ Deno.serve(async (req) => {
               console.log("SYNC_PHONE_RESOLVED", { jid: c.whatsapp_jid, numero: c.numero });
             }
           }
-        }
       }
 
       return json({ ok: true, contacts, updated });
