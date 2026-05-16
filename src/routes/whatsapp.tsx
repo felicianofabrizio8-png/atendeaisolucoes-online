@@ -344,8 +344,7 @@ function WhatsAppInbox() {
           .filter((v): v is string => !!v && !!v.trim())
           .pop() ?? null;
       if (!phoneReal) {
-        const byName = nameToPhone.get(normalizeContactName(pushName));
-        if (byName) phoneReal = byName;
+        // sem fallback por nome — evita merge entre contatos homônimos
       }
       const isGroup = jid.endsWith("@g.us") || jid.endsWith("@broadcast");
       list.push({ key, phoneReal, jid, pushName, last, messages: sorted, isGroup });
