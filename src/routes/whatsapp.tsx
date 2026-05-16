@@ -806,14 +806,11 @@ function WhatsAppInbox() {
           {filtered.map((c) => {
             const active = c.key === selected;
             const name = displayName(c.phoneReal, c.pushName);
-            const lidNumber = jidLocalNumber(c.jid);
             const sub = c.phoneReal
               ? formatPhone(c.phoneReal)
               : c.isGroup
                 ? "Grupo"
-                : lidNumber
-                  ? `ID WhatsApp ${lidNumber}`
-                  : "Sem telefone real";
+                : "Sem telefone real";
             return (
               <button
                 key={c.key}
