@@ -140,11 +140,12 @@ Deno.serve(async (req) => {
   }
 
   const target = `${baseUrl}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
-  console.log("[send-whatsapp-message] evolution call", {
+  console.log("SEND_FINAL_TARGET", {
     userId,
     companyId,
     target,
     evoNumber,
+    originalJid,
     messageLen: message.length,
   });
 
@@ -162,12 +163,11 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         number: evoNumber,
         text: message,
-        // alguns clientes da Evolution aceitam options
         options: { delay: 0, presence: "composing" },
       }),
     });
     const txt = await res.text();
-    console.log("[send-whatsapp-message] evolution response", {
+    console.log("EVOLUTION_RESPONSE", {
       status: res.status,
       ok: res.ok,
       body: txt.slice(0, 500),
