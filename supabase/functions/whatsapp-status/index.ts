@@ -55,10 +55,12 @@ function digitsOnly(v: string): string {
 function normalizeRow(row: Record<string, unknown>): EvoContact {
   const rawNumber = pickStr(row, "number", "phone", "phoneNumber", "waId", "wa_id");
   const numberJid = rawNumber.includes("@") ? rawNumber : "";
-  const jid =
-    pickStr(row, "remoteJid", "id", "jid") ||
+  const jidRaw =
+    pickStr(row, "remoteJid", "jid") ||
     pickNestedStr(row, "key", "remoteJid") ||
     pickNestedStr(row, "lastMessage_key", "remoteJid");
+  const idCandidate = pickStr(row, "id");
+  const jid = jidRaw.includes("@") ? jidRaw : idCandidate.includes("@") ? idCandidate : "";
   const altJid =
     pickStr(row, "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
     pickNestedStr(row, "key", "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
@@ -66,11 +68,12 @@ function normalizeRow(row: Record<string, unknown>): EvoContact {
   const fromJid = jidToPhone(jid) || jidToPhone(altJid);
   const numero =
     fromJid ||
+    (jidRaw.includes("@") ? "" : digitsOnly(jidRaw)) ||
     (numberJid ? "" : digitsOnly(rawNumber)) ||
     "";
   const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify", "lastMessagePushName");
   return {
-    id: jid || altJid || numero,
+    id: jid || altJid || numero || idCandidate,
     numero,
     whatsapp_jid: numberJid || jid || altJid,
     push_name,
