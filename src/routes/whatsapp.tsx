@@ -410,17 +410,18 @@ function WhatsAppInbox() {
     }
     if (!text) return;
 
-    // Decide o destinatário: phone_real > jid (não-grupo) > erro.
+    // Prioridade: telefone real > jid @s.whatsapp.net > jid @lid (tenta mesmo assim).
     let target = "";
     if (current.phoneReal) {
       target = current.phoneReal;
+    } else if (current.jid && current.jid.endsWith("@s.whatsapp.net")) {
+      target = current.jid;
     } else if (current.jid && !current.isGroup) {
+      // Inclui @lid — não bloqueia antes de tentar
       target = current.jid;
     } else {
       toast.error(
-        current.isGroup
-          ? "Envio para grupos não é suportado."
-          : "Conversa sem telefone real ou JID válido.",
+        current.isGroup ? "Envio para grupos não é suportado." : "Conversa sem destino válido.",
       );
       return;
     }
