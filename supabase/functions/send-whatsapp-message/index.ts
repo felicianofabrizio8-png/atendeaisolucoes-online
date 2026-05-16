@@ -119,15 +119,15 @@ Deno.serve(async (req) => {
     if (d === "s.whatsapp.net" || d === "g.us") {
       evoNumber = local;
     } else if (d === "lid") {
+      // Preferir payloadJid com @s.whatsapp.net quando disponível
       if (JID_RE.test(payloadJid)) {
         const [pl, pd] = payloadJid.split("@");
         if ((pd ?? "").toLowerCase() === "s.whatsapp.net") evoNumber = pl;
       }
+      // Sem fallback: tentar enviar pelo local do @lid e deixar a Evolution decidir.
+      if (!evoNumber) evoNumber = local ?? "";
       if (!evoNumber) {
-        return json(
-          { ok: false, error: "Contato sem telefone real (JID @lid). Sincronize contatos." },
-          400,
-        );
+        return json({ ok: false, error: "JID @lid inválido" }, 400);
       }
     } else {
       return json({ ok: false, error: `JID não suportado: @${d}` }, 400);
@@ -140,11 +140,12 @@ Deno.serve(async (req) => {
   }
 
   const target = `${baseUrl}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
-  console.log("[send-whatsapp-message] evolution call", {
+  console.log("SEND_FINAL_TARGET", {
     userId,
     companyId,
     target,
     evoNumber,
+    originalJid,
     messageLen: message.length,
   });
 
@@ -162,12 +163,11 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         number: evoNumber,
         text: message,
-        // alguns clientes da Evolution aceitam options
         options: { delay: 0, presence: "composing" },
       }),
     });
     const txt = await res.text();
-    console.log("[send-whatsapp-message] evolution response", {
+    console.log("EVOLUTION_RESPONSE", {
       status: res.status,
       ok: res.ok,
       body: txt.slice(0, 500),
