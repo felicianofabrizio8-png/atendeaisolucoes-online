@@ -105,46 +105,46 @@ Deno.serve(async (req) => {
   }
   const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
 
-  // Determina o "number" no formato esperado pela Evolution:
-  // - JID @s.whatsapp.net / @g.us: enviar como veio (sem @domínio).
-  // - JID @lid: Evolution não roteia por @lid; tenta usar payloadJid se for @s.whatsapp.net,
-  //   senão devolve erro descritivo.
-  // - Telefone: só dígitos.
+  // Normalização: extrair dígitos do number ou do payloadJid (caso seja JID).
   const originalJid = JID_RE.test(number) ? number : JID_RE.test(payloadJid) ? payloadJid : "";
-  let evoNumber = "";
+  console.log("NUMERO_ORIGINAL", { number, payloadJid });
 
+  let rawDigits = "";
   if (JID_RE.test(number)) {
     const [local, domain] = number.split("@");
     const d = (domain ?? "").toLowerCase();
-    if (d === "s.whatsapp.net" || d === "g.us") {
-      evoNumber = local;
-    } else if (d === "lid") {
-      // Preferir payloadJid com @s.whatsapp.net quando disponível
-      if (JID_RE.test(payloadJid)) {
-        const [pl, pd] = payloadJid.split("@");
-        if ((pd ?? "").toLowerCase() === "s.whatsapp.net") evoNumber = pl;
+    if (d === "g.us") {
+      return json({ ok: false, error: "envio para grupo não suportado" }, 400);
+    }
+    rawDigits = (local ?? "").replace(/\D/g, "");
+    // Se for @lid e houver payloadJid @s.whatsapp.net, preferir esse número real
+    if (d === "lid" && JID_RE.test(payloadJid)) {
+      const [pl, pd] = payloadJid.split("@");
+      if ((pd ?? "").toLowerCase() === "s.whatsapp.net") {
+        rawDigits = (pl ?? "").replace(/\D/g, "");
       }
-      // Sem fallback: tentar enviar pelo local do @lid e deixar a Evolution decidir.
-      if (!evoNumber) evoNumber = local ?? "";
-      if (!evoNumber) {
-        return json({ ok: false, error: "JID @lid inválido" }, 400);
-      }
-    } else {
-      return json({ ok: false, error: `JID não suportado: @${d}` }, 400);
     }
   } else {
-    evoNumber = number.replace(/\D/g, "");
-    if (evoNumber.length < 8 || evoNumber.length > 15) {
-      return json({ ok: false, error: "invalid number" }, 400);
-    }
+    rawDigits = number.replace(/\D/g, "");
   }
+
+  if (!rawDigits || rawDigits.length < 8 || rawDigits.length > 15) {
+    return json({ ok: false, error: "invalid number" }, 400);
+  }
+
+  // Garantir prefixo 55 (Brasil)
+  const evoNumber = rawDigits.startsWith("55") ? rawDigits : `55${rawDigits}`;
+  const jidFinal = `${evoNumber}@s.whatsapp.net`;
+  console.log("NUMERO_NORMALIZADO", evoNumber);
+  console.log("JID_FINAL", jidFinal);
 
   const target = `${baseUrl}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
   const evoPayload = {
-    number: evoNumber,
+    number: jidFinal,
     text: message,
     options: { delay: 0, presence: "composing" },
   };
+  console.log("PAYLOAD_EVOLUTION", evoPayload);
   console.log("SEND_FINAL_TARGET", {
     userId,
     companyId,
