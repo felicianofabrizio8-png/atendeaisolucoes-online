@@ -191,7 +191,9 @@ Deno.serve(async (req) => {
                     ? (parsed as { data: Record<string, unknown>[] }).data
                     : Array.isArray((parsed as { response?: unknown[] })?.response)
                       ? (parsed as { response: Record<string, unknown>[] }).response
-                      : [];
+                      : Array.isArray((parsed as { messages?: { records?: unknown[] } })?.messages?.records)
+                        ? (parsed as { messages: { records: Record<string, unknown>[] } }).messages.records
+                        : [];
             if (rows.length > 0) {
               console.log(`SYNC_${label}_OK`, { path: ep.path, count: rows.length });
               return rows;
@@ -251,8 +253,8 @@ Deno.serve(async (req) => {
           ? ((raw as { messages: { records: Record<string, unknown>[] } }).messages.records)
           : [raw];
         for (const row of rows) {
-        const c = normalizeRow(row);
-        if (!c.whatsapp_jid && !c.numero) return;
+          const c = normalizeRow(row);
+          if (!c.whatsapp_jid && !c.numero) continue;
         const key = c.whatsapp_jid || c.numero;
         const prev = byJid.get(key);
         const merged: EvoContact = {
