@@ -639,6 +639,7 @@ function WhatsAppInbox() {
     });
     console.log("NUMERO_ENVIO", target);
     console.log("REMOTE_JID", current.jid);
+    console.log("FRONT_SEND_TARGET", { target, jid: current.jid, name: current.pushName });
 
     setSending(true);
     try {
