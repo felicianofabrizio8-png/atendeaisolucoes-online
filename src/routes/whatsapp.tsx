@@ -163,6 +163,19 @@ function WhatsAppInbox() {
   const [qr, setQr] = useState<WhatsAppQr | null>(null);
   const [showQr, setShowQr] = useState(false);
 
+  // Modal: editar telefone do contato atual
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Modal: adicionar contato manual
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [addNote, setAddNote] = useState("");
+  const [savingAdd, setSavingAdd] = useState(false);
+
   // Polling de status Evolution a cada 10s
   useEffect(() => {
     let cancelled = false;
