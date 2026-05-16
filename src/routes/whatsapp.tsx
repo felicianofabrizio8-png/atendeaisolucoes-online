@@ -960,6 +960,108 @@ function WhatsAppInbox() {
           </>
         )}
       </section>
+
+      {/* Modal: Editar telefone */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar telefone</DialogTitle>
+            <DialogDescription>
+              Defina o telefone WhatsApp real deste contato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">Nome do contato</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Nome"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone">Telefone WhatsApp real</Label>
+              <Input
+                id="edit-phone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="(11) 91234-5678"
+                inputMode="tel"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {editPhone
+                  ? `Será enviado como: ${normalizeWaPhone(editPhone) || "inválido"}`
+                  : "Será adicionado +55 automaticamente se necessário."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+              Cancelar
+            </Button>
+            <Button onClick={saveEditPhone} disabled={savingEdit}>
+              {savingEdit ? "Salvando…" : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Adicionar contato manual */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar contato manual</DialogTitle>
+            <DialogDescription>
+              Crie uma conversa nova para enviar pelo WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="add-name">Nome</Label>
+              <Input
+                id="add-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Nome do contato"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-phone">Telefone WhatsApp</Label>
+              <Input
+                id="add-phone"
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="(11) 91234-5678"
+                inputMode="tel"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {addPhone
+                  ? `Será enviado como: ${normalizeWaPhone(addPhone) || "inválido"}`
+                  : "Será adicionado +55 automaticamente se necessário."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-note">Observação (opcional)</Label>
+              <Textarea
+                id="add-note"
+                value={addNote}
+                onChange={(e) => setAddNote(e.target.value)}
+                placeholder="Anotação interna"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={savingAdd}>
+              Cancelar
+            </Button>
+            <Button onClick={saveAddContact} disabled={savingAdd}>
+              {savingAdd ? "Salvando…" : "Adicionar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
