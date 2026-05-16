@@ -233,11 +233,41 @@ Deno.serve(async (req) => {
           ? (raw as { messages: { records: Record<string, unknown>[] } }).messages.records
           : [raw],
       );
+      let syncSupabase: ReturnType<typeof createClient> | null = null;
+      let syncCompanyId = "";
+      let dbLidJids: string[] = [];
+      if (action === "sync") {
+        syncSupabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: userRes } = await syncSupabase.auth.getUser(accessToken);
+        const userId = userRes?.user?.id;
+        if (userId) {
+          const { data: profile } = await syncSupabase
+            .from("profiles")
+            .select("company_id")
+            .eq("id", userId)
+            .maybeSingle();
+          syncCompanyId = (profile?.company_id as string | undefined) ?? "";
+        }
+        if (syncCompanyId) {
+          const { data: lidMsgs } = await syncSupabase
+            .from("whatsapp_messages")
+            .select("numero, whatsapp_jid")
+            .eq("company_id", syncCompanyId)
+            .or("numero.ilike.%@lid,whatsapp_jid.ilike.%@lid")
+            .limit(5000);
+          dbLidJids = (lidMsgs ?? [])
+            .flatMap((m) => [m.numero, m.whatsapp_jid])
+            .filter((v): v is string => typeof v === "string" && v.endsWith("@lid"));
+        }
+      }
       const lidJids = Array.from(
         new Set(
-          messageRecords
-            .map((raw) => normalizeRow(raw).whatsapp_jid)
-            .filter((jid) => jid.endsWith("@lid")),
+          [
+            ...messageRecords.map((raw) => normalizeRow(raw).whatsapp_jid),
+            ...dbLidJids,
+          ].filter((jid) => jid.endsWith("@lid")),
         ),
       );
 
@@ -284,23 +314,9 @@ Deno.serve(async (req) => {
       // 4) (action=sync) tentar resolver telefone real em whatsapp_messages
       let updated = 0;
       if (action === "sync") {
-        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-        const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
-
-        const { data: userRes } = await supabase.auth.getUser(accessToken);
-        const userId = userRes?.user?.id;
-        if (userId) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("company_id")
-            .eq("id", userId)
-            .maybeSingle();
-          const companyId = profile?.company_id as string | undefined;
-
-          if (companyId) {
+        const supabase = syncSupabase;
+        const companyId = syncCompanyId;
+        if (supabase && companyId) {
             for (const c of contacts) {
               if (!c.numero || !c.whatsapp_jid) continue;
               // Atualiza mensagens que apontam pro mesmo JID mas estão sem telefone real
