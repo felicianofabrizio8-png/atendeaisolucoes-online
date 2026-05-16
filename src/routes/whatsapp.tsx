@@ -293,29 +293,24 @@ function WhatsAppInbox() {
   // Mescla automaticamente conversas que têm o mesmo telefone (ainda que apareçam por jid em outras msgs).
   const conversations = useMemo<Conversation[]>(() => {
     const allMessages = [...contactRows, ...serverContactRows, ...messages];
-    // 1) primeiro passo: descobrir telefone real por jid e por nome exato.
+    // 1) descobrir telefone real APENAS por jid (não por nome — nomes duplicados
+    //    mesclavam contatos diferentes na mesma conversa).
     const jidToPhone = new Map<string, string>();
-    const nameToPhone = new Map<string, string>();
     for (const m of allMessages) {
       const jid = typeof m.whatsapp_jid === "string" ? m.whatsapp_jid : "";
       const phoneFromNumero = extractPhone(m.numero);
       if (jid && phoneFromNumero && !jidToPhone.has(jid)) {
         jidToPhone.set(jid, phoneFromNumero);
       }
-      const nameKey = normalizeContactName(m.push_name);
-      if (nameKey && phoneFromNumero && !nameToPhone.has(nameKey)) {
-        nameToPhone.set(nameKey, phoneFromNumero);
-      }
     }
 
-    // 2) agrupar por chave canônica
+    // 2) agrupar por chave canônica (telefone real > jid > numero cru)
     const groups = new Map<string, WaMessage[]>();
     for (const m of allMessages) {
       if (!m) continue;
       const phoneFromNumero = extractPhone(m.numero);
       const phoneFromJid = m.whatsapp_jid ? (jidToPhone.get(m.whatsapp_jid) ?? "") : "";
-      const phoneFromName = nameToPhone.get(normalizeContactName(m.push_name)) ?? "";
-      const phone = phoneFromNumero || phoneFromJid || phoneFromName;
+      const phone = phoneFromNumero || phoneFromJid;
       const jid = typeof m.whatsapp_jid === "string" && m.whatsapp_jid ? m.whatsapp_jid : "";
       const numero = typeof m.numero === "string" ? m.numero : "";
       const key = phone ? `p:${phone}` : jid ? `j:${jid}` : numero ? `n:${numero}` : `id:${m.id}`;
