@@ -380,6 +380,11 @@ function WhatsAppInbox() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [current?.messages.length, selected]);
 
+  // Limpa rascunho ao trocar de conversa — evita reusar texto/contexto antigo
+  useEffect(() => {
+    setDraft("");
+  }, [selected]);
+
   // Auto-selecionar primeira conversa (apenas desktop)
   useEffect(() => {
     if (
