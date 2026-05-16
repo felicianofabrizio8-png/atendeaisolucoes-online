@@ -563,6 +563,17 @@ function WhatsAppInbox() {
             <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
           </div>
         </div>
+        <div className="p-2 border-b border-border shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            {syncing ? "Sincronizando…" : "Sincronizar contatos"}
+          </Button>
+        </div>
         {!status?.connected && (
           <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
             {!showQr ? (
