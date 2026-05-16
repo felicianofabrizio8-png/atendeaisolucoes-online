@@ -735,6 +735,14 @@ function WhatsAppInbox() {
           >
             {syncing ? "Sincronizando…" : "Sincronizar contatos"}
           </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="w-full mt-2"
+            onClick={() => setAddOpen(true)}
+          >
+            <UserPlus className="h-3.5 w-3.5" /> Adicionar contato manual
+          </Button>
         </div>
         {!status?.connected && (
           <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
