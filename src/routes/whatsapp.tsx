@@ -5,9 +5,28 @@ import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
+import { Send, Search, MessageSquare, ArrowLeft, Pencil, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { whatsappProvider, type WhatsAppQr, type WhatsAppStatus } from "@/services/whatsappProvider";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+// Normaliza telefone para envio via Evolution (BR-friendly).
+function normalizeWaPhone(input: string): string {
+  const d = (input ?? "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("55")) return d;
+  if (d.length === 10 || d.length === 11) return "55" + d;
+  return d;
+}
 
 export const Route = createFileRoute("/whatsapp")({
   head: () => ({
@@ -143,6 +162,19 @@ function WhatsAppInbox() {
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
   const [qr, setQr] = useState<WhatsAppQr | null>(null);
   const [showQr, setShowQr] = useState(false);
+
+  // Modal: editar telefone do contato atual
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Modal: adicionar contato manual
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [addNote, setAddNote] = useState("");
+  const [savingAdd, setSavingAdd] = useState(false);
 
   // Polling de status Evolution a cada 10s
   useEffect(() => {
@@ -446,6 +478,129 @@ function WhatsAppInbox() {
     }
   }
 
+  function openEditPhone() {
+    if (!current) return;
+    setEditName(current.pushName ?? "");
+    setEditPhone(current.phoneReal ? formatPhone(current.phoneReal) : "");
+    setEditOpen(true);
+  }
+
+  async function saveEditPhone() {
+    if (!current || !companyId) return;
+    const phone = normalizeWaPhone(editPhone);
+    if (!phone || phone.length < 8 || phone.length > 15) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+    const name = editName.trim() || current.pushName || displayName(phone, null);
+    setSavingEdit(true);
+    try {
+      const externalId = current.jid || `phone:${phone}`;
+      // upsert manual: tenta achar lead com mesmo external_id, senão insere
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("channel", "whatsapp")
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase.from("leads").update({ phone, name }).eq("id", existing.id);
+      } else {
+        await supabase.from("leads").insert({
+          company_id: companyId,
+          channel: "whatsapp",
+          name,
+          phone,
+          external_id: externalId,
+        });
+      }
+      // Injeta localmente para mesclar imediatamente na conversa atual
+      const synthetic: WaMessage = {
+        id: `manual:${externalId}`,
+        company_id: companyId,
+        numero: phone,
+        mensagem: "",
+        direction: "in",
+        created_at: "1970-01-01T00:00:00.000Z",
+        whatsapp_jid: current.jid || null,
+        push_name: name,
+      };
+      setContactRows((prev) => {
+        const filtered = prev.filter((r) => r.id !== synthetic.id);
+        return [...filtered, synthetic];
+      });
+      // Reseleciona pela nova chave canônica (telefone real)
+      setSelected(`p:${phone}`);
+      toast.success("Telefone salvo.");
+      setEditOpen(false);
+    } catch (e) {
+      toast.error(`Falha ao salvar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function saveAddContact() {
+    if (!companyId) return;
+    const phone = normalizeWaPhone(addPhone);
+    if (!phone || phone.length < 8 || phone.length > 15) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+    const name = addName.trim() || displayName(phone, null);
+    setSavingAdd(true);
+    try {
+      const externalId = `phone:${phone}`;
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("channel", "whatsapp")
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase
+          .from("leads")
+          .update({ phone, name, ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}) })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("leads").insert({
+          company_id: companyId,
+          channel: "whatsapp",
+          name,
+          phone,
+          external_id: externalId,
+          ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+        });
+      }
+      const synthetic: WaMessage = {
+        id: `manual:${externalId}`,
+        company_id: companyId,
+        numero: phone,
+        mensagem: "",
+        direction: "in",
+        created_at: "1970-01-01T00:00:00.000Z",
+        whatsapp_jid: null,
+        push_name: name,
+      };
+      setContactRows((prev) => {
+        const filtered = prev.filter((r) => r.id !== synthetic.id);
+        return [...filtered, synthetic];
+      });
+      setSelected(`p:${phone}`);
+      toast.success("Contato adicionado.");
+      setAddOpen(false);
+      setAddName("");
+      setAddPhone("");
+      setAddNote("");
+    } catch (e) {
+      toast.error(`Falha ao adicionar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingAdd(false);
+    }
+  }
+
   async function handleSend() {
     const text = draft.trim();
     if (sending) return;
@@ -580,6 +735,14 @@ function WhatsAppInbox() {
           >
             {syncing ? "Sincronizando…" : "Sincronizar contatos"}
           </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="w-full mt-2"
+            onClick={() => setAddOpen(true)}
+          >
+            <UserPlus className="h-3.5 w-3.5" /> Adicionar contato manual
+          </Button>
         </div>
         {!status?.connected && (
           <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
@@ -643,14 +806,11 @@ function WhatsAppInbox() {
           {filtered.map((c) => {
             const active = c.key === selected;
             const name = displayName(c.phoneReal, c.pushName);
-            const lidNumber = jidLocalNumber(c.jid);
             const sub = c.phoneReal
               ? formatPhone(c.phoneReal)
               : c.isGroup
                 ? "Grupo"
-                : lidNumber
-                  ? `ID WhatsApp ${lidNumber}`
-                  : "Sem telefone real";
+                : "Sem telefone real";
             return (
               <button
                 key={c.key}
@@ -704,7 +864,7 @@ function WhatsAppInbox() {
               <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold">
                 {avatarInitials(current.phoneReal, current.pushName)}
               </div>
-              <div className="leading-tight min-w-0">
+              <div className="leading-tight min-w-0 flex-1">
                 <div className="text-sm font-semibold truncate">
                   {displayName(current.phoneReal, current.pushName)}
                 </div>
@@ -713,11 +873,20 @@ function WhatsAppInbox() {
                     ? formatPhone(current.phoneReal)
                     : current.isGroup
                       ? "Grupo — envio desabilitado"
-                      : jidLocalNumber(current.jid)
-                        ? `ID WhatsApp ${jidLocalNumber(current.jid)}`
-                        : "Sem telefone real — envio limitado"}
+                      : "Sem telefone real — envio limitado"}
                 </div>
               </div>
+              {!current.isGroup && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={openEditPhone}
+                  className="shrink-0"
+                  title="Editar telefone"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Editar telefone
+                </Button>
+              )}
             </header>
 
             <div
@@ -791,6 +960,108 @@ function WhatsAppInbox() {
           </>
         )}
       </section>
+
+      {/* Modal: Editar telefone */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar telefone</DialogTitle>
+            <DialogDescription>
+              Defina o telefone WhatsApp real deste contato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">Nome do contato</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Nome"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone">Telefone WhatsApp real</Label>
+              <Input
+                id="edit-phone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="(11) 91234-5678"
+                inputMode="tel"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {editPhone
+                  ? `Será enviado como: ${normalizeWaPhone(editPhone) || "inválido"}`
+                  : "Será adicionado +55 automaticamente se necessário."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+              Cancelar
+            </Button>
+            <Button onClick={saveEditPhone} disabled={savingEdit}>
+              {savingEdit ? "Salvando…" : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Adicionar contato manual */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar contato manual</DialogTitle>
+            <DialogDescription>
+              Crie uma conversa nova para enviar pelo WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="add-name">Nome</Label>
+              <Input
+                id="add-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Nome do contato"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-phone">Telefone WhatsApp</Label>
+              <Input
+                id="add-phone"
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="(11) 91234-5678"
+                inputMode="tel"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {addPhone
+                  ? `Será enviado como: ${normalizeWaPhone(addPhone) || "inválido"}`
+                  : "Será adicionado +55 automaticamente se necessário."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-note">Observação (opcional)</Label>
+              <Textarea
+                id="add-note"
+                value={addNote}
+                onChange={(e) => setAddNote(e.target.value)}
+                placeholder="Anotação interna"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={savingAdd}>
+              Cancelar
+            </Button>
+            <Button onClick={saveAddContact} disabled={savingAdd}>
+              {savingAdd ? "Salvando…" : "Adicionar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
