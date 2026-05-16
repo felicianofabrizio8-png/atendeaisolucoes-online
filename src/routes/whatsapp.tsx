@@ -600,6 +600,8 @@ function WhatsAppInbox() {
       setSavingAdd(false);
     }
   }
+
+  async function handleSend() {
     const text = draft.trim();
     if (sending) return;
     if (!current) {
