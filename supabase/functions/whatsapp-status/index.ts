@@ -213,6 +213,7 @@ Deno.serve(async (req) => {
 
       const chatRows = await tryEndpoints(
         [
+          { path: `/chat/findMessages/${inst}`, method: "POST", body: { offset: 1000, page: 1 } },
           { path: `/chat/findChats/${inst}`, method: "POST", body: {} },
           { path: `/chat/findChats/${inst}`, method: "POST", body: { where: {} } },
           { path: `/chat/findChats/${inst}`, method: "GET" },
@@ -224,7 +225,11 @@ Deno.serve(async (req) => {
       const byJid = new Map<string, EvoContact>();
       const byPhone = new Map<string, EvoContact>();
       const addRow = (raw: Record<string, unknown>) => {
-        const c = normalizeRow(raw);
+        const rows = Array.isArray((raw as { messages?: { records?: unknown[] } }).messages?.records)
+          ? ((raw as { messages: { records: Record<string, unknown>[] } }).messages.records)
+          : [raw];
+        for (const row of rows) {
+        const c = normalizeRow(row);
         if (!c.whatsapp_jid && !c.numero) return;
         const key = c.whatsapp_jid || c.numero;
         const prev = byJid.get(key);
@@ -241,6 +246,7 @@ Deno.serve(async (req) => {
           numero: merged.numero,
           name: merged.push_name,
         });
+        }
       };
       for (const r of contactRows.slice(0, 5000)) addRow(r);
       for (const r of chatRows.slice(0, 5000)) addRow(r);
