@@ -478,7 +478,128 @@ function WhatsAppInbox() {
     }
   }
 
-  async function handleSend() {
+  function openEditPhone() {
+    if (!current) return;
+    setEditName(current.pushName ?? "");
+    setEditPhone(current.phoneReal ? formatPhone(current.phoneReal) : "");
+    setEditOpen(true);
+  }
+
+  async function saveEditPhone() {
+    if (!current || !companyId) return;
+    const phone = normalizeWaPhone(editPhone);
+    if (!phone || phone.length < 8 || phone.length > 15) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+    const name = editName.trim() || current.pushName || displayName(phone, null);
+    setSavingEdit(true);
+    try {
+      const externalId = current.jid || `phone:${phone}`;
+      // upsert manual: tenta achar lead com mesmo external_id, senão insere
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("channel", "whatsapp")
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase.from("leads").update({ phone, name }).eq("id", existing.id);
+      } else {
+        await supabase.from("leads").insert({
+          company_id: companyId,
+          channel: "whatsapp",
+          name,
+          phone,
+          external_id: externalId,
+        });
+      }
+      // Injeta localmente para mesclar imediatamente na conversa atual
+      const synthetic: WaMessage = {
+        id: `manual:${externalId}`,
+        company_id: companyId,
+        numero: phone,
+        mensagem: "",
+        direction: "in",
+        created_at: "1970-01-01T00:00:00.000Z",
+        whatsapp_jid: current.jid || null,
+        push_name: name,
+      };
+      setContactRows((prev) => {
+        const filtered = prev.filter((r) => r.id !== synthetic.id);
+        return [...filtered, synthetic];
+      });
+      // Reseleciona pela nova chave canônica (telefone real)
+      setSelected(`p:${phone}`);
+      toast.success("Telefone salvo.");
+      setEditOpen(false);
+    } catch (e) {
+      toast.error(`Falha ao salvar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function saveAddContact() {
+    if (!companyId) return;
+    const phone = normalizeWaPhone(addPhone);
+    if (!phone || phone.length < 8 || phone.length > 15) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+    const name = addName.trim() || displayName(phone, null);
+    setSavingAdd(true);
+    try {
+      const externalId = `phone:${phone}`;
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("channel", "whatsapp")
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase
+          .from("leads")
+          .update({ phone, name, ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}) })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("leads").insert({
+          company_id: companyId,
+          channel: "whatsapp",
+          name,
+          phone,
+          external_id: externalId,
+          ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+        });
+      }
+      const synthetic: WaMessage = {
+        id: `manual:${externalId}`,
+        company_id: companyId,
+        numero: phone,
+        mensagem: "",
+        direction: "in",
+        created_at: "1970-01-01T00:00:00.000Z",
+        whatsapp_jid: null,
+        push_name: name,
+      };
+      setContactRows((prev) => {
+        const filtered = prev.filter((r) => r.id !== synthetic.id);
+        return [...filtered, synthetic];
+      });
+      setSelected(`p:${phone}`);
+      toast.success("Contato adicionado.");
+      setAddOpen(false);
+      setAddName("");
+      setAddPhone("");
+      setAddNote("");
+    } catch (e) {
+      toast.error(`Falha ao adicionar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingAdd(false);
+    }
+  }
     const text = draft.trim();
     if (sending) return;
     if (!current) {
