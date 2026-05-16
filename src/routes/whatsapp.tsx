@@ -133,6 +133,41 @@ function WhatsAppInbox() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contactsLoadedRef = useRef(false);
+  const [status, setStatus] = useState<WhatsAppStatus | null>(null);
+  const [qr, setQr] = useState<WhatsAppQr | null>(null);
+  const [showQr, setShowQr] = useState(false);
+
+  // Polling de status Evolution a cada 10s
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      const s = await whatsappProvider.getStatus();
+      if (!cancelled) setStatus(s);
+      if (s.connected && showQr) setShowQr(false);
+    }
+    tick();
+    const id = setInterval(tick, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [showQr]);
+
+  // Carrega QR sob demanda quando o usuário pedir
+  useEffect(() => {
+    if (!showQr) return;
+    let cancelled = false;
+    async function load() {
+      const q = await whatsappProvider.getQrCode();
+      if (!cancelled) setQr(q);
+    }
+    load();
+    const id = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [showQr]);
 
   // Carga inicial + polling 3s + realtime
   useEffect(() => {
