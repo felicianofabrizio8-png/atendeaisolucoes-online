@@ -236,7 +236,7 @@ function WhatsAppInbox() {
       if (!contactsLoadedRef.current) {
         contactsLoadedRef.current = true;
         const { data: contactsData, error: contactsError } = await supabase.functions.invoke(
-          "send-whatsapp-message",
+          "whatsapp-status",
           { body: { action: "contacts" } },
         );
         if (contactsError) {
