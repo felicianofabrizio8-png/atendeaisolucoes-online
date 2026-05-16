@@ -398,6 +398,47 @@ function WhatsAppInbox() {
     }
   }, [conversations, selected]);
 
+  async function handleSync() {
+    if (syncing) return;
+    setSyncing(true);
+    console.log("SYNC_CONTACTS_START");
+    try {
+      const res = await whatsappProvider.syncContacts();
+      console.log("SYNC_CONTACTS_RESULT", res);
+      if (!res.ok) {
+        toast.error(`Falha ao sincronizar: ${res.error ?? "erro"}`);
+        return;
+      }
+      // Reaproveita o formato de serverContactRows
+      const rows = (res.contacts as Array<Record<string, unknown>>)
+        .map((contact, idx) => {
+          const numero = typeof contact.numero === "string" ? contact.numero : "";
+          const jid = typeof contact.whatsapp_jid === "string" ? contact.whatsapp_jid : "";
+          const pushName = typeof contact.push_name === "string" ? contact.push_name : "";
+          return {
+            id: `contact:${jid || numero || idx}`,
+            company_id: companyId!,
+            numero: numero || jid,
+            mensagem: "",
+            direction: "in" as const,
+            created_at: "1970-01-01T00:00:00.000Z",
+            whatsapp_jid: jid || null,
+            push_name: pushName || null,
+          };
+        })
+        .filter((row) => row.numero || row.whatsapp_jid || row.push_name);
+      setServerContactRows(rows as WaMessage[]);
+      toast.success(
+        `Contatos sincronizados (${rows.length})${res.updated ? ` — ${res.updated} atualizados` : ""}`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Falha ao sincronizar: ${msg}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function handleSend() {
     const text = draft.trim();
     if (sending) return;
