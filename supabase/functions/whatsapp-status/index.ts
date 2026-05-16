@@ -221,6 +221,26 @@ Deno.serve(async (req) => {
         "CHATS",
       );
 
+      const messageRecords = chatRows.flatMap((raw) =>
+        Array.isArray((raw as { messages?: { records?: unknown[] } }).messages?.records)
+          ? (raw as { messages: { records: Record<string, unknown>[] } }).messages.records
+          : [raw],
+      );
+      const lidJids = Array.from(
+        new Set(
+          messageRecords
+            .map((raw) => normalizeRow(raw).whatsapp_jid)
+            .filter((jid) => jid.endsWith("@lid")),
+        ),
+      );
+
+      const lidRows = lidJids.length
+        ? await tryEndpoints(
+            [{ path: `/chat/whatsappNumbers/${inst}`, method: "POST", body: { numbers: lidJids } }],
+            "LID_RESOLVE",
+          )
+        : [];
+
       // 3) Normalizar e mesclar (por jid)
       const byJid = new Map<string, EvoContact>();
       const byPhone = new Map<string, EvoContact>();
@@ -250,6 +270,7 @@ Deno.serve(async (req) => {
       };
       for (const r of contactRows.slice(0, 5000)) addRow(r);
       for (const r of chatRows.slice(0, 5000)) addRow(r);
+      for (const r of lidRows.slice(0, 5000)) addRow(r);
 
       const contacts = [...byJid.values()];
 
