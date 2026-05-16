@@ -32,6 +32,12 @@ function pickStr(row: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+function pickNestedStr(row: Record<string, unknown>, parent: string, ...keys: string[]): string {
+  const obj = row[parent];
+  if (!obj || typeof obj !== "object") return "";
+  return pickStr(obj as Record<string, unknown>, ...keys);
+}
+
 function jidToPhone(jid: string): string {
   if (!jid) return "";
   const [local, domain] = jid.split("@");
@@ -47,17 +53,29 @@ function digitsOnly(v: string): string {
 }
 
 function normalizeRow(row: Record<string, unknown>): EvoContact {
-  const jid = pickStr(row, "remoteJid", "id", "jid");
-  const fromJid = jidToPhone(jid);
+  const rawNumber = pickStr(row, "number", "phone", "phoneNumber", "waId", "wa_id");
+  const numberJid = rawNumber.includes("@") ? rawNumber : "";
+  const jidRaw =
+    pickStr(row, "remoteJid", "jid") ||
+    pickNestedStr(row, "key", "remoteJid") ||
+    pickNestedStr(row, "lastMessage_key", "remoteJid");
+  const idCandidate = pickStr(row, "id");
+  const jid = jidRaw.includes("@") ? jidRaw : idCandidate.includes("@") ? idCandidate : "";
+  const altJid =
+    pickStr(row, "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
+    pickNestedStr(row, "key", "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
+    pickNestedStr(row, "lastMessage_key", "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn");
+  const fromJid = jidToPhone(jid) || jidToPhone(altJid);
   const numero =
     fromJid ||
-    digitsOnly(pickStr(row, "number", "phone", "phoneNumber")) ||
+    (jidRaw.includes("@") ? "" : digitsOnly(jidRaw)) ||
+    (numberJid ? "" : digitsOnly(rawNumber)) ||
     "";
-  const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify");
+  const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify", "lastMessagePushName");
   return {
-    id: jid || numero,
+    id: jid || altJid || numero || idCandidate,
     numero,
-    whatsapp_jid: jid,
+    whatsapp_jid: numberJid || jid || altJid,
     push_name,
   };
 }
@@ -176,7 +194,9 @@ Deno.serve(async (req) => {
                     ? (parsed as { data: Record<string, unknown>[] }).data
                     : Array.isArray((parsed as { response?: unknown[] })?.response)
                       ? (parsed as { response: Record<string, unknown>[] }).response
-                      : [];
+                      : Array.isArray((parsed as { messages?: { records?: unknown[] } })?.messages?.records)
+                        ? (parsed as { messages: { records: Record<string, unknown>[] } }).messages.records
+                        : [];
             if (rows.length > 0) {
               console.log(`SYNC_${label}_OK`, { path: ep.path, count: rows.length });
               return rows;
@@ -200,6 +220,7 @@ Deno.serve(async (req) => {
 
       const chatRows = await tryEndpoints(
         [
+          { path: `/chat/findMessages/${inst}`, method: "POST", body: { offset: 1000, page: 1 } },
           { path: `/chat/findChats/${inst}`, method: "POST", body: {} },
           { path: `/chat/findChats/${inst}`, method: "POST", body: { where: {} } },
           { path: `/chat/findChats/${inst}`, method: "GET" },
@@ -207,12 +228,66 @@ Deno.serve(async (req) => {
         "CHATS",
       );
 
+      const messageRecords = chatRows.flatMap((raw) =>
+        Array.isArray((raw as { messages?: { records?: unknown[] } }).messages?.records)
+          ? (raw as { messages: { records: Record<string, unknown>[] } }).messages.records
+          : [raw],
+      );
+      let syncSupabase: ReturnType<typeof createClient> | null = null;
+      let syncCompanyId = "";
+      let dbLidJids: string[] = [];
+      if (action === "sync") {
+        syncSupabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: userRes } = await syncSupabase.auth.getUser(accessToken);
+        const userId = userRes?.user?.id;
+        if (userId) {
+          const { data: profile } = await syncSupabase
+            .from("profiles")
+            .select("company_id")
+            .eq("id", userId)
+            .maybeSingle();
+          syncCompanyId = (profile?.company_id as string | undefined) ?? "";
+        }
+        if (syncCompanyId) {
+          const { data: lidMsgs } = await syncSupabase
+            .from("whatsapp_messages")
+            .select("numero, whatsapp_jid")
+            .eq("company_id", syncCompanyId)
+            .or("numero.ilike.%@lid,whatsapp_jid.ilike.%@lid")
+            .limit(5000);
+          dbLidJids = (lidMsgs ?? [])
+            .flatMap((m) => [m.numero, m.whatsapp_jid])
+            .filter((v): v is string => typeof v === "string" && v.endsWith("@lid"));
+        }
+      }
+      const lidJids = Array.from(
+        new Set(
+          [
+            ...messageRecords.map((raw) => normalizeRow(raw).whatsapp_jid),
+            ...dbLidJids,
+          ].filter((jid) => jid.endsWith("@lid")),
+        ),
+      );
+
+      const lidRows = lidJids.length
+        ? await tryEndpoints(
+            [{ path: `/chat/whatsappNumbers/${inst}`, method: "POST", body: { numbers: lidJids } }],
+            "LID_RESOLVE",
+          )
+        : [];
+
       // 3) Normalizar e mesclar (por jid)
       const byJid = new Map<string, EvoContact>();
       const byPhone = new Map<string, EvoContact>();
       const addRow = (raw: Record<string, unknown>) => {
-        const c = normalizeRow(raw);
-        if (!c.whatsapp_jid && !c.numero) return;
+        const rows = Array.isArray((raw as { messages?: { records?: unknown[] } }).messages?.records)
+          ? ((raw as { messages: { records: Record<string, unknown>[] } }).messages.records)
+          : [raw];
+        for (const row of rows) {
+          const c = normalizeRow(row);
+          if (!c.whatsapp_jid && !c.numero) continue;
         const key = c.whatsapp_jid || c.numero;
         const prev = byJid.get(key);
         const merged: EvoContact = {
@@ -228,32 +303,20 @@ Deno.serve(async (req) => {
           numero: merged.numero,
           name: merged.push_name,
         });
+        }
       };
       for (const r of contactRows.slice(0, 5000)) addRow(r);
       for (const r of chatRows.slice(0, 5000)) addRow(r);
+      for (const r of lidRows.slice(0, 5000)) addRow(r);
 
       const contacts = [...byJid.values()];
 
       // 4) (action=sync) tentar resolver telefone real em whatsapp_messages
       let updated = 0;
       if (action === "sync") {
-        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-        const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
-
-        const { data: userRes } = await supabase.auth.getUser(accessToken);
-        const userId = userRes?.user?.id;
-        if (userId) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("company_id")
-            .eq("id", userId)
-            .maybeSingle();
-          const companyId = profile?.company_id as string | undefined;
-
-          if (companyId) {
+        const supabase = syncSupabase;
+        const companyId = syncCompanyId;
+        if (supabase && companyId) {
             for (const c of contacts) {
               if (!c.numero || !c.whatsapp_jid) continue;
               // Atualiza mensagens que apontam pro mesmo JID mas estão sem telefone real
@@ -273,7 +336,6 @@ Deno.serve(async (req) => {
               console.log("SYNC_PHONE_RESOLVED", { jid: c.whatsapp_jid, numero: c.numero });
             }
           }
-        }
       }
 
       return json({ ok: true, contacts, updated });

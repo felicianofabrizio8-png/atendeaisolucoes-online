@@ -53,6 +53,12 @@ function extractPhone(v: unknown): string {
   return digits.length >= 8 && digits.length <= 15 ? digits : "";
 }
 
+function jidLocalNumber(jid: string): string {
+  if (!jid) return "";
+  const [local, domain] = jid.split("@");
+  return domain?.toLowerCase() === "lid" && /^\d{8,20}$/.test(local ?? "") ? local : "";
+}
+
 // Formata telefone como +55 (DD) NNNNN-NNNN quando possível.
 function formatPhone(digits: string): string {
   if (!digits) return "";
@@ -364,7 +370,8 @@ function WhatsAppInbox() {
     const qDigits = q.replace(/\D/g, "");
     return conversations.filter((c) => {
       const name = displayName(c.phoneReal, c.pushName).toLowerCase();
-      const phoneMatch = qDigits && c.phoneReal.includes(qDigits);
+      const lidNumber = jidLocalNumber(c.jid);
+      const phoneMatch = qDigits && (c.phoneReal.includes(qDigits) || lidNumber.includes(qDigits));
       const lastMsg = (c.last?.mensagem ?? "").toLowerCase();
       return name.includes(q) || phoneMatch || lastMsg.includes(q);
     });
@@ -636,11 +643,14 @@ function WhatsAppInbox() {
           {filtered.map((c) => {
             const active = c.key === selected;
             const name = displayName(c.phoneReal, c.pushName);
+            const lidNumber = jidLocalNumber(c.jid);
             const sub = c.phoneReal
               ? formatPhone(c.phoneReal)
               : c.isGroup
                 ? "Grupo"
-                : "Sem telefone real";
+                : lidNumber
+                  ? `ID WhatsApp ${lidNumber}`
+                  : "Sem telefone real";
             return (
               <button
                 key={c.key}
@@ -703,7 +713,9 @@ function WhatsAppInbox() {
                     ? formatPhone(current.phoneReal)
                     : current.isGroup
                       ? "Grupo — envio desabilitado"
-                      : "Sem telefone real — envio limitado"}
+                      : jidLocalNumber(current.jid)
+                        ? `ID WhatsApp ${jidLocalNumber(current.jid)}`
+                        : "Sem telefone real — envio limitado"}
                 </div>
               </div>
             </header>
