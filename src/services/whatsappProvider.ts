@@ -66,14 +66,15 @@ export const whatsappProvider = {
     return { ok: true, messageId: data?.messageId };
   },
 
-  async syncContacts(): Promise<{ ok: boolean; contacts: unknown[]; error?: string }> {
+  async syncContacts(): Promise<{ ok: boolean; contacts: unknown[]; updated?: number; error?: string }> {
     const { data, error } = await supabase.functions.invoke("whatsapp-status", {
-      body: { action: "contacts" },
+      body: { action: "sync" },
     });
     if (error) return { ok: false, contacts: [], error: error.message };
     return {
       ok: Boolean(data?.ok),
       contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+      updated: typeof data?.updated === "number" ? data.updated : 0,
       error: data?.error,
     };
   },
