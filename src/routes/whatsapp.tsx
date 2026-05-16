@@ -643,11 +643,14 @@ function WhatsAppInbox() {
           {filtered.map((c) => {
             const active = c.key === selected;
             const name = displayName(c.phoneReal, c.pushName);
+            const lidNumber = jidLocalNumber(c.jid);
             const sub = c.phoneReal
               ? formatPhone(c.phoneReal)
               : c.isGroup
                 ? "Grupo"
-                : "Sem telefone real";
+                : lidNumber
+                  ? `ID WhatsApp ${lidNumber}`
+                  : "Sem telefone real";
             return (
               <button
                 key={c.key}
@@ -710,7 +713,9 @@ function WhatsAppInbox() {
                     ? formatPhone(current.phoneReal)
                     : current.isGroup
                       ? "Grupo — envio desabilitado"
-                      : "Sem telefone real — envio limitado"}
+                      : jidLocalNumber(current.jid)
+                        ? `ID WhatsApp ${jidLocalNumber(current.jid)}`
+                        : "Sem telefone real — envio limitado"}
                 </div>
               </div>
             </header>
