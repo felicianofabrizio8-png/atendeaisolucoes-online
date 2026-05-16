@@ -142,8 +142,9 @@ Deno.serve(async (req) => {
   const evoPayload = {
     number: jidFinal,
     text: message,
-    options: { delay: 0, presence: "composing" },
   };
+  console.log("NUMERO_ORIGINAL", number);
+  console.log("JID_FINAL", jidFinal);
   console.log("PAYLOAD_EVOLUTION", evoPayload);
   console.log("SEND_FINAL_TARGET", {
     userId,
