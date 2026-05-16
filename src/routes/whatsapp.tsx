@@ -425,13 +425,15 @@ function WhatsAppInbox() {
       return;
     }
 
-    console.log("SEND_SELECTED_CONTACT", {
+    console.log("CHAT_ATUAL", {
       key: current.key,
       phoneReal: current.phoneReal,
       jid: current.jid,
       pushName: current.pushName,
+      selectedKey: selected,
     });
-    console.log("SEND_TARGET_FINAL", target);
+    console.log("NUMERO_ENVIO", target);
+    console.log("REMOTE_JID", current.jid);
 
     setSending(true);
     try {
