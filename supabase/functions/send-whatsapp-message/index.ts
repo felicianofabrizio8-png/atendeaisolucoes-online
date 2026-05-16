@@ -140,6 +140,11 @@ Deno.serve(async (req) => {
   }
 
   const target = `${baseUrl}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
+  const evoPayload = {
+    number: evoNumber,
+    text: message,
+    options: { delay: 0, presence: "composing" },
+  };
   console.log("SEND_FINAL_TARGET", {
     userId,
     companyId,
@@ -148,6 +153,8 @@ Deno.serve(async (req) => {
     originalJid,
     messageLen: message.length,
   });
+  console.log("EDGE_EVOLUTION_URL", target);
+  console.log("EDGE_EVOLUTION_PAYLOAD", evoPayload);
 
   let sendOk = false;
   let sendError: string | null = null;
@@ -160,27 +167,42 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         apikey: EVOLUTION_API_KEY,
       },
-      body: JSON.stringify({
-        number: evoNumber,
-        text: message,
-        options: { delay: 0, presence: "composing" },
-      }),
+      body: JSON.stringify(evoPayload),
     });
     const txt = await res.text();
+    console.log("EDGE_EVOLUTION_RESPONSE_STATUS", res.status);
+    console.log("EDGE_EVOLUTION_RESPONSE_BODY", txt.slice(0, 1000));
     console.log("EVOLUTION_RESPONSE", {
       status: res.status,
       ok: res.ok,
       body: txt.slice(0, 500),
     });
+
+    let parsed:
+      | { key?: { id?: string }; message?: unknown; messageId?: string; error?: unknown; response?: { message?: unknown } }
+      | null = null;
+    try {
+      parsed = JSON.parse(txt);
+    } catch {
+      parsed = null;
+    }
+
     if (!res.ok) {
-      sendError = `Evolution ${res.status}: ${txt.slice(0, 200)}`;
+      const evoErr =
+        (parsed && typeof parsed.error === "string" && parsed.error) ||
+        (parsed?.response && typeof parsed.response.message === "string"
+          ? (parsed.response.message as string)
+          : "") ||
+        txt.slice(0, 300);
+      sendError = `Evolution ${res.status}: ${evoErr}`;
     } else {
-      sendOk = true;
-      try {
-        const parsed = JSON.parse(txt) as { key?: { id?: string }; messageId?: string };
-        messageId = parsed?.key?.id ?? parsed?.messageId ?? null;
-      } catch {
-        /* ignore */
+      const id = parsed?.key?.id ?? parsed?.messageId ?? null;
+      const hasMessage = parsed?.message != null;
+      if (!id && !hasMessage) {
+        sendError = `Evolution retornou resposta inválida: ${txt.slice(0, 200)}`;
+      } else {
+        sendOk = true;
+        messageId = id ?? null;
       }
     }
   } catch (e) {
