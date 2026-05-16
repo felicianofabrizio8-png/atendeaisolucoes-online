@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { whatsappProvider, type WhatsAppQr, type WhatsAppStatus } from "@/services/whatsappProvider";
 
 export const Route = createFileRoute("/whatsapp")({
   head: () => ({
