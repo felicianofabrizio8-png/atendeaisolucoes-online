@@ -53,6 +53,8 @@ function digitsOnly(v: string): string {
 }
 
 function normalizeRow(row: Record<string, unknown>): EvoContact {
+  const rawNumber = pickStr(row, "number", "phone", "phoneNumber", "waId", "wa_id");
+  const numberJid = rawNumber.includes("@") ? rawNumber : "";
   const jid =
     pickStr(row, "remoteJid", "id", "jid") ||
     pickNestedStr(row, "key", "remoteJid") ||
@@ -64,13 +66,13 @@ function normalizeRow(row: Record<string, unknown>): EvoContact {
   const fromJid = jidToPhone(jid) || jidToPhone(altJid);
   const numero =
     fromJid ||
-    digitsOnly(pickStr(row, "number", "phone", "phoneNumber", "waId", "wa_id")) ||
+    (numberJid ? "" : digitsOnly(rawNumber)) ||
     "";
   const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify", "lastMessagePushName");
   return {
     id: jid || altJid || numero,
     numero,
-    whatsapp_jid: jid || altJid,
+    whatsapp_jid: numberJid || jid || altJid,
     push_name,
   };
 }
