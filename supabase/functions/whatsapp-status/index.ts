@@ -32,6 +32,12 @@ function pickStr(row: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+function pickNestedStr(row: Record<string, unknown>, parent: string, ...keys: string[]): string {
+  const obj = row[parent];
+  if (!obj || typeof obj !== "object") return "";
+  return pickStr(obj as Record<string, unknown>, ...keys);
+}
+
 function jidToPhone(jid: string): string {
   if (!jid) return "";
   const [local, domain] = jid.split("@");
@@ -47,17 +53,24 @@ function digitsOnly(v: string): string {
 }
 
 function normalizeRow(row: Record<string, unknown>): EvoContact {
-  const jid = pickStr(row, "remoteJid", "id", "jid");
-  const fromJid = jidToPhone(jid);
+  const jid =
+    pickStr(row, "remoteJid", "id", "jid") ||
+    pickNestedStr(row, "key", "remoteJid") ||
+    pickNestedStr(row, "lastMessage_key", "remoteJid");
+  const altJid =
+    pickStr(row, "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
+    pickNestedStr(row, "key", "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn") ||
+    pickNestedStr(row, "lastMessage_key", "remoteJidAlt", "participantAlt", "senderPn", "participantPn", "userPn");
+  const fromJid = jidToPhone(jid) || jidToPhone(altJid);
   const numero =
     fromJid ||
-    digitsOnly(pickStr(row, "number", "phone", "phoneNumber")) ||
+    digitsOnly(pickStr(row, "number", "phone", "phoneNumber", "waId", "wa_id")) ||
     "";
-  const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify");
+  const push_name = pickStr(row, "pushName", "name", "verifiedName", "notify", "lastMessagePushName");
   return {
-    id: jid || numero,
+    id: jid || altJid || numero,
     numero,
-    whatsapp_jid: jid,
+    whatsapp_jid: jid || altJid,
     push_name,
   };
 }
