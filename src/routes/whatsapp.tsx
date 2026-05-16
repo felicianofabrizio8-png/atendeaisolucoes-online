@@ -131,6 +131,7 @@ function WhatsAppInbox() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contactsLoadedRef = useRef(false);
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
