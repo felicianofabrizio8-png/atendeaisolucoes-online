@@ -5,9 +5,28 @@ import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Search, MessageSquare, ArrowLeft } from "lucide-react";
+import { Send, Search, MessageSquare, ArrowLeft, Pencil, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { whatsappProvider, type WhatsAppQr, type WhatsAppStatus } from "@/services/whatsappProvider";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+// Normaliza telefone para envio via Evolution (BR-friendly).
+function normalizeWaPhone(input: string): string {
+  const d = (input ?? "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("55")) return d;
+  if (d.length === 10 || d.length === 11) return "55" + d;
+  return d;
+}
 
 export const Route = createFileRoute("/whatsapp")({
   head: () => ({
