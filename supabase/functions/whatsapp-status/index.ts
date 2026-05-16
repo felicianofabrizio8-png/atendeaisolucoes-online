@@ -145,44 +145,67 @@ Deno.serve(async (req) => {
     }
 
     if (action === "contacts" || action === "sync") {
-      // 1) Buscar contatos
-      console.log("SYNC_CONTACTS_START", { instance: EVOLUTION_INSTANCE });
-      const cRes = await evoFetch(baseUrl, `/chat/findContacts/${inst}`, EVOLUTION_API_KEY, {
-        method: "POST",
-        body: JSON.stringify({ where: {} }),
-      });
-      let contactRows: Record<string, unknown>[] = [];
-      if (cRes.ok) {
-        const parsed = JSON.parse(cRes.txt) as unknown;
-        contactRows = Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>[])
-          : Array.isArray((parsed as { contacts?: unknown[] })?.contacts)
-            ? ((parsed as { contacts: Record<string, unknown>[] }).contacts)
-            : [];
-      } else {
-        console.warn("SYNC_CONTACTS contacts fetch failed", cRes.status, cRes.txt.slice(0, 200));
+      console.log("SYNC_CONTACTS_START", { instance: EVOLUTION_INSTANCE, baseUrl });
+
+      // Helper: tenta múltiplos paths (POST e GET) e retorna o primeiro array não-vazio.
+      async function tryEndpoints(
+        endpoints: Array<{ path: string; method: "GET" | "POST"; body?: unknown }>,
+        label: string,
+      ): Promise<Record<string, unknown>[]> {
+        for (const ep of endpoints) {
+          const init: RequestInit = { method: ep.method };
+          if (ep.method === "POST") init.body = JSON.stringify(ep.body ?? {});
+          const r = await evoFetch(baseUrl, ep.path, EVOLUTION_API_KEY!, init);
+          console.log(`SYNC_${label}_TRY`, {
+            path: ep.path,
+            method: ep.method,
+            status: r.status,
+            ok: r.ok,
+            sample: r.txt.slice(0, 300),
+          });
+          if (!r.ok) continue;
+          try {
+            const parsed = JSON.parse(r.txt) as unknown;
+            const rows: Record<string, unknown>[] = Array.isArray(parsed)
+              ? (parsed as Record<string, unknown>[])
+              : Array.isArray((parsed as { contacts?: unknown[] })?.contacts)
+                ? (parsed as { contacts: Record<string, unknown>[] }).contacts
+                : Array.isArray((parsed as { chats?: unknown[] })?.chats)
+                  ? (parsed as { chats: Record<string, unknown>[] }).chats
+                  : Array.isArray((parsed as { data?: unknown[] })?.data)
+                    ? (parsed as { data: Record<string, unknown>[] }).data
+                    : Array.isArray((parsed as { response?: unknown[] })?.response)
+                      ? (parsed as { response: Record<string, unknown>[] }).response
+                      : [];
+            if (rows.length > 0) {
+              console.log(`SYNC_${label}_OK`, { path: ep.path, count: rows.length });
+              return rows;
+            }
+          } catch (e) {
+            console.warn(`SYNC_${label}_PARSE_FAIL`, ep.path, (e as Error).message);
+          }
+        }
+        return [];
       }
 
-      // 2) Buscar chats (traz pushName por remoteJid em muitos casos)
-      const chRes = await evoFetch(baseUrl, `/chat/findChats/${inst}`, EVOLUTION_API_KEY, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      let chatRows: Record<string, unknown>[] = [];
-      if (chRes.ok) {
-        try {
-          const parsed = JSON.parse(chRes.txt) as unknown;
-          chatRows = Array.isArray(parsed)
-            ? (parsed as Record<string, unknown>[])
-            : Array.isArray((parsed as { chats?: unknown[] })?.chats)
-              ? ((parsed as { chats: Record<string, unknown>[] }).chats)
-              : [];
-        } catch {
-          chatRows = [];
-        }
-      } else {
-        console.warn("SYNC_CONTACTS chats fetch failed", chRes.status, chRes.txt.slice(0, 200));
-      }
+      const contactRows = await tryEndpoints(
+        [
+          { path: `/chat/findContacts/${inst}`, method: "POST", body: { where: {} } },
+          { path: `/chat/findContacts/${inst}`, method: "POST", body: {} },
+          { path: `/chat/findContacts/${inst}`, method: "GET" },
+          { path: `/instance/fetchContacts/${inst}`, method: "GET" },
+        ],
+        "CONTACTS",
+      );
+
+      const chatRows = await tryEndpoints(
+        [
+          { path: `/chat/findChats/${inst}`, method: "POST", body: {} },
+          { path: `/chat/findChats/${inst}`, method: "POST", body: { where: {} } },
+          { path: `/chat/findChats/${inst}`, method: "GET" },
+        ],
+        "CHATS",
+      );
 
       // 3) Normalizar e mesclar (por jid)
       const byJid = new Map<string, EvoContact>();
