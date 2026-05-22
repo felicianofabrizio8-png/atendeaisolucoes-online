@@ -67,14 +67,39 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
         ) {
           return Response.json({ error: "integração não encontrada" }, { status: 404 });
         }
-        if (!integration.access_token || !integration.external_account_id) {
+        const tokenSaved = Boolean(
+          integration.access_token && integration.access_token.trim().length > 0,
+        );
+        const phoneNumberId = integration.external_account_id ?? "";
+        const tokenPrefix = tokenSaved
+          ? integration.access_token!.slice(0, 6)
+          : null;
+
+        // Log seguro: NUNCA logar o token inteiro.
+        console.log("[whatsapp test-send] credentials", {
+          integrationId,
+          phoneNumberId,
+          tokenSaved: tokenSaved ? "Yes" : "No",
+          tokenPrefix: tokenPrefix ?? "N/A",
+        });
+
+        if (!tokenSaved || !phoneNumberId) {
           return Response.json(
-            { error: "integração sem token ou phone_number_id" },
+            {
+              ok: false,
+              error:
+                "Token da WhatsApp Cloud API inválido ou expirado. Reconfigure a integração.",
+              diagnostics: {
+                phoneNumberId,
+                tokenSaved: tokenSaved ? "Yes" : "No",
+                tokenPrefix: tokenPrefix ?? "N/A",
+              },
+            },
             { status: 400 },
           );
         }
 
-        const url = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
+        const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
         const payload = {
           messaging_product: "whatsapp",
           to,
@@ -122,8 +147,21 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
         console.log("[whatsapp test-send] response", {
           status,
           ok,
-          body: respText.slice(0, 500),
+          phoneNumberId,
+          tokenPrefix,
+          body: respText.slice(0, 1000),
         });
+
+        const metaError = (respJson as {
+          error?: { message?: string; code?: number; type?: string };
+        })?.error;
+
+        // Detecta 401 / OAuthException / código 190 (token expirado/inválido)
+        const isAuthError =
+          status === 401 ||
+          metaError?.type === "OAuthException" ||
+          metaError?.code === 190 ||
+          metaError?.code === 102;
 
         if (ok) {
           await supabaseAdmin
@@ -131,18 +169,29 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
             .update({ last_synced_at: startedAt, last_error: null })
             .eq("id", integrationId);
         } else {
-          const errMsg =
-            (respJson as { error?: { message?: string } })?.error?.message ??
-            `HTTP ${status}`;
+          const errMsg = metaError?.message ?? `HTTP ${status}`;
           await supabaseAdmin
             .from("integrations")
             .update({ last_error: `teste: ${errMsg}` })
             .eq("id", integrationId);
         }
 
+        const friendlyError = isAuthError
+          ? "Token da WhatsApp Cloud API inválido ou expirado. Reconfigure a integração."
+          : ok
+            ? undefined
+            : metaError?.message ?? `HTTP ${status}`;
+
         return Response.json({
           ok,
           status,
+          error: friendlyError,
+          diagnostics: {
+            phoneNumberId,
+            tokenSaved: "Yes",
+            tokenPrefix,
+            endpoint: url,
+          },
           request: { url, payload },
           response: respJson ?? respText,
         });
@@ -150,3 +199,4 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
     },
   },
 });
+
