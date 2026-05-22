@@ -992,33 +992,17 @@ function MetaIntegrationSection() {
         },
       );
 
-      const pagesList = await new Promise<Array<{ id: string; name: string }>>(
-        (resolve, reject) => {
-          window.FB!.api(
-            "/me/accounts",
-            { fields: "id,name", limit: 100 },
-            (res) => {
-              const r = res as { data?: Array<{ id: string; name: string }>; error?: { message?: string } };
-              if (r.error) return reject(new Error(r.error.message ?? "Erro Graph"));
-              resolve(r.data ?? []);
-            },
-          );
-        },
-      );
-
-      if (pagesList.length === 0) {
-        setError("Nenhuma página encontrada nessa conta Facebook.");
-        return;
-      }
-
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("meta-connect", {
-        body: { shortLivedToken: auth.accessToken, pages: pagesList },
+        body: {
+          mode: "basic",
+          shortLivedToken: auth.accessToken,
+          userID: auth.userID,
+        },
       });
       if (error) throw error;
-      const results = (data as { results?: Array<{ ok: boolean; page_id: string }> })?.results ?? [];
-      const okCount = results.filter((r) => r.ok).length;
-      setInfo(`${okCount}/${results.length} página(s) conectada(s) com sucesso.`);
+      const okName = (data as { user?: { name?: string } })?.user?.name ?? "usuário";
+      setInfo(`Meta conectado para teste (${okName}).`);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao conectar");
