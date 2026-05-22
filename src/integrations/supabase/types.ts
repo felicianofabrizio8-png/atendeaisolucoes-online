@@ -140,6 +140,8 @@ export type Database = {
           created_at: string
           display_name: string
           external_account_id: string | null
+          has_access_token: boolean
+          has_webhook_secret: boolean
           id: string
           last_error: string | null
           last_synced_at: string | null
@@ -157,6 +159,8 @@ export type Database = {
           created_at?: string
           display_name: string
           external_account_id?: string | null
+          has_access_token?: boolean
+          has_webhook_secret?: boolean
           id?: string
           last_error?: string | null
           last_synced_at?: string | null
@@ -174,6 +178,8 @@ export type Database = {
           created_at?: string
           display_name?: string
           external_account_id?: string | null
+          has_access_token?: boolean
+          has_webhook_secret?: boolean
           id?: string
           last_error?: string | null
           last_synced_at?: string | null
@@ -734,8 +740,8 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           external_account_id?: string | null
-          has_access_token?: never
-          has_webhook_secret?: never
+          has_access_token?: boolean | null
+          has_webhook_secret?: boolean | null
           id?: string | null
           last_error?: string | null
           last_synced_at?: string | null
@@ -749,8 +755,8 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           external_account_id?: string | null
-          has_access_token?: never
-          has_webhook_secret?: never
+          has_access_token?: boolean | null
+          has_webhook_secret?: boolean | null
           id?: string | null
           last_error?: string | null
           last_synced_at?: string | null
