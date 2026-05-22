@@ -111,7 +111,12 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
 
-  let payload: { shortLivedToken?: string; pages?: Array<{ id: string; name: string }> };
+  let payload: {
+    mode?: string;
+    shortLivedToken?: string;
+    userID?: string;
+    pages?: Array<{ id: string; name: string }>;
+  };
   try {
     payload = await req.json();
   } catch {
@@ -119,9 +124,44 @@ Deno.serve(async (req) => {
   }
 
   const shortToken = String(payload.shortLivedToken ?? "");
+  if (!shortToken) {
+    return json({ ok: false, error: "shortLivedToken required" }, 400);
+  }
+
+  // Modo básico: apenas valida o login e salva um registro de teste.
+  // Não busca páginas nem Instagram (scopes avançados ainda não aprovados).
+  if (payload.mode === "basic") {
+    const meRes = await fetch(
+      `${GRAPH}/me?fields=id,name,email&access_token=${encodeURIComponent(shortToken)}`,
+    );
+    if (!meRes.ok) {
+      const text = await meRes.text();
+      console.log("ME_FAIL", meRes.status, text);
+      return json({ ok: false, error: "failed to fetch user profile" }, 400);
+    }
+    const me = (await meRes.json()) as { id: string; name?: string; email?: string };
+
+    await sb.from("integrations").upsert(
+      {
+        company_id: companyId,
+        channel: "facebook",
+        display_name: me.name ?? "Meta Test User",
+        external_account_id: `user:${me.id}`,
+        access_token: shortToken,
+        active: true,
+        account_metadata: { mode: "basic", email: me.email ?? null, fb_user_id: me.id },
+        last_error: null,
+        last_synced_at: new Date().toISOString(),
+      },
+      { onConflict: "company_id,channel,external_account_id" },
+    );
+
+    return json({ ok: true, user: { id: me.id, name: me.name, email: me.email } });
+  }
+
   const pages = Array.isArray(payload.pages) ? payload.pages : [];
-  if (!shortToken || pages.length === 0) {
-    return json({ ok: false, error: "shortLivedToken and pages required" }, 400);
+  if (pages.length === 0) {
+    return json({ ok: false, error: "pages required" }, 400);
   }
 
   const longLived = await exchangeForLongLivedUserToken(shortToken);
