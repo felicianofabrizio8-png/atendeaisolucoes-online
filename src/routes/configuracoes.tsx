@@ -913,8 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Etapa 2: listar páginas Facebook. Adicionado pages_show_list.
-const FB_SCOPES = "public_profile,pages_show_list";
+// Voltando ao login básico: pages_show_list ainda inválido no app Meta.
+const FB_SCOPES = "public_profile";
+
 
 
 function loadFbSdk(appId: string): Promise<void> {
