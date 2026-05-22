@@ -327,7 +327,8 @@ function ConversationPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-semibold truncate">{lead.name}</span>
-              <ChannelBadge channel={lead.channel} />
+              <OriginBadge origin={origin} />
+              {origin !== "whatsapp" && <ChannelBadge channel={lead.channel} />}
               {closedInfo ? (
                 <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-won)]/15 text-[var(--status-won)]">
                   <CheckCircle2 className="h-3 w-3" /> Fechado
