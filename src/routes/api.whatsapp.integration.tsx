@@ -108,28 +108,43 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .eq("external_account_id", body.phoneNumberId)
           .maybeSingle();
 
+        const safeCols =
+          "id, company_id, channel, display_name, active, external_account_id, account_metadata, last_synced_at, last_error, created_at, updated_at";
+
         if (existing?.id) {
-          const { error } = await supabaseAdmin
+          const { data: updated, error } = await supabaseAdmin
             .from("integrations")
             .update(payload)
-            .eq("id", existing.id);
-          if (error) {
+            .eq("id", existing.id)
+            .select(safeCols)
+            .single();
+          if (error || !updated) {
             console.error("integrations update error", error);
             return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
           }
-          return Response.json({ id: existing.id, updated: true });
+          console.log("integrations updated", { id: updated.id, company_id: updated.company_id });
+          return Response.json({
+            id: updated.id,
+            updated: true,
+            row: { ...updated, has_access_token: true, has_webhook_secret: true },
+          });
         }
 
         const { data, error } = await supabaseAdmin
           .from("integrations")
           .insert(payload)
-          .select("id")
+          .select(safeCols)
           .single();
-        if (error) {
+        if (error || !data) {
           console.error("integrations insert error", error);
           return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
         }
-        return Response.json({ id: data.id, created: true });
+        console.log("integrations inserted", { id: data.id, company_id: data.company_id });
+        return Response.json({
+          id: data.id,
+          created: true,
+          row: { ...data, has_access_token: true, has_webhook_secret: true },
+        });
       },
 
       PATCH: async ({ request }) => {
