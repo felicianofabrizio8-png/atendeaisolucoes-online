@@ -913,18 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-const FB_SCOPES = [
-  "pages_show_list",
-  "pages_messaging",
-  "pages_read_engagement",
-  "pages_manage_metadata",
-  "pages_manage_engagement",
-  "pages_read_user_content",
-  "instagram_basic",
-  "instagram_manage_messages",
-  "instagram_manage_comments",
-  "business_management",
-].join(",");
+// Login básico (teste). Páginas/Instagram virão em fase posterior, após
+// aprovação dos scopes avançados no App do Meta.
+const FB_SCOPES = ["public_profile", "email"].join(",");
 
 function loadFbSdk(appId: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -1001,33 +992,17 @@ function MetaIntegrationSection() {
         },
       );
 
-      const pagesList = await new Promise<Array<{ id: string; name: string }>>(
-        (resolve, reject) => {
-          window.FB!.api(
-            "/me/accounts",
-            { fields: "id,name", limit: 100 },
-            (res) => {
-              const r = res as { data?: Array<{ id: string; name: string }>; error?: { message?: string } };
-              if (r.error) return reject(new Error(r.error.message ?? "Erro Graph"));
-              resolve(r.data ?? []);
-            },
-          );
-        },
-      );
-
-      if (pagesList.length === 0) {
-        setError("Nenhuma página encontrada nessa conta Facebook.");
-        return;
-      }
-
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("meta-connect", {
-        body: { shortLivedToken: auth.accessToken, pages: pagesList },
+        body: {
+          mode: "basic",
+          shortLivedToken: auth.accessToken,
+          userID: auth.userID,
+        },
       });
       if (error) throw error;
-      const results = (data as { results?: Array<{ ok: boolean; page_id: string }> })?.results ?? [];
-      const okCount = results.filter((r) => r.ok).length;
-      setInfo(`${okCount}/${results.length} página(s) conectada(s) com sucesso.`);
+      const okName = (data as { user?: { name?: string } })?.user?.name ?? "usuário";
+      setInfo(`Meta conectado para teste (${okName}).`);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao conectar");
