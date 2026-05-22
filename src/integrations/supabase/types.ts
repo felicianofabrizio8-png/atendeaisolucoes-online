@@ -143,6 +143,7 @@ export type Database = {
           id: string
           last_error: string | null
           last_synced_at: string | null
+          token_expires_at: string | null
           updated_at: string
           verify_token: string | null
           webhook_secret: string | null
@@ -159,6 +160,7 @@ export type Database = {
           id?: string
           last_error?: string | null
           last_synced_at?: string | null
+          token_expires_at?: string | null
           updated_at?: string
           verify_token?: string | null
           webhook_secret?: string | null
@@ -175,6 +177,7 @@ export type Database = {
           id?: string
           last_error?: string | null
           last_synced_at?: string | null
+          token_expires_at?: string | null
           updated_at?: string
           verify_token?: string | null
           webhook_secret?: string | null
@@ -209,6 +212,9 @@ export type Database = {
           next_action_label: string | null
           phone: string | null
           product: string | null
+          source: string | null
+          source_page_id: string | null
+          source_sender_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
           tags: string[]
           updated_at: string
@@ -232,6 +238,9 @@ export type Database = {
           next_action_label?: string | null
           phone?: string | null
           product?: string | null
+          source?: string | null
+          source_page_id?: string | null
+          source_sender_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: string[]
           updated_at?: string
@@ -255,6 +264,9 @@ export type Database = {
           next_action_label?: string | null
           phone?: string | null
           product?: string | null
+          source?: string | null
+          source_page_id?: string | null
+          source_sender_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: string[]
           updated_at?: string
@@ -325,6 +337,9 @@ export type Database = {
           id: string
           integration_id: string | null
           role: Database["public"]["Enums"]["message_role"]
+          source: string | null
+          source_metadata: Json
+          source_subtype: string | null
           text: string
         }
         Insert: {
@@ -336,6 +351,9 @@ export type Database = {
           id?: string
           integration_id?: string | null
           role: Database["public"]["Enums"]["message_role"]
+          source?: string | null
+          source_metadata?: Json
+          source_subtype?: string | null
           text: string
         }
         Update: {
@@ -347,6 +365,9 @@ export type Database = {
           id?: string
           integration_id?: string | null
           role?: Database["public"]["Enums"]["message_role"]
+          source?: string | null
+          source_metadata?: Json
+          source_subtype?: string | null
           text?: string
         }
         Relationships: [
@@ -379,6 +400,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      meta_pages: {
+        Row: {
+          active: boolean
+          company_id: string
+          created_at: string
+          id: string
+          ig_business_account_id: string | null
+          ig_username: string | null
+          integration_id: string | null
+          last_error: string | null
+          page_access_token: string
+          page_id: string
+          page_name: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          company_id: string
+          created_at?: string
+          id?: string
+          ig_business_account_id?: string | null
+          ig_username?: string | null
+          integration_id?: string | null
+          last_error?: string | null
+          page_access_token: string
+          page_id: string
+          page_name: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string
+          created_at?: string
+          id?: string
+          ig_business_account_id?: string | null
+          ig_username?: string | null
+          integration_id?: string | null
+          last_error?: string | null
+          page_access_token?: string
+          page_id?: string
+          page_name?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       products: {
         Row: {
