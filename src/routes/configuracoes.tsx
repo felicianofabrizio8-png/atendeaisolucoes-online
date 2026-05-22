@@ -1143,6 +1143,37 @@ function MetaIntegrationSection() {
         </ul>
       )}
 
+      {available.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold mb-2">Páginas disponíveis</p>
+          <ul className="space-y-2">
+            {available.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">ID: {p.id}</p>
+                </div>
+                <button
+                  onClick={() => onSelectPage(p)}
+                  disabled={savingPageId === p.id}
+                  className="inline-flex items-center gap-1 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-2.5 py-1.5 hover:opacity-90 disabled:opacity-60"
+                >
+                  {savingPageId === p.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plug className="h-3.5 w-3.5" />
+                  )}
+                  Conectar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <button
         onClick={onConnect}
         disabled={connecting}
