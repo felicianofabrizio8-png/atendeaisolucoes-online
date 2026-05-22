@@ -616,6 +616,12 @@ function WhatsAppTestPanel({
     status?: number;
     response?: unknown;
     error?: string;
+    diagnostics?: {
+      phoneNumberId?: string;
+      tokenSaved?: string;
+      tokenPrefix?: string | null;
+      endpoint?: string;
+    };
   } | null>(null);
 
   const send = async () => {
@@ -642,6 +648,12 @@ function WhatsAppTestPanel({
         status?: number;
         response?: unknown;
         error?: string;
+        diagnostics?: {
+          phoneNumberId?: string;
+          tokenSaved?: string;
+          tokenPrefix?: string | null;
+          endpoint?: string;
+        };
       };
       console.log("[WhatsAppTestPanel] response", { httpStatus: res.status, json });
       setResult({
@@ -649,8 +661,10 @@ function WhatsAppTestPanel({
         status: json.status ?? res.status,
         response: json.response,
         error: json.error,
+        diagnostics: json.diagnostics,
       });
       if (json.ok) onSent();
+
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao enviar";
       console.error("[WhatsAppTestPanel] error", msg);
