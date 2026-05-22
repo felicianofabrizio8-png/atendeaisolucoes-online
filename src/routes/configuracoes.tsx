@@ -913,18 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-const FB_SCOPES = [
-  "pages_show_list",
-  "pages_messaging",
-  "pages_read_engagement",
-  "pages_manage_metadata",
-  "pages_manage_engagement",
-  "pages_read_user_content",
-  "instagram_basic",
-  "instagram_manage_messages",
-  "instagram_manage_comments",
-  "business_management",
-].join(",");
+// Login básico (teste). Páginas/Instagram virão em fase posterior, após
+// aprovação dos scopes avançados no App do Meta.
+const FB_SCOPES = ["public_profile", "email"].join(",");
 
 function loadFbSdk(appId: string): Promise<void> {
   return new Promise((resolve, reject) => {
