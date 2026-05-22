@@ -913,8 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Etapa 2: listar páginas Facebook. Adicionado pages_show_list.
-const FB_SCOPES = "public_profile,pages_show_list";
+// Voltando ao login básico: pages_show_list ainda inválido no app Meta.
+const FB_SCOPES = "public_profile";
+
 
 
 function loadFbSdk(appId: string): Promise<void> {
@@ -1003,26 +1004,22 @@ function MetaIntegrationSection() {
       );
       setShortToken(auth.accessToken);
 
-      // Busca as páginas administradas pelo usuário
-      const accounts = await new Promise<{ data?: AvailablePage[] }>((resolve, reject) => {
-        window.FB!.api(
-          "/me/accounts",
-          { fields: "id,name,access_token", access_token: auth.accessToken },
-          (res) => {
-            if (!res) return reject(new Error("Sem resposta do Facebook"));
-            const r = res as { error?: { message: string }; data?: AvailablePage[] };
-            if (r.error) return reject(new Error(r.error.message));
-            resolve(r);
-          },
-        );
+      // Login básico: apenas valida com /me. Listagem de páginas requer
+      // pages_show_list aprovado no Meta Developer.
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("meta-connect", {
+        body: {
+          mode: "basic",
+          shortLivedToken: auth.accessToken,
+          userID: auth.userID,
+        },
       });
-      const list = accounts.data ?? [];
-      setAvailable(list);
-      if (list.length === 0) {
-        setInfo("Login realizado, mas nenhuma página Facebook foi encontrada para este usuário.");
-      } else {
-        setInfo(`Encontrada(s) ${list.length} página(s). Selecione abaixo para conectar.`);
-      }
+      if (error) throw error;
+      const okName = (data as { user?: { name?: string } })?.user?.name ?? "usuário";
+      setInfo(
+        `Login Meta conectado (${okName}). Para listar páginas, será necessário ativar permissões de Páginas no Meta Developer.`,
+      );
+
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao conectar");
     } finally {
