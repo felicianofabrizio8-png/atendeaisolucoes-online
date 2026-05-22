@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
   // Não busca páginas nem Instagram (scopes avançados ainda não aprovados).
   if (payload.mode === "basic") {
     const meRes = await fetch(
-      `${GRAPH}/me?fields=id,name,email&access_token=${encodeURIComponent(shortToken)}`,
+      `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(shortToken)}`,
     );
     if (!meRes.ok) {
       const text = await meRes.text();
