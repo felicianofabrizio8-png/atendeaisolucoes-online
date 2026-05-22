@@ -875,3 +875,267 @@ function LossReasonsSection({ reasons }: { reasons: string[] }) {
     </section>
   );
 }
+
+// ===================================================================
+// Meta integration (Instagram / Facebook / Messenger)
+// ===================================================================
+
+interface MetaPage {
+  id: string;
+  page_id: string;
+  page_name: string;
+  ig_business_account_id: string | null;
+  ig_username: string | null;
+  active: boolean;
+  token_expires_at: string | null;
+  last_error: string | null;
+}
+
+declare global {
+  interface Window {
+    FB?: {
+      init: (opts: { appId: string; cookie: boolean; xfbml: boolean; version: string }) => void;
+      login: (
+        cb: (res: {
+          authResponse?: { accessToken: string; userID: string };
+          status: string;
+        }) => void,
+        opts?: { scope: string; auth_type?: string },
+      ) => void;
+      api: (path: string, params: Record<string, unknown>, cb: (res: unknown) => void) => void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
+
+const META_APP_ID =
+  (import.meta as unknown as { env: Record<string, string | undefined> }).env
+    .VITE_META_APP_ID ?? "";
+
+const FB_SCOPES = [
+  "pages_show_list",
+  "pages_messaging",
+  "pages_read_engagement",
+  "pages_manage_metadata",
+  "pages_manage_engagement",
+  "pages_read_user_content",
+  "instagram_basic",
+  "instagram_manage_messages",
+  "instagram_manage_comments",
+  "business_management",
+].join(",");
+
+function loadFbSdk(appId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return reject(new Error("no window"));
+    if (window.FB) return resolve();
+    window.fbAsyncInit = () => {
+      window.FB!.init({ appId, cookie: true, xfbml: false, version: "v21.0" });
+      resolve();
+    };
+    const existing = document.getElementById("facebook-jssdk");
+    if (existing) return;
+    const s = document.createElement("script");
+    s.id = "facebook-jssdk";
+    s.src = "https://connect.facebook.net/en_US/sdk.js";
+    s.async = true;
+    s.defer = true;
+    s.crossOrigin = "anonymous";
+    s.onerror = () => reject(new Error("failed to load Facebook SDK"));
+    document.body.appendChild(s);
+  });
+}
+
+function MetaIntegrationSection() {
+  const { profile } = useAuth();
+  const companyId = profile?.company_id ?? null;
+  const [pages, setPages] = useState<MetaPage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!companyId) return;
+    setLoading(true);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("meta-connect", {
+        method: "GET",
+      });
+      if (error) throw error;
+      setPages(((data as { pages?: MetaPage[] })?.pages ?? []) as MetaPage[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao carregar páginas");
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const onConnect = async () => {
+    setError(null);
+    setInfo(null);
+    if (!META_APP_ID) {
+      setError(
+        "Configure VITE_META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
+      );
+      return;
+    }
+    setConnecting(true);
+    try {
+      await loadFbSdk(META_APP_ID);
+      const auth = await new Promise<{ accessToken: string; userID: string }>(
+        (resolve, reject) => {
+          window.FB!.login(
+            (res) => {
+              if (res.authResponse?.accessToken) resolve(res.authResponse);
+              else reject(new Error("Login cancelado ou negado"));
+            },
+            { scope: FB_SCOPES, auth_type: "rerequest" },
+          );
+        },
+      );
+
+      const pagesList = await new Promise<Array<{ id: string; name: string }>>(
+        (resolve, reject) => {
+          window.FB!.api(
+            "/me/accounts",
+            { fields: "id,name", limit: 100 },
+            (res) => {
+              const r = res as { data?: Array<{ id: string; name: string }>; error?: { message?: string } };
+              if (r.error) return reject(new Error(r.error.message ?? "Erro Graph"));
+              resolve(r.data ?? []);
+            },
+          );
+        },
+      );
+
+      if (pagesList.length === 0) {
+        setError("Nenhuma página encontrada nessa conta Facebook.");
+        return;
+      }
+
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("meta-connect", {
+        body: { shortLivedToken: auth.accessToken, pages: pagesList },
+      });
+      if (error) throw error;
+      const results = (data as { results?: Array<{ ok: boolean; page_id: string }> })?.results ?? [];
+      const okCount = results.filter((r) => r.ok).length;
+      setInfo(`${okCount}/${results.length} página(s) conectada(s) com sucesso.`);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao conectar");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const onDisconnect = async (pageId: string) => {
+    if (!confirm("Desconectar esta página? Mensagens antigas serão mantidas.")) return;
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { error } = await supabase.functions.invoke("meta-connect", {
+        method: "DELETE",
+        body: { pageId },
+      });
+      if (error) throw error;
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao desconectar");
+    }
+  };
+
+  if (!companyId) return null;
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Plug className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">Instagram & Facebook (Meta)</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Conecte páginas do Facebook + Instagram Business para receber DMs, mensagens
+        do Messenger e comentários direto na sua caixa de atendimento.
+      </p>
+
+      {error && (
+        <div className="mb-3 rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
+          {error}
+        </div>
+      )}
+      {info && (
+        <div className="mb-3 rounded-md bg-[var(--status-won)]/10 text-[var(--status-won)] text-xs px-3 py-2">
+          {info}
+        </div>
+      )}
+
+      {loading && (
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5 mb-3">
+          <Loader2 className="h-3 w-3 animate-spin" /> Carregando páginas…
+        </p>
+      )}
+
+      {pages.length > 0 && (
+        <ul className="space-y-2 mb-4">
+          {pages.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{p.page_name}</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  FB page: {p.page_id}
+                  {p.ig_username && <> · IG: @{p.ig_username}</>}
+                  {p.token_expires_at && (
+                    <>
+                      {" · "}
+                      Token expira{" "}
+                      {new Date(p.token_expires_at).toLocaleDateString("pt-BR")}
+                    </>
+                  )}
+                </p>
+                {p.last_error && (
+                  <p className="text-[11px] text-[var(--status-urgent)] truncate">
+                    {p.last_error}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => onDisconnect(p.page_id)}
+                className="inline-flex items-center gap-1 text-xs rounded-md bg-secondary hover:bg-accent px-2.5 py-1.5"
+              >
+                <PowerOff className="h-3.5 w-3.5" /> Desconectar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        onClick={onConnect}
+        disabled={connecting}
+        className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+      >
+        {connecting ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Plug className="h-3.5 w-3.5" />
+        )}
+        Conectar Instagram / Facebook
+      </button>
+
+      {!META_APP_ID && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Defina <code className="bg-muted px-1 rounded">VITE_META_APP_ID</code> com o App ID do
+          seu app Meta para habilitar o login.
+        </p>
+      )}
+    </section>
+  );
+}
