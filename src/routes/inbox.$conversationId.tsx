@@ -12,6 +12,7 @@ import {
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
+import { OriginBadge, getConversationOrigin } from "./inbox.index";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
