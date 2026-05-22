@@ -733,11 +733,27 @@ function WhatsAppTestPanel({
               {result.error ? ` • ${result.error}` : ""}
             </span>
           </div>
+          {result.diagnostics && (
+            <div className="text-[10px] text-muted-foreground bg-background border border-border rounded p-2 font-mono space-y-0.5">
+              <div>phone_number_id: {result.diagnostics.phoneNumberId || "—"}</div>
+              <div>token salvo: {result.diagnostics.tokenSaved ?? "—"}</div>
+              <div>
+                token (primeiros 6):{" "}
+                {result.diagnostics.tokenPrefix
+                  ? `${result.diagnostics.tokenPrefix}…`
+                  : "—"}
+              </div>
+              {result.diagnostics.endpoint && (
+                <div className="break-all">endpoint: {result.diagnostics.endpoint}</div>
+              )}
+            </div>
+          )}
           <pre className="text-[10px] leading-snug bg-background border border-border rounded p-2 overflow-auto max-h-64">
 {JSON.stringify(result.response ?? result.error ?? null, null, 2)}
           </pre>
         </div>
       )}
+
     </div>
   );
 }
