@@ -1140,9 +1140,15 @@ function MetaIntegrationSection() {
         </ul>
       )}
 
-      {available.length > 0 && (
-        <div className="mb-4">
-          <p className="text-xs font-semibold mb-2">Páginas disponíveis</p>
+      <div className="mb-4">
+        <p className="text-xs font-semibold mb-2">Páginas disponíveis</p>
+        {available.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
+            <p className="text-xs text-muted-foreground">
+              Nenhuma permissão de páginas ativa no Meta Developer
+            </p>
+          </div>
+        ) : (
           <ul className="space-y-2">
             {available.map((p) => (
               <li
@@ -1168,8 +1174,8 @@ function MetaIntegrationSection() {
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        )}
+      </div>
 
       <button
         onClick={onConnect}
