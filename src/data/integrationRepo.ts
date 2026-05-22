@@ -115,7 +115,12 @@ export interface SaveWhatsAppInput {
 export async function upsertWhatsAppIntegration(
   input: SaveWhatsAppInput,
 ): Promise<Integration> {
-  await authedFetch("/api/whatsapp/integration", {
+  console.log("[upsertWhatsAppIntegration] start", {
+    companyId: input.companyId,
+    phoneNumberId: input.phoneNumberId,
+    displayName: input.displayName,
+  });
+  const res = await authedFetch("/api/whatsapp/integration", {
     method: "POST",
     body: JSON.stringify({
       displayName: input.displayName,
@@ -127,12 +132,35 @@ export async function upsertWhatsAppIntegration(
       webhookSecret: input.webhookSecret,
     }),
   });
-  // Recarrega lista e retorna o item atualizado
+  const json = (await res.json()) as {
+    id?: string;
+    created?: boolean;
+    updated?: boolean;
+    row?: SafeRow;
+  };
+  console.log("[upsertWhatsAppIntegration] server response", {
+    id: json.id,
+    created: json.created,
+    updated: json.updated,
+    hasRow: !!json.row,
+  });
+
+  // Caminho rápido: o servidor já devolveu a linha completa.
+  if (json.row) return toIntegration(json.row);
+
+  // Fallback: recarrega a lista e procura. Útil para respostas legadas.
   const list = await listIntegrations(input.companyId);
   const found = list.find(
     (i) => i.channel === "whatsapp" && i.externalAccountId === input.phoneNumberId,
   );
-  if (!found) throw new Error("Integração salva mas não encontrada na lista");
+  if (!found) {
+    console.error("[upsertWhatsAppIntegration] saved id not found in list", {
+      savedId: json.id,
+      listSize: list.length,
+      listChannels: list.map((i) => `${i.channel}:${i.externalAccountId}`),
+    });
+    throw new Error("Integração salva mas não encontrada na lista");
+  }
   return found;
 }
 
