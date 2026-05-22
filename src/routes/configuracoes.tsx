@@ -913,9 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Login básico (teste). Apenas public_profile para evitar Invalid Scopes
-// enquanto o App ainda não tem permissões avançadas aprovadas.
-const FB_SCOPES = "public_profile";
+// Etapa 2: listar páginas Facebook. Adicionado pages_show_list.
+const FB_SCOPES = "public_profile,pages_show_list";
+
 
 function loadFbSdk(appId: string): Promise<void> {
   return new Promise((resolve, reject) => {
