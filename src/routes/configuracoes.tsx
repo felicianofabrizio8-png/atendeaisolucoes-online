@@ -153,6 +153,8 @@ function ConfigPage() {
         <LossReasonsSection reasons={settings.lossReasons} />
 
         <IntegrationsSection />
+
+        <MetaIntegrationSection />
       </div>
     </div>
   );
