@@ -619,7 +619,8 @@ function WhatsAppForm({
       });
       onSaved();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao salvar");
+      console.error("[WhatsAppForm] save failed", e);
+      setErr(e instanceof Error ? e.message : "Falha ao salvar conexão");
     } finally {
       setSaving(false);
     }
