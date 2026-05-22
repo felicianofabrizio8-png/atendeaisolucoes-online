@@ -72,7 +72,13 @@ export async function listIntegrations(_companyId: string): Promise<Integration[
       "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error",
     )
     .order("created_at", { ascending: true });
-  if (error) throw error;
+  console.log("[listIntegrations] raw response", { data, error });
+  if (error) {
+    console.error("[listIntegrations] Supabase error", error);
+    throw new Error(
+      `Falha ao carregar integrações: ${error.message ?? JSON.stringify(error)}`,
+    );
+  }
   return ((data ?? []) as SafeRow[]).map(toIntegration);
 }
 
@@ -90,12 +96,15 @@ async function authedFetch(input: RequestInfo, init?: RequestInit) {
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
+    let details: unknown = null;
     try {
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as { error?: string; details?: unknown };
+      details = j;
       if (j.error) msg = j.error;
     } catch {
       /* ignore */
     }
+    console.error("[authedFetch] request failed", { input, status: res.status, details });
     throw new Error(msg);
   }
   return res;
@@ -119,6 +128,11 @@ export async function upsertWhatsAppIntegration(
     companyId: input.companyId,
     phoneNumberId: input.phoneNumberId,
     displayName: input.displayName,
+    hasPhoneNumber: !!input.phoneNumber,
+    hasWabaId: !!input.wabaId,
+    hasAccessToken: !!input.accessToken,
+    hasVerifyToken: !!input.verifyToken,
+    hasWebhookSecret: !!input.webhookSecret,
   });
   const res = await authedFetch("/api/whatsapp/integration", {
     method: "POST",
