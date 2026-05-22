@@ -494,6 +494,7 @@ function IntegrationItem({
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [showTest, setShowTest] = useState(false);
   const toggle = async () => {
     setBusy(true);
     try {
@@ -514,60 +515,219 @@ function IntegrationItem({
       setBusy(false);
     }
   };
+  const isWhatsApp = item.channel === "whatsapp";
   return (
-    <li className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
-      <div
-        className={cn(
-          "h-8 w-8 rounded-md inline-flex items-center justify-center text-white",
-          item.channel === "whatsapp" && "bg-[#25D366]",
-          item.channel === "instagram" && "bg-[#E1306C]",
-          item.channel === "facebook" && "bg-[#1877F2]",
-        )}
-      >
-        <MessageCircle className="h-4 w-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">{item.displayName}</div>
-        <div className="text-[11px] text-muted-foreground truncate">
-          {item.channel.toUpperCase()}
-          {item.externalAccountId && <> • ID {item.externalAccountId}</>}
-          {!item.hasAccessToken && (
-            <span className="ml-2 text-[var(--status-urgent)]">sem token</span>
+    <li className="rounded-md border border-border bg-background">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div
+          className={cn(
+            "h-8 w-8 rounded-md inline-flex items-center justify-center text-white",
+            item.channel === "whatsapp" && "bg-[#25D366]",
+            item.channel === "instagram" && "bg-[#E1306C]",
+            item.channel === "facebook" && "bg-[#1877F2]",
           )}
-          {item.lastError && (
-            <span className="ml-2 text-[var(--status-urgent)]">erro: {item.lastError}</span>
+        >
+          <MessageCircle className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">{item.displayName}</div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {item.channel.toUpperCase()}
+            {item.externalAccountId && <> • ID {item.externalAccountId}</>}
+            {!item.hasAccessToken && (
+              <span className="ml-2 text-[var(--status-urgent)]">sem token</span>
+            )}
+            {item.lastError && (
+              <span className="ml-2 text-[var(--status-urgent)]">erro: {item.lastError}</span>
+            )}
+          </div>
+          {isWhatsApp && (
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              Último evento recebido:{" "}
+              <span className="font-mono">
+                {item.lastSyncedAt
+                  ? new Date(item.lastSyncedAt).toLocaleString("pt-BR")
+                  : "nenhum ainda"}
+              </span>
+            </div>
           )}
         </div>
-      </div>
-      <span
-        className={cn(
-          "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
-          item.active
-            ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
-            : "bg-secondary text-muted-foreground",
+        <span
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
+            item.active
+              ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
+              : "bg-secondary text-muted-foreground",
+          )}
+        >
+          {item.active ? "Ativa" : "Inativa"}
+        </span>
+        {isWhatsApp && item.hasAccessToken && item.active && (
+          <button
+            onClick={() => setShowTest((v) => !v)}
+            className="text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+            title="Enviar mensagem de teste"
+          >
+            Enviar teste
+          </button>
         )}
-      >
-        {item.active ? "Ativa" : "Inativa"}
-      </span>
-      <button
-        onClick={toggle}
-        disabled={busy}
-        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-        title={item.active ? "Desativar" : "Ativar"}
-      >
-        {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-      </button>
-      <button
-        onClick={remove}
-        disabled={busy}
-        className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-        title="Remover"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+        <button
+          onClick={toggle}
+          disabled={busy}
+          className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+          title={item.active ? "Desativar" : "Ativar"}
+        >
+          {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          onClick={remove}
+          disabled={busy}
+          className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+          title="Remover"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {isWhatsApp && showTest && (
+        <WhatsAppTestPanel
+          integrationId={item.id}
+          onClose={() => setShowTest(false)}
+          onSent={onChanged}
+        />
+      )}
     </li>
   );
 }
+
+function WhatsAppTestPanel({
+  integrationId,
+  onClose,
+  onSent,
+}: {
+  integrationId: string;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const [text, setText] = useState("Mensagem de teste do Atende AI ✅");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    status?: number;
+    response?: unknown;
+    error?: string;
+  } | null>(null);
+
+  const send = async () => {
+    setSending(true);
+    setResult(null);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        setResult({ ok: false, error: "Sessão expirada. Faça login novamente." });
+        return;
+      }
+      const res = await fetch("/api/whatsapp/test-send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ integrationId, to, text }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        status?: number;
+        response?: unknown;
+        error?: string;
+      };
+      console.log("[WhatsAppTestPanel] response", { httpStatus: res.status, json });
+      setResult({
+        ok: Boolean(json.ok),
+        status: json.status ?? res.status,
+        response: json.response,
+        error: json.error,
+      });
+      if (json.ok) onSent();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao enviar";
+      console.error("[WhatsAppTestPanel] error", msg);
+      setResult({ ok: false, error: msg });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-border px-3 py-3 space-y-3 bg-secondary/30">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold">Enviar mensagem de teste</div>
+        <button
+          onClick={onClose}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          fechar
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr,2fr] gap-2">
+        <input
+          type="tel"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="Telefone com DDI (ex: 5511999999999)"
+          className="text-xs rounded-md border border-border bg-background px-2.5 py-1.5"
+        />
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Mensagem"
+          className="text-xs rounded-md border border-border bg-background px-2.5 py-1.5"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={send}
+          disabled={sending || !to.trim()}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+        >
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+          {sending ? "Enviando…" : "Enviar"}
+        </button>
+        <p className="text-[10px] text-muted-foreground">
+          Apenas dígitos. No modo sandbox da Meta o número precisa estar
+          adicionado como testador.
+        </p>
+      </div>
+      {result && (
+        <div className="space-y-1">
+          <div className="text-[11px]">
+            <span
+              className={cn(
+                "font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
+                result.ok
+                  ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
+                  : "bg-[var(--status-urgent)]/15 text-[var(--status-urgent)]",
+              )}
+            >
+              {result.ok ? "OK" : "ERRO"}
+            </span>{" "}
+            <span className="text-muted-foreground">
+              HTTP {result.status ?? "—"}
+              {result.error ? ` • ${result.error}` : ""}
+            </span>
+          </div>
+          <pre className="text-[10px] leading-snug bg-background border border-border rounded p-2 overflow-auto max-h-64">
+{JSON.stringify(result.response ?? result.error ?? null, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function randomToken(len = 24) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
