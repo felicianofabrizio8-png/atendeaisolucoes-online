@@ -12,6 +12,7 @@ import {
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
+import { OriginBadge, getConversationOrigin } from "./inbox.index";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -120,6 +121,9 @@ function ConversationPage() {
     );
   }
 
+  const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
+  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1]);
+
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -133,25 +137,37 @@ function ConversationPage() {
     setMessages((prev) => [...prev, msg]);
     setInput("");
 
-    // Se o lead é WhatsApp e o usuário está logado, tenta envio real via Cloud API.
-    // Em qualquer falha (sem integração, sem token, erro de rede) faz fallback
-    // para gravar localmente e não bloquear a operação.
     const isWhatsApp = lead?.channel === "whatsapp";
-    if (isWhatsApp && profile?.company_id) {
+    if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
-          const res = await fetch("/api/whatsapp/send", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ conversationId, text: trimmed }),
-          });
-          if (res.ok) return; // server já gravou no banco
-          // 400 com "WhatsApp não conectado" → cai para fallback silencioso
+          if (isWhatsApp) {
+            const res = await fetch("/api/whatsapp/send", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ conversationId, text: trimmed }),
+            });
+            if (res.ok) return;
+          } else {
+            // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
+            const subtype =
+              origin === "comment"
+                ? "comment"
+                : origin === "messenger"
+                  ? "messenger"
+                  : origin === "instagram"
+                    ? "instagram_dm"
+                    : "facebook_dm";
+            const { data, error } = await supabase.functions.invoke("meta-send", {
+              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin },
+            });
+            if (!error && data) return;
+          }
         }
       } catch {
         // fallback abaixo
@@ -311,7 +327,8 @@ function ConversationPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-semibold truncate">{lead.name}</span>
-              <ChannelBadge channel={lead.channel} />
+              <OriginBadge origin={origin} />
+              {origin !== "whatsapp" && <ChannelBadge channel={lead.channel} />}
               {closedInfo ? (
                 <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-won)]/15 text-[var(--status-won)]">
                   <CheckCircle2 className="h-3 w-3" /> Fechado
