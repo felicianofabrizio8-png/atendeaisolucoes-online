@@ -913,9 +913,9 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Login básico (teste). Páginas/Instagram virão em fase posterior, após
-// aprovação dos scopes avançados no App do Meta.
-const FB_SCOPES = ["public_profile", "email"].join(",");
+// Login básico (teste). Apenas public_profile para evitar Invalid Scopes
+// enquanto o App ainda não tem permissões avançadas aprovadas.
+const FB_SCOPES = "public_profile";
 
 function loadFbSdk(appId: string): Promise<void> {
   return new Promise((resolve, reject) => {

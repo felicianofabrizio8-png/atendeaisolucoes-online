@@ -132,14 +132,14 @@ Deno.serve(async (req) => {
   // Não busca páginas nem Instagram (scopes avançados ainda não aprovados).
   if (payload.mode === "basic") {
     const meRes = await fetch(
-      `${GRAPH}/me?fields=id,name,email&access_token=${encodeURIComponent(shortToken)}`,
+      `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(shortToken)}`,
     );
     if (!meRes.ok) {
       const text = await meRes.text();
       console.log("ME_FAIL", meRes.status, text);
       return json({ ok: false, error: "failed to fetch user profile" }, 400);
     }
-    const me = (await meRes.json()) as { id: string; name?: string; email?: string };
+    const me = (await meRes.json()) as { id: string; name?: string };
 
     await sb.from("integrations").upsert(
       {
@@ -149,14 +149,14 @@ Deno.serve(async (req) => {
         external_account_id: `user:${me.id}`,
         access_token: shortToken,
         active: true,
-        account_metadata: { mode: "basic", email: me.email ?? null, fb_user_id: me.id },
+        account_metadata: { mode: "basic", fb_user_id: me.id },
         last_error: null,
         last_synced_at: new Date().toISOString(),
       },
       { onConflict: "company_id,channel,external_account_id" },
     );
 
-    return json({ ok: true, user: { id: me.id, name: me.name, email: me.email } });
+    return json({ ok: true, user: { id: me.id, name: me.name } });
   }
 
   const pages = Array.isArray(payload.pages) ? payload.pages : [];
