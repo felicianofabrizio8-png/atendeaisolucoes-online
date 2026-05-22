@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
     mode?: string;
     shortLivedToken?: string;
     userID?: string;
+    page?: { id: string; name: string; access_token: string };
     pages?: Array<{ id: string; name: string }>;
   };
   try {
@@ -129,7 +130,6 @@ Deno.serve(async (req) => {
   }
 
   // Modo básico: apenas valida o login e salva um registro de teste.
-  // Não busca páginas nem Instagram (scopes avançados ainda não aprovados).
   if (payload.mode === "basic") {
     const meRes = await fetch(
       `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(shortToken)}`,
@@ -158,6 +158,86 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, user: { id: me.id, name: me.name } });
   }
+
+  // Modo connect_page (Etapa 2): conecta uma página Facebook escolhida pelo usuário.
+  if (payload.mode === "connect_page") {
+    const page = payload.page;
+    if (!page?.id || !page?.access_token) {
+      return json({ ok: false, error: "page required" }, 400);
+    }
+
+    // Troca por long-lived user token (60 dias)
+    const longLived = await exchangeForLongLivedUserToken(shortToken);
+    const longUserToken = longLived?.access_token ?? shortToken;
+    const userTokenExpiresAt = longLived?.expires_in
+      ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
+      : null;
+
+    // Obtém o page access token long-lived (não-expirável quando obtido com long user token).
+    const detailsRes = await fetch(
+      `${GRAPH}/${page.id}?fields=name,access_token&access_token=${encodeURIComponent(longUserToken)}`,
+    );
+    if (!detailsRes.ok) {
+      const text = await detailsRes.text();
+      console.log("PAGE_TOKEN_FAIL", page.id, detailsRes.status, text);
+      return json({ ok: false, error: "failed to fetch page access token" }, 400);
+    }
+    const details = (await detailsRes.json()) as { name?: string; access_token?: string };
+    const pageToken = details.access_token ?? page.access_token;
+    const pageName = details.name ?? page.name;
+
+    const { data: integ, error: integErr } = await sb
+      .from("integrations")
+      .upsert(
+        {
+          company_id: companyId,
+          channel: "facebook",
+          display_name: pageName,
+          external_account_id: page.id,
+          access_token: pageToken,
+          token_expires_at: userTokenExpiresAt,
+          active: true,
+          account_metadata: { mode: "page", fb_page_id: page.id },
+          last_error: null,
+          last_synced_at: new Date().toISOString(),
+        },
+        { onConflict: "company_id,channel,external_account_id" },
+      )
+      .select("id")
+      .maybeSingle();
+
+    if (integErr) {
+      console.log("INTEG_UPSERT_FAIL", integErr);
+      return json({ ok: false, error: integErr.message }, 500);
+    }
+
+    const { error: pageErr } = await sb.from("meta_pages").upsert(
+      {
+        company_id: companyId,
+        integration_id: integ?.id ?? null,
+        page_id: page.id,
+        page_name: pageName,
+        ig_business_account_id: null,
+        ig_username: null,
+        page_access_token: pageToken,
+        token_expires_at: userTokenExpiresAt,
+        active: true,
+        last_error: null,
+      },
+      { onConflict: "company_id,page_id" },
+    );
+
+    if (pageErr) {
+      console.log("PAGE_UPSERT_FAIL", pageErr);
+      return json({ ok: false, error: pageErr.message }, 500);
+    }
+
+    return json({
+      ok: true,
+      page: { id: page.id, name: pageName, integration_id: integ?.id ?? null },
+    });
+  }
+
 
   const pages = Array.isArray(payload.pages) ? payload.pages : [];
   if (pages.length === 0) {
