@@ -3,7 +3,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
-import { timeAgo, type Conversation } from "@/data/mock";
+import { timeAgo, type Conversation, type Message, type Lead } from "@/data/mock";
 import {
   getConversations,
   getLeadById,
@@ -17,13 +17,66 @@ import { seedMockProductsIntoCompany, loadProductsRemote } from "@/data/products
 import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
-import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2 } from "lucide-react";
+import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 
 const STATUS_FILTERS = ["todos", "quentes", "parados", "perdidos"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
+const SOURCE_FILTERS = [
+  "todos",
+  "whatsapp",
+  "instagram",
+  "facebook",
+  "comentarios",
+  "directs",
+  "nao-respondidos",
+] as const;
+type SourceFilter = (typeof SOURCE_FILTERS)[number];
+
+export type Origin = "whatsapp" | "instagram" | "facebook" | "messenger" | "comment";
+
+// Deriva a origem real de uma conversa. Como o Lead tipado não expõe ainda
+// source/source_subtype, lemos via cast para os campos opcionais que o backend
+// já popula (meta-webhook grava lead.source e message.source_subtype).
+export function getConversationOrigin(lead: Lead, lastMessage?: Message): Origin {
+  const leadSource = (lead as unknown as { source?: string }).source;
+  const msgSubtype = (lastMessage as unknown as { source_subtype?: string } | undefined)?.source_subtype;
+
+  if (msgSubtype === "comment") return "comment";
+  if (leadSource === "messenger" || (lead.channel === "facebook" && msgSubtype === "dm")) return "messenger";
+  if (lead.channel === "instagram") return "instagram";
+  if (lead.channel === "facebook") return "facebook";
+  return "whatsapp";
+}
+
+const ORIGIN_META: Record<Origin, { label: string; icon: typeof MessageCircle; color: string }> = {
+  whatsapp: { label: "WhatsApp", icon: MessageCircle, color: "var(--channel-whatsapp)" },
+  instagram: { label: "Instagram", icon: Instagram, color: "var(--channel-instagram)" },
+  facebook: { label: "Facebook", icon: Facebook, color: "var(--channel-facebook)" },
+  messenger: { label: "Messenger", icon: MessageSquare, color: "var(--channel-facebook)" },
+  comment: { label: "Comentário", icon: MessageSquare, color: "var(--status-warm)" },
+};
+
+export function OriginBadge({ origin, className }: { origin: Origin; className?: string }) {
+  const meta = ORIGIN_META[origin];
+  const Icon = meta.icon;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        className,
+      )}
+      style={{ color: meta.color }}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      {meta.label}
+    </span>
+  );
+}
+
 const searchSchema = z.object({
   status: fallback(z.enum(STATUS_FILTERS), "todos").default("todos"),
+  source: fallback(z.enum(SOURCE_FILTERS), "todos").default("todos"),
   lossReason: fallback(z.string(), "").default(""),
 });
 
@@ -36,10 +89,6 @@ function useSettings() {
   return useSyncExternalStore(subscribeSettings, getSettings, getSettings);
 }
 
-// Subscribe to lead store mutations so the list re-renders when messages are
-// appended, leads are closed/lost etc. We don't read the snapshot — we just
-// Subscribe to repo mutations so the list re-renders when messages are
-// appended, leads are closed/lost etc.
 function useRepoVersion() {
   return useSyncExternalStore(
     subscribeRepo,
@@ -54,37 +103,51 @@ function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
   return ageMin >= slaMinutes;
 }
 
+function matchesSource(origin: Origin, awaitingReply: boolean, filter: SourceFilter): boolean {
+  switch (filter) {
+    case "todos": return true;
+    case "whatsapp": return origin === "whatsapp";
+    case "instagram": return origin === "instagram";
+    case "facebook": return origin === "facebook" || origin === "messenger";
+    case "comentarios": return origin === "comment";
+    case "directs": return origin === "messenger" || (origin === "instagram");
+    case "nao-respondidos": return awaitingReply;
+  }
+}
+
 function buildSortedItems(
   slaMinutes: number,
   statusFilter: StatusFilter,
+  sourceFilter: SourceFilter,
   lossReasonFilter: string,
 ) {
   const now = Date.now();
   return [...getConversations()]
     .map((c) => {
       const lead = getLeadById(c.leadId);
+      const msgs = getMessagesFor(c.id);
+      const last = msgs[msgs.length - 1];
+      const origin: Origin = lead ? getConversationOrigin(lead, last) : "whatsapp";
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
-      // Score: atrasados (SLA estourado) vão pro topo, mais atrasados primeiro.
       let score = 0;
-      if (breached) score += 100_000 + ageMin; // atraso pesa proporcional ao tempo
+      if (breached) score += 100_000 + ageMin;
       else if (c.awaitingReply) score += 5_000 - ageMin / 1000;
       if (lead?.status === "quente") score += 300;
       if (lead?.status === "novo") score += 100;
-      score += -ageMin / 1000; // desempate por recência
-      return { conv: c, lead, breached, ageMin, score };
+      score += -ageMin / 1000;
+      return { conv: c, lead, last, origin, breached, ageMin, score };
     })
-    .filter(({ lead, breached }) => {
-      // Filtro por status
+    .filter(({ lead, breached, origin, conv }) => {
       if (statusFilter === "quentes" && lead?.status !== "quente") return false;
       if (statusFilter === "parados" && !breached) return false;
       if (statusFilter === "perdidos" && lead?.status !== "perdido") return false;
-      // Filtro por motivo (combina com status — só leads perdidos com o motivo escolhido)
       if (lossReasonFilter) {
         if (lead?.status !== "perdido" || lead.lossReason !== lossReasonFilter) {
           return false;
         }
       }
+      if (!matchesSource(origin, conv.awaitingReply, sourceFilter)) return false;
       return true;
     })
     .sort((a, b) => b.score - a.score);
@@ -95,13 +158,12 @@ function InboxPage() {
   const settings = useSettings();
   useRepoVersion();
   const { profile } = useAuth();
-  const { status: statusFilter, lossReason: lossReasonFilter } = Route.useSearch();
+  const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
 
-  const items = buildSortedItems(settings.slaMinutes, statusFilter, lossReasonFilter);
+  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
-  // Contagens por status — ignora o filtro de status atual mas respeita motivo.
   const statusCounts = useMemo(() => {
     const counts = { todos: 0, quentes: 0, parados: 0, perdidos: 0 };
     for (const c of getConversations()) {
@@ -120,6 +182,29 @@ function InboxPage() {
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.slaMinutes, lossReasonFilter, items]);
+
+  const sourceCounts = useMemo(() => {
+    const counts: Record<SourceFilter, number> = {
+      todos: 0, whatsapp: 0, instagram: 0, facebook: 0,
+      comentarios: 0, directs: 0, "nao-respondidos": 0,
+    };
+    for (const c of getConversations()) {
+      const lead = getLeadById(c.leadId);
+      if (!lead) continue;
+      const msgs = getMessagesFor(c.id);
+      const last = msgs[msgs.length - 1];
+      const origin = getConversationOrigin(lead, last);
+      counts.todos += 1;
+      if (matchesSource(origin, c.awaitingReply, "whatsapp")) counts.whatsapp += 1;
+      if (matchesSource(origin, c.awaitingReply, "instagram")) counts.instagram += 1;
+      if (matchesSource(origin, c.awaitingReply, "facebook")) counts.facebook += 1;
+      if (matchesSource(origin, c.awaitingReply, "comentarios")) counts.comentarios += 1;
+      if (matchesSource(origin, c.awaitingReply, "directs")) counts.directs += 1;
+      if (matchesSource(origin, c.awaitingReply, "nao-respondidos")) counts["nao-respondidos"] += 1;
+    }
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   const breachedCount = statusCounts.parados;
 
@@ -154,7 +239,6 @@ function InboxPage() {
   const isEmpty = items.length === 0 && statusCounts.todos === 0;
   const showSeed = isRemote && isEmpty && !!profile;
 
-  // Filtro por motivo só aparece quando o usuário está vendo Todos ou Perdidos.
   const showLossReasonFilter =
     (statusFilter === "todos" || statusFilter === "perdidos") &&
     availableLossReasons.length > 0;
@@ -164,10 +248,17 @@ function InboxPage() {
       to: "/inbox",
       search: {
         status: next,
-        // Se sair de "perdidos"/"todos", limpa motivo para evitar combinação inválida.
+        source: sourceFilter,
         lossReason:
           next === "perdidos" || next === "todos" ? lossReasonFilter : "",
       },
+    });
+  };
+
+  const setSource = (next: SourceFilter) => {
+    navigate({
+      to: "/inbox",
+      search: { status: statusFilter, source: next, lossReason: lossReasonFilter },
     });
   };
 
@@ -177,6 +268,19 @@ function InboxPage() {
     { key: "parados", label: "Parados", count: statusCounts.parados },
     { key: "perdidos", label: "Perdidos", count: statusCounts.perdidos },
   ];
+
+  const sourceTabs: { key: SourceFilter; label: string; count: number }[] = [
+    { key: "todos", label: "Todos", count: sourceCounts.todos },
+    { key: "whatsapp", label: "WhatsApp", count: sourceCounts.whatsapp },
+    { key: "instagram", label: "Instagram", count: sourceCounts.instagram },
+    { key: "facebook", label: "Facebook", count: sourceCounts.facebook },
+    { key: "comentarios", label: "Comentários", count: sourceCounts.comentarios },
+    { key: "directs", label: "Directs", count: sourceCounts.directs },
+    { key: "nao-respondidos", label: "Não respondidos", count: sourceCounts["nao-respondidos"] },
+  ];
+
+  const hasAnyFilter =
+    statusFilter !== "todos" || sourceFilter !== "todos" || !!lossReasonFilter;
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -247,7 +351,7 @@ function InboxPage() {
                 onChange={(e) =>
                   navigate({
                     to: "/inbox",
-                    search: { status: statusFilter, lossReason: e.target.value },
+                    search: { status: statusFilter, source: sourceFilter, lossReason: e.target.value },
                   })
                 }
                 className={cn(
@@ -268,7 +372,7 @@ function InboxPage() {
                   onClick={() =>
                     navigate({
                       to: "/inbox",
-                      search: { status: statusFilter, lossReason: "" },
+                      search: { status: statusFilter, source: sourceFilter, lossReason: "" },
                     })
                   }
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent"
@@ -279,13 +383,13 @@ function InboxPage() {
               )}
             </div>
           )}
-          {(statusFilter !== "todos" || lossReasonFilter) && (
+          {hasAnyFilter && (
             <button
               type="button"
               onClick={() =>
                 navigate({
                   to: "/inbox",
-                  search: { status: "todos", lossReason: "" },
+                  search: { status: "todos", source: "todos", lossReason: "" },
                 })
               }
               className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
@@ -293,6 +397,35 @@ function InboxPage() {
               Limpar filtros
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {sourceTabs.map((tab) => {
+            const active = sourceFilter === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setSource(tab.key)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
+                  active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/40",
+                )}
+              >
+                {tab.label}
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
+                    active ? "bg-primary-foreground/20" : "bg-secondary",
+                    tab.count === 0 && "opacity-40",
+                  )}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </header>
 
@@ -319,10 +452,8 @@ function InboxPage() {
           </div>
         )}
         <ul className="divide-y divide-border">
-          {items.map(({ conv: c, breached, ageMin }) => {
+          {items.map(({ conv: c, last, origin, breached, ageMin }) => {
             const lead = getLeadById(c.leadId)!;
-            const msgs = getMessagesFor(c.id);
-            const last = msgs[msgs.length - 1];
 
             return (
               <li key={c.id}>
@@ -362,7 +493,8 @@ function InboxPage() {
                       >
                         {lead.name}
                       </span>
-                      <ChannelBadge channel={c.channel} />
+                      <OriginBadge origin={origin} />
+                      {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
                       {!(lead.status === "perdido" && lead.lossReason) && (
                         <StatusBadge status={lead.status} />
                       )}
