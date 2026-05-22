@@ -121,6 +121,9 @@ function ConversationPage() {
     );
   }
 
+  const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
+  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1]);
+
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -134,25 +137,37 @@ function ConversationPage() {
     setMessages((prev) => [...prev, msg]);
     setInput("");
 
-    // Se o lead é WhatsApp e o usuário está logado, tenta envio real via Cloud API.
-    // Em qualquer falha (sem integração, sem token, erro de rede) faz fallback
-    // para gravar localmente e não bloquear a operação.
     const isWhatsApp = lead?.channel === "whatsapp";
-    if (isWhatsApp && profile?.company_id) {
+    if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
-          const res = await fetch("/api/whatsapp/send", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ conversationId, text: trimmed }),
-          });
-          if (res.ok) return; // server já gravou no banco
-          // 400 com "WhatsApp não conectado" → cai para fallback silencioso
+          if (isWhatsApp) {
+            const res = await fetch("/api/whatsapp/send", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ conversationId, text: trimmed }),
+            });
+            if (res.ok) return;
+          } else {
+            // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
+            const subtype =
+              origin === "comment"
+                ? "comment"
+                : origin === "messenger"
+                  ? "messenger"
+                  : origin === "instagram"
+                    ? "instagram_dm"
+                    : "facebook_dm";
+            const { data, error } = await supabase.functions.invoke("meta-send", {
+              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin },
+            });
+            if (!error && data) return;
+          }
         }
       } catch {
         // fallback abaixo
