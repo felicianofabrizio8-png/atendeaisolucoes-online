@@ -938,12 +938,21 @@ function loadFbSdk(appId: string): Promise<void> {
   });
 }
 
+interface AvailablePage {
+  id: string;
+  name: string;
+  access_token: string;
+}
+
 function MetaIntegrationSection() {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const [pages, setPages] = useState<MetaPage[]>([]);
+  const [available, setAvailable] = useState<AvailablePage[]>([]);
+  const [shortToken, setShortToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [savingPageId, setSavingPageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -971,6 +980,7 @@ function MetaIntegrationSection() {
   const onConnect = async () => {
     setError(null);
     setInfo(null);
+    setAvailable([]);
     if (!META_APP_ID) {
       setError(
         "Configure VITE_META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
@@ -991,25 +1001,65 @@ function MetaIntegrationSection() {
           );
         },
       );
+      setShortToken(auth.accessToken);
 
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("meta-connect", {
-        body: {
-          mode: "basic",
-          shortLivedToken: auth.accessToken,
-          userID: auth.userID,
-        },
+      // Busca as páginas administradas pelo usuário
+      const accounts = await new Promise<{ data?: AvailablePage[] }>((resolve, reject) => {
+        window.FB!.api(
+          "/me/accounts",
+          { fields: "id,name,access_token", access_token: auth.accessToken },
+          (res) => {
+            if (!res) return reject(new Error("Sem resposta do Facebook"));
+            const r = res as { error?: { message: string }; data?: AvailablePage[] };
+            if (r.error) return reject(new Error(r.error.message));
+            resolve(r);
+          },
+        );
       });
-      if (error) throw error;
-      const okName = (data as { user?: { name?: string } })?.user?.name ?? "usuário";
-      setInfo(`Meta conectado para teste (${okName}).`);
-      await reload();
+      const list = accounts.data ?? [];
+      setAvailable(list);
+      if (list.length === 0) {
+        setInfo("Login realizado, mas nenhuma página Facebook foi encontrada para este usuário.");
+      } else {
+        setInfo(`Encontrada(s) ${list.length} página(s). Selecione abaixo para conectar.`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao conectar");
     } finally {
       setConnecting(false);
     }
   };
+
+  const onSelectPage = async (page: AvailablePage) => {
+    if (!shortToken) {
+      setError("Sessão Facebook expirou. Clique em Conectar novamente.");
+      return;
+    }
+    setError(null);
+    setInfo(null);
+    setSavingPageId(page.id);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("meta-connect", {
+        body: {
+          mode: "connect_page",
+          shortLivedToken: shortToken,
+          page: { id: page.id, name: page.name, access_token: page.access_token },
+        },
+      });
+      if (error) throw error;
+      const savedName =
+        (data as { page?: { name?: string } })?.page?.name ?? page.name;
+      setInfo(`Página conectada: ${savedName}`);
+      setAvailable((prev) => prev.filter((p) => p.id !== page.id));
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao salvar página");
+    } finally {
+      setSavingPageId(null);
+    }
+  };
+
 
   const onDisconnect = async (pageId: string) => {
     if (!confirm("Desconectar esta página? Mensagens antigas serão mantidas.")) return;
