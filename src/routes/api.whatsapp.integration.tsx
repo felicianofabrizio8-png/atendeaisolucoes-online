@@ -99,14 +99,31 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           verify_token: body.verifyToken,
           webhook_secret: body.webhookSecret,
         };
+        console.log("[whatsapp integration save] payload", {
+          companyId: auth.companyId,
+          channel: payload.channel,
+          displayName: payload.display_name,
+          phoneNumberId: payload.external_account_id,
+          accountMetadata: payload.account_metadata,
+          hasAccessToken: !!payload.access_token,
+          hasVerifyToken: !!payload.verify_token,
+          hasWebhookSecret: !!payload.webhook_secret,
+        });
 
-        const { data: existing } = await supabaseAdmin
+        const { data: existing, error: existingError } = await supabaseAdmin
           .from("integrations")
           .select("id")
           .eq("company_id", auth.companyId)
           .eq("channel", "whatsapp")
           .eq("external_account_id", body.phoneNumberId)
           .maybeSingle();
+        if (existingError) {
+          console.error("[whatsapp integration save] lookup error", existingError);
+          return Response.json(
+            { error: existingError.message, details: existingError },
+            { status: 500 },
+          );
+        }
 
         const safeCols =
           "id, company_id, channel, display_name, active, external_account_id, account_metadata, last_synced_at, last_error, created_at, updated_at";
@@ -120,7 +137,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
             .single();
           if (error || !updated) {
             console.error("integrations update error", error);
-            return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+            return Response.json(
+              { error: error?.message ?? "Update sem retorno", details: error },
+              { status: 500 },
+            );
           }
           console.log("integrations updated", { id: updated.id, company_id: updated.company_id });
           return Response.json({
@@ -137,7 +157,10 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .single();
         if (error || !data) {
           console.error("integrations insert error", error);
-          return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
+          return Response.json(
+            { error: error?.message ?? "Insert sem retorno", details: error },
+            { status: 500 },
+          );
         }
         console.log("integrations inserted", { id: data.id, company_id: data.company_id });
         return Response.json({
