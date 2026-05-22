@@ -15,3 +15,15 @@ verify_jwt = true
 # Status/QR/contatos da instância Evolution — exige usuário autenticado.
 [functions.whatsapp-status]
 verify_jwt = true
+
+# Webhook público da Meta (Instagram / Facebook / Messenger).
+[functions.meta-webhook]
+verify_jwt = false
+
+# Conectar contas Meta — exige usuário autenticado da plataforma.
+[functions.meta-connect]
+verify_jwt = true
+
+# Envio de mensagens / respostas Meta — exige usuário autenticado.
+[functions.meta-send]
+verify_jwt = true
