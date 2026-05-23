@@ -1435,28 +1435,70 @@ function MetaIntegrationSection() {
       }
 
       await loadFbSdk(config.appId);
-      const auth = await new Promise<{ accessToken: string; userID: string }>(
-        (resolve, reject) => {
-          window.FB!.login(
-            (res) => {
-              if (res.authResponse?.accessToken) resolve(res.authResponse);
-              else reject(new Error("Login cancelado ou negado"));
-            },
-            {
-              config_id: config.businessConfigId,
-              auth_type: "rerequest",
-              response_type: "token",
-              override_default_response_type: true,
-            },
-          );
-        },
-      );
+      const auth = await new Promise<{
+        accessToken: string;
+        userID: string;
+        grantedScopes?: string;
+      }>((resolve, reject) => {
+        window.FB!.login(
+          (res) => {
+            console.log("META_LOGIN_RESPONSE", res);
+            const ar = (res as unknown as {
+              authResponse?: {
+                accessToken: string;
+                userID: string;
+                grantedScopes?: string;
+              };
+            }).authResponse;
+            if (ar?.accessToken)
+              resolve({
+                accessToken: ar.accessToken,
+                userID: ar.userID,
+                grantedScopes: ar.grantedScopes,
+              });
+            else reject(new Error("Login cancelado ou negado"));
+          },
+          {
+            config_id: config.businessConfigId,
+            auth_type: "rerequest",
+            response_type: "token",
+            override_default_response_type: true,
+          },
+        );
+      });
       setShortToken(auth.accessToken);
       console.log("META_LOGIN_SUCCESS", { userID: auth.userID });
+      console.log("META_ACCESS_TOKEN", {
+        token_preview: `${auth.accessToken.slice(0, 12)}...${auth.accessToken.slice(-6)}`,
+        length: auth.accessToken.length,
+      });
+      console.log("META_GRANTED_SCOPES", {
+        granted_scopes: auth.grantedScopes ?? null,
+        scopes_array: auth.grantedScopes ? auth.grantedScopes.split(",") : [],
+      });
 
-      // Busca páginas + Instagram vinculado direto na Graph API.
+      // Inspeciona o token para confirmar se é USER token (não system user)
+      try {
+        const debugUrl =
+          `https://graph.facebook.com/v25.0/debug_token` +
+          `?input_token=${encodeURIComponent(auth.accessToken)}` +
+          `&access_token=${encodeURIComponent(auth.accessToken)}`;
+        const debugRes = await fetch(debugUrl);
+        const debugJson = await debugRes.json();
+        const tokenType =
+          (debugJson as { data?: { type?: string } })?.data?.type ?? null;
+        console.log("META_TOKEN_DEBUG", {
+          type: tokenType,
+          is_user_token: tokenType === "USER",
+          payload: debugJson,
+        });
+      } catch (e) {
+        console.warn("META_TOKEN_DEBUG_FAIL", e);
+      }
+
+      // Busca páginas + Instagram vinculado direto na Graph API (v25.0).
       const accountsUrl =
-        `https://graph.facebook.com/v21.0/me/accounts` +
+        `https://graph.facebook.com/v25.0/me/accounts` +
         `?fields=id,name,access_token,instagram_business_account{id,username}` +
         `&limit=100&access_token=${encodeURIComponent(auth.accessToken)}`;
       const accountsRes = await fetch(accountsUrl);
@@ -1467,11 +1509,13 @@ function MetaIntegrationSection() {
           access_token: string;
           instagram_business_account?: { id: string; username?: string };
         }>;
+        paging?: unknown;
         error?: { message?: string; type?: string; code?: number };
       };
       console.log("META_ME_ACCOUNTS_RESPONSE", {
         status: accountsRes.status,
         ok: accountsRes.ok,
+        data_length: accountsJson.data?.length ?? 0,
         payload: accountsJson,
       });
 
@@ -1687,7 +1731,12 @@ function MetaIntegrationSection() {
       )}
 
       <div className="mb-4">
-        <p className="text-xs font-semibold mb-2">Páginas disponíveis</p>
+        <p className="text-xs font-semibold mb-2">
+          Páginas disponíveis{" "}
+          <span className="text-muted-foreground font-normal">
+            ({available.length} encontrada{available.length === 1 ? "" : "s"})
+          </span>
+        </p>
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">

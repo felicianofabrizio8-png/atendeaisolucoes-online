@@ -9,7 +9,7 @@ const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = "https://graph.facebook.com/v25.0";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -187,12 +187,27 @@ Deno.serve(async (req) => {
       ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
       : null;
 
+    console.log("META_CONNECT_PAGE_TOKEN", {
+      page_id: page.id,
+      has_long_lived: Boolean(longLived?.access_token),
+      long_token_preview: longUserToken
+        ? `${longUserToken.slice(0, 12)}...${longUserToken.slice(-6)}`
+        : null,
+      expires_at: userTokenExpiresAt,
+    });
+
     // Obtém page token long-lived + IG vinculado em uma chamada.
-    const detailsRes = await fetch(
+    const graphUrl =
       `${GRAPH}/${page.id}?fields=name,access_token,instagram_business_account{id,username}` +
-        `&access_token=${encodeURIComponent(longUserToken)}`,
-    );
+      `&access_token=${encodeURIComponent(longUserToken)}`;
+    const detailsRes = await fetch(graphUrl);
     const detailsText = await detailsRes.text();
+    console.log("META_GRAPH_RESPONSE", {
+      page_id: page.id,
+      status: detailsRes.status,
+      ok: detailsRes.ok,
+      body: detailsText.slice(0, 2000),
+    });
     if (!detailsRes.ok) {
       console.log("PAGE_TOKEN_FAIL", page.id, detailsRes.status, detailsText);
       return json({ ok: false, error: "failed to fetch page access token", details: detailsText }, 400);
@@ -209,7 +224,18 @@ Deno.serve(async (req) => {
     const igUsername =
       details.instagram_business_account?.username ?? page.ig_username ?? null;
 
-    console.log("META_PAGE_DETAILS", { page_id: page.id, page_name: pageName, ig_id: igId, ig_username: igUsername });
+    console.log("META_PAGE_FOUND", {
+      page_id: page.id,
+      page_name: pageName,
+      has_page_token: Boolean(pageToken),
+    });
+    if (igId) {
+      console.log("META_IG_FOUND", {
+        page_id: page.id,
+        ig_business_account_id: igId,
+        ig_username: igUsername,
+      });
+    }
 
     const { data: integ, error: integErr } = await sb
       .from("integrations")
