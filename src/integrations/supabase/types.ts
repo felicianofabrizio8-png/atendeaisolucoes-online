@@ -730,6 +730,7 @@ export type Database = {
           id: string | null
           last_error: string | null
           last_synced_at: string | null
+          token_expires_at: string | null
           updated_at: string | null
         }
         Insert: {
@@ -745,6 +746,7 @@ export type Database = {
           id?: string | null
           last_error?: string | null
           last_synced_at?: string | null
+          token_expires_at?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -760,6 +762,7 @@ export type Database = {
           id?: string | null
           last_error?: string | null
           last_synced_at?: string | null
+          token_expires_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
