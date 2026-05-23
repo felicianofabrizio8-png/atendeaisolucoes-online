@@ -1314,16 +1314,20 @@ declare global {
       init: (opts: { appId: string; cookie: boolean; xfbml: boolean; version: string }) => void;
       login: (
         cb: (res: {
-          authResponse?: { accessToken: string; userID: string };
+          authResponse?: { accessToken: string; userID: string; grantedScopes?: string };
           status: string;
         }) => void,
         opts?: {
-          config_id: string;
+          config_id?: string;
+          scope?: string;
           auth_type?: string;
+          return_scopes?: boolean;
           response_type?: "token";
           override_default_response_type?: boolean;
         },
       ) => void;
+      logout: (cb: (res: unknown) => void) => void;
+      getLoginStatus: (cb: (res: { status?: string }) => void) => void;
       api: (path: string, cb: (res: unknown) => void) => void;
     };
     fbAsyncInit?: () => void;
@@ -1458,6 +1462,56 @@ function MetaIntegrationSection() {
       }
 
       await loadFbSdk(config.appId);
+
+      // Scopes obrigatórios para listar páginas e Instagram Business
+      const REQUIRED_SCOPES = [
+        "public_profile",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_metadata",
+        "pages_messaging",
+        "instagram_basic",
+        "business_management",
+      ].join(",");
+
+      // Limpar sessão FB antiga para evitar reutilizar token com escopo reduzido
+      try {
+        await new Promise<void>((resolve) => {
+          window.FB!.getLoginStatus((statusRes: unknown) => {
+            const s = (statusRes as { status?: string })?.status;
+            console.log("META_FB_PREVIOUS_STATUS", s);
+            if (s === "connected") {
+              window.FB!.logout(() => {
+                console.log("META_FB_LOGGED_OUT_PREVIOUS");
+                resolve();
+              });
+            } else {
+              resolve();
+            }
+          });
+        });
+      } catch (e) {
+        console.warn("META_FB_LOGOUT_FAIL", e);
+      }
+
+      const loginOptions = {
+        config_id: config.businessConfigId,
+        scope: REQUIRED_SCOPES,
+        auth_type: "rerequest" as const,
+        return_scopes: true,
+        response_type: "token" as const,
+        override_default_response_type: true,
+      };
+      console.log("META_LOGIN_SCOPE_SENT", {
+        scope: REQUIRED_SCOPES,
+        scopes_array: REQUIRED_SCOPES.split(","),
+        config_id: config.businessConfigId,
+        auth_type: "rerequest",
+      });
+      console.log("META_OAUTH_URL", {
+        approx: `https://www.facebook.com/v21.0/dialog/oauth?client_id=${config.appId}&config_id=${config.businessConfigId}&scope=${encodeURIComponent(REQUIRED_SCOPES)}&auth_type=rerequest&response_type=token`,
+      });
+
       const auth = await new Promise<{
         accessToken: string;
         userID: string;
@@ -1481,12 +1535,7 @@ function MetaIntegrationSection() {
               });
             else reject(new Error("Login cancelado ou negado"));
           },
-          {
-            config_id: config.businessConfigId,
-            auth_type: "rerequest",
-            response_type: "token",
-            override_default_response_type: true,
-          },
+          loginOptions,
         );
       });
       setShortToken(auth.accessToken);
@@ -1508,12 +1557,17 @@ function MetaIntegrationSection() {
           `&access_token=${encodeURIComponent(auth.accessToken)}`;
         const debugRes = await fetch(debugUrl);
         const debugJson = await debugRes.json();
-        const tokenType =
-          (debugJson as { data?: { type?: string } })?.data?.type ?? null;
+        const debugData = (debugJson as { data?: { type?: string; scopes?: string[]; granular_scopes?: unknown } })?.data ?? {};
+        const tokenType = debugData.type ?? null;
         console.log("META_TOKEN_DEBUG", {
           type: tokenType,
           is_user_token: tokenType === "USER",
           payload: debugJson,
+        });
+        console.log("META_TOKEN_SCOPES", {
+          scopes: debugData.scopes ?? null,
+          granular_scopes: debugData.granular_scopes ?? null,
+          granted_via_login: auth.grantedScopes ?? null,
         });
       } catch (e) {
         console.warn("META_TOKEN_DEBUG_FAIL", e);
