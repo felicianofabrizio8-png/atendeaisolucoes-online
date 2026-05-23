@@ -1694,6 +1694,12 @@ function MetaIntegrationSection() {
           seu app Meta para habilitar o login.
         </p>
       )}
+      {META_APP_ID && !META_BUSINESS_CONFIG_ID && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Defina <code className="bg-muted px-1 rounded">VITE_META_BUSINESS_CONFIG_ID</code> com o
+          Configuration ID do Facebook Login for Business.
+        </p>
+      )}
     </section>
   );
 }
