@@ -1646,8 +1646,15 @@ function MetaIntegrationSection() {
       .catch(() => setMetaConfig(null));
   }, []);
 
-  // Scopes obrigatórios para listar páginas e Instagram Business
-  const REQUIRED_SCOPES = ["public_profile", "email"].join(",");
+  // Scopes obrigatórios para listar páginas e enviar mensagens
+  const REQUIRED_SCOPES = [
+    "public_profile",
+    "email",
+    "pages_show_list",
+    "business_management",
+    "pages_messaging",
+    "pages_manage_metadata",
+  ].join(",");
 
   const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
 
@@ -1677,7 +1684,7 @@ function MetaIntegrationSection() {
 
     const accountsUrl =
       `https://graph.facebook.com/v25.0/me/accounts` +
-      `?fields=id,name,access_token,instagram_business_account{id,username}` +
+      `?fields=id,name,tasks,access_token,category,instagram_business_account{id,username}` +
       `&limit=100&access_token=${encodeURIComponent(accessToken)}`;
     const accountsRes = await fetch(accountsUrl);
     const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
