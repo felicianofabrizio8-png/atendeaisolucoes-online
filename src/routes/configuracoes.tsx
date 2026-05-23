@@ -1647,16 +1647,7 @@ function MetaIntegrationSection() {
   }, []);
 
   // Scopes obrigatórios para listar páginas e Instagram Business
-  const REQUIRED_SCOPES = [
-    "public_profile",
-    "pages_show_list",
-    "pages_manage_metadata",
-    "pages_read_engagement",
-    "pages_messaging",
-    "instagram_basic",
-    "business_management",
-    "whatsapp_business_management",
-  ].join(",");
+  const REQUIRED_SCOPES = ["public_profile", "email"].join(",");
 
   const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
 
