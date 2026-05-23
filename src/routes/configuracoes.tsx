@@ -1502,42 +1502,56 @@ function MetaIntegrationSection() {
         `?fields=id,name,access_token,instagram_business_account{id,username}` +
         `&limit=100&access_token=${encodeURIComponent(auth.accessToken)}`;
       const accountsRes = await fetch(accountsUrl);
-      const accountsJson = (await accountsRes.json()) as {
-        data?: Array<{
-          id: string;
-          name: string;
-          access_token: string;
-          instagram_business_account?: { id: string; username?: string };
-        }>;
-        paging?: unknown;
-        error?: { message?: string; type?: string; code?: number };
-      };
+      const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
       console.log("META_ME_ACCOUNTS_RESPONSE", {
         status: accountsRes.status,
         ok: accountsRes.ok,
-        data_length: accountsJson.data?.length ?? 0,
         payload: accountsJson,
       });
 
-      if (accountsJson.error) {
-        console.error("META_PAGES_ERROR", {
-          error: accountsJson.error,
-          fullPayload: accountsJson,
-        });
-        throw new Error(
-          `Graph API: ${accountsJson.error.message ?? "erro desconhecido"}`,
-        );
+      const errObj = (accountsJson as { error?: { message?: string } }).error;
+      if (errObj) {
+        console.error("META_PAGES_ERROR", { error: errObj, fullPayload: accountsJson });
+        throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
       }
 
-      const rawData = accountsJson.data ?? [];
-      if (rawData.length === 0) {
+      // Parsing defensivo: aceita {data:[...]}, {data:{data:[...]}} e {pages:[...]}.
+      type RawPage = {
+        id: string;
+        name: string;
+        access_token: string;
+        instagram_business_account?: { id?: string; username?: string };
+      };
+      const root = accountsJson as {
+        data?: RawPage[] | { data?: RawPage[] };
+        pages?: RawPage[];
+      };
+      let accounts: RawPage[] = [];
+      if (Array.isArray(root.data)) accounts = root.data;
+      else if (root.data && Array.isArray((root.data as { data?: RawPage[] }).data))
+        accounts = (root.data as { data: RawPage[] }).data;
+      else if (Array.isArray(root.pages)) accounts = root.pages;
+
+      console.log("META_ACCOUNTS_RAW_DATA", {
+        count: accounts.length,
+        accounts,
+        used_key: Array.isArray(root.data)
+          ? "data"
+          : root.data && Array.isArray((root.data as { data?: RawPage[] }).data)
+            ? "data.data"
+            : Array.isArray(root.pages)
+              ? "pages"
+              : "none",
+      });
+
+      if (!accounts?.length) {
         console.warn("META_ME_ACCOUNTS_EMPTY", {
           fullPayload: accountsJson,
           hint: "Nenhuma página retornada. Verifique se o usuário é admin de alguma página e se concedeu pages_show_list.",
         });
       }
 
-      const list: AvailablePage[] = rawData.map((p) => ({
+      const list: AvailablePage[] = accounts.map((p) => ({
         id: p.id,
         name: p.name,
         access_token: p.access_token,
@@ -1573,6 +1587,10 @@ function MetaIntegrationSection() {
         igs: withIg.map((p) => p.ig_username),
       });
 
+      console.log("META_RENDERING_PAGES", {
+        count: list.length,
+        payload: list,
+      });
       setAvailable(list);
 
       // Continua salvando o registro "basic" para indicar login conectado.
