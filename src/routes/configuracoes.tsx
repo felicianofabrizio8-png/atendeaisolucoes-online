@@ -994,6 +994,132 @@ function randomToken(len = 24) {
   return out;
 }
 
+function WhatsAppCloudDebugPanel() {
+  const [token, setToken] = useState("");
+  const [wabaId, setWabaId] = useState("");
+  const [phoneId, setPhoneId] = useState("");
+  const [toNumber, setToNumber] = useState("");
+  const [testMessage, setTestMessage] = useState("Teste Atende Ai ✅");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<unknown>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = async () => {
+    setErr(null);
+    setResult(null);
+    if (!token.trim()) {
+      setErr("Cole o access token (temporário ou permanente).");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const bearer = sess.session?.access_token;
+      if (!bearer) throw new Error("Sessão expirada");
+      const res = await fetch("/api/whatsapp/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
+        body: JSON.stringify({
+          accessToken: token.trim(),
+          wabaId: wabaId.trim() || undefined,
+          phoneNumberId: phoneId.trim() || undefined,
+          toNumber: toNumber.trim() || undefined,
+          testMessage: testMessage.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      console.log("[WhatsAppCloudDebug] result", json);
+      setResult(json);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha no debug");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-dashed border-border p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold">Debug WhatsApp Cloud API</div>
+          <div className="text-[11px] text-muted-foreground">
+            Valida token (temporário ou permanente), WABA, phone_number_id e envio de
+            mensagem. Não salva nada.
+          </div>
+        </div>
+      </div>
+
+      <Field label="Access token (temporário ou permanente)">
+        <textarea
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          rows={2}
+          placeholder="EAAG..."
+          className="w-full px-3 py-2 text-xs rounded-md border border-border bg-background font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="WABA ID (opcional)">
+          <input
+            value={wabaId}
+            onChange={(e) => setWabaId(e.target.value)}
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+        <Field label="phone_number_id (opcional)">
+          <input
+            value={phoneId}
+            onChange={(e) => setPhoneId(e.target.value)}
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Enviar para (E.164, opcional)">
+          <input
+            value={toNumber}
+            onChange={(e) => setToNumber(e.target.value)}
+            placeholder="5511999999999"
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+        <Field label="Mensagem teste">
+          <input
+            value={testMessage}
+            onChange={(e) => setTestMessage(e.target.value)}
+            className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </Field>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={run}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Rodar debug
+        </button>
+      </div>
+
+      {err && (
+        <div className="rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
+          {err}
+        </div>
+      )}
+
+      {result !== null && (
+        <pre className="text-[11px] leading-snug bg-secondary/40 border border-border rounded-md p-3 overflow-auto max-h-96 font-mono">
+{JSON.stringify(result, null, 2)}
+          </pre>
+      )}
+    </div>
+  );
+}
+
+
+
 function WhatsAppForm({
   companyId,
   onCancel,
