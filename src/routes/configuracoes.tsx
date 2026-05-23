@@ -1387,6 +1387,57 @@ function MetaIntegrationSection() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [metaConfig, setMetaConfig] = useState<MetaBusinessConfig | null>(null);
+  const [debugResult, setDebugResult] = useState<unknown>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+
+  const onDebugToken = async () => {
+    if (!shortToken) {
+      setDebugResult({ error: "Sem token. Faça login Meta primeiro." });
+      return;
+    }
+    setDebugLoading(true);
+    try {
+      const config = metaConfig ?? (await getMetaBusinessConfig());
+      const appId = config.appId;
+      const GRAPH = "https://graph.facebook.com/v25.0";
+      const tok = encodeURIComponent(shortToken);
+
+      const [debugRes, meRes, accountsRes] = await Promise.all([
+        fetch(
+          `${GRAPH}/debug_token?input_token=${tok}&access_token=${encodeURIComponent(appId + "|" + shortToken)}`,
+        ).then((r) => r.json()).catch((e) => ({ error: String(e) })),
+        fetch(`${GRAPH}/me?fields=id,name&access_token=${tok}`).then((r) => r.json()).catch((e) => ({ error: String(e) })),
+        fetch(
+          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${tok}`,
+        ).then((r) => r.json()).catch((e) => ({ error: String(e) })),
+      ]);
+
+      const d = (debugRes as { data?: Record<string, unknown> })?.data ?? {};
+      const summary = {
+        debug_token: {
+          app_id: d.app_id ?? null,
+          user_id: d.user_id ?? null,
+          type: d.type ?? null,
+          scopes: d.scopes ?? null,
+          granular_scopes: d.granular_scopes ?? null,
+          data_access_expires_at: d.data_access_expires_at ?? null,
+          expires_at: d.expires_at ?? null,
+          is_valid: d.is_valid ?? null,
+          application: d.application ?? null,
+          raw: debugRes,
+        },
+        me: meRes,
+        me_accounts: accountsRes,
+        token_preview: `${shortToken.slice(0, 12)}...${shortToken.slice(-6)}`,
+      };
+      console.log("META_DEBUG_TOKEN_RESULT", summary);
+      setDebugResult(summary);
+    } catch (e) {
+      setDebugResult({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setDebugLoading(false);
+    }
+  };
 
   const reload = useCallback(async () => {
     if (!companyId) return;
