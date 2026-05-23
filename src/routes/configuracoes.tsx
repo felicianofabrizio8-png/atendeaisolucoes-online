@@ -554,6 +554,9 @@ function IntegrationItem({
               </span>
             </div>
           )}
+          {isWhatsApp && item.hasAccessToken && (
+            <TokenExpiryBadge expiresAt={item.tokenExpiresAt} />
+          )}
         </div>
         <span
           className={cn(
