@@ -1646,6 +1646,100 @@ function MetaIntegrationSection() {
       .catch(() => setMetaConfig(null));
   }, []);
 
+  // Scopes obrigatórios para listar páginas e Instagram Business
+  const REQUIRED_SCOPES = [
+    "public_profile",
+    "pages_show_list",
+    "pages_manage_metadata",
+    "pages_read_engagement",
+    "pages_messaging",
+    "instagram_basic",
+    "business_management",
+    "whatsapp_business_management",
+  ].join(",");
+
+  const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
+
+  // Carrega páginas a partir de um user access_token (chamado após callback OAuth).
+  const loadPagesFromToken = useCallback(async (accessToken: string) => {
+    setShortToken(accessToken);
+    console.log("META_ACCESS_TOKEN", {
+      token_preview: `${accessToken.slice(0, 12)}...${accessToken.slice(-6)}`,
+      length: accessToken.length,
+    });
+
+    try {
+      const debugUrl =
+        `https://graph.facebook.com/v25.0/debug_token` +
+        `?input_token=${encodeURIComponent(accessToken)}` +
+        `&access_token=${encodeURIComponent(accessToken)}`;
+      const debugRes = await fetch(debugUrl);
+      const debugJson = await debugRes.json();
+      const debugData = (debugJson as { data?: { type?: string; scopes?: string[]; granular_scopes?: unknown } })?.data ?? {};
+      console.log("META_TOKEN_SCOPES", {
+        scopes: debugData.scopes ?? null,
+        granular_scopes: debugData.granular_scopes ?? null,
+      });
+    } catch (e) {
+      console.warn("META_TOKEN_DEBUG_FAIL", e);
+    }
+
+    const accountsUrl =
+      `https://graph.facebook.com/v25.0/me/accounts` +
+      `?fields=id,name,access_token,instagram_business_account{id,username}` +
+      `&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+    const accountsRes = await fetch(accountsUrl);
+    const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
+    console.log("META_ME_ACCOUNTS_RESPONSE", {
+      status: accountsRes.status,
+      ok: accountsRes.ok,
+      payload: accountsJson,
+    });
+
+    const errObj = (accountsJson as { error?: { message?: string } }).error;
+    if (errObj) {
+      throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
+    }
+
+    type RawPage = {
+      id: string;
+      name: string;
+      access_token: string;
+      instagram_business_account?: { id?: string; username?: string };
+    };
+    const root = accountsJson as { data?: RawPage[] };
+    const accounts: RawPage[] = Array.isArray(root.data) ? root.data : [];
+
+    const list: AvailablePage[] = accounts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      access_token: p.access_token,
+      ig_business_account_id: p.instagram_business_account?.id ?? null,
+      ig_username: p.instagram_business_account?.username ?? null,
+    }));
+    console.log("META_PAGES_FOUND", { count: list.length });
+    setAvailable(list);
+
+    if (list.length === 0) {
+      setInfo(
+        "Login Meta conectado, mas nenhuma página Facebook foi encontrada nesta conta. Verifique se você é admin de alguma página.",
+      );
+    } else {
+      setInfo(`Login Meta conectado. ${list.length} página(s) disponível(is) para conexão.`);
+    }
+  }, []);
+
+  // Retomar fluxo após callback OAuth: token vem via sessionStorage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
+    if (!tok) return;
+    window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+    void loadPagesFromToken(tok).catch((e) => {
+      setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
+    });
+  }, [loadPagesFromToken]);
+
   const onConnect = async () => {
     setError(null);
     setInfo(null);
@@ -1659,254 +1753,31 @@ function MetaIntegrationSection() {
           "Configure META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
         );
       }
-      if (!config.hasBusinessConfigId) {
-        throw new Error(
-          "Configure META_BUSINESS_CONFIG_ID com o Configuration ID do Facebook Login for Business antes de conectar.",
-        );
-      }
 
-      await loadFbSdk(config.appId);
+      // Limpa tokens antigos antes de reconectar
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+        const state = crypto.randomUUID();
+        window.sessionStorage.setItem("META_OAUTH_STATE", state);
 
-      // Logar origem atual para diagnosticar domínio bloqueado pelo Meta
-      const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
-      const currentHref = typeof window !== "undefined" ? window.location.href : "";
-      const currentHost = typeof window !== "undefined" ? window.location.host : "";
-      console.log("META_REDIRECT_URI", { origin: currentOrigin, href: currentHref });
-      console.log("META_CALLBACK_URL", { callback: `${currentOrigin}/`, host: currentHost });
+        const oauthUrl =
+          `https://www.facebook.com/v21.0/dialog/oauth` +
+          `?app_id=${encodeURIComponent(config.appId)}` +
+          `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+          `&response_type=code` +
+          `&state=${encodeURIComponent(state)}` +
+          `&auth_type=rerequest` +
+          `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
-      // Scopes obrigatórios para listar páginas e Instagram Business
-      const REQUIRED_SCOPES = [
-        "public_profile",
-        "pages_show_list",
-        "pages_read_engagement",
-        "pages_manage_metadata",
-        "pages_messaging",
-        "instagram_basic",
-        "business_management",
-      ].join(",");
+        console.log("META_LOGIN_SCOPE_SENT", { scope: REQUIRED_SCOPES });
+        console.log("META_REDIRECT_URI", { redirect_uri: REDIRECT_URI });
+        console.log("META_CALLBACK_URL", { callback: REDIRECT_URI });
+        console.log("META_OAUTH_URL", { url: oauthUrl, app_id: config.appId });
 
-      // Limpar sessão FB antiga para evitar reutilizar token com escopo reduzido
-      try {
-        await new Promise<void>((resolve) => {
-          window.FB!.getLoginStatus((statusRes: unknown) => {
-            const s = (statusRes as { status?: string })?.status;
-            console.log("META_FB_PREVIOUS_STATUS", s);
-            if (s === "connected") {
-              window.FB!.logout(() => {
-                console.log("META_FB_LOGGED_OUT_PREVIOUS");
-                resolve();
-              });
-            } else {
-              resolve();
-            }
-          });
-        });
-      } catch (e) {
-        console.warn("META_FB_LOGOUT_FAIL", e);
-      }
-
-      const loginOptions = {
-        config_id: config.businessConfigId,
-        scope: REQUIRED_SCOPES,
-        auth_type: "rerequest" as const,
-        return_scopes: true,
-        response_type: "token" as const,
-        override_default_response_type: true,
-      };
-      console.log("META_LOGIN_SCOPE_SENT", {
-        scope: REQUIRED_SCOPES,
-        scopes_array: REQUIRED_SCOPES.split(","),
-        config_id: config.businessConfigId,
-        auth_type: "rerequest",
-      });
-      console.log("META_OAUTH_URL", {
-        approx: `https://www.facebook.com/v21.0/dialog/oauth?client_id=${config.appId}&config_id=${config.businessConfigId}&scope=${encodeURIComponent(REQUIRED_SCOPES)}&auth_type=rerequest&response_type=token`,
-      });
-
-      const auth = await new Promise<{
-        accessToken: string;
-        userID: string;
-        grantedScopes?: string;
-      }>((resolve, reject) => {
-        window.FB!.login(
-          (res) => {
-            console.log("META_LOGIN_RESPONSE", res);
-            const ar = (res as unknown as {
-              authResponse?: {
-                accessToken: string;
-                userID: string;
-                grantedScopes?: string;
-              };
-            }).authResponse;
-            if (ar?.accessToken)
-              resolve({
-                accessToken: ar.accessToken,
-                userID: ar.userID,
-                grantedScopes: ar.grantedScopes,
-              });
-            else reject(new Error("Login cancelado ou negado"));
-          },
-          loginOptions,
-        );
-      });
-      setShortToken(auth.accessToken);
-      console.log("META_LOGIN_SUCCESS", { userID: auth.userID });
-      console.log("META_ACCESS_TOKEN", {
-        token_preview: `${auth.accessToken.slice(0, 12)}...${auth.accessToken.slice(-6)}`,
-        length: auth.accessToken.length,
-      });
-      console.log("META_GRANTED_SCOPES", {
-        granted_scopes: auth.grantedScopes ?? null,
-        scopes_array: auth.grantedScopes ? auth.grantedScopes.split(",") : [],
-      });
-
-      // Inspeciona o token para confirmar se é USER token (não system user)
-      try {
-        const debugUrl =
-          `https://graph.facebook.com/v25.0/debug_token` +
-          `?input_token=${encodeURIComponent(auth.accessToken)}` +
-          `&access_token=${encodeURIComponent(auth.accessToken)}`;
-        const debugRes = await fetch(debugUrl);
-        const debugJson = await debugRes.json();
-        const debugData = (debugJson as { data?: { type?: string; scopes?: string[]; granular_scopes?: unknown } })?.data ?? {};
-        const tokenType = debugData.type ?? null;
-        console.log("META_TOKEN_DEBUG", {
-          type: tokenType,
-          is_user_token: tokenType === "USER",
-          payload: debugJson,
-        });
-        console.log("META_TOKEN_SCOPES", {
-          scopes: debugData.scopes ?? null,
-          granular_scopes: debugData.granular_scopes ?? null,
-          granted_via_login: auth.grantedScopes ?? null,
-        });
-      } catch (e) {
-        console.warn("META_TOKEN_DEBUG_FAIL", e);
-      }
-
-      // Busca páginas + Instagram vinculado direto na Graph API (v25.0).
-      const accountsUrl =
-        `https://graph.facebook.com/v25.0/me/accounts` +
-        `?fields=id,name,access_token,instagram_business_account{id,username}` +
-        `&limit=100&access_token=${encodeURIComponent(auth.accessToken)}`;
-      const accountsRes = await fetch(accountsUrl);
-      const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
-      console.log("META_ME_ACCOUNTS_RESPONSE", {
-        status: accountsRes.status,
-        ok: accountsRes.ok,
-        payload: accountsJson,
-      });
-
-      const errObj = (accountsJson as { error?: { message?: string } }).error;
-      if (errObj) {
-        console.error("META_PAGES_ERROR", { error: errObj, fullPayload: accountsJson });
-        throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
-      }
-
-      // Parsing defensivo: aceita {data:[...]}, {data:{data:[...]}} e {pages:[...]}.
-      type RawPage = {
-        id: string;
-        name: string;
-        access_token: string;
-        instagram_business_account?: { id?: string; username?: string };
-      };
-      const root = accountsJson as {
-        data?: RawPage[] | { data?: RawPage[] };
-        pages?: RawPage[];
-      };
-      let accounts: RawPage[] = [];
-      if (Array.isArray(root.data)) accounts = root.data;
-      else if (root.data && Array.isArray((root.data as { data?: RawPage[] }).data))
-        accounts = (root.data as { data: RawPage[] }).data;
-      else if (Array.isArray(root.pages)) accounts = root.pages;
-
-      console.log("META_ACCOUNTS_RAW_DATA", {
-        count: accounts.length,
-        accounts,
-        used_key: Array.isArray(root.data)
-          ? "data"
-          : root.data && Array.isArray((root.data as { data?: RawPage[] }).data)
-            ? "data.data"
-            : Array.isArray(root.pages)
-              ? "pages"
-              : "none",
-      });
-
-      if (!accounts?.length) {
-        console.warn("META_ME_ACCOUNTS_EMPTY", {
-          fullPayload: accountsJson,
-          hint: "Nenhuma página retornada. Verifique se o usuário é admin de alguma página e se concedeu pages_show_list.",
-        });
-      }
-
-      const list: AvailablePage[] = accounts.map((p) => ({
-        id: p.id,
-        name: p.name,
-        access_token: p.access_token,
-        ig_business_account_id: p.instagram_business_account?.id ?? null,
-        ig_username: p.instagram_business_account?.username ?? null,
-      }));
-
-      for (const p of list) {
-        console.log("META_PAGE_FOUND", {
-          page_id: p.id,
-          page_name: p.name,
-          has_access_token: Boolean(p.access_token),
-          ig_business_account_id: p.ig_business_account_id,
-          ig_username: p.ig_username,
-        });
-        if (p.ig_business_account_id) {
-          console.log("META_IG_FOUND", {
-            page_id: p.id,
-            page_name: p.name,
-            ig_business_account_id: p.ig_business_account_id,
-            ig_username: p.ig_username,
-          });
-        }
-      }
-
-      console.log("META_PAGES_FOUND", {
-        count: list.length,
-        pages: list.map((p) => ({ id: p.id, name: p.name })),
-      });
-      const withIg = list.filter((p) => p.ig_business_account_id);
-      console.log("META_IG_FOUND_SUMMARY", {
-        count: withIg.length,
-        igs: withIg.map((p) => p.ig_username),
-      });
-
-      console.log("META_RENDERING_PAGES", {
-        count: list.length,
-        payload: list,
-      });
-      setAvailable(list);
-
-      // Registro "basic" isolado — não pode derrubar o state das páginas.
-      try {
-        const { supabase } = await import("@/integrations/supabase/client");
-        await supabase.functions.invoke("meta-connect", {
-          body: {
-            mode: "basic",
-            shortLivedToken: auth.accessToken,
-            userID: auth.userID,
-          },
-        });
-      } catch (basicErr) {
-        console.warn("META_BASIC_INVOKE_FAIL", basicErr);
-      }
-
-      if (list.length === 0) {
-        setInfo(
-          "Login Meta conectado, mas nenhuma página Facebook foi encontrada nesta conta. Verifique se você é admin de alguma página.",
-        );
-      } else {
-        setInfo(
-          `Login Meta conectado. ${list.length} página(s) disponível(is) para conexão.`,
-        );
+        window.location.href = oauthUrl;
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao conectar");
-    } finally {
+      setError(e instanceof Error ? e.message : "Falha ao iniciar login Meta");
       setConnecting(false);
     }
   };

@@ -114,6 +114,8 @@ Deno.serve(async (req) => {
   let payload: {
     mode?: string;
     shortLivedToken?: string;
+    code?: string;
+    redirectUri?: string;
     userID?: string;
     page?: {
       id: string;
@@ -130,10 +132,48 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "invalid json" }, 400);
   }
 
+  // Modo exchange_code: troca o ?code= do OAuth Web por user access_token.
+  if (payload.mode === "exchange_code") {
+    const code = String(payload.code ?? "");
+    const redirectUri = String(payload.redirectUri ?? "");
+    if (!code || !redirectUri) {
+      return json({ ok: false, error: "code and redirectUri required" }, 400);
+    }
+    const url =
+      `${GRAPH}/oauth/access_token` +
+      `?client_id=${encodeURIComponent(META_APP_ID)}` +
+      `&client_secret=${encodeURIComponent(META_APP_SECRET)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&code=${encodeURIComponent(code)}`;
+    const r = await fetch(url);
+    const body = await r.json().catch(() => null) as
+      | { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } }
+      | null;
+    console.log("META_EXCHANGE_CODE", {
+      status: r.status,
+      ok: r.ok,
+      has_token: Boolean(body?.access_token),
+      error: body?.error ?? null,
+    });
+    if (!r.ok || !body?.access_token) {
+      return json(
+        { ok: false, error: body?.error?.message ?? `exchange failed (${r.status})`, raw: body },
+        400,
+      );
+    }
+    return json({
+      ok: true,
+      access_token: body.access_token,
+      token_type: body.token_type ?? null,
+      expires_in: body.expires_in ?? null,
+    });
+  }
+
   const shortToken = String(payload.shortLivedToken ?? "");
   if (!shortToken) {
     return json({ ok: false, error: "shortLivedToken required" }, 400);
   }
+
 
   // Modo debug_token: valida o user token usando APP_ID|APP_SECRET do app Atende Ai
   // e retorna /me + /me/accounts para comparação. Nunca falha se /debug_token der erro.
