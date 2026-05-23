@@ -1319,7 +1319,7 @@ declare global {
         }) => void,
         opts?: { scope: string; auth_type?: string },
       ) => void;
-      api: (path: string, params: Record<string, unknown>, cb: (res: unknown) => void) => void;
+      api: (path: string, cb: (res: unknown) => void) => void;
     };
     fbAsyncInit?: () => void;
   }
@@ -1329,8 +1329,18 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Voltando ao login básico: pages_show_list ainda inválido no app Meta.
-const FB_SCOPES = "public_profile";
+// Permissões aprovadas no Meta Developer.
+const FB_SCOPES = [
+  "public_profile",
+  "email",
+  "pages_show_list",
+  "pages_messaging",
+  "pages_manage_metadata",
+  "pages_read_engagement",
+  "instagram_basic",
+  "instagram_manage_messages",
+  "business_management",
+].join(",");
 
 
 
