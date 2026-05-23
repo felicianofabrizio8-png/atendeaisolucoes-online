@@ -622,6 +622,209 @@ function IntegrationItem({
   );
 }
 
+function tokenExpiryState(expiresAt: string | null) {
+  if (!expiresAt) return { kind: "permanent" as const };
+  const expires = new Date(expiresAt).getTime();
+  const now = Date.now();
+  const hoursLeft = (expires - now) / 36e5;
+  if (hoursLeft <= 0) return { kind: "expired" as const, expires };
+  if (hoursLeft <= 24) return { kind: "soon" as const, expires, hoursLeft };
+  return { kind: "ok" as const, expires, hoursLeft };
+}
+
+function TokenExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
+  const s = tokenExpiryState(expiresAt);
+  if (s.kind === "permanent") {
+    return (
+      <div className="text-[11px] text-muted-foreground mt-0.5">
+        Token: <span className="font-mono">permanente / sem expiração definida</span>
+      </div>
+    );
+  }
+  if (s.kind === "expired") {
+    return (
+      <div className="text-[11px] mt-0.5 text-[var(--status-urgent)] font-semibold">
+        ⚠ Token expirado em {new Date(s.expires).toLocaleString("pt-BR")} — renove agora
+      </div>
+    );
+  }
+  if (s.kind === "soon") {
+    return (
+      <div className="text-[11px] mt-0.5 text-[var(--status-urgent)]">
+        ⏰ Token expira em {Math.max(1, Math.round(s.hoursLeft))}h ({new Date(s.expires).toLocaleString("pt-BR")})
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11px] text-muted-foreground mt-0.5">
+      Token expira em {new Date(s.expires).toLocaleString("pt-BR")}
+    </div>
+  );
+}
+
+function TokenRenewPanel({
+  integrationId,
+  currentExpiresAt,
+  onClose,
+  onChanged,
+}: {
+  integrationId: string;
+  currentExpiresAt: string | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [newToken, setNewToken] = useState("");
+  // datetime-local format: yyyy-MM-ddTHH:mm
+  const defaultExpiry = (() => {
+    const d = new Date(Date.now() + 23 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+  const [expiresLocal, setExpiresLocal] = useState(defaultExpiry);
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    error?: string;
+    info?: string;
+  } | null>(null);
+
+  const save = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const expiresAt = isPermanent
+        ? null
+        : expiresLocal
+          ? new Date(expiresLocal).toISOString()
+          : null;
+      const res = await renewWhatsAppToken(integrationId, newToken.trim(), expiresAt);
+      if (res.ok) {
+        setResult({
+          ok: true,
+          info: res.isPermanent
+            ? "Token validado e salvo como permanente."
+            : `Token validado. Expira em ${res.expiresAt ? new Date(res.expiresAt).toLocaleString("pt-BR") : "—"}.`,
+        });
+        setNewToken("");
+        onChanged();
+      } else {
+        setResult({ ok: false, error: res.error ?? "Falha ao validar token" });
+      }
+    } catch (e) {
+      setResult({ ok: false, error: e instanceof Error ? e.message : "erro" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revalidate = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await validateWhatsAppToken(integrationId);
+      if (res.ok) {
+        setResult({
+          ok: true,
+          info: res.isPermanent
+            ? "Token atual ainda válido (sem expiração definida)."
+            : `Token atual ainda válido. Expira em ${res.expiresAt ? new Date(res.expiresAt).toLocaleString("pt-BR") : "—"}.`,
+        });
+      } else {
+        setResult({ ok: false, error: res.error ?? "Token inválido" });
+      }
+      onChanged();
+    } catch (e) {
+      setResult({ ok: false, error: e instanceof Error ? e.message : "erro" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-border px-3 py-3 space-y-3 bg-secondary/30">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold">Renovar / validar token WhatsApp Cloud API</div>
+        <button
+          onClick={onClose}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          fechar
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Cole aqui um novo <strong>token temporário</strong> (válido por ~24h) ou
+        o <strong>token permanente</strong> de System User quando a Meta liberar.
+        O sistema valida contra a Graph API antes de salvar. O resto da
+        integração (webhook, envio, recebimento) continua igual.
+        {currentExpiresAt && (
+          <> Token atual expira em{" "}
+            <span className="font-mono">{new Date(currentExpiresAt).toLocaleString("pt-BR")}</span>.</>
+        )}
+      </p>
+      <textarea
+        value={newToken}
+        onChange={(e) => setNewToken(e.target.value)}
+        rows={2}
+        placeholder="Cole o novo access token (EAA...)"
+        className="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background font-mono resize-none"
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-[11px]">
+          <input
+            type="checkbox"
+            checked={isPermanent}
+            onChange={(e) => setIsPermanent(e.target.checked)}
+          />
+          Token permanente (sem expiração)
+        </label>
+        {!isPermanent && (
+          <label className="flex items-center gap-1.5 text-[11px]">
+            Expira em:
+            <input
+              type="datetime-local"
+              value={expiresLocal}
+              onChange={(e) => setExpiresLocal(e.target.value)}
+              className="text-[11px] rounded-md border border-border bg-background px-2 py-1"
+            />
+          </label>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={busy || !newToken.trim()}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Validar e salvar
+        </button>
+        <button
+          onClick={revalidate}
+          disabled={busy}
+          className="text-xs font-semibold rounded-md bg-secondary px-3 py-1.5 hover:bg-accent disabled:opacity-50"
+        >
+          Revalidar token atual
+        </button>
+      </div>
+      {result && (
+        <div
+          className={cn(
+            "text-[11px] rounded-md px-2.5 py-1.5",
+            result.ok
+              ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
+              : "bg-[var(--status-urgent)]/15 text-[var(--status-urgent)]",
+          )}
+        >
+          {result.ok ? result.info : result.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
 function WhatsAppTestPanel({
   integrationId,
   onClose,
