@@ -190,12 +190,6 @@ function IntegrationsSection() {
     void reload();
   }, [reload]);
 
-  useEffect(() => {
-    void getMetaBusinessConfig()
-      .then(setMetaConfig)
-      .catch(() => setMetaConfig(null));
-  }, []);
-
   if (!companyId) {
     return (
       <section className="rounded-lg border border-dashed border-border p-5 text-center">
@@ -1414,6 +1408,12 @@ function MetaIntegrationSection() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    void getMetaBusinessConfig()
+      .then(setMetaConfig)
+      .catch(() => setMetaConfig(null));
+  }, []);
 
   const onConnect = async () => {
     setError(null);
