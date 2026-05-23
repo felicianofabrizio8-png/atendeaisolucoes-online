@@ -1629,7 +1629,7 @@ function MetaIntegrationSection() {
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">
-              Nenhuma permissão de páginas ativa no Meta Developer
+              Clique em <strong>Conectar Instagram / Facebook</strong> abaixo para listar suas páginas.
             </p>
           </div>
         ) : (
@@ -1641,7 +1641,10 @@ function MetaIntegrationSection() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">ID: {p.id}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    FB: {p.id}
+                    {p.ig_username ? ` · IG: @${p.ig_username}` : " · sem Instagram vinculado"}
+                  </p>
                 </div>
                 <button
                   onClick={() => onSelectPage(p)}
