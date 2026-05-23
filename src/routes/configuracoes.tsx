@@ -1386,6 +1386,7 @@ function MetaIntegrationSection() {
   const [savingPageId, setSavingPageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [metaConfig, setMetaConfig] = useState<MetaBusinessConfig | null>(null);
 
   const reload = useCallback(async () => {
     if (!companyId) return;
@@ -1412,21 +1413,22 @@ function MetaIntegrationSection() {
     setError(null);
     setInfo(null);
     setAvailable([]);
-    if (!META_APP_ID) {
-      setError(
-        "Configure VITE_META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
-      );
-      return;
-    }
-    if (!META_BUSINESS_CONFIG_ID) {
-      setError(
-        "Configure VITE_META_BUSINESS_CONFIG_ID com o Configuration ID do Facebook Login for Business antes de conectar.",
-      );
-      return;
-    }
     setConnecting(true);
     try {
-      await loadFbSdk(META_APP_ID);
+      const config = await getMetaBusinessConfig();
+      setMetaConfig(config);
+      if (!config.hasAppId) {
+        throw new Error(
+          "Configure META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
+        );
+      }
+      if (!config.hasBusinessConfigId) {
+        throw new Error(
+          "Configure META_BUSINESS_CONFIG_ID com o Configuration ID do Facebook Login for Business antes de conectar.",
+        );
+      }
+
+      await loadFbSdk(config.appId);
       const auth = await new Promise<{ accessToken: string; userID: string }>(
         (resolve, reject) => {
           window.FB!.login(
@@ -1435,7 +1437,7 @@ function MetaIntegrationSection() {
               else reject(new Error("Login cancelado ou negado"));
             },
             {
-              config_id: META_BUSINESS_CONFIG_ID,
+              config_id: config.businessConfigId,
               auth_type: "rerequest",
               response_type: "token",
               override_default_response_type: true,
