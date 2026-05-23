@@ -1494,12 +1494,12 @@ function MetaIntegrationSection() {
         console.warn("META_FB_LOGOUT_FAIL", e);
       }
 
-      const loginOptions: Record<string, unknown> = {
+      const loginOptions = {
         config_id: config.businessConfigId,
         scope: REQUIRED_SCOPES,
-        auth_type: "rerequest",
+        auth_type: "rerequest" as const,
         return_scopes: true,
-        response_type: "token",
+        response_type: "token" as const,
         override_default_response_type: true,
       };
       console.log("META_LOGIN_SCOPE_SENT", {
