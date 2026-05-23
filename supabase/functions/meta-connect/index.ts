@@ -115,7 +115,13 @@ Deno.serve(async (req) => {
     mode?: string;
     shortLivedToken?: string;
     userID?: string;
-    page?: { id: string; name: string; access_token: string };
+    page?: {
+      id: string;
+      name: string;
+      access_token: string;
+      ig_business_account_id?: string | null;
+      ig_username?: string | null;
+    };
     pages?: Array<{ id: string; name: string }>;
   };
   try {
