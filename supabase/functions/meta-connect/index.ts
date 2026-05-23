@@ -135,6 +135,71 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "shortLivedToken required" }, 400);
   }
 
+  // Modo debug_token: valida o user token usando APP_ID|APP_SECRET do app Atende Ai
+  // e retorna /me + /me/accounts para comparação. Nunca falha se /debug_token der erro.
+  if (payload.mode === "debug_token") {
+    const appToken = `${META_APP_ID}|${META_APP_SECRET}`;
+    console.log("META_APP_ID_USED", META_APP_ID);
+    console.log("META_DEBUG_INPUT_TOKEN_PREFIX", shortToken.slice(0, 8));
+    console.log("META_DEBUG_APP_TOKEN_PREFIX", `${META_APP_ID}|${META_APP_SECRET.slice(0, 4)}...`);
+
+    const tok = encodeURIComponent(shortToken);
+    const appTokEnc = encodeURIComponent(appToken);
+
+    const [debugRes, meRes, accountsRes] = await Promise.all([
+      fetch(`${GRAPH}/debug_token?input_token=${tok}&access_token=${appTokEnc}`)
+        .then(async (r) => ({ status: r.status, ok: r.ok, body: await r.json().catch(() => null) }))
+        .catch((e) => ({ status: 0, ok: false, body: { error: String(e) } })),
+      fetch(`${GRAPH}/me?fields=id,name&access_token=${tok}`)
+        .then(async (r) => ({ status: r.status, ok: r.ok, body: await r.json().catch(() => null) }))
+        .catch((e) => ({ status: 0, ok: false, body: { error: String(e) } })),
+      fetch(
+        `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${tok}`,
+      )
+        .then(async (r) => ({ status: r.status, ok: r.ok, body: await r.json().catch(() => null) }))
+        .catch((e) => ({ status: 0, ok: false, body: { error: String(e) } })),
+    ]);
+
+    console.log("META_DEBUG_RESULTS", {
+      debug_token_status: debugRes.status,
+      debug_token_ok: debugRes.ok,
+      me_status: meRes.status,
+      accounts_status: accountsRes.status,
+    });
+
+    const d = (debugRes.body as { data?: Record<string, unknown> } | null)?.data ?? null;
+    const debugFailed = !debugRes.ok || !d;
+    const accountsBody = accountsRes.body as { data?: unknown[] } | null;
+    const accountsCount = Array.isArray(accountsBody?.data) ? accountsBody!.data!.length : 0;
+
+    return json({
+      ok: true,
+      app_id_used: META_APP_ID,
+      debug_failed: debugFailed,
+      debug_warning: debugFailed
+        ? "Validação /debug_token falhou — APP_ID/APP_SECRET podem não corresponder ao app que emitiu o token. /me e /me/accounts ainda exibidos para comparação."
+        : null,
+      debug_token: d
+        ? {
+            app_id: d.app_id ?? null,
+            user_id: d.user_id ?? null,
+            type: d.type ?? null,
+            scopes: d.scopes ?? null,
+            granular_scopes: d.granular_scopes ?? null,
+            data_access_expires_at: d.data_access_expires_at ?? null,
+            expires_at: d.expires_at ?? null,
+            is_valid: d.is_valid ?? null,
+            application: d.application ?? null,
+          }
+        : null,
+      debug_token_raw: debugRes.body,
+      me: meRes.body,
+      me_accounts: accountsRes.body,
+      me_accounts_count: accountsCount,
+      token_preview: `${shortToken.slice(0, 12)}...${shortToken.slice(-6)}`,
+    });
+  }
+
   // Modo básico: apenas valida o login e salva um registro de teste.
   if (payload.mode === "basic") {
     const meRes = await fetch(
