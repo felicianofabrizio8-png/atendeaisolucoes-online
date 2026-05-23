@@ -1317,7 +1317,12 @@ declare global {
           authResponse?: { accessToken: string; userID: string };
           status: string;
         }) => void,
-        opts?: { scope: string; auth_type?: string; response_type?: string },
+        opts?: {
+          config_id: string;
+          auth_type?: string;
+          response_type?: "token";
+          override_default_response_type?: boolean;
+        },
       ) => void;
       api: (path: string, cb: (res: unknown) => void) => void;
     };
@@ -1325,20 +1330,18 @@ declare global {
   }
 }
 
-const META_APP_ID =
-  (import.meta as unknown as { env: Record<string, string | undefined> }).env
-    .VITE_META_APP_ID ?? "";
+interface MetaBusinessConfig {
+  appId: string;
+  businessConfigId: string;
+  hasAppId: boolean;
+  hasBusinessConfigId: boolean;
+}
 
-// Permissões aprovadas no Meta Developer.
-const FB_SCOPES = [
-  "pages_show_list",
-  "pages_manage_metadata",
-  "pages_messaging",
-  "pages_read_engagement",
-  "instagram_basic",
-  "instagram_manage_messages",
-  "business_management",
-].join(",");
+async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
+  const res = await fetch("/api/meta/config");
+  if (!res.ok) throw new Error("Falha ao carregar configuração Meta Business Login");
+  return (await res.json()) as MetaBusinessConfig;
+}
 
 
 
@@ -1383,6 +1386,7 @@ function MetaIntegrationSection() {
   const [savingPageId, setSavingPageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [metaConfig, setMetaConfig] = useState<MetaBusinessConfig | null>(null);
 
   const reload = useCallback(async () => {
     if (!companyId) return;
@@ -1405,19 +1409,32 @@ function MetaIntegrationSection() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    void getMetaBusinessConfig()
+      .then(setMetaConfig)
+      .catch(() => setMetaConfig(null));
+  }, []);
+
   const onConnect = async () => {
     setError(null);
     setInfo(null);
     setAvailable([]);
-    if (!META_APP_ID) {
-      setError(
-        "Configure VITE_META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
-      );
-      return;
-    }
     setConnecting(true);
     try {
-      await loadFbSdk(META_APP_ID);
+      const config = await getMetaBusinessConfig();
+      setMetaConfig(config);
+      if (!config.hasAppId) {
+        throw new Error(
+          "Configure META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
+        );
+      }
+      if (!config.hasBusinessConfigId) {
+        throw new Error(
+          "Configure META_BUSINESS_CONFIG_ID com o Configuration ID do Facebook Login for Business antes de conectar.",
+        );
+      }
+
+      await loadFbSdk(config.appId);
       const auth = await new Promise<{ accessToken: string; userID: string }>(
         (resolve, reject) => {
           window.FB!.login(
@@ -1425,7 +1442,12 @@ function MetaIntegrationSection() {
               if (res.authResponse?.accessToken) resolve(res.authResponse);
               else reject(new Error("Login cancelado ou negado"));
             },
-            { scope: FB_SCOPES, auth_type: "rerequest", response_type: "token" },
+            {
+              config_id: config.businessConfigId,
+              auth_type: "rerequest",
+              response_type: "token",
+              override_default_response_type: true,
+            },
           );
         },
       );
@@ -1676,10 +1698,16 @@ function MetaIntegrationSection() {
         Conectar Instagram / Facebook
       </button>
 
-      {!META_APP_ID && (
+      {metaConfig?.hasAppId === false && (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Defina <code className="bg-muted px-1 rounded">VITE_META_APP_ID</code> com o App ID do
+          Defina <code className="bg-muted px-1 rounded">META_APP_ID</code> com o App ID do
           seu app Meta para habilitar o login.
+        </p>
+      )}
+      {metaConfig?.hasAppId === true && metaConfig.hasBusinessConfigId === false && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Defina <code className="bg-muted px-1 rounded">META_BUSINESS_CONFIG_ID</code> com o
+          Configuration ID do Facebook Login for Business.
         </p>
       )}
     </section>
