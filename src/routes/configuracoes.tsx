@@ -1463,6 +1463,13 @@ function MetaIntegrationSection() {
 
       await loadFbSdk(config.appId);
 
+      // Logar origem atual para diagnosticar domínio bloqueado pelo Meta
+      const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+      const currentHref = typeof window !== "undefined" ? window.location.href : "";
+      const currentHost = typeof window !== "undefined" ? window.location.host : "";
+      console.log("META_REDIRECT_URI", { origin: currentOrigin, href: currentHref });
+      console.log("META_CALLBACK_URL", { callback: `${currentOrigin}/`, host: currentHost });
+
       // Scopes obrigatórios para listar páginas e Instagram Business
       const REQUIRED_SCOPES = [
         "public_profile",
