@@ -35,6 +35,8 @@ import {
   upsertWhatsAppIntegration,
   setIntegrationActive,
   deleteIntegration,
+  renewWhatsAppToken,
+  validateWhatsAppToken,
   type Integration,
 } from "@/data/integrationRepo";
 import { useAuth } from "@/auth/AuthContext";
