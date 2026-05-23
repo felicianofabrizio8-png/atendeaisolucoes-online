@@ -22,6 +22,7 @@ export interface Integration {
   verifyToken: string | null;
   lastSyncedAt: string | null;
   lastError: string | null;
+  tokenExpiresAt: string | null;
 }
 
 interface SafeRow {
@@ -36,6 +37,7 @@ interface SafeRow {
   has_webhook_secret: boolean;
   last_synced_at: string | null;
   last_error: string | null;
+  token_expires_at: string | null;
 }
 
 function toIntegration(r: SafeRow): Integration {
@@ -52,6 +54,7 @@ function toIntegration(r: SafeRow): Integration {
     verifyToken: null,
     lastSyncedAt: r.last_synced_at,
     lastError: r.last_error,
+    tokenExpiresAt: r.token_expires_at,
   };
 }
 
@@ -69,7 +72,7 @@ export async function listIntegrations(_companyId: string): Promise<Integration[
   })
     .from("integrations_safe")
     .select(
-      "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error",
+      "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error, token_expires_at",
     )
     .order("created_at", { ascending: true });
   console.log("[listIntegrations] raw response", { data, error });
@@ -190,4 +193,35 @@ export async function deleteIntegration(id: string) {
     method: "DELETE",
     body: JSON.stringify({ id }),
   });
+}
+
+export interface RenewTokenResult {
+  ok: boolean;
+  error?: string;
+  validatedAt?: string;
+  expiresAt?: string | null;
+  isPermanent?: boolean;
+  metaResponse?: unknown;
+}
+
+export async function renewWhatsAppToken(
+  integrationId: string,
+  accessToken: string,
+  expiresAt?: string | null,
+): Promise<RenewTokenResult> {
+  const res = await authedFetch("/api/whatsapp/token-refresh", {
+    method: "POST",
+    body: JSON.stringify({ integrationId, accessToken, expiresAt: expiresAt ?? null }),
+  });
+  return (await res.json()) as RenewTokenResult;
+}
+
+export async function validateWhatsAppToken(
+  integrationId: string,
+): Promise<RenewTokenResult> {
+  const res = await authedFetch("/api/whatsapp/token-refresh", {
+    method: "PUT",
+    body: JSON.stringify({ integrationId }),
+  });
+  return (await res.json()) as RenewTokenResult;
 }
