@@ -12,6 +12,22 @@ function MetaCallback() {
   const [status, setStatus] = useState("Validando login Meta…");
 
   useEffect(() => {
+    const isPopup = typeof window !== "undefined" && !!window.opener && window.opener !== window;
+
+    const postToOpener = (payload: { access_token?: string; error?: string }) => {
+      if (!isPopup) return false;
+      try {
+        window.opener.postMessage(
+          { type: "META_OAUTH_RESULT", ...payload },
+          window.location.origin,
+        );
+        window.close();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const run = async () => {
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
@@ -28,18 +44,25 @@ function MetaCallback() {
         error_description: errorDesc,
         state,
         state_match: state === expectedState,
+        is_popup: isPopup,
       });
 
       if (errorParam) {
-        setError(`Meta retornou erro: ${errorParam}${errorDesc ? ` — ${errorDesc}` : ""}`);
+        const msg = `Meta retornou erro: ${errorParam}${errorDesc ? ` — ${errorDesc}` : ""}`;
+        if (postToOpener({ error: msg })) return;
+        setError(msg);
         return;
       }
       if (!code) {
-        setError("Nenhum código de autorização recebido do Facebook.");
+        const msg = "Nenhum código de autorização recebido do Facebook.";
+        if (postToOpener({ error: msg })) return;
+        setError(msg);
         return;
       }
       if (expectedState && state !== expectedState) {
-        setError("State inválido. Reinicie o login Meta.");
+        const msg = "State inválido. Reinicie o login Meta.";
+        if (postToOpener({ error: msg })) return;
+        setError(msg);
         return;
       }
 
@@ -58,13 +81,16 @@ function MetaCallback() {
         if (!res?.access_token) {
           throw new Error(res?.error ?? "Resposta sem access_token");
         }
-        window.sessionStorage.setItem("META_OAUTH_TOKEN", res.access_token);
         console.log("META_TOKEN_RECEIVED", {
           token_preview: `${res.access_token.slice(0, 12)}...${res.access_token.slice(-6)}`,
         });
+        if (postToOpener({ access_token: res.access_token })) return;
+        window.sessionStorage.setItem("META_OAUTH_TOKEN", res.access_token);
         await navigate({ to: "/configuracoes" });
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Falha ao trocar código por token");
+        const msg = e instanceof Error ? e.message : "Falha ao trocar código por token";
+        if (postToOpener({ error: msg })) return;
+        setError(msg);
       }
     };
     void run();
