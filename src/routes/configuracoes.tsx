@@ -190,6 +190,12 @@ function IntegrationsSection() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    void getMetaBusinessConfig()
+      .then(setMetaConfig)
+      .catch(() => setMetaConfig(null));
+  }, []);
+
   if (!companyId) {
     return (
       <section className="rounded-lg border border-dashed border-border p-5 text-center">
@@ -1692,15 +1698,15 @@ function MetaIntegrationSection() {
         Conectar Instagram / Facebook
       </button>
 
-      {!META_APP_ID && (
+      {metaConfig?.hasAppId === false && (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Defina <code className="bg-muted px-1 rounded">VITE_META_APP_ID</code> com o App ID do
+          Defina <code className="bg-muted px-1 rounded">META_APP_ID</code> com o App ID do
           seu app Meta para habilitar o login.
         </p>
       )}
-      {META_APP_ID && !META_BUSINESS_CONFIG_ID && (
+      {metaConfig?.hasAppId === true && metaConfig.hasBusinessConfigId === false && (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Defina <code className="bg-muted px-1 rounded">VITE_META_BUSINESS_CONFIG_ID</code> com o
+          Defina <code className="bg-muted px-1 rounded">META_BUSINESS_CONFIG_ID</code> com o
           Configuration ID do Facebook Login for Business.
         </p>
       )}
