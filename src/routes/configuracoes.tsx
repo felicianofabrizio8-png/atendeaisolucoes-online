@@ -312,7 +312,10 @@ function IntegrationsSection() {
             </button>
           )}
 
-          <WhatsAppCloudDebugPanel />
+          <WhatsAppCloudDebugPanel
+            companyId={companyId}
+            onSaved={() => void reload()}
+          />
         </div>
       )}
     </section>
