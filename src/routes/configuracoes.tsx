@@ -1729,15 +1729,35 @@ function MetaIntegrationSection() {
     }
   }, []);
 
-  // Retomar fluxo após callback OAuth: token vem via sessionStorage.
+  // Retomar fluxo após callback OAuth: token vem via sessionStorage (fallback)
+  // ou via postMessage da popup (fluxo padrão atual).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const tok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
-    if (!tok) return;
-    window.sessionStorage.removeItem("META_OAUTH_TOKEN");
-    void loadPagesFromToken(tok).catch((e) => {
-      setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
-    });
+    if (tok) {
+      window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+      void loadPagesFromToken(tok).catch((e) => {
+        setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
+      });
+    }
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as { type?: string; access_token?: string; error?: string } | null;
+      if (!data || data.type !== "META_OAUTH_RESULT") return;
+      setConnecting(false);
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      if (data.access_token) {
+        void loadPagesFromToken(data.access_token).catch((e) => {
+          setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
+        });
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, [loadPagesFromToken]);
 
   const onConnect = async () => {
@@ -1754,7 +1774,6 @@ function MetaIntegrationSection() {
         );
       }
 
-      // Limpa tokens antigos antes de reconectar
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem("META_OAUTH_TOKEN");
         const state = crypto.randomUUID();
@@ -1769,12 +1788,25 @@ function MetaIntegrationSection() {
           `&auth_type=rerequest` +
           `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
-        console.log("META_LOGIN_SCOPE_SENT", { scope: REQUIRED_SCOPES });
-        console.log("META_REDIRECT_URI", { redirect_uri: REDIRECT_URI });
-        console.log("META_CALLBACK_URL", { callback: REDIRECT_URI });
         console.log("META_OAUTH_URL", { url: oauthUrl, app_id: config.appId });
 
-        window.location.href = oauthUrl;
+        // Abre em nova janela/popup para manter o app aberto
+        const width = 600;
+        const height = 720;
+        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+        const popup = window.open(
+          oauthUrl,
+          "meta-oauth",
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+        );
+        if (!popup) {
+          // Fallback: bloqueio de popup — abre em nova aba
+          window.open(oauthUrl, "_blank", "noopener,noreferrer");
+          setInfo(
+            "Abrimos o login Meta em outra aba. Conclua o login lá e volte para esta página.",
+          );
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao iniciar login Meta");
