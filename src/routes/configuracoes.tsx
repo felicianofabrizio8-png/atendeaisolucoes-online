@@ -1369,6 +1369,8 @@ interface AvailablePage {
   id: string;
   name: string;
   access_token: string;
+  ig_business_account_id: string | null;
+  ig_username: string | null;
 }
 
 function MetaIntegrationSection() {
