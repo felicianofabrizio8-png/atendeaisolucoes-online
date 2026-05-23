@@ -312,7 +312,10 @@ function IntegrationsSection() {
             </button>
           )}
 
-          <WhatsAppCloudDebugPanel />
+          <WhatsAppCloudDebugPanel
+            companyId={companyId}
+            onSaved={() => void reload()}
+          />
         </div>
       )}
     </section>
@@ -995,19 +998,35 @@ function randomToken(len = 24) {
   return out;
 }
 
-function WhatsAppCloudDebugPanel() {
+function WhatsAppCloudDebugPanel({
+  companyId,
+  onSaved,
+}: {
+  companyId: string;
+  onSaved?: () => void;
+}) {
   const [token, setToken] = useState("");
   const [wabaId, setWabaId] = useState("");
   const [phoneId, setPhoneId] = useState("");
   const [toNumber, setToNumber] = useState("");
   const [testMessage, setTestMessage] = useState("Teste Atende Ai ✅");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<unknown>(null);
+  const [result, setResult] = useState<
+    | null
+    | {
+        test_send?: { status?: number; ok?: boolean; body?: unknown };
+        phone_number?: { body?: { display_phone_number?: string; verified_name?: string } };
+        waba?: { body?: { id?: string; name?: string } };
+      }
+  >(null);
   const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   const run = async () => {
     setErr(null);
     setResult(null);
+    setSavedMsg(null);
     if (!token.trim()) {
       setErr("Cole o access token (temporário ou permanente).");
       return;
@@ -1037,6 +1056,46 @@ function WhatsAppCloudDebugPanel() {
       setLoading(false);
     }
   };
+
+  const testStatus = result?.test_send?.status;
+  const canSave =
+    testStatus === 200 && !!token.trim() && !!phoneId.trim();
+
+  const saveConnection = async () => {
+    setErr(null);
+    setSavedMsg(null);
+    setSaving(true);
+    try {
+      const displayPhone =
+        result?.phone_number?.body?.display_phone_number ?? undefined;
+      const verifiedName =
+        result?.phone_number?.body?.verified_name ?? "WhatsApp Cloud";
+      const rand = () =>
+        Array.from(crypto.getRandomValues(new Uint8Array(24)))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      await upsertWhatsAppIntegration({
+        companyId,
+        displayName: verifiedName,
+        phoneNumberId: phoneId.trim(),
+        phoneNumber: displayPhone,
+        wabaId: wabaId.trim() || undefined,
+        accessToken: token.trim(),
+        verifyToken: rand(),
+        webhookSecret: rand(),
+      });
+      setSavedMsg(
+        `Conexão salva e ativada${displayPhone ? ` (${displayPhone})` : ""}. Já dá pra enviar pela caixa de atendimento.`,
+      );
+      onSaved?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
 
   return (
     <div className="rounded-md border border-dashed border-border p-3 space-y-3">
@@ -1093,7 +1152,7 @@ function WhatsAppCloudDebugPanel() {
         </Field>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <button
           onClick={run}
           disabled={loading}
@@ -1102,7 +1161,23 @@ function WhatsAppCloudDebugPanel() {
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Rodar debug
         </button>
+        {canSave && (
+          <button
+            onClick={saveConnection}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+            Salvar como conexão ativa
+          </button>
+        )}
       </div>
+
+      {savedMsg && (
+        <div className="rounded-md bg-[#25D366]/10 text-[#1f9d52] text-xs px-3 py-2">
+          {savedMsg}
+        </div>
+      )}
 
       {err && (
         <div className="rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
