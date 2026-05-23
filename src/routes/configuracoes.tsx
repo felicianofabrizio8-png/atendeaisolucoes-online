@@ -1684,7 +1684,7 @@ function MetaIntegrationSection() {
 
     const accountsUrl =
       `https://graph.facebook.com/v25.0/me/accounts` +
-      `?fields=id,name,access_token,instagram_business_account{id,username}` +
+      `?fields=id,name,tasks,access_token,category,instagram_business_account{id,username}` +
       `&limit=100&access_token=${encodeURIComponent(accessToken)}`;
     const accountsRes = await fetch(accountsUrl);
     const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
