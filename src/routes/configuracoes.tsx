@@ -568,6 +568,15 @@ function IntegrationItem({
         >
           {item.active ? "Ativa" : "Inativa"}
         </span>
+        {isWhatsApp && item.hasAccessToken && (
+          <button
+            onClick={() => setShowRenew((v) => !v)}
+            className="text-[11px] font-semibold rounded-md bg-secondary text-foreground px-2 py-1 hover:bg-accent"
+            title="Renovar ou validar token"
+          >
+            Renovar token
+          </button>
+        )}
         {isWhatsApp && item.hasAccessToken && item.active && (
           <button
             onClick={() => setShowTest((v) => !v)}
@@ -594,6 +603,14 @@ function IntegrationItem({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+      {isWhatsApp && showRenew && (
+        <TokenRenewPanel
+          integrationId={item.id}
+          currentExpiresAt={item.tokenExpiresAt}
+          onClose={() => setShowRenew(false)}
+          onChanged={onChanged}
+        />
+      )}
       {isWhatsApp && showTest && (
         <WhatsAppTestPanel
           integrationId={item.id}
