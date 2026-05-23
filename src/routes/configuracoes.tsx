@@ -1317,7 +1317,7 @@ declare global {
           authResponse?: { accessToken: string; userID: string };
           status: string;
         }) => void,
-        opts?: { scope: string; auth_type?: string },
+        opts?: { scope: string; auth_type?: string; response_type?: string },
       ) => void;
       api: (path: string, cb: (res: unknown) => void) => void;
     };
@@ -1331,16 +1331,15 @@ const META_APP_ID =
 
 // Permissões aprovadas no Meta Developer.
 const FB_SCOPES = [
-  "public_profile",
-  "email",
   "pages_show_list",
-  "pages_messaging",
   "pages_manage_metadata",
+  "pages_messaging",
   "pages_read_engagement",
   "instagram_basic",
   "instagram_manage_messages",
   "business_management",
 ].join(",");
+
 
 
 
