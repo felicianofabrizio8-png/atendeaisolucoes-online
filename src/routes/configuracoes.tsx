@@ -1646,15 +1646,11 @@ function MetaIntegrationSection() {
       .catch(() => setMetaConfig(null));
   }, []);
 
-  // Scopes obrigatórios para listar páginas e enviar mensagens
-  const REQUIRED_SCOPES = [
-    "public_profile",
-    "email",
-    "pages_show_list",
-    "business_management",
-    "pages_messaging",
-    "pages_manage_metadata",
-  ].join(",");
+  // Login inicial pede apenas permissões básicas. Scopes de páginas/business
+  // não vão no primeiro dialog (causam "Invalid Scopes" no popup quando o app
+  // ainda não tem App Review aprovado). Após autenticar, /me/accounts já
+  // retorna as páginas se o usuário for admin/dev/tester do app.
+  const REQUIRED_SCOPES = ["public_profile", "email"].join(",");
 
   const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
 
