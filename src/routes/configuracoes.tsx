@@ -1425,7 +1425,7 @@ function MetaIntegrationSection() {
               if (res.authResponse?.accessToken) resolve(res.authResponse);
               else reject(new Error("Login cancelado ou negado"));
             },
-            { scope: FB_SCOPES, auth_type: "rerequest" },
+            { scope: FB_SCOPES, auth_type: "rerequest", response_type: "token" },
           );
         },
       );
