@@ -1683,7 +1683,16 @@ function MetaIntegrationSection() {
 
   if (!companyId) return null;
 
-  return (
+  // Log no momento do render para detectar overwrites/race conditions.
+  console.log("META_RENDERING_PAGES", {
+    available_count: available.length,
+    available,
+    connected_count: pages.length,
+    connecting,
+    loading,
+  });
+
+
     <section className="rounded-lg border border-border bg-card p-5">
       <div className="flex items-center gap-2 mb-1">
         <Plug className="h-4 w-4 text-primary" />
