@@ -1314,16 +1314,20 @@ declare global {
       init: (opts: { appId: string; cookie: boolean; xfbml: boolean; version: string }) => void;
       login: (
         cb: (res: {
-          authResponse?: { accessToken: string; userID: string };
+          authResponse?: { accessToken: string; userID: string; grantedScopes?: string };
           status: string;
         }) => void,
         opts?: {
-          config_id: string;
+          config_id?: string;
+          scope?: string;
           auth_type?: string;
+          return_scopes?: boolean;
           response_type?: "token";
           override_default_response_type?: boolean;
         },
       ) => void;
+      logout: (cb: (res: unknown) => void) => void;
+      getLoginStatus: (cb: (res: { status?: string }) => void) => void;
       api: (path: string, cb: (res: unknown) => void) => void;
     };
     fbAsyncInit?: () => void;
