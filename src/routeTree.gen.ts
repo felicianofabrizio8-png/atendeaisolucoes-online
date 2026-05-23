@@ -21,6 +21,7 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
 import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
@@ -89,6 +90,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
 } as any)
+const ApiWhatsappTokenRefreshRoute = ApiWhatsappTokenRefreshRouteImport.update({
+  id: '/api/whatsapp/token-refresh',
+  path: '/api/whatsapp/token-refresh',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappTestSendRoute = ApiWhatsappTestSendRouteImport.update({
   id: '/api/whatsapp/test-send',
   path: '/api/whatsapp/test-send',
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
+  '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
+  '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
+  '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -210,6 +219,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
+    | '/api/whatsapp/token-refresh'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
+    | '/api/whatsapp/token-refresh'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   id:
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
+    | '/api/whatsapp/token-refresh'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
@@ -271,6 +283,7 @@ export interface RootRouteChildren {
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
   ApiWhatsappTestSendRoute: typeof ApiWhatsappTestSendRoute
+  ApiWhatsappTokenRefreshRoute: typeof ApiWhatsappTokenRefreshRoute
   ApiPublicWhatsappQrIncomingRoute: typeof ApiPublicWhatsappQrIncomingRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
@@ -361,6 +374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
     }
+    '/api/whatsapp/token-refresh': {
+      id: '/api/whatsapp/token-refresh'
+      path: '/api/whatsapp/token-refresh'
+      fullPath: '/api/whatsapp/token-refresh'
+      preLoaderRoute: typeof ApiWhatsappTokenRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/test-send': {
       id: '/api/whatsapp/test-send'
       path: '/api/whatsapp/test-send'
@@ -441,6 +461,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,
   ApiWhatsappTestSendRoute: ApiWhatsappTestSendRoute,
+  ApiWhatsappTokenRefreshRoute: ApiWhatsappTokenRefreshRoute,
   ApiPublicWhatsappQrIncomingRoute: ApiPublicWhatsappQrIncomingRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
