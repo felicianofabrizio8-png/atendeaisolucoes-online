@@ -1875,6 +1875,27 @@ function MetaIntegrationSection() {
         Conectar Instagram / Facebook
       </button>
 
+      <div className="mt-3">
+        <button
+          onClick={onDebugToken}
+          disabled={debugLoading || !shortToken}
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-amber-500 text-black px-3 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {debugLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Debug Meta Token
+        </button>
+        {!shortToken && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Faça login Meta acima primeiro para habilitar o debug.
+          </p>
+        )}
+        {debugResult !== null && (
+          <pre className="mt-2 max-h-96 overflow-auto rounded bg-muted/40 p-2 text-[10px] text-foreground">
+            {JSON.stringify(debugResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
       {metaConfig?.hasAppId === false && (
         <p className="mt-3 text-[11px] text-muted-foreground">
           Defina <code className="bg-muted px-1 rounded">META_APP_ID</code> com o App ID do
