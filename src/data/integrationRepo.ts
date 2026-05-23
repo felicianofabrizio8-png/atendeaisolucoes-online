@@ -22,6 +22,7 @@ export interface Integration {
   verifyToken: string | null;
   lastSyncedAt: string | null;
   lastError: string | null;
+  tokenExpiresAt: string | null;
 }
 
 interface SafeRow {
@@ -36,6 +37,7 @@ interface SafeRow {
   has_webhook_secret: boolean;
   last_synced_at: string | null;
   last_error: string | null;
+  token_expires_at: string | null;
 }
 
 function toIntegration(r: SafeRow): Integration {
@@ -52,6 +54,7 @@ function toIntegration(r: SafeRow): Integration {
     verifyToken: null,
     lastSyncedAt: r.last_synced_at,
     lastError: r.last_error,
+    tokenExpiresAt: r.token_expires_at,
   };
 }
 
