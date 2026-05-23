@@ -115,7 +115,13 @@ Deno.serve(async (req) => {
     mode?: string;
     shortLivedToken?: string;
     userID?: string;
-    page?: { id: string; name: string; access_token: string };
+    page?: {
+      id: string;
+      name: string;
+      access_token: string;
+      ig_business_account_id?: string | null;
+      ig_username?: string | null;
+    };
     pages?: Array<{ id: string; name: string }>;
   };
   try {
@@ -159,9 +165,17 @@ Deno.serve(async (req) => {
     return json({ ok: true, user: { id: me.id, name: me.name } });
   }
 
-  // Modo connect_page (Etapa 2): conecta uma página Facebook escolhida pelo usuário.
+  // Modo connect_page (Etapa 2): conecta uma página Facebook + Instagram vinculado.
   if (payload.mode === "connect_page") {
-    const page = payload.page;
+    const page = payload.page as
+      | {
+          id: string;
+          name: string;
+          access_token: string;
+          ig_business_account_id?: string | null;
+          ig_username?: string | null;
+        }
+      | undefined;
     if (!page?.id || !page?.access_token) {
       return json({ ok: false, error: "page required" }, 400);
     }
@@ -173,31 +187,47 @@ Deno.serve(async (req) => {
       ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
       : null;
 
-    // Obtém o page access token long-lived (não-expirável quando obtido com long user token).
+    // Obtém page token long-lived + IG vinculado em uma chamada.
     const detailsRes = await fetch(
-      `${GRAPH}/${page.id}?fields=name,access_token&access_token=${encodeURIComponent(longUserToken)}`,
+      `${GRAPH}/${page.id}?fields=name,access_token,instagram_business_account{id,username}` +
+        `&access_token=${encodeURIComponent(longUserToken)}`,
     );
+    const detailsText = await detailsRes.text();
     if (!detailsRes.ok) {
-      const text = await detailsRes.text();
-      console.log("PAGE_TOKEN_FAIL", page.id, detailsRes.status, text);
-      return json({ ok: false, error: "failed to fetch page access token" }, 400);
+      console.log("PAGE_TOKEN_FAIL", page.id, detailsRes.status, detailsText);
+      return json({ ok: false, error: "failed to fetch page access token", details: detailsText }, 400);
     }
-    const details = (await detailsRes.json()) as { name?: string; access_token?: string };
+    const details = JSON.parse(detailsText) as {
+      name?: string;
+      access_token?: string;
+      instagram_business_account?: { id?: string; username?: string };
+    };
     const pageToken = details.access_token ?? page.access_token;
     const pageName = details.name ?? page.name;
+    const igId =
+      details.instagram_business_account?.id ?? page.ig_business_account_id ?? null;
+    const igUsername =
+      details.instagram_business_account?.username ?? page.ig_username ?? null;
+
+    console.log("META_PAGE_DETAILS", { page_id: page.id, page_name: pageName, ig_id: igId, ig_username: igUsername });
 
     const { data: integ, error: integErr } = await sb
       .from("integrations")
       .upsert(
         {
           company_id: companyId,
-          channel: "facebook",
+          channel: igId ? "instagram" : "facebook",
           display_name: pageName,
           external_account_id: page.id,
           access_token: pageToken,
           token_expires_at: userTokenExpiresAt,
           active: true,
-          account_metadata: { mode: "page", fb_page_id: page.id },
+          account_metadata: {
+            mode: "page",
+            fb_page_id: page.id,
+            ig_business_account_id: igId,
+            ig_username: igUsername,
+          },
           last_error: null,
           last_synced_at: new Date().toISOString(),
         },
@@ -217,8 +247,8 @@ Deno.serve(async (req) => {
         integration_id: integ?.id ?? null,
         page_id: page.id,
         page_name: pageName,
-        ig_business_account_id: null,
-        ig_username: null,
+        ig_business_account_id: igId,
+        ig_username: igUsername,
         page_access_token: pageToken,
         token_expires_at: userTokenExpiresAt,
         active: true,
@@ -231,12 +261,33 @@ Deno.serve(async (req) => {
       console.log("PAGE_UPSERT_FAIL", pageErr);
       return json({ ok: false, error: pageErr.message }, 500);
     }
+    console.log("META_TOKEN_SAVED", { page_id: page.id, integration_id: integ?.id });
+
+    // Assina a página aos eventos do webhook (Messenger + Feed/Comments + IG).
+    const webhookOk = await subscribePage(page.id, pageToken);
+    console.log("META_WEBHOOK_SUBSCRIBED", { page_id: page.id, ok: webhookOk });
+
+    if (!webhookOk) {
+      await sb
+        .from("meta_pages")
+        .update({ last_error: "Falha ao assinar webhook (subscribed_apps)" })
+        .eq("company_id", companyId)
+        .eq("page_id", page.id);
+    }
 
     return json({
       ok: true,
-      page: { id: page.id, name: pageName, integration_id: integ?.id ?? null },
+      webhook_subscribed: webhookOk,
+      page: {
+        id: page.id,
+        name: pageName,
+        ig_business_account_id: igId,
+        ig_username: igUsername,
+        integration_id: integ?.id ?? null,
+      },
     });
   }
+
 
 
   const pages = Array.isArray(payload.pages) ? payload.pages : [];

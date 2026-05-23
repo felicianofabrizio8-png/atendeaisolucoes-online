@@ -1319,7 +1319,7 @@ declare global {
         }) => void,
         opts?: { scope: string; auth_type?: string },
       ) => void;
-      api: (path: string, params: Record<string, unknown>, cb: (res: unknown) => void) => void;
+      api: (path: string, cb: (res: unknown) => void) => void;
     };
     fbAsyncInit?: () => void;
   }
@@ -1329,8 +1329,18 @@ const META_APP_ID =
   (import.meta as unknown as { env: Record<string, string | undefined> }).env
     .VITE_META_APP_ID ?? "";
 
-// Voltando ao login básico: pages_show_list ainda inválido no app Meta.
-const FB_SCOPES = "public_profile";
+// Permissões aprovadas no Meta Developer.
+const FB_SCOPES = [
+  "public_profile",
+  "email",
+  "pages_show_list",
+  "pages_messaging",
+  "pages_manage_metadata",
+  "pages_read_engagement",
+  "instagram_basic",
+  "instagram_manage_messages",
+  "business_management",
+].join(",");
 
 
 
@@ -1359,6 +1369,8 @@ interface AvailablePage {
   id: string;
   name: string;
   access_token: string;
+  ig_business_account_id: string | null;
+  ig_username: string | null;
 }
 
 function MetaIntegrationSection() {
@@ -1419,23 +1431,63 @@ function MetaIntegrationSection() {
         },
       );
       setShortToken(auth.accessToken);
+      console.log("META_LOGIN_SUCCESS", { userID: auth.userID });
 
-      // Login básico: apenas valida com /me. Listagem de páginas requer
-      // pages_show_list aprovado no Meta Developer.
+      // Busca páginas + Instagram vinculado direto na Graph API.
+      const accountsUrl =
+        `https://graph.facebook.com/v21.0/me/accounts` +
+        `?fields=id,name,access_token,instagram_business_account{id,username}` +
+        `&limit=100&access_token=${encodeURIComponent(auth.accessToken)}`;
+      const accountsRes = await fetch(accountsUrl);
+      const accountsJson = (await accountsRes.json()) as {
+        data?: Array<{
+          id: string;
+          name: string;
+          access_token: string;
+          instagram_business_account?: { id: string; username?: string };
+        }>;
+        error?: { message?: string; type?: string; code?: number };
+      };
+
+      if (accountsJson.error) {
+        console.error("META_PAGES_ERROR", accountsJson.error);
+        throw new Error(
+          `Graph API: ${accountsJson.error.message ?? "erro desconhecido"}`,
+        );
+      }
+
+      const list: AvailablePage[] = (accountsJson.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        access_token: p.access_token,
+        ig_business_account_id: p.instagram_business_account?.id ?? null,
+        ig_username: p.instagram_business_account?.username ?? null,
+      }));
+      console.log("META_PAGES_FOUND", { count: list.length, pages: list.map((p) => ({ id: p.id, name: p.name })) });
+      const withIg = list.filter((p) => p.ig_business_account_id);
+      console.log("META_IG_FOUND", { count: withIg.length, igs: withIg.map((p) => p.ig_username) });
+
+      setAvailable(list);
+
+      // Continua salvando o registro "basic" para indicar login conectado.
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("meta-connect", {
+      await supabase.functions.invoke("meta-connect", {
         body: {
           mode: "basic",
           shortLivedToken: auth.accessToken,
           userID: auth.userID,
         },
       });
-      if (error) throw error;
-      const okName = (data as { user?: { name?: string } })?.user?.name ?? "usuário";
-      setInfo(
-        `Login Meta conectado (${okName}). Para listar páginas, será necessário ativar permissões de Páginas no Meta Developer.`,
-      );
 
+      if (list.length === 0) {
+        setInfo(
+          "Login Meta conectado, mas nenhuma página Facebook foi encontrada nesta conta. Verifique se você é admin de alguma página.",
+        );
+      } else {
+        setInfo(
+          `Login Meta conectado. ${list.length} página(s) disponível(is) para conexão.`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao conectar");
     } finally {
@@ -1457,13 +1509,29 @@ function MetaIntegrationSection() {
         body: {
           mode: "connect_page",
           shortLivedToken: shortToken,
-          page: { id: page.id, name: page.name, access_token: page.access_token },
+          page: {
+            id: page.id,
+            name: page.name,
+            access_token: page.access_token,
+            ig_business_account_id: page.ig_business_account_id,
+            ig_username: page.ig_username,
+          },
         },
       });
       if (error) throw error;
-      const savedName =
-        (data as { page?: { name?: string } })?.page?.name ?? page.name;
-      setInfo(`Página conectada: ${savedName}`);
+      const result = data as {
+        page?: { name?: string; ig_username?: string | null };
+        webhook_subscribed?: boolean;
+      };
+      const savedName = result?.page?.name ?? page.name;
+      const igLabel = result?.page?.ig_username
+        ? ` · Instagram: @${result.page.ig_username}`
+        : "";
+      const webhookLabel = result?.webhook_subscribed
+        ? " · Webhook ativo"
+        : " · Webhook não confirmado";
+      setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
+      console.log("META_TOKEN_SAVED", { page_id: page.id, ig: result?.page?.ig_username });
       setAvailable((prev) => prev.filter((p) => p.id !== page.id));
       await reload();
     } catch (e) {
@@ -1561,7 +1629,7 @@ function MetaIntegrationSection() {
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">
-              Nenhuma permissão de páginas ativa no Meta Developer
+              Clique em <strong>Conectar Instagram / Facebook</strong> abaixo para listar suas páginas.
             </p>
           </div>
         ) : (
@@ -1573,7 +1641,10 @@ function MetaIntegrationSection() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">ID: {p.id}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    FB: {p.id}
+                    {p.ig_username ? ` · IG: @${p.ig_username}` : " · sem Instagram vinculado"}
+                  </p>
                 </div>
                 <button
                   onClick={() => onSelectPage(p)}
