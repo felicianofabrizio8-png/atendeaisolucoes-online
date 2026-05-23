@@ -1593,15 +1593,19 @@ function MetaIntegrationSection() {
       });
       setAvailable(list);
 
-      // Continua salvando o registro "basic" para indicar login conectado.
-      const { supabase } = await import("@/integrations/supabase/client");
-      await supabase.functions.invoke("meta-connect", {
-        body: {
-          mode: "basic",
-          shortLivedToken: auth.accessToken,
-          userID: auth.userID,
-        },
-      });
+      // Registro "basic" isolado — não pode derrubar o state das páginas.
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        await supabase.functions.invoke("meta-connect", {
+          body: {
+            mode: "basic",
+            shortLivedToken: auth.accessToken,
+            userID: auth.userID,
+          },
+        });
+      } catch (basicErr) {
+        console.warn("META_BASIC_INVOKE_FAIL", basicErr);
+      }
 
       if (list.length === 0) {
         setInfo(
@@ -1683,8 +1687,18 @@ function MetaIntegrationSection() {
 
   if (!companyId) return null;
 
+  // Log no momento do render para detectar overwrites/race conditions.
+  console.log("META_RENDERING_PAGES", {
+    available_count: available.length,
+    available,
+    connected_count: pages.length,
+    connecting,
+    loading,
+  });
+
   return (
     <section className="rounded-lg border border-border bg-card p-5">
+
       <div className="flex items-center gap-2 mb-1">
         <Plug className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Instagram & Facebook (Meta)</h2>
@@ -1755,6 +1769,10 @@ function MetaIntegrationSection() {
             ({available.length} encontrada{available.length === 1 ? "" : "s"})
           </span>
         </p>
+        {/* Debug temporário — remover após validar render */}
+        <pre className="mb-2 max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px] text-muted-foreground">
+          {JSON.stringify(available, null, 2)}
+        </pre>
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">
