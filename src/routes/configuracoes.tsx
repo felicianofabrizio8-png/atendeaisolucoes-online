@@ -1593,15 +1593,19 @@ function MetaIntegrationSection() {
       });
       setAvailable(list);
 
-      // Continua salvando o registro "basic" para indicar login conectado.
-      const { supabase } = await import("@/integrations/supabase/client");
-      await supabase.functions.invoke("meta-connect", {
-        body: {
-          mode: "basic",
-          shortLivedToken: auth.accessToken,
-          userID: auth.userID,
-        },
-      });
+      // Registro "basic" isolado — não pode derrubar o state das páginas.
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        await supabase.functions.invoke("meta-connect", {
+          body: {
+            mode: "basic",
+            shortLivedToken: auth.accessToken,
+            userID: auth.userID,
+          },
+        });
+      } catch (basicErr) {
+        console.warn("META_BASIC_INVOKE_FAIL", basicErr);
+      }
 
       if (list.length === 0) {
         setInfo(
