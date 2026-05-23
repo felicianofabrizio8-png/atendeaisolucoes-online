@@ -1765,6 +1765,10 @@ function MetaIntegrationSection() {
             ({available.length} encontrada{available.length === 1 ? "" : "s"})
           </span>
         </p>
+        {/* Debug temporário — remover após validar render */}
+        <pre className="mb-2 max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px] text-muted-foreground">
+          {JSON.stringify(available, null, 2)}
+        </pre>
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">
