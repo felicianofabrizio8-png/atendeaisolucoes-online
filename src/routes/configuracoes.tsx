@@ -1557,12 +1557,17 @@ function MetaIntegrationSection() {
           `&access_token=${encodeURIComponent(auth.accessToken)}`;
         const debugRes = await fetch(debugUrl);
         const debugJson = await debugRes.json();
-        const tokenType =
-          (debugJson as { data?: { type?: string } })?.data?.type ?? null;
+        const debugData = (debugJson as { data?: { type?: string; scopes?: string[]; granular_scopes?: unknown } })?.data ?? {};
+        const tokenType = debugData.type ?? null;
         console.log("META_TOKEN_DEBUG", {
           type: tokenType,
           is_user_token: tokenType === "USER",
           payload: debugJson,
+        });
+        console.log("META_TOKEN_SCOPES", {
+          scopes: debugData.scopes ?? null,
+          granular_scopes: debugData.granular_scopes ?? null,
+          granted_via_login: auth.grantedScopes ?? null,
         });
       } catch (e) {
         console.warn("META_TOKEN_DEBUG_FAIL", e);
