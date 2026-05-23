@@ -1416,6 +1416,12 @@ function MetaIntegrationSection() {
       );
       return;
     }
+    if (!META_BUSINESS_CONFIG_ID) {
+      setError(
+        "Configure VITE_META_BUSINESS_CONFIG_ID com o Configuration ID do Facebook Login for Business antes de conectar.",
+      );
+      return;
+    }
     setConnecting(true);
     try {
       await loadFbSdk(META_APP_ID);
@@ -1426,7 +1432,12 @@ function MetaIntegrationSection() {
               if (res.authResponse?.accessToken) resolve(res.authResponse);
               else reject(new Error("Login cancelado ou negado"));
             },
-            { scope: FB_SCOPES, auth_type: "rerequest", response_type: "token" },
+            {
+              config_id: META_BUSINESS_CONFIG_ID,
+              auth_type: "rerequest",
+              response_type: "token",
+              override_default_response_type: true,
+            },
           );
         },
       );
