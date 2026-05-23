@@ -72,7 +72,7 @@ export async function listIntegrations(_companyId: string): Promise<Integration[
   })
     .from("integrations_safe")
     .select(
-      "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error",
+      "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error, token_expires_at",
     )
     .order("created_at", { ascending: true });
   console.log("[listIntegrations] raw response", { data, error });
