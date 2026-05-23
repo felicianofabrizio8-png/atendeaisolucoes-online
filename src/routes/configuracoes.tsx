@@ -1692,8 +1692,9 @@ function MetaIntegrationSection() {
     loading,
   });
 
-
+  return (
     <section className="rounded-lg border border-border bg-card p-5">
+
       <div className="flex items-center gap-2 mb-1">
         <Plug className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Instagram & Facebook (Meta)</h2>
