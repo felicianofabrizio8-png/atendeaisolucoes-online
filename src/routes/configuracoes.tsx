@@ -1152,7 +1152,7 @@ function WhatsAppCloudDebugPanel({
         </Field>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <button
           onClick={run}
           disabled={loading}
@@ -1161,7 +1161,23 @@ function WhatsAppCloudDebugPanel({
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Rodar debug
         </button>
+        {canSave && (
+          <button
+            onClick={saveConnection}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+            Salvar como conexão ativa
+          </button>
+        )}
       </div>
+
+      {savedMsg && (
+        <div className="rounded-md bg-[#25D366]/10 text-[#1f9d52] text-xs px-3 py-2">
+          {savedMsg}
+        </div>
+      )}
 
       {err && (
         <div className="rounded-md bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
