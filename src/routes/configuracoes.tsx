@@ -1330,16 +1330,18 @@ declare global {
   }
 }
 
-const META_APP_ID =
-  (import.meta as unknown as { env: Record<string, string | undefined> }).env
-    .VITE_META_APP_ID ?? "";
+interface MetaBusinessConfig {
+  appId: string;
+  businessConfigId: string;
+  hasAppId: boolean;
+  hasBusinessConfigId: boolean;
+}
 
-const META_BUSINESS_CONFIG_ID =
-  (import.meta as unknown as { env: Record<string, string | undefined> }).env
-    .VITE_META_BUSINESS_CONFIG_ID ??
-  (import.meta as unknown as { env: Record<string, string | undefined> }).env
-    .VITE_META_CONFIG_ID ??
-  "";
+async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
+  const res = await fetch("/api/meta/config");
+  if (!res.ok) throw new Error("Falha ao carregar configuração Meta Business Login");
+  return (await res.json()) as MetaBusinessConfig;
+}
 
 
 

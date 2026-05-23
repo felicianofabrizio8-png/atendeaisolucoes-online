@@ -25,6 +25,7 @@ import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsa
 import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
+import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
@@ -110,6 +111,11 @@ const ApiWhatsappIntegrationRoute = ApiWhatsappIntegrationRouteImport.update({
   path: '/api/whatsapp/integration',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
+  id: '/api/meta/config',
+  path: '/api/meta/config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
   id: '/api/ai/suggest-product',
   path: '/api/ai/suggest-product',
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
@@ -192,6 +200,7 @@ export interface FileRoutesById {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
@@ -216,6 +225,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/meta/config'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/meta/config'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/meta/config'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/test-send'
@@ -280,6 +292,7 @@ export interface RootRouteChildren {
   WhatsappRoute: typeof WhatsappRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
+  ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
   ApiWhatsappTestSendRoute: typeof ApiWhatsappTestSendRoute
@@ -402,6 +415,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappIntegrationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/meta/config': {
+      id: '/api/meta/config'
+      path: '/api/meta/config'
+      fullPath: '/api/meta/config'
+      preLoaderRoute: typeof ApiMetaConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/suggest-product': {
       id: '/api/ai/suggest-product'
       path: '/api/ai/suggest-product'
@@ -458,6 +478,7 @@ const rootRouteChildren: RootRouteChildren = {
   WhatsappRoute: WhatsappRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
+  ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,
   ApiWhatsappTestSendRoute: ApiWhatsappTestSendRoute,
