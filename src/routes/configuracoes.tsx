@@ -1731,7 +1731,12 @@ function MetaIntegrationSection() {
       )}
 
       <div className="mb-4">
-        <p className="text-xs font-semibold mb-2">Páginas disponíveis</p>
+        <p className="text-xs font-semibold mb-2">
+          Páginas disponíveis{" "}
+          <span className="text-muted-foreground font-normal">
+            ({available.length} encontrada{available.length === 1 ? "" : "s"})
+          </span>
+        </p>
         {available.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground">
