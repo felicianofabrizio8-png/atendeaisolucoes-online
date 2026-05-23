@@ -41,6 +41,7 @@ import {
 } from "@/data/integrationRepo";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/configuracoes")({
   component: ConfigPage,
