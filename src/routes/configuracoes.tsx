@@ -1469,24 +1469,65 @@ function MetaIntegrationSection() {
         }>;
         error?: { message?: string; type?: string; code?: number };
       };
+      console.log("META_ME_ACCOUNTS_RESPONSE", {
+        status: accountsRes.status,
+        ok: accountsRes.ok,
+        payload: accountsJson,
+      });
 
       if (accountsJson.error) {
-        console.error("META_PAGES_ERROR", accountsJson.error);
+        console.error("META_PAGES_ERROR", {
+          error: accountsJson.error,
+          fullPayload: accountsJson,
+        });
         throw new Error(
           `Graph API: ${accountsJson.error.message ?? "erro desconhecido"}`,
         );
       }
 
-      const list: AvailablePage[] = (accountsJson.data ?? []).map((p) => ({
+      const rawData = accountsJson.data ?? [];
+      if (rawData.length === 0) {
+        console.warn("META_ME_ACCOUNTS_EMPTY", {
+          fullPayload: accountsJson,
+          hint: "Nenhuma página retornada. Verifique se o usuário é admin de alguma página e se concedeu pages_show_list.",
+        });
+      }
+
+      const list: AvailablePage[] = rawData.map((p) => ({
         id: p.id,
         name: p.name,
         access_token: p.access_token,
         ig_business_account_id: p.instagram_business_account?.id ?? null,
         ig_username: p.instagram_business_account?.username ?? null,
       }));
-      console.log("META_PAGES_FOUND", { count: list.length, pages: list.map((p) => ({ id: p.id, name: p.name })) });
+
+      for (const p of list) {
+        console.log("META_PAGE_FOUND", {
+          page_id: p.id,
+          page_name: p.name,
+          has_access_token: Boolean(p.access_token),
+          ig_business_account_id: p.ig_business_account_id,
+          ig_username: p.ig_username,
+        });
+        if (p.ig_business_account_id) {
+          console.log("META_IG_FOUND", {
+            page_id: p.id,
+            page_name: p.name,
+            ig_business_account_id: p.ig_business_account_id,
+            ig_username: p.ig_username,
+          });
+        }
+      }
+
+      console.log("META_PAGES_FOUND", {
+        count: list.length,
+        pages: list.map((p) => ({ id: p.id, name: p.name })),
+      });
       const withIg = list.filter((p) => p.ig_business_account_id);
-      console.log("META_IG_FOUND", { count: withIg.length, igs: withIg.map((p) => p.ig_username) });
+      console.log("META_IG_FOUND_SUMMARY", {
+        count: withIg.length,
+        igs: withIg.map((p) => p.ig_username),
+      });
 
       setAvailable(list);
 
