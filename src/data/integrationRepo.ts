@@ -194,3 +194,34 @@ export async function deleteIntegration(id: string) {
     body: JSON.stringify({ id }),
   });
 }
+
+export interface RenewTokenResult {
+  ok: boolean;
+  error?: string;
+  validatedAt?: string;
+  expiresAt?: string | null;
+  isPermanent?: boolean;
+  metaResponse?: unknown;
+}
+
+export async function renewWhatsAppToken(
+  integrationId: string,
+  accessToken: string,
+  expiresAt?: string | null,
+): Promise<RenewTokenResult> {
+  const res = await authedFetch("/api/whatsapp/token-refresh", {
+    method: "POST",
+    body: JSON.stringify({ integrationId, accessToken, expiresAt: expiresAt ?? null }),
+  });
+  return (await res.json()) as RenewTokenResult;
+}
+
+export async function validateWhatsAppToken(
+  integrationId: string,
+): Promise<RenewTokenResult> {
+  const res = await authedFetch("/api/whatsapp/token-refresh", {
+    method: "PUT",
+    body: JSON.stringify({ integrationId }),
+  });
+  return (await res.json()) as RenewTokenResult;
+}
