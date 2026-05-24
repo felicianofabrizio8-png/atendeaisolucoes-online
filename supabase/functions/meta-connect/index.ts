@@ -24,12 +24,13 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
+// válido de subscribed_apps para páginas (Meta rejeita com erro 100).
 const SUBSCRIBED_FIELDS = [
   "messages",
   "messaging_postbacks",
   "message_reactions",
   "feed",
-  "comments",
 ].join(",");
 
 async function exchangeForLongLivedUserToken(shortToken: string): Promise<{
