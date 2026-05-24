@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS integrations_company_channel_external_uidx ON public.integrations (company_id, channel, external_account_id);
