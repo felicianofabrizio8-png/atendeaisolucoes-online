@@ -26,12 +26,7 @@ function json(body: unknown, status = 200) {
 
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
 // válido de subscribed_apps para páginas (Meta rejeita com erro 100).
-const SUBSCRIBED_FIELDS = [
-  "messages",
-  "messaging_postbacks",
-  "message_reactions",
-  "feed",
-].join(",");
+const PAGE_SUBSCRIBED_FIELDS = ["messages", "messaging_postbacks", "feed"].join(",");
 
 async function exchangeForLongLivedUserToken(shortToken: string): Promise<{
   access_token: string;
@@ -66,13 +61,23 @@ async function getPageDetails(pageId: string, longUserToken: string) {
 async function subscribePage(pageId: string, pageToken: string) {
   const url = `${GRAPH}/${pageId}/subscribed_apps`;
   const body = new URLSearchParams({
-    subscribed_fields: SUBSCRIBED_FIELDS,
+    subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
     access_token: pageToken,
   });
   const r = await fetch(url, { method: "POST", body });
   const text = await r.text();
-  console.log("SUBSCRIBE_PAGE", pageId, r.status, text.slice(0, 300));
-  return r.ok;
+  console.log("META_SUBSCRIBED_APPS_RESPONSE", {
+    page_id: pageId,
+    app_id: META_APP_ID,
+    endpoint: `POST /${pageId}/subscribed_apps`,
+    subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
+    using_page_access_token: Boolean(pageToken),
+    page_token_preview: pageToken ? `${pageToken.slice(0, 12)}...${pageToken.slice(-6)}` : null,
+    status: r.status,
+    ok: r.ok,
+    body: text,
+  });
+  return { ok: r.ok, status: r.status, body: text };
 }
 
 Deno.serve(async (req) => {
