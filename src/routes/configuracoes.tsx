@@ -1646,11 +1646,20 @@ function MetaIntegrationSection() {
       .catch(() => setMetaConfig(null));
   }, []);
 
-  // Login inicial pede apenas permissões básicas. Scopes de páginas/business
-  // não vão no primeiro dialog (causam "Invalid Scopes" no popup quando o app
-  // ainda não tem App Review aprovado). Após autenticar, /me/accounts já
-  // retorna as páginas se o usuário for admin/dev/tester do app.
-  const REQUIRED_SCOPES = ["public_profile", "email"].join(",");
+  // App Atende Ai! (tipo Empresa) — solicita todas as permissões necessárias
+  // para Pages, Business, Instagram e WhatsApp Business no primeiro dialog.
+  const REQUIRED_SCOPES = [
+    "public_profile",
+    "email",
+    "pages_show_list",
+    "pages_read_engagement",
+    "pages_manage_metadata",
+    "business_management",
+    "ads_management",
+    "instagram_basic",
+    "whatsapp_business_management",
+    "whatsapp_business_messaging",
+  ].join(",");
 
   const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
 
@@ -1662,26 +1671,63 @@ function MetaIntegrationSection() {
       length: accessToken.length,
     });
 
+    const tok = encodeURIComponent(accessToken);
+    const GRAPH = "https://graph.facebook.com/v25.0";
+
+    // /debug_token — escopos concedidos
     try {
-      const debugUrl =
-        `https://graph.facebook.com/v25.0/debug_token` +
-        `?input_token=${encodeURIComponent(accessToken)}` +
-        `&access_token=${encodeURIComponent(accessToken)}`;
-      const debugRes = await fetch(debugUrl);
+      const debugRes = await fetch(
+        `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
+      );
       const debugJson = await debugRes.json();
-      const debugData = (debugJson as { data?: { type?: string; scopes?: string[]; granular_scopes?: unknown } })?.data ?? {};
+      const debugData =
+        (debugJson as { data?: { scopes?: string[]; granular_scopes?: unknown; app_id?: string } })
+          ?.data ?? {};
       console.log("META_TOKEN_SCOPES", {
+        app_id: debugData.app_id ?? null,
         scopes: debugData.scopes ?? null,
         granular_scopes: debugData.granular_scopes ?? null,
+        raw: debugJson,
       });
     } catch (e) {
       console.warn("META_TOKEN_DEBUG_FAIL", e);
     }
 
+    // /me
+    try {
+      const meRes = await fetch(`${GRAPH}/me?fields=id,name,email&access_token=${tok}`);
+      const meJson = await meRes.json();
+      console.log("META_ME_RESPONSE", { status: meRes.status, payload: meJson });
+    } catch (e) {
+      console.warn("META_ME_FAIL", e);
+    }
+
+    // /me/businesses
+    try {
+      const bizRes = await fetch(
+        `${GRAPH}/me/businesses?fields=id,name,verification_status,owned_pages{id,name},owned_instagram_accounts{id,username},owned_whatsapp_business_accounts{id,name}&limit=100&access_token=${tok}`,
+      );
+      const bizJson = (await bizRes.json()) as Record<string, unknown>;
+      const bizData = Array.isArray((bizJson as { data?: unknown[] }).data)
+        ? ((bizJson as { data: unknown[] }).data)
+        : [];
+      console.log("META_ME_BUSINESSES_RESPONSE", {
+        status: bizRes.status,
+        ok: bizRes.ok,
+        count: bizData.length,
+        payload: bizJson,
+      });
+    } catch (e) {
+      console.warn("META_ME_BUSINESSES_FAIL", e);
+    }
+
+    // /me/accounts — páginas Facebook do usuário + IG + WhatsApp vinculados
     const accountsUrl =
-      `https://graph.facebook.com/v25.0/me/accounts` +
-      `?fields=id,name,tasks,access_token,category,instagram_business_account{id,username}` +
-      `&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+      `${GRAPH}/me/accounts` +
+      `?fields=id,name,tasks,access_token,category,` +
+      `instagram_business_account{id,username},` +
+      `connected_whatsapp_business_account{id}` +
+      `&limit=100&access_token=${tok}`;
     const accountsRes = await fetch(accountsUrl);
     const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
     console.log("META_ME_ACCOUNTS_RESPONSE", {
@@ -1692,6 +1738,7 @@ function MetaIntegrationSection() {
 
     const errObj = (accountsJson as { error?: { message?: string } }).error;
     if (errObj) {
+      console.error("META_ME_ACCOUNTS_ERROR_FULL", accountsJson);
       throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
     }
 
@@ -1700,9 +1747,18 @@ function MetaIntegrationSection() {
       name: string;
       access_token: string;
       instagram_business_account?: { id?: string; username?: string };
+      connected_whatsapp_business_account?: { id?: string };
     };
     const root = accountsJson as { data?: RawPage[] };
     const accounts: RawPage[] = Array.isArray(root.data) ? root.data : [];
+
+    console.log("META_PAGES_DETAIL", accounts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      ig: p.instagram_business_account?.id ?? null,
+      ig_username: p.instagram_business_account?.username ?? null,
+      whatsapp: p.connected_whatsapp_business_account?.id ?? null,
+    })));
 
     const list: AvailablePage[] = accounts.map((p) => ({
       id: p.id,
@@ -1716,7 +1772,7 @@ function MetaIntegrationSection() {
 
     if (list.length === 0) {
       setInfo(
-        "Login Meta conectado, mas nenhuma página Facebook foi encontrada nesta conta. Verifique se você é admin de alguma página.",
+        "Login Meta conectado, mas nenhuma página Facebook foi encontrada. Veja o console (META_ME_ACCOUNTS_RESPONSE) para resposta completa da Meta.",
       );
     } else {
       setInfo(`Login Meta conectado. ${list.length} página(s) disponível(is) para conexão.`);
