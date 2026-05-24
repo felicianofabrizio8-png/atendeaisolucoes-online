@@ -26,12 +26,7 @@ function json(body: unknown, status = 200) {
 
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
 // válido de subscribed_apps para páginas (Meta rejeita com erro 100).
-const SUBSCRIBED_FIELDS = [
-  "messages",
-  "messaging_postbacks",
-  "message_reactions",
-  "feed",
-].join(",");
+const PAGE_SUBSCRIBED_FIELDS = ["messages", "messaging_postbacks", "feed"].join(",");
 
 async function exchangeForLongLivedUserToken(shortToken: string): Promise<{
   access_token: string;
@@ -66,13 +61,23 @@ async function getPageDetails(pageId: string, longUserToken: string) {
 async function subscribePage(pageId: string, pageToken: string) {
   const url = `${GRAPH}/${pageId}/subscribed_apps`;
   const body = new URLSearchParams({
-    subscribed_fields: SUBSCRIBED_FIELDS,
+    subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
     access_token: pageToken,
   });
   const r = await fetch(url, { method: "POST", body });
   const text = await r.text();
-  console.log("SUBSCRIBE_PAGE", pageId, r.status, text.slice(0, 300));
-  return r.ok;
+  console.log("META_SUBSCRIBED_APPS_RESPONSE", {
+    page_id: pageId,
+    app_id: META_APP_ID,
+    endpoint: `POST /${pageId}/subscribed_apps`,
+    subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
+    using_page_access_token: Boolean(pageToken),
+    page_token_preview: pageToken ? `${pageToken.slice(0, 12)}...${pageToken.slice(-6)}` : null,
+    status: r.status,
+    ok: r.ok,
+    body: text,
+  });
+  return { ok: r.ok, status: r.status, body: text };
 }
 
 Deno.serve(async (req) => {
@@ -395,21 +400,32 @@ Deno.serve(async (req) => {
     }
     console.log("META_TOKEN_SAVED", { page_id: page.id, integration_id: integ?.id });
 
-    // Assina a página aos eventos do webhook (Messenger + Feed/Comments + IG).
-    const webhookOk = await subscribePage(page.id, pageToken);
-    console.log("META_WEBHOOK_SUBSCRIBED", { page_id: page.id, ok: webhookOk });
+    // Assina a página aos eventos do webhook usando o page access token.
+    // Se a Meta rejeitar, a integração permanece salva e exibimos apenas aviso.
+    const webhookResult = await subscribePage(page.id, pageToken);
+    console.log("META_WEBHOOK_SUBSCRIBED", {
+      page_id: page.id,
+      ok: webhookResult.ok,
+      status: webhookResult.status,
+      app_id: META_APP_ID,
+    });
 
-    if (!webhookOk) {
+    if (!webhookResult.ok) {
       await sb
         .from("meta_pages")
-        .update({ last_error: "Falha ao assinar webhook (subscribed_apps)" })
+        .update({ last_error: "Webhook não confirmado" })
         .eq("company_id", companyId)
         .eq("page_id", page.id);
     }
 
     return json({
       ok: true,
-      webhook_subscribed: webhookOk,
+      webhook_subscribed: webhookResult.ok,
+      webhook_warning: webhookResult.ok ? null : "Webhook não confirmado",
+      subscribed_apps_response: {
+        status: webhookResult.status,
+        body: webhookResult.body,
+      },
       page: {
         id: page.id,
         name: pageName,
@@ -436,7 +452,14 @@ Deno.serve(async (req) => {
     ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
     : null;
 
-  const results: Array<{ page_id: string; ok: boolean; error?: string; ig?: string | null }> = [];
+  const results: Array<{
+    page_id: string;
+    ok: boolean;
+    error?: string;
+    ig?: string | null;
+    webhook_subscribed?: boolean;
+    webhook_warning?: string;
+  }> = [];
 
   for (const p of pages) {
     try {
@@ -490,8 +513,21 @@ Deno.serve(async (req) => {
           { onConflict: "company_id,page_id" },
         );
 
-      const subOk = await subscribePage(p.id, pageToken);
-      results.push({ page_id: p.id, ok: subOk, ig: ig });
+      const subResult = await subscribePage(p.id, pageToken);
+      if (!subResult.ok) {
+        await sb
+          .from("meta_pages")
+          .update({ last_error: "Webhook não confirmado" })
+          .eq("company_id", companyId)
+          .eq("page_id", p.id);
+      }
+      results.push({
+        page_id: p.id,
+        ok: true,
+        ig: ig,
+        webhook_subscribed: subResult.ok,
+        webhook_warning: subResult.ok ? undefined : "Webhook não confirmado",
+      });
     } catch (e) {
       results.push({ page_id: p.id, ok: false, error: e instanceof Error ? e.message : String(e) });
     }
