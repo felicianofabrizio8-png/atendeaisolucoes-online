@@ -1814,6 +1814,7 @@ function MetaIntegrationSection() {
     setError(null);
     setInfo(null);
     setAvailable([]);
+    setShortToken(null);
     setConnecting(true);
     try {
       const config = await getMetaBusinessConfig();
@@ -1825,20 +1826,28 @@ function MetaIntegrationSection() {
       }
 
       if (typeof window !== "undefined") {
+        // Limpa qualquer sessão antiga (token do app anterior)
         window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+        window.localStorage.removeItem("META_OAUTH_TOKEN");
         const state = crypto.randomUUID();
         window.sessionStorage.setItem("META_OAUTH_STATE", state);
 
+        // auth_type=reauthenticate força a Meta a pedir login/senha de novo,
+        // descartando qualquer sessão Facebook ativa do app antigo.
         const oauthUrl =
           `https://www.facebook.com/v21.0/dialog/oauth` +
           `?app_id=${encodeURIComponent(config.appId)}` +
           `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
           `&response_type=code` +
           `&state=${encodeURIComponent(state)}` +
-          `&auth_type=rerequest` +
+          `&auth_type=reauthenticate` +
           `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
-        console.log("META_OAUTH_URL", { url: oauthUrl, app_id: config.appId });
+        console.log("META_OAUTH_URL", {
+          url: oauthUrl,
+          app_id: config.appId,
+          scopes: REQUIRED_SCOPES,
+        });
 
         // Abre em nova janela/popup para manter o app aberto
         const width = 600;
@@ -1851,7 +1860,6 @@ function MetaIntegrationSection() {
           `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
         );
         if (!popup) {
-          // Fallback: bloqueio de popup — abre em nova aba
           window.open(oauthUrl, "_blank", "noopener,noreferrer");
           setInfo(
             "Abrimos o login Meta em outra aba. Conclua o login lá e volte para esta página.",
