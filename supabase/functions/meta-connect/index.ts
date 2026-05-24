@@ -452,7 +452,14 @@ Deno.serve(async (req) => {
     ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
     : null;
 
-  const results: Array<{ page_id: string; ok: boolean; error?: string; ig?: string | null }> = [];
+  const results: Array<{
+    page_id: string;
+    ok: boolean;
+    error?: string;
+    ig?: string | null;
+    webhook_subscribed?: boolean;
+    webhook_warning?: string;
+  }> = [];
 
   for (const p of pages) {
     try {
