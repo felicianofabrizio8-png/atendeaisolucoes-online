@@ -30,6 +30,7 @@ import {
   X,
   DollarSign,
   MessageSquare,
+} from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { supabase } from "@/integrations/supabase/client";
