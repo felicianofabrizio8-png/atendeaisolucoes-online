@@ -11,7 +11,11 @@ import {
   Percent,
   Package as PackageIcon,
   Sparkles,
+  MessageCircle,
+  Copy,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { formatBRL, timeAgo } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
 import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
@@ -20,8 +24,11 @@ import {
   listQuotes,
   subscribeQuotes,
   buildQuoteMessage,
+  computeQuoteStatus,
+  sendQuoteWhatsApp,
   type PaymentMethod,
   type Quote,
+  type QuoteStatus,
 } from "@/data/quotes";
 import { cn } from "@/lib/utils";
 
