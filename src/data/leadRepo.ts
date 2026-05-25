@@ -201,11 +201,11 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("conversations")
-        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply")
+        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type")
         .eq("company_id", companyId),
       supabase
         .from("messages")
-        .select("id,conversation_id,role,text,at")
+        .select("id,conversation_id,role,text,at,source_subtype,source_metadata")
         .eq("company_id", companyId)
         .order("at", { ascending: true }),
     ]);
