@@ -46,6 +46,7 @@ export interface Conversation {
   unread: number;
   awaitingReply: boolean;
   slaBreached: boolean;
+  interactionType?: "direct_message" | "comment";
 }
 
 export const leads: Lead[] = [];
