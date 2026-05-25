@@ -76,6 +76,45 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           leadId = conv.lead_id;
         } else if (body.leadId) {
           leadId = body.leadId;
+        } else if (body.phone) {
+          // Encontra ou cria lead pelo telefone (modo manual / Meta Cloud)
+          const phoneDigits = String(body.phone).replace(/\D/g, "");
+          if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+            return Response.json({ error: "telefone inválido" }, { status: 400 });
+          }
+          const externalId = `phone:${phoneDigits}`;
+          const { data: existingLead } = await supabaseAdmin
+            .from("leads")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("channel", "whatsapp")
+            .or(`external_id.eq.${externalId},phone.eq.${phoneDigits}`)
+            .limit(1)
+            .maybeSingle();
+          if (existingLead?.id) {
+            leadId = existingLead.id;
+          } else {
+            const { data: newLead, error: newLeadErr } = await supabaseAdmin
+              .from("leads")
+              .insert({
+                company_id: companyId,
+                channel: "whatsapp",
+                name: body.contactName?.trim() || `+${phoneDigits}`,
+                phone: phoneDigits,
+                external_id: externalId,
+              })
+              .select("id")
+              .single();
+            if (newLeadErr || !newLead) {
+              console.error("[whatsapp send] create lead error", newLeadErr);
+              return Response.json({ error: "falha ao criar contato" }, { status: 500 });
+            }
+            leadId = newLead.id;
+          }
+        }
+
+        // Garante conversa (cria se faltar)
+        if (!conversationId && leadId) {
           const { data: existingConv } = await supabaseAdmin
             .from("conversations")
             .select("id")
