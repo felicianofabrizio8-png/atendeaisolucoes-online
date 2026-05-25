@@ -594,6 +594,23 @@ Deno.serve(async (req) => {
         igBusinessAccountId: page.ig_business_account_id,
         error: message,
       });
+    if (isMessenger) {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        pageId: page.page_id,
+        recipientId: lead.source_sender_id,
+        error: message,
+      });
+    }
+    if (isFacebookComment) {
+      console.error("FACEBOOK_COMMENT_REPLY_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        pageId: page.page_id,
+        commentId: fbCommentId,
+        error: message,
+      });
     }
     // Return 200 so supabase.functions.invoke surfaces the body as `data`
     return json({
