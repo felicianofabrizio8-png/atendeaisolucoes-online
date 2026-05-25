@@ -1100,43 +1100,56 @@ function WhatsAppInbox() {
               ref={scrollRef}
               className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 bg-background"
             >
-              {current.messages.map((m, idx) => {
-                const prev = current.messages[idx - 1];
-                const showDay = !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
-                const mine = m.direction === "out";
-                return (
-                  <div key={m.id}>
-                    {showDay && (
-                      <div className="flex justify-center my-3">
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                          {formatDay(m.created_at)}
-                        </span>
-                      </div>
-                    )}
-                    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                      <div
-                        className={cn(
-                          "max-w-[70%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
-                          mine
-                            ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-card border border-border rounded-bl-sm",
-                        )}
-                      >
-                        <div className="whitespace-pre-wrap break-words">{m.mensagem ?? ""}</div>
+              {(() => {
+                const realMessages = current.messages.filter(
+                  (m) => (m.mensagem ?? "").trim().length > 0,
+                );
+                if (realMessages.length === 0) {
+                  return (
+                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                      Nenhuma mensagem ainda
+                    </div>
+                  );
+                }
+                return realMessages.map((m, idx) => {
+                  const prev = realMessages[idx - 1];
+                  const showDay = !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
+                  const mine = m.direction === "out";
+                  return (
+                    <div key={m.id}>
+                      {showDay && (
+                        <div className="flex justify-center my-3">
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                            {formatDay(m.created_at)}
+                          </span>
+                        </div>
+                      )}
+                      <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div
                           className={cn(
-                            "text-[10px] mt-0.5 text-right",
-                            mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                            "max-w-[70%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
+                            mine
+                              ? "bg-primary text-primary-foreground rounded-br-sm"
+                              : "bg-card border border-border rounded-bl-sm",
                           )}
                         >
-                          {formatTime(m.created_at)}
+                          <div className="whitespace-pre-wrap break-words">{m.mensagem ?? ""}</div>
+                          <div
+                            className={cn(
+                              "text-[10px] mt-0.5 text-right",
+                              mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                            )}
+                          >
+                            {formatTime(m.created_at)}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
+
 
             <footer className="p-3 border-t border-border bg-card shrink-0">
               <form
