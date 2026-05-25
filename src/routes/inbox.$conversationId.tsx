@@ -145,6 +145,7 @@ function ConversationPage() {
         const token = sess.session?.access_token;
         if (token) {
           if (isWhatsApp) {
+            // WhatsApp Cloud API — mesma rota usada pelo "Enviar teste"
             const res = await fetch("/api/whatsapp/send", {
               method: "POST",
               headers: {
@@ -154,6 +155,18 @@ function ConversationPage() {
               body: JSON.stringify({ conversationId, text: trimmed }),
             });
             if (res.ok) return;
+            // Falhou: remove a bolha otimista e mostra o erro real da Meta
+            let errMsg = `HTTP ${res.status}`;
+            try {
+              const j = (await res.json()) as { error?: string; metaError?: unknown };
+              if (j.error) errMsg = j.error;
+              console.error("[chat send] WhatsApp falhou", j);
+            } catch {
+              /* ignore */
+            }
+            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            toast.error("Falha ao enviar WhatsApp", { description: errMsg });
+            return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
             const subtype =
@@ -170,8 +183,15 @@ function ConversationPage() {
             if (!error && data) return;
           }
         }
-      } catch {
-        // fallback abaixo
+      } catch (e) {
+        console.error("[chat send] erro", e);
+        if (isWhatsApp) {
+          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+          toast.error("Falha ao enviar WhatsApp", {
+            description: e instanceof Error ? e.message : "Erro de rede",
+          });
+          return;
+        }
       }
     }
 
