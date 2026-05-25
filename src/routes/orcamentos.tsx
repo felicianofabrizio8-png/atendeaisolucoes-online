@@ -368,6 +368,8 @@ function SendWhatsAppModal({
   onClose: () => void;
   onSent: (conversationId?: string) => void;
 }) {
+  const product = getProduct(quote.productId);
+  const availableImages = product?.images ?? [];
   const [text, setText] = useState(() =>
     buildWhatsAppMessage({
       name: leadName.split(" ")[0] ?? leadName,
@@ -376,7 +378,14 @@ function SendWhatsAppModal({
       validUntil: quote.validUntil,
     }),
   );
+  const [selectedImages, setSelectedImages] = useState<string[]>(availableImages);
   const [sending, setSending] = useState(false);
+
+  const toggleImage = (url: string) => {
+    setSelectedImages((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url],
+    );
+  };
 
   const submit = async () => {
     if (!text.trim()) {
@@ -391,6 +400,7 @@ function SendWhatsAppModal({
         contactName: leadName,
         leadId: quote.leadId || undefined,
         text,
+        imageUrls: selectedImages.length > 0 ? selectedImages : undefined,
       });
       toast.success("Orçamento enviado pelo WhatsApp");
       onSent(res.conversationId);
@@ -407,7 +417,7 @@ function SendWhatsAppModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-lg border border-border bg-card shadow-xl"
+        className="w-full max-w-lg rounded-lg border border-border bg-card shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-border flex items-center gap-2">
@@ -421,6 +431,56 @@ function SendWhatsAppModal({
           <div className="text-[11px] text-muted-foreground">
             Para <span className="font-semibold text-foreground">{leadName}</span> • +{phone}
           </div>
+
+          {availableImages.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                  Fotos do produto ({selectedImages.length}/{availableImages.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedImages(
+                      selectedImages.length === availableImages.length ? [] : availableImages,
+                    )
+                  }
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  {selectedImages.length === availableImages.length
+                    ? "Desmarcar todas"
+                    : "Selecionar todas"}
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {availableImages.map((url) => {
+                  const checked = selectedImages.includes(url);
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => toggleImage(url)}
+                      className={cn(
+                        "relative aspect-square rounded-md overflow-hidden border-2 transition",
+                        checked ? "border-primary" : "border-transparent opacity-60 hover:opacity-100",
+                      )}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {checked && (
+                        <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                As fotos serão enviadas primeiro, depois a mensagem.
+              </p>
+            </div>
+          )}
+
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -428,7 +488,7 @@ function SendWhatsAppModal({
             className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-none"
           />
           <p className="text-[11px] text-muted-foreground">
-            Será enviado via Meta Cloud API. Em breve: anexar PDF e imagem do orçamento.
+            Será enviado via Meta Cloud API.
           </p>
         </div>
         <div className="p-4 border-t border-border flex justify-end gap-2">
@@ -449,13 +509,18 @@ function SendWhatsAppModal({
             ) : (
               <Send className="h-3.5 w-3.5" />
             )}
-            {sending ? "Enviando…" : "Enviar agora"}
+            {sending
+              ? "Enviando…"
+              : selectedImages.length > 0
+                ? `Enviar ${selectedImages.length} foto(s) + mensagem`
+                : "Enviar agora"}
           </button>
         </div>
       </div>
     </div>
   );
 }
+
 
 function Chip({ children }: { children: React.ReactNode }) {
   return <span className="rounded bg-secondary px-1.5 py-0.5">{children}</span>;
