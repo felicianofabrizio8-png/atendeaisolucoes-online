@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
   // Find page + token
   const { data: page } = await sb
     .from("meta_pages")
-    .select("page_id, ig_business_account_id, page_access_token")
+    .select("page_id, ig_business_account_id, page_access_token, ig_user_access_token")
     .eq("company_id", companyId)
     .eq("page_id", lead.source_page_id ?? "")
     .maybeSingle();
@@ -423,13 +423,24 @@ Deno.serve(async (req) => {
         sourcePageId: lead.source_page_id ?? null,
       });
     }
+    if (lead.source === "messenger" || lead.source === "facebook") {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        reason: "page_not_connected",
+        sourcePageId: lead.source_page_id ?? null,
+      });
+    }
     return json({ ok: false, error: "page not connected" }, 400);
   }
 
-  const pageToken = page.page_access_token as string;
-  // Tokens that begin with "IGAA" come from the Instagram Login flow and must
-  // call the graph.instagram.com host. Page Access Tokens (EAA...) use
-  // graph.facebook.com. Comments/DMs for IG accept either, depending on token.
+  // Choose the right token per provider:
+  // - Instagram flows prefer the Instagram Login token (IGAA...) when available,
+  //   falling back to the Page Access Token.
+  // - Facebook Messenger / Facebook comments always use the Page Access Token (EAA...).
+  const igUserToken = (page as any).ig_user_access_token as string | null;
+  const fbPageToken = page.page_access_token as string;
+  const isInstagramFlow =
+    providerType === "instagram_direct" || providerType === "instagram_comment";
+  const pageToken = isInstagramFlow ? (igUserToken || fbPageToken) : fbPageToken;
   const isIgLoginToken = typeof pageToken === "string" && pageToken.startsWith("IGAA");
   const IG_GRAPH = "https://graph.instagram.com/v21.0";
   const igHost = isIgLoginToken ? IG_GRAPH : GRAPH;
@@ -497,6 +508,8 @@ Deno.serve(async (req) => {
 
   const isInstagramDirect = providerType === "instagram_direct";
   const isInstagramComment = providerType === "instagram_comment";
+  const isMessenger = providerType === "messenger" || providerType === "facebook";
+  const isFacebookComment = providerType === "facebook_comment";
   const igCommentId =
     providerType === "instagram_comment"
       ? ((lastIn?.source_metadata as any)?.comment_id ?? null)
@@ -505,6 +518,9 @@ Deno.serve(async (req) => {
     providerType === "instagram_comment"
       ? ((lastIn?.source_metadata as any)?.media_id ?? null)
       : null;
+  const fbCommentId = isFacebookComment
+    ? ((lastIn?.source_metadata as any)?.comment_id ?? null)
+    : null;
 
   if (isInstagramDirect) {
     console.log("INSTAGRAM_DIRECT_SEND_START", {
@@ -533,6 +549,25 @@ Deno.serve(async (req) => {
       body: graphBody,
     });
   }
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_REQUEST", {
+      endpoint: graphUrl,
+      method: "POST",
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+      body: graphBody,
+      tokenPrefix: typeof pageToken === "string" ? pageToken.slice(0, 6) : null,
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_REQUEST", {
+      endpoint: graphUrl,
+      method: "POST",
+      pageId: page.page_id,
+      commentId: fbCommentId,
+      body: graphBody,
+    });
+  }
   console.log("META_SEND_URL", graphUrl);
 
   let res: Response;
@@ -557,6 +592,24 @@ Deno.serve(async (req) => {
         endpoint: graphUrl,
         commentId: igCommentId,
         igBusinessAccountId: page.ig_business_account_id,
+        error: message,
+      });
+    }
+    if (isMessenger) {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        pageId: page.page_id,
+        recipientId: lead.source_sender_id,
+        error: message,
+      });
+    }
+    if (isFacebookComment) {
+      console.error("FACEBOOK_COMMENT_REPLY_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        pageId: page.page_id,
+        commentId: fbCommentId,
         error: message,
       });
     }
@@ -598,6 +651,25 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      pageId: page.page_id,
+      commentId: fbCommentId,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+
   const messageId = parsed?.message_id ?? parsed?.id ?? null;
 
   if (!res.ok || !messageId) {
@@ -619,6 +691,26 @@ Deno.serve(async (req) => {
         commentId: igCommentId,
         mediaId: igMediaId,
         igBusinessAccountId: page.ig_business_account_id,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
+      });
+    }
+    if (isMessenger) {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        endpoint: graphUrl,
+        status: res.status,
+        pageId: page.page_id,
+        recipientId: lead.source_sender_id,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
+      });
+    }
+    if (isFacebookComment) {
+      console.error("FACEBOOK_COMMENT_REPLY_ERROR", {
+        endpoint: graphUrl,
+        status: res.status,
+        pageId: page.page_id,
+        commentId: fbCommentId,
         error: parsed?.error ?? null,
         body: raw.slice(0, 1000),
       });
@@ -687,6 +779,20 @@ Deno.serve(async (req) => {
     console.log("INSTAGRAM_COMMENT_REPLY_SUCCESS", {
       messageId,
       commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+    });
+  }
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_SUCCESS", {
+      messageId,
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_SUCCESS", {
+      messageId,
+      pageId: page.page_id,
+      commentId: fbCommentId,
     });
   }
 

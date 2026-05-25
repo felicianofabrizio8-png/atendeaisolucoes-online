@@ -1,0 +1,1 @@
+ALTER TABLE public.meta_pages ADD COLUMN IF NOT EXISTS ig_user_access_token text;
