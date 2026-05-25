@@ -55,6 +55,9 @@ Deno.serve(async (req) => {
     contactName?: string;
     leadId?: string;
     imageUrls?: string[];
+    subtype?: string;
+    origin?: string;
+    provider_type?: string;
   };
   try { body = await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
 
@@ -277,7 +280,7 @@ Deno.serve(async (req) => {
   // Load conversation + lead + last incoming message metadata.
   const { data: conv } = await sb
     .from("conversations")
-    .select("id, lead_id, company_id, channel")
+    .select("id, lead_id, company_id, channel, interaction_type")
     .eq("id", conversationId).eq("company_id", companyId).maybeSingle();
   if (!conv) return json({ ok: false, error: "conversation not found" }, 404);
 
@@ -294,7 +297,20 @@ Deno.serve(async (req) => {
     .order("at", { ascending: false })
     .limit(1).maybeSingle();
 
-  const subtype = (lastIn?.source_subtype as string | undefined) ?? "dm";
+  const requestedProviderType = String(body.provider_type ?? body.origin ?? "");
+  const requestedSubtype = String(body.subtype ?? "");
+  const conversationInteraction = String((conv as any).interaction_type ?? "direct_message");
+  const isRequestedComment = requestedProviderType.endsWith("_comment") || requestedSubtype === "comment";
+  const subtype = isRequestedComment || conversationInteraction === "comment" || lastIn?.source_subtype === "comment"
+    ? "comment"
+    : "dm";
+  const providerType = lead.source === "instagram"
+    ? (subtype === "comment" ? "instagram_comment" : "instagram_direct")
+    : lead.source === "messenger"
+      ? "messenger"
+      : subtype === "comment"
+        ? "facebook_comment"
+        : "facebook";
 
   // Find page + token
   const { data: page } = await sb
@@ -309,10 +325,10 @@ Deno.serve(async (req) => {
   let graphUrl: string;
   let graphBody: Record<string, unknown>;
 
-  if (subtype === "comment") {
+  if (providerType === "instagram_comment" || providerType === "facebook_comment") {
     const commentId = (lastIn?.source_metadata as any)?.comment_id;
     if (!commentId) return json({ ok: false, error: "no comment_id to reply to" }, 400);
-    if (lead.source === "instagram") {
+    if (providerType === "instagram_comment") {
       graphUrl = `${GRAPH}/${commentId}/replies`;
       graphBody = { message: text };
     } else {
@@ -323,11 +339,11 @@ Deno.serve(async (req) => {
     // DM (instagram or messenger)
     const recipientId = lead.source_sender_id;
     if (!recipientId) return json({ ok: false, error: "no recipient id" }, 400);
-    if (lead.source === "instagram") {
+    if (providerType === "instagram_direct") {
       // Instagram Messaging API: POST /{ig_business_account_id}/messages
       const igId = page.ig_business_account_id;
       if (!igId) {
-        console.error("INSTAGRAM_SEND_ERROR", { reason: "missing ig_business_account_id", pageId: page.page_id });
+        console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "missing ig_business_account_id", pageId: page.page_id });
         return json({ ok: false, error: "Conta Instagram Business não vinculada a esta página" }, 400);
       }
       graphUrl = `${GRAPH}/${igId}/messages`;
@@ -345,20 +361,29 @@ Deno.serve(async (req) => {
     }
   }
 
-  const isInstagramDm = lead.source === "instagram" && subtype !== "comment";
-  if (isInstagramDm) {
-    console.log("INSTAGRAM_SEND_START", {
+  const isInstagramDirect = providerType === "instagram_direct";
+  const isInstagramComment = providerType === "instagram_comment";
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_START", {
       igId: page.ig_business_account_id,
       pageId: page.page_id,
       recipientId: lead.source_sender_id,
       textLen: text.length,
     });
   }
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_START", {
+      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+      mediaId: (lastIn?.source_metadata as any)?.media_id ?? null,
+      pageId: page.page_id,
+      textLen: text.length,
+    });
+  }
   console.log("META_SEND_URL", graphUrl);
 
-  const res = await fetch(`${graphUrl}?access_token=${encodeURIComponent(pageToken)}`, {
+  const res = await fetch(graphUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
     body: JSON.stringify(graphBody),
   });
   const raw = await res.text();
@@ -370,33 +395,57 @@ Deno.serve(async (req) => {
 
   if (!res.ok || !messageId) {
     const errMsg = parsed?.error?.message ?? raw.slice(0, 200) ?? `HTTP ${res.status}`;
-    if (isInstagramDm) {
-      console.error("INSTAGRAM_SEND_ERROR", {
+    if (isInstagramDirect) {
+      console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
         status: res.status,
         error: parsed?.error ?? null,
-        body: raw.slice(0, 500),
+        body: raw.slice(0, 1000),
+      });
+    }
+    if (isInstagramComment) {
+      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+        status: res.status,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
       });
     }
     return json({ ok: false, error: errMsg, metaError: parsed?.error ?? null, status: res.status }, 502);
   }
 
-  if (isInstagramDm) {
-    console.log("INSTAGRAM_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
+  }
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_SUCCESS", {
+      messageId,
+      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+    });
   }
 
-  await sb.from("messages").insert({
+  const sentAt = new Date().toISOString();
+  const { data: inserted, error: insertErr } = await sb.from("messages").insert({
     company_id: companyId,
     conversation_id: conversationId,
     role: "agent",
     text,
+    at: sentAt,
     external_id: String(messageId),
     source: lead.source,
     source_subtype: subtype,
-    source_metadata: { reply_to: lastIn?.source_metadata ?? null },
-  });
+    source_metadata: { provider_type: providerType, reply_to: lastIn?.source_metadata ?? null },
+  }).select("id").single();
+  if (insertErr || !inserted) {
+    const logName = isInstagramDirect
+      ? "INSTAGRAM_DIRECT_SEND_ERROR"
+      : isInstagramComment
+        ? "INSTAGRAM_COMMENT_REPLY_ERROR"
+        : "META_SEND_ERROR";
+    console.error(logName, { reason: "database_insert_failed", error: insertErr, messageId, providerType });
+    return json({ ok: false, error: "Mensagem enviada na Meta, mas falhou ao salvar no banco", dbError: insertErr }, 500);
+  }
   await sb.from("conversations")
-    .update({ last_message_at: new Date().toISOString(), awaiting_reply: false })
+    .update({ last_message_at: sentAt, awaiting_reply: false })
     .eq("id", conversationId);
 
-  return json({ ok: true, messageId });
+  return json({ ok: true, messageId, id: inserted.id, at: sentAt, provider_type: providerType });
 });
