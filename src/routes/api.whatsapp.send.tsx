@@ -195,6 +195,21 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           .update({ last_synced_at: sentAt, last_error: null })
           .eq("id", integrationId!);
 
+        // Espelha em whatsapp_messages (direction='out') somente após HTTP 200
+        const { error: waMirrorErr } = await supabaseAdmin
+          .from("whatsapp_messages")
+          .insert({
+            company_id: companyId,
+            numero: recipient,
+            mensagem: body.text,
+            direction: "out",
+            origem: "meta_cloud_api",
+            whatsapp_jid: `${recipient}@s.whatsapp.net`,
+          });
+        if (waMirrorErr) {
+          console.error("[whatsapp send] mirror whatsapp_messages error", waMirrorErr);
+        }
+
         return Response.json({
           id: inserted.id,
           externalId,
