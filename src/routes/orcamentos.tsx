@@ -1009,34 +1009,39 @@ function QuoteFormModal({
           </div>
         </div>
 
-        <div className="p-4 border-t border-border flex justify-end gap-2">
+        <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
+          {!hasClient && (
+            <span className="text-[11px] text-destructive mr-auto">
+              Selecione um cliente para enviar este orçamento.
+            </span>
+          )}
           <button
             onClick={onCancel}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={submitting}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             disabled={!canSubmit}
             onClick={submit}
-            className={cn(
-              "inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 disabled:opacity-40",
-              defaultConversationId
-                ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "bg-primary text-primary-foreground hover:opacity-90",
-            )}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
           >
-            {defaultConversationId ? (
-              <>
-                <Send className="h-3.5 w-3.5" /> Salvar e enviar na conversa
-              </>
+            {submitting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
+              <Send className="h-3.5 w-3.5" />
             ) : (
-              <>
-                <Check className="h-3.5 w-3.5" /> Salvar orçamento
-              </>
+              <Check className="h-3.5 w-3.5" />
             )}
+            {submitting
+              ? "Salvando…"
+              : defaultConversationId && defaultLeadId && defaultLeadId === leadId
+                ? "Salvar e enviar na conversa"
+                : "Salvar orçamento"}
           </button>
         </div>
+
       </div>
     </div>
   );
