@@ -693,6 +693,7 @@ Deno.serve(async (req) => {
         error: parsed?.error ?? null,
         body: raw.slice(0, 1000),
       });
+    }
     if (isMessenger) {
       console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
         endpoint: graphUrl,
