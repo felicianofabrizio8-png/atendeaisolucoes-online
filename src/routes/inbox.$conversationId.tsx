@@ -642,7 +642,11 @@ function ConversationPage() {
                 }
               }}
               placeholder={
-                closedInfo ? "Venda fechada." : "Escreva uma mensagem… (Enter para enviar)"
+                closedInfo
+                  ? "Venda fechada."
+                  : isComment
+                    ? "Resposta pública ao comentário… (Enter para enviar)"
+                    : "Escreva uma mensagem… (Enter para enviar)"
               }
               rows={2}
               className="flex-1 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
@@ -652,7 +656,7 @@ function ConversationPage() {
               disabled={!input.trim() || !!closedInfo}
               className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium"
             >
-              <Send className="h-3.5 w-3.5" /> Enviar
+              <Send className="h-3.5 w-3.5" /> {isComment ? "Responder comentário" : "Enviar"}
             </button>
           </div>
         </div>
