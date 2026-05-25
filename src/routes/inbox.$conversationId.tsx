@@ -180,11 +180,11 @@ function ConversationPage() {
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
             const subtype =
-              origin === "comment"
+              origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
                 ? "comment"
                 : origin === "messenger"
                   ? "messenger"
-                  : origin === "instagram"
+                  : origin === "instagram_direct"
                     ? "instagram_dm"
                     : "facebook_dm";
             const { data, error } = await supabase.functions.invoke("meta-send", {
@@ -198,7 +198,12 @@ function ConversationPage() {
               "Falha ao enviar mensagem";
             console.error("[chat send] Meta falhou", { error, data });
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-            const label = origin === "instagram" ? "Instagram" : origin === "messenger" ? "Messenger" : "Meta";
+            const label =
+              origin === "instagram_direct" || origin === "instagram_comment"
+                ? "Instagram"
+                : origin === "messenger"
+                  ? "Messenger"
+                  : "Meta";
             toast.error(`Falha ao enviar ${label}`, { description: errMsg });
             return;
           }
