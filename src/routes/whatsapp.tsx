@@ -751,14 +751,74 @@ function WhatsAppInbox() {
     }
     if (!text) return;
 
-    // Prioridade: telefone real > jid @s.whatsapp.net > jid @lid (tenta mesmo assim).
+    const isMetaCloud = !!metaCloud?.connected;
+    const evolutionOn = !!status?.connected;
+
+    if (isMetaCloud && !evolutionOn) {
+      if (current.isGroup) {
+        toast.error("Envio para grupos não é suportado.");
+        return;
+      }
+      if (!current.phoneReal) {
+        toast.error("Contato sem telefone real. Edite o telefone para enviar via Meta Cloud API.");
+        return;
+      }
+      console.log("CHAT_SEND_META_CLOUD_START", {
+        phone: current.phoneReal,
+        name: current.pushName,
+        textLen: text.length,
+      });
+      setSending(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          toast.error("Sessão expirada. Faça login novamente.");
+          return;
+        }
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            phone: current.phoneReal,
+            contactName: current.pushName || undefined,
+            text,
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          id?: string;
+          error?: string;
+          metaError?: { message?: string; code?: number } | null;
+        };
+        if (!res.ok) {
+          const detail = json.metaError?.message || json.error || `HTTP ${res.status}`;
+          console.error("CHAT_SEND_META_CLOUD_ERROR", { status: res.status, json });
+          toast.error(`Erro ao enviar: ${detail}`);
+          return;
+        }
+        console.log("CHAT_SEND_META_CLOUD_SUCCESS", json);
+        setDraft("");
+        toast.success("Mensagem enviada.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("CHAT_SEND_META_CLOUD_ERROR", msg);
+        toast.error(`Erro ao enviar: ${msg}`);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // Caminho Evolution (legado).
     let target = "";
     if (current.phoneReal) {
       target = current.phoneReal;
     } else if (current.jid && current.jid.endsWith("@s.whatsapp.net")) {
       target = current.jid;
     } else if (current.jid && !current.isGroup) {
-      // Inclui @lid — não bloqueia antes de tentar
       target = current.jid;
     } else {
       toast.error(
@@ -767,15 +827,6 @@ function WhatsAppInbox() {
       return;
     }
 
-    console.log("CHAT_ATUAL", {
-      key: current.key,
-      phoneReal: current.phoneReal,
-      jid: current.jid,
-      pushName: current.pushName,
-      selectedKey: selected,
-    });
-    console.log("NUMERO_ENVIO", target);
-    console.log("REMOTE_JID", current.jid);
     console.log("FRONT_SEND_TARGET", { target, jid: current.jid, name: current.pushName });
 
     setSending(true);
@@ -821,6 +872,7 @@ function WhatsAppInbox() {
       setSending(false);
     }
   }
+
 
   if (!companyId) {
     return (
