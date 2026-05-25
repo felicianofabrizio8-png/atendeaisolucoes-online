@@ -294,9 +294,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           },
         ],
       })
-      .select(
-        "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at",
-      )
+      .select(QUOTE_SELECT)
       .single();
     if (error) throw error;
     const quote = toQuote(data as DbQuote);
