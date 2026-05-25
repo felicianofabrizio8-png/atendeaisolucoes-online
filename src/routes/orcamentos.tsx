@@ -196,9 +196,14 @@ function QuoteCard({ quote }: { quote: Quote }) {
 
   const status = computeQuoteStatus(quote);
   const phone = lead?.phone?.replace(/\D/g, "") ?? "";
-  const canWhatsApp = phone.length >= 8 && phone.length <= 15;
+  const canWhatsApp = !!lead && phone.length >= 8 && phone.length <= 15;
+  const hasClient = !!lead;
 
   const openConversation = () => {
+    if (!hasClient) {
+      toast.error("Selecione um cliente para abrir a conversa.");
+      return;
+    }
     if (!targetConversationId) {
       toast.message("Sem conversa ativa", {
         description: "Envie pelo WhatsApp para criar a conversa.",
@@ -221,14 +226,30 @@ function QuoteCard({ quote }: { quote: Quote }) {
     }
   };
 
+  const channelLabel: Record<Channel, string> = {
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    facebook: "Facebook",
+  };
+  const contactLine = lead
+    ? lead.phone
+      ? `${channelLabel[lead.channel]} • ${lead.phone}`
+      : lead.handle
+        ? `${channelLabel[lead.channel]} • @${lead.handle}`
+        : channelLabel[lead.channel]
+    : "Sem cliente vinculado";
+
   return (
     <>
       <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">{quote.productName}</div>
-            <div className="text-[11px] text-muted-foreground">
-              Para {lead?.name ?? "—"} • criado há {timeAgo(quote.createdAt)}
+            <div className="text-[12px] font-medium truncate">
+              {lead?.name ?? "— Cliente não selecionado —"}
+            </div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {contactLine} • criado há {timeAgo(quote.createdAt)}
             </div>
           </div>
           <div className="text-right shrink-0">
@@ -248,11 +269,21 @@ function QuoteCard({ quote }: { quote: Quote }) {
           <StatusBadge status={status} />
         </div>
 
+        {!hasClient && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            Selecione um cliente para enviar este orçamento.
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
+              if (!hasClient) {
+                toast.error("Selecione um cliente para enviar este orçamento.");
+                return;
+              }
               if (!canWhatsApp) {
-                toast.error("Lead sem telefone válido");
+                toast.error("Cliente sem telefone válido");
                 return;
               }
               setWaOpen(true);
@@ -265,7 +296,8 @@ function QuoteCard({ quote }: { quote: Quote }) {
           </button>
           <button
             onClick={openConversation}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
+            disabled={!hasClient}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
           >
             <MessageCircle className="h-3.5 w-3.5" /> Abrir conversa
           </button>
@@ -278,10 +310,10 @@ function QuoteCard({ quote }: { quote: Quote }) {
         </div>
       </div>
 
-      {waOpen && (
+      {waOpen && lead && (
         <SendWhatsAppModal
           quote={quote}
-          leadName={lead?.name ?? "Cliente"}
+          leadName={lead.name}
           phone={phone}
           onClose={() => setWaOpen(false)}
           onSent={(conversationId) => {
@@ -300,6 +332,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
     </>
   );
 }
+
 
 const STATUS_META: Record<
   QuoteStatus,
