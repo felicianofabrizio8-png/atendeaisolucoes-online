@@ -558,16 +558,6 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (isInstagramDirect) {
-    console.log("INSTAGRAM_DIRECT_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
-  }
-  if (isInstagramComment) {
-    console.log("INSTAGRAM_COMMENT_REPLY_SUCCESS", {
-      messageId,
-      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
-    });
-  }
-
   const sentAt = new Date().toISOString();
   const { data: inserted, error: insertErr } = await sb
     .from("messages")
@@ -609,6 +599,16 @@ Deno.serve(async (req) => {
     .from("conversations")
     .update({ last_message_at: sentAt, awaiting_reply: false })
     .eq("id", conversationId);
+
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
+  }
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_SUCCESS", {
+      messageId,
+      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+    });
+  }
 
   return json({ ok: true, messageId, id: inserted.id, at: sentAt, provider_type: providerType });
 });
