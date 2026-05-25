@@ -693,6 +693,25 @@ Deno.serve(async (req) => {
         error: parsed?.error ?? null,
         body: raw.slice(0, 1000),
       });
+    if (isMessenger) {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        endpoint: graphUrl,
+        status: res.status,
+        pageId: page.page_id,
+        recipientId: lead.source_sender_id,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
+      });
+    }
+    if (isFacebookComment) {
+      console.error("FACEBOOK_COMMENT_REPLY_ERROR", {
+        endpoint: graphUrl,
+        status: res.status,
+        pageId: page.page_id,
+        commentId: fbCommentId,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
+      });
     }
     // Return HTTP 200 with the full Meta error body so supabase.functions.invoke
     // surfaces it as `data` (avoids the generic "non-2xx status code" wrapper).
