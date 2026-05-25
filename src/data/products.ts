@@ -37,7 +37,9 @@ export interface Product {
   price: number;
   promoPrice?: number;
   notes?: string;
+  images: string[];
 }
+
 
 const STORAGE_KEY = "atendeai.products.v1";
 
@@ -113,6 +115,11 @@ const seed: Product[] = [
 type Mode = "demo" | "remote";
 let mode: Mode = "demo";
 let companyId: string | null = null;
+
+export function getProductsCompanyId(): string | null {
+  return companyId;
+}
+
 let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 
 function loadFromStorage(): Product[] {
