@@ -195,6 +195,63 @@ function WhatsAppInbox() {
     };
   }, [showQr]);
 
+  // Detecta integração WhatsApp Cloud API (Meta) — considera conectada quando
+  // existe uma integração ativa com access_token gravado para o canal whatsapp.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const { data, error } = await (supabase as unknown as {
+        from: (t: string) => {
+          select: (cols: string) => {
+            eq: (
+              c: string,
+              v: string,
+            ) => {
+              eq: (
+                c: string,
+                v: boolean,
+              ) => {
+                limit: (
+                  n: number,
+                ) => Promise<{
+                  data: Array<{
+                    display_name: string;
+                    has_access_token: boolean;
+                    last_error: string | null;
+                  }> | null;
+                  error: { message: string } | null;
+                }>;
+              };
+            };
+          };
+        };
+      })
+        .from("integrations_safe")
+        .select("display_name, has_access_token, last_error")
+        .eq("channel", "whatsapp")
+        .eq("active", true)
+        .limit(5);
+      if (cancelled) return;
+      if (error || !data) {
+        setMetaCloud({ connected: false });
+        return;
+      }
+      const row = data.find((r) => r.has_access_token);
+      setMetaCloud(
+        row
+          ? { connected: true, displayName: row.display_name }
+          : { connected: false },
+      );
+    }
+    check();
+    const id = setInterval(check, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+
   // Carrega QR sob demanda quando o usuário pedir
   useEffect(() => {
     if (!showQr) return;
