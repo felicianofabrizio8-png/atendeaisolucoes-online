@@ -126,10 +126,10 @@ function matchesSource(origin: Origin, awaitingReply: boolean, filter: SourceFil
   switch (filter) {
     case "todos": return true;
     case "whatsapp": return origin === "whatsapp";
-    case "instagram": return origin === "instagram";
-    case "facebook": return origin === "facebook" || origin === "messenger";
-    case "comentarios": return origin === "comment";
-    case "directs": return origin === "messenger" || (origin === "instagram");
+    case "instagram": return origin === "instagram_direct" || origin === "instagram_comment";
+    case "facebook": return origin === "facebook" || origin === "messenger" || origin === "facebook_comment";
+    case "comentarios": return origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment";
+    case "directs": return origin === "instagram_direct" || origin === "messenger";
     case "nao-respondidos": return awaitingReply;
   }
 }
