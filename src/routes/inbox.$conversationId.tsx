@@ -123,7 +123,17 @@ function ConversationPage() {
   }
 
   const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
-  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1]);
+  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1], conversation);
+  const isComment =
+    conversation.interactionType === "comment" ||
+    origin === "instagram_comment" ||
+    origin === "facebook_comment" ||
+    origin === "comment";
+  const commentMeta = (lastIncoming?.sourceMetadata ?? {}) as {
+    comment_id?: string;
+    post_id?: string;
+    media_id?: string;
+  };
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
