@@ -749,21 +749,137 @@ function QuoteFormModal({
         )}
 
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Lead */}
-          <Field label="Cliente / Lead">
-            <select
-              value={leadId}
-              onChange={(e) => setLeadId(e.target.value)}
-              disabled={!!defaultLeadId}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-70"
-            >
-              {leads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/* Cliente — obrigatório, sem auto-seleção */}
+          <div className="md:col-span-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+              Cliente <span className="text-destructive">*</span>
+            </div>
+            <div className="inline-flex rounded-md border border-border bg-input p-0.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setClientMode("existing")}
+                className={cn(
+                  "text-xs px-3 py-1 rounded font-semibold transition",
+                  clientMode === "existing"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Cliente existente
+              </button>
+              <button
+                type="button"
+                onClick={() => setClientMode("new")}
+                className={cn(
+                  "text-xs px-3 py-1 rounded font-semibold transition",
+                  clientMode === "new"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Novo cliente
+              </button>
+            </div>
+
+            {clientMode === "existing" ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  placeholder="Buscar por nome, telefone ou @"
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {leads.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
+                    Nenhum cliente cadastrado ainda. Use a aba "Novo cliente".
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                    {filteredLeads.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                        Nenhum cliente encontrado.
+                      </div>
+                    ) : (
+                      filteredLeads.map((l) => {
+                        const checked = l.id === leadId;
+                        return (
+                          <button
+                            type="button"
+                            key={l.id}
+                            onClick={() => setLeadId(l.id)}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 hover:bg-accent",
+                              checked && "bg-primary/10",
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-semibold truncate">{l.name}</div>
+                              <div className="text-[11px] text-muted-foreground truncate">
+                                {l.channel} •{" "}
+                                {l.phone ?? (l.handle ? `@${l.handle}` : "sem contato")}
+                              </div>
+                            </div>
+                            {checked && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                {selectedLead && (
+                  <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">Selecionado:</span>{" "}
+                    <span className="font-semibold">{selectedLead.name}</span>{" "}
+                    <span className="text-muted-foreground">
+                      • {selectedLead.channel} •{" "}
+                      {selectedLead.phone ??
+                        (selectedLead.handle ? `@${selectedLead.handle}` : "sem contato")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <select
+                  value={newChannel}
+                  onChange={(e) => setNewChannel(e.target.value as Channel)}
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook</option>
+                </select>
+                <input
+                  type="tel"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="Telefone (ex: 5511999998888)"
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {newChannel !== "whatsapp" && (
+                  <input
+                    type="text"
+                    value={newHandle}
+                    onChange={(e) => setNewHandle(e.target.value)}
+                    placeholder="@usuário"
+                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                )}
+                <p className="md:col-span-2 text-[11px] text-muted-foreground">
+                  O cliente será cadastrado ao salvar o orçamento.
+                </p>
+              </div>
+            )}
+          </div>
+
 
           {/* Produto */}
           <Field label="Produto" icon={PackageIcon}>
