@@ -43,7 +43,10 @@ Deno.serve(async (req) => {
   if (!userRes?.user) return json({ ok: false, error: "invalid session" }, 401);
 
   const { data: profile } = await sb
-    .from("profiles").select("company_id").eq("id", userRes.user.id).maybeSingle();
+    .from("profiles")
+    .select("company_id")
+    .eq("id", userRes.user.id)
+    .maybeSingle();
   const companyId = profile?.company_id;
   if (!companyId) return json({ ok: false, error: "profile without company" }, 403);
 
@@ -55,8 +58,15 @@ Deno.serve(async (req) => {
     contactName?: string;
     leadId?: string;
     imageUrls?: string[];
+    subtype?: string;
+    origin?: string;
+    provider_type?: string;
   };
-  try { body = await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
+  try {
+    body = await req.json();
+  } catch {
+    return json({ ok: false, error: "invalid json" }, 400);
+  }
 
   const text = String(body.text ?? "").trim();
   if (!text) return json({ ok: false, error: "text required" }, 400);
@@ -65,10 +75,15 @@ Deno.serve(async (req) => {
     ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
     : [];
 
-
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
-    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length, images: imageUrls.length });
+    console.log("META_SEND_START", {
+      channel: "whatsapp",
+      phone: body.phone,
+      leadId: body.leadId,
+      textLen: text.length,
+      images: imageUrls.length,
+    });
 
     let leadId = body.leadId ?? null;
     let conversationId: string | null = null;
@@ -85,20 +100,27 @@ Deno.serve(async (req) => {
       if (!leadId) {
         const externalId = `phone:${phoneDigits}`;
         const { data: existing } = await sb
-          .from("leads").select("id")
-          .eq("company_id", companyId).eq("channel", "whatsapp")
+          .from("leads")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("channel", "whatsapp")
           .or(`external_id.eq.${externalId},phone.eq.${phoneDigits}`)
-          .limit(1).maybeSingle();
+          .limit(1)
+          .maybeSingle();
         if (existing?.id) {
           leadId = existing.id;
         } else {
-          const { data: newLead, error: leadErr } = await sb.from("leads").insert({
-            company_id: companyId,
-            channel: "whatsapp",
-            name: body.contactName?.trim() || `+${phoneDigits}`,
-            phone: phoneDigits,
-            external_id: externalId,
-          }).select("id").single();
+          const { data: newLead, error: leadErr } = await sb
+            .from("leads")
+            .insert({
+              company_id: companyId,
+              channel: "whatsapp",
+              name: body.contactName?.trim() || `+${phoneDigits}`,
+              phone: phoneDigits,
+              external_id: externalId,
+            })
+            .select("id")
+            .single();
           if (leadErr || !newLead) {
             console.error("META_SEND_ERROR lead create", leadErr);
             return json({ ok: false, error: "falha ao criar contato" }, 500);
@@ -108,9 +130,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: lead } = await sb.from("leads")
+    const { data: lead } = await sb
+      .from("leads")
       .select("id, phone, external_id, integration_id, company_id")
-      .eq("id", leadId!).maybeSingle();
+      .eq("id", leadId!)
+      .maybeSingle();
     if (!lead || lead.company_id !== companyId) {
       return json({ ok: false, error: "lead não encontrado" }, 404);
     }
@@ -119,15 +143,25 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "lead sem telefone válido" }, 400);
     }
 
-    const { data: existingConv } = await sb.from("conversations")
-      .select("id").eq("company_id", companyId).eq("lead_id", leadId!).eq("channel", "whatsapp")
+    const { data: existingConv } = await sb
+      .from("conversations")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("lead_id", leadId!)
+      .eq("channel", "whatsapp")
       .maybeSingle();
     if (existingConv?.id) {
       conversationId = existingConv.id;
     } else {
-      const { data: newConv, error: convErr } = await sb.from("conversations").insert({
-        company_id: companyId, lead_id: leadId!, channel: "whatsapp",
-      }).select("id").single();
+      const { data: newConv, error: convErr } = await sb
+        .from("conversations")
+        .insert({
+          company_id: companyId,
+          lead_id: leadId!,
+          channel: "whatsapp",
+        })
+        .select("id")
+        .single();
       if (convErr || !newConv) {
         console.error("META_SEND_ERROR conv create", convErr);
         return json({ ok: false, error: "falha ao criar conversa" }, 500);
@@ -135,20 +169,23 @@ Deno.serve(async (req) => {
       conversationId = newConv.id;
     }
 
-    const integrationQuery = sb.from("integrations")
+    const integrationQuery = sb
+      .from("integrations")
       .select("id, access_token, external_account_id")
-      .eq("company_id", companyId).eq("channel", "whatsapp").eq("active", true);
+      .eq("company_id", companyId)
+      .eq("channel", "whatsapp")
+      .eq("active", true);
     const { data: integration } = lead.integration_id
       ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
       : await integrationQuery.limit(1).maybeSingle();
 
-    const accessTok = integration?.access_token
-      || Deno.env.get("WHATSAPP_ACCESS_TOKEN")
-      || Deno.env.get("WHATSAPP_API_KEY")
-      || "";
-    const phoneNumberId = integration?.external_account_id
-      || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")
-      || "";
+    const accessTok =
+      integration?.access_token ||
+      Deno.env.get("WHATSAPP_ACCESS_TOKEN") ||
+      Deno.env.get("WHATSAPP_API_KEY") ||
+      "";
+    const phoneNumberId =
+      integration?.external_account_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
     if (!accessTok || !phoneNumberId) {
       return json({ ok: false, error: "WhatsApp não conectado para esta empresa" }, 400);
     }
@@ -171,11 +208,22 @@ Deno.serve(async (req) => {
         });
         const imgText = await imgRes.text();
         let imgJson: { messages?: Array<{ id: string }>; error?: { message?: string } } = {};
-        try { imgJson = JSON.parse(imgText); } catch { /* */ }
+        try {
+          imgJson = JSON.parse(imgText);
+        } catch {
+          /* */
+        }
         if (!imgRes.ok) {
           const msg = imgJson.error?.message ?? `HTTP ${imgRes.status}`;
-          console.error("META_SEND_IMAGE_ERROR", { status: imgRes.status, body: imgText.slice(0, 500), imgUrl });
-          return json({ ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null }, 502);
+          console.error("META_SEND_IMAGE_ERROR", {
+            status: imgRes.status,
+            body: imgText.slice(0, 500),
+            imgUrl,
+          });
+          return json(
+            { ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null },
+            502,
+          );
         }
         const imgExternalId = imgJson.messages?.[0]?.id ?? null;
         console.log("META_SEND_IMAGE_SUCCESS", { externalId: imgExternalId, imgUrl });
@@ -204,7 +252,6 @@ Deno.serve(async (req) => {
       }
     }
 
-
     let externalId: string | null = null;
     try {
       const apiRes = await fetch(apiUrl, {
@@ -218,15 +265,35 @@ Deno.serve(async (req) => {
         }),
       });
       const apiText = await apiRes.text();
-      let apiJson: { messages?: Array<{ id: string }>; error?: { message?: string; code?: number; type?: string } } = {};
-      try { apiJson = JSON.parse(apiText); } catch { /* */ }
+      let apiJson: {
+        messages?: Array<{ id: string }>;
+        error?: { message?: string; code?: number; type?: string };
+      } = {};
+      try {
+        apiJson = JSON.parse(apiText);
+      } catch {
+        /* */
+      }
       if (!apiRes.ok) {
         const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-        console.error("META_SEND_ERROR", { status: apiRes.status, body: apiText.slice(0, 1000), to: recipient, phoneNumberId });
+        console.error("META_SEND_ERROR", {
+          status: apiRes.status,
+          body: apiText.slice(0, 1000),
+          to: recipient,
+          phoneNumberId,
+        });
         if (integration?.id) {
           await sb.from("integrations").update({ last_error: msg }).eq("id", integration.id);
         }
-        return json({ ok: false, error: `WhatsApp API: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status }, 502);
+        return json(
+          {
+            ok: false,
+            error: `WhatsApp API: ${msg}`,
+            metaError: apiJson.error ?? null,
+            status: apiRes.status,
+          },
+          502,
+        );
       }
       externalId = apiJson.messages?.[0]?.id ?? null;
       console.log("META_SEND_SUCCESS", { externalId, to: recipient });
@@ -236,26 +303,38 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: `Falha ao enviar: ${msg}` }, 502);
     }
 
-    const { data: inserted, error: insertErr } = await sb.from("messages").insert({
-      company_id: companyId,
-      conversation_id: conversationId!,
-      role: "agent",
-      text,
-      at: sentAt,
-      external_id: externalId,
-      integration_id: integration?.id ?? null,
-    }).select("id").single();
+    const { data: inserted, error: insertErr } = await sb
+      .from("messages")
+      .insert({
+        company_id: companyId,
+        conversation_id: conversationId!,
+        role: "agent",
+        text,
+        at: sentAt,
+        external_id: externalId,
+        integration_id: integration?.id ?? null,
+      })
+      .select("id")
+      .single();
     if (insertErr) {
       console.error("META_SEND_ERROR insert msg", insertErr);
       return json({ ok: false, error: "Falha ao salvar mensagem" }, 500);
     }
 
-    await sb.from("conversations").update({
-      last_message_at: sentAt, awaiting_reply: false, unread: 0,
-    }).eq("id", conversationId!);
+    await sb
+      .from("conversations")
+      .update({
+        last_message_at: sentAt,
+        awaiting_reply: false,
+        unread: 0,
+      })
+      .eq("id", conversationId!);
 
     if (integration?.id) {
-      await sb.from("integrations").update({ last_synced_at: sentAt, last_error: null }).eq("id", integration.id);
+      await sb
+        .from("integrations")
+        .update({ last_synced_at: sentAt, last_error: null })
+        .eq("id", integration.id);
     }
 
     await sb.from("whatsapp_messages").insert({
@@ -267,7 +346,14 @@ Deno.serve(async (req) => {
       whatsapp_jid: `${recipient}@s.whatsapp.net`,
     });
 
-    return json({ ok: true, messageId: externalId, id: inserted.id, conversationId, leadId, at: sentAt });
+    return json({
+      ok: true,
+      messageId: externalId,
+      id: inserted.id,
+      conversationId,
+      leadId,
+      at: sentAt,
+    });
   }
   // ---------------- end WhatsApp branch ----------------
 
@@ -277,13 +363,17 @@ Deno.serve(async (req) => {
   // Load conversation + lead + last incoming message metadata.
   const { data: conv } = await sb
     .from("conversations")
-    .select("id, lead_id, company_id, channel")
-    .eq("id", conversationId).eq("company_id", companyId).maybeSingle();
+    .select("id, lead_id, company_id, channel, interaction_type")
+    .eq("id", conversationId)
+    .eq("company_id", companyId)
+    .maybeSingle();
   if (!conv) return json({ ok: false, error: "conversation not found" }, 404);
 
   const { data: lead } = await sb
-    .from("leads").select("id, source, source_sender_id, source_page_id")
-    .eq("id", conv.lead_id).maybeSingle();
+    .from("leads")
+    .select("id, source, source_sender_id, source_page_id")
+    .eq("id", conv.lead_id)
+    .maybeSingle();
   if (!lead?.source) return json({ ok: false, error: "lead has no social source" }, 400);
 
   const { data: lastIn } = await sb
@@ -292,9 +382,30 @@ Deno.serve(async (req) => {
     .eq("conversation_id", conversationId)
     .eq("role", "lead")
     .order("at", { ascending: false })
-    .limit(1).maybeSingle();
+    .limit(1)
+    .maybeSingle();
 
-  const subtype = (lastIn?.source_subtype as string | undefined) ?? "dm";
+  const requestedProviderType = String(body.provider_type ?? body.origin ?? "");
+  const requestedSubtype = String(body.subtype ?? "");
+  const conversationInteraction = String((conv as any).interaction_type ?? "direct_message");
+  const isRequestedComment =
+    requestedProviderType.endsWith("_comment") || requestedSubtype === "comment";
+  const subtype =
+    isRequestedComment ||
+    conversationInteraction === "comment" ||
+    lastIn?.source_subtype === "comment"
+      ? "comment"
+      : "dm";
+  const providerType =
+    lead.source === "instagram"
+      ? subtype === "comment"
+        ? "instagram_comment"
+        : "instagram_direct"
+      : lead.source === "messenger"
+        ? "messenger"
+        : subtype === "comment"
+          ? "facebook_comment"
+          : "facebook";
 
   // Find page + token
   const { data: page } = await sb
@@ -303,16 +414,34 @@ Deno.serve(async (req) => {
     .eq("company_id", companyId)
     .eq("page_id", lead.source_page_id ?? "")
     .maybeSingle();
-  if (!page) return json({ ok: false, error: "page not connected" }, 400);
+  if (!page) {
+    if (lead.source === "instagram") {
+      const logName =
+        subtype === "comment" ? "INSTAGRAM_COMMENT_REPLY_ERROR" : "INSTAGRAM_DIRECT_SEND_ERROR";
+      console.error(logName, {
+        reason: "page_not_connected",
+        sourcePageId: lead.source_page_id ?? null,
+      });
+    }
+    return json({ ok: false, error: "page not connected" }, 400);
+  }
 
   const pageToken = page.page_access_token as string;
   let graphUrl: string;
   let graphBody: Record<string, unknown>;
 
-  if (subtype === "comment") {
+  if (providerType === "instagram_comment" || providerType === "facebook_comment") {
     const commentId = (lastIn?.source_metadata as any)?.comment_id;
-    if (!commentId) return json({ ok: false, error: "no comment_id to reply to" }, 400);
-    if (lead.source === "instagram") {
+    if (!commentId) {
+      if (providerType === "instagram_comment") {
+        console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+          reason: "missing_comment_id",
+          conversationId,
+        });
+      }
+      return json({ ok: false, error: "no comment_id to reply to" }, 400);
+    }
+    if (providerType === "instagram_comment") {
       graphUrl = `${GRAPH}/${commentId}/replies`;
       graphBody = { message: text };
     } else {
@@ -322,13 +451,27 @@ Deno.serve(async (req) => {
   } else {
     // DM (instagram or messenger)
     const recipientId = lead.source_sender_id;
-    if (!recipientId) return json({ ok: false, error: "no recipient id" }, 400);
-    if (lead.source === "instagram") {
+    if (!recipientId) {
+      if (providerType === "instagram_direct") {
+        console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
+          reason: "missing_recipient_id",
+          conversationId,
+        });
+      }
+      return json({ ok: false, error: "no recipient id" }, 400);
+    }
+    if (providerType === "instagram_direct") {
       // Instagram Messaging API: POST /{ig_business_account_id}/messages
       const igId = page.ig_business_account_id;
       if (!igId) {
-        console.error("INSTAGRAM_SEND_ERROR", { reason: "missing ig_business_account_id", pageId: page.page_id });
-        return json({ ok: false, error: "Conta Instagram Business não vinculada a esta página" }, 400);
+        console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
+          reason: "missing ig_business_account_id",
+          pageId: page.page_id,
+        });
+        return json(
+          { ok: false, error: "Conta Instagram Business não vinculada a esta página" },
+          400,
+        );
       }
       graphUrl = `${GRAPH}/${igId}/messages`;
       graphBody = {
@@ -345,58 +488,127 @@ Deno.serve(async (req) => {
     }
   }
 
-  const isInstagramDm = lead.source === "instagram" && subtype !== "comment";
-  if (isInstagramDm) {
-    console.log("INSTAGRAM_SEND_START", {
+  const isInstagramDirect = providerType === "instagram_direct";
+  const isInstagramComment = providerType === "instagram_comment";
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_START", {
       igId: page.ig_business_account_id,
       pageId: page.page_id,
       recipientId: lead.source_sender_id,
       textLen: text.length,
     });
   }
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_START", {
+      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+      mediaId: (lastIn?.source_metadata as any)?.media_id ?? null,
+      pageId: page.page_id,
+      textLen: text.length,
+    });
+  }
   console.log("META_SEND_URL", graphUrl);
 
-  const res = await fetch(`${graphUrl}?access_token=${encodeURIComponent(pageToken)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(graphBody),
-  });
+  let res: Response;
+  try {
+    res = await fetch(graphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
+      body: JSON.stringify(graphBody),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (isInstagramDirect) {
+      console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "network_error", error: message });
+    }
+    if (isInstagramComment) {
+      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", { reason: "network_error", error: message });
+    }
+    return json({ ok: false, error: `Falha de rede com a Meta: ${message}` }, 502);
+  }
   const raw = await res.text();
   console.log("META_SEND_STATUS", res.status, raw.slice(0, 500));
 
   let parsed: any = null;
-  try { parsed = JSON.parse(raw); } catch { /* ignore */ }
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
   const messageId = parsed?.message_id ?? parsed?.id ?? null;
 
   if (!res.ok || !messageId) {
     const errMsg = parsed?.error?.message ?? raw.slice(0, 200) ?? `HTTP ${res.status}`;
-    if (isInstagramDm) {
-      console.error("INSTAGRAM_SEND_ERROR", {
+    if (isInstagramDirect) {
+      console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
         status: res.status,
         error: parsed?.error ?? null,
-        body: raw.slice(0, 500),
+        body: raw.slice(0, 1000),
       });
     }
-    return json({ ok: false, error: errMsg, metaError: parsed?.error ?? null, status: res.status }, 502);
+    if (isInstagramComment) {
+      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+        status: res.status,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 1000),
+      });
+    }
+    return json(
+      { ok: false, error: errMsg, metaError: parsed?.error ?? null, status: res.status },
+      502,
+    );
   }
 
-  if (isInstagramDm) {
-    console.log("INSTAGRAM_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
+  const sentAt = new Date().toISOString();
+  const { data: inserted, error: insertErr } = await sb
+    .from("messages")
+    .insert({
+      company_id: companyId,
+      conversation_id: conversationId,
+      role: "agent",
+      text,
+      at: sentAt,
+      external_id: String(messageId),
+      source: lead.source,
+      source_subtype: subtype,
+      source_metadata: { provider_type: providerType, reply_to: lastIn?.source_metadata ?? null },
+    })
+    .select("id")
+    .single();
+  if (insertErr || !inserted) {
+    const logName = isInstagramDirect
+      ? "INSTAGRAM_DIRECT_SEND_ERROR"
+      : isInstagramComment
+        ? "INSTAGRAM_COMMENT_REPLY_ERROR"
+        : "META_SEND_ERROR";
+    console.error(logName, {
+      reason: "database_insert_failed",
+      error: insertErr,
+      messageId,
+      providerType,
+    });
+    return json(
+      {
+        ok: false,
+        error: "Mensagem enviada na Meta, mas falhou ao salvar no banco",
+        dbError: insertErr,
+      },
+      500,
+    );
   }
-
-  await sb.from("messages").insert({
-    company_id: companyId,
-    conversation_id: conversationId,
-    role: "agent",
-    text,
-    external_id: String(messageId),
-    source: lead.source,
-    source_subtype: subtype,
-    source_metadata: { reply_to: lastIn?.source_metadata ?? null },
-  });
-  await sb.from("conversations")
-    .update({ last_message_at: new Date().toISOString(), awaiting_reply: false })
+  await sb
+    .from("conversations")
+    .update({ last_message_at: sentAt, awaiting_reply: false })
     .eq("id", conversationId);
 
-  return json({ ok: true, messageId });
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
+  }
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_SUCCESS", {
+      messageId,
+      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
+    });
+  }
+
+  return json({ ok: true, messageId, id: inserted.id, at: sentAt, provider_type: providerType });
 });

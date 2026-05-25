@@ -52,6 +52,64 @@ interface AISuggestion {
   suggestedReply: string;
 }
 
+type MetaSendPayload = {
+  ok?: boolean;
+  error?: string;
+  metaError?: {
+    message?: string;
+    type?: string;
+    code?: number;
+    error_subcode?: number;
+    fbtrace_id?: string;
+  } | null;
+  status?: number;
+  dbError?: unknown;
+};
+
+async function readFunctionError(
+  error: unknown,
+  data: unknown,
+): Promise<{ message: string; full: unknown }> {
+  const payload = data as MetaSendPayload | null;
+  if (payload?.metaError || payload?.error) {
+    const meta = payload.metaError;
+    const parts = [
+      meta?.message ?? payload.error,
+      meta?.code ? `code ${meta.code}` : null,
+      meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
+      meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
+    ].filter(Boolean);
+    return { message: parts.join(" • "), full: payload };
+  }
+
+  const context = error as { message?: string; context?: { response?: Response } } | null;
+  const response = context?.context?.response;
+  if (response) {
+    const raw = await response
+      .clone()
+      .text()
+      .catch(() => "");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as MetaSendPayload;
+        const meta = parsed.metaError;
+        const parts = [
+          meta?.message ?? parsed.error ?? raw,
+          meta?.code ? `code ${meta.code}` : null,
+          meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
+          meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
+        ].filter(Boolean);
+        return { message: parts.join(" • "), full: parsed };
+      } catch {
+        return { message: raw, full: raw };
+      }
+    }
+  }
+
+  const fallback = context?.message ?? "Falha ao enviar mensagem";
+  return { message: fallback, full: error };
+}
+
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
 // aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
@@ -80,6 +138,7 @@ function ConversationPage() {
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
@@ -118,13 +177,19 @@ function ConversationPage() {
     return (
       <div className="flex-1 p-8">
         <p>Conversa não encontrada.</p>
-        <Link to="/inbox" className="text-primary hover:underline">Voltar</Link>
+        <Link to="/inbox" className="text-primary hover:underline">
+          Voltar
+        </Link>
       </div>
     );
   }
 
   const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
-  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1], conversation);
+  const origin = getConversationOrigin(
+    lead,
+    lastIncoming ?? messages[messages.length - 1],
+    conversation,
+  );
   const isComment =
     conversation.interactionType === "comment" ||
     origin === "instagram_comment" ||
@@ -148,6 +213,7 @@ function ConversationPage() {
     };
     setMessages((prev) => [...prev, msg]);
     setInput("");
+    setSendError(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
     if (profile?.company_id) {
@@ -176,42 +242,60 @@ function ConversationPage() {
               /* ignore */
             }
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
             return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
+            const providerType =
+              origin === "instagram_comment"
+                ? "instagram_comment"
+                : origin === "instagram_direct"
+                  ? "instagram_direct"
+                  : origin;
             const subtype =
-              origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
+              origin === "instagram_comment" ||
+              origin === "facebook_comment" ||
+              origin === "comment"
                 ? "comment"
-                : origin === "messenger"
-                  ? "messenger"
-                  : origin === "instagram_direct"
-                    ? "instagram_dm"
-                    : "facebook_dm";
+                : "dm";
             const { data, error } = await supabase.functions.invoke("meta-send", {
-              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin },
+              body: {
+                conversationId,
+                leadId: lead.id,
+                text: trimmed,
+                subtype,
+                origin,
+                provider_type: providerType,
+              },
             });
             const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
             if (ok) return;
-            const errMsg =
-              (data as { error?: string } | null)?.error ??
-              error?.message ??
-              "Falha ao enviar mensagem";
-            console.error("[chat send] Meta falhou", { error, data });
+            const details = await readFunctionError(error, data);
+            console.error("[chat send] Meta falhou", {
+              origin,
+              providerType,
+              subtype,
+              error,
+              data,
+              full: details.full,
+            });
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setSendError(details.message);
             const label =
               origin === "instagram_direct" || origin === "instagram_comment"
                 ? "Instagram"
                 : origin === "messenger"
                   ? "Messenger"
                   : "Meta";
-            toast.error(`Falha ao enviar ${label}`, { description: errMsg });
+            toast.error(`Falha ao enviar ${label}`, { description: details.message });
             return;
           }
         }
       } catch (e) {
         console.error("[chat send] erro", e);
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        setSendError(e instanceof Error ? e.message : "Erro de rede");
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
         });
@@ -386,7 +470,9 @@ function ConversationPage() {
               <Clock className="h-3 w-3" />
               Última mensagem há {lastMessageAge}
               {conversation.slaBreached && conversation.awaitingReply && !closedInfo && (
-                <span className="text-[var(--status-urgent)] font-semibold ml-1">• SLA estourado</span>
+                <span className="text-[var(--status-urgent)] font-semibold ml-1">
+                  • SLA estourado
+                </span>
               )}
             </div>
           </div>
@@ -419,14 +505,18 @@ function ConversationPage() {
             <MessageSquare className="h-4 w-4 text-[var(--channel-instagram)] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0 text-xs">
               <div className="font-semibold text-[var(--channel-instagram)] uppercase tracking-wide">
-                Comentário em {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
+                Comentário em{" "}
+                {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
               </div>
               {lastIncoming?.text && (
-                <div className="mt-1 text-foreground/80 italic line-clamp-2">"{lastIncoming.text}"</div>
+                <div className="mt-1 text-foreground/80 italic line-clamp-2">
+                  "{lastIncoming.text}"
+                </div>
               )}
               {(commentMeta.post_id || commentMeta.media_id) && (
                 <div className="mt-1 text-muted-foreground">
-                  Post: <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
+                  Post:{" "}
+                  <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
                   {commentMeta.media_id && origin === "instagram_comment" && (
                     <>
                       {" · "}
@@ -443,7 +533,8 @@ function ConversationPage() {
                 </div>
               )}
               <div className="mt-1 text-muted-foreground">
-                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma mensagem privada.
+                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma
+                mensagem privada.
               </div>
             </div>
           </div>
@@ -536,6 +627,26 @@ function ConversationPage() {
                 className="text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
               >
                 Editar antes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {sendError && (
+          <div className="border-t border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2 text-xs text-[var(--status-urgent)]">
+            <div className="flex items-start gap-2">
+              <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0">
+                <div className="font-semibold">Falha ao enviar pela Meta</div>
+                <div className="mt-0.5 break-words font-mono text-[11px]">{sendError}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSendError(null)}
+                className="ml-auto rounded p-1 hover:bg-accent"
+                title="Fechar erro"
+              >
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -709,7 +820,9 @@ function ConversationPage() {
             <Tag className="h-3 w-3" /> Tags
           </div>
           <div className="flex flex-wrap gap-1">
-            {lead.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma</span>}
+            {lead.tags.length === 0 && (
+              <span className="text-xs text-muted-foreground">Nenhuma</span>
+            )}
             {lead.tags.map((t: string) => (
               <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
                 #{t}
@@ -916,7 +1029,8 @@ function MarkLostModal({
         </div>
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            Selecione um motivo <span className="font-semibold text-foreground">(obrigatório)</span> para entrar nos relatórios automaticamente.
+            Selecione um motivo <span className="font-semibold text-foreground">(obrigatório)</span>{" "}
+            para entrar nos relatórios automaticamente.
           </p>
           <div className="space-y-1.5">
             {reasons.map((r) => (
