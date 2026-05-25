@@ -500,15 +500,53 @@ function WhatsAppInbox() {
   async function handleSync() {
     if (syncing) return;
     setSyncing(true);
-    console.log("SYNC_CONTACTS_START");
+    const isMetaCloud = !!metaCloud?.connected;
+    console.log("SYNC_CONTACTS_START", { provider: isMetaCloud ? "meta_cloud_api" : "evolution" });
     try {
+      if (isMetaCloud) {
+        // Meta Cloud API não tem sincronização de agenda — apenas recarrega o banco.
+        const [{ data: leads }, { data: msgs }] = await Promise.all([
+          supabase
+            .from("leads")
+            .select("id, name, phone, external_id, created_at")
+            .eq("channel", "whatsapp")
+            .order("created_at", { ascending: false })
+            .limit(1000),
+          supabase
+            .from("whatsapp_messages")
+            .select("*")
+            .order("created_at", { ascending: true })
+            .limit(1000),
+        ]);
+        const leadRows = (leads ?? [])
+          .map((lead) => {
+            const phone = typeof lead.phone === "string" ? lead.phone : "";
+            const externalId = typeof lead.external_id === "string" ? lead.external_id : "";
+            const numero = phone || externalId;
+            return {
+              id: `lead:${lead.id}`,
+              company_id: companyId!,
+              numero,
+              mensagem: "",
+              direction: "in" as const,
+              created_at: "1970-01-01T00:00:00.000Z",
+              whatsapp_jid: isJid(externalId) ? externalId : null,
+              push_name: typeof lead.name === "string" ? lead.name : null,
+            };
+          })
+          .filter((r) => r.numero || r.push_name);
+        setContactRows(leadRows as WaMessage[]);
+        if (msgs) setMessages(msgs as WaMessage[]);
+        console.log("CONTACT_LIST_LOADED", { count: leadRows.length, mode: "meta_cloud_api" });
+        toast.success(`Contatos recarregados (${leadRows.length})`);
+        return;
+      }
       const res = await whatsappProvider.syncContacts();
       console.log("SYNC_CONTACTS_RESULT", res);
       if (!res.ok) {
         toast.error(`Falha ao sincronizar: ${res.error ?? "erro"}`);
         return;
       }
-      // Reaproveita o formato de serverContactRows
       const rows = (res.contacts as Array<Record<string, unknown>>)
         .map((contact, idx) => {
           const numero = typeof contact.numero === "string" ? contact.numero : "";
@@ -537,6 +575,7 @@ function WhatsAppInbox() {
       setSyncing(false);
     }
   }
+
 
   function openEditPhone() {
     if (!current) return;
