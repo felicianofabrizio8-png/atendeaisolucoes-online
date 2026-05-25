@@ -47,13 +47,177 @@ Deno.serve(async (req) => {
   const companyId = profile?.company_id;
   if (!companyId) return json({ ok: false, error: "profile without company" }, 403);
 
-  let body: { conversationId?: string; text?: string };
+  let body: {
+    conversationId?: string;
+    text?: string;
+    channel?: string;
+    phone?: string;
+    contactName?: string;
+    leadId?: string;
+  };
   try { body = await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
 
-  const conversationId = String(body.conversationId ?? "");
   const text = String(body.text ?? "").trim();
-  if (!conversationId || !text) return json({ ok: false, error: "conversationId and text required" }, 400);
+  if (!text) return json({ ok: false, error: "text required" }, 400);
   if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
+
+  // ---------------- WhatsApp Cloud API branch ----------------
+  if (body.channel === "whatsapp") {
+    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length });
+
+    let leadId = body.leadId ?? null;
+    let conversationId: string | null = null;
+
+    if (!leadId && !body.phone) {
+      return json({ ok: false, error: "phone or leadId required" }, 400);
+    }
+
+    if (body.phone) {
+      const phoneDigits = String(body.phone).replace(/\D/g, "");
+      if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+        return json({ ok: false, error: "telefone inválido" }, 400);
+      }
+      if (!leadId) {
+        const externalId = `phone:${phoneDigits}`;
+        const { data: existing } = await sb
+          .from("leads").select("id")
+          .eq("company_id", companyId).eq("channel", "whatsapp")
+          .or(`external_id.eq.${externalId},phone.eq.${phoneDigits}`)
+          .limit(1).maybeSingle();
+        if (existing?.id) {
+          leadId = existing.id;
+        } else {
+          const { data: newLead, error: leadErr } = await sb.from("leads").insert({
+            company_id: companyId,
+            channel: "whatsapp",
+            name: body.contactName?.trim() || `+${phoneDigits}`,
+            phone: phoneDigits,
+            external_id: externalId,
+          }).select("id").single();
+          if (leadErr || !newLead) {
+            console.error("META_SEND_ERROR lead create", leadErr);
+            return json({ ok: false, error: "falha ao criar contato" }, 500);
+          }
+          leadId = newLead.id;
+        }
+      }
+    }
+
+    const { data: lead } = await sb.from("leads")
+      .select("id, phone, external_id, integration_id, company_id")
+      .eq("id", leadId!).maybeSingle();
+    if (!lead || lead.company_id !== companyId) {
+      return json({ ok: false, error: "lead não encontrado" }, 404);
+    }
+    const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
+    if (recipient.length < 8 || recipient.length > 15) {
+      return json({ ok: false, error: "lead sem telefone válido" }, 400);
+    }
+
+    const { data: existingConv } = await sb.from("conversations")
+      .select("id").eq("company_id", companyId).eq("lead_id", leadId!).eq("channel", "whatsapp")
+      .maybeSingle();
+    if (existingConv?.id) {
+      conversationId = existingConv.id;
+    } else {
+      const { data: newConv, error: convErr } = await sb.from("conversations").insert({
+        company_id: companyId, lead_id: leadId!, channel: "whatsapp",
+      }).select("id").single();
+      if (convErr || !newConv) {
+        console.error("META_SEND_ERROR conv create", convErr);
+        return json({ ok: false, error: "falha ao criar conversa" }, 500);
+      }
+      conversationId = newConv.id;
+    }
+
+    const integrationQuery = sb.from("integrations")
+      .select("id, access_token, external_account_id")
+      .eq("company_id", companyId).eq("channel", "whatsapp").eq("active", true);
+    const { data: integration } = lead.integration_id
+      ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
+      : await integrationQuery.limit(1).maybeSingle();
+
+    const accessTok = integration?.access_token
+      || Deno.env.get("WHATSAPP_ACCESS_TOKEN")
+      || Deno.env.get("WHATSAPP_API_KEY")
+      || "";
+    const phoneNumberId = integration?.external_account_id
+      || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")
+      || "";
+    if (!accessTok || !phoneNumberId) {
+      return json({ ok: false, error: "WhatsApp não conectado para esta empresa" }, 400);
+    }
+
+    const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+    const sentAt = new Date().toISOString();
+    let externalId: string | null = null;
+    try {
+      const apiRes = await fetch(apiUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessTok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: recipient,
+          type: "text",
+          text: { body: text },
+        }),
+      });
+      const apiText = await apiRes.text();
+      let apiJson: { messages?: Array<{ id: string }>; error?: { message?: string; code?: number; type?: string } } = {};
+      try { apiJson = JSON.parse(apiText); } catch { /* */ }
+      if (!apiRes.ok) {
+        const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
+        console.error("META_SEND_ERROR", { status: apiRes.status, body: apiText.slice(0, 1000), to: recipient, phoneNumberId });
+        if (integration?.id) {
+          await sb.from("integrations").update({ last_error: msg }).eq("id", integration.id);
+        }
+        return json({ ok: false, error: `WhatsApp API: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status }, 502);
+      }
+      externalId = apiJson.messages?.[0]?.id ?? null;
+      console.log("META_SEND_SUCCESS", { externalId, to: recipient });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "falha de rede";
+      console.error("META_SEND_ERROR network", msg);
+      return json({ ok: false, error: `Falha ao enviar: ${msg}` }, 502);
+    }
+
+    const { data: inserted, error: insertErr } = await sb.from("messages").insert({
+      company_id: companyId,
+      conversation_id: conversationId!,
+      role: "agent",
+      text,
+      at: sentAt,
+      external_id: externalId,
+      integration_id: integration?.id ?? null,
+    }).select("id").single();
+    if (insertErr) {
+      console.error("META_SEND_ERROR insert msg", insertErr);
+      return json({ ok: false, error: "Falha ao salvar mensagem" }, 500);
+    }
+
+    await sb.from("conversations").update({
+      last_message_at: sentAt, awaiting_reply: false, unread: 0,
+    }).eq("id", conversationId!);
+
+    if (integration?.id) {
+      await sb.from("integrations").update({ last_synced_at: sentAt, last_error: null }).eq("id", integration.id);
+    }
+
+    await sb.from("whatsapp_messages").insert({
+      company_id: companyId,
+      numero: recipient,
+      mensagem: text,
+      direction: "out",
+      origem: "meta_cloud_api",
+      whatsapp_jid: `${recipient}@s.whatsapp.net`,
+    });
+
+    return json({ ok: true, messageId: externalId, id: inserted.id, conversationId, leadId, at: sentAt });
+  }
+  // ---------------- end WhatsApp branch ----------------
+
+  const conversationId = String(body.conversationId ?? "");
+  if (!conversationId) return json({ ok: false, error: "conversationId required" }, 400);
 
   // Load conversation + lead + last incoming message metadata.
   const { data: conv } = await sb
