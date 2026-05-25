@@ -55,12 +55,21 @@ interface AISuggestion {
 type MetaSendPayload = {
   ok?: boolean;
   error?: string;
-  metaError?: { message?: string; type?: string; code?: number; error_subcode?: number; fbtrace_id?: string } | null;
+  metaError?: {
+    message?: string;
+    type?: string;
+    code?: number;
+    error_subcode?: number;
+    fbtrace_id?: string;
+  } | null;
   status?: number;
   dbError?: unknown;
 };
 
-async function readFunctionError(error: unknown, data: unknown): Promise<{ message: string; full: unknown }> {
+async function readFunctionError(
+  error: unknown,
+  data: unknown,
+): Promise<{ message: string; full: unknown }> {
   const payload = data as MetaSendPayload | null;
   if (payload?.metaError || payload?.error) {
     const meta = payload.metaError;
@@ -76,7 +85,10 @@ async function readFunctionError(error: unknown, data: unknown): Promise<{ messa
   const context = error as { message?: string; context?: { response?: Response } } | null;
   const response = context?.context?.response;
   if (response) {
-    const raw = await response.clone().text().catch(() => "");
+    const raw = await response
+      .clone()
+      .text()
+      .catch(() => "");
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as MetaSendPayload;
@@ -165,13 +177,19 @@ function ConversationPage() {
     return (
       <div className="flex-1 p-8">
         <p>Conversa não encontrada.</p>
-        <Link to="/inbox" className="text-primary hover:underline">Voltar</Link>
+        <Link to="/inbox" className="text-primary hover:underline">
+          Voltar
+        </Link>
       </div>
     );
   }
 
   const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
-  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1], conversation);
+  const origin = getConversationOrigin(
+    lead,
+    lastIncoming ?? messages[messages.length - 1],
+    conversation,
+  );
   const isComment =
     conversation.interactionType === "comment" ||
     origin === "instagram_comment" ||
@@ -229,21 +247,39 @@ function ConversationPage() {
             return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
-            const providerType = origin === "instagram_comment"
-              ? "instagram_comment"
-              : origin === "instagram_direct"
-                ? "instagram_direct"
-                : origin;
-            const subtype = origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
-              ? "comment"
-              : "dm";
+            const providerType =
+              origin === "instagram_comment"
+                ? "instagram_comment"
+                : origin === "instagram_direct"
+                  ? "instagram_direct"
+                  : origin;
+            const subtype =
+              origin === "instagram_comment" ||
+              origin === "facebook_comment" ||
+              origin === "comment"
+                ? "comment"
+                : "dm";
             const { data, error } = await supabase.functions.invoke("meta-send", {
-              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin, provider_type: providerType },
+              body: {
+                conversationId,
+                leadId: lead.id,
+                text: trimmed,
+                subtype,
+                origin,
+                provider_type: providerType,
+              },
             });
             const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
             if (ok) return;
             const details = await readFunctionError(error, data);
-            console.error("[chat send] Meta falhou", { origin, providerType, subtype, error, data, full: details.full });
+            console.error("[chat send] Meta falhou", {
+              origin,
+              providerType,
+              subtype,
+              error,
+              data,
+              full: details.full,
+            });
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
             setSendError(details.message);
             const label =
@@ -434,7 +470,9 @@ function ConversationPage() {
               <Clock className="h-3 w-3" />
               Última mensagem há {lastMessageAge}
               {conversation.slaBreached && conversation.awaitingReply && !closedInfo && (
-                <span className="text-[var(--status-urgent)] font-semibold ml-1">• SLA estourado</span>
+                <span className="text-[var(--status-urgent)] font-semibold ml-1">
+                  • SLA estourado
+                </span>
               )}
             </div>
           </div>
@@ -467,14 +505,18 @@ function ConversationPage() {
             <MessageSquare className="h-4 w-4 text-[var(--channel-instagram)] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0 text-xs">
               <div className="font-semibold text-[var(--channel-instagram)] uppercase tracking-wide">
-                Comentário em {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
+                Comentário em{" "}
+                {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
               </div>
               {lastIncoming?.text && (
-                <div className="mt-1 text-foreground/80 italic line-clamp-2">"{lastIncoming.text}"</div>
+                <div className="mt-1 text-foreground/80 italic line-clamp-2">
+                  "{lastIncoming.text}"
+                </div>
               )}
               {(commentMeta.post_id || commentMeta.media_id) && (
                 <div className="mt-1 text-muted-foreground">
-                  Post: <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
+                  Post:{" "}
+                  <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
                   {commentMeta.media_id && origin === "instagram_comment" && (
                     <>
                       {" · "}
@@ -491,7 +533,8 @@ function ConversationPage() {
                 </div>
               )}
               <div className="mt-1 text-muted-foreground">
-                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma mensagem privada.
+                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma
+                mensagem privada.
               </div>
             </div>
           </div>
@@ -777,7 +820,9 @@ function ConversationPage() {
             <Tag className="h-3 w-3" /> Tags
           </div>
           <div className="flex flex-wrap gap-1">
-            {lead.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma</span>}
+            {lead.tags.length === 0 && (
+              <span className="text-xs text-muted-foreground">Nenhuma</span>
+            )}
             {lead.tags.map((t: string) => (
               <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
                 #{t}
@@ -984,7 +1029,8 @@ function MarkLostModal({
         </div>
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            Selecione um motivo <span className="font-semibold text-foreground">(obrigatório)</span> para entrar nos relatórios automaticamente.
+            Selecione um motivo <span className="font-semibold text-foreground">(obrigatório)</span>{" "}
+            para entrar nos relatórios automaticamente.
           </p>
           <div className="space-y-1.5">
             {reasons.map((r) => (
