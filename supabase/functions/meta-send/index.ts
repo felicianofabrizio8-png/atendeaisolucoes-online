@@ -508,6 +508,8 @@ Deno.serve(async (req) => {
 
   const isInstagramDirect = providerType === "instagram_direct";
   const isInstagramComment = providerType === "instagram_comment";
+  const isMessenger = providerType === "messenger" || providerType === "facebook";
+  const isFacebookComment = providerType === "facebook_comment";
   const igCommentId =
     providerType === "instagram_comment"
       ? ((lastIn?.source_metadata as any)?.comment_id ?? null)
@@ -516,6 +518,9 @@ Deno.serve(async (req) => {
     providerType === "instagram_comment"
       ? ((lastIn?.source_metadata as any)?.media_id ?? null)
       : null;
+  const fbCommentId = isFacebookComment
+    ? ((lastIn?.source_metadata as any)?.comment_id ?? null)
+    : null;
 
   if (isInstagramDirect) {
     console.log("INSTAGRAM_DIRECT_SEND_START", {
