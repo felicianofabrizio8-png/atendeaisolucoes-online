@@ -16,9 +16,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatBRL, timeAgo } from "@/data/mock";
+import { formatBRL, timeAgo, type Channel } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
-import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
+import { getLeads, getConversations, subscribeRepo, createLead } from "@/data/leadRepo";
 import {
   createQuote,
   listQuotes,
@@ -30,7 +30,9 @@ import {
   type Quote,
   type QuoteStatus,
 } from "@/data/quotes";
+import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
