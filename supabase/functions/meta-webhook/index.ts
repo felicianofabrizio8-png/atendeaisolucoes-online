@@ -233,6 +233,8 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
       console.log("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC", {
         entryId,
         configuredMetaAppId: META_APP_ID || null,
+        signingAppId: subscribedApps.length === 1 ? (subscribedApps[0] as any)?.id ?? null : null,
+        signingAppName: subscribedApps.length === 1 ? (subscribedApps[0] as any)?.name ?? null : null,
         matchedMetaPage: !!page,
         pageId,
         igBusinessAccountId,
