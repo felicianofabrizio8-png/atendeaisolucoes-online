@@ -327,17 +327,68 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
   return quote;
 }
 
-export async function markQuoteSent(id: string): Promise<void> {
+export async function markQuoteSent(
+  id: string,
+  meta?: { externalMessageId?: string; conversationId?: string },
+): Promise<void> {
+  const nowIso = new Date().toISOString();
   const q = quotes.find((x) => x.id === id);
   if (q) {
     q.sent = true;
+    q.sentAt = nowIso;
+    if (meta?.externalMessageId) q.externalMessageId = meta.externalMessageId;
+    if (meta?.conversationId) q.conversationId = meta.conversationId;
+    q.rawStatus = "enviado";
     notify();
   }
   if (mode === "remote" && companyId) {
-    const { error } = await supabase
-      .from("quotes")
-      .update({ sent: true, status: "enviado" })
-      .eq("id", id);
+    const patch: Record<string, unknown> = { sent: true, status: "enviado", sent_at: nowIso };
+    if (meta?.externalMessageId) patch.external_message_id = meta.externalMessageId;
+    if (meta?.conversationId) patch.conversation_id = meta.conversationId;
+    const { error } = await supabase.from("quotes").update(patch).eq("id", id);
     if (error) console.error("markQuoteSent", error);
   }
+}
+
+/**
+ * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
+ * Returns the new/existing conversationId so the caller can open the chat.
+ */
+export async function sendQuoteWhatsApp(args: {
+  quoteId: string;
+  phone: string;
+  contactName?: string;
+  leadId?: string;
+  text: string;
+}): Promise<{ conversationId?: string; messageId?: string }> {
+  console.log("QUOTE_SEND_WA_START", { quoteId: args.quoteId, phone: args.phone });
+  const { data, error } = await supabase.functions.invoke("meta-send", {
+    body: {
+      channel: "whatsapp",
+      phone: args.phone,
+      contactName: args.contactName,
+      leadId: args.leadId,
+      text: args.text,
+    },
+  });
+  if (error) {
+    console.error("QUOTE_SEND_WA_ERROR", error);
+    throw new Error(error.message || "Falha ao enviar pelo WhatsApp");
+  }
+  const payload = (data ?? {}) as {
+    ok?: boolean;
+    error?: string;
+    messageId?: string;
+    conversationId?: string;
+  };
+  if (!payload.ok) {
+    console.error("QUOTE_SEND_WA_ERROR", payload);
+    throw new Error(payload.error || "Falha ao enviar pelo WhatsApp");
+  }
+  await markQuoteSent(args.quoteId, {
+    externalMessageId: payload.messageId,
+    conversationId: payload.conversationId,
+  });
+  console.log("QUOTE_SEND_WA_SUCCESS", payload);
+  return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
