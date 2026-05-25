@@ -822,7 +822,7 @@ function WhatsAppInbox() {
             <UserPlus className="h-3.5 w-3.5" /> Adicionar contato manual
           </Button>
         </div>
-        {!status?.connected && (
+        {!status?.connected && !metaCloud?.connected && (
           <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
             {!showQr ? (
               <Button size="sm" variant="outline" className="w-full" onClick={() => setShowQr(true)}>
