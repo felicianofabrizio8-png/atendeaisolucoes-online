@@ -560,11 +560,49 @@ Deno.serve(async (req) => {
     });
   }
   if (isFacebookComment) {
+    // Pre-flight: validate token type + identity BEFORE attempting the reply.
+    try {
+      const meRes = await fetch(
+        `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`,
+      );
+      const meBody = await meRes.json().catch(() => ({}));
+      const tokenIsForPage = String(meBody?.id ?? "") === String(page.page_id);
+      const tokenPrefix = typeof pageToken === "string" ? pageToken.slice(0, 8) : null;
+      console.log("FACEBOOK_COMMENT_REPLY_TOKEN_CHECK", {
+        endpoint: `${GRAPH}/me`,
+        status: meRes.status,
+        me: meBody,
+        pageId: page.page_id,
+        tokenPrefix,
+        tokenIsForPage,
+        tokenType: tokenIsForPage ? "PAGE" : "USER_OR_OTHER",
+      });
+      if (!tokenIsForPage) {
+        console.error("FACEBOOK_COMMENT_REPLY_ERROR", {
+          reason: "not_a_page_token",
+          pageId: page.page_id,
+          me: meBody,
+        });
+        return json(
+          {
+            ok: false,
+            error:
+              "Token armazenado não é o Page Access Token da página. Reconecte o Facebook em Configurações → Integrações.",
+          },
+          400,
+        );
+      }
+    } catch (e) {
+      console.error("FACEBOOK_COMMENT_REPLY_TOKEN_CHECK_ERROR", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
     console.log("FACEBOOK_COMMENT_REPLY_REQUEST", {
       endpoint: graphUrl,
       method: "POST",
       pageId: page.page_id,
       commentId: fbCommentId,
+      tokenPrefix: typeof pageToken === "string" ? pageToken.slice(0, 8) : null,
       body: graphBody,
     });
   }
