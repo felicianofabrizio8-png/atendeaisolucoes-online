@@ -160,6 +160,9 @@ function WhatsAppInbox() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contactsLoadedRef = useRef(false);
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
+  const [metaCloud, setMetaCloud] = useState<{ connected: boolean; displayName?: string } | null>(
+    null,
+  );
   const [qr, setQr] = useState<WhatsAppQr | null>(null);
   const [showQr, setShowQr] = useState(false);
 
