@@ -39,9 +39,9 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         } catch {
           return Response.json({ error: "JSON inválido" }, { status: 400 });
         }
-        if ((!body.conversationId && !body.leadId) || !body.text?.trim()) {
+        if ((!body.conversationId && !body.leadId && !body.phone) || !body.text?.trim()) {
           return Response.json(
-            { error: "conversationId ou leadId e text obrigatórios" },
+            { error: "conversationId, leadId ou phone e text obrigatórios" },
             { status: 400 },
           );
         }
