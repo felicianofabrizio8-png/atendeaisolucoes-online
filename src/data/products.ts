@@ -37,7 +37,9 @@ export interface Product {
   price: number;
   promoPrice?: number;
   notes?: string;
+  images?: string[];
 }
+
 
 const STORAGE_KEY = "atendeai.products.v1";
 
@@ -113,6 +115,11 @@ const seed: Product[] = [
 type Mode = "demo" | "remote";
 let mode: Mode = "demo";
 let companyId: string | null = null;
+
+export function getProductsCompanyId(): string | null {
+  return companyId;
+}
+
 let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 
 function loadFromStorage(): Product[] {
@@ -185,10 +192,14 @@ type DbProduct = {
   price: number | string | null;
   promo_price: number | string | null;
   notes: string | null;
+  images?: unknown;
 };
 
 function toProduct(r: DbProduct): Product {
   const cat = (r.category as ProductCategory) ?? PRODUCT_CATEGORIES[0];
+  const images = Array.isArray(r.images)
+    ? (r.images.filter((x) => typeof x === "string") as string[])
+    : [];
   return {
     id: r.id,
     name: r.name,
@@ -197,8 +208,10 @@ function toProduct(r: DbProduct): Product {
     price: r.price != null ? Number(r.price) : 0,
     promoPrice: r.promo_price != null ? Number(r.promo_price) : undefined,
     notes: r.notes ?? undefined,
+    images,
   };
 }
+
 
 // ---------- modo ----------
 export function getProductsMode(): Mode {
@@ -263,7 +276,8 @@ export async function loadProductsRemote(cid: string) {
   mode = "remote";
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,category,description,price,promo_price,notes")
+    .select("id,name,category,description,price,promo_price,notes,images")
+
     .eq("company_id", cid)
     .eq("active", true)
     .order("created_at", { ascending: false });
@@ -290,9 +304,11 @@ export async function createProduct(input: Omit<Product, "id">): Promise<Product
         price: input.price,
         promo_price: input.promoPrice ?? null,
         notes: input.notes ?? null,
+        images: input.images ?? [],
       })
-      .select("id,name,category,description,price,promo_price,notes")
+      .select("id,name,category,description,price,promo_price,notes,images")
       .single();
+
     if (error) throw error;
     const product = toProduct(data as DbProduct);
     if (!_products.some((p) => p.id === product.id)) {
@@ -322,6 +338,7 @@ export async function updateProduct(
       price?: number;
       promo_price?: number | null;
       notes?: string | null;
+      images?: string[];
     } = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.category !== undefined) dbPatch.category = patch.category;
@@ -329,12 +346,14 @@ export async function updateProduct(
     if (patch.price !== undefined) dbPatch.price = patch.price;
     if (patch.promoPrice !== undefined) dbPatch.promo_price = patch.promoPrice ?? null;
     if (patch.notes !== undefined) dbPatch.notes = patch.notes ?? null;
+    if (patch.images !== undefined) dbPatch.images = patch.images ?? [];
     const { data, error } = await supabase
       .from("products")
       .update(dbPatch)
       .eq("id", id)
-      .select("id,name,category,description,price,promo_price,notes")
+      .select("id,name,category,description,price,promo_price,notes,images")
       .single();
+
     if (error) throw error;
     const updated = toProduct(data as DbProduct);
     _products = _products.map((p) => (p.id === id ? updated : p));

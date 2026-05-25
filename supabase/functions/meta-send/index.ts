@@ -54,16 +54,21 @@ Deno.serve(async (req) => {
     phone?: string;
     contactName?: string;
     leadId?: string;
+    imageUrls?: string[];
   };
   try { body = await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
 
   const text = String(body.text ?? "").trim();
   if (!text) return json({ ok: false, error: "text required" }, 400);
   if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
+  const imageUrls = Array.isArray(body.imageUrls)
+    ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
+    : [];
+
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
-    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length });
+    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length, images: imageUrls.length });
 
     let leadId = body.leadId ?? null;
     let conversationId: string | null = null;
@@ -150,6 +155,56 @@ Deno.serve(async (req) => {
 
     const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
     const sentAt = new Date().toISOString();
+
+    // Send images first (if any), then the text message
+    for (const imgUrl of imageUrls) {
+      try {
+        const imgRes = await fetch(apiUrl, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessTok}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: recipient,
+            type: "image",
+            image: { link: imgUrl },
+          }),
+        });
+        const imgText = await imgRes.text();
+        let imgJson: { messages?: Array<{ id: string }>; error?: { message?: string } } = {};
+        try { imgJson = JSON.parse(imgText); } catch { /* */ }
+        if (!imgRes.ok) {
+          const msg = imgJson.error?.message ?? `HTTP ${imgRes.status}`;
+          console.error("META_SEND_IMAGE_ERROR", { status: imgRes.status, body: imgText.slice(0, 500), imgUrl });
+          return json({ ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null }, 502);
+        }
+        const imgExternalId = imgJson.messages?.[0]?.id ?? null;
+        console.log("META_SEND_IMAGE_SUCCESS", { externalId: imgExternalId, imgUrl });
+
+        await sb.from("messages").insert({
+          company_id: companyId,
+          conversation_id: conversationId!,
+          role: "agent",
+          text: imgUrl,
+          at: new Date().toISOString(),
+          external_id: imgExternalId,
+          integration_id: integration?.id ?? null,
+        });
+        await sb.from("whatsapp_messages").insert({
+          company_id: companyId,
+          numero: recipient,
+          mensagem: imgUrl,
+          direction: "out",
+          origem: "meta_cloud_api",
+          whatsapp_jid: `${recipient}@s.whatsapp.net`,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "falha de rede";
+        console.error("META_SEND_IMAGE_ERROR network", msg);
+        return json({ ok: false, error: `Falha ao enviar imagem: ${msg}` }, 502);
+      }
+    }
+
+
     let externalId: string | null = null;
     try {
       const apiRes = await fetch(apiUrl, {

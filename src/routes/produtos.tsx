@@ -5,13 +5,30 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  getProductsCompanyId,
   PRODUCT_CATEGORIES,
   type Product,
   type ProductCategory,
 } from "@/data/products";
 import { formatBRL } from "@/data/mock";
-import { FileText, Package, Tag, Plus, Pencil, Trash2, X } from "lucide-react";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  FileText,
+  Package,
+  Tag,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Upload,
+  ImageIcon,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
+
 
 export const Route = createFileRoute("/produtos")({
   component: ProductsPage,
@@ -191,6 +208,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
   );
   const [description, setDescription] = useState(product?.description ?? "");
   const [notes, setNotes] = useState(product?.notes ?? "");
+  const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -216,6 +234,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
       promoPrice: promoNum,
       description: description.trim() || undefined,
       notes: notes.trim() || undefined,
+      images,
     };
     if (isEdit && product) {
       updateProduct(product.id, payload);
@@ -224,6 +243,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
     }
     onClose();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
@@ -331,6 +351,9 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
             />
           </div>
 
+          <ProductImagesField images={images} onChange={setImages} />
+
+
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
               {error}
@@ -390,6 +413,156 @@ function ConfirmDeleteModal({
             <Trash2 className="h-3 w-3" /> Excluir
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductImagesField({
+  images,
+  onChange,
+}: {
+  images: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const companyId = getProductsCompanyId();
+    if (!companyId) {
+      toast.error("Carregue uma empresa antes de enviar fotos.");
+      return;
+    }
+    setUploading(true);
+    const uploaded: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) {
+          toast.error(`Arquivo ignorado (não é imagem): ${file.name}`);
+          continue;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`Arquivo muito grande (>10MB): ${file.name}`);
+          continue;
+        }
+        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage
+          .from("product-images")
+          .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+        if (error) {
+          console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
+          toast.error(`Falha ao enviar ${file.name}: ${error.message}`);
+          continue;
+        }
+        const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+        uploaded.push(data.publicUrl);
+      }
+      if (uploaded.length) {
+        onChange([...images, ...uploaded]);
+        toast.success(`${uploaded.length} foto(s) adicionada(s)`);
+      }
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const remove = (idx: number) => {
+    onChange(images.filter((_, i) => i !== idx));
+  };
+
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...images];
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+        Fotos do produto
+      </label>
+      <div className="mt-1 space-y-2">
+        {images.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {images.map((url, idx) => (
+              <div
+                key={url + idx}
+                className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted"
+              >
+                <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => move(idx, -1)}
+                    disabled={idx === 0}
+                    className="p-1 rounded bg-background/90 hover:bg-background disabled:opacity-30"
+                    title="Mover para esquerda"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(idx, 1)}
+                    disabled={idx === images.length - 1}
+                    className="p-1 rounded bg-background/90 hover:bg-background disabled:opacity-30"
+                    title="Mover para direita"
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(idx)}
+                    className="p-1 rounded bg-destructive text-destructive-foreground hover:opacity-90"
+                    title="Remover"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+                {idx === 0 && (
+                  <span className="absolute top-1 left-1 text-[9px] font-semibold bg-primary text-primary-foreground rounded px-1.5 py-0.5">
+                    CAPA
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-dashed border-border bg-background px-3 py-3 hover:bg-accent disabled:opacity-60"
+        >
+          {uploading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : images.length > 0 ? (
+            <Upload className="h-3.5 w-3.5" />
+          ) : (
+            <ImageIcon className="h-3.5 w-3.5" />
+          )}
+          {uploading
+            ? "Enviando…"
+            : images.length > 0
+              ? "Adicionar mais fotos"
+              : "Enviar fotos do produto"}
+        </button>
+        <p className="text-[10px] text-muted-foreground">
+          A primeira foto será usada como capa. Até 10MB por imagem.
+        </p>
       </div>
     </div>
   );
