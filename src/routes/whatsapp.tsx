@@ -330,6 +330,7 @@ function WhatsAppInbox() {
           })
           .filter((row) => row.numero || row.push_name);
         setContactRows(leadRows as WaMessage[]);
+        console.log("CONTACT_LIST_LOADED", { count: leadRows.length, source: "leads" });
       }
 
       if (!contactsLoadedRef.current) {
@@ -500,15 +501,53 @@ function WhatsAppInbox() {
   async function handleSync() {
     if (syncing) return;
     setSyncing(true);
-    console.log("SYNC_CONTACTS_START");
+    const isMetaCloud = !!metaCloud?.connected;
+    console.log("SYNC_CONTACTS_START", { provider: isMetaCloud ? "meta_cloud_api" : "evolution" });
     try {
+      if (isMetaCloud) {
+        // Meta Cloud API não tem sincronização de agenda — apenas recarrega o banco.
+        const [{ data: leads }, { data: msgs }] = await Promise.all([
+          supabase
+            .from("leads")
+            .select("id, name, phone, external_id, created_at")
+            .eq("channel", "whatsapp")
+            .order("created_at", { ascending: false })
+            .limit(1000),
+          supabase
+            .from("whatsapp_messages")
+            .select("*")
+            .order("created_at", { ascending: true })
+            .limit(1000),
+        ]);
+        const leadRows = (leads ?? [])
+          .map((lead) => {
+            const phone = typeof lead.phone === "string" ? lead.phone : "";
+            const externalId = typeof lead.external_id === "string" ? lead.external_id : "";
+            const numero = phone || externalId;
+            return {
+              id: `lead:${lead.id}`,
+              company_id: companyId!,
+              numero,
+              mensagem: "",
+              direction: "in" as const,
+              created_at: "1970-01-01T00:00:00.000Z",
+              whatsapp_jid: isJid(externalId) ? externalId : null,
+              push_name: typeof lead.name === "string" ? lead.name : null,
+            };
+          })
+          .filter((r) => r.numero || r.push_name);
+        setContactRows(leadRows as WaMessage[]);
+        if (msgs) setMessages(msgs as WaMessage[]);
+        console.log("CONTACT_LIST_LOADED", { count: leadRows.length, mode: "meta_cloud_api" });
+        toast.success(`Contatos recarregados (${leadRows.length})`);
+        return;
+      }
       const res = await whatsappProvider.syncContacts();
       console.log("SYNC_CONTACTS_RESULT", res);
       if (!res.ok) {
         toast.error(`Falha ao sincronizar: ${res.error ?? "erro"}`);
         return;
       }
-      // Reaproveita o formato de serverContactRows
       const rows = (res.contacts as Array<Record<string, unknown>>)
         .map((contact, idx) => {
           const numero = typeof contact.numero === "string" ? contact.numero : "";
@@ -537,6 +576,7 @@ function WhatsAppInbox() {
       setSyncing(false);
     }
   }
+
 
   function openEditPhone() {
     if (!current) return;
@@ -612,28 +652,56 @@ function WhatsAppInbox() {
     setSavingAdd(true);
     try {
       const externalId = `phone:${phone}`;
-      const { data: existing } = await supabase
+      const { data: existing, error: selErr } = await supabase
         .from("leads")
         .select("id")
         .eq("company_id", companyId)
         .eq("channel", "whatsapp")
         .eq("external_id", externalId)
         .maybeSingle();
-      if (existing?.id) {
-        await supabase
-          .from("leads")
-          .update({ phone, name, ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}) })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("leads").insert({
-          company_id: companyId,
-          channel: "whatsapp",
-          name,
-          phone,
-          external_id: externalId,
-          ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
-        });
+      if (selErr) {
+        console.error("CONTACT_CREATE_ERROR_SELECT", selErr);
+        toast.error(`Falha ao verificar contato: ${selErr.message}`);
+        return;
       }
+      let leadId = existing?.id ?? null;
+      if (leadId) {
+        const { error: updErr } = await supabase
+          .from("leads")
+          .update({
+            phone,
+            name,
+            ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+          })
+          .eq("id", leadId);
+        if (updErr) {
+          console.error("CONTACT_CREATE_ERROR_UPDATE", updErr);
+          toast.error(`Falha ao salvar: ${updErr.message}`);
+          return;
+        }
+      } else {
+        const { data: inserted, error: insErr } = await supabase
+          .from("leads")
+          .insert({
+            company_id: companyId,
+            channel: "whatsapp",
+            name,
+            phone,
+            external_id: externalId,
+            ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+          })
+          .select("id")
+          .single();
+        if (insErr || !inserted) {
+          console.error("CONTACT_CREATE_ERROR_INSERT", insErr);
+          toast.error(`Falha ao adicionar: ${insErr?.message ?? "erro desconhecido"}`);
+          return;
+        }
+        leadId = inserted.id;
+      }
+      console.log("CONTACT_CREATE_SUCCESS", { leadId, phone, name, provider_type: "meta_cloud_api" });
+
+      // Injeta localmente para aparecer já na lista, sem esperar polling
       const synthetic: WaMessage = {
         id: `manual:${externalId}`,
         company_id: companyId,
@@ -645,9 +713,17 @@ function WhatsAppInbox() {
         push_name: name,
       };
       setContactRows((prev) => {
-        const filtered = prev.filter((r) => r.id !== synthetic.id);
-        return [...filtered, synthetic];
+        const filtered = prev.filter((r) => r.id !== synthetic.id && r.id !== `lead:${leadId}`);
+        return [
+          ...filtered,
+          synthetic,
+          {
+            ...synthetic,
+            id: `lead:${leadId}`,
+          },
+        ];
       });
+      console.log("CONTACT_LIST_LOADED", { added: 1, phone });
       setSelected(`p:${phone}`);
       toast.success("Contato adicionado.");
       setAddOpen(false);
@@ -655,11 +731,13 @@ function WhatsAppInbox() {
       setAddPhone("");
       setAddNote("");
     } catch (e) {
+      console.error("CONTACT_CREATE_ERROR", e);
       toast.error(`Falha ao adicionar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSavingAdd(false);
     }
   }
+
 
   async function handleSend() {
     const text = draft.trim();
@@ -674,14 +752,74 @@ function WhatsAppInbox() {
     }
     if (!text) return;
 
-    // Prioridade: telefone real > jid @s.whatsapp.net > jid @lid (tenta mesmo assim).
+    const isMetaCloud = !!metaCloud?.connected;
+    const evolutionOn = !!status?.connected;
+
+    if (isMetaCloud && !evolutionOn) {
+      if (current.isGroup) {
+        toast.error("Envio para grupos não é suportado.");
+        return;
+      }
+      if (!current.phoneReal) {
+        toast.error("Contato sem telefone real. Edite o telefone para enviar via Meta Cloud API.");
+        return;
+      }
+      console.log("CHAT_SEND_META_CLOUD_START", {
+        phone: current.phoneReal,
+        name: current.pushName,
+        textLen: text.length,
+      });
+      setSending(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          toast.error("Sessão expirada. Faça login novamente.");
+          return;
+        }
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            phone: current.phoneReal,
+            contactName: current.pushName || undefined,
+            text,
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          id?: string;
+          error?: string;
+          metaError?: { message?: string; code?: number } | null;
+        };
+        if (!res.ok) {
+          const detail = json.metaError?.message || json.error || `HTTP ${res.status}`;
+          console.error("CHAT_SEND_META_CLOUD_ERROR", { status: res.status, json });
+          toast.error(`Erro ao enviar: ${detail}`);
+          return;
+        }
+        console.log("CHAT_SEND_META_CLOUD_SUCCESS", json);
+        setDraft("");
+        toast.success("Mensagem enviada.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("CHAT_SEND_META_CLOUD_ERROR", msg);
+        toast.error(`Erro ao enviar: ${msg}`);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // Caminho Evolution (legado).
     let target = "";
     if (current.phoneReal) {
       target = current.phoneReal;
     } else if (current.jid && current.jid.endsWith("@s.whatsapp.net")) {
       target = current.jid;
     } else if (current.jid && !current.isGroup) {
-      // Inclui @lid — não bloqueia antes de tentar
       target = current.jid;
     } else {
       toast.error(
@@ -690,15 +828,6 @@ function WhatsAppInbox() {
       return;
     }
 
-    console.log("CHAT_ATUAL", {
-      key: current.key,
-      phoneReal: current.phoneReal,
-      jid: current.jid,
-      pushName: current.pushName,
-      selectedKey: selected,
-    });
-    console.log("NUMERO_ENVIO", target);
-    console.log("REMOTE_JID", current.jid);
     console.log("FRONT_SEND_TARGET", { target, jid: current.jid, name: current.pushName });
 
     setSending(true);
@@ -744,6 +873,7 @@ function WhatsAppInbox() {
       setSending(false);
     }
   }
+
 
   if (!companyId) {
     return (
@@ -971,43 +1101,56 @@ function WhatsAppInbox() {
               ref={scrollRef}
               className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 bg-background"
             >
-              {current.messages.map((m, idx) => {
-                const prev = current.messages[idx - 1];
-                const showDay = !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
-                const mine = m.direction === "out";
-                return (
-                  <div key={m.id}>
-                    {showDay && (
-                      <div className="flex justify-center my-3">
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                          {formatDay(m.created_at)}
-                        </span>
-                      </div>
-                    )}
-                    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                      <div
-                        className={cn(
-                          "max-w-[70%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
-                          mine
-                            ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-card border border-border rounded-bl-sm",
-                        )}
-                      >
-                        <div className="whitespace-pre-wrap break-words">{m.mensagem ?? ""}</div>
+              {(() => {
+                const realMessages = current.messages.filter(
+                  (m) => (m.mensagem ?? "").trim().length > 0,
+                );
+                if (realMessages.length === 0) {
+                  return (
+                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                      Nenhuma mensagem ainda
+                    </div>
+                  );
+                }
+                return realMessages.map((m, idx) => {
+                  const prev = realMessages[idx - 1];
+                  const showDay = !prev || formatDay(prev.created_at) !== formatDay(m.created_at);
+                  const mine = m.direction === "out";
+                  return (
+                    <div key={m.id}>
+                      {showDay && (
+                        <div className="flex justify-center my-3">
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                            {formatDay(m.created_at)}
+                          </span>
+                        </div>
+                      )}
+                      <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div
                           className={cn(
-                            "text-[10px] mt-0.5 text-right",
-                            mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                            "max-w-[70%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
+                            mine
+                              ? "bg-primary text-primary-foreground rounded-br-sm"
+                              : "bg-card border border-border rounded-bl-sm",
                           )}
                         >
-                          {formatTime(m.created_at)}
+                          <div className="whitespace-pre-wrap break-words">{m.mensagem ?? ""}</div>
+                          <div
+                            className={cn(
+                              "text-[10px] mt-0.5 text-right",
+                              mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                            )}
+                          >
+                            {formatTime(m.created_at)}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
+
 
             <footer className="p-3 border-t border-border bg-card shrink-0">
               <form
