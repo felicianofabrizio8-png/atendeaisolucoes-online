@@ -647,9 +647,13 @@ export type Database = {
           address: string | null
           company_id: string
           created_at: string
+          customer_name: string | null
+          customer_phone: string | null
           id: string
           lead_id: string | null
           notes: string | null
+          product: string | null
+          quote_id: string | null
           scheduled_at: string
           status: Database["public"]["Enums"]["visit_status"]
           title: string
@@ -659,9 +663,13 @@ export type Database = {
           address?: string | null
           company_id: string
           created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
           id?: string
           lead_id?: string | null
           notes?: string | null
+          product?: string | null
+          quote_id?: string | null
           scheduled_at: string
           status?: Database["public"]["Enums"]["visit_status"]
           title: string
@@ -671,9 +679,13 @@ export type Database = {
           address?: string | null
           company_id?: string
           created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
           id?: string
           lead_id?: string | null
           notes?: string | null
+          product?: string | null
+          quote_id?: string | null
           scheduled_at?: string
           status?: Database["public"]["Enums"]["visit_status"]
           title?: string
@@ -815,7 +827,12 @@ export type Database = {
         | "aceito"
         | "recusado"
         | "expirado"
-      visit_status: "agendada" | "concluida" | "cancelada" | "remarcada"
+      visit_status:
+        | "agendada"
+        | "confirmada"
+        | "concluida"
+        | "cancelada"
+        | "remarcada"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -962,7 +979,13 @@ export const Constants = {
         "recusado",
         "expirado",
       ],
-      visit_status: ["agendada", "concluida", "cancelada", "remarcada"],
+      visit_status: [
+        "agendada",
+        "confirmada",
+        "concluida",
+        "cancelada",
+        "remarcada",
+      ],
     },
   },
 } as const
