@@ -12,6 +12,8 @@ export interface Message {
   role: MessageRole;
   text: string;
   at: string; // ISO
+  sourceSubtype?: string;
+  sourceMetadata?: Record<string, unknown>;
 }
 
 export interface NextAction {
