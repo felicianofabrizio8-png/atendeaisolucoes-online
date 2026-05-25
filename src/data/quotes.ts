@@ -138,7 +138,14 @@ type DbQuote = {
   message: string | null;
   sent: boolean | null;
   created_at: string;
+  sent_at?: string | null;
+  viewed_at?: string | null;
+  external_message_id?: string | null;
+  status?: string | null;
 };
+
+const QUOTE_SELECT =
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status";
 
 function toQuote(r: DbQuote): Quote {
   return {
@@ -156,6 +163,10 @@ function toQuote(r: DbQuote): Quote {
     message: r.message ?? "",
     createdAt: r.created_at,
     sent: !!r.sent,
+    sentAt: r.sent_at ?? undefined,
+    viewedAt: r.viewed_at ?? undefined,
+    externalMessageId: r.external_message_id ?? undefined,
+    rawStatus: r.status ?? undefined,
   };
 }
 
