@@ -1779,28 +1779,73 @@ function MetaIntegrationSection() {
     }
   }, []);
 
-  // Retomar fluxo após callback OAuth: token vem via sessionStorage (fallback)
-  // ou via postMessage da popup (fluxo padrão atual).
+  // Troca o `code` do OAuth por um access_token via edge function meta-connect.
+  const exchangeCodeForToken = useCallback(
+    async (code: string) => {
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data, error } = await supabase.functions.invoke("meta-connect", {
+          body: {
+            mode: "exchange_code",
+            code,
+            redirectUri: REDIRECT_URI,
+          },
+        });
+        if (error) throw error;
+        const res = data as { ok?: boolean; access_token?: string; error?: string };
+        if (!res?.access_token) {
+          throw new Error(res?.error ?? "Resposta sem access_token");
+        }
+        await loadPagesFromToken(res.access_token);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Falha ao trocar código Meta");
+      }
+    },
+    [loadPagesFromToken],
+  );
+
+  // Retomar fluxo após callback OAuth: code vem via postMessage da popup,
+  // ou via sessionStorage no fallback (popup bloqueado / mesma janela).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const tok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
-    if (tok) {
+
+    // Fallback (sem popup): callback gravou o code em sessionStorage.
+    const pendingCode = window.sessionStorage.getItem("META_OAUTH_CODE");
+    if (pendingCode) {
+      window.sessionStorage.removeItem("META_OAUTH_CODE");
+      window.sessionStorage.removeItem("META_OAUTH_STATE_RX");
+      setConnecting(true);
+      void exchangeCodeForToken(pendingCode).finally(() => setConnecting(false));
+    }
+    // Legado: ainda suporta token salvo (caso alguma popup antiga responda assim).
+    const legacyTok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
+    if (legacyTok) {
       window.sessionStorage.removeItem("META_OAUTH_TOKEN");
-      void loadPagesFromToken(tok).catch((e) => {
+      void loadPagesFromToken(legacyTok).catch((e) => {
         setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
       });
     }
 
     const onMessage = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string; access_token?: string; error?: string } | null;
+      const data = ev.data as {
+        type?: string;
+        code?: string;
+        access_token?: string;
+        error?: string;
+      } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
-      setConnecting(false);
       if (data.error) {
+        setConnecting(false);
         setError(data.error);
         return;
       }
+      if (data.code) {
+        void exchangeCodeForToken(data.code).finally(() => setConnecting(false));
+        return;
+      }
       if (data.access_token) {
+        setConnecting(false);
         void loadPagesFromToken(data.access_token).catch((e) => {
           setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
         });
@@ -1808,7 +1853,7 @@ function MetaIntegrationSection() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [loadPagesFromToken]);
+  }, [loadPagesFromToken, exchangeCodeForToken]);
 
   const onConnect = async () => {
     setError(null);
@@ -1975,6 +2020,14 @@ function MetaIntegrationSection() {
       )}
 
       {pages.length > 0 && (
+        <p className="text-xs font-semibold mb-2">
+          Páginas conectadas{" "}
+          <span className="text-muted-foreground font-normal">
+            ({pages.length})
+          </span>
+        </p>
+      )}
+      {pages.length > 0 && (
         <ul className="space-y-2 mb-4">
           {pages.map((p) => (
             <li
@@ -2011,24 +2064,14 @@ function MetaIntegrationSection() {
         </ul>
       )}
 
-      <div className="mb-4">
-        <p className="text-xs font-semibold mb-2">
-          Páginas disponíveis{" "}
-          <span className="text-muted-foreground font-normal">
-            ({available.length} encontrada{available.length === 1 ? "" : "s"})
-          </span>
-        </p>
-        {/* Debug temporário — remover após validar render */}
-        <pre className="mb-2 max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px] text-muted-foreground">
-          {JSON.stringify(available, null, 2)}
-        </pre>
-        {available.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              Clique em <strong>Conectar Instagram / Facebook</strong> abaixo para listar suas páginas.
-            </p>
-          </div>
-        ) : (
+      {available.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold mb-2">
+            Páginas disponíveis{" "}
+            <span className="text-muted-foreground font-normal">
+              ({available.length} encontrada{available.length === 1 ? "" : "s"})
+            </span>
+          </p>
           <ul className="space-y-2">
             {available.map((p) => (
               <li
@@ -2057,8 +2100,17 @@ function MetaIntegrationSection() {
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
+
+      {pages.length === 0 && available.length === 0 && !loading && (
+        <div className="mb-4 rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
+          <p className="text-xs text-muted-foreground">
+            Nenhuma página conectada ainda. Clique em{" "}
+            <strong>Conectar Instagram / Facebook</strong> abaixo.
+          </p>
+        </div>
+      )}
 
       <button
         onClick={onConnect}
@@ -2070,7 +2122,7 @@ function MetaIntegrationSection() {
         ) : (
           <Plug className="h-3.5 w-3.5" />
         )}
-        Conectar Instagram / Facebook
+        {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
       </button>
 
       <div className="mt-3">
