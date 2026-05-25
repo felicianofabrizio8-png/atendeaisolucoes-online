@@ -766,23 +766,40 @@ function WhatsAppInbox() {
         <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <h1 className="text-base font-semibold">Conversas</h1>
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border",
-                status?.connected
-                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                  : "bg-amber-500/10 text-amber-600 border-amber-500/30",
-              )}
-              title={status?.state ?? ""}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  status?.connected ? "bg-emerald-500" : "bg-amber-500",
-                )}
-              />
-              {status?.connected ? "Conectado" : "Desconectado"}
-            </span>
+            {(() => {
+              const evolutionOn = !!status?.connected;
+              const metaOn = !!metaCloud?.connected;
+              const isConnected = evolutionOn || metaOn;
+              const label = evolutionOn
+                ? "Conectado"
+                : metaOn
+                  ? "Conectado via Meta Cloud API"
+                  : "Desconectado";
+              const tip = evolutionOn
+                ? (status?.state ?? "")
+                : metaOn
+                  ? `Meta Cloud API${metaCloud?.displayName ? ` — ${metaCloud.displayName}` : ""}`
+                  : "";
+              return (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border",
+                    isConnected
+                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                      : "bg-amber-500/10 text-amber-600 border-amber-500/30",
+                  )}
+                  title={tip}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      isConnected ? "bg-emerald-500" : "bg-amber-500",
+                    )}
+                  />
+                  {label}
+                </span>
+              );
+            })()}
             <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
           </div>
         </div>
