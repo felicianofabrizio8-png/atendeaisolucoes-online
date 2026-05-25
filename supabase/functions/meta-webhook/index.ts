@@ -473,29 +473,60 @@ Deno.serve(async (req) => {
 
         const text = m?.message?.text ?? m?.message?.attachments?.[0]?.payload?.url ?? "[mídia]";
         const mid = m?.message?.mid ?? null;
+        const tsMs = typeof m?.timestamp === "number" ? m.timestamp : Date.now();
         const source: "instagram" | "messenger" = isInstagram ? "instagram" : "messenger";
         const channel: "instagram" | "facebook" = isInstagram ? "instagram" : "facebook";
 
+        if (isInstagram) {
+          console.log("INSTAGRAM_WEBHOOK_RECEIVED", {
+            senderId,
+            recipientId,
+            igAccountId: page.ig_business_account_id,
+            mid,
+            ts: tsMs,
+            textPreview: String(text).slice(0, 80),
+          });
+        }
+
         const name = await fetchPsidName(senderId, pageToken);
 
-        const { conversationId } = await upsertLeadAndConversation(sb, {
-          companyId,
-          source,
-          senderId,
-          pageId,
-          name,
-          channel,
-        });
+        try {
+          const { conversationId, leadId } = await upsertLeadAndConversation(sb, {
+            companyId,
+            source,
+            senderId,
+            pageId,
+            name,
+            channel,
+          });
 
-        await insertMessage(sb, {
-          companyId,
-          conversationId,
-          text: String(text),
-          externalId: mid ? String(mid) : null,
-          source,
-          subtype: "dm",
-          metadata: { recipient_id: recipientId, raw: m },
-        });
+          if (isInstagram) {
+            console.log("INSTAGRAM_CONVERSATION_UPDATED", { conversationId, leadId, senderId });
+          }
+
+          await insertMessage(sb, {
+            companyId,
+            conversationId,
+            text: String(text),
+            externalId: mid ? String(mid) : null,
+            source,
+            subtype: "dm",
+            metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m },
+          });
+
+          if (isInstagram) {
+            console.log("INSTAGRAM_MESSAGE_SAVED", { conversationId, mid, senderId });
+            console.log("INSTAGRAM_REALTIME_SENT", { conversationId, companyId });
+          }
+        } catch (dbErr) {
+          console.error("INSTAGRAM_DB_ERROR", {
+            senderId,
+            igAccountId: page.ig_business_account_id,
+            error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+            metaPayload: m,
+          });
+          throw dbErr;
+        }
       } catch (e) {
         console.error("META_WEBHOOK_DM_ERROR", e instanceof Error ? e.message : String(e));
       }
