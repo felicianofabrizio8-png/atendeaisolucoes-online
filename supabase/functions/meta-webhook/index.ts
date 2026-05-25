@@ -158,6 +158,193 @@ async function insertMessage(
     .eq("id", opts.conversationId);
 }
 
+// ---------- WhatsApp Cloud API ----------
+function extractWaText(m: any): string {
+  if (m?.type === "text" && m?.text?.body) return m.text.body;
+  if (m?.type === "button" && m?.button?.text) return m.button.text;
+  if (m?.type === "interactive") {
+    const i = m.interactive;
+    if (i?.button_reply?.title) return i.button_reply.title;
+    if (i?.list_reply?.title) return i.list_reply.title;
+  }
+  if (m?.type === "image") return "[imagem]";
+  if (m?.type === "audio") return "[áudio]";
+  if (m?.type === "video") return "[vídeo]";
+  if (m?.type === "document") return "[documento]";
+  if (m?.type === "location") return "[localização]";
+  return `[${m?.type ?? "mensagem"}]`;
+}
+
+async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
+  const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+  for (const change of changes) {
+    if (change?.field !== "messages") continue;
+    const value = change.value ?? {};
+    const phoneNumberId = value?.metadata?.phone_number_id;
+    if (!phoneNumberId) {
+      console.log("META_WEBHOOK_WA_NO_PHONE_ID");
+      continue;
+    }
+
+    const { data: integration } = await sb
+      .from("integrations")
+      .select("id, company_id")
+      .eq("channel", "whatsapp")
+      .eq("external_account_id", phoneNumberId)
+      .eq("active", true)
+      .maybeSingle();
+
+    if (!integration) {
+      console.log("META_WEBHOOK_WA_INTEGRATION_NOT_FOUND", phoneNumberId);
+      continue;
+    }
+
+    const companyId = integration.company_id as string;
+    const integrationId = integration.id as string;
+    const messages = Array.isArray(value.messages) ? value.messages : [];
+    const contactsById = new Map<string, any>();
+    for (const c of value.contacts ?? []) contactsById.set(c.wa_id, c);
+
+    for (const m of messages) {
+      try {
+        const waId = String(m?.from ?? "");
+        if (!waId) continue;
+        const contact = contactsById.get(waId);
+        const leadName = contact?.profile?.name ?? waId;
+        const at = m?.timestamp
+          ? new Date(Number(m.timestamp) * 1000).toISOString()
+          : new Date().toISOString();
+        const msgText = extractWaText(m);
+
+        // 1) lead
+        let leadId: string;
+        const { data: existingLead } = await sb
+          .from("leads")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("integration_id", integrationId)
+          .eq("external_id", waId)
+          .maybeSingle();
+
+        if (existingLead?.id) {
+          leadId = existingLead.id as string;
+          await sb.from("leads").update({ name: leadName }).eq("id", leadId);
+        } else {
+          const { data: byPhone } = await sb
+            .from("leads")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("phone", waId)
+            .maybeSingle();
+          if (byPhone?.id) {
+            leadId = byPhone.id as string;
+            await sb
+              .from("leads")
+              .update({ integration_id: integrationId, external_id: waId, name: leadName })
+              .eq("id", leadId);
+          } else {
+            const { data: created, error: leadErr } = await sb
+              .from("leads")
+              .insert({
+                company_id: companyId,
+                integration_id: integrationId,
+                external_id: waId,
+                name: leadName,
+                phone: waId,
+                channel: "whatsapp",
+                status: "novo",
+                tags: [],
+              })
+              .select("id")
+              .single();
+            if (leadErr) throw leadErr;
+            leadId = created!.id as string;
+          }
+        }
+
+        // 2) conversation
+        let conversationId: string;
+        const { data: existingConv } = await sb
+          .from("conversations")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("lead_id", leadId)
+          .eq("channel", "whatsapp")
+          .maybeSingle();
+        if (existingConv?.id) {
+          conversationId = existingConv.id as string;
+        } else {
+          const { data: newConv, error: convErr } = await sb
+            .from("conversations")
+            .insert({
+              company_id: companyId,
+              lead_id: leadId,
+              channel: "whatsapp",
+              last_message_at: at,
+              unread: 1,
+              awaiting_reply: true,
+            })
+            .select("id")
+            .single();
+          if (convErr) throw convErr;
+          conversationId = newConv!.id as string;
+        }
+
+        // 3) message (idempotente)
+        const externalId = m?.id ? String(m.id) : null;
+        if (externalId) {
+          const { data: dup } = await sb
+            .from("messages")
+            .select("id")
+            .eq("integration_id", integrationId)
+            .eq("external_id", externalId)
+            .maybeSingle();
+          if (!dup?.id) {
+            await sb.from("messages").insert({
+              company_id: companyId,
+              conversation_id: conversationId,
+              role: "lead",
+              text: msgText,
+              at,
+              external_id: externalId,
+              integration_id: integrationId,
+              source: "whatsapp",
+              source_subtype: m?.type ?? "text",
+              source_metadata: { wa_id: waId, raw: m },
+            });
+          }
+        }
+
+        // 4) atualiza conversa
+        await sb
+          .from("conversations")
+          .update({ last_message_at: at, awaiting_reply: true })
+          .eq("id", conversationId);
+
+        // 5) espelha em whatsapp_messages (direction='in')
+        await sb.from("whatsapp_messages").insert({
+          company_id: companyId,
+          numero: waId,
+          mensagem: msgText,
+          direction: "in",
+          origem: "meta_cloud_api",
+          push_name: contact?.profile?.name ?? null,
+          whatsapp_jid: `${waId}@s.whatsapp.net`,
+        });
+
+        console.log("META_WEBHOOK_WA_SAVED", { waId, conversationId, externalId });
+      } catch (e) {
+        console.error("META_WEBHOOK_WA_MSG_ERROR", e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    await sb
+      .from("integrations")
+      .update({ last_synced_at: new Date().toISOString(), last_error: null })
+      .eq("id", integrationId);
+  }
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
 
@@ -213,10 +400,22 @@ Deno.serve(async (req) => {
   const object = body?.object as string | undefined;
   const entries = Array.isArray(body?.entry) ? body.entry : [];
 
+  console.log("META_WEBHOOK_INCOMING", { object, raw: raw.slice(0, 2000) });
+
   for (const entry of entries) {
     // Identify the page/account this entry belongs to.
     const entryId = String(entry?.id ?? "");
     if (!entryId) continue;
+
+    // -------- WhatsApp Cloud API --------
+    if (object === "whatsapp_business_account") {
+      try {
+        await handleWhatsAppEntry(sb, entry);
+      } catch (e) {
+        console.error("META_WEBHOOK_WA_ERROR", e instanceof Error ? e.message : String(e));
+      }
+      continue;
+    }
 
     // Locate page (and company) by page_id OR ig_business_account_id.
     const { data: page } = await sb
