@@ -81,7 +81,7 @@ function MetaCallback() {
       /* ignore */
     }
     setStatus("Voltando para Configurações…");
-    void navigate({ to: "/configuracoes", search: { meta_connected: 1 } as never });
+    void navigate({ to: "/configuracoes" });
   }, [navigate]);
 
   return (
