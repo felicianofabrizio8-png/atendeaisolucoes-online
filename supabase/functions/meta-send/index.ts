@@ -414,7 +414,13 @@ Deno.serve(async (req) => {
     .eq("company_id", companyId)
     .eq("page_id", lead.source_page_id ?? "")
     .maybeSingle();
-  if (!page) return json({ ok: false, error: "page not connected" }, 400);
+  if (!page) {
+    if (lead.source === "instagram") {
+      const logName = subtype === "comment" ? "INSTAGRAM_COMMENT_REPLY_ERROR" : "INSTAGRAM_DIRECT_SEND_ERROR";
+      console.error(logName, { reason: "page_not_connected", sourcePageId: lead.source_page_id ?? null });
+    }
+    return json({ ok: false, error: "page not connected" }, 400);
+  }
 
   const pageToken = page.page_access_token as string;
   let graphUrl: string;
@@ -422,7 +428,12 @@ Deno.serve(async (req) => {
 
   if (providerType === "instagram_comment" || providerType === "facebook_comment") {
     const commentId = (lastIn?.source_metadata as any)?.comment_id;
-    if (!commentId) return json({ ok: false, error: "no comment_id to reply to" }, 400);
+    if (!commentId) {
+      if (providerType === "instagram_comment") {
+        console.error("INSTAGRAM_COMMENT_REPLY_ERROR", { reason: "missing_comment_id", conversationId });
+      }
+      return json({ ok: false, error: "no comment_id to reply to" }, 400);
+    }
     if (providerType === "instagram_comment") {
       graphUrl = `${GRAPH}/${commentId}/replies`;
       graphBody = { message: text };
@@ -433,7 +444,12 @@ Deno.serve(async (req) => {
   } else {
     // DM (instagram or messenger)
     const recipientId = lead.source_sender_id;
-    if (!recipientId) return json({ ok: false, error: "no recipient id" }, 400);
+    if (!recipientId) {
+      if (providerType === "instagram_direct") {
+        console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "missing_recipient_id", conversationId });
+      }
+      return json({ ok: false, error: "no recipient id" }, 400);
+    }
     if (providerType === "instagram_direct") {
       // Instagram Messaging API: POST /{ig_business_account_id}/messages
       const igId = page.ig_business_account_id;
@@ -482,11 +498,23 @@ Deno.serve(async (req) => {
   }
   console.log("META_SEND_URL", graphUrl);
 
-  const res = await fetch(graphUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
-    body: JSON.stringify(graphBody),
-  });
+  let res: Response;
+  try {
+    res = await fetch(graphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
+      body: JSON.stringify(graphBody),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (isInstagramDirect) {
+      console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "network_error", error: message });
+    }
+    if (isInstagramComment) {
+      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", { reason: "network_error", error: message });
+    }
+    return json({ ok: false, error: `Falha de rede com a Meta: ${message}` }, 502);
+  }
   const raw = await res.text();
   console.log("META_SEND_STATUS", res.status, raw.slice(0, 500));
 
