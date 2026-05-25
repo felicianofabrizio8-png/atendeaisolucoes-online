@@ -204,7 +204,7 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           .from("messages")
           .insert({
             company_id: companyId,
-            conversation_id: body.conversationId,
+            conversation_id: conversationId!,
             role: "agent",
             text: body.text,
             at: sentAt,
@@ -225,7 +225,7 @@ export const Route = createFileRoute("/api/whatsapp/send")({
             awaiting_reply: false,
             unread: 0,
           })
-          .eq("id", body.conversationId);
+          .eq("id", conversationId!);
 
         await supabaseAdmin
           .from("integrations")
