@@ -650,6 +650,25 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      pageId: page.page_id,
+      commentId: fbCommentId,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+
   const messageId = parsed?.message_id ?? parsed?.id ?? null;
 
   if (!res.ok || !messageId) {
