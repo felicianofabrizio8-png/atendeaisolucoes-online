@@ -342,7 +342,13 @@ export async function markQuoteSent(
     notify();
   }
   if (mode === "remote" && companyId) {
-    const patch: Record<string, unknown> = { sent: true, status: "enviado", sent_at: nowIso };
+    const patch: {
+      sent: boolean;
+      status: "enviado";
+      sent_at: string;
+      external_message_id?: string;
+      conversation_id?: string;
+    } = { sent: true, status: "enviado", sent_at: nowIso };
     if (meta?.externalMessageId) patch.external_message_id = meta.externalMessageId;
     if (meta?.conversationId) patch.conversation_id = meta.conversationId;
     const { error } = await supabase.from("quotes").update(patch).eq("id", id);
