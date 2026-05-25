@@ -146,7 +146,7 @@ function buildSortedItems(
       const lead = getLeadById(c.leadId);
       const msgs = getMessagesFor(c.id);
       const last = msgs[msgs.length - 1];
-      const origin: Origin = lead ? getConversationOrigin(lead, last) : "whatsapp";
+      const origin: Origin = lead ? getConversationOrigin(lead, last, c) : "whatsapp";
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
       let score = 0;
