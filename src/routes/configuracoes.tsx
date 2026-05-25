@@ -2020,6 +2020,14 @@ function MetaIntegrationSection() {
       )}
 
       {pages.length > 0 && (
+        <p className="text-xs font-semibold mb-2">
+          Páginas conectadas{" "}
+          <span className="text-muted-foreground font-normal">
+            ({pages.length})
+          </span>
+        </p>
+      )}
+      {pages.length > 0 && (
         <ul className="space-y-2 mb-4">
           {pages.map((p) => (
             <li
