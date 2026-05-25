@@ -427,6 +427,12 @@ Deno.serve(async (req) => {
   }
 
   const pageToken = page.page_access_token as string;
+  // Tokens that begin with "IGAA" come from the Instagram Login flow and must
+  // call the graph.instagram.com host. Page Access Tokens (EAA...) use
+  // graph.facebook.com. Comments/DMs for IG accept either, depending on token.
+  const isIgLoginToken = typeof pageToken === "string" && pageToken.startsWith("IGAA");
+  const IG_GRAPH = "https://graph.instagram.com/v21.0";
+  const igHost = isIgLoginToken ? IG_GRAPH : GRAPH;
   let graphUrl: string;
   let graphBody: Record<string, unknown>;
 
@@ -442,7 +448,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "no comment_id to reply to" }, 400);
     }
     if (providerType === "instagram_comment") {
-      graphUrl = `${GRAPH}/${commentId}/replies`;
+      graphUrl = `${igHost}/${commentId}/replies`;
       graphBody = { message: text };
     } else {
       graphUrl = `${GRAPH}/${commentId}/comments`;
@@ -473,7 +479,8 @@ Deno.serve(async (req) => {
           400,
         );
       }
-      graphUrl = `${GRAPH}/${igId}/messages`;
+      // With IG Login token, /me/messages is the canonical endpoint.
+      graphUrl = isIgLoginToken ? `${igHost}/me/messages` : `${GRAPH}/${igId}/messages`;
       graphBody = {
         recipient: { id: recipientId },
         message: { text },
