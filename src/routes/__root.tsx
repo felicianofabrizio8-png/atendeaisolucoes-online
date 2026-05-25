@@ -86,12 +86,20 @@ function RootComponent() {
   );
 }
 
+const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/callback"];
+
 function AuthGate() {
   const { loading, user } = useAuth();
   const location = useLocation();
-  const isLoginRoute = location.pathname === "/login";
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (p) => location.pathname === p || location.pathname.startsWith(p + "/"),
+  );
   const demo =
     typeof window !== "undefined" && window.localStorage.getItem("atendeai.demo") === "1";
+
+  if (isPublicRoute) {
+    return <Outlet />;
+  }
 
   if (loading) {
     return (
@@ -101,7 +109,7 @@ function AuthGate() {
     );
   }
 
-  if (!user && !demo && !isLoginRoute) {
+  if (!user && !demo) {
     if (typeof window !== "undefined") {
       window.location.replace("/login");
     }
