@@ -290,6 +290,8 @@ export const Route = createFileRoute("/api/whatsapp/send")({
 
         return Response.json({
           id: inserted.id,
+          conversationId,
+          leadId,
           externalId,
           at: sentAt,
         });
