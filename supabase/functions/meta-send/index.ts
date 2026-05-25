@@ -549,6 +549,25 @@ Deno.serve(async (req) => {
       body: graphBody,
     });
   }
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_REQUEST", {
+      endpoint: graphUrl,
+      method: "POST",
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+      body: graphBody,
+      tokenPrefix: typeof pageToken === "string" ? pageToken.slice(0, 6) : null,
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_REQUEST", {
+      endpoint: graphUrl,
+      method: "POST",
+      pageId: page.page_id,
+      commentId: fbCommentId,
+      body: graphBody,
+    });
+  }
   console.log("META_SEND_URL", graphUrl);
 
   let res: Response;
