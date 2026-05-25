@@ -801,6 +801,7 @@ Deno.serve(async (req) => {
             pageId,
             name: senderName,
             channel: "instagram",
+            interactionType: "comment",
           });
           await insertMessage(sb, {
             companyId,
