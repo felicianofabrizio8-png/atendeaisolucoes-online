@@ -54,16 +54,21 @@ Deno.serve(async (req) => {
     phone?: string;
     contactName?: string;
     leadId?: string;
+    imageUrls?: string[];
   };
   try { body = await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
 
   const text = String(body.text ?? "").trim();
   if (!text) return json({ ok: false, error: "text required" }, 400);
   if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
+  const imageUrls = Array.isArray(body.imageUrls)
+    ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
+    : [];
+
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
-    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length });
+    console.log("META_SEND_START", { channel: "whatsapp", phone: body.phone, leadId: body.leadId, textLen: text.length, images: imageUrls.length });
 
     let leadId = body.leadId ?? null;
     let conversationId: string | null = null;
