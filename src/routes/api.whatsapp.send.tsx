@@ -73,9 +73,14 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         if (!lead) {
           return Response.json({ error: "lead não encontrado" }, { status: 404 });
         }
-        const recipient = lead.external_id ?? lead.phone;
-        if (!recipient) {
+        const rawRecipient = lead.external_id ?? lead.phone;
+        if (!rawRecipient) {
           return Response.json({ error: "lead sem telefone" }, { status: 400 });
+        }
+        // Normaliza para E.164 sem símbolos (apenas dígitos)
+        const recipient = String(rawRecipient).replace(/\D/g, "");
+        if (recipient.length < 8 || recipient.length > 15) {
+          return Response.json({ error: "telefone inválido" }, { status: 400 });
         }
 
         // Integração: usa a vinculada ao lead, senão a primeira ativa da empresa
@@ -102,6 +107,12 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
         const sentAt = new Date().toISOString();
         let externalId: string | null = null;
+        console.log("[whatsapp send] request", {
+          conversationId: body.conversationId,
+          phoneNumberId: integration.external_account_id,
+          to: recipient,
+          textLen: body.text.length,
+        });
         try {
           const apiRes = await fetch(apiUrl, {
             method: "POST",
@@ -116,21 +127,38 @@ export const Route = createFileRoute("/api/whatsapp/send")({
               text: { body: body.text },
             }),
           });
-          const apiJson = (await apiRes.json()) as {
+          const apiText = await apiRes.text();
+          let apiJson: {
             messages?: Array<{ id: string }>;
-            error?: { message?: string };
-          };
+            error?: { message?: string; code?: number; type?: string };
+          } = {};
+          try {
+            apiJson = JSON.parse(apiText);
+          } catch {
+            /* not json */
+          }
           if (!apiRes.ok) {
             const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
+            console.error("[whatsapp send] meta error", {
+              status: apiRes.status,
+              body: apiText.slice(0, 1000),
+              to: recipient,
+              phoneNumberId: integration.external_account_id,
+            });
             await supabaseAdmin
               .from("integrations")
               .update({ last_error: msg })
               .eq("id", integrationId!);
-            return Response.json({ error: `WhatsApp API: ${msg}` }, { status: 502 });
+            return Response.json(
+              { error: `WhatsApp API: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status },
+              { status: 502 },
+            );
           }
           externalId = apiJson.messages?.[0]?.id ?? null;
+          console.log("[whatsapp send] ok", { externalId, to: recipient });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
+          console.error("[whatsapp send] network error", msg);
           return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
         }
 
@@ -166,6 +194,21 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           .from("integrations")
           .update({ last_synced_at: sentAt, last_error: null })
           .eq("id", integrationId!);
+
+        // Espelha em whatsapp_messages (direction='out') somente após HTTP 200
+        const { error: waMirrorErr } = await supabaseAdmin
+          .from("whatsapp_messages")
+          .insert({
+            company_id: companyId,
+            numero: recipient,
+            mensagem: body.text,
+            direction: "out",
+            origem: "meta_cloud_api",
+            whatsapp_jid: `${recipient}@s.whatsapp.net`,
+          });
+        if (waMirrorErr) {
+          console.error("[whatsapp send] mirror whatsapp_messages error", waMirrorErr);
+        }
 
         return Response.json({
           id: inserted.id,
