@@ -42,11 +42,19 @@ function parseSecretToken(raw: string, index: number): SecretCandidate | null {
   let label = `META_APP_SECRETS[${index}]`;
   let appId: string | null = null;
   let secret = token;
+  const hexSecret = token.match(/[a-f0-9]{32}/i)?.[0];
+  if (hexSecret) {
+    secret = hexSecret;
+    const beforeSecret = token.slice(0, token.indexOf(hexSecret)).replace(/[\s:=-]+$/g, "").trim();
+    if (beforeSecret) label = beforeSecret;
+    const idMatch = token.match(/\b\d{6,}\b/);
+    if (idMatch) appId = idMatch[0];
+  }
 
   const eq = token.indexOf("=");
   const colon = token.indexOf(":");
   const separator = eq > 0 ? eq : colon > 0 ? colon : -1;
-  if (separator > 0) {
+  if (!hexSecret && separator > 0) {
     const left = token.slice(0, separator).trim();
     const right = token.slice(separator + 1).trim();
     if (right.length >= 16) {
@@ -76,12 +84,18 @@ function getAllSecretCandidates(): SecretCandidate[] {
       const parsed = JSON.parse(extra);
       if (Array.isArray(parsed)) {
         parsed.forEach((item, index) => {
+          if (typeof item === "string") {
+            const candidate = parseSecretToken(item, index);
+            if (candidate) candidates.push({ ...candidate, source: "META_APP_SECRETS_JSON" });
+            return;
+          }
           const secret = String(item?.secret ?? item?.app_secret ?? "").trim();
           if (!secret) return;
+          const normalizedSecret = secret.match(/[a-f0-9]{32}/i)?.[0] ?? secret;
           candidates.push({
             appId: item?.app_id || item?.appId ? String(item.app_id ?? item.appId) : null,
             label: String(item?.name ?? item?.label ?? item?.app_id ?? item?.appId ?? `META_APP_SECRETS[${index}]`),
-            secret,
+            secret: normalizedSecret,
             source: "META_APP_SECRETS_JSON",
           });
         });
