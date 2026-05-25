@@ -77,7 +77,8 @@ export function AppShell() {
   }, [user, profile]);
 
   // /login não usa o shell.
-  if (location.pathname === "/login") {
+  // /login e o callback OAuth Meta não usam o shell (callback roda em popup).
+  if (location.pathname === "/login" || location.pathname.startsWith("/auth/")) {
     return <Outlet />;
   }
 
