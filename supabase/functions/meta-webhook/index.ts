@@ -213,10 +213,22 @@ Deno.serve(async (req) => {
   const object = body?.object as string | undefined;
   const entries = Array.isArray(body?.entry) ? body.entry : [];
 
+  console.log("META_WEBHOOK_INCOMING", { object, raw: raw.slice(0, 2000) });
+
   for (const entry of entries) {
     // Identify the page/account this entry belongs to.
     const entryId = String(entry?.id ?? "");
     if (!entryId) continue;
+
+    // -------- WhatsApp Cloud API --------
+    if (object === "whatsapp_business_account") {
+      try {
+        await handleWhatsAppEntry(sb, entry);
+      } catch (e) {
+        console.error("META_WEBHOOK_WA_ERROR", e instanceof Error ? e.message : String(e));
+      }
+      continue;
+    }
 
     // Locate page (and company) by page_id OR ig_business_account_id.
     const { data: page } = await sb
