@@ -5,13 +5,30 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  getProductsCompanyId,
   PRODUCT_CATEGORIES,
   type Product,
   type ProductCategory,
 } from "@/data/products";
 import { formatBRL } from "@/data/mock";
-import { FileText, Package, Tag, Plus, Pencil, Trash2, X } from "lucide-react";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  FileText,
+  Package,
+  Tag,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Upload,
+  ImageIcon,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
+
 
 export const Route = createFileRoute("/produtos")({
   component: ProductsPage,
@@ -191,6 +208,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
   );
   const [description, setDescription] = useState(product?.description ?? "");
   const [notes, setNotes] = useState(product?.notes ?? "");
+  const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -216,6 +234,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
       promoPrice: promoNum,
       description: description.trim() || undefined,
       notes: notes.trim() || undefined,
+      images,
     };
     if (isEdit && product) {
       updateProduct(product.id, payload);
@@ -224,6 +243,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
     }
     onClose();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
