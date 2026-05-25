@@ -752,95 +752,31 @@ function WhatsAppInbox() {
     }
     if (!text) return;
 
-    const isMetaCloud = !!metaCloud?.connected;
-    const evolutionOn = !!status?.connected;
-
-    if (isMetaCloud && !evolutionOn) {
-      if (current.isGroup) {
-        toast.error("Envio para grupos não é suportado.");
-        return;
-      }
-      if (!current.phoneReal) {
-        toast.error("Contato sem telefone real. Edite o telefone para enviar via Meta Cloud API.");
-        return;
-      }
-      console.log("CHAT_SEND_META_CLOUD_START", {
-        phone: current.phoneReal,
-        name: current.pushName,
-        textLen: text.length,
-      });
-      setSending(true);
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token;
-        if (!token) {
-          toast.error("Sessão expirada. Faça login novamente.");
-          return;
-        }
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            phone: current.phoneReal,
-            contactName: current.pushName || undefined,
-            text,
-          }),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          id?: string;
-          error?: string;
-          metaError?: { message?: string; code?: number } | null;
-        };
-        if (!res.ok) {
-          const detail = json.metaError?.message || json.error || `HTTP ${res.status}`;
-          console.error("CHAT_SEND_META_CLOUD_ERROR", { status: res.status, json });
-          toast.error(`Erro ao enviar: ${detail}`);
-          return;
-        }
-        console.log("CHAT_SEND_META_CLOUD_SUCCESS", json);
-        setDraft("");
-        toast.success("Mensagem enviada.");
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error("CHAT_SEND_META_CLOUD_ERROR", msg);
-        toast.error(`Erro ao enviar: ${msg}`);
-      } finally {
-        setSending(false);
-      }
+    if (current.isGroup) {
+      toast.error("Envio para grupos não é suportado.");
+      return;
+    }
+    if (!current.phoneReal) {
+      toast.error("Contato sem telefone real. Edite o telefone para enviar via Meta Cloud API.");
       return;
     }
 
-    // Caminho Evolution (legado).
-    let target = "";
-    if (current.phoneReal) {
-      target = current.phoneReal;
-    } else if (current.jid && current.jid.endsWith("@s.whatsapp.net")) {
-      target = current.jid;
-    } else if (current.jid && !current.isGroup) {
-      target = current.jid;
-    } else {
-      toast.error(
-        current.isGroup ? "Envio para grupos não é suportado." : "Conversa sem destino válido.",
-      );
-      return;
-    }
-
-    console.log("FRONT_SEND_TARGET", { target, jid: current.jid, name: current.pushName });
+    console.log("META_SEND_START", {
+      phone: current.phoneReal,
+      name: current.pushName,
+      textLen: text.length,
+    });
 
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+      const { data, error } = await supabase.functions.invoke("meta-send", {
         body: {
-          number: target,
-          message: text,
-          whatsapp_jid: current.jid || undefined,
+          channel: "whatsapp",
+          phone: current.phoneReal,
           contactName: current.pushName || undefined,
+          text,
         },
       });
-      console.log("SEND_SERVER_RESPONSE", { data, error });
 
       if (error) {
         let detail = error.message;
@@ -848,26 +784,40 @@ function WhatsAppInbox() {
           const ctx = (error as unknown as { context?: { response?: Response } }).context;
           if (ctx?.response) {
             const body = await ctx.response.clone().text();
-            if (body) detail = body;
+            if (body) {
+              try {
+                const parsed = JSON.parse(body) as { error?: string; metaError?: { message?: string } };
+                detail = parsed.metaError?.message || parsed.error || body;
+              } catch {
+                detail = body;
+              }
+            }
           }
         } catch {
           /* noop */
         }
-        console.error("BAILEYS_SEND_ERROR", detail);
+        console.error("META_SEND_ERROR", detail);
         toast.error(`Erro ao enviar: ${detail}`);
         return;
       }
+
       if (!data?.ok) {
-        const detail = data?.error || "send failed";
-        console.error("BAILEYS_SEND_ERROR", detail);
+        const detail = (data as { metaError?: { message?: string }; error?: string })?.metaError?.message
+          || (data as { error?: string })?.error
+          || "send failed";
+        console.error("META_SEND_ERROR", data);
         toast.error(`Erro ao enviar: ${detail}`);
         return;
       }
-      console.log("BAILEYS_SEND_SUCCESS", data);
+
+      console.log("META_SEND_SUCCESS", data);
       setDraft("");
+      toast.success("Mensagem enviada.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("BAILEYS_SEND_ERROR", msg);
+      console.error("META_SEND_ERROR", msg);
+      toast.error(`Erro ao enviar: ${msg}`);
+
       toast.error(`Erro ao enviar: ${msg}`);
     } finally {
       setSending(false);
