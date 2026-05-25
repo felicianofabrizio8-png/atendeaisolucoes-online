@@ -412,6 +412,42 @@ function ConversationPage() {
           </div>
         )}
 
+        {/* Comment-origin context banner */}
+        {isComment && (
+          <div className="border-b border-[var(--channel-instagram)]/40 bg-[var(--channel-instagram)]/10 px-4 py-2.5 flex items-start gap-2">
+            <MessageSquare className="h-4 w-4 text-[var(--channel-instagram)] mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0 text-xs">
+              <div className="font-semibold text-[var(--channel-instagram)] uppercase tracking-wide">
+                Comentário em {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
+              </div>
+              {lastIncoming?.text && (
+                <div className="mt-1 text-foreground/80 italic line-clamp-2">"{lastIncoming.text}"</div>
+              )}
+              {(commentMeta.post_id || commentMeta.media_id) && (
+                <div className="mt-1 text-muted-foreground">
+                  Post: <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
+                  {commentMeta.media_id && origin === "instagram_comment" && (
+                    <>
+                      {" · "}
+                      <a
+                        href={`https://www.instagram.com/p/${commentMeta.media_id}/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-foreground"
+                      >
+                        abrir
+                      </a>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="mt-1 text-muted-foreground">
+                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma mensagem privada.
+              </div>
+            </div>
+          </div>
+        )}
+
         {closedInfo && (
           <div className="border-b border-[var(--status-won)]/40 bg-[var(--status-won)]/10 px-4 py-2.5 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-[var(--status-won)]" />
