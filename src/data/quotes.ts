@@ -366,8 +366,13 @@ export async function sendQuoteWhatsApp(args: {
   contactName?: string;
   leadId?: string;
   text: string;
+  imageUrls?: string[];
 }): Promise<{ conversationId?: string; messageId?: string }> {
-  console.log("QUOTE_SEND_WA_START", { quoteId: args.quoteId, phone: args.phone });
+  console.log("QUOTE_SEND_WA_START", {
+    quoteId: args.quoteId,
+    phone: args.phone,
+    images: args.imageUrls?.length ?? 0,
+  });
   const { data, error } = await supabase.functions.invoke("meta-send", {
     body: {
       channel: "whatsapp",
@@ -375,6 +380,7 @@ export async function sendQuoteWhatsApp(args: {
       contactName: args.contactName,
       leadId: args.leadId,
       text: args.text,
+      imageUrls: args.imageUrls,
     },
   });
   if (error) {
@@ -398,3 +404,4 @@ export async function sendQuoteWhatsApp(args: {
   console.log("QUOTE_SEND_WA_SUCCESS", payload);
   return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
+
