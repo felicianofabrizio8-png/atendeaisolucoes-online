@@ -13,6 +13,7 @@ import { Route as WhatsappRouteImport } from './routes/whatsapp'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
+import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
@@ -51,6 +52,11 @@ const RelatoriosRoute = RelatoriosRouteImport.update({
 const ProdutosRoute = ProdutosRouteImport.update({
   id: '/produtos',
   path: '/produtos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadeRoute = PrivacidadeRouteImport.update({
+  id: '/privacidade',
+  path: '/privacidade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrcamentosRoute = OrcamentosRouteImport.update({
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -182,6 +189,7 @@ export interface FileRoutesByTo {
   '/configuracoes': typeof ConfiguracoesRoute
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -208,6 +216,7 @@ export interface FileRoutesById {
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -235,6 +244,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/login'
     | '/orcamentos'
+    | '/privacidade'
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/login'
     | '/orcamentos'
+    | '/privacidade'
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/login'
     | '/orcamentos'
+    | '/privacidade'
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
@@ -310,6 +322,7 @@ export interface RootRouteChildren {
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
   OrcamentosRoute: typeof OrcamentosRoute
+  PrivacidadeRoute: typeof PrivacidadeRoute
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -355,6 +368,13 @@ declare module '@tanstack/react-router' {
       path: '/produtos'
       fullPath: '/produtos'
       preLoaderRoute: typeof ProdutosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidade': {
+      id: '/privacidade'
+      path: '/privacidade'
+      fullPath: '/privacidade'
+      preLoaderRoute: typeof PrivacidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orcamentos': {
@@ -512,6 +532,7 @@ const rootRouteChildren: RootRouteChildren = {
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
   OrcamentosRoute: OrcamentosRoute,
+  PrivacidadeRoute: PrivacidadeRoute,
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
