@@ -490,9 +490,19 @@ Deno.serve(async (req) => {
 
   const isInstagramDirect = providerType === "instagram_direct";
   const isInstagramComment = providerType === "instagram_comment";
+  const igCommentId =
+    providerType === "instagram_comment"
+      ? ((lastIn?.source_metadata as any)?.comment_id ?? null)
+      : null;
+  const igMediaId =
+    providerType === "instagram_comment"
+      ? ((lastIn?.source_metadata as any)?.media_id ?? null)
+      : null;
+
   if (isInstagramDirect) {
     console.log("INSTAGRAM_DIRECT_SEND_START", {
-      igId: page.ig_business_account_id,
+      endpoint: graphUrl,
+      igBusinessAccountId: page.ig_business_account_id,
       pageId: page.page_id,
       recipientId: lead.source_sender_id,
       textLen: text.length,
@@ -500,10 +510,20 @@ Deno.serve(async (req) => {
   }
   if (isInstagramComment) {
     console.log("INSTAGRAM_COMMENT_REPLY_START", {
-      commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
-      mediaId: (lastIn?.source_metadata as any)?.media_id ?? null,
+      endpoint: graphUrl,
+      commentId: igCommentId,
+      mediaId: igMediaId,
       pageId: page.page_id,
+      igBusinessAccountId: page.ig_business_account_id,
       textLen: text.length,
+    });
+    console.log("INSTAGRAM_COMMENT_REPLY_REQUEST", {
+      endpoint: graphUrl,
+      method: "POST",
+      commentId: igCommentId,
+      mediaId: igMediaId,
+      igBusinessAccountId: page.ig_business_account_id,
+      body: graphBody,
     });
   }
   console.log("META_SEND_URL", graphUrl);
@@ -518,12 +538,28 @@ Deno.serve(async (req) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (isInstagramDirect) {
-      console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "network_error", error: message });
+      console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        error: message,
+      });
     }
     if (isInstagramComment) {
-      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", { reason: "network_error", error: message });
+      console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+        reason: "network_error",
+        endpoint: graphUrl,
+        commentId: igCommentId,
+        igBusinessAccountId: page.ig_business_account_id,
+        error: message,
+      });
     }
-    return json({ ok: false, error: `Falha de rede com a Meta: ${message}` }, 502);
+    // Return 200 so supabase.functions.invoke surfaces the body as `data`
+    return json({
+      ok: false,
+      error: `Falha de rede com a Meta: ${message}`,
+      networkError: true,
+      endpoint: graphUrl,
+    });
   }
   const raw = await res.text();
   console.log("META_SEND_STATUS", res.status, raw.slice(0, 500));
@@ -534,28 +570,65 @@ Deno.serve(async (req) => {
   } catch {
     /* ignore */
   }
+
+  if (isInstagramComment) {
+    console.log("INSTAGRAM_COMMENT_REPLY_META_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      commentId: igCommentId,
+      mediaId: igMediaId,
+      igBusinessAccountId: page.ig_business_account_id,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+  if (isInstagramDirect) {
+    console.log("INSTAGRAM_DIRECT_SEND_META_RESPONSE", {
+      endpoint: graphUrl,
+      status: res.status,
+      igBusinessAccountId: page.ig_business_account_id,
+      recipientId: lead.source_sender_id,
+      body: parsed ?? raw.slice(0, 1000),
+    });
+  }
+
   const messageId = parsed?.message_id ?? parsed?.id ?? null;
 
   if (!res.ok || !messageId) {
     const errMsg = parsed?.error?.message ?? raw.slice(0, 200) ?? `HTTP ${res.status}`;
     if (isInstagramDirect) {
       console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
+        endpoint: graphUrl,
         status: res.status,
+        igBusinessAccountId: page.ig_business_account_id,
+        recipientId: lead.source_sender_id,
         error: parsed?.error ?? null,
         body: raw.slice(0, 1000),
       });
     }
     if (isInstagramComment) {
       console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+        endpoint: graphUrl,
         status: res.status,
+        commentId: igCommentId,
+        mediaId: igMediaId,
+        igBusinessAccountId: page.ig_business_account_id,
         error: parsed?.error ?? null,
         body: raw.slice(0, 1000),
       });
     }
-    return json(
-      { ok: false, error: errMsg, metaError: parsed?.error ?? null, status: res.status },
-      502,
-    );
+    // Return HTTP 200 with the full Meta error body so supabase.functions.invoke
+    // surfaces it as `data` (avoids the generic "non-2xx status code" wrapper).
+    return json({
+      ok: false,
+      error: errMsg,
+      metaError: parsed?.error ?? null,
+      metaResponse: parsed ?? raw.slice(0, 1000),
+      status: res.status,
+      endpoint: graphUrl,
+      providerType,
+      commentId: igCommentId,
+      igBusinessAccountId: page.ig_business_account_id,
+    });
   }
 
   const sentAt = new Date().toISOString();
