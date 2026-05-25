@@ -11,6 +11,8 @@ import { activePrice, getProduct, type Product } from "./products";
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
+export type QuoteStatus = "pendente" | "enviado" | "visualizado" | "aprovado" | "vencido";
+
 export interface Quote {
   id: string;
   leadId: string;
@@ -26,6 +28,19 @@ export interface Quote {
   message: string;
   createdAt: string;
   sent: boolean;
+  sentAt?: string;
+  viewedAt?: string;
+  externalMessageId?: string;
+  rawStatus?: string;
+}
+
+export function computeQuoteStatus(q: Quote): QuoteStatus {
+  if (q.rawStatus === "aceito") return "aprovado";
+  const today = new Date().toISOString().slice(0, 10);
+  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent)) return "vencido";
+  if (q.viewedAt || q.rawStatus === "visualizado") return "visualizado";
+  if (q.sent) return "enviado";
+  return "pendente";
 }
 
 // ---------- estado ----------
