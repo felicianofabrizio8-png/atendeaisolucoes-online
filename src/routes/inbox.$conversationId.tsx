@@ -180,18 +180,26 @@ function ConversationPage() {
             const { data, error } = await supabase.functions.invoke("meta-send", {
               body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin },
             });
-            if (!error && data) return;
+            const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
+            if (ok) return;
+            const errMsg =
+              (data as { error?: string } | null)?.error ??
+              error?.message ??
+              "Falha ao enviar mensagem";
+            console.error("[chat send] Meta falhou", { error, data });
+            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            const label = origin === "instagram" ? "Instagram" : origin === "messenger" ? "Messenger" : "Meta";
+            toast.error(`Falha ao enviar ${label}`, { description: errMsg });
+            return;
           }
         }
       } catch (e) {
         console.error("[chat send] erro", e);
-        if (isWhatsApp) {
-          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-          toast.error("Falha ao enviar WhatsApp", {
-            description: e instanceof Error ? e.message : "Erro de rede",
-          });
-          return;
-        }
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        toast.error("Falha ao enviar mensagem", {
+          description: e instanceof Error ? e.message : "Erro de rede",
+        });
+        return;
       }
     }
 
