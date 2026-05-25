@@ -609,7 +609,37 @@ function QuoteFormModal({
   onCreated,
 }: QuoteFormModalProps) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
-  const [leadId, setLeadId] = useState(defaultLeadId ?? leads[0]?.id ?? "");
+  const { profile } = useAuth();
+  const companyId = profile?.company_id;
+
+  // Cliente — NUNCA pré-seleciona automaticamente (a menos que venha via deep link).
+  const [clientMode, setClientMode] = useState<"existing" | "new">(
+    defaultLeadId ? "existing" : "existing",
+  );
+  const [leadId, setLeadId] = useState<string>(defaultLeadId ?? "");
+  const [clientSearch, setClientSearch] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newChannel, setNewChannel] = useState<Channel>("whatsapp");
+  const [newPhone, setNewPhone] = useState("");
+  const [newHandle, setNewHandle] = useState("");
+  const [creatingClient, setCreatingClient] = useState(false);
+
+  const selectedLead = leadId ? leads.find((l) => l.id === leadId) : undefined;
+
+  const filteredLeads = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase();
+    const sorted = [...leads].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted.slice(0, 50);
+    return sorted
+      .filter(
+        (l) =>
+          l.name.toLowerCase().includes(q) ||
+          (l.phone ?? "").toLowerCase().includes(q) ||
+          (l.handle ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [leads, clientSearch]);
+
   const [productId, setProductId] = useState(
     defaultProductId && getProduct(defaultProductId) ? defaultProductId : (products[0]?.id ?? ""),
   );
@@ -619,6 +649,7 @@ function QuoteFormModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
   const [installments, setInstallments] = useState(1);
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
+  const [submitting, setSubmitting] = useState(false);
 
   const product = getProduct(productId);
   const unitPrice = product ? activePrice(product) : 0;
@@ -637,21 +668,55 @@ function QuoteFormModal({
     });
   }, [product, finalValue, installments, paymentMethod, validUntil, discount]);
 
-  const canSubmit = !!product && !!leadId && finalValue > 0 && installments >= 1;
+  const newClientValid =
+    clientMode === "new" &&
+    newName.trim().length >= 2 &&
+    (newChannel === "whatsapp"
+      ? newPhone.replace(/\D/g, "").length >= 8
+      : newHandle.trim().length >= 2 || newPhone.replace(/\D/g, "").length >= 8);
+
+  const hasClient = clientMode === "existing" ? !!leadId : newClientValid;
+  const canSubmit = !!product && hasClient && finalValue > 0 && installments >= 1 && !submitting;
 
   const submit = async () => {
-    if (!canSubmit) return;
-    const q = await createQuote({
-      leadId,
-      conversationId: defaultConversationId,
-      productId,
-      discount,
-      paymentMethod,
-      installments,
-      validUntil,
-    });
-    onCreated(q);
+    if (!canSubmit || !product) return;
+    setSubmitting(true);
+    try {
+      let finalLeadId = leadId;
+      if (clientMode === "new") {
+        const created = await createLead(
+          {
+            name: newName.trim(),
+            channel: newChannel,
+            phone: newPhone.trim() ? newPhone.trim() : undefined,
+            handle: newHandle.trim() ? newHandle.trim() : undefined,
+          },
+          companyId,
+        );
+        finalLeadId = created.id;
+        toast.success(`Cliente "${created.name}" criado`);
+      }
+      const q = await createQuote({
+        leadId: finalLeadId,
+        // Só vincula conversa quando o cliente do deep link é o mesmo escolhido.
+        conversationId:
+          defaultConversationId && defaultLeadId === finalLeadId
+            ? defaultConversationId
+            : undefined,
+        productId,
+        discount,
+        paymentMethod,
+        installments,
+        validUntil,
+      });
+      onCreated(q);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao criar orçamento");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
 
   return (
     <div
