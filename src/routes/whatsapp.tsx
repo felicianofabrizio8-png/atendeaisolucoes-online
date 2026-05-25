@@ -160,6 +160,9 @@ function WhatsAppInbox() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contactsLoadedRef = useRef(false);
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
+  const [metaCloud, setMetaCloud] = useState<{ connected: boolean; displayName?: string } | null>(
+    null,
+  );
   const [qr, setQr] = useState<WhatsAppQr | null>(null);
   const [showQr, setShowQr] = useState(false);
 
@@ -191,6 +194,63 @@ function WhatsAppInbox() {
       clearInterval(id);
     };
   }, [showQr]);
+
+  // Detecta integração WhatsApp Cloud API (Meta) — considera conectada quando
+  // existe uma integração ativa com access_token gravado para o canal whatsapp.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const { data, error } = await (supabase as unknown as {
+        from: (t: string) => {
+          select: (cols: string) => {
+            eq: (
+              c: string,
+              v: string,
+            ) => {
+              eq: (
+                c: string,
+                v: boolean,
+              ) => {
+                limit: (
+                  n: number,
+                ) => Promise<{
+                  data: Array<{
+                    display_name: string;
+                    has_access_token: boolean;
+                    last_error: string | null;
+                  }> | null;
+                  error: { message: string } | null;
+                }>;
+              };
+            };
+          };
+        };
+      })
+        .from("integrations_safe")
+        .select("display_name, has_access_token, last_error")
+        .eq("channel", "whatsapp")
+        .eq("active", true)
+        .limit(5);
+      if (cancelled) return;
+      if (error || !data) {
+        setMetaCloud({ connected: false });
+        return;
+      }
+      const row = data.find((r) => r.has_access_token);
+      setMetaCloud(
+        row
+          ? { connected: true, displayName: row.display_name }
+          : { connected: false },
+      );
+    }
+    check();
+    const id = setInterval(check, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
 
   // Carrega QR sob demanda quando o usuário pedir
   useEffect(() => {
@@ -706,23 +766,40 @@ function WhatsAppInbox() {
         <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <h1 className="text-base font-semibold">Conversas</h1>
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border",
-                status?.connected
-                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                  : "bg-amber-500/10 text-amber-600 border-amber-500/30",
-              )}
-              title={status?.state ?? ""}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  status?.connected ? "bg-emerald-500" : "bg-amber-500",
-                )}
-              />
-              {status?.connected ? "Conectado" : "Desconectado"}
-            </span>
+            {(() => {
+              const evolutionOn = !!status?.connected;
+              const metaOn = !!metaCloud?.connected;
+              const isConnected = evolutionOn || metaOn;
+              const label = evolutionOn
+                ? "Conectado"
+                : metaOn
+                  ? "Conectado via Meta Cloud API"
+                  : "Desconectado";
+              const tip = evolutionOn
+                ? (status?.state ?? "")
+                : metaOn
+                  ? `Meta Cloud API${metaCloud?.displayName ? ` — ${metaCloud.displayName}` : ""}`
+                  : "";
+              return (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border",
+                    isConnected
+                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                      : "bg-amber-500/10 text-amber-600 border-amber-500/30",
+                  )}
+                  title={tip}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      isConnected ? "bg-emerald-500" : "bg-amber-500",
+                    )}
+                  />
+                  {label}
+                </span>
+              );
+            })()}
             <span className="text-[11px] text-muted-foreground">{conversations.length}</span>
           </div>
         </div>
@@ -745,7 +822,7 @@ function WhatsAppInbox() {
             <UserPlus className="h-3.5 w-3.5" /> Adicionar contato manual
           </Button>
         </div>
-        {!status?.connected && (
+        {!status?.connected && !metaCloud?.connected && (
           <div className="p-3 border-b border-border bg-amber-500/5 shrink-0">
             {!showQr ? (
               <Button size="sm" variant="outline" className="w-full" onClick={() => setShowQr(true)}>
