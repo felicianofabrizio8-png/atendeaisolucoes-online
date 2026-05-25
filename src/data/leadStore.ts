@@ -74,3 +74,9 @@ export function appendMessage(message: Message) {
   }
   notify();
 }
+
+export function addLead(lead: Lead) {
+  leads.push(lead);
+  notify();
+}
+
