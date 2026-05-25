@@ -546,6 +546,7 @@ export type Database = {
           conversation_id: string | null
           created_at: string
           discount: number
+          external_message_id: string | null
           final_value: number
           id: string
           installments: number
@@ -557,17 +558,20 @@ export type Database = {
           product_id: string | null
           product_name: string | null
           sent: boolean
+          sent_at: string | null
           status: Database["public"]["Enums"]["quote_status"]
           total: number
           unit_price: number
           updated_at: string
           valid_until: string | null
+          viewed_at: string | null
         }
         Insert: {
           company_id: string
           conversation_id?: string | null
           created_at?: string
           discount?: number
+          external_message_id?: string | null
           final_value?: number
           id?: string
           installments?: number
@@ -579,17 +583,20 @@ export type Database = {
           product_id?: string | null
           product_name?: string | null
           sent?: boolean
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           total?: number
           unit_price?: number
           updated_at?: string
           valid_until?: string | null
+          viewed_at?: string | null
         }
         Update: {
           company_id?: string
           conversation_id?: string | null
           created_at?: string
           discount?: number
+          external_message_id?: string | null
           final_value?: number
           id?: string
           installments?: number
@@ -601,11 +608,13 @@ export type Database = {
           product_id?: string | null
           product_name?: string | null
           sent?: boolean
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           total?: number
           unit_price?: number
           updated_at?: string
           valid_until?: string | null
+          viewed_at?: string | null
         }
         Relationships: [
           {
@@ -790,7 +799,13 @@ export type Database = {
         | "fechado"
         | "perdido"
       message_role: "lead" | "agent" | "system"
-      quote_status: "rascunho" | "enviado" | "aceito" | "recusado" | "expirado"
+      quote_status:
+        | "rascunho"
+        | "enviado"
+        | "visualizado"
+        | "aceito"
+        | "recusado"
+        | "expirado"
       visit_status: "agendada" | "concluida" | "cancelada" | "remarcada"
     }
     CompositeTypes: {
@@ -930,7 +945,14 @@ export const Constants = {
         "perdido",
       ],
       message_role: ["lead", "agent", "system"],
-      quote_status: ["rascunho", "enviado", "aceito", "recusado", "expirado"],
+      quote_status: [
+        "rascunho",
+        "enviado",
+        "visualizado",
+        "aceito",
+        "recusado",
+        "expirado",
+      ],
       visit_status: ["agendada", "concluida", "cancelada", "remarcada"],
     },
   },
