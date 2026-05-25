@@ -37,7 +37,7 @@ export interface Product {
   price: number;
   promoPrice?: number;
   notes?: string;
-  images: string[];
+  images?: string[];
 }
 
 
