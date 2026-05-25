@@ -577,6 +577,10 @@ Deno.serve(async (req) => {
 
   const sig = req.headers.get("x-hub-signature-256");
   const sigResult = await verifySignature(rawBodyBytes, sig);
+  const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
   if (!sigResult.ok) {
     console.log("META_WEBHOOK_BAD_SIGNATURE", {
       sigReceivedPrefix: sig?.slice(7, 19) ?? null,
@@ -587,6 +591,9 @@ Deno.serve(async (req) => {
       candidates: sigResult.candidates,
       skipping: META_SKIP_SIG,
     });
+    if (origin.object === "instagram") {
+      await logInstagramAppDiagnostics(sb, origin.entryIds);
+    }
     if (!META_SKIP_SIG) return text("invalid signature", 401);
   } else {
     console.log("META_WEBHOOK_SIG_OK", {
@@ -598,11 +605,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  if (origin.object === "instagram" && (!sigResult.ok || sigResult.ok)) {
+  if (origin.object === "instagram") {
     await logInstagramAppDiagnostics(sb, origin.entryIds);
   }
 
