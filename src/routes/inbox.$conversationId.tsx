@@ -224,6 +224,7 @@ function ConversationPage() {
               /* ignore */
             }
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
             return;
           } else {
@@ -583,6 +584,26 @@ function ConversationPage() {
                 className="text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
               >
                 Editar antes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {sendError && (
+          <div className="border-t border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2 text-xs text-[var(--status-urgent)]">
+            <div className="flex items-start gap-2">
+              <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0">
+                <div className="font-semibold">Falha ao enviar pela Meta</div>
+                <div className="mt-0.5 break-words font-mono text-[11px]">{sendError}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSendError(null)}
+                className="ml-auto rounded p-1 hover:bg-accent"
+                title="Fechar erro"
+              >
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
