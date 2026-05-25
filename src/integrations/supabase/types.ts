@@ -417,6 +417,7 @@ export type Database = {
           created_at: string
           id: string
           ig_business_account_id: string | null
+          ig_user_access_token: string | null
           ig_username: string | null
           integration_id: string | null
           last_error: string | null
@@ -432,6 +433,7 @@ export type Database = {
           created_at?: string
           id?: string
           ig_business_account_id?: string | null
+          ig_user_access_token?: string | null
           ig_username?: string | null
           integration_id?: string | null
           last_error?: string | null
@@ -447,6 +449,7 @@ export type Database = {
           created_at?: string
           id?: string
           ig_business_account_id?: string | null
+          ig_user_access_token?: string | null
           ig_username?: string | null
           integration_id?: string | null
           last_error?: string | null
