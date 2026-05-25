@@ -9,6 +9,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+const META_APP_SECRETS_EXTRA = Deno.env.get("META_APP_SECRETS") ?? ""; // comma-separated fallback secrets
+const META_SKIP_SIG = Deno.env.get("META_SKIP_SIG") === "1"; // emergency bypass
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -17,24 +19,42 @@ function text(body: string, status = 200) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain" } });
 }
 
-async function verifySignature(rawBody: string, signature: string | null): Promise<boolean> {
-  if (!signature || !signature.startsWith("sha256=")) return false;
-  const provided = signature.slice(7);
+function getAllSecrets(): string[] {
+  const list = [META_APP_SECRET, ...META_APP_SECRETS_EXTRA.split(",")]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return Array.from(new Set(list));
+}
+
+async function hmacHex(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(META_APP_SECRET),
+    new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const expected = Array.from(new Uint8Array(sig))
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  if (provided.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+}
+
+async function verifySignature(rawBody: string, signature: string | null): Promise<{ ok: boolean; expectedPreview: string; secretsTried: number }> {
+  const secrets = getAllSecrets();
+  if (!signature || !signature.startsWith("sha256=")) return { ok: false, expectedPreview: "", secretsTried: secrets.length };
+  const provided = signature.slice(7);
+  let firstExpected = "";
+  for (const s of secrets) {
+    const expected = await hmacHex(s, rawBody);
+    if (!firstExpected) firstExpected = expected;
+    if (provided.length === expected.length) {
+      let diff = 0;
+      for (let i = 0; i < expected.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+      if (diff === 0) return { ok: true, expectedPreview: expected.slice(0, 12), secretsTried: secrets.length };
+    }
+  }
+  return { ok: false, expectedPreview: firstExpected.slice(0, 12), secretsTried: secrets.length };
 }
 
 type Sb = ReturnType<typeof createClient>;
@@ -374,10 +394,19 @@ Deno.serve(async (req) => {
   console.log("META_WEBHOOK_RAW_BODY", raw.slice(0, 4000));
 
   const sig = req.headers.get("x-hub-signature-256");
-  const valid = await verifySignature(raw, sig);
-  if (!valid) {
-    console.log("META_WEBHOOK_BAD_SIGNATURE", { sigPreview: sig?.slice(0, 20) });
-    return text("invalid signature", 401);
+  const sigResult = await verifySignature(raw, sig);
+  if (!sigResult.ok) {
+    console.log("META_WEBHOOK_BAD_SIGNATURE", {
+      sigReceivedPrefix: sig?.slice(7, 19) ?? null,
+      sigExpectedPrefix: sigResult.expectedPreview,
+      secretsTried: sigResult.secretsTried,
+      appSecretLen: META_APP_SECRET.length,
+      bodyLen: raw.length,
+      skipping: META_SKIP_SIG,
+    });
+    if (!META_SKIP_SIG) return text("invalid signature", 401);
+  } else {
+    console.log("META_WEBHOOK_SIG_OK", { secretsTried: sigResult.secretsTried });
   }
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -444,29 +473,60 @@ Deno.serve(async (req) => {
 
         const text = m?.message?.text ?? m?.message?.attachments?.[0]?.payload?.url ?? "[mídia]";
         const mid = m?.message?.mid ?? null;
+        const tsMs = typeof m?.timestamp === "number" ? m.timestamp : Date.now();
         const source: "instagram" | "messenger" = isInstagram ? "instagram" : "messenger";
         const channel: "instagram" | "facebook" = isInstagram ? "instagram" : "facebook";
 
+        if (isInstagram) {
+          console.log("INSTAGRAM_WEBHOOK_RECEIVED", {
+            senderId,
+            recipientId,
+            igAccountId: page.ig_business_account_id,
+            mid,
+            ts: tsMs,
+            textPreview: String(text).slice(0, 80),
+          });
+        }
+
         const name = await fetchPsidName(senderId, pageToken);
 
-        const { conversationId } = await upsertLeadAndConversation(sb, {
-          companyId,
-          source,
-          senderId,
-          pageId,
-          name,
-          channel,
-        });
+        try {
+          const { conversationId, leadId } = await upsertLeadAndConversation(sb, {
+            companyId,
+            source,
+            senderId,
+            pageId,
+            name,
+            channel,
+          });
 
-        await insertMessage(sb, {
-          companyId,
-          conversationId,
-          text: String(text),
-          externalId: mid ? String(mid) : null,
-          source,
-          subtype: "dm",
-          metadata: { recipient_id: recipientId, raw: m },
-        });
+          if (isInstagram) {
+            console.log("INSTAGRAM_CONVERSATION_UPDATED", { conversationId, leadId, senderId });
+          }
+
+          await insertMessage(sb, {
+            companyId,
+            conversationId,
+            text: String(text),
+            externalId: mid ? String(mid) : null,
+            source,
+            subtype: "dm",
+            metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m },
+          });
+
+          if (isInstagram) {
+            console.log("INSTAGRAM_MESSAGE_SAVED", { conversationId, mid, senderId });
+            console.log("INSTAGRAM_REALTIME_SENT", { conversationId, companyId });
+          }
+        } catch (dbErr) {
+          console.error("INSTAGRAM_DB_ERROR", {
+            senderId,
+            igAccountId: page.ig_business_account_id,
+            error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+            metaPayload: m,
+          });
+          throw dbErr;
+        }
       } catch (e) {
         console.error("META_WEBHOOK_DM_ERROR", e instanceof Error ? e.message : String(e));
       }
