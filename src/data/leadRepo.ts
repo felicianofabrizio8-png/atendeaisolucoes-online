@@ -121,6 +121,7 @@ type DbConversation = {
   last_message_at: string;
   unread: number;
   awaiting_reply: boolean;
+  interaction_type?: string;
 };
 
 function toConversation(r: DbConversation, slaMinutes: number): Conversation {
@@ -133,6 +134,9 @@ function toConversation(r: DbConversation, slaMinutes: number): Conversation {
     unread: r.unread,
     awaitingReply: r.awaiting_reply,
     slaBreached: r.awaiting_reply && ageMin >= slaMinutes,
+    interactionType: (r.interaction_type ?? "direct_message") as
+      | "direct_message"
+      | "comment",
   };
 }
 
@@ -142,6 +146,8 @@ type DbMessage = {
   role: Message["role"];
   text: string;
   at: string;
+  source_subtype?: string | null;
+  source_metadata?: Record<string, unknown> | null;
 };
 
 function toMessage(r: DbMessage): Message {
@@ -151,6 +157,8 @@ function toMessage(r: DbMessage): Message {
     role: r.role,
     text: r.text,
     at: r.at,
+    sourceSubtype: r.source_subtype ?? undefined,
+    sourceMetadata: r.source_metadata ?? undefined,
   };
 }
 
@@ -193,11 +201,11 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("conversations")
-        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply")
+        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type")
         .eq("company_id", companyId),
       supabase
         .from("messages")
-        .select("id,conversation_id,role,text,at")
+        .select("id,conversation_id,role,text,at,source_subtype,source_metadata")
         .eq("company_id", companyId)
         .order("at", { ascending: true }),
     ]);

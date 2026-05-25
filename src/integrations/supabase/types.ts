@@ -86,6 +86,7 @@ export type Database = {
           company_id: string
           created_at: string
           id: string
+          interaction_type: string
           last_message_at: string
           lead_id: string
           unread: number
@@ -97,6 +98,7 @@ export type Database = {
           company_id: string
           created_at?: string
           id?: string
+          interaction_type?: string
           last_message_at?: string
           lead_id: string
           unread?: number
@@ -108,6 +110,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           id?: string
+          interaction_type?: string
           last_message_at?: string
           lead_id?: string
           unread?: number

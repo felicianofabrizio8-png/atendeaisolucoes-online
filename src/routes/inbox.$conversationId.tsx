@@ -29,6 +29,7 @@ import {
   Flame,
   X,
   DollarSign,
+  MessageSquare,
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
@@ -123,7 +124,17 @@ function ConversationPage() {
   }
 
   const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
-  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1]);
+  const origin = getConversationOrigin(lead, lastIncoming ?? messages[messages.length - 1], conversation);
+  const isComment =
+    conversation.interactionType === "comment" ||
+    origin === "instagram_comment" ||
+    origin === "facebook_comment" ||
+    origin === "comment";
+  const commentMeta = (lastIncoming?.sourceMetadata ?? {}) as {
+    comment_id?: string;
+    post_id?: string;
+    media_id?: string;
+  };
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
@@ -170,11 +181,11 @@ function ConversationPage() {
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
             const subtype =
-              origin === "comment"
+              origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
                 ? "comment"
                 : origin === "messenger"
                   ? "messenger"
-                  : origin === "instagram"
+                  : origin === "instagram_direct"
                     ? "instagram_dm"
                     : "facebook_dm";
             const { data, error } = await supabase.functions.invoke("meta-send", {
@@ -188,7 +199,12 @@ function ConversationPage() {
               "Falha ao enviar mensagem";
             console.error("[chat send] Meta falhou", { error, data });
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-            const label = origin === "instagram" ? "Instagram" : origin === "messenger" ? "Messenger" : "Meta";
+            const label =
+              origin === "instagram_direct" || origin === "instagram_comment"
+                ? "Instagram"
+                : origin === "messenger"
+                  ? "Messenger"
+                  : "Meta";
             toast.error(`Falha ao enviar ${label}`, { description: errMsg });
             return;
           }
@@ -397,6 +413,42 @@ function ConversationPage() {
           </div>
         )}
 
+        {/* Comment-origin context banner */}
+        {isComment && (
+          <div className="border-b border-[var(--channel-instagram)]/40 bg-[var(--channel-instagram)]/10 px-4 py-2.5 flex items-start gap-2">
+            <MessageSquare className="h-4 w-4 text-[var(--channel-instagram)] mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0 text-xs">
+              <div className="font-semibold text-[var(--channel-instagram)] uppercase tracking-wide">
+                Comentário em {origin === "instagram_comment" ? "post do Instagram" : "publicação do Facebook"}
+              </div>
+              {lastIncoming?.text && (
+                <div className="mt-1 text-foreground/80 italic line-clamp-2">"{lastIncoming.text}"</div>
+              )}
+              {(commentMeta.post_id || commentMeta.media_id) && (
+                <div className="mt-1 text-muted-foreground">
+                  Post: <span className="font-mono">{commentMeta.post_id ?? commentMeta.media_id}</span>
+                  {commentMeta.media_id && origin === "instagram_comment" && (
+                    <>
+                      {" · "}
+                      <a
+                        href={`https://www.instagram.com/p/${commentMeta.media_id}/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-foreground"
+                      >
+                        abrir
+                      </a>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="mt-1 text-muted-foreground">
+                Você está respondendo ao <strong>comentário</strong> publicamente — não é uma mensagem privada.
+              </div>
+            </div>
+          </div>
+        )}
+
         {closedInfo && (
           <div className="border-b border-[var(--status-won)]/40 bg-[var(--status-won)]/10 px-4 py-2.5 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-[var(--status-won)]" />
@@ -590,7 +642,11 @@ function ConversationPage() {
                 }
               }}
               placeholder={
-                closedInfo ? "Venda fechada." : "Escreva uma mensagem… (Enter para enviar)"
+                closedInfo
+                  ? "Venda fechada."
+                  : isComment
+                    ? "Resposta pública ao comentário… (Enter para enviar)"
+                    : "Escreva uma mensagem… (Enter para enviar)"
               }
               rows={2}
               className="flex-1 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
@@ -600,7 +656,7 @@ function ConversationPage() {
               disabled={!input.trim() || !!closedInfo}
               className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium"
             >
-              <Send className="h-3.5 w-3.5" /> Enviar
+              <Send className="h-3.5 w-3.5" /> {isComment ? "Responder comentário" : "Enviar"}
             </button>
           </div>
         </div>

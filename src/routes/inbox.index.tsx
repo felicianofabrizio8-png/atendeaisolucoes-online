@@ -33,26 +33,45 @@ const SOURCE_FILTERS = [
 ] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
 
-export type Origin = "whatsapp" | "instagram" | "facebook" | "messenger" | "comment";
+export type Origin =
+  | "whatsapp"
+  | "instagram_direct"
+  | "instagram_comment"
+  | "facebook"
+  | "facebook_comment"
+  | "messenger"
+  | "comment";
 
-// Deriva a origem real de uma conversa. Como o Lead tipado não expõe ainda
-// source/source_subtype, lemos via cast para os campos opcionais que o backend
-// já popula (meta-webhook grava lead.source e message.source_subtype).
-export function getConversationOrigin(lead: Lead, lastMessage?: Message): Origin {
+// Deriva a origem real de uma conversa. O backend grava conversation.interaction_type
+// ('direct_message' | 'comment') além de lead.source e message.source_subtype.
+export function getConversationOrigin(
+  lead: Lead,
+  lastMessage?: Message,
+  conversation?: Conversation,
+): Origin {
   const leadSource = (lead as unknown as { source?: string }).source;
-  const msgSubtype = (lastMessage as unknown as { source_subtype?: string } | undefined)?.source_subtype;
+  const interaction = conversation?.interactionType;
+  const msgSubtype = (lastMessage as unknown as { sourceSubtype?: string } | undefined)?.sourceSubtype;
+  const isComment = interaction === "comment" || msgSubtype === "comment";
 
-  if (msgSubtype === "comment") return "comment";
-  if (leadSource === "messenger" || (lead.channel === "facebook" && msgSubtype === "dm")) return "messenger";
-  if (lead.channel === "instagram") return "instagram";
-  if (lead.channel === "facebook") return "facebook";
+  if (lead.channel === "instagram") {
+    return isComment ? "instagram_comment" : "instagram_direct";
+  }
+  if (leadSource === "messenger" || (lead.channel === "facebook" && msgSubtype === "dm")) {
+    return isComment ? "facebook_comment" : "messenger";
+  }
+  if (lead.channel === "facebook") {
+    return isComment ? "facebook_comment" : "facebook";
+  }
   return "whatsapp";
 }
 
 const ORIGIN_META: Record<Origin, { label: string; icon: typeof MessageCircle; color: string }> = {
   whatsapp: { label: "WhatsApp", icon: MessageCircle, color: "var(--channel-whatsapp)" },
-  instagram: { label: "Instagram", icon: Instagram, color: "var(--channel-instagram)" },
+  instagram_direct: { label: "Instagram Direct", icon: Instagram, color: "var(--channel-instagram)" },
+  instagram_comment: { label: "Comentário Instagram", icon: MessageSquare, color: "var(--channel-instagram)" },
   facebook: { label: "Facebook", icon: Facebook, color: "var(--channel-facebook)" },
+  facebook_comment: { label: "Comentário Facebook", icon: MessageSquare, color: "var(--channel-facebook)" },
   messenger: { label: "Messenger", icon: MessageSquare, color: "var(--channel-facebook)" },
   comment: { label: "Comentário", icon: MessageSquare, color: "var(--status-warm)" },
 };
@@ -107,10 +126,10 @@ function matchesSource(origin: Origin, awaitingReply: boolean, filter: SourceFil
   switch (filter) {
     case "todos": return true;
     case "whatsapp": return origin === "whatsapp";
-    case "instagram": return origin === "instagram";
-    case "facebook": return origin === "facebook" || origin === "messenger";
-    case "comentarios": return origin === "comment";
-    case "directs": return origin === "messenger" || (origin === "instagram");
+    case "instagram": return origin === "instagram_direct" || origin === "instagram_comment";
+    case "facebook": return origin === "facebook" || origin === "messenger" || origin === "facebook_comment";
+    case "comentarios": return origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment";
+    case "directs": return origin === "instagram_direct" || origin === "messenger";
     case "nao-respondidos": return awaitingReply;
   }
 }
@@ -127,7 +146,7 @@ function buildSortedItems(
       const lead = getLeadById(c.leadId);
       const msgs = getMessagesFor(c.id);
       const last = msgs[msgs.length - 1];
-      const origin: Origin = lead ? getConversationOrigin(lead, last) : "whatsapp";
+      const origin: Origin = lead ? getConversationOrigin(lead, last, c) : "whatsapp";
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
       let score = 0;
@@ -193,7 +212,7 @@ function InboxPage() {
       if (!lead) continue;
       const msgs = getMessagesFor(c.id);
       const last = msgs[msgs.length - 1];
-      const origin = getConversationOrigin(lead, last);
+      const origin = getConversationOrigin(lead, last, c);
       counts.todos += 1;
       if (matchesSource(origin, c.awaitingReply, "whatsapp")) counts.whatsapp += 1;
       if (matchesSource(origin, c.awaitingReply, "instagram")) counts.instagram += 1;

@@ -270,8 +270,10 @@ async function upsertLeadAndConversation(
     pageId: string;
     name: string | null;
     channel: "instagram" | "facebook" | "whatsapp";
+    interactionType?: "direct_message" | "comment";
   },
 ): Promise<{ leadId: string; conversationId: string }> {
+  const interactionType = opts.interactionType ?? "direct_message";
   // upsert lead
   const { data: existing } = await sb
     .from("leads")
@@ -306,12 +308,13 @@ async function upsertLeadAndConversation(
     leadId = inserted!.id as string;
   }
 
-  // get or create conversation
+  // get or create conversation, scoped by interaction_type so DMs and comments stay separated
   const { data: conv } = await sb
     .from("conversations")
     .select("id")
     .eq("company_id", opts.companyId)
     .eq("lead_id", leadId)
+    .eq("interaction_type", interactionType)
     .maybeSingle();
 
   if (conv?.id) return { leadId, conversationId: conv.id as string };
@@ -322,6 +325,7 @@ async function upsertLeadAndConversation(
       company_id: opts.companyId,
       lead_id: leadId,
       channel: opts.channel,
+      interaction_type: interactionType,
       awaiting_reply: true,
       unread: 1,
     })
@@ -767,6 +771,7 @@ Deno.serve(async (req) => {
             pageId,
             name: senderName,
             channel: "facebook",
+            interactionType: "comment",
           });
           await insertMessage(sb, {
             companyId,
@@ -796,6 +801,7 @@ Deno.serve(async (req) => {
             pageId,
             name: senderName,
             channel: "instagram",
+            interactionType: "comment",
           });
           await insertMessage(sb, {
             companyId,

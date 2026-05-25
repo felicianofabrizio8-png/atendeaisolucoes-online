@@ -12,6 +12,8 @@ export interface Message {
   role: MessageRole;
   text: string;
   at: string; // ISO
+  sourceSubtype?: string;
+  sourceMetadata?: Record<string, unknown>;
 }
 
 export interface NextAction {
@@ -46,6 +48,7 @@ export interface Conversation {
   unread: number;
   awaitingReply: boolean;
   slaBreached: boolean;
+  interactionType?: "direct_message" | "comment";
 }
 
 export const leads: Lead[] = [];
