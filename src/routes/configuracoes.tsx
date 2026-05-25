@@ -2056,24 +2056,14 @@ function MetaIntegrationSection() {
         </ul>
       )}
 
-      <div className="mb-4">
-        <p className="text-xs font-semibold mb-2">
-          Páginas disponíveis{" "}
-          <span className="text-muted-foreground font-normal">
-            ({available.length} encontrada{available.length === 1 ? "" : "s"})
-          </span>
-        </p>
-        {/* Debug temporário — remover após validar render */}
-        <pre className="mb-2 max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px] text-muted-foreground">
-          {JSON.stringify(available, null, 2)}
-        </pre>
-        {available.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              Clique em <strong>Conectar Instagram / Facebook</strong> abaixo para listar suas páginas.
-            </p>
-          </div>
-        ) : (
+      {available.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold mb-2">
+            Páginas disponíveis{" "}
+            <span className="text-muted-foreground font-normal">
+              ({available.length} encontrada{available.length === 1 ? "" : "s"})
+            </span>
+          </p>
           <ul className="space-y-2">
             {available.map((p) => (
               <li
@@ -2102,8 +2092,17 @@ function MetaIntegrationSection() {
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
+
+      {pages.length === 0 && available.length === 0 && !loading && (
+        <div className="mb-4 rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
+          <p className="text-xs text-muted-foreground">
+            Nenhuma página conectada ainda. Clique em{" "}
+            <strong>Conectar Instagram / Facebook</strong> abaixo.
+          </p>
+        </div>
+      )}
 
       <button
         onClick={onConnect}
@@ -2115,7 +2114,7 @@ function MetaIntegrationSection() {
         ) : (
           <Plug className="h-3.5 w-3.5" />
         )}
-        Conectar Instagram / Facebook
+        {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
       </button>
 
       <div className="mt-3">
