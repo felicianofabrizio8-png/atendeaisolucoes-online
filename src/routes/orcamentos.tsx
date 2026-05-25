@@ -452,7 +452,26 @@ function SendWhatsAppModal({
                     : "Selecionar todas"}
                 </button>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+
+              {/* Carrossel das fotos selecionadas — ordem de envio */}
+              {selectedImages.length > 0 && (
+                <div className="mb-2 -mx-1 px-1 overflow-x-auto snap-x snap-mandatory flex gap-2 pb-1 scrollbar-thin">
+                  {selectedImages.map((url, i) => (
+                    <div
+                      key={`sel-${url}`}
+                      className="relative shrink-0 snap-start w-32 h-32 rounded-md overflow-hidden border border-border bg-muted"
+                    >
+                      <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      <span className="absolute top-1 left-1 text-[9px] font-semibold bg-primary text-primary-foreground rounded px-1.5 py-0.5">
+                        {i + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Grade de seleção rápida — toque/clique alterna */}
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                 {availableImages.map((url) => {
                   const checked = selectedImages.includes(url);
                   return (
@@ -461,11 +480,13 @@ function SendWhatsAppModal({
                       type="button"
                       onClick={() => toggleImage(url)}
                       className={cn(
-                        "relative aspect-square rounded-md overflow-hidden border-2 transition",
-                        checked ? "border-primary" : "border-transparent opacity-60 hover:opacity-100",
+                        "relative aspect-square rounded-md overflow-hidden border-2 transition touch-manipulation",
+                        checked
+                          ? "border-primary"
+                          : "border-transparent opacity-60 hover:opacity-100",
                       )}
                     >
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
                       {checked && (
                         <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
                           <Check className="h-3 w-3 text-primary-foreground" />
@@ -476,10 +497,11 @@ function SendWhatsAppModal({
                 })}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
-                As fotos serão enviadas primeiro, depois a mensagem.
+                As fotos serão enviadas primeiro (na ordem mostrada), depois a mensagem.
               </p>
             </div>
           )}
+
 
           <textarea
             value={text}
