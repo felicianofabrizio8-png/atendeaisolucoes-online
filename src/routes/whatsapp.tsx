@@ -330,6 +330,7 @@ function WhatsAppInbox() {
           })
           .filter((row) => row.numero || row.push_name);
         setContactRows(leadRows as WaMessage[]);
+        console.log("CONTACT_LIST_LOADED", { count: leadRows.length, source: "leads" });
       }
 
       if (!contactsLoadedRef.current) {
