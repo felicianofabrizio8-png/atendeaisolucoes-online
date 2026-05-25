@@ -651,28 +651,56 @@ function WhatsAppInbox() {
     setSavingAdd(true);
     try {
       const externalId = `phone:${phone}`;
-      const { data: existing } = await supabase
+      const { data: existing, error: selErr } = await supabase
         .from("leads")
         .select("id")
         .eq("company_id", companyId)
         .eq("channel", "whatsapp")
         .eq("external_id", externalId)
         .maybeSingle();
-      if (existing?.id) {
-        await supabase
-          .from("leads")
-          .update({ phone, name, ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}) })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("leads").insert({
-          company_id: companyId,
-          channel: "whatsapp",
-          name,
-          phone,
-          external_id: externalId,
-          ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
-        });
+      if (selErr) {
+        console.error("CONTACT_CREATE_ERROR_SELECT", selErr);
+        toast.error(`Falha ao verificar contato: ${selErr.message}`);
+        return;
       }
+      let leadId = existing?.id ?? null;
+      if (leadId) {
+        const { error: updErr } = await supabase
+          .from("leads")
+          .update({
+            phone,
+            name,
+            ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+          })
+          .eq("id", leadId);
+        if (updErr) {
+          console.error("CONTACT_CREATE_ERROR_UPDATE", updErr);
+          toast.error(`Falha ao salvar: ${updErr.message}`);
+          return;
+        }
+      } else {
+        const { data: inserted, error: insErr } = await supabase
+          .from("leads")
+          .insert({
+            company_id: companyId,
+            channel: "whatsapp",
+            name,
+            phone,
+            external_id: externalId,
+            ...(addNote.trim() ? { next_action_label: addNote.trim() } : {}),
+          })
+          .select("id")
+          .single();
+        if (insErr || !inserted) {
+          console.error("CONTACT_CREATE_ERROR_INSERT", insErr);
+          toast.error(`Falha ao adicionar: ${insErr?.message ?? "erro desconhecido"}`);
+          return;
+        }
+        leadId = inserted.id;
+      }
+      console.log("CONTACT_CREATE_SUCCESS", { leadId, phone, name, provider_type: "meta_cloud_api" });
+
+      // Injeta localmente para aparecer já na lista, sem esperar polling
       const synthetic: WaMessage = {
         id: `manual:${externalId}`,
         company_id: companyId,
@@ -684,9 +712,17 @@ function WhatsAppInbox() {
         push_name: name,
       };
       setContactRows((prev) => {
-        const filtered = prev.filter((r) => r.id !== synthetic.id);
-        return [...filtered, synthetic];
+        const filtered = prev.filter((r) => r.id !== synthetic.id && r.id !== `lead:${leadId}`);
+        return [
+          ...filtered,
+          synthetic,
+          {
+            ...synthetic,
+            id: `lead:${leadId}`,
+          },
+        ];
       });
+      console.log("CONTACT_LIST_LOADED", { added: 1, phone });
       setSelected(`p:${phone}`);
       toast.success("Contato adicionado.");
       setAddOpen(false);
@@ -694,11 +730,13 @@ function WhatsAppInbox() {
       setAddPhone("");
       setAddNote("");
     } catch (e) {
+      console.error("CONTACT_CREATE_ERROR", e);
       toast.error(`Falha ao adicionar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSavingAdd(false);
     }
   }
+
 
   async function handleSend() {
     const text = draft.trim();
