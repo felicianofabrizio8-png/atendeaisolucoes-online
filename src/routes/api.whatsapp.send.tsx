@@ -6,7 +6,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 interface SendBody {
-  conversationId: string;
+  conversationId?: string;
+  leadId?: string;
   text: string;
 }
 
@@ -36,8 +37,11 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         } catch {
           return Response.json({ error: "JSON inválido" }, { status: 400 });
         }
-        if (!body.conversationId || !body.text?.trim()) {
-          return Response.json({ error: "conversationId e text obrigatórios" }, { status: 400 });
+        if ((!body.conversationId && !body.leadId) || !body.text?.trim()) {
+          return Response.json(
+            { error: "conversationId ou leadId e text obrigatórios" },
+            { status: 400 },
+          );
         }
 
         // Pega company_id do perfil
@@ -51,26 +55,59 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         }
         const companyId = profile.company_id;
 
-        // Conversa precisa pertencer à empresa
-        const { data: conv } = await supabaseAdmin
-          .from("conversations")
-          .select("id, company_id, lead_id, channel")
-          .eq("id", body.conversationId)
-          .maybeSingle();
-        if (!conv || conv.company_id !== companyId) {
-          return Response.json({ error: "conversa não encontrada" }, { status: 404 });
-        }
-        if (conv.channel !== "whatsapp") {
-          return Response.json({ error: "conversa não é WhatsApp" }, { status: 400 });
+        // Resolve conversa: usa a existente, ou cria a partir do leadId
+        let conversationId = body.conversationId ?? null;
+        let leadId: string | null = null;
+
+        if (conversationId) {
+          const { data: conv } = await supabaseAdmin
+            .from("conversations")
+            .select("id, company_id, lead_id, channel")
+            .eq("id", conversationId)
+            .maybeSingle();
+          if (!conv || conv.company_id !== companyId) {
+            return Response.json({ error: "conversa não encontrada" }, { status: 404 });
+          }
+          if (conv.channel !== "whatsapp") {
+            return Response.json({ error: "conversa não é WhatsApp" }, { status: 400 });
+          }
+          leadId = conv.lead_id;
+        } else if (body.leadId) {
+          leadId = body.leadId;
+          const { data: existingConv } = await supabaseAdmin
+            .from("conversations")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("lead_id", leadId)
+            .eq("channel", "whatsapp")
+            .maybeSingle();
+          if (existingConv?.id) {
+            conversationId = existingConv.id;
+          } else {
+            const { data: newConv, error: newConvErr } = await supabaseAdmin
+              .from("conversations")
+              .insert({
+                company_id: companyId,
+                lead_id: leadId,
+                channel: "whatsapp",
+              })
+              .select("id")
+              .single();
+            if (newConvErr || !newConv) {
+              console.error("[whatsapp send] create conversation error", newConvErr);
+              return Response.json({ error: "falha ao criar conversa" }, { status: 500 });
+            }
+            conversationId = newConv.id;
+          }
         }
 
         // Lead pra pegar telefone destino
         const { data: lead } = await supabaseAdmin
           .from("leads")
-          .select("id, phone, external_id, integration_id")
-          .eq("id", conv.lead_id)
+          .select("id, phone, external_id, integration_id, company_id")
+          .eq("id", leadId!)
           .maybeSingle();
-        if (!lead) {
+        if (!lead || lead.company_id !== companyId) {
           return Response.json({ error: "lead não encontrado" }, { status: 404 });
         }
         const rawRecipient = lead.external_id ?? lead.phone;
