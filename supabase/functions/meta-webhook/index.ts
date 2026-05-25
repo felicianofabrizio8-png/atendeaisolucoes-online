@@ -771,6 +771,7 @@ Deno.serve(async (req) => {
             pageId,
             name: senderName,
             channel: "facebook",
+            interactionType: "comment",
           });
           await insertMessage(sb, {
             companyId,
