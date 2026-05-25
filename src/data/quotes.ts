@@ -235,9 +235,7 @@ export async function loadQuotesRemote(cid: string) {
   mode = "remote";
   const { data, error } = await supabase
     .from("quotes")
-    .select(
-      "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at",
-    )
+    .select(QUOTE_SELECT)
     .eq("company_id", cid)
     .order("created_at", { ascending: false });
   if (error) {
