@@ -324,20 +324,37 @@ Deno.serve(async (req) => {
     const recipientId = lead.source_sender_id;
     if (!recipientId) return json({ ok: false, error: "no recipient id" }, 400);
     if (lead.source === "instagram") {
-      // IG messaging uses page id as sender; Graph endpoint /{page_id}/messages with messaging_type
-      graphUrl = `${GRAPH}/${page.page_id}/messages`;
+      // Instagram Messaging API: POST /{ig_business_account_id}/messages
+      const igId = page.ig_business_account_id;
+      if (!igId) {
+        console.error("INSTAGRAM_SEND_ERROR", { reason: "missing ig_business_account_id", pageId: page.page_id });
+        return json({ ok: false, error: "Conta Instagram Business não vinculada a esta página" }, 400);
+      }
+      graphUrl = `${GRAPH}/${igId}/messages`;
+      graphBody = {
+        recipient: { id: recipientId },
+        message: { text },
+      };
     } else {
       graphUrl = `${GRAPH}/${page.page_id}/messages`;
+      graphBody = {
+        recipient: { id: recipientId },
+        message: { text },
+        messaging_type: "RESPONSE",
+      };
     }
-    graphBody = {
-      recipient: { id: recipientId },
-      message: { text },
-      messaging_type: "RESPONSE",
-    };
   }
 
+  const isInstagramDm = lead.source === "instagram" && subtype !== "comment";
+  if (isInstagramDm) {
+    console.log("INSTAGRAM_SEND_START", {
+      igId: page.ig_business_account_id,
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+      textLen: text.length,
+    });
+  }
   console.log("META_SEND_URL", graphUrl);
-  console.log("META_SEND_PAYLOAD", JSON.stringify(graphBody));
 
   const res = await fetch(`${graphUrl}?access_token=${encodeURIComponent(pageToken)}`, {
     method: "POST",
@@ -353,7 +370,18 @@ Deno.serve(async (req) => {
 
   if (!res.ok || !messageId) {
     const errMsg = parsed?.error?.message ?? raw.slice(0, 200) ?? `HTTP ${res.status}`;
-    return json({ ok: false, error: errMsg }, 400);
+    if (isInstagramDm) {
+      console.error("INSTAGRAM_SEND_ERROR", {
+        status: res.status,
+        error: parsed?.error ?? null,
+        body: raw.slice(0, 500),
+      });
+    }
+    return json({ ok: false, error: errMsg, metaError: parsed?.error ?? null, status: res.status }, 502);
+  }
+
+  if (isInstagramDm) {
+    console.log("INSTAGRAM_SEND_SUCCESS", { messageId, recipientId: lead.source_sender_id });
   }
 
   await sb.from("messages").insert({
