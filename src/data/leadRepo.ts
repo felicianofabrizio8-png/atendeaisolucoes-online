@@ -121,7 +121,7 @@ type DbConversation = {
   last_message_at: string;
   unread: number;
   awaiting_reply: boolean;
-  interaction_type?: "direct_message" | "comment" | null;
+  interaction_type?: string;
 };
 
 function toConversation(r: DbConversation, slaMinutes: number): Conversation {
