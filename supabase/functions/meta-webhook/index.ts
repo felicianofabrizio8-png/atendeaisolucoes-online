@@ -565,28 +565,46 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") return text("method not allowed", 405);
 
-  const raw = await req.text();
+  const rawBodyBytes = new Uint8Array(await req.arrayBuffer());
+  const raw = new TextDecoder().decode(rawBodyBytes);
+  const origin = extractWebhookOrigin(raw);
   console.log("META_WEBHOOK_RAW_BODY", raw.slice(0, 4000));
+  console.log("META_WEBHOOK_ORIGIN", {
+    ...origin,
+    headers: getHeaderDiagnostics(req),
+    configuredMetaAppId: META_APP_ID || null,
+  });
 
   const sig = req.headers.get("x-hub-signature-256");
-  const sigResult = await verifySignature(raw, sig);
+  const sigResult = await verifySignature(rawBodyBytes, sig);
   if (!sigResult.ok) {
     console.log("META_WEBHOOK_BAD_SIGNATURE", {
       sigReceivedPrefix: sig?.slice(7, 19) ?? null,
       sigExpectedPrefix: sigResult.expectedPreview,
       secretsTried: sigResult.secretsTried,
-      appSecretLen: META_APP_SECRET.length,
-      bodyLen: raw.length,
+      bodyLen: rawBodyBytes.byteLength,
+      origin,
+      candidates: sigResult.candidates,
       skipping: META_SKIP_SIG,
     });
     if (!META_SKIP_SIG) return text("invalid signature", 401);
   } else {
-    console.log("META_WEBHOOK_SIG_OK", { secretsTried: sigResult.secretsTried });
+    console.log("META_WEBHOOK_SIG_OK", {
+      secretsTried: sigResult.secretsTried,
+      matchedAppId: sigResult.matched?.appId ?? null,
+      matchedLabel: sigResult.matched?.label ?? null,
+      matchedSource: sigResult.matched?.source ?? null,
+      origin,
+    });
   }
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  if (origin.object === "instagram" && (!sigResult.ok || sigResult.ok)) {
+    await logInstagramAppDiagnostics(sb, origin.entryIds);
+  }
 
   let body: any;
   try {
