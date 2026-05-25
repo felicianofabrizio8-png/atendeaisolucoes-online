@@ -9,6 +9,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+const META_APP_SECRETS_EXTRA = Deno.env.get("META_APP_SECRETS") ?? ""; // comma-separated fallback secrets
+const META_SKIP_SIG = Deno.env.get("META_SKIP_SIG") === "1"; // emergency bypass
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -17,24 +19,42 @@ function text(body: string, status = 200) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain" } });
 }
 
-async function verifySignature(rawBody: string, signature: string | null): Promise<boolean> {
-  if (!signature || !signature.startsWith("sha256=")) return false;
-  const provided = signature.slice(7);
+function getAllSecrets(): string[] {
+  const list = [META_APP_SECRET, ...META_APP_SECRETS_EXTRA.split(",")]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return Array.from(new Set(list));
+}
+
+async function hmacHex(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(META_APP_SECRET),
+    new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const expected = Array.from(new Uint8Array(sig))
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  if (provided.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+}
+
+async function verifySignature(rawBody: string, signature: string | null): Promise<{ ok: boolean; expectedPreview: string; secretsTried: number }> {
+  const secrets = getAllSecrets();
+  if (!signature || !signature.startsWith("sha256=")) return { ok: false, expectedPreview: "", secretsTried: secrets.length };
+  const provided = signature.slice(7);
+  let firstExpected = "";
+  for (const s of secrets) {
+    const expected = await hmacHex(s, rawBody);
+    if (!firstExpected) firstExpected = expected;
+    if (provided.length === expected.length) {
+      let diff = 0;
+      for (let i = 0; i < expected.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+      if (diff === 0) return { ok: true, expectedPreview: expected.slice(0, 12), secretsTried: secrets.length };
+    }
+  }
+  return { ok: false, expectedPreview: firstExpected.slice(0, 12), secretsTried: secrets.length };
 }
 
 type Sb = ReturnType<typeof createClient>;
