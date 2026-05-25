@@ -29,7 +29,7 @@ import {
   Flame,
   X,
   DollarSign,
-} from "lucide-react";
+  MessageSquare,
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { supabase } from "@/integrations/supabase/client";
