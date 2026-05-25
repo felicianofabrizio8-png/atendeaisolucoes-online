@@ -25,7 +25,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Loader2,
+  Camera,
 } from "lucide-react";
+import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
