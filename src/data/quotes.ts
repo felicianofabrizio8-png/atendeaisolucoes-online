@@ -11,6 +11,8 @@ import { activePrice, getProduct, type Product } from "./products";
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
+export type QuoteStatus = "pendente" | "enviado" | "visualizado" | "aprovado" | "vencido";
+
 export interface Quote {
   id: string;
   leadId: string;
@@ -26,6 +28,19 @@ export interface Quote {
   message: string;
   createdAt: string;
   sent: boolean;
+  sentAt?: string;
+  viewedAt?: string;
+  externalMessageId?: string;
+  rawStatus?: string;
+}
+
+export function computeQuoteStatus(q: Quote): QuoteStatus {
+  if (q.rawStatus === "aceito") return "aprovado";
+  const today = new Date().toISOString().slice(0, 10);
+  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent)) return "vencido";
+  if (q.viewedAt || q.rawStatus === "visualizado") return "visualizado";
+  if (q.sent) return "enviado";
+  return "pendente";
 }
 
 // ---------- estado ----------
@@ -123,7 +138,14 @@ type DbQuote = {
   message: string | null;
   sent: boolean | null;
   created_at: string;
+  sent_at?: string | null;
+  viewed_at?: string | null;
+  external_message_id?: string | null;
+  status?: string | null;
 };
+
+const QUOTE_SELECT =
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status";
 
 function toQuote(r: DbQuote): Quote {
   return {
@@ -141,6 +163,10 @@ function toQuote(r: DbQuote): Quote {
     message: r.message ?? "",
     createdAt: r.created_at,
     sent: !!r.sent,
+    sentAt: r.sent_at ?? undefined,
+    viewedAt: r.viewed_at ?? undefined,
+    externalMessageId: r.external_message_id ?? undefined,
+    rawStatus: r.status ?? undefined,
   };
 }
 
@@ -209,9 +235,7 @@ export async function loadQuotesRemote(cid: string) {
   mode = "remote";
   const { data, error } = await supabase
     .from("quotes")
-    .select(
-      "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at",
-    )
+    .select(QUOTE_SELECT)
     .eq("company_id", cid)
     .order("created_at", { ascending: false });
   if (error) {
@@ -270,9 +294,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           },
         ],
       })
-      .select(
-        "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at",
-      )
+      .select(QUOTE_SELECT)
       .single();
     if (error) throw error;
     const quote = toQuote(data as DbQuote);
@@ -305,17 +327,74 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
   return quote;
 }
 
-export async function markQuoteSent(id: string): Promise<void> {
+export async function markQuoteSent(
+  id: string,
+  meta?: { externalMessageId?: string; conversationId?: string },
+): Promise<void> {
+  const nowIso = new Date().toISOString();
   const q = quotes.find((x) => x.id === id);
   if (q) {
     q.sent = true;
+    q.sentAt = nowIso;
+    if (meta?.externalMessageId) q.externalMessageId = meta.externalMessageId;
+    if (meta?.conversationId) q.conversationId = meta.conversationId;
+    q.rawStatus = "enviado";
     notify();
   }
   if (mode === "remote" && companyId) {
-    const { error } = await supabase
-      .from("quotes")
-      .update({ sent: true, status: "enviado" })
-      .eq("id", id);
+    const patch: {
+      sent: boolean;
+      status: "enviado";
+      sent_at: string;
+      external_message_id?: string;
+      conversation_id?: string;
+    } = { sent: true, status: "enviado", sent_at: nowIso };
+    if (meta?.externalMessageId) patch.external_message_id = meta.externalMessageId;
+    if (meta?.conversationId) patch.conversation_id = meta.conversationId;
+    const { error } = await supabase.from("quotes").update(patch).eq("id", id);
     if (error) console.error("markQuoteSent", error);
   }
+}
+
+/**
+ * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
+ * Returns the new/existing conversationId so the caller can open the chat.
+ */
+export async function sendQuoteWhatsApp(args: {
+  quoteId: string;
+  phone: string;
+  contactName?: string;
+  leadId?: string;
+  text: string;
+}): Promise<{ conversationId?: string; messageId?: string }> {
+  console.log("QUOTE_SEND_WA_START", { quoteId: args.quoteId, phone: args.phone });
+  const { data, error } = await supabase.functions.invoke("meta-send", {
+    body: {
+      channel: "whatsapp",
+      phone: args.phone,
+      contactName: args.contactName,
+      leadId: args.leadId,
+      text: args.text,
+    },
+  });
+  if (error) {
+    console.error("QUOTE_SEND_WA_ERROR", error);
+    throw new Error(error.message || "Falha ao enviar pelo WhatsApp");
+  }
+  const payload = (data ?? {}) as {
+    ok?: boolean;
+    error?: string;
+    messageId?: string;
+    conversationId?: string;
+  };
+  if (!payload.ok) {
+    console.error("QUOTE_SEND_WA_ERROR", payload);
+    throw new Error(payload.error || "Falha ao enviar pelo WhatsApp");
+  }
+  await markQuoteSent(args.quoteId, {
+    externalMessageId: payload.messageId,
+    conversationId: payload.conversationId,
+  });
+  console.log("QUOTE_SEND_WA_SUCCESS", payload);
+  return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
