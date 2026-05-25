@@ -212,7 +212,7 @@ function InboxPage() {
       if (!lead) continue;
       const msgs = getMessagesFor(c.id);
       const last = msgs[msgs.length - 1];
-      const origin = getConversationOrigin(lead, last);
+      const origin = getConversationOrigin(lead, last, c);
       counts.todos += 1;
       if (matchesSource(origin, c.awaitingReply, "whatsapp")) counts.whatsapp += 1;
       if (matchesSource(origin, c.awaitingReply, "instagram")) counts.instagram += 1;
