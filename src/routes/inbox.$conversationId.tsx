@@ -52,6 +52,52 @@ interface AISuggestion {
   suggestedReply: string;
 }
 
+type MetaSendPayload = {
+  ok?: boolean;
+  error?: string;
+  metaError?: { message?: string; type?: string; code?: number; error_subcode?: number; fbtrace_id?: string } | null;
+  status?: number;
+  dbError?: unknown;
+};
+
+async function readFunctionError(error: unknown, data: unknown): Promise<{ message: string; full: unknown }> {
+  const payload = data as MetaSendPayload | null;
+  if (payload?.metaError || payload?.error) {
+    const meta = payload.metaError;
+    const parts = [
+      meta?.message ?? payload.error,
+      meta?.code ? `code ${meta.code}` : null,
+      meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
+      meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
+    ].filter(Boolean);
+    return { message: parts.join(" • "), full: payload };
+  }
+
+  const context = error as { message?: string; context?: { response?: Response } } | null;
+  const response = context?.context?.response;
+  if (response) {
+    const raw = await response.clone().text().catch(() => "");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as MetaSendPayload;
+        const meta = parsed.metaError;
+        const parts = [
+          meta?.message ?? parsed.error ?? raw,
+          meta?.code ? `code ${meta.code}` : null,
+          meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
+          meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
+        ].filter(Boolean);
+        return { message: parts.join(" • "), full: parsed };
+      } catch {
+        return { message: raw, full: raw };
+      }
+    }
+  }
+
+  const fallback = context?.message ?? "Falha ao enviar mensagem";
+  return { message: fallback, full: error };
+}
+
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
 // aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
@@ -80,6 +126,7 @@ function ConversationPage() {
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
@@ -148,6 +195,7 @@ function ConversationPage() {
     };
     setMessages((prev) => [...prev, msg]);
     setInput("");
+    setSendError(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
     if (profile?.company_id) {
@@ -180,38 +228,37 @@ function ConversationPage() {
             return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
-            const subtype =
-              origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
-                ? "comment"
-                : origin === "messenger"
-                  ? "messenger"
-                  : origin === "instagram_direct"
-                    ? "instagram_dm"
-                    : "facebook_dm";
+            const providerType = origin === "instagram_comment"
+              ? "instagram_comment"
+              : origin === "instagram_direct"
+                ? "instagram_direct"
+                : origin;
+            const subtype = origin === "instagram_comment" || origin === "facebook_comment" || origin === "comment"
+              ? "comment"
+              : "dm";
             const { data, error } = await supabase.functions.invoke("meta-send", {
-              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin },
+              body: { conversationId, leadId: lead.id, text: trimmed, subtype, origin, provider_type: providerType },
             });
             const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
             if (ok) return;
-            const errMsg =
-              (data as { error?: string } | null)?.error ??
-              error?.message ??
-              "Falha ao enviar mensagem";
-            console.error("[chat send] Meta falhou", { error, data });
+            const details = await readFunctionError(error, data);
+            console.error("[chat send] Meta falhou", { origin, providerType, subtype, error, data, full: details.full });
             setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setSendError(details.message);
             const label =
               origin === "instagram_direct" || origin === "instagram_comment"
                 ? "Instagram"
                 : origin === "messenger"
                   ? "Messenger"
                   : "Meta";
-            toast.error(`Falha ao enviar ${label}`, { description: errMsg });
+            toast.error(`Falha ao enviar ${label}`, { description: details.message });
             return;
           }
         }
       } catch (e) {
         console.error("[chat send] erro", e);
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        setSendError(e instanceof Error ? e.message : "Erro de rede");
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
         });
