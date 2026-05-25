@@ -161,6 +161,13 @@ async function insertMessage(
 Deno.serve(async (req) => {
   const url = new URL(req.url);
 
+  console.log("META_WEBHOOK_REQUEST", {
+    method: req.method,
+    url: req.url,
+    ua: req.headers.get("user-agent"),
+    hasSig: !!req.headers.get("x-hub-signature-256"),
+  });
+
   // ---- Verification (GET) ----
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
@@ -170,17 +177,19 @@ Deno.serve(async (req) => {
       console.log("META_WEBHOOK_VERIFIED");
       return text(challenge, 200);
     }
-    console.log("META_WEBHOOK_VERIFY_FAILED", { mode, hasToken: !!token });
+    console.log("META_WEBHOOK_VERIFY_FAILED", { mode, hasToken: !!token, tokenMatch: token === META_VERIFY_TOKEN });
     return text("forbidden", 403);
   }
 
   if (req.method !== "POST") return text("method not allowed", 405);
 
   const raw = await req.text();
+  console.log("META_WEBHOOK_RAW_BODY", raw.slice(0, 4000));
+
   const sig = req.headers.get("x-hub-signature-256");
   const valid = await verifySignature(raw, sig);
   if (!valid) {
-    console.log("META_WEBHOOK_BAD_SIGNATURE");
+    console.log("META_WEBHOOK_BAD_SIGNATURE", { sigPreview: sig?.slice(0, 20) });
     return text("invalid signature", 401);
   }
 
@@ -195,7 +204,11 @@ Deno.serve(async (req) => {
     return text("bad json", 400);
   }
 
-  console.log("META_WEBHOOK_EVENT", JSON.stringify(body).slice(0, 1500));
+  console.log("META_WEBHOOK_PARSED", {
+    object: body?.object,
+    entryCount: Array.isArray(body?.entry) ? body.entry.length : 0,
+    entryIds: (Array.isArray(body?.entry) ? body.entry : []).map((e: any) => e?.id),
+  });
 
   const object = body?.object as string | undefined;
   const entries = Array.isArray(body?.entry) ? body.entry : [];
