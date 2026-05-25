@@ -187,12 +187,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
   );
   const lead = getLeads().find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
-  // Resolve a conversa: a vinculada ao orçamento, ou a primeira conversa do lead.
+  const [waOpen, setWaOpen] = useState(false);
+
   const targetConversationId =
     quote.conversationId ?? getConversations().find((c) => c.leadId === quote.leadId)?.id;
 
-  const sendInConversation = () => {
-    if (!targetConversationId) return;
+  const status = computeQuoteStatus(quote);
+  const phone = lead?.phone?.replace(/\D/g, "") ?? "";
+  const canWhatsApp = phone.length >= 8 && phone.length <= 15;
+
+  const openConversation = () => {
+    if (!targetConversationId) {
+      toast.message("Sem conversa ativa", {
+        description: "Envie pelo WhatsApp para criar a conversa.",
+      });
+      return;
+    }
     navigate({
       to: "/inbox/$conversationId",
       params: { conversationId: targetConversationId },
@@ -200,54 +210,248 @@ function QuoteCard({ quote }: { quote: Quote }) {
     });
   };
 
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(quote.message);
+      toast.success("Orçamento copiado");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">{quote.productName}</div>
-          <div className="text-[11px] text-muted-foreground">
-            Para {lead?.name ?? "—"} • criado há {timeAgo(quote.createdAt)}
+    <>
+      <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">{quote.productName}</div>
+            <div className="text-[11px] text-muted-foreground">
+              Para {lead?.name ?? "—"} • criado há {timeAgo(quote.createdAt)}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
+            {quote.installments > 1 && (
+              <div className="text-[11px] text-muted-foreground">
+                {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
+              </div>
+            )}
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
-          {quote.installments > 1 && (
-            <div className="text-[11px] text-muted-foreground">
-              {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
-            </div>
-          )}
+
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          <Chip>{quote.paymentMethod}</Chip>
+          {quote.discount > 0 && <Chip>Desc. {formatBRL(quote.discount)}</Chip>}
+          <Chip>Válido até {new Date(quote.validUntil).toLocaleDateString("pt-BR")}</Chip>
+          <StatusBadge status={status} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              if (!canWhatsApp) {
+                toast.error("Lead sem telefone válido");
+                return;
+              }
+              setWaOpen(true);
+            }}
+            disabled={!canWhatsApp}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-[#25D366] text-white px-3 py-1.5 hover:opacity-90 font-semibold disabled:opacity-40"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {quote.sent ? "Reenviar no WhatsApp" : "Enviar no WhatsApp"}
+          </button>
+          <button
+            onClick={openConversation}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
+          >
+            <MessageCircle className="h-3.5 w-3.5" /> Abrir conversa
+          </button>
+          <button
+            onClick={copyMessage}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
+          >
+            <Copy className="h-3.5 w-3.5" /> Copiar orçamento
+          </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 text-[11px]">
-        <Chip>{quote.paymentMethod}</Chip>
-        {quote.discount > 0 && <Chip>Desc. {formatBRL(quote.discount)}</Chip>}
-        <Chip>Válido até {new Date(quote.validUntil).toLocaleDateString("pt-BR")}</Chip>
-        {quote.sent ? (
-          <span className="inline-flex items-center gap-1 rounded bg-[var(--status-won)]/15 text-[var(--status-won)] px-1.5 py-0.5 font-semibold">
-            <Check className="h-3 w-3" /> Enviado
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded bg-[var(--status-warm)]/15 text-[var(--status-warm)] px-1.5 py-0.5 font-semibold">
-            Pendente envio
-          </span>
-        )}
-      </div>
+      {waOpen && (
+        <SendWhatsAppModal
+          quote={quote}
+          leadName={lead?.name ?? "Cliente"}
+          phone={phone}
+          onClose={() => setWaOpen(false)}
+          onSent={(conversationId) => {
+            setWaOpen(false);
+            const targetId = conversationId ?? targetConversationId;
+            if (targetId) {
+              navigate({
+                to: "/inbox/$conversationId",
+                params: { conversationId: targetId },
+                search: { quote: quote.id },
+              });
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
 
-      <div className="flex items-center gap-2">
-        {targetConversationId ? (
-          <button
-            onClick={sendInConversation}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 font-semibold"
-          >
-            <Send className="h-3.5 w-3.5" />
-            {quote.sent ? "Reenviar na conversa" : "Enviar na conversa"}
+const STATUS_META: Record<
+  QuoteStatus,
+  { label: string; className: string }
+> = {
+  pendente: {
+    label: "Pendente envio",
+    className: "bg-[var(--status-warm)]/15 text-[var(--status-warm)]",
+  },
+  enviado: { label: "Enviado", className: "bg-primary/15 text-primary" },
+  visualizado: { label: "Visualizado", className: "bg-blue-500/15 text-blue-500" },
+  aprovado: {
+    label: "Aprovado",
+    className: "bg-[var(--status-won)]/15 text-[var(--status-won)]",
+  },
+  vencido: {
+    label: "Vencido",
+    className: "bg-destructive/15 text-destructive",
+  },
+};
+
+function StatusBadge({ status }: { status: QuoteStatus }) {
+  const meta = STATUS_META[status];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold",
+        meta.className,
+      )}
+    >
+      {status === "enviado" || status === "visualizado" || status === "aprovado" ? (
+        <Check className="h-3 w-3" />
+      ) : null}
+      {meta.label}
+    </span>
+  );
+}
+
+function buildWhatsAppMessage(args: {
+  name: string;
+  productName: string;
+  finalValue: number;
+  validUntil: string;
+}): string {
+  const validStr = new Date(args.validUntil).toLocaleDateString("pt-BR");
+  return [
+    `Olá ${args.name} 👋`,
+    "",
+    "Segue seu orçamento:",
+    `🏊 ${args.productName}`,
+    `💰 ${formatBRL(args.finalValue)}`,
+    `📅 válido até ${validStr}`,
+    "",
+    "Posso te ajudar com alguma dúvida? 😊",
+  ].join("\n");
+}
+
+function SendWhatsAppModal({
+  quote,
+  leadName,
+  phone,
+  onClose,
+  onSent,
+}: {
+  quote: Quote;
+  leadName: string;
+  phone: string;
+  onClose: () => void;
+  onSent: (conversationId?: string) => void;
+}) {
+  const [text, setText] = useState(() =>
+    buildWhatsAppMessage({
+      name: leadName.split(" ")[0] ?? leadName,
+      productName: quote.productName,
+      finalValue: quote.finalValue,
+      validUntil: quote.validUntil,
+    }),
+  );
+  const [sending, setSending] = useState(false);
+
+  const submit = async () => {
+    if (!text.trim()) {
+      toast.error("Mensagem vazia");
+      return;
+    }
+    setSending(true);
+    try {
+      const res = await sendQuoteWhatsApp({
+        quoteId: quote.id,
+        phone,
+        contactName: leadName,
+        leadId: quote.leadId || undefined,
+        text,
+      });
+      toast.success("Orçamento enviado pelo WhatsApp");
+      onSent(res.conversationId);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao enviar");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <Send className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Enviar pelo WhatsApp</h2>
+          <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
           </button>
-        ) : (
-          <span className="text-[11px] text-muted-foreground">
-            Lead sem conversa ativa — abra uma conversa para enviar.
-          </span>
-        )}
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="text-[11px] text-muted-foreground">
+            Para <span className="font-semibold text-foreground">{leadName}</span> • +{phone}
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={10}
+            className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-none"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Será enviado via Meta Cloud API. Em breve: anexar PDF e imagem do orçamento.
+          </p>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={sending}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={sending}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
+          >
+            {sending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            {sending ? "Enviando…" : "Enviar agora"}
+          </button>
+        </div>
       </div>
     </div>
   );
