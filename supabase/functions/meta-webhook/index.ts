@@ -394,10 +394,19 @@ Deno.serve(async (req) => {
   console.log("META_WEBHOOK_RAW_BODY", raw.slice(0, 4000));
 
   const sig = req.headers.get("x-hub-signature-256");
-  const valid = await verifySignature(raw, sig);
-  if (!valid) {
-    console.log("META_WEBHOOK_BAD_SIGNATURE", { sigPreview: sig?.slice(0, 20) });
-    return text("invalid signature", 401);
+  const sigResult = await verifySignature(raw, sig);
+  if (!sigResult.ok) {
+    console.log("META_WEBHOOK_BAD_SIGNATURE", {
+      sigReceivedPrefix: sig?.slice(7, 19) ?? null,
+      sigExpectedPrefix: sigResult.expectedPreview,
+      secretsTried: sigResult.secretsTried,
+      appSecretLen: META_APP_SECRET.length,
+      bodyLen: raw.length,
+      skipping: META_SKIP_SIG,
+    });
+    if (!META_SKIP_SIG) return text("invalid signature", 401);
+  } else {
+    console.log("META_WEBHOOK_SIG_OK", { secretsTried: sigResult.secretsTried });
   }
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
