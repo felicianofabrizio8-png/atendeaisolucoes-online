@@ -779,6 +779,20 @@ Deno.serve(async (req) => {
       commentId: (lastIn?.source_metadata as any)?.comment_id ?? null,
     });
   }
+  if (isMessenger) {
+    console.log("FACEBOOK_MESSAGE_SEND_SUCCESS", {
+      messageId,
+      pageId: page.page_id,
+      recipientId: lead.source_sender_id,
+    });
+  }
+  if (isFacebookComment) {
+    console.log("FACEBOOK_COMMENT_REPLY_SUCCESS", {
+      messageId,
+      pageId: page.page_id,
+      commentId: fbCommentId,
+    });
+  }
 
   return json({ ok: true, messageId, id: inserted.id, at: sentAt, provider_type: providerType });
 });
