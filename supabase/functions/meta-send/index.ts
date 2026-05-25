@@ -416,8 +416,12 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!page) {
     if (lead.source === "instagram") {
-      const logName = subtype === "comment" ? "INSTAGRAM_COMMENT_REPLY_ERROR" : "INSTAGRAM_DIRECT_SEND_ERROR";
-      console.error(logName, { reason: "page_not_connected", sourcePageId: lead.source_page_id ?? null });
+      const logName =
+        subtype === "comment" ? "INSTAGRAM_COMMENT_REPLY_ERROR" : "INSTAGRAM_DIRECT_SEND_ERROR";
+      console.error(logName, {
+        reason: "page_not_connected",
+        sourcePageId: lead.source_page_id ?? null,
+      });
     }
     return json({ ok: false, error: "page not connected" }, 400);
   }
@@ -430,7 +434,10 @@ Deno.serve(async (req) => {
     const commentId = (lastIn?.source_metadata as any)?.comment_id;
     if (!commentId) {
       if (providerType === "instagram_comment") {
-        console.error("INSTAGRAM_COMMENT_REPLY_ERROR", { reason: "missing_comment_id", conversationId });
+        console.error("INSTAGRAM_COMMENT_REPLY_ERROR", {
+          reason: "missing_comment_id",
+          conversationId,
+        });
       }
       return json({ ok: false, error: "no comment_id to reply to" }, 400);
     }
@@ -446,7 +453,10 @@ Deno.serve(async (req) => {
     const recipientId = lead.source_sender_id;
     if (!recipientId) {
       if (providerType === "instagram_direct") {
-        console.error("INSTAGRAM_DIRECT_SEND_ERROR", { reason: "missing_recipient_id", conversationId });
+        console.error("INSTAGRAM_DIRECT_SEND_ERROR", {
+          reason: "missing_recipient_id",
+          conversationId,
+        });
       }
       return json({ ok: false, error: "no recipient id" }, 400);
     }
