@@ -8,6 +8,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 interface SendBody {
   conversationId?: string;
   leadId?: string;
+  phone?: string;
+  contactName?: string;
   text: string;
 }
 
