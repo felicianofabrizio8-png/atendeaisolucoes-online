@@ -427,48 +427,79 @@ function ProductImagesField({
   images: string[];
   onChange: (next: string[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // Local blob previews appended optimistically while uploading
+  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const isMobile = useMemo(() => isMobileDevice(), []);
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const handleFiles = async (files: FileList | File[] | null) => {
+    if (!files) return;
+    const list = Array.from(files as ArrayLike<File>);
+    if (list.length === 0) return;
     const companyId = getProductsCompanyId();
     if (!companyId) {
       toast.error("Carregue uma empresa antes de enviar fotos.");
       return;
     }
+
+    // Optimistic local previews for instant feedback
+    const previewUrls = list
+      .filter((f) => f.type.startsWith("image/"))
+      .map((f) => URL.createObjectURL(f));
+    setPendingPreviews((p) => [...p, ...previewUrls]);
+
     setUploading(true);
+    setProgress({ done: 0, total: list.length });
     const uploaded: string[] = [];
     try {
-      for (const file of Array.from(files)) {
+      let done = 0;
+      for (const file of list) {
         if (!file.type.startsWith("image/")) {
           toast.error(`Arquivo ignorado (não é imagem): ${file.name}`);
+          done++;
+          setProgress({ done, total: list.length });
           continue;
         }
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error(`Arquivo muito grande (>10MB): ${file.name}`);
-          continue;
+        try {
+          const compressed = await compressImage(file);
+          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+          const { error } = await supabase.storage
+            .from("product-images")
+            .upload(path, compressed, {
+              cacheControl: "31536000",
+              upsert: false,
+              contentType: compressed.type || "image/jpeg",
+            });
+          if (error) {
+            console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
+            toast.error(`Falha ao enviar ${file.name}: ${error.message}`);
+          } else {
+            const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+            uploaded.push(data.publicUrl);
+          }
+        } catch (e) {
+          console.error("PRODUCT_IMAGE_COMPRESS_ERROR", e);
+          toast.error(`Falha ao processar ${file.name}`);
         }
-        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-        const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error } = await supabase.storage
-          .from("product-images")
-          .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
-        if (error) {
-          console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
-          toast.error(`Falha ao enviar ${file.name}: ${error.message}`);
-          continue;
-        }
-        const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-        uploaded.push(data.publicUrl);
+        done++;
+        setProgress({ done, total: list.length });
       }
       if (uploaded.length) {
         onChange([...images, ...uploaded]);
         toast.success(`${uploaded.length} foto(s) adicionada(s)`);
       }
     } finally {
+      // Release object URLs
+      previewUrls.forEach((u) => URL.revokeObjectURL(u));
+      setPendingPreviews((p) => p.filter((u) => !previewUrls.includes(u)));
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
+      setProgress(null);
+      if (galleryRef.current) galleryRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
     }
   };
 
@@ -484,26 +515,40 @@ function ProductImagesField({
     onChange(next);
   };
 
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer?.files?.length) {
+      handleFiles(e.dataTransfer.files);
+    }
+  };
+
   return (
     <div>
       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
         Fotos do produto
       </label>
       <div className="mt-1 space-y-2">
-        {images.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
+        {(images.length > 0 || pendingPreviews.length > 0) && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {images.map((url, idx) => (
               <div
                 key={url + idx}
-                className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted"
+                className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted touch-manipulation"
               >
-                <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                <img
+                  src={url}
+                  alt={`Foto ${idx + 1}`}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+                {/* Always-visible action bar on mobile, hover on desktop */}
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1 bg-gradient-to-t from-black/70 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   <button
                     type="button"
                     onClick={() => move(idx, -1)}
                     disabled={idx === 0}
-                    className="p-1 rounded bg-background/90 hover:bg-background disabled:opacity-30"
+                    className="p-1.5 rounded bg-background/90 hover:bg-background disabled:opacity-30"
                     title="Mover para esquerda"
                   >
                     <ArrowLeft className="h-3 w-3" />
@@ -512,7 +557,7 @@ function ProductImagesField({
                     type="button"
                     onClick={() => move(idx, 1)}
                     disabled={idx === images.length - 1}
-                    className="p-1 rounded bg-background/90 hover:bg-background disabled:opacity-30"
+                    className="p-1.5 rounded bg-background/90 hover:bg-background disabled:opacity-30"
                     title="Mover para direita"
                   >
                     <ArrowRight className="h-3 w-3" />
@@ -520,7 +565,7 @@ function ProductImagesField({
                   <button
                     type="button"
                     onClick={() => remove(idx)}
-                    className="p-1 rounded bg-destructive text-destructive-foreground hover:opacity-90"
+                    className="p-1.5 rounded bg-destructive text-destructive-foreground hover:opacity-90"
                     title="Remover"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -533,39 +578,92 @@ function ProductImagesField({
                 )}
               </div>
             ))}
+            {pendingPreviews.map((url) => (
+              <div
+                key={url}
+                className="relative aspect-square rounded-md overflow-hidden border border-border bg-muted"
+              >
+                <img src={url} alt="" className="w-full h-full object-cover opacity-60" />
+                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+                  <Loader2 className="h-4 w-4 animate-spin text-foreground" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
+
         <input
-          ref={inputRef}
+          ref={galleryRef}
           type="file"
           accept="image/*"
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-dashed border-border bg-background px-3 py-3 hover:bg-accent disabled:opacity-60"
-        >
-          {uploading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : images.length > 0 ? (
-            <Upload className="h-3.5 w-3.5" />
-          ) : (
-            <ImageIcon className="h-3.5 w-3.5" />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          className={cn(
+            "rounded-md border border-dashed transition-colors",
+            dragOver ? "border-primary bg-primary/5" : "border-border bg-background",
           )}
-          {uploading
-            ? "Enviando…"
-            : images.length > 0
-              ? "Adicionar mais fotos"
-              : "Enviar fotos do produto"}
-        </button>
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2">
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-3 hover:opacity-90 disabled:opacity-60"
+              >
+                <Camera className="h-3.5 w-3.5" />
+                Tirar foto
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => galleryRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                "inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background px-3 py-3 hover:bg-accent disabled:opacity-60",
+                !isMobile && "sm:col-span-2",
+              )}
+            >
+              {uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : images.length > 0 ? (
+                <Upload className="h-3.5 w-3.5" />
+              ) : (
+                <ImageIcon className="h-3.5 w-3.5" />
+              )}
+              {uploading && progress
+                ? `Enviando ${progress.done}/${progress.total}…`
+                : isMobile
+                  ? "Escolher da galeria"
+                  : images.length > 0
+                    ? "Adicionar mais fotos (ou arraste aqui)"
+                    : "Enviar fotos do produto (ou arraste aqui)"}
+            </button>
+          </div>
+        </div>
         <p className="text-[10px] text-muted-foreground">
-          A primeira foto será usada como capa. Até 10MB por imagem.
+          A primeira foto é a capa. Imagens são comprimidas automaticamente para envio rápido no WhatsApp.
         </p>
       </div>
     </div>
   );
 }
+
