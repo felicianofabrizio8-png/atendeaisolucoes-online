@@ -30,6 +30,7 @@ import {
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 
 export const Route = createFileRoute("/produtos")({
