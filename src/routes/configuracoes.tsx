@@ -1779,28 +1779,73 @@ function MetaIntegrationSection() {
     }
   }, []);
 
-  // Retomar fluxo após callback OAuth: token vem via sessionStorage (fallback)
-  // ou via postMessage da popup (fluxo padrão atual).
+  // Troca o `code` do OAuth por um access_token via edge function meta-connect.
+  const exchangeCodeForToken = useCallback(
+    async (code: string) => {
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data, error } = await supabase.functions.invoke("meta-connect", {
+          body: {
+            mode: "exchange_code",
+            code,
+            redirectUri: REDIRECT_URI,
+          },
+        });
+        if (error) throw error;
+        const res = data as { ok?: boolean; access_token?: string; error?: string };
+        if (!res?.access_token) {
+          throw new Error(res?.error ?? "Resposta sem access_token");
+        }
+        await loadPagesFromToken(res.access_token);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Falha ao trocar código Meta");
+      }
+    },
+    [loadPagesFromToken],
+  );
+
+  // Retomar fluxo após callback OAuth: code vem via postMessage da popup,
+  // ou via sessionStorage no fallback (popup bloqueado / mesma janela).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const tok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
-    if (tok) {
+
+    // Fallback (sem popup): callback gravou o code em sessionStorage.
+    const pendingCode = window.sessionStorage.getItem("META_OAUTH_CODE");
+    if (pendingCode) {
+      window.sessionStorage.removeItem("META_OAUTH_CODE");
+      window.sessionStorage.removeItem("META_OAUTH_STATE_RX");
+      setConnecting(true);
+      void exchangeCodeForToken(pendingCode).finally(() => setConnecting(false));
+    }
+    // Legado: ainda suporta token salvo (caso alguma popup antiga responda assim).
+    const legacyTok = window.sessionStorage.getItem("META_OAUTH_TOKEN");
+    if (legacyTok) {
       window.sessionStorage.removeItem("META_OAUTH_TOKEN");
-      void loadPagesFromToken(tok).catch((e) => {
+      void loadPagesFromToken(legacyTok).catch((e) => {
         setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
       });
     }
 
     const onMessage = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string; access_token?: string; error?: string } | null;
+      const data = ev.data as {
+        type?: string;
+        code?: string;
+        access_token?: string;
+        error?: string;
+      } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
-      setConnecting(false);
       if (data.error) {
+        setConnecting(false);
         setError(data.error);
         return;
       }
+      if (data.code) {
+        void exchangeCodeForToken(data.code).finally(() => setConnecting(false));
+        return;
+      }
       if (data.access_token) {
+        setConnecting(false);
         void loadPagesFromToken(data.access_token).catch((e) => {
           setError(e instanceof Error ? e.message : "Falha ao listar páginas Meta");
         });
@@ -1808,7 +1853,7 @@ function MetaIntegrationSection() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [loadPagesFromToken]);
+  }, [loadPagesFromToken, exchangeCodeForToken]);
 
   const onConnect = async () => {
     setError(null);
