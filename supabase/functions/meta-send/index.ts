@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
   // Find page + token
   const { data: page } = await sb
     .from("meta_pages")
-    .select("page_id, ig_business_account_id, page_access_token")
+    .select("page_id, ig_business_account_id, page_access_token, ig_user_access_token")
     .eq("company_id", companyId)
     .eq("page_id", lead.source_page_id ?? "")
     .maybeSingle();
@@ -423,13 +423,24 @@ Deno.serve(async (req) => {
         sourcePageId: lead.source_page_id ?? null,
       });
     }
+    if (lead.source === "messenger" || lead.source === "facebook") {
+      console.error("FACEBOOK_MESSAGE_SEND_ERROR", {
+        reason: "page_not_connected",
+        sourcePageId: lead.source_page_id ?? null,
+      });
+    }
     return json({ ok: false, error: "page not connected" }, 400);
   }
 
-  const pageToken = page.page_access_token as string;
-  // Tokens that begin with "IGAA" come from the Instagram Login flow and must
-  // call the graph.instagram.com host. Page Access Tokens (EAA...) use
-  // graph.facebook.com. Comments/DMs for IG accept either, depending on token.
+  // Choose the right token per provider:
+  // - Instagram flows prefer the Instagram Login token (IGAA...) when available,
+  //   falling back to the Page Access Token.
+  // - Facebook Messenger / Facebook comments always use the Page Access Token (EAA...).
+  const igUserToken = (page as any).ig_user_access_token as string | null;
+  const fbPageToken = page.page_access_token as string;
+  const isInstagramFlow =
+    providerType === "instagram_direct" || providerType === "instagram_comment";
+  const pageToken = isInstagramFlow ? (igUserToken || fbPageToken) : fbPageToken;
   const isIgLoginToken = typeof pageToken === "string" && pageToken.startsWith("IGAA");
   const IG_GRAPH = "https://graph.instagram.com/v21.0";
   const igHost = isIgLoginToken ? IG_GRAPH : GRAPH;
