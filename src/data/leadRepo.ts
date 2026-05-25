@@ -21,7 +21,9 @@ import {
   subscribeLeadStore,
   getLeadsSnapshot,
   getMessagesSnapshot,
+  addLead as addLeadMock,
 } from "@/data/leadStore";
+
 
 // ---------- estado em memória sincronizado com o supabase ----------
 type Mode = "demo" | "remote";
@@ -343,6 +345,56 @@ export async function markLeadLost(leadId: string, reason: string) {
   );
   notify();
 }
+
+export async function createLead(
+  input: {
+    name: string;
+    phone?: string;
+    handle?: string;
+    channel: "whatsapp" | "instagram" | "facebook";
+  },
+  companyId?: string,
+): Promise<Lead> {
+  if (mode === "demo") {
+    const newLead: Lead = {
+      id: `l-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: input.name,
+      phone: input.phone,
+      handle: input.handle,
+      channel: input.channel,
+      status: "novo",
+      tags: [],
+      createdAt: new Date().toISOString(),
+    };
+    addLeadMock(newLead);
+    notify();
+    return newLead;
+  }
+  if (!companyId) throw new Error("companyId obrigatório para criar cliente");
+  const { data, error } = await supabase
+    .from("leads")
+    .insert({
+      company_id: companyId,
+      name: input.name,
+      phone: input.phone ?? null,
+      handle: input.handle ?? null,
+      channel: input.channel,
+      status: "novo",
+      tags: [],
+    })
+    .select(
+      "id,name,phone,handle,channel,status,tags,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at",
+    )
+    .single();
+  if (error) throw error;
+  const lead = toLead(data as DbLead);
+  if (!remoteLeads.some((l) => l.id === lead.id)) {
+    remoteLeads = [...remoteLeads, lead];
+  }
+  notify();
+  return lead;
+}
+
 
 export async function appendMessage(
   message: Omit<Message, "id"> & { id?: string },

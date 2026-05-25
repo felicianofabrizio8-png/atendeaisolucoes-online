@@ -16,9 +16,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatBRL, timeAgo } from "@/data/mock";
+import { formatBRL, timeAgo, type Channel } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
-import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
+import { getLeads, getConversations, subscribeRepo, createLead } from "@/data/leadRepo";
 import {
   createQuote,
   listQuotes,
@@ -30,7 +30,9 @@ import {
   type Quote,
   type QuoteStatus,
 } from "@/data/quotes";
+import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
@@ -194,9 +196,14 @@ function QuoteCard({ quote }: { quote: Quote }) {
 
   const status = computeQuoteStatus(quote);
   const phone = lead?.phone?.replace(/\D/g, "") ?? "";
-  const canWhatsApp = phone.length >= 8 && phone.length <= 15;
+  const canWhatsApp = !!lead && phone.length >= 8 && phone.length <= 15;
+  const hasClient = !!lead;
 
   const openConversation = () => {
+    if (!hasClient) {
+      toast.error("Selecione um cliente para abrir a conversa.");
+      return;
+    }
     if (!targetConversationId) {
       toast.message("Sem conversa ativa", {
         description: "Envie pelo WhatsApp para criar a conversa.",
@@ -219,14 +226,30 @@ function QuoteCard({ quote }: { quote: Quote }) {
     }
   };
 
+  const channelLabel: Record<Channel, string> = {
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    facebook: "Facebook",
+  };
+  const contactLine = lead
+    ? lead.phone
+      ? `${channelLabel[lead.channel]} • ${lead.phone}`
+      : lead.handle
+        ? `${channelLabel[lead.channel]} • @${lead.handle}`
+        : channelLabel[lead.channel]
+    : "Sem cliente vinculado";
+
   return (
     <>
       <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">{quote.productName}</div>
-            <div className="text-[11px] text-muted-foreground">
-              Para {lead?.name ?? "—"} • criado há {timeAgo(quote.createdAt)}
+            <div className="text-[12px] font-medium truncate">
+              {lead?.name ?? "— Cliente não selecionado —"}
+            </div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {contactLine} • criado há {timeAgo(quote.createdAt)}
             </div>
           </div>
           <div className="text-right shrink-0">
@@ -246,11 +269,21 @@ function QuoteCard({ quote }: { quote: Quote }) {
           <StatusBadge status={status} />
         </div>
 
+        {!hasClient && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            Selecione um cliente para enviar este orçamento.
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
+              if (!hasClient) {
+                toast.error("Selecione um cliente para enviar este orçamento.");
+                return;
+              }
               if (!canWhatsApp) {
-                toast.error("Lead sem telefone válido");
+                toast.error("Cliente sem telefone válido");
                 return;
               }
               setWaOpen(true);
@@ -263,7 +296,8 @@ function QuoteCard({ quote }: { quote: Quote }) {
           </button>
           <button
             onClick={openConversation}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
+            disabled={!hasClient}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
           >
             <MessageCircle className="h-3.5 w-3.5" /> Abrir conversa
           </button>
@@ -276,10 +310,10 @@ function QuoteCard({ quote }: { quote: Quote }) {
         </div>
       </div>
 
-      {waOpen && (
+      {waOpen && lead && (
         <SendWhatsAppModal
           quote={quote}
-          leadName={lead?.name ?? "Cliente"}
+          leadName={lead.name}
           phone={phone}
           onClose={() => setWaOpen(false)}
           onSent={(conversationId) => {
@@ -298,6 +332,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
     </>
   );
 }
+
 
 const STATUS_META: Record<
   QuoteStatus,
@@ -574,7 +609,37 @@ function QuoteFormModal({
   onCreated,
 }: QuoteFormModalProps) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
-  const [leadId, setLeadId] = useState(defaultLeadId ?? leads[0]?.id ?? "");
+  const { profile } = useAuth();
+  const companyId = profile?.company_id;
+
+  // Cliente — NUNCA pré-seleciona automaticamente (a menos que venha via deep link).
+  const [clientMode, setClientMode] = useState<"existing" | "new">(
+    defaultLeadId ? "existing" : "existing",
+  );
+  const [leadId, setLeadId] = useState<string>(defaultLeadId ?? "");
+  const [clientSearch, setClientSearch] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newChannel, setNewChannel] = useState<Channel>("whatsapp");
+  const [newPhone, setNewPhone] = useState("");
+  const [newHandle, setNewHandle] = useState("");
+  const [creatingClient, setCreatingClient] = useState(false);
+
+  const selectedLead = leadId ? leads.find((l) => l.id === leadId) : undefined;
+
+  const filteredLeads = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase();
+    const sorted = [...leads].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted.slice(0, 50);
+    return sorted
+      .filter(
+        (l) =>
+          l.name.toLowerCase().includes(q) ||
+          (l.phone ?? "").toLowerCase().includes(q) ||
+          (l.handle ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [leads, clientSearch]);
+
   const [productId, setProductId] = useState(
     defaultProductId && getProduct(defaultProductId) ? defaultProductId : (products[0]?.id ?? ""),
   );
@@ -584,6 +649,7 @@ function QuoteFormModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
   const [installments, setInstallments] = useState(1);
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
+  const [submitting, setSubmitting] = useState(false);
 
   const product = getProduct(productId);
   const unitPrice = product ? activePrice(product) : 0;
@@ -602,21 +668,55 @@ function QuoteFormModal({
     });
   }, [product, finalValue, installments, paymentMethod, validUntil, discount]);
 
-  const canSubmit = !!product && !!leadId && finalValue > 0 && installments >= 1;
+  const newClientValid =
+    clientMode === "new" &&
+    newName.trim().length >= 2 &&
+    (newChannel === "whatsapp"
+      ? newPhone.replace(/\D/g, "").length >= 8
+      : newHandle.trim().length >= 2 || newPhone.replace(/\D/g, "").length >= 8);
+
+  const hasClient = clientMode === "existing" ? !!leadId : newClientValid;
+  const canSubmit = !!product && hasClient && finalValue > 0 && installments >= 1 && !submitting;
 
   const submit = async () => {
-    if (!canSubmit) return;
-    const q = await createQuote({
-      leadId,
-      conversationId: defaultConversationId,
-      productId,
-      discount,
-      paymentMethod,
-      installments,
-      validUntil,
-    });
-    onCreated(q);
+    if (!canSubmit || !product) return;
+    setSubmitting(true);
+    try {
+      let finalLeadId = leadId;
+      if (clientMode === "new") {
+        const created = await createLead(
+          {
+            name: newName.trim(),
+            channel: newChannel,
+            phone: newPhone.trim() ? newPhone.trim() : undefined,
+            handle: newHandle.trim() ? newHandle.trim() : undefined,
+          },
+          companyId,
+        );
+        finalLeadId = created.id;
+        toast.success(`Cliente "${created.name}" criado`);
+      }
+      const q = await createQuote({
+        leadId: finalLeadId,
+        // Só vincula conversa quando o cliente do deep link é o mesmo escolhido.
+        conversationId:
+          defaultConversationId && defaultLeadId === finalLeadId
+            ? defaultConversationId
+            : undefined,
+        productId,
+        discount,
+        paymentMethod,
+        installments,
+        validUntil,
+      });
+      onCreated(q);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao criar orçamento");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
 
   return (
     <div
@@ -649,21 +749,137 @@ function QuoteFormModal({
         )}
 
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Lead */}
-          <Field label="Cliente / Lead">
-            <select
-              value={leadId}
-              onChange={(e) => setLeadId(e.target.value)}
-              disabled={!!defaultLeadId}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-70"
-            >
-              {leads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/* Cliente — obrigatório, sem auto-seleção */}
+          <div className="md:col-span-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+              Cliente <span className="text-destructive">*</span>
+            </div>
+            <div className="inline-flex rounded-md border border-border bg-input p-0.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setClientMode("existing")}
+                className={cn(
+                  "text-xs px-3 py-1 rounded font-semibold transition",
+                  clientMode === "existing"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Cliente existente
+              </button>
+              <button
+                type="button"
+                onClick={() => setClientMode("new")}
+                className={cn(
+                  "text-xs px-3 py-1 rounded font-semibold transition",
+                  clientMode === "new"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Novo cliente
+              </button>
+            </div>
+
+            {clientMode === "existing" ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  placeholder="Buscar por nome, telefone ou @"
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {leads.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
+                    Nenhum cliente cadastrado ainda. Use a aba "Novo cliente".
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                    {filteredLeads.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                        Nenhum cliente encontrado.
+                      </div>
+                    ) : (
+                      filteredLeads.map((l) => {
+                        const checked = l.id === leadId;
+                        return (
+                          <button
+                            type="button"
+                            key={l.id}
+                            onClick={() => setLeadId(l.id)}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 hover:bg-accent",
+                              checked && "bg-primary/10",
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-semibold truncate">{l.name}</div>
+                              <div className="text-[11px] text-muted-foreground truncate">
+                                {l.channel} •{" "}
+                                {l.phone ?? (l.handle ? `@${l.handle}` : "sem contato")}
+                              </div>
+                            </div>
+                            {checked && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                {selectedLead && (
+                  <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">Selecionado:</span>{" "}
+                    <span className="font-semibold">{selectedLead.name}</span>{" "}
+                    <span className="text-muted-foreground">
+                      • {selectedLead.channel} •{" "}
+                      {selectedLead.phone ??
+                        (selectedLead.handle ? `@${selectedLead.handle}` : "sem contato")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <select
+                  value={newChannel}
+                  onChange={(e) => setNewChannel(e.target.value as Channel)}
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook</option>
+                </select>
+                <input
+                  type="tel"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="Telefone (ex: 5511999998888)"
+                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {newChannel !== "whatsapp" && (
+                  <input
+                    type="text"
+                    value={newHandle}
+                    onChange={(e) => setNewHandle(e.target.value)}
+                    placeholder="@usuário"
+                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                )}
+                <p className="md:col-span-2 text-[11px] text-muted-foreground">
+                  O cliente será cadastrado ao salvar o orçamento.
+                </p>
+              </div>
+            )}
+          </div>
+
 
           {/* Produto */}
           <Field label="Produto" icon={PackageIcon}>
@@ -793,34 +1009,39 @@ function QuoteFormModal({
           </div>
         </div>
 
-        <div className="p-4 border-t border-border flex justify-end gap-2">
+        <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
+          {!hasClient && (
+            <span className="text-[11px] text-destructive mr-auto">
+              Selecione um cliente para enviar este orçamento.
+            </span>
+          )}
           <button
             onClick={onCancel}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={submitting}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             disabled={!canSubmit}
             onClick={submit}
-            className={cn(
-              "inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 disabled:opacity-40",
-              defaultConversationId
-                ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "bg-primary text-primary-foreground hover:opacity-90",
-            )}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
           >
-            {defaultConversationId ? (
-              <>
-                <Send className="h-3.5 w-3.5" /> Salvar e enviar na conversa
-              </>
+            {submitting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
+              <Send className="h-3.5 w-3.5" />
             ) : (
-              <>
-                <Check className="h-3.5 w-3.5" /> Salvar orçamento
-              </>
+              <Check className="h-3.5 w-3.5" />
             )}
+            {submitting
+              ? "Salvando…"
+              : defaultConversationId && defaultLeadId && defaultLeadId === leadId
+                ? "Salvar e enviar na conversa"
+                : "Salvar orçamento"}
           </button>
         </div>
+
       </div>
     </div>
   );
