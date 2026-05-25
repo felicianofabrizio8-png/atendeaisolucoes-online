@@ -21,7 +21,9 @@ import {
   subscribeLeadStore,
   getLeadsSnapshot,
   getMessagesSnapshot,
+  addLead as addLeadMock,
 } from "@/data/leadStore";
+
 
 // ---------- estado em memória sincronizado com o supabase ----------
 type Mode = "demo" | "remote";
