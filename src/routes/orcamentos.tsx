@@ -1037,6 +1037,10 @@ function QuoteFormModal({
           extra.push("", "✅ Itens inclusos:");
           for (const it of finalInclusos) extra.push(`• ${it}`);
         }
+        if (finalBrindes.length > 0) {
+          extra.push("", "🎁 Brindes:");
+          for (const it of finalBrindes) extra.push(`• ${it}`);
+        }
         if (finalPorConta.length > 0) {
           extra.push("", "⚠️ Por conta do cliente:");
           for (const it of finalPorConta) extra.push(`• ${it}`);
@@ -1061,6 +1065,7 @@ function QuoteFormModal({
         validUntil,
         message: finalMessage,
         inclusos: finalInclusos,
+        brindes: finalBrindes,
         porConta: finalPorConta,
         notes: finalObservacoes,
       });
