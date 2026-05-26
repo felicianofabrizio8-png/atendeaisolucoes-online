@@ -692,8 +692,14 @@ function QuoteFormModal({
       extra.push("⚠️ Por conta do cliente:");
       for (const it of porConta) extra.push(`• ${it}`);
     }
+    if (observacoes.trim().length > 0) {
+      extra.push("");
+      extra.push("📝 Observações:");
+      extra.push(observacoes.trim());
+    }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta, observacoes]);
+
 
   const previewMessage = customMessage ?? autoMessage;
 
