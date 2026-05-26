@@ -221,6 +221,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const lead = getLeads().find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
   const [waOpen, setWaOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteQuote(quote.id);
+      toast.success("Orçamento excluído");
+      setConfirmDelete(false);
+    } catch (e) {
+      console.error("DELETE_QUOTE_ERROR", e);
+      toast.error("Erro ao excluir orçamento");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const targetConversationId =
     quote.conversationId ?? getConversations().find((c) => c.leadId === quote.leadId)?.id;
