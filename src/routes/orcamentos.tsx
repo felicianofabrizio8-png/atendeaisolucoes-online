@@ -922,6 +922,11 @@ function QuoteFormModal({
       extra.push("✅ Itens inclusos:");
       for (const it of inclusos) extra.push(`• ${it}`);
     }
+    if (brindes.length > 0) {
+      extra.push("");
+      extra.push("🎁 Brindes:");
+      for (const it of brindes) extra.push(`• ${it}`);
+    }
     if (porConta.length > 0) {
       extra.push("");
       extra.push("⚠️ Por conta do cliente:");
@@ -933,7 +938,7 @@ function QuoteFormModal({
       extra.push(observacoes.trim());
     }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta, observacoes]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, brindes, porConta, observacoes]);
 
 
   const previewMessage = customMessage ?? autoMessage;
