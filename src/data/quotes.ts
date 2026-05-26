@@ -361,6 +361,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     createdAt: new Date().toISOString(),
     sent: false,
     inclusos,
+    brindes,
     porConta,
     notes,
   };
