@@ -977,11 +977,16 @@ function QuoteFormModal({
       // Auto-incorpora textos digitados nos inputs mas ainda não adicionados
       // (Enter/+) — evita perder "itens inclusos" / "por conta do cliente".
       const pendingIncluso = newIncluso.trim();
+      const pendingBrinde = newBrinde.trim();
       const pendingPorConta = newPorConta.trim();
       const finalInclusos =
         pendingIncluso && !inclusos.includes(pendingIncluso)
           ? [...inclusos, pendingIncluso]
           : inclusos;
+      const finalBrindes =
+        pendingBrinde && !brindes.includes(pendingBrinde)
+          ? [...brindes, pendingBrinde]
+          : brindes;
       const finalPorConta =
         pendingPorConta && !porConta.includes(pendingPorConta)
           ? [...porConta, pendingPorConta]
@@ -991,6 +996,10 @@ function QuoteFormModal({
       if (pendingIncluso && !inclusos.includes(pendingIncluso)) {
         setInclusos(finalInclusos);
         setNewIncluso("");
+      }
+      if (pendingBrinde && !brindes.includes(pendingBrinde)) {
+        setBrindes(finalBrindes);
+        setNewBrinde("");
       }
       if (pendingPorConta && !porConta.includes(pendingPorConta)) {
         setPorConta(finalPorConta);
