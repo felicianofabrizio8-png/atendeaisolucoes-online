@@ -345,23 +345,38 @@ async function insertMessage(
     source: string;
     subtype: string;
     metadata: Record<string, unknown>;
+    at?: string;
   },
 ) {
-  // dedupe by external_id
+  // dedupe by external_id (scoped to conversation to be extra safe)
   if (opts.externalId) {
     const { data: dup } = await sb
       .from("messages")
       .select("id")
       .eq("company_id", opts.companyId)
+      .eq("conversation_id", opts.conversationId)
       .eq("external_id", opts.externalId)
       .maybeSingle();
-    if (dup?.id) return;
+    if (dup?.id) {
+      console.log("META_WEBHOOK_MSG_DEDUPED", { externalId: opts.externalId, conversationId: opts.conversationId });
+      return;
+    }
+  } else {
+    // Sem mid: nunca inserir placeholder de mídia/empty para evitar duplicação em
+    // refresh/sync. Só permite quando há texto real do usuário.
+    const t = (opts.text ?? "").trim();
+    if (!t || t === "[mídia]") {
+      console.log("META_WEBHOOK_MSG_SKIPPED_NO_MID", { subtype: opts.subtype, conversationId: opts.conversationId });
+      return;
+    }
   }
+  const at = opts.at ?? new Date().toISOString();
   await sb.from("messages").insert({
     company_id: opts.companyId,
     conversation_id: opts.conversationId,
     role: "lead",
     text: opts.text,
+    at,
     external_id: opts.externalId,
     source: opts.source,
     source_subtype: opts.subtype,
@@ -369,7 +384,7 @@ async function insertMessage(
   });
   await sb
     .from("conversations")
-    .update({ last_message_at: new Date().toISOString(), awaiting_reply: true })
+    .update({ last_message_at: at, awaiting_reply: true })
     .eq("id", opts.conversationId);
 }
 
