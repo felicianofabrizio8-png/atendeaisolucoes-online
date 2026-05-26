@@ -1541,7 +1541,7 @@ function ItemListField({
 }: {
   label: string;
   placeholder: string;
-  accent: "primary" | "warn";
+  accent: "primary" | "warn" | "gift";
   items: string[];
   value: string;
   setValue: (v: string) => void;
@@ -1551,7 +1551,9 @@ function ItemListField({
   const chipClass =
     accent === "primary"
       ? "bg-primary/10 text-primary border-primary/30"
-      : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
+      : accent === "gift"
+        ? "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/30"
+        : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
