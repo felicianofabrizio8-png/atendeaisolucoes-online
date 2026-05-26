@@ -97,7 +97,11 @@ export interface QuoteInput {
   validUntil: string;
   /** Optional override for the final message text (already composed). */
   message?: string;
+  inclusos?: string[];
+  porConta?: string[];
+  notes?: string;
 }
+
 
 export function buildQuoteMessage(args: {
   product: Product;
