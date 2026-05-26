@@ -656,14 +656,22 @@ function QuoteFormModal({
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
   const [submitting, setSubmitting] = useState(false);
 
+  const [inclusos, setInclusos] = useState<string[]>([]);
+  const [porConta, setPorConta] = useState<string[]>([]);
+  const [newIncluso, setNewIncluso] = useState("");
+  const [newPorConta, setNewPorConta] = useState("");
+
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [customMessage, setCustomMessage] = useState<string | null>(null);
+
   const product = getProduct(productId);
   const unitPrice = product ? activePrice(product) : 0;
   const discount = Math.max(0, Math.min(Number(discountRaw.replace(/[^\d]/g, "")) || 0, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
 
-  const previewMessage = useMemo(() => {
+  const autoMessage = useMemo(() => {
     if (!product) return "";
-    return buildQuoteMessage({
+    const base = buildQuoteMessage({
       product,
       finalValue,
       installments,
@@ -671,7 +679,38 @@ function QuoteFormModal({
       validUntil,
       discount,
     });
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount]);
+    const extra: string[] = [];
+    if (inclusos.length > 0) {
+      extra.push("");
+      extra.push("✅ Itens inclusos:");
+      for (const it of inclusos) extra.push(`• ${it}`);
+    }
+    if (porConta.length > 0) {
+      extra.push("");
+      extra.push("⚠️ Por conta do cliente:");
+      for (const it of porConta) extra.push(`• ${it}`);
+    }
+    return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta]);
+
+  const previewMessage = customMessage ?? autoMessage;
+
+  const addItem = (
+    list: string[],
+    setList: (v: string[]) => void,
+    value: string,
+    reset: () => void,
+  ) => {
+    const v = value.trim();
+    if (!v) return;
+    if (list.includes(v)) {
+      reset();
+      return;
+    }
+    setList([...list, v]);
+    reset();
+  };
+
 
   const newClientValid =
     clientMode === "new" &&
