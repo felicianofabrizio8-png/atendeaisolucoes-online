@@ -318,6 +318,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         sent: false,
         status: "rascunho",
         inclusos,
+        brindes,
         por_conta: porConta,
         notes,
         items: [
