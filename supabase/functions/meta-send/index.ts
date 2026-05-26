@@ -69,11 +69,11 @@ Deno.serve(async (req) => {
   }
 
   const text = String(body.text ?? "").trim();
-  if (!text) return json({ ok: false, error: "text required" }, 400);
-  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
     : [];
+  if (!text && imageUrls.length === 0) return json({ ok: false, error: "text or imageUrls required" }, 400);
+  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
