@@ -374,23 +374,49 @@ function StatusBadge({ status }: { status: QuoteStatus }) {
   );
 }
 
-function buildWhatsAppMessage(args: {
-  name: string;
-  productName: string;
-  finalValue: number;
-  validUntil: string;
+
+function composeSendMessage(args: {
+  quote: Quote;
+  sendBase: boolean;
+  sendInclusos: boolean;
+  sendPorConta: boolean;
+  sendNotes: boolean;
 }): string {
-  const validStr = new Date(args.validUntil).toLocaleDateString("pt-BR");
-  return [
-    `Olá ${args.name} 👋`,
-    "",
-    "Segue seu orçamento:",
-    `🏊 ${args.productName}`,
-    `💰 ${formatBRL(args.finalValue)}`,
-    `📅 válido até ${validStr}`,
-    "",
-    "Posso te ajudar com alguma dúvida? 😊",
-  ].join("\n");
+  const { quote, sendBase, sendInclusos, sendPorConta, sendNotes } = args;
+  const blocks: string[] = [];
+  if (sendBase) {
+    const validStr = new Date(quote.validUntil).toLocaleDateString("pt-BR");
+    const head: string[] = [];
+    head.push(
+      `Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`,
+    );
+    if (quote.installments > 1) {
+      const parcela = quote.finalValue / quote.installments;
+      head.push(
+        `Pode ser parcelado em até *${quote.installments}x de ${formatBRL(parcela)}* no ${quote.paymentMethod.toLowerCase()}.`,
+      );
+    } else {
+      head.push(`Forma de pagamento: *${quote.paymentMethod}* (à vista).`);
+    }
+    head.push(`Proposta válida até *${validStr}*.`);
+    blocks.push(head.join("\n"));
+  }
+  if (sendInclusos && quote.inclusos.length > 0) {
+    blocks.push(
+      ["✅ Itens inclusos:", ...quote.inclusos.map((it) => `• ${it}`)].join("\n"),
+    );
+  }
+  if (sendPorConta && quote.porConta.length > 0) {
+    blocks.push(
+      ["⚠️ Por conta do cliente:", ...quote.porConta.map((it) => `• ${it}`)].join("\n"),
+    );
+  }
+  if (sendNotes && quote.notes.trim().length > 0) {
+    blocks.push(["📝 Observações:", quote.notes.trim()].join("\n"));
+  }
+  if (blocks.length === 0) return "";
+  blocks.push("Posso reservar para você?");
+  return blocks.join("\n\n");
 }
 
 function SendWhatsAppModal({
@@ -408,16 +434,27 @@ function SendWhatsAppModal({
 }) {
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
-  const [text, setText] = useState(() =>
-    quote.message && quote.message.trim()
-      ? quote.message
-      : buildWhatsAppMessage({
-          name: leadName.split(" ")[0] ?? leadName,
-          productName: quote.productName,
-          finalValue: quote.finalValue,
-          validUntil: quote.validUntil,
-        }),
+
+  const [sendPhotos, setSendPhotos] = useState(availableImages.length > 0);
+  const [sendBase, setSendBase] = useState(true);
+  const [sendInclusos, setSendInclusos] = useState(quote.inclusos.length > 0);
+  const [sendPorConta, setSendPorConta] = useState(quote.porConta.length > 0);
+  const [sendNotes, setSendNotes] = useState(quote.notes.trim().length > 0);
+
+  const autoText = useMemo(
+    () =>
+      composeSendMessage({ quote, sendBase, sendInclusos, sendPorConta, sendNotes }),
+    [quote, sendBase, sendInclusos, sendPorConta, sendNotes],
   );
+
+  const [edited, setEdited] = useState(false);
+  const [text, setText] = useState(autoText);
+
+  // Re-sincroniza o texto quando os toggles mudam, exceto se o usuário já editou manualmente.
+  useEffect(() => {
+    if (!edited) setText(autoText);
+  }, [autoText, edited]);
+
   const [selectedImages, setSelectedImages] = useState<string[]>(availableImages);
   const [sending, setSending] = useState(false);
 
@@ -427,9 +464,12 @@ function SendWhatsAppModal({
     );
   };
 
+  const imagesToSend = sendPhotos && selectedImages.length > 0 ? selectedImages : undefined;
+
   const submit = async () => {
-    if (!text.trim()) {
-      toast.error("Mensagem vazia");
+    const finalText = text.trim();
+    if (!finalText && !imagesToSend) {
+      toast.error("Selecione ao menos uma foto ou um bloco de mensagem");
       return;
     }
     setSending(true);
@@ -439,8 +479,8 @@ function SendWhatsAppModal({
         phone,
         contactName: leadName,
         leadId: quote.leadId || undefined,
-        text,
-        imageUrls: selectedImages.length > 0 ? selectedImages : undefined,
+        text: finalText,
+        imageUrls: imagesToSend,
       });
       toast.success("Orçamento enviado pelo WhatsApp");
       onSent(res.conversationId);
@@ -450,6 +490,37 @@ function SendWhatsAppModal({
       setSending(false);
     }
   };
+
+  const ToggleRow = ({
+    label,
+    checked,
+    onChange,
+    disabled,
+    hint,
+  }: {
+    label: string;
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    disabled?: boolean;
+    hint?: string;
+  }) => (
+    <label
+      className={cn(
+        "flex items-center gap-2 text-xs rounded-md border border-border px-2.5 py-1.5 cursor-pointer hover:bg-accent",
+        disabled && "opacity-50 cursor-not-allowed",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked && !disabled}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 accent-primary"
+      />
+      <span className="font-medium">{label}</span>
+      {hint && <span className="ml-auto text-[10px] text-muted-foreground">{hint}</span>}
+    </label>
+  );
 
   return (
     <div
@@ -472,7 +543,61 @@ function SendWhatsAppModal({
             Para <span className="font-semibold text-foreground">{leadName}</span> • +{phone}
           </div>
 
-          {availableImages.length > 0 && (
+          {/* O que enviar */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">
+              O que enviar
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <ToggleRow
+                label="Enviar fotos"
+                checked={sendPhotos}
+                onChange={setSendPhotos}
+                disabled={availableImages.length === 0}
+                hint={availableImages.length === 0 ? "sem fotos" : `${selectedImages.length}/${availableImages.length}`}
+              />
+              <ToggleRow
+                label="Enviar mensagem do orçamento"
+                checked={sendBase}
+                onChange={(v) => {
+                  setSendBase(v);
+                  setEdited(false);
+                }}
+              />
+              <ToggleRow
+                label="Enviar itens inclusos"
+                checked={sendInclusos}
+                onChange={(v) => {
+                  setSendInclusos(v);
+                  setEdited(false);
+                }}
+                disabled={quote.inclusos.length === 0}
+                hint={quote.inclusos.length === 0 ? "vazio" : `${quote.inclusos.length} ${quote.inclusos.length === 1 ? "item" : "itens"}`}
+              />
+              <ToggleRow
+                label="Enviar por conta do cliente"
+                checked={sendPorConta}
+                onChange={(v) => {
+                  setSendPorConta(v);
+                  setEdited(false);
+                }}
+                disabled={quote.porConta.length === 0}
+                hint={quote.porConta.length === 0 ? "vazio" : `${quote.porConta.length} ${quote.porConta.length === 1 ? "item" : "itens"}`}
+              />
+              <ToggleRow
+                label="Enviar observações"
+                checked={sendNotes}
+                onChange={(v) => {
+                  setSendNotes(v);
+                  setEdited(false);
+                }}
+                disabled={quote.notes.trim().length === 0}
+                hint={quote.notes.trim().length === 0 ? "vazio" : undefined}
+              />
+            </div>
+          </div>
+
+          {sendPhotos && availableImages.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
@@ -493,7 +618,6 @@ function SendWhatsAppModal({
                 </button>
               </div>
 
-              {/* Carrossel das fotos selecionadas — ordem de envio */}
               {selectedImages.length > 0 && (
                 <div className="mb-2 -mx-1 px-1 overflow-x-auto snap-x snap-mandatory flex gap-2 pb-1 scrollbar-thin">
                   {selectedImages.map((url, i) => (
@@ -510,7 +634,6 @@ function SendWhatsAppModal({
                 </div>
               )}
 
-              {/* Grade de seleção rápida — toque/clique alterna */}
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                 {availableImages.map((url) => {
                   const checked = selectedImages.includes(url);
@@ -542,16 +665,40 @@ function SendWhatsAppModal({
             </div>
           )}
 
-
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={10}
-            className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-none"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Será enviado via Meta Cloud API.
-          </p>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                Mensagem
+              </span>
+              {edited && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEdited(false);
+                    setText(autoText);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-0.5 hover:bg-accent"
+                >
+                  <RotateCcw className="h-3 w-3" /> Restaurar
+                </button>
+              )}
+            </div>
+            <textarea
+              value={text}
+              onChange={(e) => {
+                setEdited(true);
+                setText(e.target.value);
+              }}
+              rows={12}
+              placeholder="Mensagem vazia — apenas as fotos serão enviadas."
+              className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {edited
+                ? "Texto editado manualmente — será enviado exatamente como exibido."
+                : "Marque/desmarque os blocos acima para montar a mensagem."}
+            </p>
+          </div>
         </div>
         <div className="p-4 border-t border-border flex justify-end gap-2">
           <button
@@ -573,8 +720,8 @@ function SendWhatsAppModal({
             )}
             {sending
               ? "Enviando…"
-              : selectedImages.length > 0
-                ? `Enviar ${selectedImages.length} foto(s) + mensagem`
+              : imagesToSend && imagesToSend.length > 0
+                ? `Enviar ${imagesToSend.length} foto(s) + mensagem`
                 : "Enviar agora"}
           </button>
         </div>
@@ -582,6 +729,7 @@ function SendWhatsAppModal({
     </div>
   );
 }
+
 
 
 function Chip({ children }: { children: React.ReactNode }) {
@@ -660,6 +808,8 @@ function QuoteFormModal({
   const [porConta, setPorConta] = useState<string[]>([]);
   const [newIncluso, setNewIncluso] = useState("");
   const [newPorConta, setNewPorConta] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+
 
   const [editingMessage, setEditingMessage] = useState(false);
   const [customMessage, setCustomMessage] = useState<string | null>(null);
@@ -690,8 +840,14 @@ function QuoteFormModal({
       extra.push("⚠️ Por conta do cliente:");
       for (const it of porConta) extra.push(`• ${it}`);
     }
+    if (observacoes.trim().length > 0) {
+      extra.push("");
+      extra.push("📝 Observações:");
+      extra.push(observacoes.trim());
+    }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta, observacoes]);
+
 
   const previewMessage = customMessage ?? autoMessage;
 
@@ -753,7 +909,11 @@ function QuoteFormModal({
         installments,
         validUntil,
         message: previewMessage,
+        inclusos,
+        porConta,
+        notes: observacoes,
       });
+
       onCreated(q);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao criar orçamento");
@@ -1070,6 +1230,22 @@ function QuoteFormModal({
               onRemove={(i) => setPorConta(porConta.filter((_, idx) => idx !== i))}
             />
           </div>
+
+          {/* Observações */}
+          <div className="md:col-span-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+              Observações do orçamento
+            </div>
+            <textarea
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              rows={3}
+              placeholder="Ex: Entrega em até 7 dias. Garantia de 1 ano."
+              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
+            />
+          </div>
+
+
 
           {/* Pré-visualização da mensagem */}
           <div className="md:col-span-2">

@@ -558,12 +558,14 @@ export type Database = {
           external_message_id: string | null
           final_value: number
           id: string
+          inclusos: Json
           installments: number
           items: Json
           lead_id: string | null
           message: string | null
           notes: string | null
           payment_method: string | null
+          por_conta: Json
           product_id: string | null
           product_name: string | null
           sent: boolean
@@ -583,12 +585,14 @@ export type Database = {
           external_message_id?: string | null
           final_value?: number
           id?: string
+          inclusos?: Json
           installments?: number
           items?: Json
           lead_id?: string | null
           message?: string | null
           notes?: string | null
           payment_method?: string | null
+          por_conta?: Json
           product_id?: string | null
           product_name?: string | null
           sent?: boolean
@@ -608,12 +612,14 @@ export type Database = {
           external_message_id?: string | null
           final_value?: number
           id?: string
+          inclusos?: Json
           installments?: number
           items?: Json
           lead_id?: string | null
           message?: string | null
           notes?: string | null
           payment_method?: string | null
+          por_conta?: Json
           product_id?: string | null
           product_name?: string | null
           sent?: boolean

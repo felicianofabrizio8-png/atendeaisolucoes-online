@@ -1,0 +1,1 @@
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS inclusos jsonb NOT NULL DEFAULT '[]'::jsonb; ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS por_conta jsonb NOT NULL DEFAULT '[]'::jsonb;

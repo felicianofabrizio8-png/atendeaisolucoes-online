@@ -32,7 +32,11 @@ export interface Quote {
   viewedAt?: string;
   externalMessageId?: string;
   rawStatus?: string;
+  inclusos: string[];
+  porConta: string[];
+  notes: string;
 }
+
 
 export function computeQuoteStatus(q: Quote): QuoteStatus {
   if (q.rawStatus === "aceito") return "aprovado";
@@ -93,7 +97,11 @@ export interface QuoteInput {
   validUntil: string;
   /** Optional override for the final message text (already composed). */
   message?: string;
+  inclusos?: string[];
+  porConta?: string[];
+  notes?: string;
 }
+
 
 export function buildQuoteMessage(args: {
   product: Product;
@@ -144,10 +152,18 @@ type DbQuote = {
   viewed_at?: string | null;
   external_message_id?: string | null;
   status?: string | null;
+  inclusos?: unknown;
+  por_conta?: unknown;
+  notes?: string | null;
 };
 
 const QUOTE_SELECT =
-  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status";
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,por_conta,notes";
+
+function toStringArr(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
 
 function toQuote(r: DbQuote): Quote {
   return {
@@ -169,8 +185,12 @@ function toQuote(r: DbQuote): Quote {
     viewedAt: r.viewed_at ?? undefined,
     externalMessageId: r.external_message_id ?? undefined,
     rawStatus: r.status ?? undefined,
+    inclusos: toStringArr(r.inclusos),
+    porConta: toStringArr(r.por_conta),
+    notes: r.notes ?? "",
   };
 }
+
 
 // ---------- modo & realtime ----------
 export function getQuotesMode(): Mode {
@@ -269,6 +289,10 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           discount,
         });
 
+  const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
+  const porConta = (input.porConta ?? []).map((s) => s.trim()).filter(Boolean);
+  const notes = (input.notes ?? "").trim();
+
   if (mode === "remote" && companyId) {
     const { data, error } = await supabase
       .from("quotes")
@@ -288,6 +312,9 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         message,
         sent: false,
         status: "rascunho",
+        inclusos,
+        por_conta: porConta,
+        notes,
         items: [
           {
             product_id: product.id,
@@ -299,6 +326,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           },
         ],
       })
+
       .select(QUOTE_SELECT)
       .single();
     if (error) throw error;
@@ -326,7 +354,11 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     message,
     createdAt: new Date().toISOString(),
     sent: false,
+    inclusos,
+    porConta,
+    notes,
   };
+
   quotes.unshift(quote);
   notify();
   return quote;
