@@ -460,48 +460,30 @@ function StatusBadge({ status }: { status: QuoteStatus }) {
 }
 
 
-function composeSendMessage(args: {
-  quote: Quote;
-  sendBase: boolean;
-  sendInclusos: boolean;
-  sendPorConta: boolean;
-  sendNotes: boolean;
-}): string {
-  const { quote, sendBase, sendInclusos, sendPorConta, sendNotes } = args;
-  const blocks: string[] = [];
-  if (sendBase) {
-    const validStr = new Date(quote.validUntil).toLocaleDateString("pt-BR");
-    const head: string[] = [];
-    head.push(
-      `Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`,
+// ===== Modal de envio em partes =====
+
+type BlockKey = "photos" | "base" | "inclusos" | "brindes" | "porConta" | "notes";
+type BlockStatus = "pendente" | "enviando" | "enviado" | "erro";
+
+function buildBaseText(quote: Quote): string {
+  const validStr = new Date(quote.validUntil).toLocaleDateString("pt-BR");
+  const lines: string[] = [];
+  lines.push(`Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`);
+  if (quote.installments > 1) {
+    const parcela = quote.finalValue / quote.installments;
+    lines.push(
+      `Pode ser parcelado em até *${quote.installments}x de ${formatBRL(parcela)}* no ${quote.paymentMethod.toLowerCase()}.`,
     );
-    if (quote.installments > 1) {
-      const parcela = quote.finalValue / quote.installments;
-      head.push(
-        `Pode ser parcelado em até *${quote.installments}x de ${formatBRL(parcela)}* no ${quote.paymentMethod.toLowerCase()}.`,
-      );
-    } else {
-      head.push(`Forma de pagamento: *${quote.paymentMethod}* (à vista).`);
-    }
-    head.push(`Proposta válida até *${validStr}*.`);
-    blocks.push(head.join("\n"));
+  } else {
+    lines.push(`Forma de pagamento: *${quote.paymentMethod}* (à vista).`);
   }
-  if (sendInclusos && quote.inclusos.length > 0) {
-    blocks.push(
-      ["✅ Itens inclusos:", ...quote.inclusos.map((it) => `• ${it}`)].join("\n"),
-    );
-  }
-  if (sendPorConta && quote.porConta.length > 0) {
-    blocks.push(
-      ["⚠️ Por conta do cliente:", ...quote.porConta.map((it) => `• ${it}`)].join("\n"),
-    );
-  }
-  if (sendNotes && quote.notes.trim().length > 0) {
-    blocks.push(["📝 Observações:", quote.notes.trim()].join("\n"));
-  }
-  if (blocks.length === 0) return "";
-  blocks.push("Posso reservar para você?");
-  return blocks.join("\n\n");
+  lines.push(`Proposta válida até *${validStr}*.`);
+  return lines.join("\n");
+}
+
+function buildListText(title: string, items: string[], bullet = "💧"): string {
+  if (items.length === 0) return "";
+  return [title, ...items.map((it) => `${bullet} ${it}`)].join("\n");
 }
 
 function SendWhatsAppModal({
@@ -520,28 +502,55 @@ function SendWhatsAppModal({
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
 
-  const [sendPhotos, setSendPhotos] = useState(availableImages.length > 0);
-  const [sendBase, setSendBase] = useState(true);
-  const [sendInclusos, setSendInclusos] = useState(quote.inclusos.length > 0);
-  const [sendPorConta, setSendPorConta] = useState(quote.porConta.length > 0);
-  const [sendNotes, setSendNotes] = useState(quote.notes.trim().length > 0);
-
-  const autoText = useMemo(
-    () =>
-      composeSendMessage({ quote, sendBase, sendInclusos, sendPorConta, sendNotes }),
-    [quote, sendBase, sendInclusos, sendPorConta, sendNotes],
+  // Texto padrão por bloco
+  const defaults = useMemo(
+    () => ({
+      base: buildBaseText(quote),
+      inclusos: buildListText("✅ *Itens inclusos:*", quote.inclusos),
+      brindes: buildListText("🎁 *Brindes:*", quote.brindes),
+      porConta: buildListText("⚠️ *Por conta do cliente:*", quote.porConta, "•"),
+      notes: quote.notes.trim() ? `📝 *Observações:*\n${quote.notes.trim()}` : "",
+    }),
+    [quote],
   );
 
-  const [edited, setEdited] = useState(false);
-  const [text, setText] = useState(autoText);
+  const available: Record<BlockKey, boolean> = {
+    photos: availableImages.length > 0,
+    base: true,
+    inclusos: quote.inclusos.length > 0,
+    brindes: quote.brindes.length > 0,
+    porConta: quote.porConta.length > 0,
+    notes: quote.notes.trim().length > 0,
+  };
 
-  // Re-sincroniza o texto quando os toggles mudam, exceto se o usuário já editou manualmente.
-  useEffect(() => {
-    if (!edited) setText(autoText);
-  }, [autoText, edited]);
+  const [texts, setTexts] = useState<Record<Exclude<BlockKey, "photos">, string>>({
+    base: defaults.base,
+    inclusos: defaults.inclusos,
+    brindes: defaults.brindes,
+    porConta: defaults.porConta,
+    notes: defaults.notes,
+  });
+
+  const [selected, setSelected] = useState<Record<BlockKey, boolean>>({
+    photos: available.photos,
+    base: true,
+    inclusos: available.inclusos,
+    brindes: available.brindes,
+    porConta: available.porConta,
+    notes: available.notes,
+  });
+
+  const [status, setStatus] = useState<Record<BlockKey, BlockStatus>>({
+    photos: "pendente",
+    base: "pendente",
+    inclusos: "pendente",
+    brindes: "pendente",
+    porConta: "pendente",
+    notes: "pendente",
+  });
 
   const [selectedImages, setSelectedImages] = useState<string[]>(availableImages);
-  const [sending, setSending] = useState(false);
+  const [busyAll, setBusyAll] = useState(false);
 
   const toggleImage = (url: string) => {
     setSelectedImages((prev) =>
@@ -549,62 +558,146 @@ function SendWhatsAppModal({
     );
   };
 
-  const imagesToSend = sendPhotos && selectedImages.length > 0 ? selectedImages : undefined;
-
-  const submit = async () => {
-    const finalText = text.trim();
-    if (!finalText && !imagesToSend) {
-      toast.error("Selecione ao menos uma foto ou um bloco de mensagem");
-      return;
-    }
-    setSending(true);
+  const sendBlock = async (key: BlockKey): Promise<boolean> => {
+    if (!available[key]) return false;
+    if (status[key] === "enviando") return false;
+    setStatus((s) => ({ ...s, [key]: "enviando" }));
     try {
+      if (key === "photos") {
+        if (selectedImages.length === 0) throw new Error("Selecione ao menos uma foto");
+        const res = await sendQuoteWhatsApp({
+          quoteId: quote.id,
+          phone,
+          contactName: leadName,
+          leadId: quote.leadId || undefined,
+          text: "",
+          imageUrls: selectedImages,
+        });
+        setStatus((s) => ({ ...s, [key]: "enviado" }));
+        onSent(res.conversationId);
+        return true;
+      }
+      const text = texts[key].trim();
+      if (!text) throw new Error("Texto vazio");
       const res = await sendQuoteWhatsApp({
         quoteId: quote.id,
         phone,
         contactName: leadName,
         leadId: quote.leadId || undefined,
-        text: finalText,
-        imageUrls: imagesToSend,
+        text,
       });
-      toast.success("Orçamento enviado pelo WhatsApp");
+      setStatus((s) => ({ ...s, [key]: "enviado" }));
       onSent(res.conversationId);
+      return true;
     } catch (e) {
+      console.error("SEND_BLOCK_ERROR", key, e);
+      setStatus((s) => ({ ...s, [key]: "erro" }));
       toast.error(e instanceof Error ? e.message : "Falha ao enviar");
-    } finally {
-      setSending(false);
+      return false;
     }
   };
 
-  const ToggleRow = ({
-    label,
-    checked,
-    onChange,
-    disabled,
-    hint,
+  const sendSelected = async () => {
+    const order: BlockKey[] = ["photos", "base", "inclusos", "brindes", "porConta", "notes"];
+    const toSend = order.filter((k) => selected[k] && available[k] && status[k] !== "enviado");
+    if (toSend.length === 0) {
+      toast.error("Selecione ao menos um bloco");
+      return;
+    }
+    setBusyAll(true);
+    let okCount = 0;
+    for (const k of toSend) {
+      const ok = await sendBlock(k);
+      if (ok) okCount += 1;
+    }
+    setBusyAll(false);
+    if (okCount > 0) toast.success(`${okCount} mensagem(ns) enviada(s)`);
+  };
+
+  const StatusPill = ({ s }: { s: BlockStatus }) => {
+    if (s === "enviado")
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-semibold">
+          <Check className="h-3 w-3" /> enviado
+        </span>
+      );
+    if (s === "enviando")
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-[10px] font-semibold">
+          <Loader2 className="h-3 w-3 animate-spin" /> enviando
+        </span>
+      );
+    if (s === "erro")
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 text-destructive px-2 py-0.5 text-[10px] font-semibold">
+          erro
+        </span>
+      );
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-secondary text-muted-foreground px-2 py-0.5 text-[10px] font-semibold">
+        pendente
+      </span>
+    );
+  };
+
+  const BlockRow = ({
+    blockKey,
+    title,
+    children,
   }: {
-    label: string;
-    checked: boolean;
-    onChange: (v: boolean) => void;
-    disabled?: boolean;
-    hint?: string;
-  }) => (
-    <label
-      className={cn(
-        "flex items-center gap-2 text-xs rounded-md border border-border px-2.5 py-1.5 cursor-pointer hover:bg-accent",
-        disabled && "opacity-50 cursor-not-allowed",
-      )}
-    >
-      <input
-        type="checkbox"
-        checked={checked && !disabled}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-3.5 w-3.5 accent-primary"
-      />
-      <span className="font-medium">{label}</span>
-      {hint && <span className="ml-auto text-[10px] text-muted-foreground">{hint}</span>}
-    </label>
+    blockKey: BlockKey;
+    title: string;
+    children: React.ReactNode;
+  }) => {
+    const isAvail = available[blockKey];
+    const st = status[blockKey];
+    return (
+      <div
+        className={cn(
+          "rounded-md border border-border bg-background/40 p-3 space-y-2",
+          !isAvail && "opacity-50",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected[blockKey] && isAvail}
+            disabled={!isAvail}
+            onChange={(e) => setSelected((s) => ({ ...s, [blockKey]: e.target.checked }))}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          <span className="text-xs font-semibold">{title}</span>
+          {!isAvail && <span className="text-[10px] text-muted-foreground">(vazio)</span>}
+          <div className="ml-auto flex items-center gap-2">
+            <StatusPill s={st} />
+            <button
+              type="button"
+              onClick={() => sendBlock(blockKey)}
+              disabled={!isAvail || st === "enviando" || busyAll}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-[#25D366] text-white px-2 py-1 hover:opacity-90 disabled:opacity-50"
+            >
+              {st === "enviando" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              Enviar agora
+            </button>
+          </div>
+        </div>
+        {children}
+      </div>
+    );
+  };
+
+  const TextBlock = ({ blockKey }: { blockKey: Exclude<BlockKey, "photos"> }) => (
+    <textarea
+      value={texts[blockKey]}
+      onChange={(e) => setTexts((t) => ({ ...t, [blockKey]: e.target.value }))}
+      rows={Math.min(10, Math.max(3, texts[blockKey].split("\n").length))}
+      placeholder="Texto vazio"
+      className="w-full rounded-md bg-input px-3 py-2 text-xs leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
+    />
   );
 
   return (
@@ -613,207 +706,127 @@ function SendWhatsAppModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-lg border border-border bg-card shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
+        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-border flex items-center gap-2">
           <Send className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Enviar pelo WhatsApp</h2>
+          <div>
+            <h2 className="text-sm font-semibold">Enviar pelo WhatsApp</h2>
+            <p className="text-[11px] text-muted-foreground">
+              Para <span className="font-semibold text-foreground">{leadName}</span> • +{phone}
+            </p>
+          </div>
           <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-accent">
             <X className="h-4 w-4" />
           </button>
         </div>
+
         <div className="p-4 space-y-3">
-          <div className="text-[11px] text-muted-foreground">
-            Para <span className="font-semibold text-foreground">{leadName}</span> • +{phone}
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+            Enviar por partes
           </div>
 
-          {/* O que enviar */}
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">
-              O que enviar
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <ToggleRow
-                label="Enviar fotos"
-                checked={sendPhotos}
-                onChange={setSendPhotos}
-                disabled={availableImages.length === 0}
-                hint={availableImages.length === 0 ? "sem fotos" : `${selectedImages.length}/${availableImages.length}`}
-              />
-              <ToggleRow
-                label="Enviar mensagem do orçamento"
-                checked={sendBase}
-                onChange={(v) => {
-                  setSendBase(v);
-                  setEdited(false);
-                }}
-              />
-              <ToggleRow
-                label="Enviar itens inclusos"
-                checked={sendInclusos}
-                onChange={(v) => {
-                  setSendInclusos(v);
-                  setEdited(false);
-                }}
-                disabled={quote.inclusos.length === 0}
-                hint={quote.inclusos.length === 0 ? "vazio" : `${quote.inclusos.length} ${quote.inclusos.length === 1 ? "item" : "itens"}`}
-              />
-              <ToggleRow
-                label="Enviar por conta do cliente"
-                checked={sendPorConta}
-                onChange={(v) => {
-                  setSendPorConta(v);
-                  setEdited(false);
-                }}
-                disabled={quote.porConta.length === 0}
-                hint={quote.porConta.length === 0 ? "vazio" : `${quote.porConta.length} ${quote.porConta.length === 1 ? "item" : "itens"}`}
-              />
-              <ToggleRow
-                label="Enviar observações"
-                checked={sendNotes}
-                onChange={(v) => {
-                  setSendNotes(v);
-                  setEdited(false);
-                }}
-                disabled={quote.notes.trim().length === 0}
-                hint={quote.notes.trim().length === 0 ? "vazio" : undefined}
-              />
-            </div>
-          </div>
-
-          {sendPhotos && availableImages.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
-                  Fotos do produto ({selectedImages.length}/{availableImages.length})
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedImages(
-                      selectedImages.length === availableImages.length ? [] : availableImages,
-                    )
-                  }
-                  className="text-[11px] text-primary hover:underline"
-                >
-                  {selectedImages.length === availableImages.length
-                    ? "Desmarcar todas"
-                    : "Selecionar todas"}
-                </button>
-              </div>
-
-              {selectedImages.length > 0 && (
-                <div className="mb-2 -mx-1 px-1 overflow-x-auto snap-x snap-mandatory flex gap-2 pb-1 scrollbar-thin">
-                  {selectedImages.map((url, i) => (
-                    <div
-                      key={`sel-${url}`}
-                      className="relative shrink-0 snap-start w-32 h-32 rounded-md overflow-hidden border border-border bg-muted"
-                    >
-                      <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                      <span className="absolute top-1 left-1 text-[9px] font-semibold bg-primary text-primary-foreground rounded px-1.5 py-0.5">
-                        {i + 1}
-                      </span>
-                    </div>
-                  ))}
+          {/* Fotos */}
+          <BlockRow blockKey="photos" title="1. Fotos do produto">
+            {availableImages.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">
+                    {selectedImages.length}/{availableImages.length} selecionadas
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedImages(
+                        selectedImages.length === availableImages.length ? [] : availableImages,
+                      )
+                    }
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    {selectedImages.length === availableImages.length
+                      ? "Desmarcar todas"
+                      : "Selecionar todas"}
+                  </button>
                 </div>
-              )}
+                <div className="grid grid-cols-5 sm:grid-cols-6 gap-1.5">
+                  {availableImages.map((url) => {
+                    const checked = selectedImages.includes(url);
+                    return (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => toggleImage(url)}
+                        className={cn(
+                          "relative aspect-square rounded-md overflow-hidden border-2 transition",
+                          checked
+                            ? "border-primary"
+                            : "border-transparent opacity-60 hover:opacity-100",
+                        )}
+                      >
+                        <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                        {checked && (
+                          <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
+                            <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Nenhuma foto cadastrada.</p>
+            )}
+          </BlockRow>
 
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                {availableImages.map((url) => {
-                  const checked = selectedImages.includes(url);
-                  return (
-                    <button
-                      key={url}
-                      type="button"
-                      onClick={() => toggleImage(url)}
-                      className={cn(
-                        "relative aspect-square rounded-md overflow-hidden border-2 transition touch-manipulation",
-                        checked
-                          ? "border-primary"
-                          : "border-transparent opacity-60 hover:opacity-100",
-                      )}
-                    >
-                      <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                      {checked && (
-                        <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
-                          <Check className="h-3 w-3 text-primary-foreground" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                As fotos serão enviadas primeiro (na ordem mostrada), depois a mensagem.
-              </p>
-            </div>
-          )}
+          <BlockRow blockKey="base" title="2. Mensagem principal do orçamento">
+            <TextBlock blockKey="base" />
+          </BlockRow>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
-                Mensagem
-              </span>
-              {edited && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEdited(false);
-                    setText(autoText);
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-0.5 hover:bg-accent"
-                >
-                  <RotateCcw className="h-3 w-3" /> Restaurar
-                </button>
-              )}
-            </div>
-            <textarea
-              value={text}
-              onChange={(e) => {
-                setEdited(true);
-                setText(e.target.value);
-              }}
-              rows={12}
-              placeholder="Mensagem vazia — apenas as fotos serão enviadas."
-              className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y"
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {edited
-                ? "Texto editado manualmente — será enviado exatamente como exibido."
-                : "Marque/desmarque os blocos acima para montar a mensagem."}
-            </p>
-          </div>
+          <BlockRow blockKey="inclusos" title="3. Itens inclusos">
+            <TextBlock blockKey="inclusos" />
+          </BlockRow>
+
+          <BlockRow blockKey="brindes" title="4. Brindes">
+            <TextBlock blockKey="brindes" />
+          </BlockRow>
+
+          <BlockRow blockKey="porConta" title="5. Por conta do cliente">
+            <TextBlock blockKey="porConta" />
+          </BlockRow>
+
+          <BlockRow blockKey="notes" title="6. Observações">
+            <TextBlock blockKey="notes" />
+          </BlockRow>
         </div>
-        <div className="p-4 border-t border-border flex justify-end gap-2">
+
+        <div className="p-4 border-t border-border flex flex-wrap items-center justify-end gap-2">
           <button
             onClick={onClose}
-            disabled={sending}
+            disabled={busyAll}
             className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
           >
-            Cancelar
+            Fechar
           </button>
           <button
-            onClick={submit}
-            disabled={sending}
+            onClick={sendSelected}
+            disabled={busyAll}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
           >
-            {sending ? (
+            {busyAll ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Send className="h-3.5 w-3.5" />
             )}
-            {sending
-              ? "Enviando…"
-              : imagesToSend && imagesToSend.length > 0
-                ? `Enviar ${imagesToSend.length} foto(s) + mensagem`
-                : "Enviar agora"}
+            {busyAll ? "Enviando…" : "Enviar selecionados em sequência"}
           </button>
         </div>
       </div>
     </div>
   );
 }
+
 
 
 
@@ -890,8 +903,10 @@ function QuoteFormModal({
   const [submitting, setSubmitting] = useState(false);
 
   const [inclusos, setInclusos] = useState<string[]>([]);
+  const [brindes, setBrindes] = useState<string[]>([]);
   const [porConta, setPorConta] = useState<string[]>([]);
   const [newIncluso, setNewIncluso] = useState("");
+  const [newBrinde, setNewBrinde] = useState("");
   const [newPorConta, setNewPorConta] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
@@ -920,6 +935,11 @@ function QuoteFormModal({
       extra.push("✅ Itens inclusos:");
       for (const it of inclusos) extra.push(`• ${it}`);
     }
+    if (brindes.length > 0) {
+      extra.push("");
+      extra.push("🎁 Brindes:");
+      for (const it of brindes) extra.push(`• ${it}`);
+    }
     if (porConta.length > 0) {
       extra.push("");
       extra.push("⚠️ Por conta do cliente:");
@@ -931,7 +951,7 @@ function QuoteFormModal({
       extra.push(observacoes.trim());
     }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta, observacoes]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, brindes, porConta, observacoes]);
 
 
   const previewMessage = customMessage ?? autoMessage;
@@ -970,11 +990,16 @@ function QuoteFormModal({
       // Auto-incorpora textos digitados nos inputs mas ainda não adicionados
       // (Enter/+) — evita perder "itens inclusos" / "por conta do cliente".
       const pendingIncluso = newIncluso.trim();
+      const pendingBrinde = newBrinde.trim();
       const pendingPorConta = newPorConta.trim();
       const finalInclusos =
         pendingIncluso && !inclusos.includes(pendingIncluso)
           ? [...inclusos, pendingIncluso]
           : inclusos;
+      const finalBrindes =
+        pendingBrinde && !brindes.includes(pendingBrinde)
+          ? [...brindes, pendingBrinde]
+          : brindes;
       const finalPorConta =
         pendingPorConta && !porConta.includes(pendingPorConta)
           ? [...porConta, pendingPorConta]
@@ -984,6 +1009,10 @@ function QuoteFormModal({
       if (pendingIncluso && !inclusos.includes(pendingIncluso)) {
         setInclusos(finalInclusos);
         setNewIncluso("");
+      }
+      if (pendingBrinde && !brindes.includes(pendingBrinde)) {
+        setBrindes(finalBrindes);
+        setNewBrinde("");
       }
       if (pendingPorConta && !porConta.includes(pendingPorConta)) {
         setPorConta(finalPorConta);
@@ -1021,6 +1050,10 @@ function QuoteFormModal({
           extra.push("", "✅ Itens inclusos:");
           for (const it of finalInclusos) extra.push(`• ${it}`);
         }
+        if (finalBrindes.length > 0) {
+          extra.push("", "🎁 Brindes:");
+          for (const it of finalBrindes) extra.push(`• ${it}`);
+        }
         if (finalPorConta.length > 0) {
           extra.push("", "⚠️ Por conta do cliente:");
           for (const it of finalPorConta) extra.push(`• ${it}`);
@@ -1045,6 +1078,7 @@ function QuoteFormModal({
         validUntil,
         message: finalMessage,
         inclusos: finalInclusos,
+        brindes: finalBrindes,
         porConta: finalPorConta,
         notes: finalObservacoes,
       });
@@ -1338,11 +1372,11 @@ function QuoteFormModal({
             )}
           </div>
 
-          {/* Itens inclusos / Por conta do cliente */}
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Itens inclusos / Brindes / Por conta do cliente */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
             <ItemListField
               label="Itens inclusos"
-              placeholder="Ex: Piscina, Instalação, Kit limpeza"
+              placeholder="Ex: Piscina, Instalação"
               accent="primary"
               items={inclusos}
               value={newIncluso}
@@ -1353,8 +1387,20 @@ function QuoteFormModal({
               onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
             />
             <ItemListField
+              label="Brindes"
+              placeholder="Ex: Led colorido, Kit limpeza"
+              accent="gift"
+              items={brindes}
+              value={newBrinde}
+              setValue={setNewBrinde}
+              onAdd={() =>
+                addItem(brindes, setBrindes, newBrinde, () => setNewBrinde(""))
+              }
+              onRemove={(i) => setBrindes(brindes.filter((_, idx) => idx !== i))}
+            />
+            <ItemListField
               label="Por conta do cliente"
-              placeholder="Ex: Ponto de energia, Preparação do terreno"
+              placeholder="Ex: Ponto de energia"
               accent="warn"
               items={porConta}
               value={newPorConta}
@@ -1508,7 +1554,7 @@ function ItemListField({
 }: {
   label: string;
   placeholder: string;
-  accent: "primary" | "warn";
+  accent: "primary" | "warn" | "gift";
   items: string[];
   value: string;
   setValue: (v: string) => void;
@@ -1518,7 +1564,9 @@ function ItemListField({
   const chipClass =
     accent === "primary"
       ? "bg-primary/10 text-primary border-primary/30"
-      : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
+      : accent === "gift"
+        ? "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/30"
+        : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">

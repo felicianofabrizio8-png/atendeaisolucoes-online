@@ -551,6 +551,7 @@ export type Database = {
       }
       quotes: {
         Row: {
+          brindes: Json
           company_id: string
           conversation_id: string | null
           created_at: string
@@ -578,6 +579,7 @@ export type Database = {
           viewed_at: string | null
         }
         Insert: {
+          brindes?: Json
           company_id: string
           conversation_id?: string | null
           created_at?: string
@@ -605,6 +607,7 @@ export type Database = {
           viewed_at?: string | null
         }
         Update: {
+          brindes?: Json
           company_id?: string
           conversation_id?: string | null
           created_at?: string

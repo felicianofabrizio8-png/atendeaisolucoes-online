@@ -33,6 +33,7 @@ export interface Quote {
   externalMessageId?: string;
   rawStatus?: string;
   inclusos: string[];
+  brindes: string[];
   porConta: string[];
   notes: string;
 }
@@ -98,6 +99,7 @@ export interface QuoteInput {
   /** Optional override for the final message text (already composed). */
   message?: string;
   inclusos?: string[];
+  brindes?: string[];
   porConta?: string[];
   notes?: string;
 }
@@ -153,12 +155,13 @@ type DbQuote = {
   external_message_id?: string | null;
   status?: string | null;
   inclusos?: unknown;
+  brindes?: unknown;
   por_conta?: unknown;
   notes?: string | null;
 };
 
 const QUOTE_SELECT =
-  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,por_conta,notes";
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes";
 
 function toStringArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -186,6 +189,7 @@ function toQuote(r: DbQuote): Quote {
     externalMessageId: r.external_message_id ?? undefined,
     rawStatus: r.status ?? undefined,
     inclusos: toStringArr(r.inclusos),
+    brindes: toStringArr(r.brindes),
     porConta: toStringArr(r.por_conta),
     notes: r.notes ?? "",
   };
@@ -290,6 +294,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         });
 
   const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
+  const brindes = (input.brindes ?? []).map((s) => s.trim()).filter(Boolean);
   const porConta = (input.porConta ?? []).map((s) => s.trim()).filter(Boolean);
   const notes = (input.notes ?? "").trim();
 
@@ -313,6 +318,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         sent: false,
         status: "rascunho",
         inclusos,
+        brindes,
         por_conta: porConta,
         notes,
         items: [
@@ -355,6 +361,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     createdAt: new Date().toISOString(),
     sent: false,
     inclusos,
+    brindes,
     porConta,
     notes,
   };
