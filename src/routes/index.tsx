@@ -755,18 +755,26 @@ const dotColors = {
   good: "bg-[var(--status-won)]",
 } as const;
 
-function RowLink(
-  props: {
-    primary: React.ReactNode;
-    secondary?: React.ReactNode;
-    dotTone: keyof typeof dotColors;
-  } & React.ComponentProps<typeof Link>,
-) {
-  const { primary, secondary, dotTone, ...linkProps } = props;
+function RowLink({
+  to,
+  params,
+  primary,
+  secondary,
+  dotTone,
+}: {
+  to: string;
+  params?: Record<string, string>;
+  primary: React.ReactNode;
+  secondary?: React.ReactNode;
+  dotTone: keyof typeof dotColors;
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const LinkAny = Link as any;
   return (
     <li>
-      <Link
-        {...(linkProps as React.ComponentProps<typeof Link>)}
+      <LinkAny
+        to={to}
+        params={params}
         className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2 hover:bg-accent/40 group"
       >
         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotColors[dotTone])} />
@@ -779,7 +787,7 @@ function RowLink(
           )}
         </div>
         <ChevronRight className="h-3 w-3 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-      </Link>
+      </LinkAny>
     </li>
   );
 }
