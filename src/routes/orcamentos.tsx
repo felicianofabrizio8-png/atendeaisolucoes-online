@@ -14,6 +14,9 @@ import {
   MessageCircle,
   Copy,
   Loader2,
+  Pencil,
+  RotateCcw,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBRL, timeAgo, type Channel } from "@/data/mock";
@@ -406,12 +409,14 @@ function SendWhatsAppModal({
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
   const [text, setText] = useState(() =>
-    buildWhatsAppMessage({
-      name: leadName.split(" ")[0] ?? leadName,
-      productName: quote.productName,
-      finalValue: quote.finalValue,
-      validUntil: quote.validUntil,
-    }),
+    quote.message && quote.message.trim()
+      ? quote.message
+      : buildWhatsAppMessage({
+          name: leadName.split(" ")[0] ?? leadName,
+          productName: quote.productName,
+          finalValue: quote.finalValue,
+          validUntil: quote.validUntil,
+        }),
   );
   const [selectedImages, setSelectedImages] = useState<string[]>(availableImages);
   const [sending, setSending] = useState(false);
@@ -651,14 +656,22 @@ function QuoteFormModal({
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
   const [submitting, setSubmitting] = useState(false);
 
+  const [inclusos, setInclusos] = useState<string[]>([]);
+  const [porConta, setPorConta] = useState<string[]>([]);
+  const [newIncluso, setNewIncluso] = useState("");
+  const [newPorConta, setNewPorConta] = useState("");
+
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [customMessage, setCustomMessage] = useState<string | null>(null);
+
   const product = getProduct(productId);
   const unitPrice = product ? activePrice(product) : 0;
   const discount = Math.max(0, Math.min(Number(discountRaw.replace(/[^\d]/g, "")) || 0, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
 
-  const previewMessage = useMemo(() => {
+  const autoMessage = useMemo(() => {
     if (!product) return "";
-    return buildQuoteMessage({
+    const base = buildQuoteMessage({
       product,
       finalValue,
       installments,
@@ -666,7 +679,38 @@ function QuoteFormModal({
       validUntil,
       discount,
     });
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount]);
+    const extra: string[] = [];
+    if (inclusos.length > 0) {
+      extra.push("");
+      extra.push("✅ Itens inclusos:");
+      for (const it of inclusos) extra.push(`• ${it}`);
+    }
+    if (porConta.length > 0) {
+      extra.push("");
+      extra.push("⚠️ Por conta do cliente:");
+      for (const it of porConta) extra.push(`• ${it}`);
+    }
+    return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, porConta]);
+
+  const previewMessage = customMessage ?? autoMessage;
+
+  const addItem = (
+    list: string[],
+    setList: (v: string[]) => void,
+    value: string,
+    reset: () => void,
+  ) => {
+    const v = value.trim();
+    if (!v) return;
+    if (list.includes(v)) {
+      reset();
+      return;
+    }
+    setList([...list, v]);
+    reset();
+  };
+
 
   const newClientValid =
     clientMode === "new" &&
@@ -708,6 +752,7 @@ function QuoteFormModal({
         paymentMethod,
         installments,
         validUntil,
+        message: previewMessage,
       });
       onCreated(q);
     } catch (e) {
@@ -998,16 +1043,89 @@ function QuoteFormModal({
             )}
           </div>
 
+          {/* Itens inclusos / Por conta do cliente */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <ItemListField
+              label="Itens inclusos"
+              placeholder="Ex: Piscina, Instalação, Kit limpeza"
+              accent="primary"
+              items={inclusos}
+              value={newIncluso}
+              setValue={setNewIncluso}
+              onAdd={() =>
+                addItem(inclusos, setInclusos, newIncluso, () => setNewIncluso(""))
+              }
+              onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
+            />
+            <ItemListField
+              label="Por conta do cliente"
+              placeholder="Ex: Ponto de energia, Preparação do terreno"
+              accent="warn"
+              items={porConta}
+              value={newPorConta}
+              setValue={setNewPorConta}
+              onAdd={() =>
+                addItem(porConta, setPorConta, newPorConta, () => setNewPorConta(""))
+              }
+              onRemove={(i) => setPorConta(porConta.filter((_, idx) => idx !== i))}
+            />
+          </div>
+
           {/* Pré-visualização da mensagem */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-              <Sparkles className="h-3 w-3" /> Mensagem pronta
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <Sparkles className="h-3 w-3" /> Mensagem pronta
+              </div>
+              <div className="ml-auto flex items-center gap-1.5">
+                {customMessage !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomMessage(null);
+                      setEditingMessage(false);
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent"
+                    title="Restaurar mensagem automática"
+                  >
+                    <RotateCcw className="h-3 w-3" /> Restaurar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editingMessage && customMessage === null) {
+                      setCustomMessage(autoMessage);
+                    }
+                    setEditingMessage((v) => !v);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+                >
+                  <Pencil className="h-3 w-3" />
+                  {editingMessage ? "Concluir edição" : "Editar mensagem"}
+                </button>
+              </div>
             </div>
-            <div className="rounded-md border border-border bg-background/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
-              {previewMessage}
-            </div>
+            {editingMessage ? (
+              <textarea
+                value={customMessage ?? autoMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                rows={12}
+                className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y"
+              />
+            ) : (
+              <div className="rounded-md border border-border bg-background/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
+                {previewMessage}
+              </div>
+            )}
+            {customMessage !== null && !editingMessage && (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Mensagem editada manualmente — será salva e enviada exatamente como exibido acima.
+              </p>
+            )}
           </div>
         </div>
+
 
         <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
           {!hasClient && (
@@ -1066,3 +1184,81 @@ function Field({
     </label>
   );
 }
+
+function ItemListField({
+  label,
+  placeholder,
+  accent,
+  items,
+  value,
+  setValue,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  placeholder: string;
+  accent: "primary" | "warn";
+  items: string[];
+  value: string;
+  setValue: (v: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  const chipClass =
+    accent === "primary"
+      ? "bg-primary/10 text-primary border-primary/30"
+      : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        {label}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAdd();
+            }
+          }}
+          placeholder={placeholder}
+          className="flex-1 rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-1 text-xs font-semibold rounded-md bg-secondary px-2.5 hover:bg-accent"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {items.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {items.map((it, i) => (
+            <span
+              key={`${it}-${i}`}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                chipClass,
+              )}
+            >
+              {it}
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="ml-0.5 opacity-70 hover:opacity-100"
+                aria-label={`Remover ${it}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+

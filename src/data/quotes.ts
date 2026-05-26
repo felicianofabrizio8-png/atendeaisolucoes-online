@@ -91,6 +91,8 @@ export interface QuoteInput {
   paymentMethod: PaymentMethod;
   installments: number;
   validUntil: string;
+  /** Optional override for the final message text (already composed). */
+  message?: string;
 }
 
 export function buildQuoteMessage(args: {
@@ -255,14 +257,17 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
   const unitPrice = activePrice(product);
   const discount = Math.max(0, Math.min(input.discount, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
-  const message = buildQuoteMessage({
-    product,
-    finalValue,
-    installments: input.installments,
-    paymentMethod: input.paymentMethod,
-    validUntil: input.validUntil,
-    discount,
-  });
+  const message =
+    input.message?.trim()
+      ? input.message
+      : buildQuoteMessage({
+          product,
+          finalValue,
+          installments: input.installments,
+          paymentMethod: input.paymentMethod,
+          validUntil: input.validUntil,
+          discount,
+        });
 
   if (mode === "remote" && companyId) {
     const { data, error } = await supabase
