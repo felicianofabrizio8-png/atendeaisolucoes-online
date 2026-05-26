@@ -753,7 +753,11 @@ function QuoteFormModal({
         installments,
         validUntil,
         message: previewMessage,
+        inclusos,
+        porConta,
+        notes: observacoes,
       });
+
       onCreated(q);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao criar orçamento");
