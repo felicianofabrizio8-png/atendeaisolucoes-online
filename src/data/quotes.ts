@@ -99,6 +99,7 @@ export interface QuoteInput {
   /** Optional override for the final message text (already composed). */
   message?: string;
   inclusos?: string[];
+  brindes?: string[];
   porConta?: string[];
   notes?: string;
 }
