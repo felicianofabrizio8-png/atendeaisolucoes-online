@@ -409,12 +409,14 @@ function SendWhatsAppModal({
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
   const [text, setText] = useState(() =>
-    buildWhatsAppMessage({
-      name: leadName.split(" ")[0] ?? leadName,
-      productName: quote.productName,
-      finalValue: quote.finalValue,
-      validUntil: quote.validUntil,
-    }),
+    quote.message && quote.message.trim()
+      ? quote.message
+      : buildWhatsAppMessage({
+          name: leadName.split(" ")[0] ?? leadName,
+          productName: quote.productName,
+          finalValue: quote.finalValue,
+          validUntil: quote.validUntil,
+        }),
   );
   const [selectedImages, setSelectedImages] = useState<string[]>(availableImages);
   const [sending, setSending] = useState(false);
