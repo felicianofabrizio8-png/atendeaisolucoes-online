@@ -33,6 +33,7 @@ export interface Quote {
   externalMessageId?: string;
   rawStatus?: string;
   inclusos: string[];
+  brindes: string[];
   porConta: string[];
   notes: string;
 }
