@@ -1043,16 +1043,89 @@ function QuoteFormModal({
             )}
           </div>
 
+          {/* Itens inclusos / Por conta do cliente */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <ItemListField
+              label="Itens inclusos"
+              placeholder="Ex: Piscina, Instalação, Kit limpeza"
+              accent="primary"
+              items={inclusos}
+              value={newIncluso}
+              setValue={setNewIncluso}
+              onAdd={() =>
+                addItem(inclusos, setInclusos, newIncluso, () => setNewIncluso(""))
+              }
+              onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
+            />
+            <ItemListField
+              label="Por conta do cliente"
+              placeholder="Ex: Ponto de energia, Preparação do terreno"
+              accent="warn"
+              items={porConta}
+              value={newPorConta}
+              setValue={setNewPorConta}
+              onAdd={() =>
+                addItem(porConta, setPorConta, newPorConta, () => setNewPorConta(""))
+              }
+              onRemove={(i) => setPorConta(porConta.filter((_, idx) => idx !== i))}
+            />
+          </div>
+
           {/* Pré-visualização da mensagem */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-              <Sparkles className="h-3 w-3" /> Mensagem pronta
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <Sparkles className="h-3 w-3" /> Mensagem pronta
+              </div>
+              <div className="ml-auto flex items-center gap-1.5">
+                {customMessage !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomMessage(null);
+                      setEditingMessage(false);
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent"
+                    title="Restaurar mensagem automática"
+                  >
+                    <RotateCcw className="h-3 w-3" /> Restaurar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editingMessage && customMessage === null) {
+                      setCustomMessage(autoMessage);
+                    }
+                    setEditingMessage((v) => !v);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+                >
+                  <Pencil className="h-3 w-3" />
+                  {editingMessage ? "Concluir edição" : "Editar mensagem"}
+                </button>
+              </div>
             </div>
-            <div className="rounded-md border border-border bg-background/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
-              {previewMessage}
-            </div>
+            {editingMessage ? (
+              <textarea
+                value={customMessage ?? autoMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                rows={12}
+                className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y"
+              />
+            ) : (
+              <div className="rounded-md border border-border bg-background/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
+                {previewMessage}
+              </div>
+            )}
+            {customMessage !== null && !editingMessage && (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Mensagem editada manualmente — será salva e enviada exatamente como exibido acima.
+              </p>
+            )}
           </div>
         </div>
+
 
         <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
           {!hasClient && (
