@@ -354,7 +354,11 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     message,
     createdAt: new Date().toISOString(),
     sent: false,
+    inclusos,
+    porConta,
+    notes,
   };
+
   quotes.unshift(quote);
   notify();
   return quote;
