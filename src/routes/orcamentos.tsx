@@ -40,6 +40,7 @@ import {
   buildQuoteMessage,
   computeQuoteStatus,
   sendQuoteWhatsApp,
+  deleteQuote,
   type PaymentMethod,
   type Quote,
   type QuoteStatus,
