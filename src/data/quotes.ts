@@ -294,6 +294,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         });
 
   const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
+  const brindes = (input.brindes ?? []).map((s) => s.trim()).filter(Boolean);
   const porConta = (input.porConta ?? []).map((s) => s.trim()).filter(Boolean);
   const notes = (input.notes ?? "").trim();
 
