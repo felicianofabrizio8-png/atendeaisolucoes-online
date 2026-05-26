@@ -890,8 +890,10 @@ function QuoteFormModal({
   const [submitting, setSubmitting] = useState(false);
 
   const [inclusos, setInclusos] = useState<string[]>([]);
+  const [brindes, setBrindes] = useState<string[]>([]);
   const [porConta, setPorConta] = useState<string[]>([]);
   const [newIncluso, setNewIncluso] = useState("");
+  const [newBrinde, setNewBrinde] = useState("");
   const [newPorConta, setNewPorConta] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
