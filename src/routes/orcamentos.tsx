@@ -752,6 +752,7 @@ function QuoteFormModal({
         paymentMethod,
         installments,
         validUntil,
+        message: previewMessage,
       });
       onCreated(q);
     } catch (e) {
