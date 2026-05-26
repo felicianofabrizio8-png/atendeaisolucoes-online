@@ -289,6 +289,10 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           discount,
         });
 
+  const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
+  const porConta = (input.porConta ?? []).map((s) => s.trim()).filter(Boolean);
+  const notes = (input.notes ?? "").trim();
+
   if (mode === "remote" && companyId) {
     const { data, error } = await supabase
       .from("quotes")
@@ -308,6 +312,9 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
         message,
         sent: false,
         status: "rascunho",
+        inclusos,
+        por_conta: porConta,
+        notes,
         items: [
           {
             product_id: product.id,
@@ -319,6 +326,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
           },
         ],
       })
+
       .select(QUOTE_SELECT)
       .single();
     if (error) throw error;
