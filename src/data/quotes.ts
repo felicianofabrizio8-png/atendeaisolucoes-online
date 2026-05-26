@@ -155,12 +155,13 @@ type DbQuote = {
   external_message_id?: string | null;
   status?: string | null;
   inclusos?: unknown;
+  brindes?: unknown;
   por_conta?: unknown;
   notes?: string | null;
 };
 
 const QUOTE_SELECT =
-  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,por_conta,notes";
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes";
 
 function toStringArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
