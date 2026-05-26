@@ -393,6 +393,34 @@ export async function markQuoteSent(
   }
 }
 
+export async function deleteQuote(id: string): Promise<void> {
+  // Optimistic local removal
+  const idx = quotes.findIndex((q) => q.id === id);
+  let backup: Quote | undefined;
+  if (idx >= 0) {
+    backup = quotes[idx];
+    quotes.splice(idx, 1);
+    notify();
+  }
+  if (mode === "remote" && companyId) {
+    const { error } = await supabase
+      .from("quotes")
+      .delete()
+      .eq("id", id)
+      .eq("company_id", companyId);
+    if (error) {
+      // rollback
+      if (backup) {
+        quotes.splice(idx, 0, backup);
+        notify();
+      }
+      throw error;
+    }
+  }
+}
+
+
+
 /**
  * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
  * Returns the new/existing conversationId so the caller can open the chat.
