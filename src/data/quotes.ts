@@ -91,6 +91,8 @@ export interface QuoteInput {
   paymentMethod: PaymentMethod;
   installments: number;
   validUntil: string;
+  /** Optional override for the final message text (already composed). */
+  message?: string;
 }
 
 export function buildQuoteMessage(args: {
