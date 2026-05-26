@@ -69,11 +69,11 @@ Deno.serve(async (req) => {
   }
 
   const text = String(body.text ?? "").trim();
-  if (!text) return json({ ok: false, error: "text required" }, 400);
-  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
     : [];
+  if (!text && imageUrls.length === 0) return json({ ok: false, error: "text or imageUrls required" }, 400);
+  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
@@ -194,7 +194,27 @@ Deno.serve(async (req) => {
     const sentAt = new Date().toISOString();
 
     // Send images first (if any), then the text message
+    let lastImageExternalId: string | null = null;
     for (const imgUrl of imageUrls) {
+      console.log("WHATSAPP_IMAGE_SEND_START", { imgUrl, to: recipient });
+      // Validate URL is publicly reachable before asking Meta to fetch it
+      try {
+        const head = await fetch(imgUrl, { method: "HEAD" });
+        if (!head.ok) {
+          const msg = `Imagem inacessível (HTTP ${head.status}). Verifique se o bucket é público.`;
+          console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate", imgUrl, status: head.status });
+          return json({ ok: false, error: msg }, 400);
+        }
+        const ct = head.headers.get("content-type") || "";
+        if (ct && !ct.startsWith("image/")) {
+          console.warn("WHATSAPP_IMAGE_SEND_WARN content-type", { imgUrl, ct });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "falha ao validar URL";
+        console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate-network", imgUrl, msg });
+        return json({ ok: false, error: `Não foi possível validar a imagem: ${msg}` }, 400);
+      }
+
       try {
         const imgRes = await fetch(apiUrl, {
           method: "POST",
@@ -207,7 +227,7 @@ Deno.serve(async (req) => {
           }),
         });
         const imgText = await imgRes.text();
-        let imgJson: { messages?: Array<{ id: string }>; error?: { message?: string } } = {};
+        let imgJson: { messages?: Array<{ id: string }>; error?: { message?: string; code?: number; type?: string } } = {};
         try {
           imgJson = JSON.parse(imgText);
         } catch {
@@ -215,18 +235,21 @@ Deno.serve(async (req) => {
         }
         if (!imgRes.ok) {
           const msg = imgJson.error?.message ?? `HTTP ${imgRes.status}`;
-          console.error("META_SEND_IMAGE_ERROR", {
+          console.error("WHATSAPP_IMAGE_SEND_ERROR", {
+            stage: "meta",
             status: imgRes.status,
-            body: imgText.slice(0, 500),
+            body: imgText.slice(0, 1000),
             imgUrl,
+            metaError: imgJson.error ?? null,
           });
           return json(
-            { ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null },
+            { ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null, status: imgRes.status },
             502,
           );
         }
         const imgExternalId = imgJson.messages?.[0]?.id ?? null;
-        console.log("META_SEND_IMAGE_SUCCESS", { externalId: imgExternalId, imgUrl });
+        lastImageExternalId = imgExternalId;
+        console.log("WHATSAPP_IMAGE_SEND_SUCCESS", { externalId: imgExternalId, imgUrl });
 
         await sb.from("messages").insert({
           company_id: companyId,
@@ -247,9 +270,31 @@ Deno.serve(async (req) => {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "falha de rede";
-        console.error("META_SEND_IMAGE_ERROR network", msg);
+        console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "network", imgUrl, msg });
         return json({ ok: false, error: `Falha ao enviar imagem: ${msg}` }, 502);
       }
+    }
+
+    // If there's no text body, finalize after images
+    if (!text) {
+      await sb
+        .from("conversations")
+        .update({ last_message_at: sentAt, awaiting_reply: false, unread: 0 })
+        .eq("id", conversationId!);
+      if (integration?.id) {
+        await sb
+          .from("integrations")
+          .update({ last_synced_at: sentAt, last_error: null })
+          .eq("id", integration.id);
+      }
+      return json({
+        ok: true,
+        messageId: lastImageExternalId,
+        conversationId,
+        leadId,
+        at: sentAt,
+        imagesSent: imageUrls.length,
+      });
     }
 
     let externalId: string | null = null;
