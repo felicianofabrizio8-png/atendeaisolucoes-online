@@ -299,13 +299,24 @@ function QuoteCard({ quote }: { quote: Quote }) {
               {contactLine} • criado há {timeAgo(quote.createdAt)}
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
-            {quote.installments > 1 && (
-              <div className="text-[11px] text-muted-foreground">
-                {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
-              </div>
-            )}
+          <div className="flex items-start gap-2 shrink-0">
+            <div className="text-right">
+              <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
+              {quote.installments > 1 && (
+                <div className="text-[11px] text-muted-foreground">
+                  {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Excluir orçamento"
+              title="Excluir orçamento"
+              className="h-7 w-7 -mt-1 -mr-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
