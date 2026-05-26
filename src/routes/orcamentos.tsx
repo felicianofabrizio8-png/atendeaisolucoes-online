@@ -882,6 +882,29 @@ function QuoteFormModal({
     if (!canSubmit || !product) return;
     setSubmitting(true);
     try {
+      // Auto-incorpora textos digitados nos inputs mas ainda não adicionados
+      // (Enter/+) — evita perder "itens inclusos" / "por conta do cliente".
+      const pendingIncluso = newIncluso.trim();
+      const pendingPorConta = newPorConta.trim();
+      const finalInclusos =
+        pendingIncluso && !inclusos.includes(pendingIncluso)
+          ? [...inclusos, pendingIncluso]
+          : inclusos;
+      const finalPorConta =
+        pendingPorConta && !porConta.includes(pendingPorConta)
+          ? [...porConta, pendingPorConta]
+          : porConta;
+      const finalObservacoes = observacoes.trim();
+
+      if (pendingIncluso && !inclusos.includes(pendingIncluso)) {
+        setInclusos(finalInclusos);
+        setNewIncluso("");
+      }
+      if (pendingPorConta && !porConta.includes(pendingPorConta)) {
+        setPorConta(finalPorConta);
+        setNewPorConta("");
+      }
+
       let finalLeadId = leadId;
       if (clientMode === "new") {
         const created = await createLead(
@@ -896,9 +919,36 @@ function QuoteFormModal({
         finalLeadId = created.id;
         toast.success(`Cliente "${created.name}" criado`);
       }
+
+      // Recompõe a mensagem final usando os valores realmente persistidos,
+      // garantindo que o preview e o que é salvo fiquem sincronizados.
+      const recomposedAuto = (() => {
+        const base = buildQuoteMessage({
+          product,
+          finalValue,
+          installments,
+          paymentMethod,
+          validUntil,
+          discount,
+        });
+        const extra: string[] = [];
+        if (finalInclusos.length > 0) {
+          extra.push("", "✅ Itens inclusos:");
+          for (const it of finalInclusos) extra.push(`• ${it}`);
+        }
+        if (finalPorConta.length > 0) {
+          extra.push("", "⚠️ Por conta do cliente:");
+          for (const it of finalPorConta) extra.push(`• ${it}`);
+        }
+        if (finalObservacoes.length > 0) {
+          extra.push("", "📝 Observações:", finalObservacoes);
+        }
+        return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
+      })();
+      const finalMessage = customMessage ?? recomposedAuto;
+
       const q = await createQuote({
         leadId: finalLeadId,
-        // Só vincula conversa quando o cliente do deep link é o mesmo escolhido.
         conversationId:
           defaultConversationId && defaultLeadId === finalLeadId
             ? defaultConversationId
@@ -908,10 +958,10 @@ function QuoteFormModal({
         paymentMethod,
         installments,
         validUntil,
-        message: previewMessage,
-        inclusos,
-        porConta,
-        notes: observacoes,
+        message: finalMessage,
+        inclusos: finalInclusos,
+        porConta: finalPorConta,
+        notes: finalObservacoes,
       });
 
       onCreated(q);
