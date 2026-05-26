@@ -345,23 +345,38 @@ async function insertMessage(
     source: string;
     subtype: string;
     metadata: Record<string, unknown>;
+    at?: string;
   },
 ) {
-  // dedupe by external_id
+  // dedupe by external_id (scoped to conversation to be extra safe)
   if (opts.externalId) {
     const { data: dup } = await sb
       .from("messages")
       .select("id")
       .eq("company_id", opts.companyId)
+      .eq("conversation_id", opts.conversationId)
       .eq("external_id", opts.externalId)
       .maybeSingle();
-    if (dup?.id) return;
+    if (dup?.id) {
+      console.log("META_WEBHOOK_MSG_DEDUPED", { externalId: opts.externalId, conversationId: opts.conversationId });
+      return;
+    }
+  } else {
+    // Sem mid: nunca inserir placeholder de mídia/empty para evitar duplicação em
+    // refresh/sync. Só permite quando há texto real do usuário.
+    const t = (opts.text ?? "").trim();
+    if (!t || t === "[mídia]") {
+      console.log("META_WEBHOOK_MSG_SKIPPED_NO_MID", { subtype: opts.subtype, conversationId: opts.conversationId });
+      return;
+    }
   }
+  const at = opts.at ?? new Date().toISOString();
   await sb.from("messages").insert({
     company_id: opts.companyId,
     conversation_id: opts.conversationId,
     role: "lead",
     text: opts.text,
+    at,
     external_id: opts.externalId,
     source: opts.source,
     source_subtype: opts.subtype,
@@ -369,7 +384,7 @@ async function insertMessage(
   });
   await sb
     .from("conversations")
-    .update({ last_message_at: new Date().toISOString(), awaiting_reply: true })
+    .update({ last_message_at: at, awaiting_reply: true })
     .eq("id", opts.conversationId);
 }
 
@@ -687,11 +702,35 @@ Deno.serve(async (req) => {
         const recipientId = String(m?.recipient?.id ?? "");
         if (!senderId || senderId === pageId || senderId === page.ig_business_account_id) continue;
 
-        const text = m?.message?.text ?? m?.message?.attachments?.[0]?.payload?.url ?? "[mídia]";
+        // Ignora echoes (mensagens enviadas pela própria página/IG ecoadas pela Meta).
+        if (m?.message?.is_echo === true || m?.message?.app_id || m?.read || m?.delivery) {
+          console.log("META_WEBHOOK_DM_ECHO_SKIPPED", {
+            isEcho: !!m?.message?.is_echo,
+            hasRead: !!m?.read,
+            hasDelivery: !!m?.delivery,
+            mid: m?.message?.mid ?? null,
+          });
+          continue;
+        }
+
+        const hasText = typeof m?.message?.text === "string" && m.message.text.trim().length > 0;
+        const hasAttachment = Array.isArray(m?.message?.attachments) && m.message.attachments.length > 0;
+        const text = hasText
+          ? m.message.text
+          : hasAttachment
+            ? (m.message.attachments[0]?.payload?.url ?? "[mídia]")
+            : "[mídia]";
         const mid = m?.message?.mid ?? null;
         const tsMs = typeof m?.timestamp === "number" ? m.timestamp : Date.now();
+        const atIso = new Date(tsMs).toISOString();
         const source: "instagram" | "messenger" = isInstagram ? "instagram" : "messenger";
         const channel: "instagram" | "facebook" = isInstagram ? "instagram" : "facebook";
+
+        // Sem mid e sem texto real → não cria placeholder (evita duplicar [mídia] em sync).
+        if (!mid && !hasText) {
+          console.log("META_WEBHOOK_DM_SKIPPED_NO_MID_NO_TEXT", { senderId, source });
+          continue;
+        }
 
         if (isInstagram) {
           console.log("INSTAGRAM_WEBHOOK_RECEIVED", {
@@ -728,6 +767,7 @@ Deno.serve(async (req) => {
             source,
             subtype: "dm",
             metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m },
+            at: atIso,
           });
 
           if (isInstagram) {
