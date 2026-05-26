@@ -32,7 +32,11 @@ export interface Quote {
   viewedAt?: string;
   externalMessageId?: string;
   rawStatus?: string;
+  inclusos: string[];
+  porConta: string[];
+  notes: string;
 }
+
 
 export function computeQuoteStatus(q: Quote): QuoteStatus {
   if (q.rawStatus === "aceito") return "aprovado";
