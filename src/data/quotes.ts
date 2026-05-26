@@ -189,6 +189,7 @@ function toQuote(r: DbQuote): Quote {
     externalMessageId: r.external_message_id ?? undefined,
     rawStatus: r.status ?? undefined,
     inclusos: toStringArr(r.inclusos),
+    brindes: toStringArr(r.brindes),
     porConta: toStringArr(r.por_conta),
     notes: r.notes ?? "",
   };
