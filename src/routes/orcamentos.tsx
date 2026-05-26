@@ -374,24 +374,6 @@ function StatusBadge({ status }: { status: QuoteStatus }) {
   );
 }
 
-function buildWhatsAppMessage(args: {
-  name: string;
-  productName: string;
-  finalValue: number;
-  validUntil: string;
-}): string {
-  const validStr = new Date(args.validUntil).toLocaleDateString("pt-BR");
-  return [
-    `Olá ${args.name} 👋`,
-    "",
-    "Segue seu orçamento:",
-    `🏊 ${args.productName}`,
-    `💰 ${formatBRL(args.finalValue)}`,
-    `📅 válido até ${validStr}`,
-    "",
-    "Posso te ajudar com alguma dúvida? 😊",
-  ].join("\n");
-}
 
 function composeSendMessage(args: {
   quote: Quote;
