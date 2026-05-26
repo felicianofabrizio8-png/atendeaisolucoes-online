@@ -702,11 +702,35 @@ Deno.serve(async (req) => {
         const recipientId = String(m?.recipient?.id ?? "");
         if (!senderId || senderId === pageId || senderId === page.ig_business_account_id) continue;
 
-        const text = m?.message?.text ?? m?.message?.attachments?.[0]?.payload?.url ?? "[mídia]";
+        // Ignora echoes (mensagens enviadas pela própria página/IG ecoadas pela Meta).
+        if (m?.message?.is_echo === true || m?.message?.app_id || m?.read || m?.delivery) {
+          console.log("META_WEBHOOK_DM_ECHO_SKIPPED", {
+            isEcho: !!m?.message?.is_echo,
+            hasRead: !!m?.read,
+            hasDelivery: !!m?.delivery,
+            mid: m?.message?.mid ?? null,
+          });
+          continue;
+        }
+
+        const hasText = typeof m?.message?.text === "string" && m.message.text.trim().length > 0;
+        const hasAttachment = Array.isArray(m?.message?.attachments) && m.message.attachments.length > 0;
+        const text = hasText
+          ? m.message.text
+          : hasAttachment
+            ? (m.message.attachments[0]?.payload?.url ?? "[mídia]")
+            : "[mídia]";
         const mid = m?.message?.mid ?? null;
         const tsMs = typeof m?.timestamp === "number" ? m.timestamp : Date.now();
+        const atIso = new Date(tsMs).toISOString();
         const source: "instagram" | "messenger" = isInstagram ? "instagram" : "messenger";
         const channel: "instagram" | "facebook" = isInstagram ? "instagram" : "facebook";
+
+        // Sem mid e sem texto real → não cria placeholder (evita duplicar [mídia] em sync).
+        if (!mid && !hasText) {
+          console.log("META_WEBHOOK_DM_SKIPPED_NO_MID_NO_TEXT", { senderId, source });
+          continue;
+        }
 
         if (isInstagram) {
           console.log("INSTAGRAM_WEBHOOK_RECEIVED", {
@@ -743,6 +767,7 @@ Deno.serve(async (req) => {
             source,
             subtype: "dm",
             metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m },
+            at: atIso,
           });
 
           if (isInstagram) {
