@@ -660,6 +660,8 @@ function QuoteFormModal({
   const [porConta, setPorConta] = useState<string[]>([]);
   const [newIncluso, setNewIncluso] = useState("");
   const [newPorConta, setNewPorConta] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+
 
   const [editingMessage, setEditingMessage] = useState(false);
   const [customMessage, setCustomMessage] = useState<string | null>(null);
