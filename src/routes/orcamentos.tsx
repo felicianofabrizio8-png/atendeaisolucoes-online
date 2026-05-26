@@ -146,13 +146,26 @@ function QuotesPage() {
         {quotes.length === 0 ? (
           <EmptyState onCreate={() => setOpen(true)} />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
-            {quotes.map((q) => (
-              <QuoteCard key={q.id} quote={q} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
+              {visibleQuotes.map((q) => (
+                <QuoteCard key={q.id} quote={q} />
+              ))}
+            </div>
+            {visibleCount < quotes.length && (
+              <div className="max-w-5xl mt-4 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
+                >
+                  Carregar mais ({quotes.length - visibleCount})
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
+
 
       {open && (
         <QuoteFormModal
