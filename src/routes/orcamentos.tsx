@@ -96,6 +96,9 @@ function QuotesPage() {
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
   const [suggestionReason, setSuggestionReason] = useState<string | undefined>();
+  const PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const visibleQuotes = quotes.slice(0, visibleCount);
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
