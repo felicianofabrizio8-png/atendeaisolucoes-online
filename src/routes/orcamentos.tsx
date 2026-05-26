@@ -14,6 +14,9 @@ import {
   MessageCircle,
   Copy,
   Loader2,
+  Pencil,
+  RotateCcw,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBRL, timeAgo, type Channel } from "@/data/mock";
