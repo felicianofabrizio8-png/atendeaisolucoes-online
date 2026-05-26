@@ -1359,11 +1359,11 @@ function QuoteFormModal({
             )}
           </div>
 
-          {/* Itens inclusos / Por conta do cliente */}
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Itens inclusos / Brindes / Por conta do cliente */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
             <ItemListField
               label="Itens inclusos"
-              placeholder="Ex: Piscina, Instalação, Kit limpeza"
+              placeholder="Ex: Piscina, Instalação"
               accent="primary"
               items={inclusos}
               value={newIncluso}
@@ -1374,8 +1374,20 @@ function QuoteFormModal({
               onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
             />
             <ItemListField
+              label="Brindes"
+              placeholder="Ex: Led colorido, Kit limpeza"
+              accent="gift"
+              items={brindes}
+              value={newBrinde}
+              setValue={setNewBrinde}
+              onAdd={() =>
+                addItem(brindes, setBrindes, newBrinde, () => setNewBrinde(""))
+              }
+              onRemove={(i) => setBrindes(brindes.filter((_, idx) => idx !== i))}
+            />
+            <ItemListField
               label="Por conta do cliente"
-              placeholder="Ex: Ponto de energia, Preparação do terreno"
+              placeholder="Ex: Ponto de energia"
               accent="warn"
               items={porConta}
               value={newPorConta}
