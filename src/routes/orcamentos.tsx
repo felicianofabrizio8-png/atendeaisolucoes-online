@@ -1184,3 +1184,81 @@ function Field({
     </label>
   );
 }
+
+function ItemListField({
+  label,
+  placeholder,
+  accent,
+  items,
+  value,
+  setValue,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  placeholder: string;
+  accent: "primary" | "warn";
+  items: string[];
+  value: string;
+  setValue: (v: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  const chipClass =
+    accent === "primary"
+      ? "bg-primary/10 text-primary border-primary/30"
+      : "bg-[var(--status-warm)]/10 text-[var(--status-warm)] border-[var(--status-warm)]/30";
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        {label}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAdd();
+            }
+          }}
+          placeholder={placeholder}
+          className="flex-1 rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-1 text-xs font-semibold rounded-md bg-secondary px-2.5 hover:bg-accent"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {items.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {items.map((it, i) => (
+            <span
+              key={`${it}-${i}`}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                chipClass,
+              )}
+            >
+              {it}
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="ml-0.5 opacity-70 hover:opacity-100"
+                aria-label={`Remover ${it}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
