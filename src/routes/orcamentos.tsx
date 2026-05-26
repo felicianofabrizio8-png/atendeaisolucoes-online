@@ -16,8 +16,19 @@ import {
   Loader2,
   Pencil,
   RotateCcw,
+  Trash2,
 
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatBRL, timeAgo, type Channel } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
@@ -29,6 +40,7 @@ import {
   buildQuoteMessage,
   computeQuoteStatus,
   sendQuoteWhatsApp,
+  deleteQuote,
   type PaymentMethod,
   type Quote,
   type QuoteStatus,
@@ -84,6 +96,9 @@ function QuotesPage() {
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
   const [suggestionReason, setSuggestionReason] = useState<string | undefined>();
+  const PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const visibleQuotes = quotes.slice(0, visibleCount);
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
@@ -131,13 +146,26 @@ function QuotesPage() {
         {quotes.length === 0 ? (
           <EmptyState onCreate={() => setOpen(true)} />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
-            {quotes.map((q) => (
-              <QuoteCard key={q.id} quote={q} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
+              {visibleQuotes.map((q) => (
+                <QuoteCard key={q.id} quote={q} />
+              ))}
+            </div>
+            {visibleCount < quotes.length && (
+              <div className="max-w-5xl mt-4 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
+                >
+                  Carregar mais ({quotes.length - visibleCount})
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
+
 
       {open && (
         <QuoteFormModal
@@ -193,6 +221,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const lead = getLeads().find((l) => l.id === quote.leadId);
   const navigate = useNavigate();
   const [waOpen, setWaOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteQuote(quote.id);
+      toast.success("Orçamento excluído");
+      setConfirmDelete(false);
+    } catch (e) {
+      console.error("DELETE_QUOTE_ERROR", e);
+      toast.error("Erro ao excluir orçamento");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const targetConversationId =
     quote.conversationId ?? getConversations().find((c) => c.leadId === quote.leadId)?.id;
@@ -255,13 +299,24 @@ function QuoteCard({ quote }: { quote: Quote }) {
               {contactLine} • criado há {timeAgo(quote.createdAt)}
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
-            {quote.installments > 1 && (
-              <div className="text-[11px] text-muted-foreground">
-                {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
-              </div>
-            )}
+          <div className="flex items-start gap-2 shrink-0">
+            <div className="text-right">
+              <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
+              {quote.installments > 1 && (
+                <div className="text-[11px] text-muted-foreground">
+                  {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Excluir orçamento"
+              title="Excluir orçamento"
+              className="h-7 w-7 -mt-1 -mr-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
@@ -332,6 +387,36 @@ function QuoteCard({ quote }: { quote: Quote }) {
           }}
         />
       )}
+
+      <AlertDialog open={confirmDelete} onOpenChange={(o) => !deleting && setConfirmDelete(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deseja excluir este orçamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. A conversa do cliente não será removida.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Excluindo…
+                </>
+              ) : (
+                "Excluir orçamento"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
