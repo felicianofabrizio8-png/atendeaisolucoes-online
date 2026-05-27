@@ -22,6 +22,7 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
+import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
@@ -100,6 +101,11 @@ const InboxIndexRoute = InboxIndexRouteImport.update({
   path: '/',
   getParentRoute: () => InboxRoute,
 } as any)
+const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
+  id: '/onboarding/whatsapp',
+  path: '/onboarding/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
   path: '/$conversationId',
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
@@ -231,6 +239,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
@@ -260,6 +269,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/whatsapp'
     | '/inbox/$conversationId'
+    | '/onboarding/whatsapp'
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
@@ -286,6 +296,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/whatsapp'
     | '/inbox/$conversationId'
+    | '/onboarding/whatsapp'
     | '/inbox'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/whatsapp'
     | '/inbox/$conversationId'
+    | '/onboarding/whatsapp'
     | '/inbox/'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
@@ -340,6 +352,7 @@ export interface RootRouteChildren {
   RelatoriosRoute: typeof RelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   WhatsappRoute: typeof WhatsappRoute
+  OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
@@ -445,6 +458,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/inbox/'
       preLoaderRoute: typeof InboxIndexRouteImport
       parentRoute: typeof InboxRoute
+    }
+    '/onboarding/whatsapp': {
+      id: '/onboarding/whatsapp'
+      path: '/onboarding/whatsapp'
+      fullPath: '/onboarding/whatsapp'
+      preLoaderRoute: typeof OnboardingWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/inbox/$conversationId': {
       id: '/inbox/$conversationId'
@@ -558,6 +578,7 @@ const rootRouteChildren: RootRouteChildren = {
   RelatoriosRoute: RelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   WhatsappRoute: WhatsappRoute,
+  OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
@@ -573,12 +594,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

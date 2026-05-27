@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useSyncExternalStore, useState, useEffect, useCallback } from "react";
 import {
@@ -208,9 +208,17 @@ function IntegrationsSection() {
 
   return (
     <section className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-center gap-2 mb-1">
-        <Plug className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Integrações de canais</h2>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2">
+          <Plug className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Integrações de canais</h2>
+        </div>
+        <Link
+          to="/onboarding/whatsapp"
+          className="text-[11px] font-medium text-primary hover:underline"
+        >
+          Usar assistente guiado →
+        </Link>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
         Conecte o WhatsApp da sua empresa para receber mensagens reais no inbox e
