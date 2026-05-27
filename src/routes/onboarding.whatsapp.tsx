@@ -85,15 +85,27 @@ type DiscoveredAssets = {
 
 /* ---------------- Component ---------------- */
 
+type SavedInfo = {
+  display_name: string;
+  phone_number: string | null;
+  waba_id: string;
+  page_name: string | null;
+  page_id: string | null;
+};
+
 function OnboardingWhatsApp() {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedPhoneId, setSelectedPhoneId] = useState<string | null>(null);
-  const [testPhone, setTestPhone] = useState("");
 
   const [connecting, setConnecting] = useState(false);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [assets, setAssets] = useState<DiscoveredAssets | null>(null);
+  // Token mantido apenas em memória — não persistir em localStorage/sessionStorage.
+  const [userToken, setUserToken] = useState<string | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [savedInfo, setSavedInfo] = useState<SavedInfo | null>(null);
 
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -103,7 +115,7 @@ function OnboardingWhatsApp() {
   const canAdvance =
     step.id === "welcome" ||
     (step.id === "connect" && connected) ||
-    (step.id === "choose" && !!selectedPhoneId) ||
+    (step.id === "choose" && !!selectedPhoneId && !saving) ||
     step.id === "test";
 
   /* ---------- Graph API discovery ---------- */
