@@ -135,6 +135,71 @@
   --color-chart-5: var(--chart-5);
 }
 
+/* Light theme — applied when .light is on <html>. Premium SaaS look, no pure white. */
+:root.light {
+  /* Surfaces — soft, slightly cool gray (never pure white) */
+  --background: oklch(0.985 0.003 250);          /* app background */
+  --foreground: oklch(0.20 0.014 250);           /* main text */
+
+  --card: oklch(0.995 0.002 250);                /* card surface — softer than #fff */
+  --card-foreground: oklch(0.20 0.014 250);
+
+  --popover: oklch(0.995 0.002 250);
+  --popover-foreground: oklch(0.20 0.014 250);
+
+  /* Primary — darken teal slightly for AA contrast on light */
+  --primary: oklch(0.58 0.13 195);
+  --primary-foreground: oklch(0.99 0.002 250);
+
+  --secondary: oklch(0.94 0.006 250);
+  --secondary-foreground: oklch(0.20 0.014 250);
+
+  --muted: oklch(0.95 0.005 250);
+  --muted-foreground: oklch(0.48 0.014 250);
+
+  --accent: oklch(0.93 0.008 250);
+  --accent-foreground: oklch(0.20 0.014 250);
+
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.90 0.008 250);
+  --input: oklch(0.93 0.008 250);
+  --ring: oklch(0.58 0.13 195);
+
+  /* Status — darken slightly for contrast on light backgrounds */
+  --status-urgent: oklch(0.58 0.22 28);
+  --status-urgent-foreground: oklch(0.99 0 0);
+  --status-hot: oklch(0.64 0.18 50);
+  --status-hot-foreground: oklch(0.99 0 0);
+  --status-warm: oklch(0.72 0.15 90);
+  --status-warm-foreground: oklch(0.20 0.014 250);
+  --status-cold: oklch(0.62 0.12 230);
+  --status-cold-foreground: oklch(0.99 0 0);
+  --status-won: oklch(0.60 0.17 150);
+  --status-won-foreground: oklch(0.99 0 0);
+  --status-lost: oklch(0.62 0.02 250);
+  --status-lost-foreground: oklch(0.99 0 0);
+
+  /* Channels — keep brand hues, adjusted for light */
+  --channel-whatsapp: oklch(0.60 0.17 150);
+  --channel-instagram: oklch(0.60 0.20 0);
+  --channel-facebook: oklch(0.58 0.18 250);
+
+  /* Sidebar — subtle off-white, distinct from main bg */
+  --sidebar: oklch(0.97 0.005 250);
+  --sidebar-foreground: oklch(0.25 0.014 250);
+  --sidebar-border: oklch(0.90 0.008 250);
+  --sidebar-accent: oklch(0.93 0.008 250);
+  --sidebar-accent-foreground: oklch(0.20 0.014 250);
+
+  --chart-1: oklch(0.58 0.13 195);
+  --chart-2: oklch(0.60 0.17 150);
+  --chart-3: oklch(0.64 0.18 50);
+  --chart-4: oklch(0.58 0.18 320);
+  --chart-5: oklch(0.55 0.12 230);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
