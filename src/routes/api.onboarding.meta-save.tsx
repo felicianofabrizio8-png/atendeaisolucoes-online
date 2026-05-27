@@ -110,14 +110,26 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
               display_phone_number: phJson.display_phone_number,
               verified_name: phJson.verified_name,
             };
+            console.log("META_ONBOARDING_PHONE_LOOKUP_OK", {
+              phoneNumberId: body.selected_phone_number_id,
+              hasDisplay: !!phJson.display_phone_number,
+              hasVerifiedName: !!phJson.verified_name,
+            });
+          } else {
+            console.warn("META_ONBOARDING_PHONE_LOOKUP_FAILED", {
+              status: phRes.status,
+              error: phJson.error?.message ?? null,
+              phoneNumberId: body.selected_phone_number_id,
+            });
           }
         } catch (e) {
           console.error("META_ONBOARDING_SAVE_ERROR", { stage: "validate_token_exception", e });
           return Response.json({ error: "Falha ao validar token Meta" }, { status: 400 });
         }
 
-        const phoneNumber =
+        const displayPhoneNumber =
           phoneInfo.display_phone_number ?? body.selected_phone_number ?? null;
+        const phoneNumber = displayPhoneNumber;
         const verifiedName =
           phoneInfo.verified_name ?? body.selected_phone_verified_name ?? null;
 
@@ -126,6 +138,7 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
 
         const accountMetadata = {
           phone_number: phoneNumber,
+          display_phone_number: displayPhoneNumber,
           verified_name: verifiedName,
           waba_id: body.selected_waba_id,
           page_id: body.selected_page_id ?? null,
