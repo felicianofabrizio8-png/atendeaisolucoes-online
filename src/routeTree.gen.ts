@@ -30,6 +30,7 @@ import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.t
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
 import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
+import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
@@ -142,6 +143,11 @@ const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
   path: '/api/whatsapp/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
+  id: '/api/onboarding/test-send',
+  path: '/api/onboarding/test-send',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingMetaSaveRoute = ApiOnboardingMetaSaveRouteImport.update({
   id: '/api/onboarding/meta-save',
   path: '/api/onboarding/meta-save',
@@ -195,6 +201,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
@@ -223,6 +230,7 @@ export interface FileRoutesByTo {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
@@ -253,6 +261,7 @@ export interface FileRoutesById {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
@@ -284,6 +293,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
@@ -341,6 +352,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
@@ -369,6 +381,7 @@ export interface RootRouteChildren {
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
+  ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
   ApiWhatsappDebugRoute: typeof ApiWhatsappDebugRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
@@ -528,6 +541,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappDebugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/onboarding/test-send': {
+      id: '/api/onboarding/test-send'
+      path: '/api/onboarding/test-send'
+      fullPath: '/api/onboarding/test-send'
+      preLoaderRoute: typeof ApiOnboardingTestSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/meta-save': {
       id: '/api/onboarding/meta-save'
       path: '/api/onboarding/meta-save'
@@ -603,6 +623,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
+  ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
   ApiWhatsappDebugRoute: ApiWhatsappDebugRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,

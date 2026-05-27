@@ -897,15 +897,138 @@ function StepSuccess({
       <DiagnosticsPanel integrationId={saved.integration_id} />
 
 
+      <TestSendButton />
+    </div>
+  );
+}
+
+function TestSendButton() {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<
+    | { kind: "ok"; to: string }
+    | { kind: "err"; msg: string }
+    | null
+  >(null);
+
+  const DEFAULT_MSG = "Teste de conexão do Atende Ai realizado com sucesso.";
+
+  const send = async () => {
+    setSending(true);
+    setResult(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        setResult({ kind: "err", msg: "Sessão expirada. Faça login novamente." });
+        return;
+      }
+      const res = await fetch("/api/onboarding/test-send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone, text: DEFAULT_MSG }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string; to?: string };
+      if (!res.ok || !json.ok) {
+        setResult({ kind: "err", msg: json.error ?? `Erro HTTP ${res.status}` });
+      } else {
+        setResult({ kind: "ok", to: json.to ?? phone });
+      }
+    } catch (e) {
+      setResult({
+        kind: "err",
+        msg: e instanceof Error ? e.message : "Falha inesperada",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
       <button
         type="button"
-        disabled
-        title="Disponível em breve"
-        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary/40 text-primary-foreground px-3 py-2.5 cursor-not-allowed"
+        onClick={() => {
+          setResult(null);
+          setOpen(true);
+        }}
+        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-2.5"
       >
-        <Send className="h-3.5 w-3.5" /> Enviar mensagem de teste (em breve)
+        <Send className="h-3.5 w-3.5" /> Enviar mensagem de teste
       </button>
-    </div>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !sending && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-background p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold mb-1">Enviar mensagem de teste</h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Informe um telefone com DDD para receber a mensagem oficial.
+            </p>
+
+            <label className="block text-xs font-medium mb-1">Telefone (com DDD)</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Ex.: 11999998888"
+              disabled={sending}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm mb-3"
+            />
+
+            <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground mb-4">
+              Mensagem que será enviada:
+              <div className="mt-1 text-foreground">{DEFAULT_MSG}</div>
+            </div>
+
+            {result?.kind === "ok" && (
+              <div className="rounded-md border border-[var(--status-ok)]/40 bg-[var(--status-ok)]/10 text-[var(--status-ok)] text-xs p-3 mb-3">
+                Mensagem enviada com sucesso para +{result.to}.
+              </div>
+            )}
+            {result?.kind === "err" && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-xs p-3 mb-3 flex gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{result.msg}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={sending}
+                className="text-xs px-3 py-2 rounded-md border border-border hover:bg-muted"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={send}
+                disabled={sending || phone.replace(/\D/g, "").length < 10}
+                className="text-xs px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {sending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+                {sending ? "Enviando…" : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
