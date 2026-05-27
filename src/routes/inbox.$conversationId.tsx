@@ -570,13 +570,13 @@ function ConversationPage() {
               >
                 <div
                   className={cn(
-                    "rounded-lg px-3 py-2 text-sm leading-relaxed",
+                    "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
                     m.role === "agent"
                       ? "bg-primary text-primary-foreground rounded-br-sm"
                       : "bg-card border border-border rounded-bl-sm",
                   )}
                 >
-                  {m.text}
+                  <MessageContent message={m} />
                 </div>
                 <span className="text-[10px] text-muted-foreground mt-1 px-1">{timeAgo(m.at)}</span>
               </div>
