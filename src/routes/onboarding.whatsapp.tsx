@@ -356,6 +356,79 @@ function OnboardingWhatsApp() {
     }
   };
 
+  /* ---------- Save connection (Phase 3) ---------- */
+  const saveConnection = useCallback(async (): Promise<boolean> => {
+    if (!userToken || !selectedPhoneId || !assets) {
+      setErrorMsg("Selecione um número antes de salvar.");
+      return false;
+    }
+    const phone = assets.phones.find((p) => p.id === selectedPhoneId);
+    if (!phone) {
+      setErrorMsg("Número selecionado inválido.");
+      return false;
+    }
+    const page =
+      assets.pages.find((p) => p.ig_business_account_id) ??
+      assets.pages[0] ??
+      null;
+
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const bearer = sess.session?.access_token;
+      if (!bearer) {
+        setErrorMsg("Sessão expirada. Faça login novamente.");
+        setSaving(false);
+        return false;
+      }
+      const res = await fetch("/api/onboarding/meta-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${bearer}`,
+        },
+        body: JSON.stringify({
+          access_token: userToken,
+          selected_phone_number_id: phone.id,
+          selected_waba_id: phone.waba_id,
+          selected_phone_number: phone.display_phone_number,
+          selected_phone_verified_name: phone.verified_name,
+          selected_page_id: page?.id ?? null,
+          selected_page_name: page?.name ?? null,
+          selected_instagram_id: page?.ig_business_account_id ?? null,
+          selected_instagram_username: page?.ig_username ?? null,
+        }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        display_name?: string;
+        phone_number?: string | null;
+        waba_id?: string;
+        page_id?: string | null;
+        page_name?: string | null;
+      };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setSavedInfo({
+        display_name: json.display_name ?? phone.display_phone_number,
+        phone_number: json.phone_number ?? phone.display_phone_number,
+        waba_id: json.waba_id ?? phone.waba_id,
+        page_id: json.page_id ?? null,
+        page_name: json.page_name ?? null,
+      });
+      return true;
+    } catch (e) {
+      console.error("META_ONBOARDING_SAVE_ERROR_CLIENT", e);
+      setErrorMsg(e instanceof Error ? e.message : "Falha ao salvar conexão");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [userToken, selectedPhoneId, assets]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border/60 bg-card/40 backdrop-blur-sm">
