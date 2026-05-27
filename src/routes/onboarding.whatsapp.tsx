@@ -501,9 +501,12 @@ function OnboardingWhatsApp() {
 
           <div className="px-6 py-6">
             {errorMsg && (
-              <div className="mb-4 flex items-start gap-2 rounded-md border border-[var(--status-urgent)]/30 bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
-                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="mb-4 rounded-md border border-[var(--status-urgent)]/30 bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2.5 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                <ManualFallbackHint />
               </div>
             )}
 
