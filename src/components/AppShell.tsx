@@ -231,12 +231,13 @@ export function AppShell() {
               {FooterPanel}
             </SheetContent>
           </Sheet>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
               <Sparkles className="h-3.5 w-3.5" />
             </div>
             <span className="text-sm font-semibold truncate">Atende Ai!</span>
           </div>
+          <ThemeToggle />
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
