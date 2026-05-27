@@ -20,6 +20,7 @@ import { loadRemote, setRepoMode } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type NavItem = {
   to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
