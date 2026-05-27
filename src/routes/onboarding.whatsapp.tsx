@@ -600,7 +600,27 @@ function OnboardingWhatsApp() {
   );
 }
 
+/* ---------------- Fallback Hint ---------------- */
+
+function ManualFallbackHint() {
+  return (
+    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--status-urgent)]/20">
+      <span className="text-[11px] text-foreground/80">
+        Você também pode conectar manualmente nas Configurações.
+      </span>
+      <Link
+        to="/configuracoes"
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-background hover:bg-muted text-foreground text-[11px] font-semibold px-2.5 py-1.5"
+      >
+        Usar modo manual
+        <ArrowRight className="h-3 w-3" />
+      </Link>
+    </div>
+  );
+}
+
 /* ---------------- Steps ---------------- */
+
 
 function StepWelcome() {
   return (
