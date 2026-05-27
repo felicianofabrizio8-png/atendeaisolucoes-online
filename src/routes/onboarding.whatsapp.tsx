@@ -85,15 +85,27 @@ type DiscoveredAssets = {
 
 /* ---------------- Component ---------------- */
 
+type SavedInfo = {
+  display_name: string;
+  phone_number: string | null;
+  waba_id: string;
+  page_name: string | null;
+  page_id: string | null;
+};
+
 function OnboardingWhatsApp() {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedPhoneId, setSelectedPhoneId] = useState<string | null>(null);
-  const [testPhone, setTestPhone] = useState("");
 
   const [connecting, setConnecting] = useState(false);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [assets, setAssets] = useState<DiscoveredAssets | null>(null);
+  // Token mantido apenas em memória — não persistir em localStorage/sessionStorage.
+  const [userToken, setUserToken] = useState<string | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [savedInfo, setSavedInfo] = useState<SavedInfo | null>(null);
 
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -103,15 +115,16 @@ function OnboardingWhatsApp() {
   const canAdvance =
     step.id === "welcome" ||
     (step.id === "connect" && connected) ||
-    (step.id === "choose" && !!selectedPhoneId) ||
+    (step.id === "choose" && !!selectedPhoneId && !saving) ||
     step.id === "test";
 
   /* ---------- Graph API discovery ---------- */
 
-  const discoverAssets = useCallback(async (userToken: string) => {
+  const discoverAssets = useCallback(async (userTokenArg: string) => {
     setLoadingAssets(true);
     setErrorMsg(null);
-    const tok = encodeURIComponent(userToken);
+    setUserToken(userTokenArg);
+    const tok = encodeURIComponent(userTokenArg);
 
     try {
       // /me
@@ -343,6 +356,79 @@ function OnboardingWhatsApp() {
     }
   };
 
+  /* ---------- Save connection (Phase 3) ---------- */
+  const saveConnection = useCallback(async (): Promise<boolean> => {
+    if (!userToken || !selectedPhoneId || !assets) {
+      setErrorMsg("Selecione um número antes de salvar.");
+      return false;
+    }
+    const phone = assets.phones.find((p) => p.id === selectedPhoneId);
+    if (!phone) {
+      setErrorMsg("Número selecionado inválido.");
+      return false;
+    }
+    const page =
+      assets.pages.find((p) => p.ig_business_account_id) ??
+      assets.pages[0] ??
+      null;
+
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const bearer = sess.session?.access_token;
+      if (!bearer) {
+        setErrorMsg("Sessão expirada. Faça login novamente.");
+        setSaving(false);
+        return false;
+      }
+      const res = await fetch("/api/onboarding/meta-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${bearer}`,
+        },
+        body: JSON.stringify({
+          access_token: userToken,
+          selected_phone_number_id: phone.id,
+          selected_waba_id: phone.waba_id,
+          selected_phone_number: phone.display_phone_number,
+          selected_phone_verified_name: phone.verified_name,
+          selected_page_id: page?.id ?? null,
+          selected_page_name: page?.name ?? null,
+          selected_instagram_id: page?.ig_business_account_id ?? null,
+          selected_instagram_username: page?.ig_username ?? null,
+        }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        display_name?: string;
+        phone_number?: string | null;
+        waba_id?: string;
+        page_id?: string | null;
+        page_name?: string | null;
+      };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setSavedInfo({
+        display_name: json.display_name ?? phone.display_phone_number,
+        phone_number: json.phone_number ?? phone.display_phone_number,
+        waba_id: json.waba_id ?? phone.waba_id,
+        page_id: json.page_id ?? null,
+        page_name: json.page_name ?? null,
+      });
+      return true;
+    } catch (e) {
+      console.error("META_ONBOARDING_SAVE_ERROR_CLIENT", e);
+      setErrorMsg(e instanceof Error ? e.message : "Falha ao salvar conexão");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [userToken, selectedPhoneId, assets]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border/60 bg-card/40 backdrop-blur-sm">
@@ -438,16 +524,7 @@ function OnboardingWhatsApp() {
               />
             )}
             {step.id === "test" && (
-              <StepTest
-                phone={testPhone}
-                onChange={setTestPhone}
-                onSend={() =>
-                  console.log("[onboarding] enviar teste (mock)", {
-                    testPhone,
-                    phoneNumberId: selectedPhoneId,
-                  })
-                }
-              />
+              <StepSuccess saved={savedInfo} saving={saving} />
             )}
           </div>
 
@@ -478,23 +555,39 @@ function OnboardingWhatsApp() {
             ) : (
               <button
                 type="button"
-                disabled={!canAdvance}
-                onClick={() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))}
+                disabled={!canAdvance || saving}
+                onClick={async () => {
+                  if (step.id === "choose") {
+                    const ok = await saveConnection();
+                    if (!ok) return;
+                  }
+                  setStepIndex((i) => Math.min(STEPS.length - 1, i + 1));
+                }}
                 className={cn(
                   "inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-4 py-2 transition",
-                  canAdvance
+                  canAdvance && !saving
                     ? "bg-primary text-primary-foreground hover:opacity-90"
                     : "bg-muted text-muted-foreground cursor-not-allowed",
                 )}
               >
-                Continuar <ArrowRight className="h-3.5 w-3.5" />
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Salvando…
+                  </>
+                ) : (
+                  <>
+                    {step.id === "choose" ? "Salvar e continuar" : "Continuar"}{" "}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
               </button>
             )}
           </div>
         </section>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Nada é salvo nesta etapa — estamos apenas detectando seus ativos Meta.
+          Seus tokens são armazenados de forma segura no servidor. Nada sensível
+          fica no navegador.
         </p>
       </main>
     </div>
@@ -754,55 +847,69 @@ function StepChoose({
   );
 }
 
-function StepTest({
-  phone,
-  onChange,
-  onSend,
+function StepSuccess({
+  saved,
+  saving,
 }: {
-  phone: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
+  saved: SavedInfo | null;
+  saving: boolean;
 }) {
+  if (saving) {
+    return (
+      <div className="py-10 text-center text-xs text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+        Salvando conexão…
+      </div>
+    );
+  }
+  if (!saved) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Volte e selecione um número para salvar a conexão.
+      </p>
+    );
+  }
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Esta etapa ainda é uma pré-visualização — nenhuma mensagem real será
-        enviada nesta fase do onboarding.
-      </p>
-
-      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-        <label className="block">
-          <span className="text-[11px] font-medium text-muted-foreground">
-            Número de destino
-          </span>
-          <input
-            type="tel"
-            placeholder="+55 11 90000-0000"
-            value={phone}
-            onChange={(e) => onChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-          />
-        </label>
-
-        <div className="rounded-md bg-muted/50 border border-dashed border-border p-3">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-            Pré-visualização
-          </div>
-          <div className="text-xs leading-relaxed">
-            Olá! 👋 Esta é uma mensagem de teste enviada pelo seu novo WhatsApp
-            conectado. Se você recebeu, está tudo certo!
-          </div>
+      <div className="rounded-xl border border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 p-5 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-[var(--status-ok)]/15 text-[var(--status-ok)] inline-flex items-center justify-center mb-3">
+          <Check className="h-6 w-6" />
         </div>
-
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={!phone.trim()}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 transition disabled:opacity-50"
-        >
-          <Send className="h-3.5 w-3.5" /> Enviar teste
-        </button>
+        <h3 className="text-sm font-semibold mb-1">
+          WhatsApp conectado com sucesso
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Sua empresa está pronta para enviar e receber mensagens pelo número
+          oficial.
+        </p>
       </div>
+
+      <div className="rounded-lg border border-border bg-background p-4 space-y-2">
+        <Row label="Número" value={saved.phone_number ?? "—"} />
+        <Row label="Nome verificado" value={saved.display_name} />
+        {saved.page_name && <Row label="Página Facebook" value={saved.page_name} />}
+        <Row label="WABA ID" value={saved.waba_id} mono />
+      </div>
+
+      <button
+        type="button"
+        disabled
+        title="Disponível em breve"
+        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary/40 text-primary-foreground px-3 py-2.5 cursor-not-allowed"
+      >
+        <Send className="h-3.5 w-3.5" /> Enviar mensagem de teste (em breve)
+      </button>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-medium truncate", mono && "font-mono text-[11px]")}>
+        {value}
+      </span>
     </div>
   );
 }
