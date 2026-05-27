@@ -586,7 +586,8 @@ function OnboardingWhatsApp() {
         </section>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Nada é salvo nesta etapa — estamos apenas detectando seus ativos Meta.
+          Seus tokens são armazenados de forma segura no servidor. Nada sensível
+          fica no navegador.
         </p>
       </main>
     </div>
