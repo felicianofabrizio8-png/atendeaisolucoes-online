@@ -555,16 +555,31 @@ function OnboardingWhatsApp() {
             ) : (
               <button
                 type="button"
-                disabled={!canAdvance}
-                onClick={() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))}
+                disabled={!canAdvance || saving}
+                onClick={async () => {
+                  if (step.id === "choose") {
+                    const ok = await saveConnection();
+                    if (!ok) return;
+                  }
+                  setStepIndex((i) => Math.min(STEPS.length - 1, i + 1));
+                }}
                 className={cn(
                   "inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-4 py-2 transition",
-                  canAdvance
+                  canAdvance && !saving
                     ? "bg-primary text-primary-foreground hover:opacity-90"
                     : "bg-muted text-muted-foreground cursor-not-allowed",
                 )}
               >
-                Continuar <ArrowRight className="h-3.5 w-3.5" />
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Salvando…
+                  </>
+                ) : (
+                  <>
+                    {step.id === "choose" ? "Salvar e continuar" : "Continuar"}{" "}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
               </button>
             )}
           </div>
