@@ -189,10 +189,11 @@ export function AppShell() {
       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="leading-tight">
+      <div className="leading-tight flex-1 min-w-0">
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
       </div>
+      <ThemeToggle />
     </div>
   );
 
