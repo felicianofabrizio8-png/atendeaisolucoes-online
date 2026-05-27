@@ -1019,9 +1019,23 @@ function TestSendButton() {
               </div>
             )}
             {result?.kind === "err" && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-xs p-3 mb-3 flex gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{result.msg}</span>
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-xs p-3 mb-3 space-y-2">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{result.msg}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-destructive/20">
+                  <span className="text-[11px] text-foreground/80">
+                    Você também pode conectar manualmente nas Configurações.
+                  </span>
+                  <Link
+                    to="/configuracoes"
+                    className="inline-flex items-center gap-1 rounded-md border border-border bg-background hover:bg-muted text-foreground text-[11px] font-semibold px-2.5 py-1.5"
+                  >
+                    Usar modo manual
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
               </div>
             )}
 
