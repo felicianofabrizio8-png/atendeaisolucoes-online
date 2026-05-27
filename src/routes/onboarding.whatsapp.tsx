@@ -404,16 +404,18 @@ function OnboardingWhatsApp() {
       const json = (await res.json()) as {
         ok?: boolean;
         error?: string;
+        integration_id?: string;
         display_name?: string;
         phone_number?: string | null;
         waba_id?: string;
         page_id?: string | null;
         page_name?: string | null;
       };
-      if (!res.ok || !json.ok) {
+      if (!res.ok || !json.ok || !json.integration_id) {
         throw new Error(json.error ?? `HTTP ${res.status}`);
       }
       setSavedInfo({
+        integration_id: json.integration_id,
         display_name: json.display_name ?? phone.display_phone_number,
         phone_number: json.phone_number ?? phone.display_phone_number,
         waba_id: json.waba_id ?? phone.waba_id,
