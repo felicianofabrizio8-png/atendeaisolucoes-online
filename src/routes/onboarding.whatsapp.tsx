@@ -86,6 +86,7 @@ type DiscoveredAssets = {
 /* ---------------- Component ---------------- */
 
 type SavedInfo = {
+  integration_id: string;
   display_name: string;
   phone_number: string | null;
   waba_id: string;
@@ -403,16 +404,18 @@ function OnboardingWhatsApp() {
       const json = (await res.json()) as {
         ok?: boolean;
         error?: string;
+        integration_id?: string;
         display_name?: string;
         phone_number?: string | null;
         waba_id?: string;
         page_id?: string | null;
         page_name?: string | null;
       };
-      if (!res.ok || !json.ok) {
+      if (!res.ok || !json.ok || !json.integration_id) {
         throw new Error(json.error ?? `HTTP ${res.status}`);
       }
       setSavedInfo({
+        integration_id: json.integration_id,
         display_name: json.display_name ?? phone.display_phone_number,
         phone_number: json.phone_number ?? phone.display_phone_number,
         waba_id: json.waba_id ?? phone.waba_id,
@@ -891,6 +894,9 @@ function StepSuccess({
         <Row label="WABA ID" value={saved.waba_id} mono />
       </div>
 
+      <DiagnosticsPanel integrationId={saved.integration_id} />
+
+
       <button
         type="button"
         disabled
@@ -911,5 +917,109 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
         {value}
       </span>
     </div>
+  );
+}
+
+type DiagRow = {
+  id: string;
+  company_id: string;
+  channel: string;
+  external_account_id: string | null;
+  account_metadata: Record<string, unknown> | null;
+  active: boolean;
+  has_access_token: boolean;
+  has_webhook_secret: boolean;
+  last_synced_at: string | null;
+  updated_at: string | null;
+};
+
+function DiagnosticsPanel({ integrationId }: { integrationId: string }) {
+  const [row, setRow] = useState<DiagRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    const { data, error } = await supabase
+      .from("integrations_safe")
+      .select(
+        "id, company_id, channel, external_account_id, account_metadata, active, has_access_token, has_webhook_secret, last_synced_at, updated_at",
+      )
+      .eq("id", integrationId)
+      .maybeSingle();
+    if (error) setErr(error.message);
+    setRow((data as DiagRow | null) ?? null);
+    setLoading(false);
+  }, [integrationId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const meta = (row?.account_metadata ?? {}) as Record<string, unknown>;
+  const get = (k: string) =>
+    typeof meta[k] === "string" || typeof meta[k] === "number"
+      ? String(meta[k])
+      : null;
+
+  return (
+    <details className="rounded-lg border border-border bg-muted/30 text-xs" open>
+      <summary className="cursor-pointer px-3 py-2 font-semibold flex items-center justify-between">
+        <span>Diagnóstico da conexão</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            void load();
+          }}
+          className="text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        >
+          Atualizar
+        </button>
+      </summary>
+      <div className="px-3 pb-3 space-y-1.5">
+        {loading && (
+          <div className="text-muted-foreground py-2 inline-flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" /> Lendo do banco…
+          </div>
+        )}
+        {err && <div className="text-[var(--status-urgent)]">Erro: {err}</div>}
+        {!loading && row && (
+          <>
+            <Row label="company_id" value={row.company_id} mono />
+            <Row label="integration_id" value={row.id} mono />
+            <Row label="channel" value={row.channel} />
+            <Row label="page_id" value={get("page_id") ?? "—"} mono />
+            <Row label="waba_id" value={get("waba_id") ?? "—"} mono />
+            <Row
+              label="phone_number_id"
+              value={row.external_account_id ?? "—"}
+              mono
+            />
+            <Row label="status" value={row.active ? "ativa" : "inativa"} />
+            <Row
+              label="has_access_token"
+              value={row.has_access_token ? "true" : "false"}
+            />
+            <Row
+              label="has_webhook_secret"
+              value={row.has_webhook_secret ? "true" : "false"}
+            />
+            <Row label="last_synced_at" value={row.last_synced_at ?? "—"} />
+            <Row label="updated_at" value={row.updated_at ?? "—"} />
+          </>
+        )}
+        {!loading && !row && !err && (
+          <div className="text-muted-foreground py-2">
+            Integração não encontrada em <code>integrations_safe</code>.
+          </div>
+        )}
+        <p className="pt-2 text-[10px] text-muted-foreground">
+          Tokens nunca trafegam para o navegador — apenas o indicador{" "}
+          <code>has_access_token</code>.
+        </p>
+      </div>
+    </details>
   );
 }
