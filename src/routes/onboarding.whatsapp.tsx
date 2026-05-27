@@ -86,6 +86,7 @@ type DiscoveredAssets = {
 /* ---------------- Component ---------------- */
 
 type SavedInfo = {
+  integration_id: string;
   display_name: string;
   phone_number: string | null;
   waba_id: string;
