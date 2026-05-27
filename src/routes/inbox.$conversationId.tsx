@@ -113,7 +113,82 @@ async function readFunctionError(
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
 // aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
+const IMAGE_URL_RE = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s]*)?)/gi;
+
+function ImagePreview({ url }: { url: string }) {
+  const [error, setError] = useState(false);
+  if (error) {
+    return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+      <img
+        src={url}
+        alt="Imagem"
+        onError={() => setError(true)}
+        className="rounded-md max-w-[240px] w-full h-auto cursor-zoom-in"
+        loading="lazy"
+      />
+    </a>
+  );
+}
+
+function MessageContent({ message }: { message: Message }) {
+  const meta = message.sourceMetadata as Record<string, unknown> | undefined;
+  const mediaUrl =
+    (meta?.media_url as string | undefined) ??
+    (meta?.mediaUrl as string | undefined) ??
+    (meta?.image_url as string | undefined);
+  const isImageType =
+    message.sourceSubtype === "image" ||
+    (meta?.type as string | undefined) === "image";
+
+  if (mediaUrl && (isImageType || IMAGE_URL_RE.test(mediaUrl))) {
+    IMAGE_URL_RE.lastIndex = 0;
+    return (
+      <div className="space-y-1">
+        <ImagePreview url={mediaUrl} />
+        {message.text && !/^https?:\/\//.test(message.text.trim()) && (
+          <div>{message.text}</div>
+        )}
+      </div>
+    );
+  }
+
+  const text = message.text ?? "";
+  IMAGE_URL_RE.lastIndex = 0;
+  if (!IMAGE_URL_RE.test(text)) {
+    return <>{text}</>;
+  }
+  IMAGE_URL_RE.lastIndex = 0;
+  const parts: Array<{ type: "text" | "image"; value: string }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = IMAGE_URL_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: "image", value: match[1] });
+    lastIndex = match.index + match[1].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ type: "text", value: text.slice(lastIndex) });
+  }
+  return (
+    <div className="space-y-1">
+      {parts.map((p, i) =>
+        p.type === "image" ? (
+          <ImagePreview key={i} url={p.value} />
+        ) : (
+          p.value.trim() ? <div key={i}>{p.value}</div> : null
+        ),
+      )}
+    </div>
+  );
+}
+
 function ConversationPage() {
+
   const { conversationId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
@@ -570,13 +645,13 @@ function ConversationPage() {
               >
                 <div
                   className={cn(
-                    "rounded-lg px-3 py-2 text-sm leading-relaxed",
+                    "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
                     m.role === "agent"
                       ? "bg-primary text-primary-foreground rounded-br-sm"
                       : "bg-card border border-border rounded-bl-sm",
                   )}
                 >
-                  {m.text}
+                  <MessageContent message={m} />
                 </div>
                 <span className="text-[10px] text-muted-foreground mt-1 px-1">{timeAgo(m.at)}</span>
               </div>
