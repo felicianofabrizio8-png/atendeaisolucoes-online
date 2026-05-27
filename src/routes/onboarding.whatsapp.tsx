@@ -846,55 +846,69 @@ function StepChoose({
   );
 }
 
-function StepTest({
-  phone,
-  onChange,
-  onSend,
+function StepSuccess({
+  saved,
+  saving,
 }: {
-  phone: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
+  saved: SavedInfo | null;
+  saving: boolean;
 }) {
+  if (saving) {
+    return (
+      <div className="py-10 text-center text-xs text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+        Salvando conexão…
+      </div>
+    );
+  }
+  if (!saved) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Volte e selecione um número para salvar a conexão.
+      </p>
+    );
+  }
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Esta etapa ainda é uma pré-visualização — nenhuma mensagem real será
-        enviada nesta fase do onboarding.
-      </p>
-
-      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-        <label className="block">
-          <span className="text-[11px] font-medium text-muted-foreground">
-            Número de destino
-          </span>
-          <input
-            type="tel"
-            placeholder="+55 11 90000-0000"
-            value={phone}
-            onChange={(e) => onChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-          />
-        </label>
-
-        <div className="rounded-md bg-muted/50 border border-dashed border-border p-3">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-            Pré-visualização
-          </div>
-          <div className="text-xs leading-relaxed">
-            Olá! 👋 Esta é uma mensagem de teste enviada pelo seu novo WhatsApp
-            conectado. Se você recebeu, está tudo certo!
-          </div>
+      <div className="rounded-xl border border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 p-5 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-[var(--status-ok)]/15 text-[var(--status-ok)] inline-flex items-center justify-center mb-3">
+          <Check className="h-6 w-6" />
         </div>
-
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={!phone.trim()}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 transition disabled:opacity-50"
-        >
-          <Send className="h-3.5 w-3.5" /> Enviar teste
-        </button>
+        <h3 className="text-sm font-semibold mb-1">
+          WhatsApp conectado com sucesso
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Sua empresa está pronta para enviar e receber mensagens pelo número
+          oficial.
+        </p>
       </div>
+
+      <div className="rounded-lg border border-border bg-background p-4 space-y-2">
+        <Row label="Número" value={saved.phone_number ?? "—"} />
+        <Row label="Nome verificado" value={saved.display_name} />
+        {saved.page_name && <Row label="Página Facebook" value={saved.page_name} />}
+        <Row label="WABA ID" value={saved.waba_id} mono />
+      </div>
+
+      <button
+        type="button"
+        disabled
+        title="Disponível em breve"
+        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary/40 text-primary-foreground px-3 py-2.5 cursor-not-allowed"
+      >
+        <Send className="h-3.5 w-3.5" /> Enviar mensagem de teste (em breve)
+      </button>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-medium truncate", mono && "font-mono text-[11px]")}>
+        {value}
+      </span>
     </div>
   );
 }
