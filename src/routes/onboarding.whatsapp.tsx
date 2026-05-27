@@ -120,10 +120,11 @@ function OnboardingWhatsApp() {
 
   /* ---------- Graph API discovery ---------- */
 
-  const discoverAssets = useCallback(async (userToken: string) => {
+  const discoverAssets = useCallback(async (userTokenArg: string) => {
     setLoadingAssets(true);
     setErrorMsg(null);
-    const tok = encodeURIComponent(userToken);
+    setUserToken(userTokenArg);
+    const tok = encodeURIComponent(userTokenArg);
 
     try {
       // /me
