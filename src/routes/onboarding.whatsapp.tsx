@@ -524,16 +524,7 @@ function OnboardingWhatsApp() {
               />
             )}
             {step.id === "test" && (
-              <StepTest
-                phone={testPhone}
-                onChange={setTestPhone}
-                onSend={() =>
-                  console.log("[onboarding] enviar teste (mock)", {
-                    testPhone,
-                    phoneNumberId: selectedPhoneId,
-                  })
-                }
-              />
+              <StepSuccess saved={savedInfo} saving={saving} />
             )}
           </div>
 
