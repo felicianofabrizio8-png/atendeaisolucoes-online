@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Sparkles,
   MessageCircle,
@@ -10,8 +10,12 @@ import {
   Send,
   ShieldCheck,
   Loader2,
+  Instagram,
+  Facebook,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/onboarding/whatsapp")({
   head: () => ({
@@ -36,35 +40,311 @@ const STEPS: { id: StepId; title: string; subtitle: string }[] = [
   { id: "test", title: "Teste de envio", subtitle: "Confirme que está funcionando" },
 ];
 
+// REUSO do mesmo redirect_uri já cadastrado no app Meta (não trocar).
+const REDIRECT_URI =
+  "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
+
+const REQUIRED_SCOPES = [
+  "public_profile",
+  "email",
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_metadata",
+  "business_management",
+  "instagram_basic",
+  "whatsapp_business_management",
+  "whatsapp_business_messaging",
+].join(",");
+
+const GRAPH = "https://graph.facebook.com/v25.0";
+
+/* ---------------- Types ---------------- */
+
+type FacebookPage = {
+  id: string;
+  name: string;
+  ig_business_account_id: string | null;
+  ig_username: string | null;
+};
+
+type WhatsAppPhone = {
+  id: string;
+  display_phone_number: string;
+  verified_name: string | null;
+  quality_rating: string | null;
+  waba_id: string;
+  waba_name: string;
+};
+
+type DiscoveredAssets = {
+  meName: string | null;
+  pages: FacebookPage[];
+  phones: WhatsAppPhone[];
+  wabaCount: number;
+};
+
+/* ---------------- Component ---------------- */
+
 function OnboardingWhatsApp() {
   const [stepIndex, setStepIndex] = useState(0);
-  const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
+  const [selectedPhoneId, setSelectedPhoneId] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
+
   const [connecting, setConnecting] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [assets, setAssets] = useState<DiscoveredAssets | null>(null);
 
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
   const isFirst = stepIndex === 0;
+  const connected = !!assets;
 
   const canAdvance =
-    (step.id === "welcome") ||
+    step.id === "welcome" ||
     (step.id === "connect" && connected) ||
-    (step.id === "choose" && !!selectedNumber) ||
-    (step.id === "test");
+    (step.id === "choose" && !!selectedPhoneId) ||
+    step.id === "test";
 
-  const handleConnect = () => {
-    console.log("[onboarding] click Conectar com Meta (mock)");
+  /* ---------- Graph API discovery ---------- */
+
+  const discoverAssets = useCallback(async (userToken: string) => {
+    setLoadingAssets(true);
+    setErrorMsg(null);
+    const tok = encodeURIComponent(userToken);
+
+    try {
+      // /me
+      let meName: string | null = null;
+      try {
+        const meRes = await fetch(`${GRAPH}/me?fields=id,name&access_token=${tok}`);
+        const meJson = (await meRes.json()) as { name?: string };
+        meName = meJson?.name ?? null;
+      } catch (e) {
+        console.warn("META_ONBOARDING_ME_FAIL", e);
+      }
+
+      // /me/accounts → páginas FB + IG vinculado
+      const pages: FacebookPage[] = [];
+      try {
+        const accountsRes = await fetch(
+          `${GRAPH}/me/accounts?fields=id,name,instagram_business_account{id,username}&limit=100&access_token=${tok}`,
+        );
+        const accountsJson = (await accountsRes.json()) as {
+          data?: Array<{
+            id: string;
+            name: string;
+            instagram_business_account?: { id?: string; username?: string };
+          }>;
+          error?: { message?: string };
+        };
+        if (accountsJson.error) {
+          throw new Error(accountsJson.error.message ?? "Erro Graph /me/accounts");
+        }
+        for (const p of accountsJson.data ?? []) {
+          pages.push({
+            id: p.id,
+            name: p.name,
+            ig_business_account_id: p.instagram_business_account?.id ?? null,
+            ig_username: p.instagram_business_account?.username ?? null,
+          });
+        }
+        console.log("META_PAGES_FOUND", {
+          count: pages.length,
+          pages: pages.map((p) => ({
+            id: p.id,
+            name: p.name,
+            ig: p.ig_username,
+          })),
+        });
+      } catch (e) {
+        console.warn("META_ONBOARDING_PAGES_FAIL", e);
+      }
+
+      // /me/businesses → WABAs + phone numbers
+      const phones: WhatsAppPhone[] = [];
+      let wabaCount = 0;
+      try {
+        const bizRes = await fetch(
+          `${GRAPH}/me/businesses?fields=id,name,owned_whatsapp_business_accounts{id,name,phone_numbers{id,display_phone_number,verified_name,quality_rating}}&limit=100&access_token=${tok}`,
+        );
+        const bizJson = (await bizRes.json()) as {
+          data?: Array<{
+            id: string;
+            name: string;
+            owned_whatsapp_business_accounts?: {
+              data?: Array<{
+                id: string;
+                name: string;
+                phone_numbers?: {
+                  data?: Array<{
+                    id: string;
+                    display_phone_number: string;
+                    verified_name?: string;
+                    quality_rating?: string;
+                  }>;
+                };
+              }>;
+            };
+          }>;
+          error?: { message?: string };
+        };
+        if (bizJson.error) {
+          throw new Error(bizJson.error.message ?? "Erro Graph /me/businesses");
+        }
+        const wabaList: { id: string; name: string }[] = [];
+        for (const biz of bizJson.data ?? []) {
+          for (const waba of biz.owned_whatsapp_business_accounts?.data ?? []) {
+            wabaList.push({ id: waba.id, name: waba.name });
+            for (const ph of waba.phone_numbers?.data ?? []) {
+              phones.push({
+                id: ph.id,
+                display_phone_number: ph.display_phone_number,
+                verified_name: ph.verified_name ?? null,
+                quality_rating: ph.quality_rating ?? null,
+                waba_id: waba.id,
+                waba_name: waba.name,
+              });
+            }
+          }
+        }
+        wabaCount = wabaList.length;
+        console.log("META_WABA_FOUND", { count: wabaCount, wabas: wabaList });
+        console.log("META_PHONE_NUMBERS_FOUND", {
+          count: phones.length,
+          phones: phones.map((p) => ({
+            id: p.id,
+            number: p.display_phone_number,
+            verified_name: p.verified_name,
+            waba: p.waba_name,
+          })),
+        });
+      } catch (e) {
+        console.warn("META_ONBOARDING_WABA_FAIL", e);
+      }
+
+      setAssets({ meName, pages, phones, wabaCount });
+
+      if (phones.length === 0 && pages.length === 0) {
+        setErrorMsg(
+          "Login concluído, mas não encontramos páginas ou números WhatsApp Business na sua conta Meta. Verifique se você tem permissões de administrador.",
+        );
+      }
+    } catch (e) {
+      console.error("META_ONBOARDING_ERROR", e);
+      setErrorMsg(
+        e instanceof Error ? e.message : "Falha ao ler dados Meta",
+      );
+    } finally {
+      setLoadingAssets(false);
+    }
+  }, []);
+
+  /* ---------- OAuth flow (reuso de /auth/meta/callback + meta-connect) ---------- */
+
+  const exchangeCodeForToken = useCallback(
+    async (code: string) => {
+      try {
+        const { data, error } = await supabase.functions.invoke("meta-connect", {
+          body: {
+            mode: "exchange_code",
+            code,
+            redirectUri: REDIRECT_URI,
+          },
+        });
+        if (error) throw error;
+        const res = data as { ok?: boolean; access_token?: string; error?: string };
+        if (!res?.access_token) {
+          throw new Error(res?.error ?? "Resposta sem access_token");
+        }
+        await discoverAssets(res.access_token);
+      } catch (e) {
+        console.error("META_ONBOARDING_ERROR", e);
+        setErrorMsg(
+          e instanceof Error ? e.message : "Falha ao trocar código Meta",
+        );
+      } finally {
+        setConnecting(false);
+      }
+    },
+    [discoverAssets],
+  );
+
+  // Listener postMessage da popup OAuth.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as {
+        type?: string;
+        code?: string;
+        access_token?: string;
+        error?: string;
+      } | null;
+      if (!data || data.type !== "META_OAUTH_RESULT") return;
+      if (data.error) {
+        setConnecting(false);
+        setErrorMsg(data.error);
+        return;
+      }
+      if (data.code) {
+        void exchangeCodeForToken(data.code);
+      } else if (data.access_token) {
+        void discoverAssets(data.access_token).finally(() => setConnecting(false));
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [exchangeCodeForToken, discoverAssets]);
+
+  const handleConnect = async () => {
+    setErrorMsg(null);
+    setAssets(null);
     setConnecting(true);
-    setTimeout(() => {
+    console.log("META_ONBOARDING_START", { scopes: REQUIRED_SCOPES });
+
+    try {
+      const res = await fetch("/api/meta/config");
+      const cfg = (await res.json()) as { appId?: string; hasAppId?: boolean };
+      if (!cfg.hasAppId || !cfg.appId) {
+        throw new Error(
+          "META_APP_ID não configurado. Avise o administrador.",
+        );
+      }
+
+      const state = crypto.randomUUID();
+      window.sessionStorage.setItem("META_OAUTH_STATE", state);
+
+      const oauthUrl =
+        `https://www.facebook.com/v21.0/dialog/oauth` +
+        `?app_id=${encodeURIComponent(cfg.appId)}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&state=${encodeURIComponent(state)}` +
+        `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
+
+      const width = 600;
+      const height = 720;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      const popup = window.open(
+        oauthUrl,
+        "meta-oauth",
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+      );
+      if (!popup) {
+        window.open(oauthUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (e) {
+      console.error("META_ONBOARDING_ERROR", e);
+      setErrorMsg(e instanceof Error ? e.message : "Falha ao iniciar login Meta");
       setConnecting(false);
-      setConnected(true);
-    }, 900);
+    }
   };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Top bar */}
       <header className="border-b border-border/60 bg-card/40 backdrop-blur-sm">
         <div className="mx-auto max-w-3xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -129,21 +409,31 @@ function OnboardingWhatsApp() {
             <h1 className="text-lg font-semibold">{step.title}</h1>
             <p className="text-sm text-muted-foreground">{step.subtitle}</p>
           </div>
+
           <div className="px-6 py-6">
+            {errorMsg && (
+              <div className="mb-4 flex items-start gap-2 rounded-md border border-[var(--status-urgent)]/30 bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] text-xs px-3 py-2">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             {step.id === "welcome" && <StepWelcome />}
             {step.id === "connect" && (
               <StepConnect
                 connecting={connecting}
-                connected={connected}
+                loadingAssets={loadingAssets}
+                assets={assets}
                 onConnect={handleConnect}
               />
             )}
             {step.id === "choose" && (
               <StepChoose
-                selected={selectedNumber}
+                assets={assets}
+                selected={selectedPhoneId}
                 onSelect={(id) => {
-                  console.log("[onboarding] selected number (mock)", id);
-                  setSelectedNumber(id);
+                  console.log("[onboarding] selected phone (mock save)", id);
+                  setSelectedPhoneId(id);
                 }}
               />
             )}
@@ -152,7 +442,10 @@ function OnboardingWhatsApp() {
                 phone={testPhone}
                 onChange={setTestPhone}
                 onSend={() =>
-                  console.log("[onboarding] enviar teste (mock)", { testPhone })
+                  console.log("[onboarding] enviar teste (mock)", {
+                    testPhone,
+                    phoneNumberId: selectedPhoneId,
+                  })
                 }
               />
             )}
@@ -177,9 +470,7 @@ function OnboardingWhatsApp() {
             {isLast ? (
               <button
                 type="button"
-                onClick={() => {
-                  console.log("[onboarding] concluir (mock)");
-                }}
+                onClick={() => console.log("[onboarding] concluir (mock)")}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-4 py-2 hover:opacity-90 transition"
               >
                 Concluir <Check className="h-3.5 w-3.5" />
@@ -203,8 +494,7 @@ function OnboardingWhatsApp() {
         </section>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Este assistente ainda está em modo demonstração — nenhum dado real é
-          enviado ou salvo.
+          Nada é salvo nesta etapa — estamos apenas detectando seus ativos Meta.
         </p>
       </main>
     </div>
@@ -226,17 +516,16 @@ function StepWelcome() {
               Conecte o WhatsApp oficial da Meta
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Em poucos passos sua empresa estará pronta para receber e responder
-              mensagens dentro do sistema, com a API oficial homologada pela Meta.
+              Em poucos passos vamos detectar suas páginas Facebook, contas
+              Instagram Business e números WhatsApp Business disponíveis.
             </p>
           </div>
         </div>
       </div>
-
       <ul className="grid sm:grid-cols-3 gap-3">
-        <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Oficial e seguro" desc="Selo Business verificado." />
-        <Feature icon={<MessageCircle className="h-4 w-4" />} title="Inbox unificado" desc="Conversas direto no app." />
-        <Feature icon={<Sparkles className="h-4 w-4" />} title="Setup guiado" desc="Sem complicação técnica." />
+        <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Oficial e seguro" desc="Login direto na Meta." />
+        <Feature icon={<MessageCircle className="h-4 w-4" />} title="Detecção automática" desc="Lemos seus ativos." />
+        <Feature icon={<Sparkles className="h-4 w-4" />} title="Sem salvar nada" desc="Apenas pré-visualização." />
       </ul>
     </div>
   );
@@ -256,11 +545,13 @@ function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; 
 
 function StepConnect({
   connecting,
-  connected,
+  loadingAssets,
+  assets,
   onConnect,
 }: {
   connecting: boolean;
-  connected: boolean;
+  loadingAssets: boolean;
+  assets: DiscoveredAssets | null;
   onConnect: () => void;
 }) {
   return (
@@ -272,23 +563,25 @@ function StepConnect({
         <h3 className="text-sm font-semibold mb-1">Login com a Meta</h3>
         <p className="text-xs text-muted-foreground mb-4 max-w-sm mx-auto">
           Você será direcionado para autorizar nossa aplicação no Facebook
-          Business. Tenha em mãos o acesso de administrador da sua página.
+          Business. Tenha em mãos o acesso de administrador.
         </p>
 
-        {connected ? (
+        {assets ? (
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[var(--status-ok)]/10 text-[var(--status-ok)] px-3 py-2">
-            <Check className="h-3.5 w-3.5" /> Conta Meta conectada (mock)
+            <Check className="h-3.5 w-3.5" />
+            {assets.meName ? `Conectado como ${assets.meName}` : "Conta Meta conectada"}
           </div>
         ) : (
           <button
             type="button"
             onClick={onConnect}
-            disabled={connecting}
+            disabled={connecting || loadingAssets}
             className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-4 py-2.5 hover:opacity-90 transition disabled:opacity-60"
           >
-            {connecting ? (
+            {connecting || loadingAssets ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Conectando…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {loadingAssets ? "Lendo ativos Meta…" : "Aguardando login…"}
               </>
             ) : (
               <>Continuar com Meta</>
@@ -297,6 +590,27 @@ function StepConnect({
         )}
       </div>
 
+      {assets && (
+        <div className="grid sm:grid-cols-3 gap-3">
+          <SummaryCard
+            icon={<Facebook className="h-3.5 w-3.5" />}
+            label="Páginas Facebook"
+            value={assets.pages.length}
+          />
+          <SummaryCard
+            icon={<Instagram className="h-3.5 w-3.5" />}
+            label="Instagram Business"
+            value={assets.pages.filter((p) => p.ig_business_account_id).length}
+          />
+          <SummaryCard
+            icon={<Phone className="h-3.5 w-3.5" />}
+            label="Números WhatsApp"
+            value={assets.phones.length}
+            hint={assets.wabaCount ? `${assets.wabaCount} WABA(s)` : undefined}
+          />
+        </div>
+      )}
+
       <p className="text-[11px] text-muted-foreground text-center">
         Não compartilhamos sua senha. A autorização acontece direto com a Meta.
       </p>
@@ -304,27 +618,87 @@ function StepConnect({
   );
 }
 
-const MOCK_NUMBERS = [
-  { id: "1", name: "Atendimento Principal", phone: "+55 11 98765-4321", verified: true },
-  { id: "2", name: "Vendas SP", phone: "+55 11 97654-3210", verified: true },
-  { id: "3", name: "Suporte", phone: "+55 11 96543-2109", verified: false },
-];
+function SummaryCard({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+        {icon} {label}
+      </div>
+      <div className="text-xl font-semibold">{value}</div>
+      {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
 
 function StepChoose({
+  assets,
   selected,
   onSelect,
 }: {
+  assets: DiscoveredAssets | null;
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
+  if (!assets) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Volte ao passo anterior e conecte sua conta Meta primeiro.
+      </p>
+    );
+  }
+
+  if (assets.phones.length === 0) {
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Nenhum número WhatsApp Business foi encontrado na sua conta Meta.
+          Confira se você tem uma WABA (WhatsApp Business Account) com número
+          associado e se concedeu as permissões{" "}
+          <code>whatsapp_business_management</code> e{" "}
+          <code>whatsapp_business_messaging</code>.
+        </p>
+        {assets.pages.length > 0 && (
+          <div className="rounded-lg border border-border bg-background p-3">
+            <div className="text-[11px] font-semibold mb-2 text-muted-foreground">
+              Páginas Facebook detectadas
+            </div>
+            <ul className="space-y-1">
+              {assets.pages.map((p) => (
+                <li key={p.id} className="text-xs flex items-center gap-2">
+                  <Facebook className="h-3 w-3 text-[#1877F2]" />
+                  {p.name}
+                  {p.ig_username && (
+                    <span className="text-[10px] text-muted-foreground">
+                      · IG @{p.ig_username}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Encontramos os números abaixo na sua conta Business. Selecione qual será
+        Encontramos os números abaixo na sua conta Meta. Selecione qual será
         usado neste app.
       </p>
       <ul className="space-y-2">
-        {MOCK_NUMBERS.map((n) => {
+        {assets.phones.map((n) => {
           const isSelected = selected === n.id;
           return (
             <li key={n.id}>
@@ -349,12 +723,16 @@ function StepChoose({
                   <Phone className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{n.name}</div>
-                  <div className="text-[11px] text-muted-foreground">{n.phone}</div>
+                  <div className="text-sm font-medium truncate">
+                    {n.verified_name ?? n.display_phone_number}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {n.display_phone_number} · WABA {n.waba_name}
+                  </div>
                 </div>
-                {n.verified && (
+                {n.quality_rating && (
                   <span className="text-[10px] font-semibold uppercase tracking-wide rounded bg-[var(--status-ok)]/10 text-[var(--status-ok)] px-1.5 py-0.5">
-                    Verificado
+                    {n.quality_rating}
                   </span>
                 )}
                 <div
@@ -388,8 +766,8 @@ function StepTest({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Vamos enviar uma mensagem de teste para confirmar que tudo está
-        funcionando. Use o seu próprio número.
+        Esta etapa ainda é uma pré-visualização — nenhuma mensagem real será
+        enviada nesta fase do onboarding.
       </p>
 
       <div className="rounded-xl border border-border bg-background p-4 space-y-3">
