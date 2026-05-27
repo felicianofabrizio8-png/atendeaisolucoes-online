@@ -894,6 +894,9 @@ function StepSuccess({
         <Row label="WABA ID" value={saved.waba_id} mono />
       </div>
 
+      <DiagnosticsPanel integrationId={saved.integration_id} />
+
+
       <button
         type="button"
         disabled
