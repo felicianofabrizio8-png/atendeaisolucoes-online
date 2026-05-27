@@ -20,6 +20,7 @@ import { loadRemote, setRepoMode } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type NavItem = {
   to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes";
@@ -188,10 +189,11 @@ export function AppShell() {
       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="leading-tight">
+      <div className="leading-tight flex-1 min-w-0">
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
       </div>
+      <ThemeToggle />
     </div>
   );
 
@@ -229,12 +231,13 @@ export function AppShell() {
               {FooterPanel}
             </SheetContent>
           </Sheet>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
               <Sparkles className="h-3.5 w-3.5" />
             </div>
             <span className="text-sm font-semibold truncate">Atende Ai!</span>
           </div>
+          <ThemeToggle />
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
