@@ -239,11 +239,42 @@ function OnboardingWhatsApp() {
 
       setAssets({ meName, pages, phones, wabaCount });
 
-      if (phones.length === 0 && pages.length === 0) {
+      // Compara scopes do token com REQUIRED_SCOPES para detectar permissões faltando.
+      let missingScopes: string[] = [];
+      try {
+        const dbgRes = await fetch(
+          `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
+        );
+        const dbgJson = (await dbgRes.json()) as {
+          data?: { scopes?: string[] };
+        };
+        const granted = new Set(dbgJson.data?.scopes ?? []);
+        const required = REQUIRED_SCOPES.split(",");
+        missingScopes = required.filter((s) => !granted.has(s));
+        if (missingScopes.length > 0) {
+          console.warn("META_MISSING_SCOPES", { missing: missingScopes });
+        }
+      } catch (e) {
+        console.warn("META_DEBUG_TOKEN_FAIL", e);
+      }
+
+      const noAssets = phones.length === 0 && pages.length === 0;
+      if (noAssets) {
+        console.warn("META_ASSETS_DISCOVERY_EMPTY", {
+          pages: pages.length,
+          phones: phones.length,
+          wabaCount,
+          missingScopes,
+        });
+        const base =
+          "Não encontramos ativos Meta para conectar. Para concluir, você precisa ser administrador da Página do Facebook, do Instagram profissional e do WhatsApp Business no Gerenciador de Negócios. Também confirme se aceitou todas as permissões solicitadas no login.";
         setErrorMsg(
-          "Login concluído, mas não encontramos páginas ou números WhatsApp Business na sua conta Meta. Verifique se você tem permissões de administrador.",
+          missingScopes.length > 0
+            ? `${base} Permissões faltando: ${missingScopes.join(", ")}.`
+            : base,
         );
       }
+
     } catch (e) {
       console.error("META_ONBOARDING_ERROR", e);
       setErrorMsg(
