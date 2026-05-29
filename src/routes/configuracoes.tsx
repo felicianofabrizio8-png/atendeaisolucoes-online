@@ -1671,7 +1671,7 @@ function MetaIntegrationSection() {
     "whatsapp_business_messaging",
   ].join(",");
 
-  const REDIRECT_URI = "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
+  const REDIRECT_URI = "https://app.atendeaisolucoes.online/auth/meta/callback";
 
   // Carrega páginas a partir de um user access_token (chamado após callback OAuth).
   const loadPagesFromToken = useCallback(async (accessToken: string) => {

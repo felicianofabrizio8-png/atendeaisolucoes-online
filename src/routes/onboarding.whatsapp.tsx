@@ -42,7 +42,7 @@ const STEPS: { id: StepId; title: string; subtitle: string }[] = [
 
 // REUSO do mesmo redirect_uri já cadastrado no app Meta (não trocar).
 const REDIRECT_URI =
-  "https://atendei-ai-concierge.lovable.app/auth/meta/callback";
+  "https://app.atendeaisolucoes.online/auth/meta/callback";
 
 const REQUIRED_SCOPES = [
   "public_profile",
