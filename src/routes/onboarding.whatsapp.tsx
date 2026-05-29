@@ -373,7 +373,6 @@ function OnboardingWhatsApp() {
     }
   };
 
-  };
 
   /* ---------- Save connection (Phase 3) ---------- */
   const saveConnection = useCallback(async (): Promise<boolean> => {
