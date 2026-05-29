@@ -1889,20 +1889,33 @@ function MetaIntegrationSection() {
 
         // auth_type=reauthenticate força a Meta a pedir login/senha de novo,
         // descartando qualquer sessão Facebook ativa do app antigo.
-        const oauthUrl =
+        const useBusinessConfig =
+          !!config.hasBusinessConfigId && !!config.businessConfigId;
+        console.log("META_OAUTH_LOGIN_MODE", {
+          mode: useBusinessConfig ? "business_config" : "classic_scope",
+        });
+        console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
+        console.log("META_OAUTH_REDIRECT_URI_USED", { redirect_uri: REDIRECT_URI });
+
+        const base =
           `https://www.facebook.com/v21.0/dialog/oauth` +
-          `?app_id=${encodeURIComponent(config.appId)}` +
+          `?client_id=${encodeURIComponent(config.appId)}` +
           `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
           `&response_type=code` +
           `&state=${encodeURIComponent(state)}` +
-          `&auth_type=reauthenticate` +
-          `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
+          `&auth_type=reauthenticate`;
+        // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
+        // Fallback manual (sem config_id) mantém o OAuth clássico com scope=.
+        const oauthUrl = useBusinessConfig
+          ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
+          : `${base}&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
         console.log("META_OAUTH_URL", {
           url: oauthUrl,
           app_id: config.appId,
-          scopes: REQUIRED_SCOPES,
+          mode: useBusinessConfig ? "business_config" : "classic_scope",
         });
+
 
         // Abre em nova janela/popup para manter o app aberto
         const width = 600;
