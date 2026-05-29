@@ -320,7 +320,12 @@ function OnboardingWhatsApp() {
 
     try {
       const res = await fetch("/api/meta/config");
-      const cfg = (await res.json()) as { appId?: string; hasAppId?: boolean };
+      const cfg = (await res.json()) as {
+        appId?: string;
+        hasAppId?: boolean;
+        businessConfigId?: string;
+        hasBusinessConfigId?: boolean;
+      };
       if (!cfg.hasAppId || !cfg.appId) {
         throw new Error(
           "META_APP_ID não configurado. Avise o administrador.",
@@ -330,13 +335,24 @@ function OnboardingWhatsApp() {
       const state = crypto.randomUUID();
       window.sessionStorage.setItem("META_OAUTH_STATE", state);
 
-      const oauthUrl =
+      const useBusinessConfig = !!cfg.hasBusinessConfigId && !!cfg.businessConfigId;
+      console.log("META_OAUTH_LOGIN_MODE", {
+        mode: useBusinessConfig ? "business_config" : "classic_scope",
+      });
+      console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
+      console.log("META_OAUTH_REDIRECT_URI_USED", { redirect_uri: REDIRECT_URI });
+
+      // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
+      // Fallback (sem config_id): mantém OAuth clássico com scope= por compatibilidade.
+      const base =
         `https://www.facebook.com/v21.0/dialog/oauth` +
-        `?app_id=${encodeURIComponent(cfg.appId)}` +
+        `?client_id=${encodeURIComponent(cfg.appId)}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
-        `&state=${encodeURIComponent(state)}` +
-        `&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
+        `&state=${encodeURIComponent(state)}`;
+      const oauthUrl = useBusinessConfig
+        ? `${base}&config_id=${encodeURIComponent(cfg.businessConfigId!)}`
+        : `${base}&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
       const width = 600;
       const height = 720;
@@ -355,6 +371,8 @@ function OnboardingWhatsApp() {
       setErrorMsg(e instanceof Error ? e.message : "Falha ao iniciar login Meta");
       setConnecting(false);
     }
+  };
+
   };
 
   /* ---------- Save connection (Phase 3) ---------- */
