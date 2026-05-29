@@ -15,10 +15,10 @@ export const Route = createFileRoute("/privacy")({
         content:
           "Como o Atende Ai trata dados do Facebook, Instagram e WhatsApp.",
       },
-      { property: "og:url", content: "https://atendei-ai-concierge.lovable.app/privacy" },
+      { property: "og:url", content: "https://app.atendeaisolucoes.online/privacy" },
     ],
     links: [
-      { rel: "canonical", href: "https://atendei-ai-concierge.lovable.app/privacy" },
+      { rel: "canonical", href: "https://app.atendeaisolucoes.online/privacy" },
     ],
   }),
   component: PrivacyPage,
