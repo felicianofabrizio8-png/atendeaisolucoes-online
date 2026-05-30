@@ -383,6 +383,9 @@ function OnboardingWhatsApp() {
         mode: useBusinessConfig ? "business_config" : "classic_scope",
       });
       console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
+      console.log("META_CONFIG_ID_USED", {
+        config_id: useBusinessConfig ? cfg.businessConfigId : null,
+      });
       console.log("META_OAUTH_REDIRECT_URI_USED", { redirect_uri: REDIRECT_URI });
 
       // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
