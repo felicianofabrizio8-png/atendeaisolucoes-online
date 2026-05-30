@@ -326,9 +326,21 @@ function OnboardingWhatsApp() {
         code?: string;
         access_token?: string;
         error?: string;
+        error_reason?: string;
+        error_description?: string;
+        error_code?: string;
+        raw?: Record<string, string>;
       } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
+      console.log("META_OAUTH_CALLBACK_RESPONSE", { payload: data });
       if (data.error) {
+        console.error("META_OAUTH_POPUP_ERROR", {
+          error: data.error,
+          error_reason: data.error_reason,
+          error_description: data.error_description,
+          error_code: data.error_code,
+          raw: data.raw,
+        });
         setConnecting(false);
         setErrorMsg(data.error);
         return;
