@@ -1906,6 +1906,7 @@ function MetaIntegrationSection() {
         console.log("META_OAUTH_LOGIN_MODE", {
           mode: useBusinessConfig ? "business_config" : "classic_scope",
         });
+        console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
         console.log("META_CONFIG_ID_USED", {
           config_id: useBusinessConfig ? config.businessConfigId : null,
         });
