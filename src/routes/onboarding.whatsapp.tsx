@@ -634,8 +634,13 @@ function OnboardingWhatsApp() {
                 assets={assets}
                 selected={selectedPhoneId}
                 onSelect={(id) => {
-                  console.log("[onboarding] selected phone (mock save)", id);
+                  console.log("META_SELECTED_WHATSAPP_PICK", { phone_id: id });
                   setSelectedPhoneId(id);
+                }}
+                selectedPageId={selectedPageId}
+                onSelectPage={(id) => {
+                  console.log("META_SELECTED_PAGE_PICK", { page_id: id });
+                  setSelectedPageId(id);
                 }}
               />
             )}
