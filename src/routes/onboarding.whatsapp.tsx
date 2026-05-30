@@ -878,10 +878,14 @@ function StepChoose({
   assets,
   selected,
   onSelect,
+  selectedPageId,
+  onSelectPage,
 }: {
   assets: DiscoveredAssets | null;
   selected: string | null;
   onSelect: (id: string) => void;
+  selectedPageId: string | null;
+  onSelectPage: (id: string) => void;
 }) {
   if (!assets) {
     return (
@@ -891,9 +895,65 @@ function StepChoose({
     );
   }
 
+  const pagesPicker = assets.pages.length > 0 && (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Selecione a página Facebook / Instagram que será conectada. Cada conexão
+        usa uma única página — escolha exatamente a desta empresa.
+      </p>
+      <ul className="space-y-2">
+        {assets.pages.map((p) => {
+          const isSelected = selectedPageId === p.id;
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => onSelectPage(p.id)}
+                className={cn(
+                  "w-full text-left rounded-lg border p-3 flex items-center gap-3 transition",
+                  isSelected
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-background hover:border-foreground/20",
+                )}
+              >
+                <div
+                  className={cn(
+                    "h-9 w-9 rounded-md inline-flex items-center justify-center",
+                    isSelected
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground",
+                  )}
+                >
+                  <Facebook className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{p.name}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    ID {p.id}
+                    {p.ig_username ? ` · IG @${p.ig_username}` : " · sem Instagram"}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "h-4 w-4 rounded-full border inline-flex items-center justify-center",
+                    isSelected
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border",
+                  )}
+                >
+                  {isSelected && <Check className="h-3 w-3" />}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+
   if (assets.phones.length === 0) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <p className="text-xs text-muted-foreground">
           Nenhum número WhatsApp Business foi encontrado na sua conta Meta.
           Confira se você tem uma WABA (WhatsApp Business Account) com número
@@ -901,32 +961,14 @@ function StepChoose({
           <code>whatsapp_business_management</code> e{" "}
           <code>whatsapp_business_messaging</code>.
         </p>
-        {assets.pages.length > 0 && (
-          <div className="rounded-lg border border-border bg-background p-3">
-            <div className="text-[11px] font-semibold mb-2 text-muted-foreground">
-              Páginas Facebook detectadas
-            </div>
-            <ul className="space-y-1">
-              {assets.pages.map((p) => (
-                <li key={p.id} className="text-xs flex items-center gap-2">
-                  <Facebook className="h-3 w-3 text-[#1877F2]" />
-                  {p.name}
-                  {p.ig_username && (
-                    <span className="text-[10px] text-muted-foreground">
-                      · IG @{p.ig_username}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {pagesPicker}
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {pagesPicker}
       <p className="text-xs text-muted-foreground">
         Encontramos os números abaixo na sua conta Meta. Selecione qual será
         usado neste app.
