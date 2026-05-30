@@ -162,6 +162,12 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           console.error("META_ONBOARDING_SAVE_ERROR", { stage: "integ_lookup", existingErr });
           return Response.json({ error: existingErr.message }, { status: 500 });
         }
+        console.log("META_EXISTING_INTEGRATION_FOUND", {
+          companyId: auth.companyId,
+          phoneNumberId: body.selected_phone_number_id,
+          existingId: existing?.id ?? null,
+          willUpdate: !!existing?.id,
+        });
 
         const integrationPayload = {
           company_id: auth.companyId,
