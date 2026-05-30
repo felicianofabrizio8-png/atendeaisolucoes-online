@@ -97,6 +97,7 @@ type SavedInfo = {
 function OnboardingWhatsApp() {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedPhoneId, setSelectedPhoneId] = useState<string | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   const [connecting, setConnecting] = useState(false);
   const [loadingAssets, setLoadingAssets] = useState(false);
@@ -113,10 +114,14 @@ function OnboardingWhatsApp() {
   const isFirst = stepIndex === 0;
   const connected = !!assets;
 
+  // Página é obrigatória apenas se a conta Meta tiver páginas disponíveis.
+  const pageSelectionOk =
+    !assets || assets.pages.length === 0 || !!selectedPageId;
+
   const canAdvance =
     step.id === "welcome" ||
     (step.id === "connect" && connected) ||
-    (step.id === "choose" && !!selectedPhoneId && !saving) ||
+    (step.id === "choose" && !!selectedPhoneId && pageSelectionOk && !saving) ||
     step.id === "test";
 
   /* ---------- Graph API discovery ---------- */
@@ -238,6 +243,27 @@ function OnboardingWhatsApp() {
       }
 
       setAssets({ meName, pages, phones, wabaCount });
+
+      // Log explícito das páginas/IG/WhatsApp disponíveis para o usuário escolher.
+      console.log("META_AVAILABLE_PAGES", {
+        count: pages.length,
+        pages: pages.map((p) => ({
+          id: p.id,
+          name: p.name,
+          ig_id: p.ig_business_account_id,
+          ig_username: p.ig_username,
+        })),
+        wabas: wabaCount,
+        phones: phones.map((p) => ({
+          id: p.id,
+          number: p.display_phone_number,
+          waba_id: p.waba_id,
+        })),
+      });
+
+      // Reset seleções para evitar reutilização entre conexões diferentes.
+      setSelectedPageId(pages.length === 1 ? pages[0].id : null);
+      setSelectedPhoneId(phones.length === 1 ? phones[0].id : null);
 
       // Compara scopes do token com REQUIRED_SCOPES para detectar permissões faltando.
       let missingScopes: string[] = [];
@@ -431,10 +457,31 @@ function OnboardingWhatsApp() {
       setErrorMsg("Número selecionado inválido.");
       return false;
     }
-    const page =
-      assets.pages.find((p) => p.ig_business_account_id) ??
-      assets.pages[0] ??
-      null;
+    // Página agora vem da escolha explícita do usuário — não usamos mais
+    // pages[0] como fallback automático para evitar reaproveitar a página
+    // de outra conta/onboarding.
+    const page = selectedPageId
+      ? assets.pages.find((p) => p.id === selectedPageId) ?? null
+      : null;
+
+    if (assets.pages.length > 0 && !page) {
+      setErrorMsg("Selecione uma página Facebook antes de salvar.");
+      return false;
+    }
+
+    console.log("META_SELECTED_PAGE", {
+      id: page?.id ?? null,
+      name: page?.name ?? null,
+    });
+    console.log("META_SELECTED_INSTAGRAM", {
+      id: page?.ig_business_account_id ?? null,
+      username: page?.ig_username ?? null,
+    });
+    console.log("META_SELECTED_WHATSAPP", {
+      phone_number_id: phone.id,
+      waba_id: phone.waba_id,
+      display: phone.display_phone_number,
+    });
 
     setSaving(true);
     setErrorMsg(null);
@@ -493,7 +540,7 @@ function OnboardingWhatsApp() {
     } finally {
       setSaving(false);
     }
-  }, [userToken, selectedPhoneId, assets]);
+  }, [userToken, selectedPhoneId, selectedPageId, assets]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -587,8 +634,13 @@ function OnboardingWhatsApp() {
                 assets={assets}
                 selected={selectedPhoneId}
                 onSelect={(id) => {
-                  console.log("[onboarding] selected phone (mock save)", id);
+                  console.log("META_SELECTED_WHATSAPP_PICK", { phone_id: id });
                   setSelectedPhoneId(id);
+                }}
+                selectedPageId={selectedPageId}
+                onSelectPage={(id) => {
+                  console.log("META_SELECTED_PAGE_PICK", { page_id: id });
+                  setSelectedPageId(id);
                 }}
               />
             )}
@@ -826,10 +878,14 @@ function StepChoose({
   assets,
   selected,
   onSelect,
+  selectedPageId,
+  onSelectPage,
 }: {
   assets: DiscoveredAssets | null;
   selected: string | null;
   onSelect: (id: string) => void;
+  selectedPageId: string | null;
+  onSelectPage: (id: string) => void;
 }) {
   if (!assets) {
     return (
@@ -839,9 +895,65 @@ function StepChoose({
     );
   }
 
+  const pagesPicker = assets.pages.length > 0 && (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Selecione a página Facebook / Instagram que será conectada. Cada conexão
+        usa uma única página — escolha exatamente a desta empresa.
+      </p>
+      <ul className="space-y-2">
+        {assets.pages.map((p) => {
+          const isSelected = selectedPageId === p.id;
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => onSelectPage(p.id)}
+                className={cn(
+                  "w-full text-left rounded-lg border p-3 flex items-center gap-3 transition",
+                  isSelected
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-background hover:border-foreground/20",
+                )}
+              >
+                <div
+                  className={cn(
+                    "h-9 w-9 rounded-md inline-flex items-center justify-center",
+                    isSelected
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground",
+                  )}
+                >
+                  <Facebook className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{p.name}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    ID {p.id}
+                    {p.ig_username ? ` · IG @${p.ig_username}` : " · sem Instagram"}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "h-4 w-4 rounded-full border inline-flex items-center justify-center",
+                    isSelected
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border",
+                  )}
+                >
+                  {isSelected && <Check className="h-3 w-3" />}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+
   if (assets.phones.length === 0) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <p className="text-xs text-muted-foreground">
           Nenhum número WhatsApp Business foi encontrado na sua conta Meta.
           Confira se você tem uma WABA (WhatsApp Business Account) com número
@@ -849,32 +961,14 @@ function StepChoose({
           <code>whatsapp_business_management</code> e{" "}
           <code>whatsapp_business_messaging</code>.
         </p>
-        {assets.pages.length > 0 && (
-          <div className="rounded-lg border border-border bg-background p-3">
-            <div className="text-[11px] font-semibold mb-2 text-muted-foreground">
-              Páginas Facebook detectadas
-            </div>
-            <ul className="space-y-1">
-              {assets.pages.map((p) => (
-                <li key={p.id} className="text-xs flex items-center gap-2">
-                  <Facebook className="h-3 w-3 text-[#1877F2]" />
-                  {p.name}
-                  {p.ig_username && (
-                    <span className="text-[10px] text-muted-foreground">
-                      · IG @{p.ig_username}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {pagesPicker}
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {pagesPicker}
       <p className="text-xs text-muted-foreground">
         Encontramos os números abaixo na sua conta Meta. Selecione qual será
         usado neste app.
