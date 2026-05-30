@@ -16,24 +16,61 @@ function MetaCallback() {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const errorParam = url.searchParams.get("error");
-    const errorDesc =
-      url.searchParams.get("error_description") ?? url.searchParams.get("error_reason");
+    const errorReason = url.searchParams.get("error_reason");
+    const errorDesc = url.searchParams.get("error_description");
+    const errorCode = url.searchParams.get("error_code");
+
+    const allParams: Record<string, string> = {};
+    url.searchParams.forEach((v, k) => {
+      allParams[k] = v;
+    });
 
     const isPopup = !!window.opener && window.opener !== window;
 
-    console.log("META_CALLBACK_PARAMS", {
-      has_code: Boolean(code),
-      error: errorParam,
+    console.log("META_OAUTH_CALLBACK_RESPONSE", {
+      status: 200,
+      url: window.location.href,
+      pathname: url.pathname,
       is_popup: isPopup,
+      has_code: Boolean(code),
+      state,
+      error: errorParam,
+      error_reason: errorReason,
+      error_description: errorDesc,
+      error_code: errorCode,
+      all_params: allParams,
     });
 
-    const payload: { type: "META_OAUTH_RESULT"; code?: string; state?: string; error?: string } = {
+    if (errorParam) {
+      console.error("META_OAUTH_POPUP_ERROR", {
+        error: errorParam,
+        error_reason: errorReason,
+        error_description: errorDesc,
+        error_code: errorCode,
+      });
+    }
+
+    const payload: {
+      type: "META_OAUTH_RESULT";
+      code?: string;
+      state?: string;
+      error?: string;
+      error_reason?: string;
+      error_description?: string;
+      error_code?: string;
+      raw?: Record<string, string>;
+    } = {
       type: "META_OAUTH_RESULT",
     };
     if (errorParam) {
       payload.error = `Meta retornou erro: ${errorParam}${errorDesc ? ` — ${errorDesc}` : ""}`;
+      payload.error_reason = errorReason ?? undefined;
+      payload.error_description = errorDesc ?? undefined;
+      payload.error_code = errorCode ?? undefined;
+      payload.raw = allParams;
     } else if (!code) {
       payload.error = "Nenhum código de autorização recebido do Facebook.";
+      payload.raw = allParams;
     } else {
       payload.code = code;
       if (state) payload.state = state;
