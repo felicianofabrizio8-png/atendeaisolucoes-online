@@ -876,6 +876,7 @@ Deno.serve(async (req) => {
         console.error("META_WEBHOOK_CHANGE_ERROR", e instanceof Error ? e.message : String(e));
       }
     }
+  } // end for (const page of pages)
   }
 
   return text("ok", 200);
