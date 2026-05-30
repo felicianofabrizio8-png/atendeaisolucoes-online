@@ -97,6 +97,7 @@ type SavedInfo = {
 function OnboardingWhatsApp() {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedPhoneId, setSelectedPhoneId] = useState<string | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   const [connecting, setConnecting] = useState(false);
   const [loadingAssets, setLoadingAssets] = useState(false);
@@ -113,10 +114,14 @@ function OnboardingWhatsApp() {
   const isFirst = stepIndex === 0;
   const connected = !!assets;
 
+  // Página é obrigatória apenas se a conta Meta tiver páginas disponíveis.
+  const pageSelectionOk =
+    !assets || assets.pages.length === 0 || !!selectedPageId;
+
   const canAdvance =
     step.id === "welcome" ||
     (step.id === "connect" && connected) ||
-    (step.id === "choose" && !!selectedPhoneId && !saving) ||
+    (step.id === "choose" && !!selectedPhoneId && pageSelectionOk && !saving) ||
     step.id === "test";
 
   /* ---------- Graph API discovery ---------- */
