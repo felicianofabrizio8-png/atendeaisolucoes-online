@@ -244,6 +244,27 @@ function OnboardingWhatsApp() {
 
       setAssets({ meName, pages, phones, wabaCount });
 
+      // Log explícito das páginas/IG/WhatsApp disponíveis para o usuário escolher.
+      console.log("META_AVAILABLE_PAGES", {
+        count: pages.length,
+        pages: pages.map((p) => ({
+          id: p.id,
+          name: p.name,
+          ig_id: p.ig_business_account_id,
+          ig_username: p.ig_username,
+        })),
+        wabas: wabaCount,
+        phones: phones.map((p) => ({
+          id: p.id,
+          number: p.display_phone_number,
+          waba_id: p.waba_id,
+        })),
+      });
+
+      // Reset seleções para evitar reutilização entre conexões diferentes.
+      setSelectedPageId(pages.length === 1 ? pages[0].id : null);
+      setSelectedPhoneId(phones.length === 1 ? phones[0].id : null);
+
       // Compara scopes do token com REQUIRED_SCOPES para detectar permissões faltando.
       let missingScopes: string[] = [];
       try {
