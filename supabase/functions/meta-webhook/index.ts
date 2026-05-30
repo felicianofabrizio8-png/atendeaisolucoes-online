@@ -678,17 +678,29 @@ Deno.serve(async (req) => {
     }
 
     // Locate page (and company) by page_id OR ig_business_account_id.
-    const { data: page } = await sb
+    // IMPORTANTE: a mesma Página/IG pode estar conectada a MAIS DE UMA empresa
+    // (multi-tenant). Usamos .select() comum e iteramos — .single()/.maybeSingle()
+    // quebrava com PGRST116 quando havia 2+ linhas e o evento era descartado.
+    const { data: pages, error: pagesErr } = await sb
       .from("meta_pages")
       .select("company_id, page_id, page_access_token, ig_business_account_id")
-      .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`)
-      .maybeSingle();
+      .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`);
 
-    if (!page) {
+    if (pagesErr) {
+      console.error("META_WEBHOOK_PAGE_LOOKUP_ERROR", { entryId, error: pagesErr });
+      continue;
+    }
+    if (!pages || pages.length === 0) {
       console.log("META_WEBHOOK_PAGE_NOT_FOUND", entryId);
       continue;
     }
+    console.log("META_PAGE_SUBSCRIPTIONS", {
+      entryId,
+      matchedCompanies: pages.length,
+      companyIds: pages.map((p: any) => p.company_id),
+    });
 
+  for (const page of pages) {
     const companyId = page.company_id as string;
     const pageToken = page.page_access_token as string;
     const pageId = page.page_id as string;
@@ -704,11 +716,13 @@ Deno.serve(async (req) => {
 
         // Ignora echoes (mensagens enviadas pela própria página/IG ecoadas pela Meta).
         if (m?.message?.is_echo === true || m?.message?.app_id || m?.read || m?.delivery) {
-          console.log("META_WEBHOOK_DM_ECHO_SKIPPED", {
+          console.log("META_WEBHOOK_EVENT_IGNORED", {
+            reason: "echo_or_status",
             isEcho: !!m?.message?.is_echo,
             hasRead: !!m?.read,
             hasDelivery: !!m?.delivery,
             mid: m?.message?.mid ?? null,
+            companyId,
           });
           continue;
         }
@@ -728,20 +742,25 @@ Deno.serve(async (req) => {
 
         // Sem mid e sem texto real → não cria placeholder (evita duplicar [mídia] em sync).
         if (!mid && !hasText) {
-          console.log("META_WEBHOOK_DM_SKIPPED_NO_MID_NO_TEXT", { senderId, source });
+          console.log("META_WEBHOOK_EVENT_IGNORED", {
+            reason: "no_mid_no_text",
+            senderId,
+            source,
+            companyId,
+          });
           continue;
         }
 
-        if (isInstagram) {
-          console.log("INSTAGRAM_WEBHOOK_RECEIVED", {
-            senderId,
-            recipientId,
-            igAccountId: page.ig_business_account_id,
-            mid,
-            ts: tsMs,
-            textPreview: String(text).slice(0, 80),
-          });
-        }
+        console.log("META_MESSAGE_RECEIVED", {
+          source,
+          senderId,
+          recipientId,
+          mid,
+          companyId,
+          pageId,
+          igAccountId: page.ig_business_account_id,
+          textPreview: String(text).slice(0, 80),
+        });
 
         const name = await fetchPsidName(senderId, pageToken);
 
