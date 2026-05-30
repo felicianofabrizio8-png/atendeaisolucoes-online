@@ -457,10 +457,31 @@ function OnboardingWhatsApp() {
       setErrorMsg("Número selecionado inválido.");
       return false;
     }
-    const page =
-      assets.pages.find((p) => p.ig_business_account_id) ??
-      assets.pages[0] ??
-      null;
+    // Página agora vem da escolha explícita do usuário — não usamos mais
+    // pages[0] como fallback automático para evitar reaproveitar a página
+    // de outra conta/onboarding.
+    const page = selectedPageId
+      ? assets.pages.find((p) => p.id === selectedPageId) ?? null
+      : null;
+
+    if (assets.pages.length > 0 && !page) {
+      setErrorMsg("Selecione uma página Facebook antes de salvar.");
+      return false;
+    }
+
+    console.log("META_SELECTED_PAGE", {
+      id: page?.id ?? null,
+      name: page?.name ?? null,
+    });
+    console.log("META_SELECTED_INSTAGRAM", {
+      id: page?.ig_business_account_id ?? null,
+      username: page?.ig_username ?? null,
+    });
+    console.log("META_SELECTED_WHATSAPP", {
+      phone_number_id: phone.id,
+      waba_id: phone.waba_id,
+      display: phone.display_phone_number,
+    });
 
     setSaving(true);
     setErrorMsg(null);
@@ -519,7 +540,7 @@ function OnboardingWhatsApp() {
     } finally {
       setSaving(false);
     }
-  }, [userToken, selectedPhoneId, assets]);
+  }, [userToken, selectedPhoneId, selectedPageId, assets]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
