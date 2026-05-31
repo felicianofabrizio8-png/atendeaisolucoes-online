@@ -218,10 +218,13 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           );
         }
 
-        // Valida token e tenta enriquecer dados do número diretamente na Meta.
+        // Valida token e enriquece dados do número direto da Meta.
+        // Também lê whatsapp_business_account para travar mismatch entre
+        // phone_number_id, token e WABA selecionada no popup.
         let phoneInfo: {
           display_phone_number?: string;
           verified_name?: string;
+          real_waba_id?: string | null;
         } = {};
         try {
           const tok = encodeURIComponent(body.access_token);
@@ -240,29 +243,60 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           console.log("META_ONBOARDING_TOKEN_VALID", { meId: meJson.id });
 
           const phRes = await fetch(
-            `${GRAPH}/${encodeURIComponent(body.selected_phone_number_id)}?fields=display_phone_number,verified_name&access_token=${tok}`,
+            `${GRAPH}/${encodeURIComponent(body.selected_phone_number_id)}?fields=display_phone_number,verified_name,whatsapp_business_account{id,name}&access_token=${tok}`,
           );
           const phJson = (await phRes.json()) as {
             display_phone_number?: string;
             verified_name?: string;
-            error?: { message?: string };
+            whatsapp_business_account?: { id?: string; name?: string };
+            error?: { message?: string; code?: number };
           };
-          if (phRes.ok && !phJson.error) {
-            phoneInfo = {
-              display_phone_number: phJson.display_phone_number,
-              verified_name: phJson.verified_name,
-            };
-            console.log("META_ONBOARDING_PHONE_LOOKUP_OK", {
-              phoneNumberId: body.selected_phone_number_id,
-              hasDisplay: !!phJson.display_phone_number,
-              hasVerifiedName: !!phJson.verified_name,
-            });
-          } else {
-            console.warn("META_ONBOARDING_PHONE_LOOKUP_FAILED", {
+          if (!phRes.ok || phJson.error) {
+            console.error("META_ONBOARDING_PHONE_LOOKUP_FAILED", {
               status: phRes.status,
-              error: phJson.error?.message ?? null,
+              error: phJson.error ?? null,
               phoneNumberId: body.selected_phone_number_id,
             });
+            return Response.json(
+              {
+                error:
+                  phJson.error?.message ??
+                  "Não foi possível validar este número WhatsApp com o token informado. O token pode não ter permissão sobre ele.",
+              },
+              { status: 400 },
+            );
+          }
+          const realWabaId = phJson.whatsapp_business_account?.id ?? null;
+          phoneInfo = {
+            display_phone_number: phJson.display_phone_number,
+            verified_name: phJson.verified_name,
+            real_waba_id: realWabaId,
+          };
+          console.log("META_ONBOARDING_PHONE_LOOKUP_OK", {
+            phoneNumberId: body.selected_phone_number_id,
+            hasDisplay: !!phJson.display_phone_number,
+            hasVerifiedName: !!phJson.verified_name,
+            selectedWabaId: body.selected_waba_id,
+            realWabaId,
+          });
+
+          if (realWabaId && realWabaId !== body.selected_waba_id) {
+            console.error("META_WABA_MISMATCH", {
+              phoneNumberId: body.selected_phone_number_id,
+              selectedWabaId: body.selected_waba_id,
+              realWabaId,
+            });
+            return Response.json(
+              {
+                error:
+                  `WABA inconsistente: o número ${body.selected_phone_number_id} pertence à WABA ${realWabaId}, ` +
+                  `mas foi enviada ${body.selected_waba_id}. Reconecte selecionando a conta correta.`,
+                code: "META_WABA_MISMATCH",
+                real_waba_id: realWabaId,
+                selected_waba_id: body.selected_waba_id,
+              },
+              { status: 400 },
+            );
           }
         } catch (e) {
           console.error("META_ONBOARDING_SAVE_ERROR", { stage: "validate_token_exception", e });
