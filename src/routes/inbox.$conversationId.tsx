@@ -47,9 +47,12 @@ export const Route = createFileRoute("/inbox/$conversationId")({
 interface AISuggestion {
   classification: "frio" | "morno" | "quente";
   intent: string;
-  objection?: string;
+  objection?: string | null;
   nextAction: string;
   suggestedReply: string;
+  lowConfidence?: boolean;
+  logId?: string;
+  fallbackMessage?: string;
 }
 
 type MetaSendPayload = {
