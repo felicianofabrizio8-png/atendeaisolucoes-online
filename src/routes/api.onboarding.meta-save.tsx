@@ -269,12 +269,19 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           return Response.json({ error: "Falha ao validar token Meta" }, { status: 400 });
         }
 
-        // Troca por long-lived user token (60 dias). Se falhar, segue com short-lived.
+        // Troca por long-lived user token (~60 dias). Se falhar, segue com short-lived
+        // mas registra alerta — token curto expira em ~1-2h e quebra envio outbound.
         const longLived = await exchangeLongLivedToken(body.access_token);
         const effectiveToken = longLived?.access_token ?? body.access_token;
         const tokenExpiresAt = longLived?.expires_in
           ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
           : null;
+        if (!longLived) {
+          console.warn("META_LONG_LIVED_UNAVAILABLE", {
+            companyId: auth.companyId,
+            note: "Salvando short-lived token; expira em ~1-2h.",
+          });
+        }
 
         // Assina a WABA aos eventos do webhook (sem isto o número não recebe mensagens).
         const wabaSubscribed = await subscribeWaba(body.selected_waba_id, effectiveToken);
