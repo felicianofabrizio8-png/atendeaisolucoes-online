@@ -384,9 +384,31 @@ function ConversationPage() {
     void appendMessage(msg, profile?.company_id);
   };
 
+  const markAiSent = async (logId: string, sentText: string, originalText: string) => {
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) return;
+      await fetch("/api/ai/mark-sent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          logId,
+          sentText,
+          wasEdited: sentText.trim() !== originalText.trim(),
+        }),
+      });
+    } catch (e) {
+      console.warn("[AI_MARK_SENT_CLIENT]", e);
+    }
+  };
+
   const sendSuggestion = () => {
     if (!ai?.suggestedReply) return;
-    sendMessage(ai.suggestedReply);
+    const text = ai.suggestedReply;
+    const logId = ai.logId;
+    sendMessage(text);
+    if (logId) void markAiSent(logId, text, text);
     setAi(null);
   };
 
@@ -409,6 +431,8 @@ function ConversationPage() {
           channel: lead.channel,
           product: lead.product,
           tags: lead.tags,
+          conversationId,
+          leadId: lead.id,
           messages: messages.map((m) => ({ role: m.role, text: m.text })),
         }),
       });
