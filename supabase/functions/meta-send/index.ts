@@ -234,16 +234,30 @@ Deno.serve(async (req) => {
           /* */
         }
         if (!imgRes.ok) {
-          const msg = imgJson.error?.message ?? `HTTP ${imgRes.status}`;
-          console.error("WHATSAPP_IMAGE_SEND_ERROR", {
-            stage: "meta",
+          const metaErr = imgJson.error ?? {};
+          const code = (metaErr as any)?.code as number | undefined;
+          const subcode = (metaErr as any)?.error_subcode as number | undefined;
+          const details = (metaErr as any)?.error_data?.details as string | undefined;
+          const fbtrace = (metaErr as any)?.fbtrace_id as string | undefined;
+          const rawMsg = (metaErr as any)?.message ?? `HTTP ${imgRes.status}`;
+          console.error("META_SEND_META_ERROR", {
+            stage: "image",
             status: imgRes.status,
+            code: code ?? null,
+            subcode: subcode ?? null,
+            message: rawMsg,
+            details: details ?? null,
+            fbtrace_id: fbtrace ?? null,
+            to: recipient,
+            phone_number_id: phoneNumberId,
             body: imgText.slice(0, 1000),
-            imgUrl,
-            metaError: imgJson.error ?? null,
           });
+          const friendly =
+            code === 131047
+              ? "Esse cliente está fora da janela de 24 horas do WhatsApp. Para enviar nova mensagem, use um template aprovado."
+              : `WhatsApp imagem: ${rawMsg}`;
           return json(
-            { ok: false, error: `WhatsApp imagem: ${msg}`, metaError: imgJson.error ?? null, status: imgRes.status },
+            { ok: false, error: friendly, code: code ?? null, outside24hWindow: code === 131047, metaError: metaErr, status: imgRes.status },
             502,
           );
         }
@@ -320,21 +334,38 @@ Deno.serve(async (req) => {
         /* */
       }
       if (!apiRes.ok) {
-        const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-        console.error("META_SEND_ERROR", {
+        const metaErr = apiJson.error ?? {};
+        const code = (metaErr as any)?.code as number | undefined;
+        const subcode = (metaErr as any)?.error_subcode as number | undefined;
+        const details = (metaErr as any)?.error_data?.details as string | undefined;
+        const fbtrace = (metaErr as any)?.fbtrace_id as string | undefined;
+        const rawMsg = (metaErr as any)?.message ?? `HTTP ${apiRes.status}`;
+        console.error("META_SEND_META_ERROR", {
           status: apiRes.status,
-          body: apiText.slice(0, 1000),
+          code: code ?? null,
+          subcode: subcode ?? null,
+          message: rawMsg,
+          details: details ?? null,
+          fbtrace_id: fbtrace ?? null,
           to: recipient,
-          phoneNumberId,
+          phone_number_id: phoneNumberId,
+          body: apiText.slice(0, 1000),
         });
+        // 131047 = re-engagement / fora da janela de 24h.
+        const friendly =
+          code === 131047
+            ? "Esse cliente está fora da janela de 24 horas do WhatsApp. Para enviar nova mensagem, use um template aprovado."
+            : `WhatsApp API: ${rawMsg}`;
         if (integration?.id) {
-          await sb.from("integrations").update({ last_error: msg }).eq("id", integration.id);
+          await sb.from("integrations").update({ last_error: rawMsg }).eq("id", integration.id);
         }
         return json(
           {
             ok: false,
-            error: `WhatsApp API: ${msg}`,
-            metaError: apiJson.error ?? null,
+            error: friendly,
+            code: code ?? null,
+            outside24hWindow: code === 131047,
+            metaError: metaErr,
             status: apiRes.status,
           },
           502,
