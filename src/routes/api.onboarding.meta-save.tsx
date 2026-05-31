@@ -330,9 +330,27 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           wabaId: body.selected_waba_id,
         });
 
-        // meta_pages (opcional) — só se houver page_id selecionada
+        // meta_pages: SOMENTE página explicitamente escolhida pelo usuário, isolada por company_id.
+        let pageSubscribed: boolean | null = null;
         if (body.selected_page_id) {
           try {
+            const details = await fetchPageDetails(body.selected_page_id, effectiveToken);
+            const pageToken = details?.access_token ?? null;
+            const pageName = details?.name ?? body.selected_page_name ?? body.selected_page_id;
+            const igId =
+              details?.instagram_business_account?.id ?? body.selected_instagram_id ?? null;
+            const igUsername =
+              details?.instagram_business_account?.username ??
+              body.selected_instagram_username ??
+              null;
+
+            if (pageToken) {
+              pageSubscribed = await subscribePage(body.selected_page_id, pageToken);
+            } else {
+              console.warn("META_PAGE_TOKEN_MISSING", { page_id: body.selected_page_id });
+            }
+
+            // Isola lookup por company_id — não sobrescreve linha de outra empresa.
             const { data: pageExisting } = await supabaseAdmin
               .from("meta_pages")
               .select("id")
@@ -344,18 +362,20 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
               company_id: auth.companyId,
               integration_id: integrationId,
               page_id: body.selected_page_id,
-              page_name: body.selected_page_name ?? body.selected_page_id,
-              ig_business_account_id: body.selected_instagram_id ?? null,
-              ig_username: body.selected_instagram_username ?? null,
-              page_access_token: body.access_token, // user token; refresh real fica para fase futura
+              page_name: pageName,
+              ig_business_account_id: igId,
+              ig_username: igUsername,
+              page_access_token: pageToken ?? effectiveToken,
+              token_expires_at: tokenExpiresAt,
               active: true,
-              last_error: null,
+              last_error: pageSubscribed === false ? "Webhook Page não confirmado" : null,
             };
             if (pageExisting?.id) {
               await supabaseAdmin
                 .from("meta_pages")
                 .update(pagePayload)
-                .eq("id", pageExisting.id);
+                .eq("id", pageExisting.id)
+                .eq("company_id", auth.companyId);
             } else {
               await supabaseAdmin.from("meta_pages").insert(pagePayload);
             }
@@ -372,6 +392,8 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           waba_id: body.selected_waba_id,
           page_id: body.selected_page_id ?? null,
           page_name: body.selected_page_name ?? null,
+          waba_subscribed: wabaSubscribed,
+          page_subscribed: pageSubscribed,
         });
       },
     },
