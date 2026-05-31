@@ -797,6 +797,11 @@ function ConversationPage() {
                     Próxima ação: {ai.nextAction}
                   </span>
                 </div>
+                {ai.lowConfidence && (
+                  <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-2 py-1.5 text-xs text-[var(--status-urgent)]">
+                    {ai.fallbackMessage ?? "✋ Atendimento humano recomendado: a IA não tem dados suficientes."}
+                  </div>
+                )}
                 <div className="rounded-md bg-card border border-border p-3 text-sm whitespace-pre-wrap">
                   {ai.suggestedReply}
                 </div>
