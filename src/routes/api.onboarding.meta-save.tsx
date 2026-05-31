@@ -11,14 +11,23 @@ const GRAPH = "https://graph.facebook.com/v25.0";
 const WABA_SUBSCRIBED_FIELDS = "messages,message_template_status_update";
 const PAGE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,feed";
 
-async function exchangeLongLivedToken(shortToken: string): Promise<{
+// Meta documenta long-lived user tokens com TTL de ~60 dias.
+// Quando a resposta vier sem `expires_in`, assumimos esse padrão e logamos
+// explicitamente — antes ficávamos com `token_expires_at = NULL` em silêncio.
+const LONG_LIVED_DEFAULT_TTL_SECONDS = 60 * 24 * 60 * 60;
+
+async function exchangeLongLivedToken(
+  shortToken: string,
+  attempt = 1,
+): Promise<{
   access_token: string;
-  expires_in?: number;
+  expires_in: number;
+  assumed_ttl: boolean;
 } | null> {
   const appId = process.env.META_APP_ID ?? "";
   const appSecret = process.env.META_APP_SECRET ?? "";
   if (!appId || !appSecret) {
-    console.warn("META_LONG_LIVED_SKIP_NO_SECRETS");
+    console.warn("META_LONG_LIVED_SKIP_NO_SECRETS", { attempt });
     return null;
   }
   try {
@@ -31,16 +40,46 @@ async function exchangeLongLivedToken(shortToken: string): Promise<{
     const body = (await r.json()) as {
       access_token?: string;
       expires_in?: number;
-      error?: { message?: string };
+      error?: { message?: string; code?: number };
     };
     if (!r.ok || !body.access_token) {
-      console.warn("META_LONG_LIVED_FAIL", { status: r.status, error: body.error });
+      console.warn("META_LONG_LIVED_FAIL", {
+        attempt,
+        status: r.status,
+        error: body.error ?? null,
+      });
+      // Retry once em falha transitória (rede / 5xx).
+      if (attempt < 2 && (r.status >= 500 || r.status === 0)) {
+        console.warn("META_LONG_LIVED_RETRY", { attempt });
+        return exchangeLongLivedToken(shortToken, attempt + 1);
+      }
       return null;
     }
-    console.log("META_LONG_LIVED_OK", { expires_in: body.expires_in ?? null });
-    return { access_token: body.access_token, expires_in: body.expires_in };
+    const hasExpiresIn = typeof body.expires_in === "number" && body.expires_in > 0;
+    if (!hasExpiresIn) {
+      console.warn("META_LONG_LIVED_MISSING_EXPIRES_IN", {
+        attempt,
+        raw_expires_in: body.expires_in ?? null,
+        assumed_ttl_seconds: LONG_LIVED_DEFAULT_TTL_SECONDS,
+      });
+    }
+    const expiresIn = hasExpiresIn ? body.expires_in! : LONG_LIVED_DEFAULT_TTL_SECONDS;
+    console.log("META_LONG_LIVED_OK", {
+      attempt,
+      expires_in: expiresIn,
+      assumed_ttl: !hasExpiresIn,
+    });
+    return {
+      access_token: body.access_token,
+      expires_in: expiresIn,
+      assumed_ttl: !hasExpiresIn,
+    };
   } catch (e) {
-    console.warn("META_LONG_LIVED_EXCEPTION", { e: String(e) });
+    console.warn("META_LONG_LIVED_EXCEPTION", { attempt, e: String(e) });
+    if (attempt < 2) {
+      console.warn("META_LONG_LIVED_RETRY", { attempt, reason: "exception" });
+      return exchangeLongLivedToken(shortToken, attempt + 1);
+    }
     return null;
   }
 }
