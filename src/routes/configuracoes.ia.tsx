@@ -148,10 +148,10 @@ function ConfiguracoesIA() {
   const saveProfile = async () => {
     if (!data || !companyId) return;
     setSaving(true);
-    const payload = { ...data, company_id: companyId };
+    const payload = { ...data, company_id: companyId, faq: data.faq as unknown as never };
     const { error } = await supabase
       .from("ai_profiles")
-      .upsert(payload, { onConflict: "company_id" });
+      .upsert([payload], { onConflict: "company_id" });
     setSaving(false);
     if (error) {
       toast.error("Falha ao salvar", { description: error.message });
