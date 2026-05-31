@@ -14,6 +14,168 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_knowledge_proposals: {
+        Row: {
+          answer: string
+          company_id: string
+          created_at: string
+          id: string
+          question: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_conversation_id: string | null
+          status: Database["public"]["Enums"]["ai_proposal_status"]
+          type: Database["public"]["Enums"]["ai_proposal_type"]
+          updated_at: string
+        }
+        Insert: {
+          answer: string
+          company_id: string
+          created_at?: string
+          id?: string
+          question: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_conversation_id?: string | null
+          status?: Database["public"]["Enums"]["ai_proposal_status"]
+          type?: Database["public"]["Enums"]["ai_proposal_type"]
+          updated_at?: string
+        }
+        Update: {
+          answer?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          question?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_conversation_id?: string | null
+          status?: Database["public"]["Enums"]["ai_proposal_status"]
+          type?: Database["public"]["Enums"]["ai_proposal_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_profiles: {
+        Row: {
+          avg_lead_time: string | null
+          business_hours: string | null
+          company_id: string
+          company_name: string | null
+          created_at: string
+          description: string | null
+          differentials: string | null
+          faq: Json
+          payment_methods: string | null
+          products: string | null
+          region: string | null
+          tone: Database["public"]["Enums"]["ai_tone"]
+          updated_at: string
+        }
+        Insert: {
+          avg_lead_time?: string | null
+          business_hours?: string | null
+          company_id: string
+          company_name?: string | null
+          created_at?: string
+          description?: string | null
+          differentials?: string | null
+          faq?: Json
+          payment_methods?: string | null
+          products?: string | null
+          region?: string | null
+          tone?: Database["public"]["Enums"]["ai_tone"]
+          updated_at?: string
+        }
+        Update: {
+          avg_lead_time?: string | null
+          business_hours?: string | null
+          company_id?: string
+          company_name?: string | null
+          created_at?: string
+          description?: string | null
+          differentials?: string | null
+          faq?: Json
+          payment_methods?: string | null
+          products?: string | null
+          region?: string | null
+          tone?: Database["public"]["Enums"]["ai_tone"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_suggestions_log: {
+        Row: {
+          classification: string | null
+          company_id: string
+          conversation_id: string | null
+          created_at: string
+          generated_text: string
+          id: string
+          lead_id: string | null
+          low_confidence: boolean
+          model: string | null
+          sent_text: string | null
+          user_id: string | null
+          was_edited: boolean
+          was_sent: boolean
+        }
+        Insert: {
+          classification?: string | null
+          company_id: string
+          conversation_id?: string | null
+          created_at?: string
+          generated_text: string
+          id?: string
+          lead_id?: string | null
+          low_confidence?: boolean
+          model?: string | null
+          sent_text?: string | null
+          user_id?: string | null
+          was_edited?: boolean
+          was_sent?: boolean
+        }
+        Update: {
+          classification?: string | null
+          company_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          generated_text?: string
+          id?: string
+          lead_id?: string | null
+          low_confidence?: boolean
+          model?: string | null
+          sent_text?: string | null
+          user_id?: string | null
+          was_edited?: boolean
+          was_sent?: boolean
+        }
+        Relationships: []
+      }
+      ai_usage_counters: {
+        Row: {
+          company_id: string
+          count: number
+          month: string
+          monthly_limit: number
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          count?: number
+          month: string
+          monthly_limit?: number
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          count?: number
+          month?: string
+          monthly_limit?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           created_at: string
@@ -819,6 +981,13 @@ export type Database = {
       current_company_id: { Args: never; Returns: string }
     }
     Enums: {
+      ai_proposal_status: "pending" | "approved" | "rejected"
+      ai_proposal_type:
+        | "faq"
+        | "objection"
+        | "recurring_reply"
+        | "sales_pattern"
+      ai_tone: "comercial" | "amigavel" | "premium" | "tecnico" | "informal"
       channel: "whatsapp" | "instagram" | "facebook"
       lead_status:
         | "novo"
@@ -969,6 +1138,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_proposal_status: ["pending", "approved", "rejected"],
+      ai_proposal_type: [
+        "faq",
+        "objection",
+        "recurring_reply",
+        "sales_pattern",
+      ],
+      ai_tone: ["comercial", "amigavel", "premium", "tecnico", "informal"],
       channel: ["whatsapp", "instagram", "facebook"],
       lead_status: [
         "novo",

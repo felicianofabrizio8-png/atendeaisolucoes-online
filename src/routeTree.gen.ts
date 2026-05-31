@@ -24,6 +24,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as ConfiguracoesIaRouteImport } from './routes/configuracoes.ia'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
 import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
@@ -35,6 +36,8 @@ import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboardi
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
+import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicWhatsappQrIncomingRouteImport } from './routes/api.public.whatsapp-qr.incoming'
 
@@ -113,6 +116,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
 } as any)
+const ConfiguracoesIaRoute = ConfiguracoesIaRouteImport.update({
+  id: '/ia',
+  path: '/ia',
+  getParentRoute: () => ConfiguracoesRoute,
+} as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
   path: '/auth/meta/callback',
@@ -168,6 +176,16 @@ const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
   path: '/api/ai/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiProposeKnowledgeRoute = ApiAiProposeKnowledgeRouteImport.update({
+  id: '/api/ai/propose-knowledge',
+  path: '/api/ai/propose-knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
+  id: '/api/ai/mark-sent',
+  path: '/api/ai/mark-sent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -184,7 +202,7 @@ const ApiPublicWhatsappQrIncomingRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRoute
+  '/configuracoes': typeof ConfiguracoesRouteWithChildren
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -194,9 +212,12 @@ export interface FileRoutesByFullPath {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -214,7 +235,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRoute
+  '/configuracoes': typeof ConfiguracoesRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -223,9 +244,12 @@ export interface FileRoutesByTo {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -244,7 +268,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRoute
+  '/configuracoes': typeof ConfiguracoesRouteWithChildren
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -254,9 +278,12 @@ export interface FileRoutesById {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -286,9 +313,12 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
+    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -315,9 +345,12 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
+    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -345,9 +378,12 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
+    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -366,7 +402,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
-  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRouteWithChildren
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
   OrcamentosRoute: typeof OrcamentosRoute
@@ -377,6 +413,8 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   WhatsappRoute: typeof WhatsappRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
+  ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
+  ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
@@ -499,6 +537,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
     }
+    '/configuracoes/ia': {
+      id: '/configuracoes/ia'
+      path: '/ia'
+      fullPath: '/configuracoes/ia'
+      preLoaderRoute: typeof ConfiguracoesIaRouteImport
+      parentRoute: typeof ConfiguracoesRoute
+    }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
       path: '/auth/meta/callback'
@@ -576,6 +621,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiSuggestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/propose-knowledge': {
+      id: '/api/ai/propose-knowledge'
+      path: '/api/ai/propose-knowledge'
+      fullPath: '/api/ai/propose-knowledge'
+      preLoaderRoute: typeof ApiAiProposeKnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/mark-sent': {
+      id: '/api/ai/mark-sent'
+      path: '/api/ai/mark-sent'
+      fullPath: '/api/ai/mark-sent'
+      preLoaderRoute: typeof ApiAiMarkSentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -593,6 +652,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ConfiguracoesRouteChildren {
+  ConfiguracoesIaRoute: typeof ConfiguracoesIaRoute
+}
+
+const ConfiguracoesRouteChildren: ConfiguracoesRouteChildren = {
+  ConfiguracoesIaRoute: ConfiguracoesIaRoute,
+}
+
+const ConfiguracoesRouteWithChildren = ConfiguracoesRoute._addFileChildren(
+  ConfiguracoesRouteChildren,
+)
+
 interface InboxRouteChildren {
   InboxConversationIdRoute: typeof InboxConversationIdRoute
   InboxIndexRoute: typeof InboxIndexRoute
@@ -608,7 +679,7 @@ const InboxRouteWithChildren = InboxRoute._addFileChildren(InboxRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
-  ConfiguracoesRoute: ConfiguracoesRoute,
+  ConfiguracoesRoute: ConfiguracoesRouteWithChildren,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
   OrcamentosRoute: OrcamentosRoute,
@@ -619,6 +690,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   WhatsappRoute: WhatsappRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
+  ApiAiMarkSentRoute: ApiAiMarkSentRoute,
+  ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,

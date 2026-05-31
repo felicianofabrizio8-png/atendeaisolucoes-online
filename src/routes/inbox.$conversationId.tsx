@@ -47,9 +47,12 @@ export const Route = createFileRoute("/inbox/$conversationId")({
 interface AISuggestion {
   classification: "frio" | "morno" | "quente";
   intent: string;
-  objection?: string;
+  objection?: string | null;
   nextAction: string;
   suggestedReply: string;
+  lowConfidence?: boolean;
+  logId?: string;
+  fallbackMessage?: string;
 }
 
 type MetaSendPayload = {
@@ -381,9 +384,31 @@ function ConversationPage() {
     void appendMessage(msg, profile?.company_id);
   };
 
+  const markAiSent = async (logId: string, sentText: string, originalText: string) => {
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) return;
+      await fetch("/api/ai/mark-sent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          logId,
+          sentText,
+          wasEdited: sentText.trim() !== originalText.trim(),
+        }),
+      });
+    } catch (e) {
+      console.warn("[AI_MARK_SENT_CLIENT]", e);
+    }
+  };
+
   const sendSuggestion = () => {
     if (!ai?.suggestedReply) return;
-    sendMessage(ai.suggestedReply);
+    const text = ai.suggestedReply;
+    const logId = ai.logId;
+    sendMessage(text);
+    if (logId) void markAiSent(logId, text, text);
     setAi(null);
   };
 
@@ -406,6 +431,8 @@ function ConversationPage() {
           channel: lead.channel,
           product: lead.product,
           tags: lead.tags,
+          conversationId,
+          leadId: lead.id,
           messages: messages.map((m) => ({ role: m.role, text: m.text })),
         }),
       });
@@ -770,6 +797,11 @@ function ConversationPage() {
                     Próxima ação: {ai.nextAction}
                   </span>
                 </div>
+                {ai.lowConfidence && (
+                  <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-2 py-1.5 text-xs text-[var(--status-urgent)]">
+                    {ai.fallbackMessage ?? "✋ Atendimento humano recomendado: a IA não tem dados suficientes."}
+                  </div>
+                )}
                 <div className="rounded-md bg-card border border-border p-3 text-sm whitespace-pre-wrap">
                   {ai.suggestedReply}
                 </div>

@@ -1,78 +1,81 @@
-# Integração Meta na Caixa de Atendimento
+# Módulo IA de Atendimento — Plano
 
-Plano incremental em 4 blocos. Aprovação destrava implementação completa em sequência (não vou parar entre blocos).
+## Princípio de isolamento
 
-## Bloco 1 — Secrets + Banco
+Tudo novo. **Não tocar** em: `meta-send`, `meta-webhook`, `whatsapp-evolution-incoming`, `send-whatsapp-message`, estrutura de `messages/conversations/leads`. A IA permanece **modo assistente** (sugere, humano envia).
 
-**Secrets necessários** (vou pedir via tool):
-- `META_APP_ID`
-- `META_APP_SECRET`
-- `META_VERIFY_TOKEN` (string aleatória que você define, ex: `atendei_meta_2026_xyz`)
+O que **já existe** e será reaproveitado:
+- `src/routes/api.ai.suggest.tsx` → endpoint server-fn de sugestão (Gemini via Lovable AI Gateway, retorna `classification/intent/objection/nextAction/suggestedReply`).
+- `src/routes/inbox.$conversationId.tsx` → botão "gerar sugestão", caixa editável, enviar/regenerar.
 
-**Migração SQL:**
-- Reaproveitar tabela `integrations` existente — já tem `channel` (enum), `access_token`, `external_account_id`, `account_metadata`. Adicionar canais `instagram` e `facebook` ao enum (já existem no tipo `channel_type`? vou verificar).
-- Adicionar coluna `token_expires_at timestamptz` em `integrations`.
-- Nova tabela `meta_pages`: `id, company_id, integration_id, page_id, page_name, ig_business_account_id, page_access_token, token_expires_at, active, created_at`. RLS por `company_id`.
-- Estender `leads`: adicionar `source text` (whatsapp|instagram|facebook|messenger), `source_sender_id text` (PSID/IGSID), `source_page_id text`.
-- Estender `messages`: já tem `external_id`. Adicionar `source text`, `source_subtype text` (dm|comment|messenger|post_comment), `source_metadata jsonb` (guarda comment_id, media_id, post_id para responder).
-- Index único `(company_id, source, source_sender_id)` em leads para dedupe.
+O que **falta** e será construído nas fases abaixo.
 
-## Bloco 2 — OAuth Facebook Login
+---
 
-**Frontend** (`src/routes/configuracoes.tsx` — adicionar seção):
-- Botão "Conectar Instagram/Facebook".
-- Usa Facebook JS SDK carregado dinamicamente. Escopos: `pages_show_list, pages_messaging, pages_read_engagement, pages_manage_metadata, pages_manage_engagement, instagram_basic, instagram_manage_messages, instagram_manage_comments, business_management`.
-- Ao logar, recebe `accessToken` de curta duração + lista de páginas → envia para edge function `meta-connect`.
-- Mostra lista de páginas conectadas + status (token expira em X dias) + botão Desconectar.
+## Fase 1 — Enriquecer o assistente atual (sem novas telas)
 
-**Edge Function `meta-connect`** (verify_jwt=true):
-- Recebe `{ shortLivedToken, pages: [{id, name, access_token}] }`.
-- Troca por long-lived token (60 dias) via `GET /oauth/access_token?grant_type=fb_exchange_token`.
-- Para cada page: obtém long-lived page token via `/{page_id}?fields=access_token` + checa IG vinculado via `/{page_id}?fields=instagram_business_account`.
-- Salva em `integrations` + `meta_pages`.
-- Faz subscribe da página aos eventos: `POST /{page_id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,feed,comments` com page token.
+Objetivo: a IA passa a usar o perfil da empresa e registra cada geração.
 
-## Bloco 3 — Edge Function `meta-webhook`
+1. **Migration** (nova, não destrutiva):
+   - `ai_profiles` (1:1 com `companies`): `company_name, description, products, payment_methods, avg_lead_time, faq jsonb, business_hours, region, differentials, tone enum('comercial','amigavel','premium','tecnico','informal')`. RLS por `company_id`, GRANTs explícitos.
+   - `ai_suggestions_log`: `id, company_id, user_id, conversation_id, lead_id, model, prompt_tokens, completion_tokens, generated_text, classification, was_sent boolean default false, was_edited boolean default false, created_at`. RLS por `company_id`.
+   - `ai_usage_counters`: `company_id, month date, count int, limit int default 1000`. RLS por `company_id`.
 
-`supabase/functions/meta-webhook/index.ts` (verify_jwt=false, configurado em `config.toml`):
-- **GET**: validar `hub.verify_token` contra `META_VERIFY_TOKEN` → retornar `hub.challenge`.
-- **POST**: validar assinatura `X-Hub-Signature-256` com `META_APP_SECRET` (HMAC SHA-256 do body bruto).
-- Parsear `entry[]`:
-  - `object: "page"` → eventos de Messenger (`messaging[]`) e comentários no Facebook (`changes[]` com field=`feed`).
-  - `object: "instagram"` → DMs (`messaging[]`) e comentários IG (`changes[]` com field=`comments`).
-- Para cada evento: localizar `company_id` via `meta_pages.page_id` ou `ig_business_account_id`.
-- Upsert do lead por `(company_id, source, source_sender_id)`. Buscar nome via Graph API quando necessário (`/{psid}?fields=name` com page token).
-- Criar conversation se não existir + inserir em `messages` (role=`lead`, `external_id`, `source`, `source_subtype`, `source_metadata`).
-- Marcar `awaiting_reply=true`, atualizar `last_message_at`.
+2. **`api.ai.suggest.tsx`**:
+   - Carregar `ai_profiles` + últimas 5 perguntas aprovadas da base de conhecimento (Fase 2 — usa default vazio agora) e injetar no system prompt (tom, FAQs, diferenciais, horário, formas de pagamento).
+   - Checar limite mensal (`ai_usage_counters`); retornar 429 amigável se estourar.
+   - Inserir registro em `ai_suggestions_log` (+1 no contador).
+   - Sinalizar `low_confidence: true` no retorno quando o modelo não conseguir produzir resposta segura (faltam dados → instrução para sugerir atendimento humano).
 
-**URL para configurar no Meta App**:
-`https://atendei-ai-concierge.lovable.app/functions/v1/meta-webhook`
+3. **Inbox** (`inbox.$conversationId.tsx`):
+   - Banner "✋ Atendimento humano recomendado" quando `low_confidence`.
+   - Ao enviar uma sugestão: PATCH no `ai_suggestions_log` marcando `was_sent`/`was_edited` (compara texto original vs enviado).
 
-## Bloco 4 — Envio + UI
+---
 
-**Edge Function `meta-send`** (verify_jwt=true):
-- Recebe `{ messageId, conversationId, text }` ou similar.
-- Lê metadata da última mensagem para decidir:
-  - `messenger/dm` → `POST /{page_id}/messages` com `{recipient:{id:PSID}, message:{text}}` + page token.
-  - `instagram_dm` → idem com IG `me/messages`.
-  - `comment` → `POST /{comment_id}/replies` com `message`.
-- Insere mensagem (role=`agent`) só se Graph retornar `message_id`/`id`.
+## Fase 2 — Tela de configuração + base de conhecimento aprovada
 
-**Frontend Caixa (`src/routes/inbox.index.tsx`):**
-- Badge de origem ao lado do ChannelBadge: ícone IG (rosa), FB (azul), Messenger (azul claro), "Comentário" (chip outline).
-- Filtros novos: chips "Todos · WhatsApp · Instagram · Facebook · Comentários · Directs · Não respondidos" — query param `source`.
-- Lógica de filtro lê `conversations.channel` + última mensagem `source_subtype`.
+1. **Nova rota** `src/routes/configuracoes.ia.tsx` (sub-rota da tela atual de configurações, navegação por aba):
+   - Form do `ai_profiles` (todos os campos da especificação, incluindo seletor de tom).
+   - Lista de FAQs (CRUD manual) — entra direto na base aprovada.
 
-**Frontend Conversa (`src/routes/inbox.$conversationId.tsx`):**
-- Detecta tipo (dm vs comment) e mostra placeholder do input apropriado ("Responder comentário…" vs "Enviar mensagem…").
-- Chama `meta-send` em vez de `send-whatsapp-message` quando `source !== whatsapp`.
-- Mantém todo fluxo WhatsApp intacto.
+2. **"Aprendizados da IA"** — nova tabela `ai_knowledge_proposals`:
+   - `id, company_id, type enum('faq','objection','recurring_reply','sales_pattern'), question text, answer text, status enum('pending','approved','rejected'), source_conversation_id, created_at, reviewed_by, reviewed_at`. RLS por `company_id`.
+   - Server-fn `api.ai.propose-knowledge.tsx`: roda sob demanda (botão "Analisar conversas") com Gemini agregando últimas N conversas e gerando propostas → todas entram como `pending`.
+   - UI em `configuracoes.ia.tsx` aba "Aprendizados" para **aprovar / editar / rejeitar**.
+   - Apenas registros `approved` são lidos pelo prompt em Fase 1.
 
-## Riscos / Observações
+3. **Salvaguarda**: prompts da IA recebem instrução explícita "**nunca alterar preços, criar condições comerciais ou enviar mensagem sozinha**". A IA é estritamente sugestiva.
 
-- Webhook só funciona em **published URL**. Antes de publicar a integração, vou testar com `supabase--curl_edge_functions`.
-- Comentários no FB/IG só são respondíveis se o App estiver com permissões aprovadas no modo Live. Em modo dev, só funcionam para a própria conta do dev/testers.
-- Long-lived tokens expiram em 60 dias. Vou logar `last_error` em `integrations` quando expirar — usuário precisa reconectar. (Renovação automática fica para fase 2.)
-- IG só envia DM via webhook quando a conta é Business e vinculada a uma Page FB.
+---
 
-Aprova para eu seguir?
+## Fase 3 — Limites, logs e observabilidade
+
+1. **Tela "Uso da IA"** em `configuracoes.ia.tsx`:
+   - Contador mensal, limite configurável, últimas 50 gerações (texto, usuário, conversa, se foi enviada/editada).
+   - Botão exportar logs.
+
+2. **Server-fn `api.ai.logs.tsx`**: lista paginada do `ai_suggestions_log` por empresa.
+
+3. **Fallback seguro**: timeout 15s no gateway; em erro 5xx/429/402 retorna mensagem amigável + flag `low_confidence`.
+
+---
+
+## Fora de escopo (preparado, não implementado)
+
+- Resposta automática / follow-up / classificação automática de leads / treino por empresa. Estrutura (`ai_profiles`, `ai_suggestions_log`, `ai_knowledge_proposals`) já comporta essas evoluções sem migração destrutiva.
+
+---
+
+## Detalhes técnicos
+
+- Modelo: `google/gemini-2.5-flash` (já em uso) via `LOVABLE_API_KEY`, sempre server-side.
+- Stack: TanStack `createServerFn` / server routes existentes (`src/routes/api.ai.*.tsx`). **Zero edge functions novas.**
+- Isolamento por `company_id` via `private.current_company_id()` em RLS, igual ao restante do app.
+- Sem alteração em `meta-send`, `meta-webhook`, Evolution, inbox storage, schemas existentes.
+
+---
+
+## Pergunta antes de começar
+
+Quer que eu execute **apenas a Fase 1** agora (assistente enriquecido + logs/limites mínimos) e depois Fases 2 e 3 em iterações separadas? Ou aplico **as 3 fases em sequência** nesta passada?
