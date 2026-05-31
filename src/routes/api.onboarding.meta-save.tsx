@@ -342,6 +342,8 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           onboarded_via: "meta_whatsapp_cloud",
           onboarded_at: new Date().toISOString(),
           waba_subscribed: wabaSubscribed,
+          waba_verified: phoneInfo.real_waba_id === body.selected_waba_id,
+          verified_waba_id: phoneInfo.real_waba_id ?? null,
           long_lived_token: Boolean(longLived?.access_token),
         };
 
