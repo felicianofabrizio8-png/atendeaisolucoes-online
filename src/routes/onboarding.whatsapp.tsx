@@ -184,49 +184,70 @@ function OnboardingWhatsApp() {
       const phones: WhatsAppPhone[] = [];
       let wabaCount = 0;
       try {
+        // Inclui owned_* (Direct) e client_* (Embedded Signup / Tech Provider).
         const bizRes = await fetch(
-          `${GRAPH}/me/businesses?fields=id,name,owned_whatsapp_business_accounts{id,name,phone_numbers{id,display_phone_number,verified_name,quality_rating}}&limit=100&access_token=${tok}`,
+          `${GRAPH}/me/businesses?fields=id,name,` +
+            `owned_whatsapp_business_accounts{id,name,phone_numbers{id,display_phone_number,verified_name,quality_rating}},` +
+            `client_whatsapp_business_accounts{id,name,phone_numbers{id,display_phone_number,verified_name,quality_rating}}` +
+            `&limit=100&access_token=${tok}`,
         );
+        type WabaNode = {
+          id: string;
+          name: string;
+          phone_numbers?: {
+            data?: Array<{
+              id: string;
+              display_phone_number: string;
+              verified_name?: string;
+              quality_rating?: string;
+            }>;
+          };
+        };
         const bizJson = (await bizRes.json()) as {
           data?: Array<{
             id: string;
             name: string;
-            owned_whatsapp_business_accounts?: {
-              data?: Array<{
-                id: string;
-                name: string;
-                phone_numbers?: {
-                  data?: Array<{
-                    id: string;
-                    display_phone_number: string;
-                    verified_name?: string;
-                    quality_rating?: string;
-                  }>;
-                };
-              }>;
-            };
+            owned_whatsapp_business_accounts?: { data?: WabaNode[] };
+            client_whatsapp_business_accounts?: { data?: WabaNode[] };
           }>;
           error?: { message?: string };
         };
         if (bizJson.error) {
           throw new Error(bizJson.error.message ?? "Erro Graph /me/businesses");
         }
-        const wabaList: { id: string; name: string }[] = [];
+        const wabaList: { id: string; name: string; source: "owned" | "client" }[] = [];
+        const seenWaba = new Set<string>();
+        const seenPhone = new Set<string>();
         for (const biz of bizJson.data ?? []) {
-          for (const waba of biz.owned_whatsapp_business_accounts?.data ?? []) {
-            wabaList.push({ id: waba.id, name: waba.name });
-            for (const ph of waba.phone_numbers?.data ?? []) {
-              phones.push({
-                id: ph.id,
-                display_phone_number: ph.display_phone_number,
-                verified_name: ph.verified_name ?? null,
-                quality_rating: ph.quality_rating ?? null,
-                waba_id: waba.id,
-                waba_name: waba.name,
-              });
+          const buckets: Array<{ src: "owned" | "client"; data?: WabaNode[] }> = [
+            { src: "owned", data: biz.owned_whatsapp_business_accounts?.data },
+            { src: "client", data: biz.client_whatsapp_business_accounts?.data },
+          ];
+          for (const bucket of buckets) {
+            for (const waba of bucket.data ?? []) {
+              if (seenWaba.has(waba.id)) continue;
+              seenWaba.add(waba.id);
+              wabaList.push({ id: waba.id, name: waba.name, source: bucket.src });
+              for (const ph of waba.phone_numbers?.data ?? []) {
+                if (seenPhone.has(ph.id)) continue;
+                seenPhone.add(ph.id);
+                phones.push({
+                  id: ph.id,
+                  display_phone_number: ph.display_phone_number,
+                  verified_name: ph.verified_name ?? null,
+                  quality_rating: ph.quality_rating ?? null,
+                  waba_id: waba.id,
+                  waba_name: waba.name,
+                });
+              }
             }
           }
         }
+        console.log("META_DISCOVERY_CLIENT_WABAS", {
+          total: wabaList.length,
+          owned: wabaList.filter((w) => w.source === "owned").length,
+          client: wabaList.filter((w) => w.source === "client").length,
+        });
         wabaCount = wabaList.length;
         console.log("META_WABA_FOUND", { count: wabaCount, wabas: wabaList });
         console.log("META_PHONE_NUMBERS_FOUND", {
