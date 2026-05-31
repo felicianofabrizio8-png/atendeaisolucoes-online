@@ -226,7 +226,7 @@ function ConfiguracoesIA() {
     const { error } = await supabase
       .from("ai_usage_counters")
       .upsert(
-        { company_id: companyId, month: monthKey, count: usage.count, monthly_limit: newLimit },
+        [{ company_id: companyId, month: monthKey, count: usage.count, monthly_limit: newLimit }],
         { onConflict: "company_id,month" },
       );
     if (error) {
