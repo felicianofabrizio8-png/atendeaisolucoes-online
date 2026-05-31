@@ -35,6 +35,8 @@ import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboardi
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
+import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicWhatsappQrIncomingRouteImport } from './routes/api.public.whatsapp-qr.incoming'
 
@@ -168,6 +170,16 @@ const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
   path: '/api/ai/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiProposeKnowledgeRoute = ApiAiProposeKnowledgeRouteImport.update({
+  id: '/api/ai/propose-knowledge',
+  path: '/api/ai/propose-knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
+  id: '/api/ai/mark-sent',
+  path: '/api/ai/mark-sent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -197,6 +209,8 @@ export interface FileRoutesByFullPath {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -226,6 +240,8 @@ export interface FileRoutesByTo {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -257,6 +273,8 @@ export interface FileRoutesById {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
@@ -289,6 +307,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -318,6 +338,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -348,6 +370,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/mark-sent'
+    | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/meta/config'
@@ -377,6 +401,8 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   WhatsappRoute: typeof WhatsappRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
+  ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
+  ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
@@ -576,6 +602,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiSuggestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/propose-knowledge': {
+      id: '/api/ai/propose-knowledge'
+      path: '/api/ai/propose-knowledge'
+      fullPath: '/api/ai/propose-knowledge'
+      preLoaderRoute: typeof ApiAiProposeKnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/mark-sent': {
+      id: '/api/ai/mark-sent'
+      path: '/api/ai/mark-sent'
+      fullPath: '/api/ai/mark-sent'
+      preLoaderRoute: typeof ApiAiMarkSentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -619,6 +659,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   WhatsappRoute: WhatsappRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
+  ApiAiMarkSentRoute: ApiAiMarkSentRoute,
+  ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
@@ -636,3 +678,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
