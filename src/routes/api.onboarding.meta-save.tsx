@@ -8,6 +8,109 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const GRAPH = "https://graph.facebook.com/v25.0";
+const WABA_SUBSCRIBED_FIELDS = "messages,message_template_status_update";
+const PAGE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,feed";
+
+async function exchangeLongLivedToken(shortToken: string): Promise<{
+  access_token: string;
+  expires_in?: number;
+} | null> {
+  const appId = process.env.META_APP_ID ?? "";
+  const appSecret = process.env.META_APP_SECRET ?? "";
+  if (!appId || !appSecret) {
+    console.warn("META_LONG_LIVED_SKIP_NO_SECRETS");
+    return null;
+  }
+  try {
+    const url =
+      `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(appId)}` +
+      `&client_secret=${encodeURIComponent(appSecret)}` +
+      `&fb_exchange_token=${encodeURIComponent(shortToken)}`;
+    const r = await fetch(url);
+    const body = (await r.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: { message?: string };
+    };
+    if (!r.ok || !body.access_token) {
+      console.warn("META_LONG_LIVED_FAIL", { status: r.status, error: body.error });
+      return null;
+    }
+    console.log("META_LONG_LIVED_OK", { expires_in: body.expires_in ?? null });
+    return { access_token: body.access_token, expires_in: body.expires_in };
+  } catch (e) {
+    console.warn("META_LONG_LIVED_EXCEPTION", { e: String(e) });
+    return null;
+  }
+}
+
+async function subscribeWaba(wabaId: string, token: string) {
+  try {
+    const url = `${GRAPH}/${encodeURIComponent(wabaId)}/subscribed_apps`;
+    const body = new URLSearchParams({
+      subscribed_fields: WABA_SUBSCRIBED_FIELDS,
+      access_token: token,
+    });
+    const r = await fetch(url, { method: "POST", body });
+    const text = await r.text();
+    console.log("META_WABA_SUBSCRIBED", {
+      waba_id: wabaId,
+      status: r.status,
+      ok: r.ok,
+      body: text.slice(0, 500),
+    });
+    return r.ok;
+  } catch (e) {
+    console.warn("META_WABA_SUBSCRIBE_EXCEPTION", { waba_id: wabaId, e: String(e) });
+    return false;
+  }
+}
+
+async function fetchPageDetails(pageId: string, userToken: string) {
+  try {
+    const url =
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=name,access_token,instagram_business_account{id,username}` +
+      `&access_token=${encodeURIComponent(userToken)}`;
+    const r = await fetch(url);
+    const j = (await r.json()) as {
+      name?: string;
+      access_token?: string;
+      instagram_business_account?: { id?: string; username?: string };
+      error?: { message?: string };
+    };
+    if (!r.ok || j.error) {
+      console.warn("META_PAGE_TOKEN_FAIL", { page_id: pageId, status: r.status, error: j.error });
+      return null;
+    }
+    return j;
+  } catch (e) {
+    console.warn("META_PAGE_TOKEN_EXCEPTION", { page_id: pageId, e: String(e) });
+    return null;
+  }
+}
+
+async function subscribePage(pageId: string, pageToken: string) {
+  try {
+    const url = `${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps`;
+    const body = new URLSearchParams({
+      subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
+      access_token: pageToken,
+    });
+    const r = await fetch(url, { method: "POST", body });
+    const text = await r.text();
+    console.log("META_PAGE_SUBSCRIBED_ONBOARDING", {
+      page_id: pageId,
+      status: r.status,
+      ok: r.ok,
+      body: text.slice(0, 500),
+    });
+    return r.ok;
+  } catch (e) {
+    console.warn("META_PAGE_SUBSCRIBE_EXCEPTION", { page_id: pageId, e: String(e) });
+    return false;
+  }
+}
 
 interface SaveBody {
   access_token: string;
