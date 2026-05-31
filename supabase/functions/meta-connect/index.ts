@@ -28,21 +28,59 @@ function json(body: unknown, status = 200) {
 // válido de subscribed_apps para páginas (Meta rejeita com erro 100).
 const PAGE_SUBSCRIBED_FIELDS = ["messages", "messaging_postbacks", "feed"].join(",");
 
-async function exchangeForLongLivedUserToken(shortToken: string): Promise<{
+// Meta: long-lived user tokens duram ~60 dias. Quando a resposta vier sem
+// `expires_in`, assumimos esse default e logamos — antes ficava NULL silenciosamente.
+const LONG_LIVED_DEFAULT_TTL_SECONDS = 60 * 24 * 60 * 60;
+
+async function exchangeForLongLivedUserToken(
+  shortToken: string,
+  attempt = 1,
+): Promise<{
   access_token: string;
-  expires_in?: number;
+  expires_in: number;
+  assumed_ttl: boolean;
 } | null> {
   const url =
     `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token` +
     `&client_id=${encodeURIComponent(META_APP_ID)}` +
     `&client_secret=${encodeURIComponent(META_APP_SECRET)}` +
     `&fb_exchange_token=${encodeURIComponent(shortToken)}`;
-  const r = await fetch(url);
-  if (!r.ok) {
-    console.log("LONG_LIVED_EXCHANGE_FAIL", r.status, await r.text());
+  let r: Response;
+  try {
+    r = await fetch(url);
+  } catch (e) {
+    console.log("META_LONG_LIVED_EXCEPTION", { attempt, e: String(e) });
+    if (attempt < 2) {
+      console.log("META_LONG_LIVED_RETRY", { attempt, reason: "exception" });
+      return exchangeForLongLivedUserToken(shortToken, attempt + 1);
+    }
     return null;
   }
-  return await r.json();
+  if (!r.ok) {
+    const text = await r.text();
+    console.log("META_LONG_LIVED_FAIL", { attempt, status: r.status, body: text.slice(0, 400) });
+    if (attempt < 2 && r.status >= 500) {
+      console.log("META_LONG_LIVED_RETRY", { attempt });
+      return exchangeForLongLivedUserToken(shortToken, attempt + 1);
+    }
+    return null;
+  }
+  const body = (await r.json()) as { access_token?: string; expires_in?: number };
+  if (!body.access_token) {
+    console.log("META_LONG_LIVED_FAIL", { attempt, status: r.status, reason: "no access_token" });
+    return null;
+  }
+  const hasExpiresIn = typeof body.expires_in === "number" && body.expires_in > 0;
+  if (!hasExpiresIn) {
+    console.log("META_LONG_LIVED_MISSING_EXPIRES_IN", {
+      attempt,
+      raw_expires_in: body.expires_in ?? null,
+      assumed_ttl_seconds: LONG_LIVED_DEFAULT_TTL_SECONDS,
+    });
+  }
+  const expiresIn = hasExpiresIn ? body.expires_in! : LONG_LIVED_DEFAULT_TTL_SECONDS;
+  console.log("META_LONG_LIVED_OK", { attempt, expires_in: expiresIn, assumed_ttl: !hasExpiresIn });
+  return { access_token: body.access_token, expires_in: expiresIn, assumed_ttl: !hasExpiresIn };
 }
 
 async function getPageDetails(pageId: string, longUserToken: string) {
