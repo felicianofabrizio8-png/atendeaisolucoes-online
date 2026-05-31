@@ -230,6 +230,16 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           return Response.json({ error: "Falha ao validar token Meta" }, { status: 400 });
         }
 
+        // Troca por long-lived user token (60 dias). Se falhar, segue com short-lived.
+        const longLived = await exchangeLongLivedToken(body.access_token);
+        const effectiveToken = longLived?.access_token ?? body.access_token;
+        const tokenExpiresAt = longLived?.expires_in
+          ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
+          : null;
+
+        // Assina a WABA aos eventos do webhook (sem isto o número não recebe mensagens).
+        const wabaSubscribed = await subscribeWaba(body.selected_waba_id, effectiveToken);
+
         const displayPhoneNumber =
           phoneInfo.display_phone_number ?? body.selected_phone_number ?? null;
         const phoneNumber = displayPhoneNumber;
@@ -251,9 +261,11 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           instagram_username: body.selected_instagram_username ?? null,
           onboarded_via: "meta_whatsapp_cloud",
           onboarded_at: new Date().toISOString(),
+          waba_subscribed: wabaSubscribed,
+          long_lived_token: Boolean(longLived?.access_token),
         };
 
-        // Upsert integration (chave: company_id + channel + external_account_id=phone_number_id)
+        // Upsert integration ISOLADO por company_id — nunca reutiliza linha de outra empresa.
         const { data: existing, error: existingErr } = await supabaseAdmin
           .from("integrations")
           .select("id")
@@ -279,9 +291,10 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           active: true,
           external_account_id: body.selected_phone_number_id,
           account_metadata: accountMetadata,
-          access_token: body.access_token,
+          access_token: effectiveToken,
+          token_expires_at: tokenExpiresAt,
           last_synced_at: new Date().toISOString(),
-          last_error: null,
+          last_error: wabaSubscribed ? null : "Webhook WABA não confirmado",
         };
 
         let integrationId: string | null = null;
