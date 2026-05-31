@@ -8,6 +8,109 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const GRAPH = "https://graph.facebook.com/v25.0";
+const WABA_SUBSCRIBED_FIELDS = "messages,message_template_status_update";
+const PAGE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,feed";
+
+async function exchangeLongLivedToken(shortToken: string): Promise<{
+  access_token: string;
+  expires_in?: number;
+} | null> {
+  const appId = process.env.META_APP_ID ?? "";
+  const appSecret = process.env.META_APP_SECRET ?? "";
+  if (!appId || !appSecret) {
+    console.warn("META_LONG_LIVED_SKIP_NO_SECRETS");
+    return null;
+  }
+  try {
+    const url =
+      `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(appId)}` +
+      `&client_secret=${encodeURIComponent(appSecret)}` +
+      `&fb_exchange_token=${encodeURIComponent(shortToken)}`;
+    const r = await fetch(url);
+    const body = (await r.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: { message?: string };
+    };
+    if (!r.ok || !body.access_token) {
+      console.warn("META_LONG_LIVED_FAIL", { status: r.status, error: body.error });
+      return null;
+    }
+    console.log("META_LONG_LIVED_OK", { expires_in: body.expires_in ?? null });
+    return { access_token: body.access_token, expires_in: body.expires_in };
+  } catch (e) {
+    console.warn("META_LONG_LIVED_EXCEPTION", { e: String(e) });
+    return null;
+  }
+}
+
+async function subscribeWaba(wabaId: string, token: string) {
+  try {
+    const url = `${GRAPH}/${encodeURIComponent(wabaId)}/subscribed_apps`;
+    const body = new URLSearchParams({
+      subscribed_fields: WABA_SUBSCRIBED_FIELDS,
+      access_token: token,
+    });
+    const r = await fetch(url, { method: "POST", body });
+    const text = await r.text();
+    console.log("META_WABA_SUBSCRIBED", {
+      waba_id: wabaId,
+      status: r.status,
+      ok: r.ok,
+      body: text.slice(0, 500),
+    });
+    return r.ok;
+  } catch (e) {
+    console.warn("META_WABA_SUBSCRIBE_EXCEPTION", { waba_id: wabaId, e: String(e) });
+    return false;
+  }
+}
+
+async function fetchPageDetails(pageId: string, userToken: string) {
+  try {
+    const url =
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=name,access_token,instagram_business_account{id,username}` +
+      `&access_token=${encodeURIComponent(userToken)}`;
+    const r = await fetch(url);
+    const j = (await r.json()) as {
+      name?: string;
+      access_token?: string;
+      instagram_business_account?: { id?: string; username?: string };
+      error?: { message?: string };
+    };
+    if (!r.ok || j.error) {
+      console.warn("META_PAGE_TOKEN_FAIL", { page_id: pageId, status: r.status, error: j.error });
+      return null;
+    }
+    return j;
+  } catch (e) {
+    console.warn("META_PAGE_TOKEN_EXCEPTION", { page_id: pageId, e: String(e) });
+    return null;
+  }
+}
+
+async function subscribePage(pageId: string, pageToken: string) {
+  try {
+    const url = `${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps`;
+    const body = new URLSearchParams({
+      subscribed_fields: PAGE_SUBSCRIBED_FIELDS,
+      access_token: pageToken,
+    });
+    const r = await fetch(url, { method: "POST", body });
+    const text = await r.text();
+    console.log("META_PAGE_SUBSCRIBED_ONBOARDING", {
+      page_id: pageId,
+      status: r.status,
+      ok: r.ok,
+      body: text.slice(0, 500),
+    });
+    return r.ok;
+  } catch (e) {
+    console.warn("META_PAGE_SUBSCRIBE_EXCEPTION", { page_id: pageId, e: String(e) });
+    return false;
+  }
+}
 
 interface SaveBody {
   access_token: string;
@@ -127,6 +230,16 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           return Response.json({ error: "Falha ao validar token Meta" }, { status: 400 });
         }
 
+        // Troca por long-lived user token (60 dias). Se falhar, segue com short-lived.
+        const longLived = await exchangeLongLivedToken(body.access_token);
+        const effectiveToken = longLived?.access_token ?? body.access_token;
+        const tokenExpiresAt = longLived?.expires_in
+          ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
+          : null;
+
+        // Assina a WABA aos eventos do webhook (sem isto o número não recebe mensagens).
+        const wabaSubscribed = await subscribeWaba(body.selected_waba_id, effectiveToken);
+
         const displayPhoneNumber =
           phoneInfo.display_phone_number ?? body.selected_phone_number ?? null;
         const phoneNumber = displayPhoneNumber;
@@ -148,9 +261,11 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           instagram_username: body.selected_instagram_username ?? null,
           onboarded_via: "meta_whatsapp_cloud",
           onboarded_at: new Date().toISOString(),
+          waba_subscribed: wabaSubscribed,
+          long_lived_token: Boolean(longLived?.access_token),
         };
 
-        // Upsert integration (chave: company_id + channel + external_account_id=phone_number_id)
+        // Upsert integration ISOLADO por company_id — nunca reutiliza linha de outra empresa.
         const { data: existing, error: existingErr } = await supabaseAdmin
           .from("integrations")
           .select("id")
@@ -176,9 +291,10 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           active: true,
           external_account_id: body.selected_phone_number_id,
           account_metadata: accountMetadata,
-          access_token: body.access_token,
+          access_token: effectiveToken,
+          token_expires_at: tokenExpiresAt,
           last_synced_at: new Date().toISOString(),
-          last_error: null,
+          last_error: wabaSubscribed ? null : "Webhook WABA não confirmado",
         };
 
         let integrationId: string | null = null;
@@ -214,9 +330,27 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           wabaId: body.selected_waba_id,
         });
 
-        // meta_pages (opcional) — só se houver page_id selecionada
+        // meta_pages: SOMENTE página explicitamente escolhida pelo usuário, isolada por company_id.
+        let pageSubscribed: boolean | null = null;
         if (body.selected_page_id) {
           try {
+            const details = await fetchPageDetails(body.selected_page_id, effectiveToken);
+            const pageToken = details?.access_token ?? null;
+            const pageName = details?.name ?? body.selected_page_name ?? body.selected_page_id;
+            const igId =
+              details?.instagram_business_account?.id ?? body.selected_instagram_id ?? null;
+            const igUsername =
+              details?.instagram_business_account?.username ??
+              body.selected_instagram_username ??
+              null;
+
+            if (pageToken) {
+              pageSubscribed = await subscribePage(body.selected_page_id, pageToken);
+            } else {
+              console.warn("META_PAGE_TOKEN_MISSING", { page_id: body.selected_page_id });
+            }
+
+            // Isola lookup por company_id — não sobrescreve linha de outra empresa.
             const { data: pageExisting } = await supabaseAdmin
               .from("meta_pages")
               .select("id")
@@ -228,18 +362,20 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
               company_id: auth.companyId,
               integration_id: integrationId,
               page_id: body.selected_page_id,
-              page_name: body.selected_page_name ?? body.selected_page_id,
-              ig_business_account_id: body.selected_instagram_id ?? null,
-              ig_username: body.selected_instagram_username ?? null,
-              page_access_token: body.access_token, // user token; refresh real fica para fase futura
+              page_name: pageName,
+              ig_business_account_id: igId,
+              ig_username: igUsername,
+              page_access_token: pageToken ?? effectiveToken,
+              token_expires_at: tokenExpiresAt,
               active: true,
-              last_error: null,
+              last_error: pageSubscribed === false ? "Webhook Page não confirmado" : null,
             };
             if (pageExisting?.id) {
               await supabaseAdmin
                 .from("meta_pages")
                 .update(pagePayload)
-                .eq("id", pageExisting.id);
+                .eq("id", pageExisting.id)
+                .eq("company_id", auth.companyId);
             } else {
               await supabaseAdmin.from("meta_pages").insert(pagePayload);
             }
@@ -256,6 +392,8 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
           waba_id: body.selected_waba_id,
           page_id: body.selected_page_id ?? null,
           page_name: body.selected_page_name ?? null,
+          waba_subscribed: wabaSubscribed,
+          page_subscribed: pageSubscribed,
         });
       },
     },
