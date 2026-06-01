@@ -16,6 +16,7 @@ import {
   PowerOff,
   Copy,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   getSettings,
@@ -236,6 +237,9 @@ function IntegrationsSection() {
           ))}
         </ul>
       )}
+
+      <WhatsAppUnmappedPanel />
+
 
       <div className="space-y-4">
         <div className="rounded-md bg-secondary/40 border border-border p-3 text-[11px] space-y-1">
