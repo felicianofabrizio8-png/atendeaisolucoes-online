@@ -189,7 +189,7 @@ export async function findCandidates(
     .from("visits")
     .select("id, lead_id, scheduled_at, status")
     .eq("company_id", companyId)
-    .eq("status", "realizada")
+    .eq("status", "concluida")
     .lte("scheduled_at", cutoffs.visit)
     .limit(100);
   // procurar conversa do lead
