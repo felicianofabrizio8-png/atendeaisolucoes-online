@@ -124,6 +124,20 @@ type DbConversation = {
   unread: number;
   awaiting_reply: boolean;
   interaction_type?: string;
+  ai_status?: string | null;
+  ai_handling?: boolean;
+  detected_city?: string | null;
+  detected_state?: string | null;
+  detected_pool_size?: string | null;
+  detected_intent?: string | null;
+  detected_interest?: string | null;
+  detected_budget?: string | null;
+  purchase_timing?: string | null;
+  customer_stage?: string | null;
+  lead_temperature?: string | null;
+  lead_score?: number;
+  lead_ready_to_close?: boolean;
+  detected_objections?: string[] | null;
 };
 
 function toConversation(r: DbConversation, slaMinutes: number): Conversation {
@@ -139,6 +153,20 @@ function toConversation(r: DbConversation, slaMinutes: number): Conversation {
     interactionType: (r.interaction_type ?? "direct_message") as
       | "direct_message"
       | "comment",
+    aiStatus: r.ai_status ?? null,
+    aiHandling: r.ai_handling ?? false,
+    detectedCity: r.detected_city ?? null,
+    detectedState: r.detected_state ?? null,
+    detectedPoolSize: r.detected_pool_size ?? null,
+    detectedIntent: r.detected_intent ?? null,
+    detectedInterest: r.detected_interest ?? null,
+    detectedBudget: r.detected_budget ?? null,
+    purchaseTiming: r.purchase_timing ?? null,
+    customerStage: r.customer_stage ?? null,
+    leadTemperature: (r.lead_temperature as "frio" | "morno" | "quente" | null) ?? null,
+    leadScore: r.lead_score ?? 0,
+    leadReadyToClose: r.lead_ready_to_close ?? false,
+    detectedObjections: r.detected_objections ?? [],
   };
 }
 
