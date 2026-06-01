@@ -16,9 +16,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle, BarChart3 } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle, BarChart3, Bell } from "lucide-react";
 import { AIPilotPanel } from "@/components/AIPilotPanel";
 import { AIAnalyticsDashboard } from "@/components/AIAnalyticsDashboard";
+import { AIFollowupPanel } from "@/components/AIFollowupPanel";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/ia")({
