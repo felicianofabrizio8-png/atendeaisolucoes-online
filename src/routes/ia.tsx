@@ -16,11 +16,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle, BarChart3, Bell } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle, BarChart3, Bell, MessageSquareText } from "lucide-react";
 import { AIPilotPanel } from "@/components/AIPilotPanel";
 import { AIAnalyticsDashboard } from "@/components/AIAnalyticsDashboard";
 import { AIFollowupPanel } from "@/components/AIFollowupPanel";
+import { WhatsappTemplatesPanel } from "@/components/WhatsappTemplatesPanel";
 import { toast } from "sonner";
+
 
 export const Route = createFileRoute("/ia")({
   component: ConfiguracoesIA,
@@ -360,10 +362,14 @@ function ConfiguracoesIA() {
           <TabsTrigger value="followup">
             <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
           </TabsTrigger>
+          <TabsTrigger value="templates">
+            <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates WhatsApp
+          </TabsTrigger>
           <TabsTrigger value="automacao">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
         </TabsList>
+
 
         {/* ---------- PERFIL ---------- */}
         <TabsContent value="perfil" className="space-y-4">
@@ -631,6 +637,11 @@ function ConfiguracoesIA() {
         <TabsContent value="followup" className="space-y-4">
           <AIFollowupPanel />
         </TabsContent>
+
+        <TabsContent value="templates" className="space-y-4">
+          <WhatsappTemplatesPanel />
+        </TabsContent>
+
 
         {/* ---------- AUTOMAÇÃO ---------- */}
         <TabsContent value="automacao" className="space-y-4">

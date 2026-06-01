@@ -8,6 +8,13 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendWhatsappText } from "@/lib/ai-agent.server";
 import { getReadiness } from "@/lib/ai-readiness.server";
+import {
+  isWithin24hWindow,
+  sendWhatsappTemplate,
+  findApprovedTemplateForPurpose,
+  type TemplatePurpose,
+} from "@/lib/wa-templates.server";
+
 
 export type FollowupRule =
   | "quote_no_reply"
@@ -308,7 +315,10 @@ interface SafetyCheck {
   ok: boolean;
   reason?: string;
   attempt?: number;
+  outsideWindow?: boolean;
 }
+
+
 
 async function canSend(
   companyId: string,
@@ -357,7 +367,8 @@ async function canSend(
       return { ok: false, reason: `aguardando intervalo mínimo (${s.minHoursBetween}h)` };
   }
 
-  // Verifica janela 24h do WhatsApp Cloud API (precisa de cliente em < 24h)
+  // Verifica janela 24h do WhatsApp Cloud API. Fora dela ainda permitimos
+  // o envio, mas via template Utility aprovado (decisão no loop principal).
   const cutoff24 = new Date(Date.now() - 23 * 3600 * 1000).toISOString();
   const { data: clientMsg } = await supabaseAdmin
     .from("messages")
@@ -366,11 +377,11 @@ async function canSend(
     .eq("role", "lead")
     .gte("at", cutoff24)
     .limit(1);
-  if (!clientMsg || clientMsg.length === 0)
-    return { ok: false, reason: "fora da janela de 24h" };
+  const outsideWindow = !clientMsg || clientMsg.length === 0;
 
-  return { ok: true, attempt: attempts + 1 };
+  return { ok: true, attempt: attempts + 1, outsideWindow };
 }
+
 
 // ----------------------------------------------------------------------------
 // Geração da mensagem
@@ -451,6 +462,108 @@ export async function runFollowupTickForCompany(
     }
     const attempt = check.attempt ?? 1;
     const text = await buildMessage(c, s, attempt);
+
+    // ---- Fora da janela de 24h: tenta template Utility aprovado ----
+    if (check.outsideWindow) {
+      const purpose = c.rule as TemplatePurpose;
+      const template = await findApprovedTemplateForPurpose(companyId, purpose);
+      if (!template) {
+        await supabaseAdmin.from("follow_ups").insert({
+          company_id: companyId,
+          conversation_id: c.conversationId,
+          lead_id: c.leadId,
+          rule_type: c.rule,
+          attempt_number: attempt,
+          message_text: text,
+          status: "blocked",
+          metadata: { signal: c.signal, reason: "template_missing", purpose },
+        });
+        await supabaseAdmin.from("ai_flow_events").insert({
+          company_id: companyId,
+          conversation_id: c.conversationId,
+          lead_id: c.leadId,
+          event_type: "template_missing",
+          payload: { rule: c.rule, purpose, signal: c.signal },
+        });
+        result.skipped.push({
+          conversationId: c.conversationId,
+          rule: c.rule,
+          reason: "fora da janela 24h e sem template aprovado",
+        });
+        continue;
+      }
+      // Variáveis: mapeia var1 → primeiro nome do lead
+      const { data: lead } = await supabaseAdmin
+        .from("leads")
+        .select("name")
+        .eq("id", c.leadId)
+        .maybeSingle();
+      const nome = firstName(lead?.name);
+      const vars: Record<string, string> = {};
+      (template.variables ?? []).forEach((v, i) => {
+        vars[v] = i === 0 ? nome : "";
+      });
+      const tplSend = await sendWhatsappTemplate({
+        companyId,
+        conversationId: c.conversationId,
+        leadId: c.leadId,
+        purpose,
+        variables: vars,
+        source: "followup_template",
+      });
+      if (!tplSend.ok) {
+        await supabaseAdmin.from("follow_ups").insert({
+          company_id: companyId,
+          conversation_id: c.conversationId,
+          lead_id: c.leadId,
+          rule_type: c.rule,
+          attempt_number: attempt,
+          message_text: text,
+          status: "failed",
+          metadata: {
+            signal: c.signal,
+            error: tplSend.error,
+            via: "template",
+            template_name: template.name,
+          },
+        });
+        result.errors.push(`${c.rule} (template): ${tplSend.error}`);
+        continue;
+      }
+      await supabaseAdmin.from("follow_ups").insert({
+        company_id: companyId,
+        conversation_id: c.conversationId,
+        lead_id: c.leadId,
+        rule_type: c.rule,
+        attempt_number: attempt,
+        message_text: text,
+        status: "sent",
+        metadata: {
+          signal: c.signal,
+          external_id: tplSend.externalId,
+          via: "template",
+          template_name: template.name,
+          category: template.category,
+        },
+      });
+      await supabaseAdmin.from("ai_flow_events").insert({
+        company_id: companyId,
+        conversation_id: c.conversationId,
+        lead_id: c.leadId,
+        event_type: "followup_sent",
+        payload: {
+          rule: c.rule,
+          attempt,
+          signal: c.signal,
+          via: "template",
+          template_name: template.name,
+        },
+      });
+      result.sent++;
+      continue;
+    }
+
+    // ---- Dentro da janela: envio normal de texto ----
     const send = await sendWhatsappText({
       companyId,
       conversationId: c.conversationId,
@@ -497,6 +610,7 @@ export async function runFollowupTickForCompany(
     });
     result.sent++;
   }
+
 
   return result;
 }
