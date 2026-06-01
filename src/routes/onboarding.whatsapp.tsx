@@ -1165,6 +1165,8 @@ function TestSendButton({
         setResult({ kind: "err", msg: json.error ?? `Erro HTTP ${res.status}` });
       } else {
         setResult({ kind: "ok", to: json.to ?? phone });
+        onSuccess?.();
+
       }
     } catch (e) {
       setResult({
