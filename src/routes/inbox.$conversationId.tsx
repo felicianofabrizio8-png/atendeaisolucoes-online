@@ -883,7 +883,8 @@ function ConversationPage() {
       </div>
 
       {/* Side panel */}
-      <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40">
+      <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
+
         <div className="p-4 border-b border-border">
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
           <div className="text-base font-semibold">{lead.name}</div>
