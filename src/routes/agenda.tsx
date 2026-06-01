@@ -280,9 +280,9 @@ function AgendaPage() {
     <div className="flex-1 p-4 md:p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold">Agenda de visitas técnicas</h1>
+          <h1 className="text-xl md:text-2xl font-semibold">Agenda de compromissos</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Organize visitas, confirmações e envio para o técnico no WhatsApp.
+            Visitas técnicas, atendimentos na loja, retornos comerciais e mais.
           </p>
         </div>
         <Button
@@ -292,7 +292,7 @@ function AgendaPage() {
           }}
         >
           <Plus className="h-4 w-4" />
-          Nova visita
+          Novo compromisso
         </Button>
       </div>
 
@@ -304,14 +304,93 @@ function AgendaPage() {
         </Card>
       )}
 
+      {/* Aviso de próximos compromissos */}
+      {companyId && upcoming.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="p-4 flex items-start gap-3">
+            <Bell className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                {upcoming.length === 1
+                  ? "1 compromisso nas próximas 2 horas"
+                  : `${upcoming.length} compromissos nas próximas 2 horas`}
+              </div>
+              <ul className="mt-1 space-y-0.5 text-xs text-foreground/80">
+                {upcoming.map((v) => {
+                  const M = TYPE_META[v.appointment_type];
+                  return (
+                    <li key={v.id} className="flex items-center gap-1.5">
+                      <M.icon className="h-3 w-3" />
+                      <span className="font-medium">
+                        {format(new Date(v.scheduled_at), "HH:mm")}
+                      </span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="truncate">{v.title}</span>
+                      {v.customer_name && (
+                        <span className="text-muted-foreground truncate">
+                          · {v.customer_name}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filtros */}
+      {companyId && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center rounded-md bg-secondary p-0.5 text-xs">
+            {(["dia", "semana", "todos"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={cn(
+                  "px-3 py-1.5 rounded capitalize transition-colors",
+                  viewMode === m
+                    ? "bg-background shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {m === "dia" ? "Hoje" : m === "semana" ? "Esta semana" : "Todos"}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+            <Filter className="h-3.5 w-3.5" />
+            Tipo:
+          </div>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+            <SelectTrigger className="h-8 w-[200px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos" className="text-xs">
+                Todos os tipos
+              </SelectItem>
+              {TYPE_KEYS.map((k) => (
+                <SelectItem key={k} value={k} className="text-xs">
+                  {TYPE_META[k].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {companyId && loading && (
         <p className="text-sm text-muted-foreground">Carregando...</p>
       )}
 
-      {companyId && !loading && visits.length === 0 && (
+      {companyId && !loading && filteredVisits.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            Nenhuma visita agendada ainda. Clique em "Nova visita" para começar.
+            {visits.length === 0
+              ? 'Nenhum compromisso ainda. Clique em "Novo compromisso" para começar.'
+              : "Nenhum compromisso para os filtros selecionados."}
           </CardContent>
         </Card>
       )}
@@ -340,6 +419,7 @@ function AgendaPage() {
           </div>
         ))}
       </div>
+
 
       {openForm && (
         <VisitFormModal
