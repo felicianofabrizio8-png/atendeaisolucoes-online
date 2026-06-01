@@ -332,30 +332,62 @@ function IntegrationItem({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{item.displayName}</div>
-          <div className="text-[11px] text-muted-foreground truncate">
-            {item.channel.toUpperCase()}
-            {item.externalAccountId && <> • ID {item.externalAccountId}</>}
-            {!item.hasAccessToken && (
-              <span className="ml-2 text-[var(--status-urgent)]">sem token</span>
-            )}
-            {item.lastError && (
-              <span className="ml-2 text-[var(--status-urgent)]">erro: {item.lastError}</span>
-            )}
-          </div>
-          {isWhatsApp && (
-            <div className="text-[11px] text-muted-foreground mt-0.5">
-              Último evento recebido:{" "}
-              <span className="font-mono">
-                {item.lastSyncedAt
-                  ? new Date(item.lastSyncedAt).toLocaleString("pt-BR")
-                  : "nenhum ainda"}
-              </span>
+          {isWhatsApp ? (
+            <div className="text-[11px] text-muted-foreground space-y-0.5 mt-0.5">
+              {(() => {
+                const meta = (item.accountMetadata ?? {}) as Record<string, unknown>;
+                const displayPhone = (meta.phone_number as string | undefined) ?? null;
+                const wabaId = (meta.waba_id as string | undefined) ?? null;
+                return (
+                  <>
+                    <div>
+                      Número:{" "}
+                      <span className="font-mono text-foreground">
+                        {displayPhone ?? "—"}
+                      </span>
+                    </div>
+                    <div>
+                      phone_number_id:{" "}
+                      <span className="font-mono">{item.externalAccountId ?? "—"}</span>
+                    </div>
+                    <div>
+                      waba_id: <span className="font-mono">{wabaId ?? "—"}</span>
+                    </div>
+                    <div>
+                      Último evento recebido:{" "}
+                      <span className="font-mono">
+                        {item.lastSyncedAt
+                          ? new Date(item.lastSyncedAt).toLocaleString("pt-BR")
+                          : "nenhum ainda"}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
+              {!item.hasAccessToken && (
+                <div className="text-[var(--status-urgent)]">sem token</div>
+              )}
+              {item.lastError && (
+                <div className="text-[var(--status-urgent)]">erro: {item.lastError}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[11px] text-muted-foreground truncate">
+              {item.channel.toUpperCase()}
+              {item.externalAccountId && <> • ID {item.externalAccountId}</>}
+              {!item.hasAccessToken && (
+                <span className="ml-2 text-[var(--status-urgent)]">sem token</span>
+              )}
+              {item.lastError && (
+                <span className="ml-2 text-[var(--status-urgent)]">erro: {item.lastError}</span>
+              )}
             </div>
           )}
           {isWhatsApp && item.hasAccessToken && (
             <TokenExpiryBadge expiresAt={item.tokenExpiresAt} />
           )}
         </div>
+
         <span
           className={cn(
             "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
