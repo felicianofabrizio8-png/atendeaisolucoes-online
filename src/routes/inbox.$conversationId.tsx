@@ -235,8 +235,11 @@ function ConversationPage() {
   }, [search.quote, conversationId, navigate]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, ai, pendingQuote]);
+
 
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
 
@@ -545,10 +548,11 @@ function ConversationPage() {
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
   return (
-    <div className="flex-1 flex min-w-0">
+    <div className="flex-1 flex min-w-0 min-h-0 h-full">
       {/* Conversation column */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-        <header className="h-14 px-4 border-b border-border flex items-center gap-3">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-border">
+        <header className="h-14 px-4 border-b border-border flex items-center gap-3 shrink-0">
+
           <button
             onClick={() => navigate({ to: "/inbox" })}
             className="md:hidden p-1.5 rounded-md hover:bg-accent"
@@ -651,7 +655,7 @@ function ConversationPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scroll-smooth p-4 pb-6 space-y-3">
           {messages.map((m) => {
             if (m.role === "system") {
               return (
@@ -834,7 +838,8 @@ function ConversationPage() {
         )}
 
         {/* Composer */}
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-3 shrink-0 bg-background">
+
           <div className="flex items-end gap-2">
             <button
               onClick={generateAI}
@@ -881,7 +886,8 @@ function ConversationPage() {
       </div>
 
       {/* Side panel */}
-      <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40">
+      <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
+
         <div className="p-4 border-b border-border">
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
           <div className="text-base font-semibold">{lead.name}</div>
