@@ -182,6 +182,9 @@ function AgendaPage() {
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Visit | null>(null);
   const [sendTarget, setSendTarget] = useState<Visit | null>(null);
+  const [typeFilter, setTypeFilter] = useState<"todos" | AppointmentType>("todos");
+  const [viewMode, setViewMode] = useState<"dia" | "semana" | "todos">("semana");
+
 
   const loadVisits = useCallback(async () => {
     if (!companyId) {
