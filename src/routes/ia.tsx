@@ -627,6 +627,11 @@ function ConfiguracoesIA() {
           <AIAnalyticsDashboard />
         </TabsContent>
 
+        {/* ---------- FOLLOW-UP ---------- */}
+        <TabsContent value="followup" className="space-y-4">
+          <AIFollowupPanel />
+        </TabsContent>
+
         {/* ---------- AUTOMAÇÃO ---------- */}
         <TabsContent value="automacao" className="space-y-4">
           <AIPilotPanel />
