@@ -58,8 +58,13 @@ export interface AgentDecision {
   message?: string;
   reason?: string;
   detected_city?: string | null;
+  detected_state?: string | null;
   detected_pool_size?: string | null;
   detected_intent?: string | null;
+  detected_interest?: string | null;
+  detected_budget?: string | null;
+  purchase_timing?: PurchaseTiming | null;
+  customer_stage?: CustomerStage | null;
   suggested_products?: string[];
 }
 
