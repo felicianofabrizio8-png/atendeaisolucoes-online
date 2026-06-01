@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_flow_events: {
+        Row: {
+          company_id: string
+          conversation_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          lead_id: string | null
+          payload: Json
+        }
+        Insert: {
+          company_id: string
+          conversation_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json
+        }
+        Update: {
+          company_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json
+        }
+        Relationships: []
+      }
       ai_knowledge_proposals: {
         Row: {
           answer: string
@@ -202,6 +232,12 @@ export type Database = {
       }
       company_settings: {
         Row: {
+          ai_after_hours_only: boolean
+          ai_agent_name: string
+          ai_auto_reply_enabled: boolean
+          ai_handoff_timeout_minutes: number
+          ai_initial_message: string | null
+          ai_max_auto_replies: number
           business_hours_end: string
           business_hours_start: string
           company_id: string
@@ -212,6 +248,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_after_hours_only?: boolean
+          ai_agent_name?: string
+          ai_auto_reply_enabled?: boolean
+          ai_handoff_timeout_minutes?: number
+          ai_initial_message?: string | null
+          ai_max_auto_replies?: number
           business_hours_end?: string
           business_hours_start?: string
           company_id: string
@@ -222,6 +264,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_after_hours_only?: boolean
+          ai_agent_name?: string
+          ai_auto_reply_enabled?: boolean
+          ai_handoff_timeout_minutes?: number
+          ai_initial_message?: string | null
+          ai_max_auto_replies?: number
           business_hours_end?: string
           business_hours_start?: string
           company_id?: string
@@ -243,36 +291,60 @@ export type Database = {
       }
       conversations: {
         Row: {
+          ai_handling: boolean
+          ai_status: string | null
+          auto_reply_count: number
           awaiting_reply: boolean
           channel: Database["public"]["Enums"]["channel"]
           company_id: string
           created_at: string
+          detected_city: string | null
+          detected_intent: string | null
+          detected_pool_size: string | null
+          human_takeover_at: string | null
           id: string
           interaction_type: string
+          last_auto_reply_at: string | null
           last_message_at: string
           lead_id: string
           unread: number
           updated_at: string
         }
         Insert: {
+          ai_handling?: boolean
+          ai_status?: string | null
+          auto_reply_count?: number
           awaiting_reply?: boolean
           channel: Database["public"]["Enums"]["channel"]
           company_id: string
           created_at?: string
+          detected_city?: string | null
+          detected_intent?: string | null
+          detected_pool_size?: string | null
+          human_takeover_at?: string | null
           id?: string
           interaction_type?: string
+          last_auto_reply_at?: string | null
           last_message_at?: string
           lead_id: string
           unread?: number
           updated_at?: string
         }
         Update: {
+          ai_handling?: boolean
+          ai_status?: string | null
+          auto_reply_count?: number
           awaiting_reply?: boolean
           channel?: Database["public"]["Enums"]["channel"]
           company_id?: string
           created_at?: string
+          detected_city?: string | null
+          detected_intent?: string | null
+          detected_pool_size?: string | null
+          human_takeover_at?: string | null
           id?: string
           interaction_type?: string
+          last_auto_reply_at?: string | null
           last_message_at?: string
           lead_id?: string
           unread?: number
