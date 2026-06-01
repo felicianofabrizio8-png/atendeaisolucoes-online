@@ -1056,6 +1056,15 @@ function StepChoose({
   );
 }
 
+type CheckStatus = "ok" | "warn" | "error" | "idle" | "loading";
+
+interface FriendlyCheck {
+  key: string;
+  label: string;
+  status: CheckStatus;
+  hint?: string;
+}
+
 function StepSuccess({
   saved,
   saving,
@@ -1066,6 +1075,111 @@ function StepSuccess({
   const [testSendOk, setTestSendOk] = useState(false);
   const [openTest, setOpenTest] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+
+  const [checks, setChecks] = useState<FriendlyCheck[]>([
+    { key: "conn", label: "Conexão ativa", status: "idle" },
+    { key: "recv", label: "Recebendo mensagens", status: "idle" },
+    { key: "send", label: "Envio funcionando", status: "idle" },
+    { key: "win24", label: "Janela 24h ativa", status: "idle" },
+  ]);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [tokenExpired, setTokenExpired] = useState(false);
+
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
+
+  const runVerify = useCallback(async () => {
+    setVerifying(true);
+    setVerifyError(null);
+    setChecks((prev) => prev.map((c) => ({ ...c, status: "loading" as CheckStatus })));
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+      const res = await fetch("/api/whatsapp/debug", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ useSaved: true }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        debug_token?: { body?: { data?: { is_valid?: boolean; expires_at?: number } } };
+        phone_number?: { ok?: boolean };
+        webhook_subscribed?: boolean;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+
+      const tokenOk = json.debug_token?.body?.data?.is_valid === true;
+      const expSec = json.debug_token?.body?.data?.expires_at ?? 0;
+      const expSoon = expSec > 0 && expSec * 1000 - Date.now() < 7 * 24 * 60 * 60 * 1000;
+      const phoneOk = json.phone_number?.ok === true;
+      const webhookOk = !!json.webhook_subscribed;
+
+      setTokenExpired(!tokenOk);
+
+      setChecks([
+        {
+          key: "conn",
+          label: "Conexão ativa",
+          status: tokenOk ? (expSoon ? "warn" : "ok") : "error",
+          hint: tokenOk
+            ? expSoon
+              ? "Renovação recomendada em breve"
+              : "Tudo certo"
+            : "Sua conexão expirou",
+        },
+        {
+          key: "recv",
+          label: "Recebendo mensagens",
+          status: webhookOk ? "ok" : "error",
+          hint: webhookOk ? "Pronto para receber" : "Não está recebendo mensagens",
+        },
+        {
+          key: "send",
+          label: "Envio funcionando",
+          status: phoneOk ? "ok" : "error",
+          hint: phoneOk ? "Número ativo" : "Número não acessível",
+        },
+        {
+          key: "win24",
+          label: "Janela 24h ativa",
+          status: phoneOk && tokenOk ? "ok" : "warn",
+          hint: "Respostas livres em até 24h após o cliente escrever",
+        },
+      ]);
+    } catch (e) {
+      setVerifyError(e instanceof Error ? e.message : "Falha ao verificar conexão");
+      setChecks((prev) => prev.map((c) => ({ ...c, status: "error" as CheckStatus })));
+    } finally {
+      setVerifying(false);
+    }
+  }, []);
+
+  // Carrega status da IA + roda verify uma vez
+  useEffect(() => {
+    void runVerify();
+    void (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) return;
+        const res = await fetch("/api/ai/readiness", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = (await res.json()) as {
+          ok?: boolean;
+          readiness?: { status?: string };
+        };
+        if (json.ok && json.readiness?.status) setAiStatus(json.readiness.status);
+      } catch {
+        /* silencia: status IA é apenas informativo */
+      }
+    })();
+  }, [runVerify]);
 
   if (saving) {
     return (
@@ -1082,30 +1196,107 @@ function StepSuccess({
       </p>
     );
   }
+
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 p-5 text-center">
-        <div className="mx-auto h-12 w-12 rounded-full bg-[var(--status-ok)]/15 text-[var(--status-ok)] inline-flex items-center justify-center mb-3">
-          <Check className="h-6 w-6" />
+    <div className="space-y-5">
+      {/* Hero premium */}
+      <div className="relative overflow-hidden rounded-2xl border border-[var(--status-ok)]/30 bg-gradient-to-br from-[var(--status-ok)]/10 via-primary/5 to-transparent p-6">
+        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[var(--status-ok)]/10 blur-3xl" />
+        <div className="relative flex items-start gap-4">
+          <div className="h-14 w-14 rounded-2xl bg-[var(--status-ok)]/15 text-[var(--status-ok)] inline-flex items-center justify-center shrink-0 shadow-sm">
+            <MessageCircle className="h-7 w-7" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <h3 className="text-base font-semibold">WhatsApp pronto para uso</h3>
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5">
+                <BadgeCheck className="h-3 w-3" /> Oficial Meta
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Seu número <span className="font-medium text-foreground">{saved.phone_number ?? saved.display_name}</span> foi conectado com sucesso e já pode receber mensagens dos seus clientes.
+            </p>
+          </div>
         </div>
-        <h3 className="text-sm font-semibold mb-1">
-          WhatsApp pronto para uso
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {saved.display_name} · {saved.phone_number ?? "número conectado"}
-        </p>
       </div>
 
-      {/* Status rápido */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <StatusPill ok label="Conexão ativa" />
-        <StatusPill ok label="Recebendo mensagens" />
-        <StatusPill ok={testSendOk} label={testSendOk ? "Envio aprovado" : "Aguardando teste"} />
-        <StatusPill ok label="Janela 24h ativa" />
+      {/* Status IA */}
+      {aiStatus && <AIStatusCard status={aiStatus} />}
+
+      {/* Token expirado — erro amigável */}
+      {tokenExpired && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-lg bg-destructive/15 text-destructive inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-destructive mb-0.5">
+              Sua conexão expirou
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              Para continuar recebendo e enviando mensagens, clique abaixo para reconectar com a Meta.
+            </p>
+            <Link
+              to="/onboarding/whatsapp"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-destructive text-destructive-foreground hover:opacity-90 px-3 py-2"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Reconectar agora
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Cards de status premium */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {checks.map((c) => {
+          const finalStatus: CheckStatus =
+            c.key === "send" && testSendOk && c.status !== "loading" ? "ok" : c.status;
+          return <StatusCard key={c.key} status={finalStatus} label={c.label} hint={c.hint} />;
+        })}
       </div>
+
+      {/* Verificar conexão */}
+      <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
+        <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center shrink-0">
+          <ShieldCheck className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold">Diagnóstico automático</div>
+          <p className="text-[11px] text-muted-foreground">
+            Testamos tudo de uma vez — conexão, recebimento e envio.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void runVerify()}
+          disabled={verifying}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 disabled:opacity-60"
+        >
+          {verifying ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          {verifying ? "Verificando…" : "Verificar conexão"}
+        </button>
+      </div>
+
+      {verifyError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 text-destructive text-xs px-3 py-2 flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>{verifyError}</span>
+        </div>
+      )}
+
+      {/* CTA teste de envio */}
+      <TestSendButton
+        externalOpen={openTest}
+        onOpenChange={setOpenTest}
+        onSuccess={() => setTestSendOk(true)}
+      />
 
       {/* Modo simples × avançado */}
-      <div className="flex items-center justify-between text-[11px]">
+      <div className="flex items-center justify-between pt-2 text-[11px]">
         <span className="text-muted-foreground">
           {advanced ? "Modo avançado" : "Modo simples"}
         </span>
@@ -1133,35 +1324,130 @@ function StepSuccess({
           <DiagnosticsPanel integrationId={saved.integration_id} />
         </>
       )}
-
-      <TestSendButton
-        externalOpen={openTest}
-        onOpenChange={setOpenTest}
-        onSuccess={() => setTestSendOk(true)}
-      />
     </div>
   );
 }
 
-function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+const STATUS_VISUAL: Record<
+  CheckStatus,
+  { emoji: string; cls: string; iconCls: string }
+> = {
+  ok: {
+    emoji: "✅",
+    cls: "border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5",
+    iconCls: "text-[var(--status-ok)]",
+  },
+  warn: {
+    emoji: "⚠️",
+    cls: "border-yellow-500/30 bg-yellow-500/5",
+    iconCls: "text-yellow-600",
+  },
+  error: {
+    emoji: "❌",
+    cls: "border-destructive/30 bg-destructive/5",
+    iconCls: "text-destructive",
+  },
+  loading: {
+    emoji: "🔄",
+    cls: "border-border bg-muted/40",
+    iconCls: "text-muted-foreground",
+  },
+  idle: {
+    emoji: "•",
+    cls: "border-border bg-background",
+    iconCls: "text-muted-foreground",
+  },
+};
+
+function StatusCard({
+  status,
+  label,
+  hint,
+}: {
+  status: CheckStatus;
+  label: string;
+  hint?: string;
+}) {
+  const v = STATUS_VISUAL[status];
   return (
     <div
       className={cn(
-        "rounded-lg border px-2.5 py-2 text-[11px] flex items-center gap-1.5",
-        ok
-          ? "border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 text-[var(--status-ok)]"
-          : "border-border bg-muted/40 text-muted-foreground",
+        "rounded-xl border p-3 transition-all duration-300",
+        v.cls,
       )}
     >
-      {ok ? (
-        <Check className="h-3 w-3 shrink-0" />
-      ) : (
-        <Loader2 className="h-3 w-3 shrink-0" />
+      <div className={cn("text-lg leading-none mb-1.5", v.iconCls)}>
+        {status === "loading" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <span aria-hidden>{v.emoji}</span>
+        )}
+      </div>
+      <div className="text-[12px] font-semibold leading-tight">{label}</div>
+      {hint && (
+        <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+          {hint}
+        </div>
       )}
-      <span className="truncate font-medium">{label}</span>
     </div>
   );
 }
+
+function AIStatusCard({ status }: { status: string }) {
+  const map: Record<string, { label: string; desc: string; cls: string; emoji: string }> = {
+    ativa: {
+      label: "IA ativa",
+      desc: "Atende automaticamente seus clientes.",
+      cls: "border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 text-[var(--status-ok)]",
+      emoji: "✅",
+    },
+    piloto: {
+      label: "IA em modo piloto",
+      desc: "Respondendo de forma controlada apenas para você acompanhar.",
+      cls: "border-primary/30 bg-primary/5 text-primary",
+      emoji: "🚀",
+    },
+    pronta: {
+      label: "IA pronta para ativar",
+      desc: "Tudo configurado — basta ligar a resposta automática.",
+      cls: "border-primary/20 bg-primary/5 text-primary",
+      emoji: "✨",
+    },
+    parcialmente_configurada: {
+      label: "IA aguardando configuração",
+      desc: "Faltam alguns ajustes antes de ativar.",
+      cls: "border-yellow-500/30 bg-yellow-500/5 text-yellow-700",
+      emoji: "⚠️",
+    },
+    desativada: {
+      label: "IA desativada",
+      desc: "A IA não está respondendo no momento.",
+      cls: "border-border bg-muted/40 text-muted-foreground",
+      emoji: "💤",
+    },
+  };
+  const v = map[status] ?? map.desativada;
+  return (
+    <div className={cn("rounded-xl border p-3 flex items-center gap-3", v.cls)}>
+      <div className="h-9 w-9 rounded-lg bg-background/60 inline-flex items-center justify-center shrink-0">
+        <Bot className="h-5 w-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold flex items-center gap-1.5">
+          <span aria-hidden>{v.emoji}</span> {v.label}
+        </div>
+        <div className="text-[11px] opacity-80">{v.desc}</div>
+      </div>
+      <Link
+        to="/ia"
+        className="text-[11px] font-semibold rounded-md bg-background/80 hover:bg-background px-2.5 py-1.5 text-foreground"
+      >
+        Ajustar
+      </Link>
+    </div>
+  );
+}
+
 
 
 
