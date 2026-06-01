@@ -137,7 +137,7 @@ type DbConversation = {
   lead_temperature?: string | null;
   lead_score?: number;
   lead_ready_to_close?: boolean;
-  detected_objections?: string[] | null;
+  detected_objections?: string[];
 };
 
 function toConversation(r: DbConversation, slaMinutes: number): Conversation {
