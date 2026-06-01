@@ -858,10 +858,12 @@ export async function runAgentTick(conversationId: string): Promise<{
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
         .eq("id", conv.id);
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
-        reason: decision.reason,
-      });
-      return { ok: true, action: "handoff", reason: decision.reason };
+      const reason = decision.reason ?? "unknown";
+      let evType = "handoff_human";
+      if (reason.startsWith("safety_block")) evType = "safety_handoff";
+      else if (reason.startsWith("gateway_")) evType = "gateway_timeout";
+      await logEvent(conv.company_id, conv.id, conv.lead_id, evType, { reason });
+      return { ok: true, action: "handoff", reason };
     }
 
     if (decision.kind !== "reply" || !decision.message) {
