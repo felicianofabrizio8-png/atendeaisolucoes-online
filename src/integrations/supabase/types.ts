@@ -816,6 +816,8 @@ export type Database = {
       visits: {
         Row: {
           address: string | null
+          appointment_type: Database["public"]["Enums"]["appointment_type"]
+          city: string | null
           company_id: string
           created_at: string
           customer_name: string | null
@@ -825,13 +827,17 @@ export type Database = {
           notes: string | null
           product: string | null
           quote_id: string | null
+          salesperson: string | null
           scheduled_at: string
           status: Database["public"]["Enums"]["visit_status"]
+          technician: string | null
           title: string
           updated_at: string
         }
         Insert: {
           address?: string | null
+          appointment_type?: Database["public"]["Enums"]["appointment_type"]
+          city?: string | null
           company_id: string
           created_at?: string
           customer_name?: string | null
@@ -841,13 +847,17 @@ export type Database = {
           notes?: string | null
           product?: string | null
           quote_id?: string | null
+          salesperson?: string | null
           scheduled_at: string
           status?: Database["public"]["Enums"]["visit_status"]
+          technician?: string | null
           title: string
           updated_at?: string
         }
         Update: {
           address?: string | null
+          appointment_type?: Database["public"]["Enums"]["appointment_type"]
+          city?: string | null
           company_id?: string
           created_at?: string
           customer_name?: string | null
@@ -857,8 +867,10 @@ export type Database = {
           notes?: string | null
           product?: string | null
           quote_id?: string | null
+          salesperson?: string | null
           scheduled_at?: string
           status?: Database["public"]["Enums"]["visit_status"]
+          technician?: string | null
           title?: string
           updated_at?: string
         }
@@ -988,6 +1000,13 @@ export type Database = {
         | "recurring_reply"
         | "sales_pattern"
       ai_tone: "comercial" | "amigavel" | "premium" | "tecnico" | "informal"
+      appointment_type:
+        | "visita_tecnica"
+        | "loja"
+        | "retorno_comercial"
+        | "pos_venda"
+        | "instalacao"
+        | "manutencao"
       channel: "whatsapp" | "instagram" | "facebook"
       lead_status:
         | "novo"
@@ -1008,6 +1027,7 @@ export type Database = {
       visit_status:
         | "agendada"
         | "confirmada"
+        | "em_andamento"
         | "concluida"
         | "cancelada"
         | "remarcada"
@@ -1146,6 +1166,14 @@ export const Constants = {
         "sales_pattern",
       ],
       ai_tone: ["comercial", "amigavel", "premium", "tecnico", "informal"],
+      appointment_type: [
+        "visita_tecnica",
+        "loja",
+        "retorno_comercial",
+        "pos_venda",
+        "instalacao",
+        "manutencao",
+      ],
       channel: ["whatsapp", "instagram", "facebook"],
       lead_status: [
         "novo",
@@ -1168,6 +1196,7 @@ export const Constants = {
       visit_status: [
         "agendada",
         "confirmada",
+        "em_andamento",
         "concluida",
         "cancelada",
         "remarcada",
