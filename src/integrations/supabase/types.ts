@@ -1119,6 +1119,63 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_templates: {
+        Row: {
+          auto_use: boolean
+          category: string
+          company_id: string
+          components: Json
+          created_at: string
+          id: string
+          integration_id: string | null
+          language: string
+          last_synced_at: string | null
+          meta_payload: Json
+          meta_template_id: string | null
+          name: string
+          purpose: string | null
+          status: string
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          auto_use?: boolean
+          category: string
+          company_id: string
+          components?: Json
+          created_at?: string
+          id?: string
+          integration_id?: string | null
+          language?: string
+          last_synced_at?: string | null
+          meta_payload?: Json
+          meta_template_id?: string | null
+          name: string
+          purpose?: string | null
+          status?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          auto_use?: boolean
+          category?: string
+          company_id?: string
+          components?: Json
+          created_at?: string
+          id?: string
+          integration_id?: string | null
+          language?: string
+          last_synced_at?: string | null
+          meta_payload?: Json
+          meta_template_id?: string | null
+          name?: string
+          purpose?: string | null
+          status?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       integrations_safe: {
