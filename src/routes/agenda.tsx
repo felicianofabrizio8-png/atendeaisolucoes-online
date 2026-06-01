@@ -725,15 +725,38 @@ function VisitFormModal({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{visit ? "Editar visita" : "Nova visita técnica"}</DialogTitle>
+          <DialogTitle>{visit ? "Editar compromisso" : "Novo compromisso"}</DialogTitle>
           <DialogDescription>
-            Cadastre os detalhes da visita. Você poderá enviar para o técnico no WhatsApp.
+            Cadastre os detalhes do compromisso. Você poderá enviar para o técnico ou cliente no WhatsApp.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
           <div>
-            <Label>Título da visita</Label>
+            <Label>Tipo do compromisso *</Label>
+            <Select value={appointmentType} onValueChange={(v) => setAppointmentType(v as AppointmentType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TYPE_KEYS.map((k) => {
+                  const M = TYPE_META[k];
+                  const I = M.icon;
+                  return (
+                    <SelectItem key={k} value={k}>
+                      <span className="inline-flex items-center gap-2">
+                        <I className="h-3.5 w-3.5" />
+                        {M.label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Título</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
@@ -767,7 +790,7 @@ function VisitFormModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Nome do cliente</Label>
+              <Label>Nome do cliente *</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
             </div>
             <div>
@@ -780,14 +803,44 @@ function VisitFormModal({
             </div>
           </div>
 
-          <div>
-            <Label>Endereço da visita</Label>
-            <Input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Rua, número, bairro, cidade"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Cidade</Label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Ex.: Sorocaba" />
+            </div>
+            <div>
+              <Label>
+                Endereço {meta.needsAddress ? "*" : "(opcional)"}
+              </Label>
+              <Input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                disabled={isStore}
+                placeholder={isStore ? "Não necessário — atendimento na loja" : "Rua, número, bairro"}
+              />
+            </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Vendedor responsável</Label>
+              <Input
+                value={salesperson}
+                onChange={(e) => setSalesperson(e.target.value)}
+                placeholder="Nome do vendedor"
+              />
+            </div>
+            <div>
+              <Label>Técnico responsável</Label>
+              <Input
+                value={technician}
+                onChange={(e) => setTechnician(e.target.value)}
+                placeholder="Nome do técnico"
+                disabled={isStore}
+              />
+            </div>
+          </div>
+
 
           <div className="grid grid-cols-2 gap-3">
             <div>
