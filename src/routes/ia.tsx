@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/ia")({
@@ -60,6 +61,25 @@ interface LogRow {
   was_sent: boolean;
   was_edited: boolean;
   generated_text: string;
+}
+
+interface AutomationSettings {
+  ai_auto_reply_enabled: boolean;
+  ai_after_hours_only: boolean;
+  ai_initial_message: string | null;
+  ai_max_auto_replies: number;
+  ai_handoff_timeout_minutes: number;
+  ai_agent_name: string;
+  business_hours_start: string;
+  business_hours_end: string;
+}
+
+interface FlowEvent {
+  id: string;
+  created_at: string;
+  event_type: string;
+  conversation_id: string | null;
+  payload: Record<string, unknown> | null;
 }
 
 const TONE_OPTIONS: { value: Tone; label: string }[] = [
