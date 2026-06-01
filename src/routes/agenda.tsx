@@ -214,16 +214,42 @@ function AgendaPage() {
     void loadVisits();
   }, [loadVisits]);
 
+  const filteredVisits = useMemo(() => {
+    const now = new Date();
+    return visits.filter((v) => {
+      if (typeFilter !== "todos" && v.appointment_type !== typeFilter) return false;
+      const d = new Date(v.scheduled_at);
+      if (viewMode === "dia") return isToday(d);
+      if (viewMode === "semana") return isThisWeek(d, { locale: ptBR });
+      return true;
+    });
+  }, [visits, typeFilter, viewMode]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, Visit[]>();
-    for (const v of visits) {
+    for (const v of filteredVisits) {
       const dayKey = v.scheduled_at.slice(0, 10);
       const arr = map.get(dayKey) ?? [];
       arr.push(v);
       map.set(dayKey, arr);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredVisits]);
+
+  // Próximo compromisso nas próximas 2 horas — aviso destacado
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    const horizon = addMinutes(now, 120);
+    return visits
+      .filter(
+        (v) =>
+          (v.status === "agendada" || v.status === "confirmada") &&
+          isAfter(new Date(v.scheduled_at), now) &&
+          new Date(v.scheduled_at) <= horizon,
+      )
+      .slice(0, 3);
   }, [visits]);
+
 
   async function handleDelete(id: string) {
     if (!confirm("Excluir esta visita?")) return;
