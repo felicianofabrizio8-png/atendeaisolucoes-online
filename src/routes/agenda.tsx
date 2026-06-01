@@ -918,12 +918,13 @@ function buildTechMessage(v: Visit): string {
   const data = format(d, "dd/MM/yyyy", { locale: ptBR });
   const hora = format(d, "HH:mm");
   const lines = [
-    "📍 Visita técnica agendada",
+    `📍 ${TYPE_META[v.appointment_type].label} agendada`,
     "",
     `Cliente: ${v.customer_name ?? "—"}`,
     `Telefone: ${v.customer_phone ?? "—"}`,
     `Data: ${data}`,
     `Horário: ${hora}`,
+    `Cidade: ${v.city ?? "—"}`,
     `Endereço: ${v.address ?? "—"}`,
     `Produto/interesse: ${v.product ?? "—"}`,
     `Observações: ${v.notes ?? "—"}`,
