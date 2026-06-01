@@ -46,6 +46,8 @@ import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followu
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
+import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whatsapp.templates.sync'
+import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
@@ -235,6 +237,18 @@ const ApiAiAgentTakeoverRoute = ApiAiAgentTakeoverRouteImport.update({
   path: '/api/ai/agent-takeover',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappTemplatesSyncRoute =
+  ApiWhatsappTemplatesSyncRouteImport.update({
+    id: '/api/whatsapp/templates/sync',
+    path: '/api/whatsapp/templates/sync',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatesListRoute =
+  ApiWhatsappTemplatesListRouteImport.update({
+    id: '/api/whatsapp/templates/list',
+    path: '/api/whatsapp/templates/list',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -295,6 +309,8 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -336,6 +352,8 @@ export interface FileRoutesByTo {
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -379,6 +397,8 @@ export interface FileRoutesById {
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -423,6 +443,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
+    | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/sync'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -464,6 +486,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
+    | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/sync'
   id:
     | '__root__'
     | '/'
@@ -506,6 +530,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
+    | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/sync'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -547,6 +573,8 @@ export interface RootRouteChildren {
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
+  ApiWhatsappTemplatesListRoute: typeof ApiWhatsappTemplatesListRoute
+  ApiWhatsappTemplatesSyncRoute: typeof ApiWhatsappTemplatesSyncRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -810,6 +838,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiAgentTakeoverRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/templates/sync': {
+      id: '/api/whatsapp/templates/sync'
+      path: '/api/whatsapp/templates/sync'
+      fullPath: '/api/whatsapp/templates/sync'
+      preLoaderRoute: typeof ApiWhatsappTemplatesSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/templates/list': {
+      id: '/api/whatsapp/templates/list'
+      path: '/api/whatsapp/templates/list'
+      fullPath: '/api/whatsapp/templates/list'
+      preLoaderRoute: typeof ApiWhatsappTemplatesListRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -885,7 +927,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
+  ApiWhatsappTemplatesListRoute: ApiWhatsappTemplatesListRoute,
+  ApiWhatsappTemplatesSyncRoute: ApiWhatsappTemplatesSyncRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
