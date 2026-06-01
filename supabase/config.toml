@@ -1,22 +1,6 @@
 project_id = "ubnlvxkjemzhvmulowhj"
 
-# Webhook público — recebe mensagens do servidor WhatsApp QR (Baileys legado).
-[functions.whatsapp-qr-incoming]
-verify_jwt = false
-
-# Webhook público — recebe eventos da Evolution API.
-[functions.whatsapp-evolution-incoming]
-verify_jwt = false
-
-# Envio de mensagens via Evolution — exige usuário autenticado da plataforma.
-[functions.send-whatsapp-message]
-verify_jwt = true
-
-# Status/QR/contatos da instância Evolution — exige usuário autenticado.
-[functions.whatsapp-status]
-verify_jwt = true
-
-# Webhook público da Meta (Instagram / Facebook / Messenger).
+# Webhook público da Meta (Instagram / Facebook / Messenger / WhatsApp Cloud API).
 [functions.meta-webhook]
 verify_jwt = false
 
