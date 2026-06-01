@@ -835,7 +835,8 @@ function ConversationPage() {
         )}
 
         {/* Composer */}
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-3 shrink-0 bg-background">
+
           <div className="flex items-end gap-2">
             <button
               onClick={generateAI}
