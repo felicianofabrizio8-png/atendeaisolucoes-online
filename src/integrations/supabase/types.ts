@@ -1062,6 +1062,7 @@ export type Database = {
       }
     }
     Functions: {
+      ai_agent_maintenance: { Args: never; Returns: undefined }
       current_company_id: { Args: never; Returns: string }
     }
     Enums: {
