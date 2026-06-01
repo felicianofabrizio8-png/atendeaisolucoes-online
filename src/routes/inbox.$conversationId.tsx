@@ -783,7 +783,7 @@ function ConversationPage() {
               <div
                 key={m.id}
                 className={cn(
-                  "flex flex-col max-w-[75%]",
+                  "flex flex-col max-w-[90%] md:max-w-[75%]",
                   m.role === "agent" ? "ml-auto items-end" : "items-start",
                 )}
               >
