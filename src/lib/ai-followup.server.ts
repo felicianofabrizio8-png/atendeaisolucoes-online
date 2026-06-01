@@ -464,11 +464,14 @@ export async function runFollowupTickForCompany(
 
   // Gate v2 (limite diário, taxa de resposta, warmup, integração ativa).
   // Falha-segura: se v2 não existir ou ok=true, segue normalmente.
-  const v2Gate = await canSendFollowupNow(companyId).catch(() => ({ ok: true }));
+  const v2Gate = await canSendFollowupNow(companyId).catch(
+    () => ({ ok: true as const, reason: undefined as string | undefined }),
+  );
   if (!v2Gate.ok) {
-    result.errors.push(`gate v2: ${v2Gate.reason ?? "bloqueado"}`);
+    result.errors.push(`gate v2: ${("reason" in v2Gate && v2Gate.reason) || "bloqueado"}`);
     return result;
   }
+
   const v2 = await getFollowupV2Settings(companyId).catch(() => null);
   const humanize = v2?.humanize ?? false;
 
