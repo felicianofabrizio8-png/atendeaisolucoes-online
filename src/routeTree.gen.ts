@@ -43,6 +43,7 @@ import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
 import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
 import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
+import { Route as ApiAiFollowupStatusRouteImport } from './routes/api.ai.followup-status'
 import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
@@ -224,6 +225,11 @@ const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
   path: '/api/ai/mark-sent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiFollowupStatusRoute = ApiAiFollowupStatusRouteImport.update({
+  id: '/api/ai/followup-status',
+  path: '/api/ai/followup-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
   id: '/api/ai/followup-config',
   path: '/api/ai/followup-config',
@@ -303,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
+  '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -348,6 +355,7 @@ export interface FileRoutesByTo {
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
+  '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -395,6 +403,7 @@ export interface FileRoutesById {
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
+  '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -443,6 +452,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
     | '/api/ai/followup-config'
+    | '/api/ai/followup-status'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -488,6 +498,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
     | '/api/ai/followup-config'
+    | '/api/ai/followup-status'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -534,6 +545,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
     | '/api/ai/followup-config'
+    | '/api/ai/followup-status'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -579,6 +591,7 @@ export interface RootRouteChildren {
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
   ApiAiFollowupConfigRoute: typeof ApiAiFollowupConfigRoute
+  ApiAiFollowupStatusRoute: typeof ApiAiFollowupStatusRoute
   ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
   ApiAiPilotToggleRoute: typeof ApiAiPilotToggleRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
@@ -844,6 +857,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiMarkSentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/followup-status': {
+      id: '/api/ai/followup-status'
+      path: '/api/ai/followup-status'
+      fullPath: '/api/ai/followup-status'
+      preLoaderRoute: typeof ApiAiFollowupStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/followup-config': {
       id: '/api/ai/followup-config'
       path: '/api/ai/followup-config'
@@ -949,6 +969,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
   ApiAiFollowupConfigRoute: ApiAiFollowupConfigRoute,
+  ApiAiFollowupStatusRoute: ApiAiFollowupStatusRoute,
   ApiAiMarkSentRoute: ApiAiMarkSentRoute,
   ApiAiPilotToggleRoute: ApiAiPilotToggleRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
