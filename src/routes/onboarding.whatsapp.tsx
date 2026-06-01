@@ -1060,6 +1060,9 @@ function StepSuccess({
   saved: SavedInfo | null;
   saving: boolean;
 }) {
+  const [testSendOk, setTestSendOk] = useState(false);
+  const [openTest, setOpenTest] = useState(false);
+
   if (saving) {
     return (
       <div className="py-10 text-center text-xs text-muted-foreground">
@@ -1085,10 +1088,14 @@ function StepSuccess({
           WhatsApp conectado com sucesso
         </h3>
         <p className="text-xs text-muted-foreground">
-          Sua empresa está pronta para enviar e receber mensagens pelo número
-          oficial.
+          Confira o checklist abaixo para garantir que tudo está ativo na Meta.
         </p>
       </div>
+
+      <OnboardingChecklist
+        testSendOk={testSendOk}
+        onTestSend={() => setOpenTest(true)}
+      />
 
       <div className="rounded-lg border border-border bg-background p-4 space-y-2">
         <Row label="Número" value={saved.phone_number ?? "—"} />
@@ -1099,11 +1106,15 @@ function StepSuccess({
 
       <DiagnosticsPanel integrationId={saved.integration_id} />
 
-
-      <TestSendButton />
+      <TestSendButton
+        externalOpen={openTest}
+        onOpenChange={setOpenTest}
+        onSuccess={() => setTestSendOk(true)}
+      />
     </div>
   );
 }
+
 
 function TestSendButton() {
   const [open, setOpen] = useState(false);
