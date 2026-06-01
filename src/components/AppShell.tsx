@@ -214,9 +214,9 @@ export function AppShell() {
         {FooterPanel}
       </aside>
 
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 min-w-0 min-h-0 h-full flex flex-col">
         {/* Topbar mobile */}
-        <div className="md:hidden h-12 px-3 border-b border-border flex items-center gap-2 bg-sidebar">
+        <div className="md:hidden h-12 px-3 border-b border-border flex items-center gap-2 bg-sidebar shrink-0">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <button
@@ -242,9 +242,10 @@ export function AppShell() {
           <ThemeToggle />
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto">
           <Outlet />
         </div>
+
       </main>
     </div>
   );
