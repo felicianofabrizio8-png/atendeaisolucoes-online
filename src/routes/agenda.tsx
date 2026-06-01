@@ -623,18 +623,33 @@ function VisitFormModal({
     ? format(new Date(visit.scheduled_at), "HH:mm")
     : "09:00";
 
+  const [appointmentType, setAppointmentType] = useState<AppointmentType>(
+    visit?.appointment_type ?? "visita_tecnica",
+  );
   const [title, setTitle] = useState(visit?.title ?? "Visita técnica");
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [leadId, setLeadId] = useState<string>(visit?.lead_id ?? "none");
   const [customerName, setCustomerName] = useState(visit?.customer_name ?? "");
   const [customerPhone, setCustomerPhone] = useState(visit?.customer_phone ?? "");
+  const [city, setCity] = useState(visit?.city ?? "");
   const [address, setAddress] = useState(visit?.address ?? "");
   const [product, setProduct] = useState(visit?.product ?? "");
   const [quoteId, setQuoteId] = useState<string>(visit?.quote_id ?? "none");
+  const [salesperson, setSalesperson] = useState(visit?.salesperson ?? "");
+  const [technician, setTechnician] = useState(visit?.technician ?? "");
   const [notes, setNotes] = useState(visit?.notes ?? "");
   const [status, setStatus] = useState<VisitStatus>(visit?.status ?? "agendada");
   const [saving, setSaving] = useState(false);
+
+  const meta = TYPE_META[appointmentType];
+  const isStore = appointmentType === "loja";
+
+  // Atualiza título sugerido quando troca o tipo (apenas na criação)
+  useEffect(() => {
+    if (!visit) setTitle(meta.label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentType]);
 
   // Quando escolhe lead, autopreenche nome/telefone
   useEffect(() => {
@@ -658,24 +673,32 @@ function VisitFormModal({
       toast.error("Empresa não identificada");
       return;
     }
-    if (!title.trim()) return toast.error("Informe o título da visita");
+    if (!title.trim()) return toast.error("Informe o título do compromisso");
     if (!date || !time) return toast.error("Informe data e horário");
     if (!customerName.trim()) return toast.error("Informe o nome do cliente");
+    if (meta.needsAddress && !address.trim()) {
+      return toast.error(`Informe o endereço para ${meta.label.toLowerCase()}`);
+    }
 
     const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
     const payload = {
       company_id: companyId,
       title: title.trim(),
-      address: address.trim() || null,
+      appointment_type: appointmentType,
+      address: isStore ? null : address.trim() || null,
+      city: city.trim() || null,
       scheduled_at: scheduledAt,
       status,
       notes: notes.trim() || null,
       customer_name: customerName.trim() || null,
       customer_phone: customerPhone.trim() || null,
       product: product.trim() || null,
+      salesperson: salesperson.trim() || null,
+      technician: technician.trim() || null,
       lead_id: leadId !== "none" ? leadId : null,
       quote_id: quoteId !== "none" ? quoteId : null,
     };
+
 
     setSaving(true);
     try {
