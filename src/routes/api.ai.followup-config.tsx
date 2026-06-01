@@ -131,13 +131,29 @@ export const Route = createFileRoute("/api/ai/followup-config")({
         const companyId = await authedCompanyId(request);
         if (!companyId)
           return Response.json({ ok: false, error: "não autenticado" }, { status: 401 });
-        await reconcileResponses(companyId); // atualiza respostas pendentes
-        const [settings, log, metrics] = await Promise.all([
-          getFollowupSettings(companyId),
-          getRecentLog(companyId),
-          getMetrics(companyId),
-        ]);
-        return Response.json({ ok: true, settings, log, metrics });
+        await reconcileResponses(companyId);
+        const [settings, log, metrics, v2, whatsapp, gate, analytics, temperatures] =
+          await Promise.all([
+            getFollowupSettings(companyId),
+            getRecentLog(companyId),
+            getMetrics(companyId),
+            getFollowupV2Settings(companyId),
+            getWhatsappIntegrationStatus(companyId),
+            canSendFollowupNow(companyId),
+            getAdvancedAnalytics(companyId),
+            getLeadTemperatureSummary(companyId),
+          ]);
+        return Response.json({
+          ok: true,
+          settings,
+          log,
+          metrics,
+          v2,
+          whatsapp,
+          gate,
+          analytics,
+          temperatures,
+        });
       },
       PUT: async ({ request }: { request: Request }) => {
         const companyId = await authedCompanyId(request);
