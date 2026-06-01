@@ -177,7 +177,7 @@ export const Route = createFileRoute("/api/whatsapp/debug")({
                 body: { error: "META_APP_ID/META_APP_SECRET ausentes no servidor" },
               };
 
-        const [meRes, wabaRes, phoneRes] = await Promise.all([
+        const [meRes, wabaRes, phoneRes, subsRes, billingRes] = await Promise.all([
           gjson(`${GRAPH}/me?fields=id,name`, { headers }),
           wabaId
             ? gjson(
@@ -199,7 +199,36 @@ export const Route = createFileRoute("/api/whatsapp/debug")({
                 ok: false,
                 body: { skipped: "phoneNumberId não informado" },
               }),
+          wabaId
+            ? gjson(`${GRAPH}/${encodeURIComponent(wabaId)}/subscribed_apps`, { headers })
+            : Promise.resolve({ status: 0, ok: false, body: { skipped: "no waba" } }),
+          wabaId
+            ? gjson(
+                `${GRAPH}/${encodeURIComponent(wabaId)}?fields=account_review_status,business_verification_status`,
+                { headers },
+              )
+            : Promise.resolve({ status: 0, ok: false, body: { skipped: "no waba" } }),
         ]);
+
+        const subsBody = (subsRes as { body?: unknown }).body as
+          | { data?: unknown[] }
+          | undefined;
+        const webhookSubscribed =
+          (subsRes as { ok?: boolean }).ok === true &&
+          Array.isArray(subsBody?.data) &&
+          (subsBody!.data!.length ?? 0) > 0;
+
+        const wabaBodyForBilling = (wabaRes as { body?: unknown }).body as
+          | { currency?: string }
+          | undefined;
+        const billingBody = (billingRes as { body?: unknown }).body as
+          | { account_review_status?: string; business_verification_status?: string }
+          | undefined;
+        const billingLikelyOk =
+          !!wabaBodyForBilling?.currency &&
+          (billingBody?.account_review_status ?? "").toUpperCase() !== "REJECTED";
+
+
 
         // Comparação WABA: real (vindo do phone_number) x salva no banco x informada
         const phoneBody = (phoneRes as { body?: unknown }).body as
@@ -268,9 +297,14 @@ export const Route = createFileRoute("/api/whatsapp/debug")({
           me: meRes,
           waba: wabaRes,
           phone_number: phoneRes,
+          subscribed_apps: subsRes,
+          billing: billingRes,
+          webhook_subscribed: webhookSubscribed,
+          billing_likely_ok: billingLikelyOk,
           comparison,
           test_send: sendRes,
         });
+
       },
     },
   },

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+
 
 export const Route = createFileRoute("/onboarding/whatsapp")({
   head: () => ({
@@ -1058,6 +1060,9 @@ function StepSuccess({
   saved: SavedInfo | null;
   saving: boolean;
 }) {
+  const [testSendOk, setTestSendOk] = useState(false);
+  const [openTest, setOpenTest] = useState(false);
+
   if (saving) {
     return (
       <div className="py-10 text-center text-xs text-muted-foreground">
@@ -1083,10 +1088,14 @@ function StepSuccess({
           WhatsApp conectado com sucesso
         </h3>
         <p className="text-xs text-muted-foreground">
-          Sua empresa está pronta para enviar e receber mensagens pelo número
-          oficial.
+          Confira o checklist abaixo para garantir que tudo está ativo na Meta.
         </p>
       </div>
+
+      <OnboardingChecklist
+        testSendOk={testSendOk}
+        onTestSend={() => setOpenTest(true)}
+      />
 
       <div className="rounded-lg border border-border bg-background p-4 space-y-2">
         <Row label="Número" value={saved.phone_number ?? "—"} />
@@ -1097,14 +1106,31 @@ function StepSuccess({
 
       <DiagnosticsPanel integrationId={saved.integration_id} />
 
-
-      <TestSendButton />
+      <TestSendButton
+        externalOpen={openTest}
+        onOpenChange={setOpenTest}
+        onSuccess={() => setTestSendOk(true)}
+      />
     </div>
   );
 }
 
-function TestSendButton() {
-  const [open, setOpen] = useState(false);
+
+function TestSendButton({
+  externalOpen,
+  onOpenChange,
+  onSuccess,
+}: {
+  externalOpen?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  onSuccess?: () => void;
+} = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = (v: boolean) => {
+    setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [phone, setPhone] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<
@@ -1112,6 +1138,7 @@ function TestSendButton() {
     | { kind: "err"; msg: string }
     | null
   >(null);
+
 
   const DEFAULT_MSG = "Teste de conexão do Atende Ai realizado com sucesso.";
 
@@ -1138,6 +1165,8 @@ function TestSendButton() {
         setResult({ kind: "err", msg: json.error ?? `Erro HTTP ${res.status}` });
       } else {
         setResult({ kind: "ok", to: json.to ?? phone });
+        onSuccess?.();
+
       }
     } catch (e) {
       setResult({
