@@ -186,9 +186,11 @@ export function AppShell() {
 
   const Brand = (
     <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
-      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <Sparkles className="h-4 w-4" />
-      </div>
+      <img
+        src="/icon-192.png"
+        alt="Atende Ai!"
+        className="h-8 w-8 drop-shadow-[0_0_10px_rgba(34,211,238,0.35)]"
+      />
       <div className="leading-tight flex-1 min-w-0">
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
@@ -233,9 +235,11 @@ export function AppShell() {
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
+            <img
+              src="/icon-192.png"
+              alt="Atende Ai!"
+              className="h-7 w-7 shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
+            />
             <span className="text-sm font-semibold truncate">Atende Ai!</span>
           </div>
           <ThemeToggle />
