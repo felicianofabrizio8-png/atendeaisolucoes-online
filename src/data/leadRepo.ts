@@ -126,6 +126,9 @@ type DbConversation = {
   interaction_type?: string;
   ai_status?: string | null;
   ai_handling?: boolean;
+  auto_reply_count?: number;
+  human_takeover_at?: string | null;
+  last_auto_reply_at?: string | null;
   detected_city?: string | null;
   detected_state?: string | null;
   detected_pool_size?: string | null;
@@ -155,6 +158,9 @@ function toConversation(r: DbConversation, slaMinutes: number): Conversation {
       | "comment",
     aiStatus: r.ai_status ?? null,
     aiHandling: r.ai_handling ?? false,
+    autoReplyCount: r.auto_reply_count ?? 0,
+    humanTakeoverAt: r.human_takeover_at ?? null,
+    lastAutoReplyAt: r.last_auto_reply_at ?? null,
     detectedCity: r.detected_city ?? null,
     detectedState: r.detected_state ?? null,
     detectedPoolSize: r.detected_pool_size ?? null,
@@ -231,7 +237,7 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("conversations")
-        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type")
+        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections")
         .eq("company_id", companyId),
       supabase
         .from("messages")

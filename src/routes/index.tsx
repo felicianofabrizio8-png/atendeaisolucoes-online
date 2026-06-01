@@ -376,6 +376,80 @@ function DashboardPage() {
         />
       </section>
 
+      {/* Comercial IA */}
+      {(() => {
+        const inPeriod = (iso: string | null | undefined) =>
+          !!iso && new Date(iso).getTime() >= since;
+        const convsCh = allConversations.filter(matchesChannel);
+        const hotNow = convsCh.filter((c) => {
+          const lead = leadById.get(c.leadId);
+          return c.leadTemperature === "quente" || lead?.status === "quente";
+        }).length;
+        const readyNow = convsCh.filter((c) => c.leadReadyToClose).length;
+        const preIa = convsCh.filter(
+          (c) => c.aiStatus === "pre_atendido_ia" || (c.autoReplyCount ?? 0) > 0,
+        ).length;
+        const takeovers = convsCh.filter(
+          (c) =>
+            c.aiStatus === "assumido_humano" ||
+            (c.humanTakeoverAt && inPeriod(c.humanTakeoverAt)),
+        ).length;
+
+        // Tempo médio até resposta no período (lead → próximo agent)
+        let gapSum = 0;
+        let gapCount = 0;
+        for (const c of convsCh) {
+          const msgs = getMessagesFor(c.id);
+          for (let i = 0; i < msgs.length - 1; i++) {
+            const m = msgs[i];
+            const n = msgs[i + 1];
+            if (m.role === "lead" && n.role === "agent") {
+              const t = new Date(m.at).getTime();
+              if (t < since) continue;
+              const dt = (new Date(n.at).getTime() - t) / 60000;
+              if (dt >= 0 && dt < 60 * 24) {
+                gapSum += dt;
+                gapCount += 1;
+              }
+            }
+          }
+        }
+        const avgResp = gapCount > 0 ? Math.round(gapSum / gapCount) : null;
+
+        // Vendas recuperadas: fechado no período E IA atuou
+        const recovered = allLeads.filter((l) => {
+          if (channel !== "todos" && l.channel !== channel) return false;
+          if (l.status !== "fechado") return false;
+          if (!inPeriod(l.closedAt)) return false;
+          const conv = allConversations.find((c) => c.leadId === l.id);
+          return !!conv && ((conv.autoReplyCount ?? 0) > 0 || conv.aiStatus === "assumido_humano");
+        });
+        const recoveredCount = recovered.length;
+        const recoveredValue = recovered.reduce((s, l) => s + (l.closedValue ?? 0), 0);
+
+        return (
+          <section className="px-4 md:px-8 pb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm">🤖</span>
+              <h2 className="text-sm font-semibold uppercase tracking-wide">Comercial IA</h2>
+              <span className="text-[10px] text-muted-foreground hidden md:inline">
+                · pré-atendimento, qualificação e recuperação
+              </span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+              <KpiCard icon={Flame}        label="Leads quentes"      sub="agora"      value={hotNow}        tone={hotNow > 0 ? "hot" : "muted"} />
+              <KpiCard icon={CheckCircle2} label="Prontos p/ fechar"  sub="agora"      value={readyNow}      tone={readyNow > 0 ? "good" : "muted"} />
+              <KpiCard icon={MessageSquare} label="Pré-atendidos IA"   sub="conversas" value={preIa}         tone={preIa > 0 ? "primary" : "muted"} />
+              <KpiCard icon={UserRound}    label="IA → humano"        sub="handoffs"   value={takeovers}     tone={takeovers > 0 ? "warm" : "muted"} />
+              <KpiCard icon={Clock}        label="Resp. média"        sub="min (lead→agente)" value={avgResp !== null ? `${avgResp}m` : "—"} tone={avgResp !== null && avgResp <= 15 ? "good" : avgResp !== null ? "warm" : "muted"} />
+              <KpiCard icon={DollarSign}   label="Vendas recuperadas" sub={`${recoveredCount} fechad${recoveredCount === 1 ? "o" : "os"}`} value={formatBRL(recoveredValue)} tone={recoveredCount > 0 ? "good" : "muted"} />
+            </div>
+          </section>
+        );
+      })()}
+
+
+
       {/* 3 blocos */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-4 md:px-8 pb-6">
         {/* Atenção agora */}

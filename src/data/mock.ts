@@ -52,6 +52,9 @@ export interface Conversation {
   // Qualificação IA (Fase 2)
   aiStatus?: string | null;
   aiHandling?: boolean;
+  autoReplyCount?: number;
+  humanTakeoverAt?: string | null;
+  lastAutoReplyAt?: string | null;
   detectedCity?: string | null;
   detectedState?: string | null;
   detectedPoolSize?: string | null;
