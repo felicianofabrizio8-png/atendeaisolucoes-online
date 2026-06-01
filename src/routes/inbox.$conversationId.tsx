@@ -131,7 +131,7 @@ function ImagePreview({ url }: { url: string }) {
         src={url}
         alt="Imagem"
         onError={() => setError(true)}
-        className="rounded-md max-w-[240px] w-full h-auto cursor-zoom-in"
+        className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
         loading="lazy"
       />
     </a>
