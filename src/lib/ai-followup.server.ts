@@ -462,6 +462,16 @@ export async function runFollowupTickForCompany(
     return result;
   }
 
+  // Gate v2 (limite diário, taxa de resposta, warmup, integração ativa).
+  // Falha-segura: se v2 não existir ou ok=true, segue normalmente.
+  const v2Gate = await canSendFollowupNow(companyId).catch(() => ({ ok: true }));
+  if (!v2Gate.ok) {
+    result.errors.push(`gate v2: ${v2Gate.reason ?? "bloqueado"}`);
+    return result;
+  }
+  const v2 = await getFollowupV2Settings(companyId).catch(() => null);
+  const humanize = v2?.humanize ?? false;
+
   const candidates = await findCandidates(companyId, s);
   result.scanned = candidates.length;
 
@@ -476,7 +486,9 @@ export async function runFollowupTickForCompany(
       continue;
     }
     const attempt = check.attempt ?? 1;
-    const text = await buildMessage(c, s, attempt);
+    const built = await buildMessage(c, s, attempt, humanize);
+    const text = built.text;
+
 
     // ---- Fora da janela de 24h: tenta template Utility aprovado ----
     if (check.outsideWindow) {
