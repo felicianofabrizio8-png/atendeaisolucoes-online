@@ -144,7 +144,35 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           }
         }
 
+        // 24h window guard — fora da janela só pode enviar template Utility.
+        if (conversationId) {
+          const win = await isWithin24hWindow(conversationId);
+          if (!win.inside) {
+            await supabaseAdmin.from("ai_flow_events").insert({
+              company_id: companyId,
+              conversation_id: conversationId,
+              lead_id: leadId,
+              event_type: "template_blocked",
+              payload: {
+                reason: "outside_24h_window",
+                last_lead_at: win.lastLeadAt,
+                source: "manual_send",
+              },
+            });
+            return Response.json(
+              {
+                error: "Cliente fora da janela de 24h. Use um template aprovado.",
+                requires_template: true,
+                reason: "Cliente fora da janela de 24h. Use um template aprovado.",
+                last_lead_at: win.lastLeadAt,
+              },
+              { status: 409 },
+            );
+          }
+        }
+
         // Lead pra pegar telefone destino
+
         const { data: lead } = await supabaseAdmin
           .from("leads")
           .select("id, phone, external_id, integration_id, company_id")
