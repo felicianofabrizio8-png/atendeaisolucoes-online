@@ -47,6 +47,7 @@ import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicWhatsappQrIncomingRouteImport } from './routes/api.public.whatsapp-qr.incoming'
+import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 
 const WhatsappRoute = WhatsappRouteImport.update({
@@ -241,6 +242,12 @@ const ApiPublicWhatsappQrIncomingRoute =
     path: '/api/public/whatsapp-qr/incoming',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksFollowupTickRoute =
+  ApiPublicHooksFollowupTickRouteImport.update({
+    id: '/api/public/hooks/followup-tick',
+    path: '/api/public/hooks/followup-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAgentTriggerRoute =
   ApiPublicHooksAgentTriggerRouteImport.update({
     id: '/api/public/hooks/agent-trigger',
@@ -286,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
+  '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -326,6 +334,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
+  '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -368,6 +377,7 @@ export interface FileRoutesById {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
+  '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -411,6 +421,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
     | '/api/public/hooks/agent-trigger'
+    | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -451,6 +462,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
     | '/api/public/hooks/agent-trigger'
+    | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   id:
@@ -492,6 +504,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
     | '/api/public/hooks/agent-trigger'
+    | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
@@ -532,6 +545,7 @@ export interface RootRouteChildren {
   ApiWhatsappTokenRefreshRoute: typeof ApiWhatsappTokenRefreshRoute
   AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
+  ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
   ApiPublicWhatsappQrIncomingRoute: typeof ApiPublicWhatsappQrIncomingRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
@@ -804,6 +818,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappQrIncomingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/followup-tick': {
+      id: '/api/public/hooks/followup-tick'
+      path: '/api/public/hooks/followup-tick'
+      fullPath: '/api/public/hooks/followup-tick'
+      preLoaderRoute: typeof ApiPublicHooksFollowupTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/agent-trigger': {
       id: '/api/public/hooks/agent-trigger'
       path: '/api/public/hooks/agent-trigger'
@@ -862,9 +883,19 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappTokenRefreshRoute: ApiWhatsappTokenRefreshRoute,
   AuthMetaCallbackRoute: AuthMetaCallbackRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
+  ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
   ApiPublicWhatsappQrIncomingRoute: ApiPublicWhatsappQrIncomingRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
