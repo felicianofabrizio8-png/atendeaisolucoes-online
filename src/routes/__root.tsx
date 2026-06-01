@@ -33,16 +33,33 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Atende Ai! — Vendas que não esperam" },
-      { name: "description", content: "Novo" },
+      {
+        name: "description",
+        content:
+          "Plataforma de atendimento e vendas com IA para WhatsApp, Instagram e Facebook. Responda leads em segundos, qualifique automaticamente e feche mais negócios.",
+      },
       { name: "author", content: "Atende Ai!" },
-      { property: "og:title", content: "Atende Ai! — Vendas que não esperam" },
-      { property: "og:description", content: "Novo" },
+      {
+        property: "og:title",
+        content: "Atende Ai! — Vendas que não esperam",
+      },
+      {
+        property: "og:description",
+        content:
+          "IA que atende seus leads no WhatsApp em segundos, qualifica e passa para o vendedor na hora certa.",
+      },
       { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "Atende Ai!" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "Atende Ai! — Vendas que não esperam" },
-      { name: "twitter:description", content: "Novo" },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/db9ac163-1d32-450f-9454-de821e1b38e5/id-preview-0f87882e--23e14a46-10ac-4695-adc6-36e0ab29fd20.lovable.app-1777171867510.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/db9ac163-1d32-450f-9454-de821e1b38e5/id-preview-0f87882e--23e14a46-10ac-4695-adc6-36e0ab29fd20.lovable.app-1777171867510.png" },
+      {
+        name: "twitter:title",
+        content: "Atende Ai! — Vendas que não esperam",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "IA que atende seus leads no WhatsApp em segundos, qualifica e passa para o vendedor na hora certa.",
+      },
       { name: "theme-color", content: "#0f172a" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
