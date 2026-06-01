@@ -904,7 +904,7 @@ function VisitFormModal({
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             <CalendarIcon className="h-4 w-4" />
-            {saving ? "Salvando..." : visit ? "Salvar alterações" : "Agendar visita"}
+            {saving ? "Salvando..." : visit ? "Salvar alterações" : "Agendar compromisso"}
           </Button>
         </DialogFooter>
       </DialogContent>
