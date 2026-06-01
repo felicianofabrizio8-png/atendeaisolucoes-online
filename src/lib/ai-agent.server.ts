@@ -471,12 +471,22 @@ export async function runAgentTurn(params: {
   }
   const reply = args as ToolReply;
   if (!reply.message) return { kind: "handoff", reason: "empty_message" };
+  const stageRaw = reply.customer_stage?.toLowerCase().trim();
+  const stage: CustomerStage | null =
+    stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
+      ? stageRaw
+      : null;
   return {
     kind: "reply",
     message: reply.message,
     detected_city: reply.detected_city ?? null,
+    detected_state: normalizeState(reply.detected_state) ?? reply.detected_state ?? null,
     detected_pool_size: reply.detected_pool_size ?? null,
     detected_intent: reply.detected_intent ?? null,
+    detected_interest: reply.detected_interest ?? null,
+    detected_budget: reply.detected_budget ?? null,
+    purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
+    customer_stage: stage,
     suggested_products: reply.suggest_products ?? [],
   };
 }
