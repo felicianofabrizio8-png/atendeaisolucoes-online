@@ -114,14 +114,14 @@ export function OnboardingChecklist({
   const items: Item[] = (() => {
     if (loading || !data) {
       return [
-        "Login Meta",
-        "Empresa selecionada",
-        "WABA encontrada",
+        "Conta Meta conectada",
+        "Empresa vinculada",
+        "Conta WhatsApp Business",
         "Número conectado",
-        "Token válido",
-        "Webhook ativo",
+        "Conexão ativa",
+        "Recebimento de mensagens",
         "Pagamento configurado",
-        "Teste de envio aprovado",
+        "Envio aprovado",
       ].map((label, i) => ({
         key: `pending-${i}`,
         label,
@@ -143,26 +143,26 @@ export function OnboardingChecklist({
     return [
       {
         key: "login",
-        label: "Login Meta",
+        label: "Conta Meta conectada",
         status: (data.me?.ok ? "ok" : "error") as Status,
         hint: data.me?.body?.name
           ? `Conectado como ${data.me.body.name}`
-          : "Não autenticado na Meta",
+          : "Sem login ativo na Meta",
         action: data.me?.ok
           ? undefined
           : { label: "Refazer login", href: "/onboarding/whatsapp" },
       },
       {
         key: "empresa",
-        label: "Empresa selecionada",
+        label: "Empresa vinculada",
         status: (saved?.active ? "ok" : "error") as Status,
-        hint: saved?.id ? `Integração #${saved.id.slice(0, 8)}` : "Sem integração ativa",
+        hint: saved?.active ? "Empresa pronta para uso" : "Sem conexão ativa",
       },
       {
         key: "waba",
-        label: "WABA encontrada",
+        label: "Conta WhatsApp Business",
         status: (wabaOk ? "ok" : "error") as Status,
-        hint: data.waba?.body?.name ?? "WABA não encontrada para esta empresa",
+        hint: data.waba?.body?.name ?? "Conta WhatsApp Business não localizada",
         action: wabaOk
           ? undefined
           : { label: "Resolver na Meta", href: META_LINKS.whatsappManager },
@@ -172,15 +172,15 @@ export function OnboardingChecklist({
         label: "Número conectado",
         status: (phoneOk ? "ok" : "error") as Status,
         hint: phoneOk
-          ? `${data.phone_number?.body?.display_phone_number} · ${data.phone_number?.body?.verified_name ?? "sem verified name"}`
-          : "Número não acessível com o token salvo",
+          ? `${data.phone_number?.body?.display_phone_number}${data.phone_number?.body?.verified_name ? ` · ${data.phone_number.body.verified_name}` : ""}`
+          : "Número não acessível",
         action: phoneOk
           ? undefined
           : { label: "Resolver na Meta", href: META_LINKS.phoneNumbers },
       },
       {
         key: "token",
-        label: "Token válido",
+        label: "Conexão ativa",
         status: (tokenValid
           ? tokenExpiresSoon
             ? "warn"
@@ -188,36 +188,36 @@ export function OnboardingChecklist({
           : "error") as Status,
         hint: tokenValid
           ? tokenExp > 0
-            ? `Expira em ${new Date(tokenExp * 1000).toLocaleDateString("pt-BR")}`
-            : "Token de longa duração"
-          : (data.debug_token?.body?.error?.message ?? "Token inválido ou expirado"),
+            ? `Renova em ${new Date(tokenExp * 1000).toLocaleDateString("pt-BR")}`
+            : "Conexão de longa duração"
+          : "Conexão expirou — renove para continuar",
         action: tokenValid && !tokenExpiresSoon
           ? undefined
           : { label: "Renovar conexão", href: "/onboarding/whatsapp" },
       },
       {
         key: "webhook",
-        label: "Webhook ativo",
+        label: "Recebimento de mensagens",
         status: (webhookOk ? "ok" : "error") as Status,
         hint: webhookOk
-          ? "App inscrito para receber eventos da WABA"
-          : "Nenhum app subscrito nessa WABA",
+          ? "Pronto para receber mensagens dos clientes"
+          : "Não está recebendo mensagens",
         action: webhookOk
           ? undefined
-          : { label: "Reconfigurar webhook", href: "/onboarding/whatsapp" },
+          : { label: "Reconfigurar", href: "/onboarding/whatsapp" },
       },
       {
         key: "billing",
         label: "Pagamento configurado",
         status: (billingOk ? "ok" : "warn") as Status,
         hint: billingOk
-          ? `Moeda WABA: ${data.waba?.body?.currency ?? "—"}`
-          : "Não foi possível confirmar billing automaticamente. Verifique no Meta Business.",
+          ? "Forma de pagamento confirmada"
+          : "Confirme a forma de pagamento na Meta",
         action: { label: "Abrir billing", href: META_LINKS.billing },
       },
       {
         key: "test",
-        label: "Teste de envio aprovado",
+        label: "Envio aprovado",
         status: (testSendOk ? "ok" : verdict === "OK" && phoneOk ? "pending" : "warn") as Status,
         hint: testSendOk
           ? "Mensagem de teste enviada com sucesso"
