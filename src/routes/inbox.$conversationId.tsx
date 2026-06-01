@@ -766,7 +766,7 @@ function ConversationPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scroll-smooth p-4 pb-6 space-y-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
           {messages.map((m) => {
             if (m.role === "system") {
               return (
