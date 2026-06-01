@@ -219,7 +219,7 @@ export async function getAnalytics(
 
   // Conversão
   const aiToSale = leads.filter(
-    (l) => l.status === "ganho" || (l.closed_at && Number(l.closed_value) > 0),
+    (l) => l.status === "fechado" || (l.closed_at && Number(l.closed_value) > 0),
   ).length;
   const aiToLost = leads.filter((l) => l.status === "perdido" || l.lost_at)
     .length;
@@ -232,7 +232,7 @@ export async function getAnalytics(
   const conversionRate =
     aiConvIds.size > 0 ? (aiToSale / aiConvIds.size) * 100 : 0;
   const recoveredLeads = leads.filter(
-    (l) => l.status === "ganho",
+    (l) => l.status === "fechado",
   ).length; // aproximação: leads ganhos que passaram pela IA
 
   const conversion: AIConversion = {

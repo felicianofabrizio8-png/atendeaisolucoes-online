@@ -235,6 +235,16 @@ export type Database = {
           ai_after_hours_only: boolean
           ai_agent_name: string
           ai_auto_reply_enabled: boolean
+          ai_followup_business_hours_only: boolean
+          ai_followup_enabled: boolean
+          ai_followup_hot_delay_hours: number
+          ai_followup_max_per_lead: number
+          ai_followup_min_hours_between: number
+          ai_followup_quote_delay_hours: number
+          ai_followup_silence_delay_hours: number
+          ai_followup_templates: Json
+          ai_followup_tone: string
+          ai_followup_visit_delay_hours: number
           ai_handoff_timeout_minutes: number
           ai_initial_message: string | null
           ai_last_test_at: string | null
@@ -255,6 +265,16 @@ export type Database = {
           ai_after_hours_only?: boolean
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
+          ai_followup_business_hours_only?: boolean
+          ai_followup_enabled?: boolean
+          ai_followup_hot_delay_hours?: number
+          ai_followup_max_per_lead?: number
+          ai_followup_min_hours_between?: number
+          ai_followup_quote_delay_hours?: number
+          ai_followup_silence_delay_hours?: number
+          ai_followup_templates?: Json
+          ai_followup_tone?: string
+          ai_followup_visit_delay_hours?: number
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -275,6 +295,16 @@ export type Database = {
           ai_after_hours_only?: boolean
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
+          ai_followup_business_hours_only?: boolean
+          ai_followup_enabled?: boolean
+          ai_followup_hot_delay_hours?: number
+          ai_followup_max_per_lead?: number
+          ai_followup_min_hours_between?: number
+          ai_followup_quote_delay_hours?: number
+          ai_followup_silence_delay_hours?: number
+          ai_followup_templates?: Json
+          ai_followup_tone?: string
+          ai_followup_visit_delay_hours?: number
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -405,6 +435,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      follow_ups: {
+        Row: {
+          attempt_number: number
+          company_id: string
+          conversation_id: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          message_text: string
+          metadata: Json
+          responded_at: string | null
+          response_outcome: string | null
+          rule_type: string
+          sent_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_number?: number
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          message_text: string
+          metadata?: Json
+          responded_at?: string | null
+          response_outcome?: string | null
+          rule_type: string
+          sent_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_number?: number
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          message_text?: string
+          metadata?: Json
+          responded_at?: string | null
+          response_outcome?: string | null
+          rule_type?: string
+          sent_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       integrations: {
         Row: {
