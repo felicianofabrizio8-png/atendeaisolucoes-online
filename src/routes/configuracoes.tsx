@@ -163,8 +163,6 @@ function ConfigPage() {
   );
 }
 
-type ConnectionMode = "chooser" | "qrcode" | "cloud";
-
 function IntegrationsSection() {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
@@ -172,7 +170,6 @@ function IntegrationsSection() {
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<ConnectionMode>("chooser");
 
   const reload = useCallback(async () => {
     if (!companyId) return;
@@ -221,8 +218,8 @@ function IntegrationsSection() {
         </Link>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Conecte o WhatsApp da sua empresa para receber mensagens reais no inbox e
-        responder sem sair do sistema.
+        Conecte o WhatsApp oficial da Meta (Cloud API) para receber mensagens
+        reais no inbox, automações de IA e follow-ups.
       </p>
 
       {error && (
@@ -231,7 +228,6 @@ function IntegrationsSection() {
         </div>
       )}
 
-      {/* Lista de integrações já conectadas (independente do modo) */}
       {(loading || items.length > 0) && (
         <ul className="space-y-2 mb-4">
           {loading && (
@@ -245,262 +241,50 @@ function IntegrationsSection() {
         </ul>
       )}
 
-      {/* Seleção de modo de conexão */}
-      {mode === "chooser" && (
-        <div className="space-y-3">
-          <ConnectionOption
-            icon={<QrCode className="h-5 w-5" />}
-            iconBg="bg-[#25D366]"
-            recommended
-            title="WhatsApp Business via QR Code"
-            description="Conecte seu WhatsApp Business escaneando um QR Code. Ideal para quem quer usar o número atual sem custo por conversa."
-            ctaLabel="Conectar por QR Code"
-            onClick={() => setMode("qrcode")}
-          />
-          <ConnectionOption
-            icon={<Cloud className="h-5 w-5" />}
-            iconBg="bg-[#1877F2]"
-            title="WhatsApp Cloud API"
-            description="Use a API oficial da Meta para alto volume, automações avançadas e multiatendimento profissional."
-            ctaLabel="Configurar API oficial"
-            onClick={() => setMode("cloud")}
-          />
-        </div>
-      )}
-
-      {/* QR Code (placeholder preparado para integração futura) */}
-      {mode === "qrcode" && (
-        <QrCodePanel onBack={() => setMode("chooser")} />
-      )}
-
-      {/* Cloud API (fluxo atual, preservado) */}
-      {mode === "cloud" && (
-        <div className="space-y-4">
-          <button
-            onClick={() => {
-              setMode("chooser");
-              setShowForm(false);
-            }}
-            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-3 w-3" /> Voltar
-          </button>
-
-          <div className="rounded-md bg-secondary/40 border border-border p-3 text-[11px] space-y-1">
-            <div className="font-semibold text-muted-foreground uppercase tracking-wide">
-              URL do webhook (cole no Meta Developer Console)
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs break-all">{webhookUrl}</code>
-              <button
-                onClick={() => navigator.clipboard?.writeText(webhookUrl)}
-                className="p-1.5 rounded hover:bg-accent"
-                title="Copiar"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-            </div>
+      <div className="space-y-4">
+        <div className="rounded-md bg-secondary/40 border border-border p-3 text-[11px] space-y-1">
+          <div className="font-semibold text-muted-foreground uppercase tracking-wide">
+            URL do webhook (cole no Meta Developer Console)
           </div>
-
-          {showForm ? (
-            <WhatsAppForm
-              companyId={companyId}
-              onCancel={() => setShowForm(false)}
-              onSaved={() => {
-                setShowForm(false);
-                void reload();
-              }}
-            />
-          ) : (
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs break-all">{webhookUrl}</code>
             <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+              onClick={() => navigator.clipboard?.writeText(webhookUrl)}
+              className="p-1.5 rounded hover:bg-accent"
+              title="Copiar"
             >
-              <MessageCircle className="h-3.5 w-3.5" /> Conectar WhatsApp Cloud API
+              <Copy className="h-3.5 w-3.5" />
             </button>
-          )}
-
-          <WhatsAppCloudDebugPanel
-            companyId={companyId}
-            onSaved={() => void reload()}
-          />
+          </div>
         </div>
-      )}
+
+        {showForm ? (
+          <WhatsAppForm
+            companyId={companyId}
+            onCancel={() => setShowForm(false)}
+            onSaved={() => {
+              setShowForm(false);
+              void reload();
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+          >
+            <MessageCircle className="h-3.5 w-3.5" /> Conectar WhatsApp Cloud API
+          </button>
+        )}
+
+        <WhatsAppCloudDebugPanel
+          companyId={companyId}
+          onSaved={() => void reload()}
+        />
+      </div>
     </section>
   );
 }
 
-function ConnectionOption({
-  icon,
-  iconBg,
-  title,
-  description,
-  ctaLabel,
-  recommended,
-  onClick,
-}: {
-  icon: ReactNode;
-  iconBg: string;
-  title: string;
-  description: string;
-  ctaLabel: string;
-  recommended?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left rounded-lg border border-border bg-background hover:bg-accent/40 transition-colors p-4 flex items-start gap-3 group"
-    >
-      <div
-        className={cn(
-          "h-10 w-10 rounded-md inline-flex items-center justify-center text-white shrink-0",
-          iconBg,
-        )}
-      >
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {recommended && (
-            <span className="text-[9px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/15 text-primary">
-              Recomendado
-            </span>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mb-2">{description}</p>
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
-          {ctaLabel}
-          <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function QrCodePanel({ onBack }: { onBack: () => void }) {
-  type QrStatus = "disconnected" | "waiting" | "connected";
-  const [status, setStatus] = useState<QrStatus>("disconnected");
-
-  const statusLabel: Record<QrStatus, string> = {
-    disconnected: "Desconectado",
-    waiting: "Aguardando QR Code",
-    connected: "Conectado",
-  };
-  const statusClass: Record<QrStatus, string> = {
-    disconnected: "bg-secondary text-muted-foreground",
-    waiting: "bg-[var(--status-urgent)]/15 text-[var(--status-urgent)]",
-    connected: "bg-[var(--status-won)]/15 text-[var(--status-won)]",
-  };
-
-  return (
-    <div className="space-y-4">
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Voltar
-      </button>
-
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-md inline-flex items-center justify-center text-white bg-[#25D366]">
-          <QrCode className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold">WhatsApp Business via QR Code</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Conecte escaneando o QR Code direto no app do WhatsApp.
-          </p>
-        </div>
-        <span
-          className={cn(
-            "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
-            statusClass[status],
-          )}
-        >
-          {statusLabel[status]}
-        </span>
-      </div>
-
-      <div className="rounded-lg border border-dashed border-border bg-background/50 p-6 flex flex-col items-center justify-center text-center min-h-[260px]">
-        {status === "waiting" ? (
-          <>
-            <div className="h-44 w-44 rounded-md bg-secondary/60 border border-border flex items-center justify-center mb-3">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-            <p className="text-xs text-muted-foreground max-w-xs">
-              Gerando QR Code… Abra o WhatsApp no celular em{" "}
-              <strong>Aparelhos conectados → Conectar um aparelho</strong>.
-            </p>
-          </>
-        ) : status === "connected" ? (
-          <>
-            <div className="h-12 w-12 rounded-full bg-[var(--status-won)]/15 text-[var(--status-won)] inline-flex items-center justify-center mb-3">
-              <Check className="h-6 w-6" />
-            </div>
-            <p className="text-sm font-semibold mb-1">WhatsApp conectado</p>
-            <p className="text-xs text-muted-foreground max-w-xs">
-              Suas conversas começarão a aparecer no inbox.
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="h-44 w-44 rounded-md bg-secondary/40 border border-border flex items-center justify-center mb-3">
-              <QrCode className="h-16 w-16 text-muted-foreground/50" />
-            </div>
-            <p className="text-xs text-muted-foreground max-w-xs">
-              Clique em <strong>Gerar QR Code</strong> para iniciar a conexão.
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="rounded-md bg-secondary/40 border border-border p-3 text-[11px] text-muted-foreground">
-        <strong className="text-foreground">Em breve:</strong> integração via QR
-        Code com WhatsApp Business. Esta tela já está preparada para receber o
-        QR Code assim que o serviço de conexão estiver disponível.
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {status === "disconnected" && (
-          <button
-            onClick={() => setStatus("waiting")}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
-          >
-            <QrCode className="h-3.5 w-3.5" /> Gerar QR Code
-          </button>
-        )}
-        {status === "waiting" && (
-          <>
-            <button
-              onClick={() => setStatus("waiting")}
-              disabled
-              className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-secondary text-muted-foreground px-3 py-1.5 cursor-not-allowed"
-            >
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Aguardando…
-            </button>
-            <button
-              onClick={() => setStatus("disconnected")}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
-            >
-              <X className="h-3.5 w-3.5" /> Cancelar
-            </button>
-          </>
-        )}
-        {status === "connected" && (
-          <button
-            onClick={() => setStatus("disconnected")}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-secondary px-3 py-1.5 hover:bg-accent"
-          >
-            <PowerOff className="h-3.5 w-3.5" /> Desconectar
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function IntegrationItem({
   item,
