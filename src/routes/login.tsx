@@ -83,12 +83,14 @@ function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-lg font-semibold">Atende Ai!</div>
+        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+          <img
+            src="/icon-512.png"
+            alt="Atende Ai!"
+            className="h-20 w-20 drop-shadow-[0_0_24px_rgba(34,211,238,0.45)]"
+          />
+          <div className="text-center">
+            <div className="text-xl font-semibold">Atende Ai!</div>
             <div className="text-xs text-muted-foreground">Vendas que não esperam</div>
           </div>
         </div>
