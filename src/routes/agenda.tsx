@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { format } from "date-fns";
+import { format, isAfter, isToday, isThisWeek, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   CalendarIcon,
@@ -12,14 +12,29 @@ import {
   Plus,
   Send,
   Trash2,
+  Wrench,
+  Store,
+  RotateCcw,
+  PackageCheck,
+  Cog,
+  HardHat,
+  MessageCircle,
+  MessagesSquare,
+  Building2,
+  UserCog,
+  Clock,
+  Filter,
+  Bell,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
+import { getConversations } from "@/data/leadRepo";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
 import { whatsappProvider } from "@/services/whatsappProvider";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +63,21 @@ export const Route = createFileRoute("/agenda")({
 });
 
 // ---------- Tipos ----------
-type VisitStatus = "agendada" | "confirmada" | "concluida" | "remarcada" | "cancelada";
+type VisitStatus =
+  | "agendada"
+  | "confirmada"
+  | "em_andamento"
+  | "concluida"
+  | "remarcada"
+  | "cancelada";
+
+type AppointmentType =
+  | "visita_tecnica"
+  | "loja"
+  | "retorno_comercial"
+  | "pos_venda"
+  | "instalacao"
+  | "manutencao";
 
 interface Visit {
   id: string;
@@ -62,12 +91,17 @@ interface Visit {
   product: string | null;
   lead_id: string | null;
   quote_id: string | null;
+  appointment_type: AppointmentType;
+  city: string | null;
+  salesperson: string | null;
+  technician: string | null;
 }
 
 const STATUS_LABEL: Record<VisitStatus, string> = {
   agendada: "Agendado",
   confirmada: "Confirmado",
-  concluida: "Realizado",
+  em_andamento: "Em andamento",
+  concluida: "Finalizado",
   remarcada: "Reagendar",
   cancelada: "Cancelado",
 };
@@ -75,10 +109,68 @@ const STATUS_LABEL: Record<VisitStatus, string> = {
 const STATUS_CLASS: Record<VisitStatus, string> = {
   agendada: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
   confirmada: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  em_andamento: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   concluida: "bg-green-600/15 text-green-700 dark:text-green-300",
   remarcada: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   cancelada: "bg-destructive/15 text-destructive",
 };
+
+// Tipos de compromisso — cores/ícones distintos por categoria
+const TYPE_META: Record<
+  AppointmentType,
+  { label: string; short: string; icon: typeof Wrench; class: string; needsAddress: boolean }
+> = {
+  visita_tecnica: {
+    label: "Visita técnica",
+    short: "Visita",
+    icon: HardHat,
+    class: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
+    needsAddress: true,
+  },
+  loja: {
+    label: "Cliente vem na loja",
+    short: "Na loja",
+    icon: Store,
+    class: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30",
+    needsAddress: false,
+  },
+  retorno_comercial: {
+    label: "Retorno comercial",
+    short: "Retorno",
+    icon: RotateCcw,
+    class: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+    needsAddress: false,
+  },
+  pos_venda: {
+    label: "Pós-venda",
+    short: "Pós-venda",
+    icon: PackageCheck,
+    class: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30",
+    needsAddress: false,
+  },
+  instalacao: {
+    label: "Instalação",
+    short: "Instalação",
+    icon: Cog,
+    class: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+    needsAddress: true,
+  },
+  manutencao: {
+    label: "Manutenção",
+    short: "Manutenção",
+    icon: Wrench,
+    class: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+    needsAddress: true,
+  },
+};
+
+const TYPE_KEYS = Object.keys(TYPE_META) as AppointmentType[];
+
+function onlyDigits(s: string): string {
+  return s.replace(/\D+/g, "");
+}
+
+
 
 // ---------- Página ----------
 function AgendaPage() {
