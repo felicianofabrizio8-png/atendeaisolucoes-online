@@ -579,6 +579,139 @@ export async function sendWhatsappText(params: {
 }
 
 // ----------------------------------------------------------------------------
+// Qualificação + persistência (Fase 2)
+// ----------------------------------------------------------------------------
+
+interface ConvQualifyRow {
+  detected_city: string | null;
+  detected_state: string | null;
+  detected_pool_size: string | null;
+  detected_intent: string | null;
+  detected_interest: string | null;
+  detected_budget: string | null;
+  purchase_timing: string | null;
+  customer_stage: string | null;
+  lead_temperature: string | null;
+  lead_score: number;
+  lead_ready_to_close: boolean;
+  detected_objections: string[] | null;
+}
+
+/**
+ * Une o que o LLM extraiu nesse turno com o já armazenado, roda heurísticas
+ * sobre a última mensagem do cliente, calcula score/temperatura e persiste
+ * em conversations + opcionalmente bump em leads.status. Loga apenas o que
+ * mudou no ai_flow_events (timeline).
+ */
+async function qualifyAndPersist(params: {
+  companyId: string;
+  conversationId: string;
+  leadId: string;
+  lastLeadText: string;
+  current: ConvQualifyRow;
+  decision: AgentDecision | null;
+}): Promise<{ temperature: Temperature; score: number; readyToClose: boolean }> {
+  const { companyId, conversationId, leadId, lastLeadText, current, decision } = params;
+
+  const detectedObjections: Objection[] = detectObjections(lastLeadText);
+  const readyDetected = detectReadyToClose(lastLeadText);
+
+  const mergedObjections = mergeObjections(current.detected_objections, detectedObjections);
+
+  const next: Partial<ConvQualifyRow> = {
+    detected_city: decision?.detected_city ?? current.detected_city,
+    detected_state:
+      (decision?.detected_state ? normalizeState(decision.detected_state) : null) ??
+      current.detected_state ??
+      normalizeState(lastLeadText) ??
+      null,
+    detected_pool_size: decision?.detected_pool_size ?? current.detected_pool_size,
+    detected_intent: decision?.detected_intent ?? current.detected_intent,
+    detected_interest: decision?.detected_interest ?? current.detected_interest,
+    detected_budget: decision?.detected_budget ?? current.detected_budget,
+    purchase_timing: decision?.purchase_timing ?? current.purchase_timing,
+    customer_stage: decision?.customer_stage ?? current.customer_stage,
+    detected_objections: mergedObjections,
+    lead_ready_to_close: current.lead_ready_to_close || readyDetected,
+  };
+
+  const score = computeLeadScore({
+    detected_city: next.detected_city,
+    detected_state: next.detected_state,
+    detected_pool_size: next.detected_pool_size,
+    detected_interest: next.detected_interest,
+    detected_budget: next.detected_budget,
+    purchase_timing: (next.purchase_timing as PurchaseTiming | null) ?? null,
+    customer_stage: (next.customer_stage as CustomerStage | null) ?? null,
+    lead_ready_to_close: next.lead_ready_to_close,
+    objections: mergedObjections,
+  });
+  const temperature = temperatureFromScore(score);
+  next.lead_score = score;
+  next.lead_temperature = temperature;
+
+  await supabaseAdmin.from("conversations").update(next as never).eq("id", conversationId);
+
+  // Eventos de timeline — apenas diffs
+  const diffs: Array<[string, unknown]> = [];
+  if (next.detected_city && next.detected_city !== current.detected_city)
+    diffs.push(["detected_city", next.detected_city]);
+  if (next.detected_state && next.detected_state !== current.detected_state)
+    diffs.push(["detected_state", next.detected_state]);
+  if (next.detected_pool_size && next.detected_pool_size !== current.detected_pool_size)
+    diffs.push(["detected_pool_size", next.detected_pool_size]);
+  if (next.detected_intent && next.detected_intent !== current.detected_intent)
+    diffs.push(["detected_intent", next.detected_intent]);
+  if (next.detected_interest && next.detected_interest !== current.detected_interest)
+    diffs.push(["detected_interest", next.detected_interest]);
+  if (next.detected_budget && next.detected_budget !== current.detected_budget)
+    diffs.push(["detected_budget", next.detected_budget]);
+  if (next.purchase_timing && next.purchase_timing !== current.purchase_timing)
+    diffs.push(["detected_timing", next.purchase_timing]);
+  if (next.customer_stage && next.customer_stage !== current.customer_stage)
+    diffs.push(["detected_stage", next.customer_stage]);
+  for (const obj of detectedObjections) {
+    if (!(current.detected_objections ?? []).includes(obj)) {
+      diffs.push(["detected_objection", obj]);
+    }
+  }
+  for (const [event, value] of diffs) {
+    await logEvent(companyId, conversationId, leadId, event as string, { value });
+  }
+  if (temperature !== current.lead_temperature) {
+    await logEvent(companyId, conversationId, leadId, "lead_temperature_changed", {
+      from: current.lead_temperature,
+      to: temperature,
+      score,
+    });
+  }
+  if (!current.lead_ready_to_close && next.lead_ready_to_close) {
+    await logEvent(companyId, conversationId, leadId, "ready_to_close_detected", {
+      score,
+    });
+  }
+
+  // Bump status do lead automaticamente — sem regredir e sem mexer em fechado/perdido
+  if (temperature === "quente") {
+    const { data: leadRow } = await supabaseAdmin
+      .from("leads")
+      .select("status")
+      .eq("id", leadId)
+      .maybeSingle();
+    const s = leadRow?.status as string | undefined;
+    if (s === "novo" || s === "morno") {
+      await supabaseAdmin
+        .from("leads")
+        .update({ status: "quente" as never })
+        .eq("id", leadId);
+      await logEvent(companyId, conversationId, leadId, "lead_bumped_to_hot", { from: s });
+    }
+  }
+
+  return { temperature, score, readyToClose: !!next.lead_ready_to_close };
+}
+
+// ----------------------------------------------------------------------------
 // Tick orquestrador: 1 turno completo
 // ----------------------------------------------------------------------------
 
@@ -590,13 +723,28 @@ export async function runAgentTick(conversationId: string): Promise<{
   const { data: conv } = await supabaseAdmin
     .from("conversations")
     .select(
-      "id, company_id, lead_id, channel, ai_handling, ai_status, auto_reply_count, last_auto_reply_at, human_takeover_at",
+      "id, company_id, lead_id, channel, ai_handling, ai_status, auto_reply_count, last_auto_reply_at, human_takeover_at, detected_city, detected_state, detected_pool_size, detected_intent, detected_interest, detected_budget, purchase_timing, customer_stage, lead_temperature, lead_score, lead_ready_to_close, detected_objections",
     )
     .eq("id", conversationId)
     .maybeSingle();
   if (!conv) return { ok: false, action: "error", reason: "conversation_not_found" };
 
-  // Atualmente Fase 1 suporta apenas WhatsApp
+  const currentQual: ConvQualifyRow = {
+    detected_city: conv.detected_city ?? null,
+    detected_state: (conv as { detected_state?: string | null }).detected_state ?? null,
+    detected_pool_size: conv.detected_pool_size ?? null,
+    detected_intent: conv.detected_intent ?? null,
+    detected_interest: (conv as { detected_interest?: string | null }).detected_interest ?? null,
+    detected_budget: (conv as { detected_budget?: string | null }).detected_budget ?? null,
+    purchase_timing: (conv as { purchase_timing?: string | null }).purchase_timing ?? null,
+    customer_stage: (conv as { customer_stage?: string | null }).customer_stage ?? null,
+    lead_temperature: (conv as { lead_temperature?: string | null }).lead_temperature ?? null,
+    lead_score: (conv as { lead_score?: number }).lead_score ?? 0,
+    lead_ready_to_close: (conv as { lead_ready_to_close?: boolean }).lead_ready_to_close ?? false,
+    detected_objections: (conv as { detected_objections?: string[] | null }).detected_objections ?? [],
+  };
+
+  // Atualmente Fase 1 suporta apenas WhatsApp para envio
   if (conv.channel !== "whatsapp") {
     return { ok: true, action: "skipped", reason: "channel_unsupported" };
   }
@@ -643,9 +791,17 @@ export async function runAgentTick(conversationId: string): Promise<{
       return { ok: true, action: "skipped", reason: "no_lead_message" };
     }
 
-    // Pre-check handoff
+    // Pre-check handoff — sempre qualifica antes para timeline ficar completa
     const triggerCheck = detectHandoffNeeded(lastLeadMsg.text);
     if (triggerCheck.needed) {
+      await qualifyAndPersist({
+        companyId: conv.company_id,
+        conversationId: conv.id,
+        leadId: conv.lead_id,
+        lastLeadText: lastLeadMsg.text,
+        current: currentQual,
+        decision: null,
+      });
       await supabaseAdmin
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
@@ -666,6 +822,16 @@ export async function runAgentTick(conversationId: string): Promise<{
     const decision = runSafetyLayer(
       await runAgentTurn({ ctx, history, leadName: lead?.name ?? null }),
     );
+
+    // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
+    await qualifyAndPersist({
+      companyId: conv.company_id,
+      conversationId: conv.id,
+      leadId: conv.lead_id,
+      lastLeadText: lastLeadMsg.text,
+      current: currentQual,
+      decision,
+    });
 
     if (decision.kind === "handoff") {
       await supabaseAdmin
@@ -697,41 +863,21 @@ export async function runAgentTick(conversationId: string): Promise<{
       return { ok: false, action: "error", reason: sent.error };
     }
 
-    // Atualiza counters + slots
-    const update: {
-      ai_status: string;
-      auto_reply_count: number;
-      last_auto_reply_at: string;
-      detected_city?: string;
-      detected_pool_size?: string;
-      detected_intent?: string;
-    } = {
-      ai_status: "pre_atendido_ia",
-      auto_reply_count: (conv.auto_reply_count ?? 0) + 1,
-      last_auto_reply_at: new Date().toISOString(),
-    };
-    if (decision.detected_city) update.detected_city = decision.detected_city;
-    if (decision.detected_pool_size) update.detected_pool_size = decision.detected_pool_size;
-    if (decision.detected_intent) update.detected_intent = decision.detected_intent;
-    await supabaseAdmin.from("conversations").update(update).eq("id", conv.id);
+    // Atualiza counters + status IA
+    await supabaseAdmin
+      .from("conversations")
+      .update({
+        ai_status: "pre_atendido_ia",
+        auto_reply_count: (conv.auto_reply_count ?? 0) + 1,
+        last_auto_reply_at: new Date().toISOString(),
+      })
+      .eq("id", conv.id);
 
     await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_sent", {
       message: decision.message.slice(0, 240),
       external_id: sent.externalId,
       suggested_products: decision.suggested_products ?? [],
     });
-    if (decision.detected_city)
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "detected_city", {
-        value: decision.detected_city,
-      });
-    if (decision.detected_pool_size)
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "detected_pool_size", {
-        value: decision.detected_pool_size,
-      });
-    if (decision.detected_intent)
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "detected_intent", {
-        value: decision.detected_intent,
-      });
 
     return { ok: true, action: "replied" };
   } finally {
