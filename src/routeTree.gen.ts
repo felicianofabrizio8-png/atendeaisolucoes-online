@@ -18,13 +18,13 @@ import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as IaRouteImport } from './routes/ia'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
-import { Route as ConfiguracoesIaRouteImport } from './routes/configuracoes.ia'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
 import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
@@ -86,6 +86,11 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IaRoute = IaRouteImport.update({
+  id: '/ia',
+  path: '/ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
@@ -115,11 +120,6 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
-} as any)
-const ConfiguracoesIaRoute = ConfiguracoesIaRouteImport.update({
-  id: '/ia',
-  path: '/ia',
-  getParentRoute: () => ConfiguracoesRoute,
 } as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
@@ -202,7 +202,8 @@ const ApiPublicWhatsappQrIncomingRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRouteWithChildren
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -212,7 +213,6 @@ export interface FileRoutesByFullPath {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
-  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
@@ -235,7 +235,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRouteWithChildren
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/ia': typeof IaRoute
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -244,7 +245,6 @@ export interface FileRoutesByTo {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
-  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox': typeof InboxIndexRoute
@@ -268,7 +268,8 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
-  '/configuracoes': typeof ConfiguracoesRouteWithChildren
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -278,7 +279,6 @@ export interface FileRoutesById {
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/whatsapp': typeof WhatsappRoute
-  '/configuracoes/ia': typeof ConfiguracoesIaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
@@ -304,6 +304,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/ia'
     | '/inbox'
     | '/login'
     | '/orcamentos'
@@ -313,7 +314,6 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
-    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
@@ -337,6 +337,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/ia'
     | '/login'
     | '/orcamentos'
     | '/privacidade'
@@ -345,7 +346,6 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
-    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox'
@@ -369,6 +369,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/ia'
     | '/inbox'
     | '/login'
     | '/orcamentos'
@@ -378,7 +379,6 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reset-password'
     | '/whatsapp'
-    | '/configuracoes/ia'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
@@ -402,7 +402,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
-  ConfiguracoesRoute: typeof ConfiguracoesRouteWithChildren
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  IaRoute: typeof IaRoute
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
   OrcamentosRoute: typeof OrcamentosRoute
@@ -495,6 +496,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ia': {
+      id: '/ia'
+      path: '/ia'
+      fullPath: '/ia'
+      preLoaderRoute: typeof IaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/configuracoes': {
       id: '/configuracoes'
       path: '/configuracoes'
@@ -536,13 +544,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/inbox/$conversationId'
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
-    }
-    '/configuracoes/ia': {
-      id: '/configuracoes/ia'
-      path: '/ia'
-      fullPath: '/configuracoes/ia'
-      preLoaderRoute: typeof ConfiguracoesIaRouteImport
-      parentRoute: typeof ConfiguracoesRoute
     }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
@@ -652,18 +653,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface ConfiguracoesRouteChildren {
-  ConfiguracoesIaRoute: typeof ConfiguracoesIaRoute
-}
-
-const ConfiguracoesRouteChildren: ConfiguracoesRouteChildren = {
-  ConfiguracoesIaRoute: ConfiguracoesIaRoute,
-}
-
-const ConfiguracoesRouteWithChildren = ConfiguracoesRoute._addFileChildren(
-  ConfiguracoesRouteChildren,
-)
-
 interface InboxRouteChildren {
   InboxConversationIdRoute: typeof InboxConversationIdRoute
   InboxIndexRoute: typeof InboxIndexRoute
@@ -679,7 +668,8 @@ const InboxRouteWithChildren = InboxRoute._addFileChildren(InboxRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
-  ConfiguracoesRoute: ConfiguracoesRouteWithChildren,
+  ConfiguracoesRoute: ConfiguracoesRoute,
+  IaRoute: IaRoute,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
   OrcamentosRoute: OrcamentosRoute,
@@ -709,3 +699,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
