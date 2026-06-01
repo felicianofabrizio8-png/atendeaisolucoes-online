@@ -754,6 +754,24 @@ export async function runAgentTick(conversationId: string): Promise<{
   const ctx = await loadAgentContext(conv.company_id);
   if (!ctx) return { ok: false, action: "error", reason: "no_settings" };
 
+  // Pré-flight: bloqueios de segurança antes de qualquer envio.
+  if (!ctx.aiProfile) {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "missing_ai_profile", {});
+    return { ok: true, action: "skipped", reason: "missing_ai_profile" };
+  }
+  const { data: waInteg } = await supabaseAdmin
+    .from("integrations")
+    .select("id")
+    .eq("company_id", conv.company_id)
+    .eq("channel", "whatsapp")
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (!waInteg) {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "no_whatsapp_integration", {});
+    return { ok: true, action: "skipped", reason: "no_whatsapp_integration" };
+  }
+
   const guard = shouldAutoReply(conv as AgentConversation, ctx.settings);
   if (!guard.ok) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, `skipped_${guard.reason}`, {});
