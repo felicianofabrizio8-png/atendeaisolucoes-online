@@ -18,8 +18,18 @@ import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
+import { QualificationInline } from "@/components/QualificationBadges";
 
-const STATUS_FILTERS = ["todos", "quentes", "parados", "perdidos"] as const;
+const STATUS_FILTERS = [
+  "todos",
+  "quentes",
+  "prontos",
+  "aguardando_humano",
+  "pre_ia",
+  "objecao",
+  "parados",
+  "perdidos",
+] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 const SOURCE_FILTERS = [
