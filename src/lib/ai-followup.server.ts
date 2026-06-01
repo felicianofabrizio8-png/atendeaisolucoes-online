@@ -239,6 +239,51 @@ export async function findCandidates(
     }
   }
 
+  // returning_customer: lead já fechado/perdido há ≥ 7 dias que voltou a
+  // mandar mensagem nas últimas 24h (reativação). Sinal forte de oportunidade.
+  const reactivationCutoff = new Date(now - 7 * 24 * 3600_000).toISOString();
+  const recentLeadMsgCutoff = new Date(now - 24 * 3600_000).toISOString();
+  const { data: returnedLeads } = await supabaseAdmin
+    .from("leads")
+    .select("id, status, closed_at, lost_at")
+    .eq("company_id", companyId)
+    .in("status", ["fechado", "perdido"])
+    .limit(200);
+  const returnedIds = (returnedLeads ?? [])
+    .filter((l) => {
+      const ref = l.closed_at ?? l.lost_at;
+      return ref && ref < reactivationCutoff;
+    })
+    .map((l) => l.id);
+  if (returnedIds.length) {
+    const { data: rConvs } = await supabaseAdmin
+      .from("conversations")
+      .select("id, lead_id, last_message_at")
+      .eq("company_id", companyId)
+      .in("lead_id", returnedIds)
+      .gte("last_message_at", recentLeadMsgCutoff);
+    for (const rc of rConvs ?? []) {
+      if (!rc.lead_id) continue;
+      // Confirma que foi o cliente quem voltou a falar
+      const { data: lastMsg } = await supabaseAdmin
+        .from("messages")
+        .select("role, at")
+        .eq("conversation_id", rc.id)
+        .order("at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastMsg?.role !== "lead") continue;
+      candidates.push({
+        conversationId: rc.id,
+        leadId: rc.lead_id,
+        rule: "returning_customer",
+        lastClientMessageAt: lastMsg.at,
+        signal: "cliente antigo voltou a interagir",
+      });
+    }
+  }
+
+
   // Deduplica por conversa, priorizando regras mais "quentes"
   const priority: Record<FollowupRule, number> = {
     hot_lead_idle: 5,
