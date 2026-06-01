@@ -665,6 +665,42 @@ function ConversationPage() {
           )}
         </header>
 
+        {/* AI status banners */}
+        {aiState?.ai_status === "aguardando_humano" && (
+          <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-2.5 flex items-center gap-2">
+            <span className="text-sm font-bold text-amber-700 dark:text-amber-400">
+              ⚠️ Atendimento humano necessário
+            </span>
+            {aiHandoffReason && (
+              <span className="text-xs text-muted-foreground">Motivo: {aiHandoffReason}</span>
+            )}
+            <button
+              onClick={handleTakeover}
+              disabled={takingOver}
+              className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-amber-600 text-white hover:bg-amber-700 text-xs font-semibold disabled:opacity-50"
+            >
+              {takingOver ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Assumir atendimento
+            </button>
+          </div>
+        )}
+        {aiState?.ai_status === "pre_atendido_ia" && (
+          <div className="border-b border-sky-500/40 bg-sky-500/10 px-4 py-2 flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+            <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+              🤖 Pré-atendido pela IA
+            </span>
+            <button
+              onClick={handleTakeover}
+              disabled={takingOver}
+              className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-sky-500/40 text-sky-700 hover:bg-sky-500/10 text-[11px] font-semibold disabled:opacity-50"
+            >
+              Assumir
+            </button>
+          </div>
+        )}
+
+
         {/* Hot-stale alert banner */}
         {isHotStale && (
           <div className="border-b border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-4 py-2.5 flex items-center gap-2 animate-pulse">
