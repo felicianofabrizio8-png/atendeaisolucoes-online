@@ -12,6 +12,13 @@ import {
   runFollowupTickForCompany,
   reconcileResponses,
 } from "@/lib/ai-followup.server";
+import {
+  getFollowupV2Settings,
+  getWhatsappIntegrationStatus,
+  canSendFollowupNow,
+  getAdvancedAnalytics,
+  getLeadTemperatureSummary,
+} from "@/lib/ai-followup-v2.server";
 
 async function authedCompanyId(request: Request): Promise<string | null> {
   const h = request.headers.get("authorization") ?? "";
@@ -30,11 +37,32 @@ async function authedCompanyId(request: Request): Promise<string | null> {
 async function getRecentLog(companyId: string) {
   const { data } = await supabaseAdmin
     .from("follow_ups")
-    .select("id, rule_type, attempt_number, message_text, status, sent_at, responded_at, response_outcome, conversation_id, lead_id")
+    .select(
+      "id, rule_type, attempt_number, message_text, status, sent_at, responded_at, response_outcome, conversation_id, lead_id, trigger_reason, cancel_reason, cancelled_at, metadata",
+    )
     .eq("company_id", companyId)
     .order("sent_at", { ascending: false })
     .limit(50);
-  return data ?? [];
+  const rows = data ?? [];
+  const leadIds = Array.from(
+    new Set(rows.map((r) => r.lead_id).filter(Boolean) as string[]),
+  );
+  const tempMap = new Map<string, string | null>();
+  if (leadIds.length) {
+    const { data: leads } = await supabaseAdmin
+      .from("leads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id, lead_temperature_cached" as any)
+      .in("id", leadIds);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const l of (leads ?? []) as any[]) {
+      tempMap.set(l.id, l.lead_temperature_cached ?? null);
+    }
+  }
+  return rows.map((r) => ({
+    ...r,
+    lead_temperature: r.lead_id ? tempMap.get(r.lead_id) ?? null : null,
+  }));
 }
 
 async function getMetrics(companyId: string) {
