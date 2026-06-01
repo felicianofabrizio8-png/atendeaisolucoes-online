@@ -248,6 +248,37 @@ export function AIFollowupPanel() {
 
   return (
     <div className="space-y-4">
+      {waStatus && (
+        <Card
+          className={
+            !waStatus.connected
+              ? "border-destructive/40 bg-destructive/5"
+              : waStatus.hasUnmapped
+                ? "border-amber-500/40 bg-amber-500/5"
+                : "border-emerald-500/40 bg-emerald-500/5"
+          }
+        >
+          <CardContent className="p-3 text-sm flex items-center gap-2">
+            {!waStatus.connected ? (
+              <>
+                <XCircle className="h-4 w-4 text-destructive" />
+                <span>⚠️ Sem integração WhatsApp ativa — follow-up automático não enviará mensagens até conectar um número.</span>
+              </>
+            ) : waStatus.hasUnmapped ? (
+              <>
+                <Bell className="h-4 w-4 text-amber-600" />
+                <span>⚠️ Número WhatsApp não vinculado detectado ({waStatus.unmappedCount}). Conecte em Configurações para a IA responder.</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span>✅ WhatsApp conectado{waStatus.displayName ? ` — ${waStatus.displayName}` : ""}</span>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header + master switch */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
