@@ -295,6 +295,33 @@ function ConfiguracoesIA() {
     toast.success("Limite atualizado");
   };
 
+  const saveAutomation = async () => {
+    if (!companyId || !automation) return;
+    setSavingAutomation(true);
+    const { error } = await supabase
+      .from("company_settings")
+      .update({
+        ai_auto_reply_enabled: automation.ai_auto_reply_enabled,
+        ai_after_hours_only: automation.ai_after_hours_only,
+        ai_initial_message: automation.ai_initial_message,
+        ai_max_auto_replies: automation.ai_max_auto_replies,
+        ai_handoff_timeout_minutes: automation.ai_handoff_timeout_minutes,
+        ai_agent_name: automation.ai_agent_name,
+        business_hours_start: automation.business_hours_start,
+        business_hours_end: automation.business_hours_end,
+      })
+      .eq("company_id", companyId);
+    setSavingAutomation(false);
+    if (error) {
+      toast.error("Falha ao salvar automação", { description: error.message });
+      return;
+    }
+    toast.success("Automação salva");
+  };
+
+  const setAuto = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) =>
+    setAutomation((s) => (s ? { ...s, [k]: v } : s));
+
   if (!companyId) {
     return <div className="p-8">Entre para configurar a IA.</div>;
   }
