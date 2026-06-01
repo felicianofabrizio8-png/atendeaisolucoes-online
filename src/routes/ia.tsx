@@ -362,10 +362,14 @@ function ConfiguracoesIA() {
           <TabsTrigger value="followup">
             <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
           </TabsTrigger>
+          <TabsTrigger value="templates">
+            <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates WhatsApp
+          </TabsTrigger>
           <TabsTrigger value="automacao">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
         </TabsList>
+
 
         {/* ---------- PERFIL ---------- */}
         <TabsContent value="perfil" className="space-y-4">
