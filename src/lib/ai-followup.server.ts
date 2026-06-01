@@ -367,7 +367,8 @@ async function canSend(
       return { ok: false, reason: `aguardando intervalo mínimo (${s.minHoursBetween}h)` };
   }
 
-  // Verifica janela 24h do WhatsApp Cloud API (precisa de cliente em < 24h)
+  // Verifica janela 24h do WhatsApp Cloud API. Fora dela ainda permitimos
+  // o envio, mas via template Utility aprovado (decisão no loop principal).
   const cutoff24 = new Date(Date.now() - 23 * 3600 * 1000).toISOString();
   const { data: clientMsg } = await supabaseAdmin
     .from("messages")
@@ -376,11 +377,11 @@ async function canSend(
     .eq("role", "lead")
     .gte("at", cutoff24)
     .limit(1);
-  if (!clientMsg || clientMsg.length === 0)
-    return { ok: false, reason: "fora da janela de 24h" };
+  const outsideWindow = !clientMsg || clientMsg.length === 0;
 
-  return { ok: true, attempt: attempts + 1 };
+  return { ok: true, attempt: attempts + 1, outsideWindow };
 }
+
 
 // ----------------------------------------------------------------------------
 // Geração da mensagem
