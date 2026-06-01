@@ -351,6 +351,9 @@ function ConfiguracoesIA() {
             Aprendizados{pendingCount ? ` (${pendingCount})` : ""}
           </TabsTrigger>
           <TabsTrigger value="uso">Uso & Logs</TabsTrigger>
+          <TabsTrigger value="automacao">
+            <Bot className="h-3.5 w-3.5 mr-1" /> Automação
+          </TabsTrigger>
         </TabsList>
 
         {/* ---------- PERFIL ---------- */}
@@ -608,6 +611,151 @@ function ConfiguracoesIA() {
               ))}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ---------- AUTOMAÇÃO ---------- */}
+        <TabsContent value="automacao" className="space-y-4">
+          {!automation ? (
+            <Card>
+              <CardContent className="py-8 text-sm text-muted-foreground">
+                Configurações da empresa ainda não inicializadas.
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bot className="h-4 w-4" /> Pré-atendimento automático
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Ativar pré-atendimento da IA</div>
+                      <div className="text-xs text-muted-foreground">
+                        Quando ativado, a IA responde leads novos automaticamente.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={automation.ai_auto_reply_enabled}
+                      onCheckedChange={(v) => setAuto("ai_auto_reply_enabled", v)}
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Somente fora do horário comercial</div>
+                      <div className="text-xs text-muted-foreground">
+                        Recomendado. A IA não interfere no fluxo durante o expediente.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={automation.ai_after_hours_only}
+                      onCheckedChange={(v) => setAuto("ai_after_hours_only", v)}
+                    />
+                  </div>
+                  <Field label="Início do expediente">
+                    <Input
+                      type="time"
+                      value={automation.business_hours_start.slice(0, 5)}
+                      onChange={(e) => setAuto("business_hours_start", `${e.target.value}:00`)}
+                    />
+                  </Field>
+                  <Field label="Fim do expediente">
+                    <Input
+                      type="time"
+                      value={automation.business_hours_end.slice(0, 5)}
+                      onChange={(e) => setAuto("business_hours_end", `${e.target.value}:00`)}
+                    />
+                  </Field>
+                  <Field label="Nome do agente">
+                    <Input
+                      value={automation.ai_agent_name}
+                      onChange={(e) => setAuto("ai_agent_name", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Limite de respostas automáticas / conversa">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={automation.ai_max_auto_replies}
+                      onChange={(e) =>
+                        setAuto("ai_max_auto_replies", Number(e.target.value) || 5)
+                      }
+                    />
+                  </Field>
+                  <Field label="Timeout p/ humano assumir (min)">
+                    <Input
+                      type="number"
+                      min={5}
+                      max={240}
+                      value={automation.ai_handoff_timeout_minutes}
+                      onChange={(e) =>
+                        setAuto("ai_handoff_timeout_minutes", Number(e.target.value) || 30)
+                      }
+                    />
+                  </Field>
+                  <Field label="Mensagem inicial sugerida (opcional)" full>
+                    <Textarea
+                      rows={3}
+                      placeholder="Boa noite, tudo bem? Me chamo Fabrizio e vou dar sequência..."
+                      value={automation.ai_initial_message ?? ""}
+                      onChange={(e) =>
+                        setAuto("ai_initial_message", e.target.value || null)
+                      }
+                    />
+                  </Field>
+                  <div className="md:col-span-2 flex justify-end">
+                    <Button onClick={saveAutomation} disabled={savingAutomation}>
+                      {savingAutomation && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Salvar automação
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Últimos eventos do agente</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {events.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Sem eventos ainda.</p>
+                  )}
+                  {events.map((e) => {
+                    const isAlert =
+                      e.event_type === "handoff_human" || e.event_type === "safety_block" || e.event_type === "agent_error";
+                    return (
+                      <div
+                        key={e.id}
+                        className="rounded-md border border-border p-2 text-xs flex items-start gap-2 bg-card"
+                      >
+                        {isAlert ? (
+                          <AlertTriangle className="h-3.5 w-3.5 text-[var(--status-urgent)] mt-0.5" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">{e.event_type}</span>
+                            <span className="ml-auto text-muted-foreground">
+                              {new Date(e.created_at).toLocaleString("pt-BR")}
+                            </span>
+                          </div>
+                          {e.payload && Object.keys(e.payload).length > 0 && (
+                            <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                              {JSON.stringify(e.payload, null, 0).slice(0, 240)}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>
