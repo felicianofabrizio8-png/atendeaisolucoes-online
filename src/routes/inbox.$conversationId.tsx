@@ -1021,6 +1021,11 @@ function ConversationPage() {
           <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
         </div>
 
+        <QualificationPanel conv={conversation} />
+        <AITimeline conversationId={conversationId} />
+
+
+
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
             <Target className="h-3 w-3" /> Próxima ação
