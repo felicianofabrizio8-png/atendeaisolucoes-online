@@ -101,9 +101,10 @@ export function AIPilotPanel() {
   );
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
-  const authHeader = useCallback(async () => {
+  const authHeader = useCallback(async (): Promise<Record<string, string>> => {
     const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {};
+    const tok = data.session?.access_token;
+    return tok ? { Authorization: `Bearer ${tok}` } : {};
   }, []);
 
   const load = useCallback(async () => {
