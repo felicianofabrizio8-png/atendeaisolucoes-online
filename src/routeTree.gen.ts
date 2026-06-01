@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhatsappRouteImport } from './routes/whatsapp'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
@@ -53,6 +54,11 @@ import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.pub
 const WhatsappRoute = WhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -268,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -309,6 +316,7 @@ export interface FileRoutesByTo {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -352,6 +360,7 @@ export interface FileRoutesById {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -396,6 +405,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/sitemap.xml'
     | '/whatsapp'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -437,6 +447,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/sitemap.xml'
     | '/whatsapp'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/sitemap.xml'
     | '/whatsapp'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -522,6 +534,7 @@ export interface RootRouteChildren {
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
@@ -557,6 +570,13 @@ declare module '@tanstack/react-router' {
       path: '/whatsapp'
       fullPath: '/whatsapp'
       preLoaderRoute: typeof WhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -860,6 +880,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
