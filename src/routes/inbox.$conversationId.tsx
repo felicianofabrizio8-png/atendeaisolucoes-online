@@ -217,7 +217,80 @@ function ConversationPage() {
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [aiState, setAiState] = useState<{ ai_status: string | null; ai_handling: boolean } | null>(null);
+  const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
+  const [takingOver, setTakingOver] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Carrega ai_status da conversa + realtime + último motivo de handoff
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    const loadStatus = async () => {
+      const { data } = await supabase
+        .from("conversations")
+        .select("ai_status, ai_handling")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (!cancelled && data) setAiState({ ai_status: data.ai_status, ai_handling: data.ai_handling });
+    };
+    const loadReason = async () => {
+      const { data } = await supabase
+        .from("ai_flow_events")
+        .select("payload, event_type, created_at")
+        .eq("conversation_id", conversationId)
+        .in("event_type", ["handoff_requested", "handoff_safety_block"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!cancelled && data && data[0]) {
+        const p = (data[0].payload ?? {}) as { reason?: string };
+        setAiHandoffReason(p.reason ?? data[0].event_type);
+      }
+    };
+    void loadStatus();
+    void loadReason();
+
+    const ch = supabase
+      .channel(`conv-ai-${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "conversations", filter: `id=eq.${conversationId}` },
+        (payload) => {
+          const row = payload.new as { ai_status: string | null; ai_handling: boolean };
+          setAiState({ ai_status: row.ai_status, ai_handling: row.ai_handling });
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(ch);
+    };
+  }, [conversationId]);
+
+  const handleTakeover = async () => {
+    if (takingOver) return;
+    setTakingOver(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch("/api/ai/agent-takeover", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ conversation_id: conversationId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao assumir");
+      setAiState({ ai_status: "assumido_humano", ai_handling: false });
+      toast.success("Você assumiu o atendimento. IA pausada para esta conversa.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
+    } finally {
+      setTakingOver(false);
+    }
+  };
 
   // Quando voltamos da tela de orçamentos com ?quote=<id>, carrega o orçamento
   // pronto para envio acima do campo de mensagem.
