@@ -357,6 +357,9 @@ function ConfiguracoesIA() {
           <TabsTrigger value="analytics">
             <BarChart3 className="h-3.5 w-3.5 mr-1" /> Analytics
           </TabsTrigger>
+          <TabsTrigger value="followup">
+            <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
+          </TabsTrigger>
           <TabsTrigger value="automacao">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
