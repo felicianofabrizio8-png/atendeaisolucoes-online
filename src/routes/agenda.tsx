@@ -33,7 +33,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
 import { getConversations } from "@/data/leadRepo";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
-import { whatsappProvider } from "@/services/whatsappProvider";
+// whatsappProvider (Evolution) descontinuado — envio agora usa wa.me ou Cloud API oficial.
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
