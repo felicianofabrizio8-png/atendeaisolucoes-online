@@ -338,8 +338,13 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 interface ToolReply {
   message: string;
   detected_city?: string;
+  detected_state?: string;
   detected_pool_size?: string;
   detected_intent?: string;
+  detected_interest?: string;
+  detected_budget?: string;
+  purchase_timing?: string;
+  customer_stage?: string;
   suggest_products?: string[];
 }
 interface ToolHandoff {
