@@ -136,7 +136,8 @@ export const Route = createFileRoute("/api/ai/followup-config")({
           return Response.json({ ok: false, error: "nada para atualizar" }, { status: 400 });
         const { error } = await supabaseAdmin
           .from("company_settings")
-          .update(allowed)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .update(allowed as any)
           .eq("company_id", companyId);
         if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
         const settings = await getFollowupSettings(companyId);

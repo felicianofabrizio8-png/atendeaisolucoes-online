@@ -41,6 +41,7 @@ import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
 import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
 import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
+import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
@@ -208,6 +209,11 @@ const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
   path: '/api/ai/mark-sent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
+  id: '/api/ai/followup-config',
+  path: '/api/ai/followup-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
   id: '/api/ai/analytics',
   path: '/api/ai/analytics',
@@ -262,6 +268,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -301,6 +308,7 @@ export interface FileRoutesByTo {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -342,6 +350,7 @@ export interface FileRoutesById {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -384,6 +393,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/followup-config'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/followup-config'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -463,6 +474,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/followup-config'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -502,6 +514,7 @@ export interface RootRouteChildren {
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
+  ApiAiFollowupConfigRoute: typeof ApiAiFollowupConfigRoute
   ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
   ApiAiPilotToggleRoute: typeof ApiAiPilotToggleRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
@@ -749,6 +762,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiMarkSentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/followup-config': {
+      id: '/api/ai/followup-config'
+      path: '/api/ai/followup-config'
+      fullPath: '/api/ai/followup-config'
+      preLoaderRoute: typeof ApiAiFollowupConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/analytics': {
       id: '/api/ai/analytics'
       path: '/api/ai/analytics'
@@ -824,6 +844,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
+  ApiAiFollowupConfigRoute: ApiAiFollowupConfigRoute,
   ApiAiMarkSentRoute: ApiAiMarkSentRoute,
   ApiAiPilotToggleRoute: ApiAiPilotToggleRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
