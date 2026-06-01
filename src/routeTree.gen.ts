@@ -38,8 +38,11 @@ import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
 import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
+import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
+import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicWhatsappQrIncomingRouteImport } from './routes/api.public.whatsapp-qr.incoming'
+import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 
 const WhatsappRoute = WhatsappRouteImport.update({
   id: '/whatsapp',
@@ -186,6 +189,16 @@ const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
   path: '/api/ai/mark-sent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiAgentTickRoute = ApiAiAgentTickRouteImport.update({
+  id: '/api/ai/agent-tick',
+  path: '/api/ai/agent-tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiAgentTakeoverRoute = ApiAiAgentTakeoverRouteImport.update({
+  id: '/api/ai/agent-takeover',
+  path: '/api/ai/agent-takeover',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -196,6 +209,12 @@ const ApiPublicWhatsappQrIncomingRoute =
   ApiPublicWhatsappQrIncomingRouteImport.update({
     id: '/api/public/whatsapp-qr/incoming',
     path: '/api/public/whatsapp-qr/incoming',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksAgentTriggerRoute =
+  ApiPublicHooksAgentTriggerRouteImport.update({
+    id: '/api/public/hooks/agent-trigger',
+    path: '/api/public/hooks/agent-trigger',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -216,6 +235,8 @@ export interface FileRoutesByFullPath {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
+  '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -229,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -248,6 +270,8 @@ export interface FileRoutesByTo {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox': typeof InboxIndexRoute
+  '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
+  '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -261,6 +285,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -282,6 +307,8 @@ export interface FileRoutesById {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/inbox/': typeof InboxIndexRoute
+  '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
+  '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
@@ -295,6 +322,7 @@ export interface FileRoutesById {
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/whatsapp-qr/incoming': typeof ApiPublicWhatsappQrIncomingRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
@@ -317,6 +345,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/agent-takeover'
+    | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
     | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
@@ -330,6 +360,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
+    | '/api/public/hooks/agent-trigger'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -349,6 +380,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox'
+    | '/api/ai/agent-takeover'
+    | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
     | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
@@ -362,6 +395,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
+    | '/api/public/hooks/agent-trigger'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   id:
@@ -382,6 +416,8 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/inbox/'
+    | '/api/ai/agent-takeover'
+    | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
     | '/api/ai/propose-knowledge'
     | '/api/ai/suggest'
@@ -395,6 +431,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/auth/meta/callback'
+    | '/api/public/hooks/agent-trigger'
     | '/api/public/whatsapp-qr/incoming'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
@@ -414,6 +451,8 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   WhatsappRoute: typeof WhatsappRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
+  ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
+  ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
@@ -427,6 +466,7 @@ export interface RootRouteChildren {
   ApiWhatsappTestSendRoute: typeof ApiWhatsappTestSendRoute
   ApiWhatsappTokenRefreshRoute: typeof ApiWhatsappTokenRefreshRoute
   AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
+  ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicWhatsappQrIncomingRoute: typeof ApiPublicWhatsappQrIncomingRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
@@ -636,6 +676,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiMarkSentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/agent-tick': {
+      id: '/api/ai/agent-tick'
+      path: '/api/ai/agent-tick'
+      fullPath: '/api/ai/agent-tick'
+      preLoaderRoute: typeof ApiAiAgentTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/agent-takeover': {
+      id: '/api/ai/agent-takeover'
+      path: '/api/ai/agent-takeover'
+      fullPath: '/api/ai/agent-takeover'
+      preLoaderRoute: typeof ApiAiAgentTakeoverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -648,6 +702,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/whatsapp-qr/incoming'
       fullPath: '/api/public/whatsapp-qr/incoming'
       preLoaderRoute: typeof ApiPublicWhatsappQrIncomingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/agent-trigger': {
+      id: '/api/public/hooks/agent-trigger'
+      path: '/api/public/hooks/agent-trigger'
+      fullPath: '/api/public/hooks/agent-trigger'
+      preLoaderRoute: typeof ApiPublicHooksAgentTriggerRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -680,6 +741,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   WhatsappRoute: WhatsappRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
+  ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
+  ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiMarkSentRoute: ApiAiMarkSentRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
@@ -693,6 +756,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappTestSendRoute: ApiWhatsappTestSendRoute,
   ApiWhatsappTokenRefreshRoute: ApiWhatsappTokenRefreshRoute,
   AuthMetaCallbackRoute: AuthMetaCallbackRoute,
+  ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicWhatsappQrIncomingRoute: ApiPublicWhatsappQrIncomingRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
