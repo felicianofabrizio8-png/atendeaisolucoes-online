@@ -207,7 +207,28 @@ export function AIFollowupPanel() {
     }
   };
 
+  const [waStatus, setWaStatus] = useState<{
+    connected: boolean;
+    hasUnmapped: boolean;
+    unmappedCount: number;
+    displayName: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch("/api/ai/followup-status", { headers });
+        const j = await res.json();
+        if (j?.ok) setWaStatus(j.whatsapp);
+      } catch {
+        /* safe fallback */
+      }
+    })();
+  }, []);
+
   if (loading && !settings) {
+
     return (
       <Card>
         <CardContent className="p-6 flex items-center justify-center text-muted-foreground gap-2">
