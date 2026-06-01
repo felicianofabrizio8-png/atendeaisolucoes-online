@@ -7,6 +7,19 @@
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  detectObjections,
+  detectReadyToClose,
+  normalizeState,
+  normalizeTiming,
+  computeLeadScore,
+  temperatureFromScore,
+  mergeObjections,
+  type Objection,
+  type CustomerStage,
+  type PurchaseTiming,
+  type Temperature,
+} from "./ai-qualifier.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash";
