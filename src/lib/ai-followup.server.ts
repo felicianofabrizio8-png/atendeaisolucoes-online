@@ -482,7 +482,7 @@ export async function reconcileResponses(companyId: string): Promise<number> {
         .select("status, closed_at")
         .eq("id", f.lead_id)
         .maybeSingle();
-      if (lead?.status === "ganho" && lead.closed_at && lead.closed_at > f.sent_at) {
+      if (lead?.status === "fechado" && lead.closed_at && lead.closed_at > f.sent_at) {
         status = "recovered";
       }
     }
