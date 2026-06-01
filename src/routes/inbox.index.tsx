@@ -159,13 +159,8 @@ function buildSortedItems(
       const origin: Origin = lead ? getConversationOrigin(lead, last, c) : "whatsapp";
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
-      let score = 0;
-      if (breached) score += 100_000 + ageMin;
-      else if (c.awaitingReply) score += 5_000 - ageMin / 1000;
-      if (lead?.status === "quente") score += 300;
-      if (lead?.status === "novo") score += 100;
-      score += -ageMin / 1000;
-      return { conv: c, lead, last, origin, breached, ageMin, score };
+      const priority = computePriority(c, lead, slaMinutes, now);
+      return { conv: c, lead, last, origin, breached, ageMin, priority, score: priority.score };
     })
     .filter(({ lead, breached, origin, conv }) => {
       if (statusFilter === "quentes" && lead?.status !== "quente" && conv.leadTemperature !== "quente") return false;
