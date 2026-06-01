@@ -1176,6 +1176,42 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_unmapped_events: {
+        Row: {
+          contact_name: string | null
+          created_at: string
+          display_phone_number: string | null
+          from_wa_id: string | null
+          id: string
+          message_preview: string | null
+          payload: Json
+          phone_number_id: string
+          waba_id: string | null
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          from_wa_id?: string | null
+          id?: string
+          message_preview?: string | null
+          payload?: Json
+          phone_number_id: string
+          waba_id?: string | null
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          from_wa_id?: string | null
+          id?: string
+          message_preview?: string | null
+          payload?: Json
+          phone_number_id?: string
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       integrations_safe: {
