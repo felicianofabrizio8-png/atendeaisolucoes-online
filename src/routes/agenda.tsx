@@ -193,10 +193,11 @@ function AgendaPage() {
     const { data, error } = await supabase
       .from("visits")
       .select(
-        "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id",
+        "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id,appointment_type,city,salesperson,technician",
       )
       .eq("company_id", companyId)
       .order("scheduled_at", { ascending: true });
+
     if (error) {
       console.error("loadVisits", error);
       toast.error("Não foi possível carregar a agenda");
