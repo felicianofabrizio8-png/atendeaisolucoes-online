@@ -199,7 +199,8 @@ export function AppShell() {
   );
 
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+
       {/* Sidebar desktop */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         {Brand}
