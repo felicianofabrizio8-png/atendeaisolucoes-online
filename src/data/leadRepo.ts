@@ -237,7 +237,7 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("conversations")
-        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type")
+        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections")
         .eq("company_id", companyId),
       supabase
         .from("messages")
