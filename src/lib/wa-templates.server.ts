@@ -446,6 +446,6 @@ async function logTemplateEvent(
     conversation_id: conversationId,
     lead_id: leadId,
     event_type: eventType,
-    payload,
+    payload: payload as never,
   });
 }
