@@ -491,122 +491,66 @@ function InboxPage() {
             </div>
           </div>
         )}
-        <ul className="divide-y divide-border">
-          {items.map(({ conv: c, last, origin, breached, ageMin }) => {
-            const lead = getLeadById(c.leadId)!;
-
+        {(() => {
+          const grouped = statusFilter === "todos" && sourceFilter === "todos" && !lossReasonFilter;
+          if (!grouped) {
             return (
-              <li key={c.id}>
-                <button
-                  onClick={() =>
-                    navigate({
-                      to: "/inbox/$conversationId",
-                      params: { conversationId: c.id },
-                    })
-                  }
-                  className={cn(
-                    "w-full text-left px-4 md:px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start relative",
-                    breached &&
-                      "bg-[var(--status-urgent)]/10 border-l-4 border-[var(--status-urgent)] pl-3 md:pl-5",
-                  )}
-                >
-                  <div className="flex flex-col items-center pt-1 gap-1.5 w-6">
-                    {breached ? (
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--status-urgent)] opacity-75" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--status-urgent)]" />
-                      </span>
-                    ) : c.awaitingReply ? (
-                      <span className="h-2 w-2 rounded-full bg-primary" />
-                    ) : (
-                      <span className="h-2 w-2 rounded-full bg-transparent" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={cn(
-                          "font-medium truncate",
-                          breached && "text-[var(--status-urgent)]",
-                        )}
-                      >
-                        {lead.name}
-                      </span>
-                      <OriginBadge origin={origin} />
-                      {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
-                      {!(lead.status === "perdido" && lead.lossReason) && (
-                        <StatusBadge status={lead.status} />
-                      )}
-                      {breached && (
-                        <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[var(--status-urgent)] text-white">
-                          <AlertTriangle className="h-2.5 w-2.5" />
-                          Cliente aguardando
-                        </span>
-                      )}
-                      {lead.status === "perdido" && lead.lossReason && (
-                        <span
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[240px]"
-                          title={`Motivo da perda: ${lead.lossReason}`}
-                        >
-                          <XCircle className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">
-                            Perdido <span className="opacity-60">•</span> {lead.lossReason}
-                          </span>
-                        </span>
-                      )}
-                      {!breached && !lead.nextAction && lead.status !== "perdido" && (
-                        <span className="text-[10px] uppercase tracking-wide text-[var(--status-warm)]">
-                          ⚠ sem próxima ação
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground truncate">
-                      {last?.role === "agent" && (
-                        <span className="text-foreground/60">Você: </span>
-                      )}
-                      {last?.text ?? "—"}
-                    </p>
-                    <QualificationInline conv={c} />
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {lead.tags.map((t: string) => (
-                        <span
-                          key={t}
-                          className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                        >
-                          #{t}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span
-                      className={cn(
-                        "text-xs tabular-nums",
-                        breached
-                          ? "text-[var(--status-urgent)] font-bold"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {timeAgo(c.lastMessageAt)}
-                    </span>
-                    {breached && (
-                      <span className="text-[10px] font-semibold text-[var(--status-urgent)]">
-                        +{Math.max(1, Math.round(ageMin - settings.slaMinutes))}min do SLA
-                      </span>
-                    )}
-                    {c.unread > 0 && (
-                      <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 min-w-[18px] text-center">
-                        {c.unread}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </li>
+              <ul className="divide-y divide-border">
+                {items.map((it) => (
+                  <ConversationCard
+                    key={it.conv.id}
+                    item={it}
+                    slaMinutes={settings.slaMinutes}
+                    onOpen={() =>
+                      navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
+                    }
+                  />
+                ))}
+              </ul>
             );
-          })}
-        </ul>
+          }
+          const byBucket = new Map<Bucket, typeof items>();
+          for (const it of items) {
+            const arr = byBucket.get(it.priority.bucket) ?? [];
+            arr.push(it);
+            byBucket.set(it.priority.bucket, arr);
+          }
+          return (
+            <div>
+              {BUCKETS.map((b) => {
+                const list = byBucket.get(b.key) ?? [];
+                if (list.length === 0) return null;
+                return (
+                  <section key={b.key}>
+                    <header
+                      className="sticky top-0 z-10 flex items-center gap-2 px-4 md:px-6 py-2 bg-background/95 backdrop-blur border-b border-border"
+                      style={{ boxShadow: `inset 3px 0 0 ${b.accent}` }}
+                    >
+                      <span className="text-sm">{b.icon}</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide">{b.label}</span>
+                      <span className="text-[10px] font-bold tabular-nums rounded-full bg-secondary px-1.5 py-0.5">
+                        {list.length}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground hidden md:inline">· {b.hint}</span>
+                    </header>
+                    <ul className="divide-y divide-border">
+                      {list.map((it) => (
+                        <ConversationCard
+                          key={it.conv.id}
+                          item={it}
+                          slaMinutes={settings.slaMinutes}
+                          onOpen={() =>
+                            navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <div className="p-6 text-center">
           <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">
