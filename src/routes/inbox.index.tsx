@@ -198,7 +198,10 @@ function InboxPage() {
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   const statusCounts = useMemo(() => {
-    const counts = { todos: 0, quentes: 0, parados: 0, perdidos: 0 };
+    const counts: Record<StatusFilter, number> = {
+      todos: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
+      pre_ia: 0, objecao: 0, parados: 0, perdidos: 0,
+    };
     for (const c of getConversations()) {
       const lead = getLeadById(c.leadId);
       const breached = isSlaBreached(c, settings.slaMinutes);
@@ -208,7 +211,11 @@ function InboxPage() {
         }
       }
       counts.todos += 1;
-      if (lead?.status === "quente") counts.quentes += 1;
+      if (lead?.status === "quente" || c.leadTemperature === "quente") counts.quentes += 1;
+      if (c.leadReadyToClose) counts.prontos += 1;
+      if (c.aiStatus === "aguardando_humano") counts.aguardando_humano += 1;
+      if (c.aiStatus === "pre_atendido_ia") counts.pre_ia += 1;
+      if ((c.detectedObjections ?? []).length > 0) counts.objecao += 1;
       if (breached) counts.parados += 1;
       if (lead?.status === "perdido") counts.perdidos += 1;
     }
