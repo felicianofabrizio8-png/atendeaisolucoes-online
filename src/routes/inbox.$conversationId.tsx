@@ -957,21 +957,25 @@ function ConversationPage() {
         )}
 
         {/* Composer */}
-        <div className="border-t border-border p-3 shrink-0 bg-background">
+        <div
+          className="border-t border-border p-2 md:p-3 shrink-0 bg-background"
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+        >
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5 md:gap-2">
             <button
               onClick={generateAI}
               disabled={aiLoading || !!closedInfo}
-              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50"
-              title="Analisar conversa e sugerir resposta"
+              className="h-9 px-2 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
+              title="Responder com IA"
+              aria-label="Responder com IA"
             >
               {aiLoading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
               )}
-              Responder com IA
+              <span className="hidden md:inline">Responder com IA</span>
             </button>
             <textarea
               value={input}
@@ -987,18 +991,20 @@ function ConversationPage() {
                 closedInfo
                   ? "Venda fechada."
                   : isComment
-                    ? "Resposta pública ao comentário… (Enter para enviar)"
-                    : "Escreva uma mensagem… (Enter para enviar)"
+                    ? "Resposta ao comentário…"
+                    : "Mensagem…"
               }
-              rows={2}
-              className="flex-1 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              rows={1}
+              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-32 md:rows-2"
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || !!closedInfo}
-              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium"
+              className="h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+              aria-label={isComment ? "Responder comentário" : "Enviar"}
             >
-              <Send className="h-3.5 w-3.5" /> {isComment ? "Responder comentário" : "Enviar"}
+              <Send className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{isComment ? "Responder" : "Enviar"}</span>
             </button>
           </div>
         </div>
