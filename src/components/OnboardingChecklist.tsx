@@ -114,14 +114,14 @@ export function OnboardingChecklist({
   const items: Item[] = (() => {
     if (loading || !data) {
       return [
-        "Login Meta",
-        "Empresa selecionada",
-        "WABA encontrada",
+        "Conta Meta conectada",
+        "Empresa vinculada",
+        "Conta WhatsApp Business",
         "Número conectado",
-        "Token válido",
-        "Webhook ativo",
+        "Conexão ativa",
+        "Recebimento de mensagens",
         "Pagamento configurado",
-        "Teste de envio aprovado",
+        "Envio aprovado",
       ].map((label, i) => ({
         key: `pending-${i}`,
         label,
