@@ -236,15 +236,27 @@ export type Database = {
           ai_agent_name: string
           ai_auto_reply_enabled: boolean
           ai_followup_business_hours_only: boolean
+          ai_followup_daily_limit: number
+          ai_followup_delay_jitter_minutes: number
           ai_followup_enabled: boolean
           ai_followup_hot_delay_hours: number
+          ai_followup_humanize: boolean
           ai_followup_max_per_lead: number
           ai_followup_min_hours_between: number
+          ai_followup_min_response_rate: number
           ai_followup_quote_delay_hours: number
+          ai_followup_reactivation_daily_max: number
+          ai_followup_reactivation_days: number
+          ai_followup_reactivation_enabled: boolean
+          ai_followup_reactivation_hours_end: string
+          ai_followup_reactivation_hours_start: string
+          ai_followup_reactivation_template: string
           ai_followup_silence_delay_hours: number
           ai_followup_templates: Json
           ai_followup_tone: string
           ai_followup_visit_delay_hours: number
+          ai_followup_warmup_enabled: boolean
+          ai_followup_warmup_started_at: string | null
           ai_handoff_timeout_minutes: number
           ai_initial_message: string | null
           ai_last_test_at: string | null
@@ -266,15 +278,27 @@ export type Database = {
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
           ai_followup_business_hours_only?: boolean
+          ai_followup_daily_limit?: number
+          ai_followup_delay_jitter_minutes?: number
           ai_followup_enabled?: boolean
           ai_followup_hot_delay_hours?: number
+          ai_followup_humanize?: boolean
           ai_followup_max_per_lead?: number
           ai_followup_min_hours_between?: number
+          ai_followup_min_response_rate?: number
           ai_followup_quote_delay_hours?: number
+          ai_followup_reactivation_daily_max?: number
+          ai_followup_reactivation_days?: number
+          ai_followup_reactivation_enabled?: boolean
+          ai_followup_reactivation_hours_end?: string
+          ai_followup_reactivation_hours_start?: string
+          ai_followup_reactivation_template?: string
           ai_followup_silence_delay_hours?: number
           ai_followup_templates?: Json
           ai_followup_tone?: string
           ai_followup_visit_delay_hours?: number
+          ai_followup_warmup_enabled?: boolean
+          ai_followup_warmup_started_at?: string | null
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -296,15 +320,27 @@ export type Database = {
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
           ai_followup_business_hours_only?: boolean
+          ai_followup_daily_limit?: number
+          ai_followup_delay_jitter_minutes?: number
           ai_followup_enabled?: boolean
           ai_followup_hot_delay_hours?: number
+          ai_followup_humanize?: boolean
           ai_followup_max_per_lead?: number
           ai_followup_min_hours_between?: number
+          ai_followup_min_response_rate?: number
           ai_followup_quote_delay_hours?: number
+          ai_followup_reactivation_daily_max?: number
+          ai_followup_reactivation_days?: number
+          ai_followup_reactivation_enabled?: boolean
+          ai_followup_reactivation_hours_end?: string
+          ai_followup_reactivation_hours_start?: string
+          ai_followup_reactivation_template?: string
           ai_followup_silence_delay_hours?: number
           ai_followup_templates?: Json
           ai_followup_tone?: string
           ai_followup_visit_delay_hours?: number
+          ai_followup_warmup_enabled?: boolean
+          ai_followup_warmup_started_at?: string | null
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -439,6 +475,8 @@ export type Database = {
       follow_ups: {
         Row: {
           attempt_number: number
+          cancel_reason: string | null
+          cancelled_at: string | null
           company_id: string
           conversation_id: string
           created_at: string
@@ -449,12 +487,17 @@ export type Database = {
           responded_at: string | null
           response_outcome: string | null
           rule_type: string
+          scheduled_for: string | null
           sent_at: string
           status: string
+          trigger_reason: string | null
           updated_at: string
+          variant_seed: number | null
         }
         Insert: {
           attempt_number?: number
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           company_id: string
           conversation_id: string
           created_at?: string
@@ -465,12 +508,17 @@ export type Database = {
           responded_at?: string | null
           response_outcome?: string | null
           rule_type: string
+          scheduled_for?: string | null
           sent_at?: string
           status?: string
+          trigger_reason?: string | null
           updated_at?: string
+          variant_seed?: number | null
         }
         Update: {
           attempt_number?: number
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           company_id?: string
           conversation_id?: string
           created_at?: string
@@ -481,9 +529,12 @@ export type Database = {
           responded_at?: string | null
           response_outcome?: string | null
           rule_type?: string
+          scheduled_for?: string | null
           sent_at?: string
           status?: string
+          trigger_reason?: string | null
           updated_at?: string
+          variant_seed?: number | null
         }
         Relationships: []
       }
@@ -568,6 +619,9 @@ export type Database = {
           handle: string | null
           id: string
           integration_id: string | null
+          last_score_at: string | null
+          lead_score: number
+          lead_temperature_cached: string | null
           loss_reason: string | null
           lost_at: string | null
           name: string
@@ -575,6 +629,7 @@ export type Database = {
           next_action_label: string | null
           phone: string | null
           product: string | null
+          reactivated_at: string | null
           source: string | null
           source_page_id: string | null
           source_sender_id: string | null
@@ -594,6 +649,9 @@ export type Database = {
           handle?: string | null
           id?: string
           integration_id?: string | null
+          last_score_at?: string | null
+          lead_score?: number
+          lead_temperature_cached?: string | null
           loss_reason?: string | null
           lost_at?: string | null
           name: string
@@ -601,6 +659,7 @@ export type Database = {
           next_action_label?: string | null
           phone?: string | null
           product?: string | null
+          reactivated_at?: string | null
           source?: string | null
           source_page_id?: string | null
           source_sender_id?: string | null
@@ -620,6 +679,9 @@ export type Database = {
           handle?: string | null
           id?: string
           integration_id?: string | null
+          last_score_at?: string | null
+          lead_score?: number
+          lead_temperature_cached?: string | null
           loss_reason?: string | null
           lost_at?: string | null
           name?: string
@@ -627,6 +689,7 @@ export type Database = {
           next_action_label?: string | null
           phone?: string | null
           product?: string | null
+          reactivated_at?: string | null
           source?: string | null
           source_page_id?: string | null
           source_sender_id?: string | null

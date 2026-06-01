@@ -128,7 +128,20 @@ export const Route = createFileRoute("/api/ai/followup-config")({
           businessHoursOnly: "ai_followup_business_hours_only",
           tone: "ai_followup_tone",
           templates: "ai_followup_templates",
+          // v2
+          humanize: "ai_followup_humanize",
+          delayJitterMinutes: "ai_followup_delay_jitter_minutes",
+          dailyLimit: "ai_followup_daily_limit",
+          minResponseRate: "ai_followup_min_response_rate",
+          warmupEnabled: "ai_followup_warmup_enabled",
+          reactivationEnabled: "ai_followup_reactivation_enabled",
+          reactivationDays: "ai_followup_reactivation_days",
+          reactivationDailyMax: "ai_followup_reactivation_daily_max",
+          reactivationHoursStart: "ai_followup_reactivation_hours_start",
+          reactivationHoursEnd: "ai_followup_reactivation_hours_end",
+          reactivationTemplate: "ai_followup_reactivation_template",
         };
+
         for (const [k, col] of Object.entries(map)) {
           if (k in body) allowed[col] = body[k];
         }

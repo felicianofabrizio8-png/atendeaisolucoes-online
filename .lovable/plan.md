@@ -1,129 +1,140 @@
+## Plano: Evolução do módulo Follow-up Automático
 
-# Fase 1 — Agente automático de pré-atendimento
-
-Camada nova, **sem tocar** em `meta-send`, `meta-webhook`, inbox, ou no fluxo do vendedor. A IA assistida (`/api/ai/suggest`) continua igual.
-
-## 1. Banco de dados (1 migração)
-
-### 1.1 Novas colunas em `conversations`
-- `ai_handling boolean default false` — IA está cuidando agora
-- `ai_status text` — `pre_atendido_ia` | `aguardando_humano` | `assumido_humano` | `null`
-- `human_takeover_at timestamptz` — quando humano assumiu
-- `last_auto_reply_at timestamptz` — anti-loop/anti-spam
-- `auto_reply_count int default 0` — limite por conversa
-- `detected_city text`, `detected_pool_size text`, `detected_intent text` — slots extraídos
-
-### 1.2 Novas colunas em `company_settings` (config do painel)
-- `ai_auto_reply_enabled boolean default false`
-- `ai_after_hours_only boolean default true`
-- `ai_initial_message text` (com fallback default)
-- `ai_max_auto_replies int default 5`
-- `ai_handoff_timeout_minutes int default 30`
-- `ai_agent_name text default 'Fabrizio'`
-
-### 1.3 Nova tabela `ai_flow_events` (logs estruturados)
-Colunas: `id, company_id, conversation_id, lead_id, event_type, payload jsonb, created_at`.
-`event_type` ∈ `auto_reply_sent | handoff_human | detected_city | detected_pool_size | detected_intent | ai_flow_step | safety_block | skipped_business_hours | skipped_human_active`.
-RLS por `company_id` (igual padrão existente).
-
-### 1.4 Realtime
-Habilitar realtime em `conversations` para o badge "⚠️ Atendimento humano necessário" atualizar ao vivo no inbox.
-
-## 2. Backend — engine desacoplada
-
-### 2.1 `src/lib/ai-agent.server.ts` (server-only)
-Funções puras, sem rotas, fáceis de testar:
-- `isWithinBusinessHours(settings, now)` — usa `business_hours_start/end`
-- `shouldAutoReply(conversation, settings, now)` — todas as guardas (enabled, after-hours, sem humano ativo, lead novo, dentro do limite, debounce de 30s)
-- `buildAgentContext(companyId)` — carrega `ai_profiles`, `products` (com fotos/medidas/litragem), `ai_knowledge_proposals(approved)`, `company_settings`
-- `detectHandoffNeeded(text)` — detecta gatilhos: `desconto`, `parcelar`, `negocia`, `prazo`, `fechar`, `instalar quando`, etc → regex + heurística leve
-- `runAgentTurn({conversation, lead, history, context})` — chama Lovable AI Gateway com **tool calls estruturados**:
-  - tool `respond_to_customer`: `{ message, detected_city?, detected_pool_size?, detected_intent?, suggest_products: string[] }`
-  - tool `request_human_handoff`: `{ reason }`
-  - retorna decisão tipada (não texto livre)
-- `runSafetyLayer(decision, context)` — bloqueia se mensagem contém: `R$`, `%`, `desconto`, `garanto`, `prometo`, prazos numéricos não presentes no catálogo. Se bloquear → força handoff.
-
-### 2.2 Prompt baseado em dados (não hardcoded)
-System prompt composto a partir de:
-- `ai_profiles` (tom, descrição, pagamento, prazo, horário, região, diferenciais)
-- até 10 produtos com `name, price, description, images[0], notes` (inclusos/inclusos do produto)
-- KB aprovada (já existe)
-- Regras de segurança fixas curtas (não negociar, não inventar, não prometer)
-
-### 2.3 Rota interna `POST /api/ai/agent-tick` (server route, auth Bearer admin)
-Dispara um turno do agente para `{conversationId}`. Usada pelo webhook handler e pelo cron de fallback. Encapsula:
-1. Lock leve via `update conversations set ai_handling=true where id=? and ai_handling=false` (anti-corrida).
-2. Carrega histórico (últimas 20 messages do DB — não confia em body).
-3. `runAgentTurn` → `runSafetyLayer`.
-4. Se handoff → `ai_status=aguardando_humano`, log `handoff_human`, **não envia mensagem**.
-5. Se reply → envia via `meta-send` existente (reutilizando, sem alterar) e grava em `messages` (role=`agent`, `source='ai_agent'`).
-6. Atualiza counters, slots detectados, `last_auto_reply_at`.
-7. Log `auto_reply_sent` + slots detectados em `ai_flow_events`.
-8. Libera lock (`ai_handling=false`).
-
-### 2.4 Gatilho a partir do webhook (sem alterar `meta-webhook`)
-Criar **trigger Postgres** em `messages` `AFTER INSERT WHEN role='lead'`:
-```sql
-perform net.http_post(url:='…/api/public/hooks/agent-trigger',
-  headers:='{...apikey...}', body:=jsonb_build_object('conversation_id', NEW.conversation_id));
-```
-Rota pública `src/routes/api/public/hooks/agent-trigger.ts` aplica as guardas (`shouldAutoReply`) e, se passar, chama o tick. Assim o webhook Meta não é tocado — o gatilho está no banco.
-
-### 2.5 Cron de checagem (fallback / scheduler)
-Habilitar `pg_cron` + `pg_net`. Job a cada 5 min:
-- Reverte locks travados (`ai_handling=true` há > 2min).
-- Conversas `aguardando_humano` há > `ai_handoff_timeout_minutes` → marca alerta urgente em `ai_flow_events`.
-- Garante que nenhuma resposta automática é enviada se `auto_reply_count >= ai_max_auto_replies`.
-
-## 3. Frontend
-
-### 3.1 Nova aba **Automação** em `/ia`
-Controles ligados a `company_settings`:
-- toggle ativar/desativar pré-atendimento
-- toggle "somente fora do horário"
-- inputs horário comercial (já existem na tabela)
-- textarea mensagem inicial (com placeholder do exemplo do Fabrizio)
-- número máximo de mensagens automáticas
-- timeout de handoff (min)
-- nome do agente
-- preview do fluxo + lista de últimos `ai_flow_events`
-
-### 3.2 Badge no inbox
-Em `inbox.$conversationId.tsx` (mudança mínima, sem alterar lógica):
-- Se `ai_status === 'aguardando_humano'` → banner topo "⚠️ Atendimento humano necessário" + botão "Assumir conversa" (seta `assumido_humano`).
-- Se `ai_status === 'pre_atendido_ia'` → chip "🤖 Pré-atendido pela IA".
-
-## 4. Segurança / guard-rails
-- Safety layer pós-LLM com regex (lado servidor) que **vence** o LLM.
-- Histórico vem do DB, não do cliente.
-- Lock por linha contra corrida.
-- Debounce 30s entre auto-replies na mesma conversa.
-- Hard cap `ai_max_auto_replies`.
-- Validação Zod no body do `agent-trigger` e `agent-tick`.
-
-## 5. Arquivos a criar / editar
-
-**Criar**
-- `supabase/migrations/<timestamp>_ai_agent_phase1.sql`
-- `src/lib/ai-agent.server.ts`
-- `src/routes/api.ai.agent-tick.tsx`
-- `src/routes/api/public/hooks/agent-trigger.tsx`
-- Cron + trigger via `supabase--insert` (não migração, dados específicos do projeto)
-
-**Editar (cirúrgico)**
-- `src/routes/ia.tsx` — adicionar aba "Automação"
-- `src/routes/inbox.$conversationId.tsx` — adicionar banner/badge (sem mexer no resto)
-- `src/integrations/supabase/types.ts` — atualizado automaticamente
-
-**Não tocar:** `meta-send`, `meta-webhook`, `whatsapp-evolution-incoming`, `api.ai.suggest.tsx`, `api.ai.suggest-product.tsx`.
-
-## 6. Fora do escopo (próximas fases)
-- Treinamento contínuo / fine-tuning
-- RAG com embeddings
-- Templates de campanha
-- Auto-classificação de leads existentes
-- Multi-agente / escalonamento por habilidade
+Implementação em **camada isolada**, sem tocar inbox, meta-send, meta-webhook ou integrações existentes. Tudo novo é feature-flagged e falha de forma segura.
 
 ---
 
-**Próximo passo:** se aprovado, começo pela migração (passo 1), aguardo confirmação, depois implemento engine + rotas + UI numa segunda leva.
+### 1. Banco de dados (migration única)
+
+**Novos campos em `company_settings`** (todos com default seguro / desligado):
+- `ai_followup_humanize` boolean default true — ativa variações automáticas de texto
+- `ai_followup_delay_jitter_minutes` int default 35 — janela randômica ± minutos
+- `ai_followup_daily_limit` int default 50 — teto diário anti-ban
+- `ai_followup_min_response_rate` numeric default 0.05 — pausa se cair abaixo
+- `ai_followup_warmup_enabled` boolean default true — aquecimento gradual
+- `ai_followup_reactivation_enabled` boolean default false
+- `ai_followup_reactivation_days` int default 30
+- `ai_followup_reactivation_daily_max` int default 10
+- `ai_followup_reactivation_hours_start` time default '09:00'
+- `ai_followup_reactivation_hours_end` time default '18:00'
+- `ai_followup_reactivation_template` text default 'Oi {{nome}}, faz um tempinho que não nos falamos. Posso te ajudar com algo hoje?'
+
+**Novos campos em `leads`**:
+- `lead_score` int default 0
+- `lead_temperature_cached` text — 'hot' | 'warm' | 'cold'
+- `last_score_at` timestamptz
+- `reactivated_at` timestamptz
+
+**Novos campos em `follow_ups`**:
+- `cancel_reason` text — 'client_replied' | 'human_takeover' | 'daily_limit' | 'no_integration' | 'outside_hours'
+- `cancelled_at` timestamptz
+- `trigger_reason` text — texto humano explicando porque a IA disparou
+- `variant_seed` int — para rastrear variação usada
+- `scheduled_for` timestamptz — quando foi agendado (vs `sent_at`)
+
+**Nova tabela `ai_followup_daily_stats`** (uma linha por empresa por dia) para o painel de analytics:
+- company_id, day, sent, responded, recovered, failed, response_rate
+
+GRANTs + RLS por `current_company_id()` em tudo novo.
+
+---
+
+### 2. Backend — `src/lib/ai-followup.server.ts` (extensão)
+
+Adicionar funções **novas** (não substituir as existentes):
+- `humanizeTemplate(text, attemptNumber, seed)` — aplica variações: saudação, emoji, CTA, micro-mudanças
+- `computeLeadScore(leadId)` — calcula 0-100 baseado em msgs, tempo resposta, orçamento, follow-up respondido, recência → mapeia para hot/warm/cold
+- `getWhatsAppIntegrationStatus(companyId)` — retorna `{ connected, hasUnmapped, unmappedCount, tokenValid, error }`
+- `canSendFollowupNow(companyId)` — gate central: integração ativa + janela 24h + limite diário + horário + taxa resposta + warmup
+- `scheduleWithJitter(baseHours, jitterMin)` — calcula `scheduled_for` randômico
+- `cancelPendingFollowups(conversationId, reason)` — chamado quando cliente responde (via gatilho leve)
+- `reactivateOldLeads(companyId)` — varre leads parados há N dias, respeita limite diário e horário
+- `getAdvancedAnalytics(companyId)` — agrega métricas avançadas
+
+**Tick** (`runFollowupTickForCompany`) passa a:
+1. Chamar `canSendFollowupNow` antes de qualquer envio
+2. Humanizar template via `humanizeTemplate`
+3. Registrar `trigger_reason` e `variant_seed` no insert
+4. Logar tudo em `ai_flow_events`
+
+---
+
+### 3. APIs (rotas TanStack — novas, não tocam as existentes)
+
+- `GET /api/ai/followup-status` — retorna status WhatsApp + score summary + alertas
+- `GET /api/ai/followup-analytics` — métricas avançadas (recuperados, valor, melhor horário, taxa por categoria, série diária)
+- `POST /api/ai/followup-cancel` — cancela follow-ups pendentes de uma conversa (uso manual)
+- `POST /api/ai/followup-reactivate` — dispara reativação manual
+
+Endpoint `/api/ai/followup-config` existente: estender PUT para aceitar os novos campos.
+
+---
+
+### 4. Cancelamento automático ao responder
+
+**Sem mexer no meta-webhook**. Adicionar trigger Postgres em `messages` que:
+- Quando `role='lead'` (mensagem recebida do cliente)
+- Marca `follow_ups` pendentes (`status='sent'` sem `responded_at`) da mesma conversa como `responded` + atualiza `lead_score`
+- Insere evento `ai_flow_events` com tipo `followup_auto_cancelled`
+
+Trigger SECURITY DEFINER, isolado, com EXCEPTION WHEN OTHERS RETURN NEW — nunca quebra insert.
+
+---
+
+### 5. Frontend — `src/components/AIFollowupPanel.tsx`
+
+Estender o painel atual (não substituir):
+
+**Topo**:
+- Banner de status WhatsApp (verde/amarelo/vermelho)
+- Alerta se `whatsapp_unmapped_events` tem registros recentes
+- Score summary (X quentes / Y mornos / Z frios)
+
+**Nova aba "Inteligência"**:
+- Toggle humanização
+- Slider delay jitter
+- Limite diário
+- Pausa automática se taxa cair
+- Warmup gradual
+
+**Nova aba "Reativação"**:
+- Toggle ativar
+- Dias de inatividade
+- Limite diário
+- Janela de horário
+- Template editável
+
+**Nova aba "Analytics"** (substitui apenas o card de métricas atual):
+- Leads recuperados / valor recuperado
+- Melhor template e melhor horário
+- Taxa por regra
+- Gráfico de série diária (envios + respostas)
+- Taxa de recuperação
+
+**Timeline enriquecida**:
+- Badges adicionais: "cancelado (cliente respondeu)", "lead recuperado", `trigger_reason` em hover
+- Score badge por linha (🔥/🟡/⚪)
+
+---
+
+### 6. Proteção anti-ban (centralizada em `canSendFollowupNow`)
+
+- Limite diário por empresa
+- Pausa se taxa de resposta dos últimos 7 dias < `min_response_rate`
+- Warmup: dia 1 = 10% do limite, dia 2 = 25%, dia 3 = 50%, dia 7+ = 100%
+- Jitter randômico entre cada envio na fila (sleep aleatório)
+- Bloqueio rígido fora do horário comercial (já existente, reforçado)
+
+---
+
+### Detalhes técnicos
+
+- Migration única, idempotente (ADD COLUMN IF NOT EXISTS)
+- Todas as novas funções com try/catch + fallback silencioso
+- Feature flags: `ai_followup_humanize`, `ai_followup_reactivation_enabled`, `ai_followup_warmup_enabled` — desligar volta ao comportamento atual
+- `routeTree.gen.ts` auto-regenerado pelo Vite plugin
+- Zero alteração em: `meta-send`, `meta-webhook`, `inbox.*`, `api.whatsapp.send`, `integrations` (tabela), client.ts
+
+### Não muda
+
+- Inbox, envio manual, webhook Meta, RLS de tabelas existentes, autenticação, rotas existentes (apenas estende `/api/ai/followup-config`).

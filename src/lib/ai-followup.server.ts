@@ -14,6 +14,13 @@ import {
   findApprovedTemplateForPurpose,
   type TemplatePurpose,
 } from "@/lib/wa-templates.server";
+import {
+  canSendFollowupNow,
+  humanizeTemplate,
+  getFollowupV2Settings,
+  jitterDelayMs,
+} from "@/lib/ai-followup-v2.server";
+
 
 
 export type FollowupRule =
@@ -391,7 +398,8 @@ async function buildMessage(
   c: Candidate,
   s: FollowupSettings,
   attempt: number,
-): Promise<string> {
+  humanize: boolean,
+): Promise<{ text: string; variant: number }> {
   const { data: lead } = await supabaseAdmin
     .from("leads")
     .select("name, product")
@@ -400,13 +408,20 @@ async function buildMessage(
   const tpl = s.templates[c.rule] ?? DEFAULT_TEMPLATES[c.rule];
   const nome = firstName(lead?.name);
   const produto = lead?.product ?? "";
-  const msg = renderTemplate(tpl, { nome, produto, agente: s.agentName });
-  // Tentativa 2+: adiciona suavização
-  if (attempt > 1) {
-    return `${msg}\n\nSe preferir, é só responder por aqui quando puder.`;
+  const base = renderTemplate(tpl, { nome, produto, agente: s.agentName });
+  if (humanize) {
+    const seed = Math.floor(Date.now() / 60000) + c.leadId.charCodeAt(0);
+    return humanizeTemplate(base, attempt, seed);
   }
-  return msg;
+  if (attempt > 1) {
+    return {
+      text: `${base}\n\nSe preferir, é só responder por aqui quando puder.`,
+      variant: 0,
+    };
+  }
+  return { text: base, variant: 0 };
 }
+
 
 // ----------------------------------------------------------------------------
 // Loop principal
@@ -447,6 +462,19 @@ export async function runFollowupTickForCompany(
     return result;
   }
 
+  // Gate v2 (limite diário, taxa de resposta, warmup, integração ativa).
+  // Falha-segura: se v2 não existir ou ok=true, segue normalmente.
+  const v2Gate = await canSendFollowupNow(companyId).catch(
+    () => ({ ok: true as const, reason: undefined as string | undefined }),
+  );
+  if (!v2Gate.ok) {
+    result.errors.push(`gate v2: ${("reason" in v2Gate && v2Gate.reason) || "bloqueado"}`);
+    return result;
+  }
+
+  const v2 = await getFollowupV2Settings(companyId).catch(() => null);
+  const humanize = v2?.humanize ?? false;
+
   const candidates = await findCandidates(companyId, s);
   result.scanned = candidates.length;
 
@@ -461,7 +489,9 @@ export async function runFollowupTickForCompany(
       continue;
     }
     const attempt = check.attempt ?? 1;
-    const text = await buildMessage(c, s, attempt);
+    const built = await buildMessage(c, s, attempt, humanize);
+    const text = built.text;
+
 
     // ---- Fora da janela de 24h: tenta template Utility aprovado ----
     if (check.outsideWindow) {
