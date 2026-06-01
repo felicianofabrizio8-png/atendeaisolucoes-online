@@ -407,10 +407,12 @@ function extractWaText(m: any): string {
 
 async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
   const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+  const wabaIdFromEntry = entry?.id ? String(entry.id) : null;
   for (const change of changes) {
     if (change?.field !== "messages") continue;
     const value = change.value ?? {};
     const phoneNumberId = value?.metadata?.phone_number_id;
+    const displayPhoneNumber = value?.metadata?.display_phone_number ?? null;
     if (!phoneNumberId) {
       console.log("META_WEBHOOK_WA_NO_PHONE_ID");
       continue;
@@ -425,7 +427,30 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
       .maybeSingle();
 
     if (!integration) {
-      console.log("META_WEBHOOK_WA_INTEGRATION_NOT_FOUND", phoneNumberId);
+      console.log(
+        "META_WEBHOOK_WA_UNMAPPED_NUMBER — mensagem recebida de número WhatsApp não vinculado à empresa",
+        { phone_number_id: phoneNumberId, waba_id: wabaIdFromEntry, display_phone_number: displayPhoneNumber },
+      );
+      // Registra o evento para o painel administrativo. Não bloqueia o
+      // webhook em caso de erro — apenas loga.
+      try {
+        const incoming = Array.isArray(value?.messages) ? value.messages : [];
+        const contactsList = Array.isArray(value?.contacts) ? value.contacts : [];
+        const firstMsg = incoming[0] ?? null;
+        const firstContact = contactsList[0] ?? null;
+        const preview = firstMsg ? extractWaText(firstMsg).slice(0, 280) : null;
+        await sb.from("whatsapp_unmapped_events").insert({
+          phone_number_id: String(phoneNumberId),
+          waba_id: wabaIdFromEntry,
+          display_phone_number: displayPhoneNumber,
+          from_wa_id: firstMsg?.from ? String(firstMsg.from) : null,
+          contact_name: firstContact?.profile?.name ?? null,
+          message_preview: preview,
+          payload: { value, entry_id: wabaIdFromEntry },
+        });
+      } catch (e) {
+        console.log("META_WEBHOOK_WA_UNMAPPED_LOG_ERROR", String(e));
+      }
       continue;
     }
 
