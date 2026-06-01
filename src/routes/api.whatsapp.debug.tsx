@@ -297,9 +297,14 @@ export const Route = createFileRoute("/api/whatsapp/debug")({
           me: meRes,
           waba: wabaRes,
           phone_number: phoneRes,
+          subscribed_apps: subsRes,
+          billing: billingRes,
+          webhook_subscribed: webhookSubscribed,
+          billing_likely_ok: billingLikelyOk,
           comparison,
           test_send: sendRes,
         });
+
       },
     },
   },
