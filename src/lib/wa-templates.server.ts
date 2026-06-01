@@ -404,19 +404,21 @@ export async function syncTemplatesFromMeta(companyId: string): Promise<SyncResu
     await supabaseAdmin
       .from("whatsapp_templates")
       .upsert(
-        {
-          company_id: companyId,
-          integration_id: integration.id,
-          meta_template_id: t.id ?? null,
-          name: t.name,
-          language: t.language,
-          category,
-          status,
-          components: t.components ?? [],
-          variables: extractVariables(t.components),
-          meta_payload: t as unknown as Record<string, unknown>,
-          last_synced_at: now,
-        },
+        [
+          {
+            company_id: companyId,
+            integration_id: integration.id,
+            meta_template_id: t.id ?? null,
+            name: t.name,
+            language: t.language,
+            category,
+            status,
+            components: (t.components ?? []) as unknown as never,
+            variables: extractVariables(t.components) as unknown as never,
+            meta_payload: (t as unknown) as never,
+            last_synced_at: now,
+          },
+        ],
         { onConflict: "company_id,name,language" },
       );
   }
