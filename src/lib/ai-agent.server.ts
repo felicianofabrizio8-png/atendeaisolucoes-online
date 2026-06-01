@@ -876,7 +876,7 @@ export async function runAgentTick(conversationId: string): Promise<{
     });
 
     if (!sent.ok) {
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "agent_error", {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "send_failed", {
         stage: "send",
         error: sent.error,
       });
