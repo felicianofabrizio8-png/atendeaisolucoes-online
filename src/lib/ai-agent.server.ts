@@ -75,7 +75,9 @@ export type SkipReason =
   | "rate_limit"
   | "lock_busy"
   | "no_lead_message"
-  | "missing_integration";
+  | "missing_integration"
+  | "missing_ai_profile"
+  | "no_whatsapp_integration";
 
 // ----------------------------------------------------------------------------
 // Logging
@@ -752,6 +754,24 @@ export async function runAgentTick(conversationId: string): Promise<{
   const ctx = await loadAgentContext(conv.company_id);
   if (!ctx) return { ok: false, action: "error", reason: "no_settings" };
 
+  // Pré-flight: bloqueios de segurança antes de qualquer envio.
+  if (!ctx.aiProfile) {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "missing_ai_profile", {});
+    return { ok: true, action: "skipped", reason: "missing_ai_profile" };
+  }
+  const { data: waInteg } = await supabaseAdmin
+    .from("integrations")
+    .select("id")
+    .eq("company_id", conv.company_id)
+    .eq("channel", "whatsapp")
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (!waInteg) {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "no_whatsapp_integration", {});
+    return { ok: true, action: "skipped", reason: "no_whatsapp_integration" };
+  }
+
   const guard = shouldAutoReply(conv as AgentConversation, ctx.settings);
   if (!guard.ok) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, `skipped_${guard.reason}`, {});
@@ -838,10 +858,12 @@ export async function runAgentTick(conversationId: string): Promise<{
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
         .eq("id", conv.id);
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
-        reason: decision.reason,
-      });
-      return { ok: true, action: "handoff", reason: decision.reason };
+      const reason = decision.reason ?? "unknown";
+      let evType = "handoff_human";
+      if (reason.startsWith("safety_block")) evType = "safety_handoff";
+      else if (reason.startsWith("gateway_")) evType = "gateway_timeout";
+      await logEvent(conv.company_id, conv.id, conv.lead_id, evType, { reason });
+      return { ok: true, action: "handoff", reason };
     }
 
     if (decision.kind !== "reply" || !decision.message) {
@@ -856,7 +878,7 @@ export async function runAgentTick(conversationId: string): Promise<{
     });
 
     if (!sent.ok) {
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "agent_error", {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "send_failed", {
         stage: "send",
         error: sent.error,
       });

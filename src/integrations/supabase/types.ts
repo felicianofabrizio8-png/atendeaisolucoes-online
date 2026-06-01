@@ -237,7 +237,11 @@ export type Database = {
           ai_auto_reply_enabled: boolean
           ai_handoff_timeout_minutes: number
           ai_initial_message: string | null
+          ai_last_test_at: string | null
+          ai_last_test_result: Json | null
           ai_max_auto_replies: number
+          ai_pilot_enabled_at: string | null
+          ai_pilot_mode: boolean
           business_hours_end: string
           business_hours_start: string
           company_id: string
@@ -253,7 +257,11 @@ export type Database = {
           ai_auto_reply_enabled?: boolean
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
+          ai_last_test_at?: string | null
+          ai_last_test_result?: Json | null
           ai_max_auto_replies?: number
+          ai_pilot_enabled_at?: string | null
+          ai_pilot_mode?: boolean
           business_hours_end?: string
           business_hours_start?: string
           company_id: string
@@ -269,7 +277,11 @@ export type Database = {
           ai_auto_reply_enabled?: boolean
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
+          ai_last_test_at?: string | null
+          ai_last_test_result?: Json | null
           ai_max_auto_replies?: number
+          ai_pilot_enabled_at?: string | null
+          ai_pilot_mode?: boolean
           business_hours_end?: string
           business_hours_start?: string
           company_id?: string

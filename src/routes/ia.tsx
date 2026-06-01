@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle } from "lucide-react";
+import { AIPilotPanel } from "@/components/AIPilotPanel";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/ia")({
@@ -615,6 +616,7 @@ function ConfiguracoesIA() {
 
         {/* ---------- AUTOMAÇÃO ---------- */}
         <TabsContent value="automacao" className="space-y-4">
+          <AIPilotPanel />
           {!automation ? (
             <Card>
               <CardContent className="py-8 text-sm text-muted-foreground">
