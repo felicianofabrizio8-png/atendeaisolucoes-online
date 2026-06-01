@@ -16,8 +16,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw, Bot, AlertTriangle, BarChart3 } from "lucide-react";
 import { AIPilotPanel } from "@/components/AIPilotPanel";
+import { AIAnalyticsDashboard } from "@/components/AIAnalyticsDashboard";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/ia")({
@@ -352,6 +353,9 @@ function ConfiguracoesIA() {
             Aprendizados{pendingCount ? ` (${pendingCount})` : ""}
           </TabsTrigger>
           <TabsTrigger value="uso">Uso & Logs</TabsTrigger>
+          <TabsTrigger value="analytics">
+            <BarChart3 className="h-3.5 w-3.5 mr-1" /> Analytics
+          </TabsTrigger>
           <TabsTrigger value="automacao">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
@@ -612,6 +616,11 @@ function ConfiguracoesIA() {
               ))}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ---------- ANALYTICS ---------- */}
+        <TabsContent value="analytics" className="space-y-4">
+          <AIAnalyticsDashboard />
         </TabsContent>
 
         {/* ---------- AUTOMAÇÃO ---------- */}

@@ -41,6 +41,7 @@ import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
 import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
 import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
+import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
@@ -207,6 +208,11 @@ const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
   path: '/api/ai/mark-sent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
+  id: '/api/ai/analytics',
+  path: '/api/ai/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiAgentTickRoute = ApiAiAgentTickRouteImport.update({
   id: '/api/ai/agent-tick',
   path: '/api/ai/agent-tick',
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
+  '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof InboxIndexRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
+  '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   '/inbox/': typeof InboxIndexRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
+  '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
@@ -374,6 +383,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
+    | '/api/ai/analytics'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -412,6 +422,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
+    | '/api/ai/analytics'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -451,6 +462,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
+    | '/api/ai/analytics'
     | '/api/ai/mark-sent'
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
@@ -489,6 +501,7 @@ export interface RootRouteChildren {
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
+  ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
   ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
   ApiAiPilotToggleRoute: typeof ApiAiPilotToggleRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
@@ -736,6 +749,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiMarkSentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/analytics': {
+      id: '/api/ai/analytics'
+      path: '/api/ai/analytics'
+      fullPath: '/api/ai/analytics'
+      preLoaderRoute: typeof ApiAiAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/agent-tick': {
       id: '/api/ai/agent-tick'
       path: '/api/ai/agent-tick'
@@ -803,6 +823,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
+  ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
   ApiAiMarkSentRoute: ApiAiMarkSentRoute,
   ApiAiPilotToggleRoute: ApiAiPilotToggleRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
