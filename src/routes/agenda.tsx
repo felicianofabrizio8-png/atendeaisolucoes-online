@@ -705,16 +705,17 @@ function VisitFormModal({
       if (visit) {
         const { error } = await supabase.from("visits").update(payload).eq("id", visit.id);
         if (error) throw error;
-        toast.success("Visita atualizada");
+        toast.success("Compromisso atualizado");
       } else {
         const { error } = await supabase.from("visits").insert(payload);
         if (error) throw error;
-        toast.success("Visita agendada");
+        toast.success("Compromisso agendado");
       }
       onSaved();
     } catch (e) {
       console.error(e);
-      toast.error("Erro ao salvar visita");
+      toast.error("Erro ao salvar compromisso");
+
     } finally {
       setSaving(false);
     }
