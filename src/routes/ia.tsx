@@ -181,6 +181,21 @@ function ConfiguracoesIA() {
     setProposals((props ?? []) as Proposal[]);
     setLogs((lgs ?? []) as LogRow[]);
     setUsage(usg ?? { count: 0, monthly_limit: 1000 });
+    setAutomation(
+      settings
+        ? {
+            ai_auto_reply_enabled: !!settings.ai_auto_reply_enabled,
+            ai_after_hours_only: settings.ai_after_hours_only ?? true,
+            ai_initial_message: settings.ai_initial_message ?? null,
+            ai_max_auto_replies: settings.ai_max_auto_replies ?? 5,
+            ai_handoff_timeout_minutes: settings.ai_handoff_timeout_minutes ?? 30,
+            ai_agent_name: settings.ai_agent_name ?? "Fabrizio",
+            business_hours_start: settings.business_hours_start ?? "09:00:00",
+            business_hours_end: settings.business_hours_end ?? "18:00:00",
+          }
+        : null,
+    );
+    setEvents((evts ?? []) as FlowEvent[]);
     setLoading(false);
   }, [companyId, company?.name]);
 
