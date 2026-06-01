@@ -777,6 +777,8 @@ function ConversationPage() {
                 </div>
               );
             }
+            const tplMeta = m.sourceMetadata as { template_name?: string; category?: string } | undefined;
+            const isTemplate = m.role === "agent" && !!tplMeta?.template_name;
             return (
               <div
                 key={m.id}
@@ -795,9 +797,15 @@ function ConversationPage() {
                 >
                   <MessageContent message={m} />
                 </div>
+                {isTemplate && (
+                  <span className="text-[10px] mt-1 px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
+                    Enviado via template Utility{tplMeta?.template_name ? ` · ${tplMeta.template_name}` : ""}
+                  </span>
+                )}
                 <span className="text-[10px] text-muted-foreground mt-1 px-1">{timeAgo(m.at)}</span>
               </div>
             );
+
           })}
         </div>
 
