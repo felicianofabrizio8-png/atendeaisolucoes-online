@@ -811,7 +811,7 @@ function ConversationPage() {
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
         {pendingQuote && !closedInfo && (
-          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3">
+          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3 shrink-0 max-h-[40vh] overflow-y-auto">
             <div className="flex items-center gap-2 mb-2">
               <FileText className="h-4 w-4 text-[var(--status-won)]" />
               <span className="text-xs font-semibold uppercase tracking-wide text-[var(--status-won)]">
