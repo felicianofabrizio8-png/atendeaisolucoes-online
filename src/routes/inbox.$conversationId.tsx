@@ -235,8 +235,11 @@ function ConversationPage() {
   }, [search.quote, conversationId, navigate]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, ai, pendingQuote]);
+
 
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
 
