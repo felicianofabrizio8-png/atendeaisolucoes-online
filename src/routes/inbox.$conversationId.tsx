@@ -545,10 +545,11 @@ function ConversationPage() {
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
   return (
-    <div className="flex-1 flex min-w-0">
+    <div className="flex-1 flex min-w-0 min-h-0 h-full">
       {/* Conversation column */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-        <header className="h-14 px-4 border-b border-border flex items-center gap-3">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-border">
+        <header className="h-14 px-4 border-b border-border flex items-center gap-3 shrink-0">
+
           <button
             onClick={() => navigate({ to: "/inbox" })}
             className="md:hidden p-1.5 rounded-md hover:bg-accent"
