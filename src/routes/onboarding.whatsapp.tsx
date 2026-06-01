@@ -1116,8 +1116,21 @@ function StepSuccess({
 }
 
 
-function TestSendButton() {
-  const [open, setOpen] = useState(false);
+function TestSendButton({
+  externalOpen,
+  onOpenChange,
+  onSuccess,
+}: {
+  externalOpen?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  onSuccess?: () => void;
+} = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = (v: boolean) => {
+    setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [phone, setPhone] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<
@@ -1125,6 +1138,7 @@ function TestSendButton() {
     | { kind: "err"; msg: string }
     | null
   >(null);
+
 
   const DEFAULT_MSG = "Teste de conexão do Atende Ai realizado com sucesso.";
 
