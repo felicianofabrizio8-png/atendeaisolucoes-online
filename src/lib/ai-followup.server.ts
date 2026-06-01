@@ -315,7 +315,10 @@ interface SafetyCheck {
   ok: boolean;
   reason?: string;
   attempt?: number;
+  outsideWindow?: boolean;
 }
+
+
 
 async function canSend(
   companyId: string,
