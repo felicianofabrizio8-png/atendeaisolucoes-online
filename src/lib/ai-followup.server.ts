@@ -14,6 +14,13 @@ import {
   findApprovedTemplateForPurpose,
   type TemplatePurpose,
 } from "@/lib/wa-templates.server";
+import {
+  canSendFollowupNow,
+  humanizeTemplate,
+  getFollowupV2Settings,
+  jitterDelayMs,
+} from "@/lib/ai-followup-v2.server";
+
 
 
 export type FollowupRule =
