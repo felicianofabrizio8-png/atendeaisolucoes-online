@@ -64,7 +64,7 @@ export const Route = createFileRoute("/api/whatsapp/templates/update")({
           );
         }
 
-        const patch: Record<string, unknown> = {};
+        const patch: { purpose?: string | null; auto_use?: boolean } = {};
         if (body.purpose !== undefined) patch.purpose = body.purpose;
         if (nextAutoUse !== undefined) patch.auto_use = nextAutoUse;
         if (Object.keys(patch).length === 0)
@@ -73,6 +73,7 @@ export const Route = createFileRoute("/api/whatsapp/templates/update")({
         const { data: updated, error: updErr } = await supabaseAdmin
           .from("whatsapp_templates")
           .update(patch)
+
           .eq("id", body.id)
           .eq("company_id", profile.company_id)
           .select("id, purpose, auto_use")
