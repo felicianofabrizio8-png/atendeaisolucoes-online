@@ -168,7 +168,11 @@ function buildSortedItems(
       return { conv: c, lead, last, origin, breached, ageMin, score };
     })
     .filter(({ lead, breached, origin, conv }) => {
-      if (statusFilter === "quentes" && lead?.status !== "quente") return false;
+      if (statusFilter === "quentes" && lead?.status !== "quente" && conv.leadTemperature !== "quente") return false;
+      if (statusFilter === "prontos" && !conv.leadReadyToClose) return false;
+      if (statusFilter === "aguardando_humano" && conv.aiStatus !== "aguardando_humano") return false;
+      if (statusFilter === "pre_ia" && conv.aiStatus !== "pre_atendido_ia") return false;
+      if (statusFilter === "objecao" && (conv.detectedObjections ?? []).length === 0) return false;
       if (statusFilter === "parados" && !breached) return false;
       if (statusFilter === "perdidos" && lead?.status !== "perdido") return false;
       if (lossReasonFilter) {
