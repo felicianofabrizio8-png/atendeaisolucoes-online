@@ -75,7 +75,9 @@ export type SkipReason =
   | "rate_limit"
   | "lock_busy"
   | "no_lead_message"
-  | "missing_integration";
+  | "missing_integration"
+  | "missing_ai_profile"
+  | "no_whatsapp_integration";
 
 // ----------------------------------------------------------------------------
 // Logging
