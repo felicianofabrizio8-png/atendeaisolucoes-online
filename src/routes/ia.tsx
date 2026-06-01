@@ -618,6 +618,11 @@ function ConfiguracoesIA() {
           </Card>
         </TabsContent>
 
+        {/* ---------- ANALYTICS ---------- */}
+        <TabsContent value="analytics" className="space-y-4">
+          <AIAnalyticsDashboard />
+        </TabsContent>
+
         {/* ---------- AUTOMAÇÃO ---------- */}
         <TabsContent value="automacao" className="space-y-4">
           <AIPilotPanel />
