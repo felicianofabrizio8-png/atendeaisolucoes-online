@@ -19,6 +19,7 @@ import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 import { QualificationInline } from "@/components/QualificationBadges";
+import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 
 const STATUS_FILTERS = [
   "todos",
