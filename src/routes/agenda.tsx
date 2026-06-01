@@ -975,24 +975,17 @@ function SendTechnicianModal({
       return;
     }
 
-    // Envia via WhatsApp Cloud (provider Evolution) para contato do sistema
+    // Envio via wa.me (Evolution descontinuado; Cloud API oficial é gerenciada pelo inbox)
     setSending(true);
     try {
-      const res = await whatsappProvider.sendMessage({
-        number: digits,
-        message,
-        contactName: tech?.name,
-      });
-      if (!res.ok) throw new Error(res.error || "Falha ao enviar");
-      toast.success("Mensagem enviada ao técnico");
+      const url = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+      window.open(url, "_blank", "noopener");
+      toast.success("Abrindo WhatsApp para envio ao técnico");
       onClose();
     } catch (e) {
       console.error(e);
       const msg = e instanceof Error ? e.message : "Erro ao enviar";
       toast.error(msg);
-      // fallback wa.me
-      const url = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
-      window.open(url, "_blank", "noopener");
     } finally {
       setSending(false);
     }
