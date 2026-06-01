@@ -677,9 +677,6 @@ function buildTechMessage(v: Visit): string {
   return lines.join("\n");
 }
 
-function onlyDigits(s: string): string {
-  return s.replace(/\D+/g, "");
-}
 
 function SendTechnicianModal({
   visit,
