@@ -398,7 +398,8 @@ async function buildMessage(
   c: Candidate,
   s: FollowupSettings,
   attempt: number,
-): Promise<string> {
+  humanize: boolean,
+): Promise<{ text: string; variant: number }> {
   const { data: lead } = await supabaseAdmin
     .from("leads")
     .select("name, product")
@@ -407,13 +408,20 @@ async function buildMessage(
   const tpl = s.templates[c.rule] ?? DEFAULT_TEMPLATES[c.rule];
   const nome = firstName(lead?.name);
   const produto = lead?.product ?? "";
-  const msg = renderTemplate(tpl, { nome, produto, agente: s.agentName });
-  // Tentativa 2+: adiciona suavização
-  if (attempt > 1) {
-    return `${msg}\n\nSe preferir, é só responder por aqui quando puder.`;
+  const base = renderTemplate(tpl, { nome, produto, agente: s.agentName });
+  if (humanize) {
+    const seed = Math.floor(Date.now() / 60000) + c.leadId.charCodeAt(0);
+    return humanizeTemplate(base, attempt, seed);
   }
-  return msg;
+  if (attempt > 1) {
+    return {
+      text: `${base}\n\nSe preferir, é só responder por aqui quando puder.`,
+      variant: 0,
+    };
+  }
+  return { text: base, variant: 0 };
 }
+
 
 // ----------------------------------------------------------------------------
 // Loop principal
