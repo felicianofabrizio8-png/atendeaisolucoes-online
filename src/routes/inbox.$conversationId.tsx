@@ -131,7 +131,7 @@ function ImagePreview({ url }: { url: string }) {
         src={url}
         alt="Imagem"
         onError={() => setError(true)}
-        className="rounded-md max-w-[240px] w-full h-auto cursor-zoom-in"
+        className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
         loading="lazy"
       />
     </a>
@@ -623,20 +623,20 @@ function ConversationPage() {
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
   return (
-    <div className="flex-1 flex min-w-0 min-h-0 h-full">
+    <div className="flex-1 flex min-w-0 min-h-0 h-full max-w-full overflow-hidden">
       {/* Conversation column */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-border">
-        <header className="h-14 px-4 border-b border-border flex items-center gap-3 shrink-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 max-w-full border-r border-border overflow-hidden">
+        <header className="h-12 md:h-14 px-3 md:px-4 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
 
           <button
             onClick={() => navigate({ to: "/inbox" })}
-            className="md:hidden p-1.5 rounded-md hover:bg-accent"
+            className="md:hidden p-1.5 rounded-md hover:bg-accent shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold truncate">{lead.name}</span>
+            <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+              <span className="font-semibold truncate text-sm md:text-base">{lead.name}</span>
               <OriginBadge origin={origin} />
               {origin !== "whatsapp" && <ChannelBadge channel={lead.channel} />}
               {closedInfo ? (
@@ -647,12 +647,12 @@ function ConversationPage() {
                 <StatusBadge status={lead.status} />
               )}
             </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
-              Última mensagem há {lastMessageAge}
+            <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5 truncate">
+              <Clock className="h-3 w-3 shrink-0" />
+              <span className="truncate">Há {lastMessageAge}</span>
               {conversation.slaBreached && conversation.awaitingReply && !closedInfo && (
-                <span className="text-[var(--status-urgent)] font-semibold ml-1">
-                  • SLA estourado
+                <span className="text-[var(--status-urgent)] font-semibold ml-1 shrink-0">
+                  • SLA
                 </span>
               )}
             </div>
@@ -660,7 +660,7 @@ function ConversationPage() {
           {!closedInfo && (
             <button
               onClick={() => setCloseOpen(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-[var(--status-won)] text-white hover:opacity-90 text-xs font-semibold"
+              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-[var(--status-won)] text-white hover:opacity-90 text-xs font-semibold shrink-0"
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Fechar venda
             </button>
@@ -766,7 +766,7 @@ function ConversationPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scroll-smooth p-4 pb-6 space-y-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
           {messages.map((m) => {
             if (m.role === "system") {
               return (
@@ -783,7 +783,7 @@ function ConversationPage() {
               <div
                 key={m.id}
                 className={cn(
-                  "flex flex-col max-w-[75%]",
+                  "flex flex-col max-w-[90%] md:max-w-[75%]",
                   m.role === "agent" ? "ml-auto items-end" : "items-start",
                 )}
               >
@@ -811,7 +811,7 @@ function ConversationPage() {
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
         {pendingQuote && !closedInfo && (
-          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3">
+          <div className="border-t border-[var(--status-won)]/40 bg-[var(--status-won)]/10 p-3 shrink-0 max-h-[40vh] overflow-y-auto">
             <div className="flex items-center gap-2 mb-2">
               <FileText className="h-4 w-4 text-[var(--status-won)]" />
               <span className="text-xs font-semibold uppercase tracking-wide text-[var(--status-won)]">
@@ -879,7 +879,7 @@ function ConversationPage() {
 
         {/* AI suggestion panel — appears right above the composer */}
         {(ai || aiLoading || aiError) && (
-          <div className="border-t border-primary/30 bg-primary/5 p-3">
+          <div className="border-t border-primary/30 bg-primary/5 p-3 shrink-0 max-h-[40vh] overflow-y-auto">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold uppercase tracking-wide text-primary">
@@ -957,21 +957,25 @@ function ConversationPage() {
         )}
 
         {/* Composer */}
-        <div className="border-t border-border p-3 shrink-0 bg-background">
+        <div
+          className="border-t border-border p-2 md:p-3 shrink-0 bg-background"
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+        >
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5 md:gap-2">
             <button
               onClick={generateAI}
               disabled={aiLoading || !!closedInfo}
-              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50"
-              title="Analisar conversa e sugerir resposta"
+              className="h-9 px-2 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
+              title="Responder com IA"
+              aria-label="Responder com IA"
             >
               {aiLoading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
               )}
-              Responder com IA
+              <span className="hidden md:inline">Responder com IA</span>
             </button>
             <textarea
               value={input}
@@ -987,18 +991,20 @@ function ConversationPage() {
                 closedInfo
                   ? "Venda fechada."
                   : isComment
-                    ? "Resposta pública ao comentário… (Enter para enviar)"
-                    : "Escreva uma mensagem… (Enter para enviar)"
+                    ? "Resposta ao comentário…"
+                    : "Mensagem…"
               }
-              rows={2}
-              className="flex-1 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              rows={1}
+              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-32 md:min-h-[3.5rem]"
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || !!closedInfo}
-              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium"
+              className="h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+              aria-label={isComment ? "Responder comentário" : "Enviar"}
             >
-              <Send className="h-3.5 w-3.5" /> {isComment ? "Responder comentário" : "Enviar"}
+              <Send className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{isComment ? "Responder" : "Enviar"}</span>
             </button>
           </div>
         </div>
