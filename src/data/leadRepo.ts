@@ -126,6 +126,9 @@ type DbConversation = {
   interaction_type?: string;
   ai_status?: string | null;
   ai_handling?: boolean;
+  auto_reply_count?: number;
+  human_takeover_at?: string | null;
+  last_auto_reply_at?: string | null;
   detected_city?: string | null;
   detected_state?: string | null;
   detected_pool_size?: string | null;
