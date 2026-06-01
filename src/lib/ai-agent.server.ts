@@ -379,14 +379,37 @@ export async function runAgentTurn(params: {
         type: "function",
         function: {
           name: "respond_to_customer",
-          description: "Enviar mensagem ao cliente.",
+          description:
+            "Enviar mensagem ao cliente. Sempre que possível extraia também os campos de qualificação observados na conversa (cidade, estado, medida desejada, tipo de cliente, etc.).",
           parameters: {
             type: "object",
             properties: {
-              message: { type: "string" },
-              detected_city: { type: "string" },
-              detected_pool_size: { type: "string" },
-              detected_intent: { type: "string" },
+              message: { type: "string", description: "Texto enviado ao cliente (pt-BR, máx 4 frases)." },
+              detected_city: { type: "string", description: "Cidade da instalação." },
+              detected_state: { type: "string", description: "Estado/UF (ex.: SP, RJ)." },
+              detected_pool_size: { type: "string", description: "Medida/tamanho da piscina." },
+              detected_intent: {
+                type: "string",
+                description: "Intenção principal (informação, orçamento, instalação, etc.).",
+              },
+              detected_interest: {
+                type: "string",
+                description: "Interesse específico (piscina fibra, aquecimento, lona, manutenção).",
+              },
+              detected_budget: {
+                type: "string",
+                description: "Orçamento aproximado mencionado pelo cliente (ex.: 'até 20 mil').",
+              },
+              purchase_timing: {
+                type: "string",
+                enum: ["imediato", "30d", "60d", "90d+", "indefinido"],
+                description: "Quando o cliente pretende comprar.",
+              },
+              customer_stage: {
+                type: "string",
+                enum: ["curioso", "pesquisando", "pronto_para_comprar"],
+                description: "Em que estágio o cliente está.",
+              },
               suggest_products: { type: "array", items: { type: "string" } },
             },
             required: ["message"],
