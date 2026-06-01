@@ -35,6 +35,8 @@ import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { QualificationPanel } from "@/components/QualificationBadges";
+import { AITimeline } from "@/components/AITimeline";
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -1018,6 +1020,11 @@ function ConversationPage() {
           <Row label="Atribuído a" value={lead.assignedTo ?? "Ninguém"} />
           <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
         </div>
+
+        <QualificationPanel conv={conversation} />
+        <AITimeline conversationId={conversationId} />
+
+
 
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">

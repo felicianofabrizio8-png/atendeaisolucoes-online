@@ -18,8 +18,18 @@ import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
+import { QualificationInline } from "@/components/QualificationBadges";
 
-const STATUS_FILTERS = ["todos", "quentes", "parados", "perdidos"] as const;
+const STATUS_FILTERS = [
+  "todos",
+  "quentes",
+  "prontos",
+  "aguardando_humano",
+  "pre_ia",
+  "objecao",
+  "parados",
+  "perdidos",
+] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 const SOURCE_FILTERS = [
@@ -158,7 +168,11 @@ function buildSortedItems(
       return { conv: c, lead, last, origin, breached, ageMin, score };
     })
     .filter(({ lead, breached, origin, conv }) => {
-      if (statusFilter === "quentes" && lead?.status !== "quente") return false;
+      if (statusFilter === "quentes" && lead?.status !== "quente" && conv.leadTemperature !== "quente") return false;
+      if (statusFilter === "prontos" && !conv.leadReadyToClose) return false;
+      if (statusFilter === "aguardando_humano" && conv.aiStatus !== "aguardando_humano") return false;
+      if (statusFilter === "pre_ia" && conv.aiStatus !== "pre_atendido_ia") return false;
+      if (statusFilter === "objecao" && (conv.detectedObjections ?? []).length === 0) return false;
       if (statusFilter === "parados" && !breached) return false;
       if (statusFilter === "perdidos" && lead?.status !== "perdido") return false;
       if (lossReasonFilter) {
@@ -184,7 +198,10 @@ function InboxPage() {
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   const statusCounts = useMemo(() => {
-    const counts = { todos: 0, quentes: 0, parados: 0, perdidos: 0 };
+    const counts: Record<StatusFilter, number> = {
+      todos: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
+      pre_ia: 0, objecao: 0, parados: 0, perdidos: 0,
+    };
     for (const c of getConversations()) {
       const lead = getLeadById(c.leadId);
       const breached = isSlaBreached(c, settings.slaMinutes);
@@ -194,7 +211,11 @@ function InboxPage() {
         }
       }
       counts.todos += 1;
-      if (lead?.status === "quente") counts.quentes += 1;
+      if (lead?.status === "quente" || c.leadTemperature === "quente") counts.quentes += 1;
+      if (c.leadReadyToClose) counts.prontos += 1;
+      if (c.aiStatus === "aguardando_humano") counts.aguardando_humano += 1;
+      if (c.aiStatus === "pre_atendido_ia") counts.pre_ia += 1;
+      if ((c.detectedObjections ?? []).length > 0) counts.objecao += 1;
       if (breached) counts.parados += 1;
       if (lead?.status === "perdido") counts.perdidos += 1;
     }
@@ -283,8 +304,12 @@ function InboxPage() {
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
-    { key: "quentes", label: "Quentes", count: statusCounts.quentes },
-    { key: "parados", label: "Parados", count: statusCounts.parados },
+    { key: "quentes", label: "Leads quentes", count: statusCounts.quentes },
+    { key: "prontos", label: "Prontos p/ fechar", count: statusCounts.prontos },
+    { key: "aguardando_humano", label: "Aguardando humano", count: statusCounts.aguardando_humano },
+    { key: "pre_ia", label: "Pré-atendidos IA", count: statusCounts.pre_ia },
+    { key: "objecao", label: "Com objeção", count: statusCounts.objecao },
+    { key: "parados", label: "Sem resposta", count: statusCounts.parados },
     { key: "perdidos", label: "Perdidos", count: statusCounts.perdidos },
   ];
 
@@ -546,6 +571,7 @@ function InboxPage() {
                       )}
                       {last?.text ?? "—"}
                     </p>
+                    <QualificationInline conv={c} />
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {lead.tags.map((t: string) => (
                         <span
