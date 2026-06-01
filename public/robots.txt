@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /inbox
+Disallow: /ia
+Disallow: /configuracoes
+Disallow: /onboarding
+
+Sitemap: https://app.atendeaisolucoes.online/sitemap.xml
