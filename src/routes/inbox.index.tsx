@@ -561,3 +561,129 @@ function InboxPage() {
     </div>
   );
 }
+
+type CardItem = ReturnType<typeof buildSortedItems>[number];
+
+const ALERT_TONE: Record<"urgent" | "warn" | "info" | "success", string> = {
+  urgent:  "bg-[var(--status-urgent)]/15 text-[var(--status-urgent)] border-[var(--status-urgent)]/40",
+  warn:    "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  info:    "bg-primary/10 text-primary border-primary/30",
+  success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+};
+
+function ConversationCard({
+  item,
+  slaMinutes,
+  onOpen,
+}: {
+  item: CardItem;
+  slaMinutes: number;
+  onOpen: () => void;
+}) {
+  const { conv: c, last, origin, breached, ageMin, priority } = item;
+  const lead = getLeadById(c.leadId);
+  if (!lead) return null;
+  const alert = priority.alert;
+  return (
+    <li>
+      <button
+        onClick={onOpen}
+        className={cn(
+          "w-full text-left px-4 md:px-6 py-3.5 hover:bg-accent/50 transition-colors flex gap-3 items-start relative",
+          breached &&
+            "bg-[var(--status-urgent)]/10 border-l-4 border-[var(--status-urgent)] pl-3 md:pl-5",
+          !breached && c.aiStatus === "aguardando_humano" &&
+            "border-l-4 border-amber-500 pl-3 md:pl-5",
+        )}
+      >
+        <div className="flex flex-col items-center pt-1 gap-1.5 w-6">
+          {breached ? (
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--status-urgent)] opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--status-urgent)]" />
+            </span>
+          ) : c.awaitingReply ? (
+            <span className="h-2 w-2 rounded-full bg-primary" />
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-transparent" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn("font-medium truncate", breached && "text-[var(--status-urgent)]")}>
+              {lead.name}
+            </span>
+            <OriginBadge origin={origin} />
+            {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
+            {!(lead.status === "perdido" && lead.lossReason) && <StatusBadge status={lead.status} />}
+            {lead.status === "perdido" && lead.lossReason && (
+              <span
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--status-lost)]/15 text-[var(--status-lost)] border border-[var(--status-lost)]/30 max-w-[240px]"
+                title={`Motivo da perda: ${lead.lossReason}`}
+              >
+                <XCircle className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">
+                  Perdido <span className="opacity-60">•</span> {lead.lossReason}
+                </span>
+              </span>
+            )}
+            {!breached && !lead.nextAction && lead.status !== "perdido" && (
+              <span className="text-[10px] uppercase tracking-wide text-[var(--status-warm)]">
+                ⚠ sem próxima ação
+              </span>
+            )}
+          </div>
+
+          {alert && (
+            <div
+              className={cn(
+                "mt-1 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold",
+                ALERT_TONE[alert.tone],
+              )}
+            >
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {alert.text}
+            </div>
+          )}
+
+          <p className="mt-1 text-sm text-muted-foreground truncate">
+            {last?.role === "agent" && <span className="text-foreground/60">Você: </span>}
+            {last?.text ?? "—"}
+          </p>
+          <QualificationInline conv={c} />
+          {lead.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {lead.tags.map((t: string) => (
+                <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              breached ? "text-[var(--status-urgent)] font-bold" : "text-muted-foreground",
+            )}
+          >
+            {timeAgo(c.lastMessageAt)}
+          </span>
+          {breached && (
+            <span className="text-[10px] font-semibold text-[var(--status-urgent)]">
+              +{Math.max(1, Math.round(ageMin - slaMinutes))}min do SLA
+            </span>
+          )}
+          {c.unread > 0 && (
+            <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 min-w-[18px] text-center">
+              {c.unread}
+            </span>
+          )}
+        </div>
+      </button>
+    </li>
+  );
+}
