@@ -1062,6 +1062,7 @@ function StepSuccess({
 }) {
   const [testSendOk, setTestSendOk] = useState(false);
   const [openTest, setOpenTest] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
 
   if (saving) {
     return (
@@ -1085,26 +1086,50 @@ function StepSuccess({
           <Check className="h-6 w-6" />
         </div>
         <h3 className="text-sm font-semibold mb-1">
-          WhatsApp conectado com sucesso
+          WhatsApp pronto para uso
         </h3>
         <p className="text-xs text-muted-foreground">
-          Confira o checklist abaixo para garantir que tudo está ativo na Meta.
+          {saved.display_name} · {saved.phone_number ?? "número conectado"}
         </p>
       </div>
 
-      <OnboardingChecklist
-        testSendOk={testSendOk}
-        onTestSend={() => setOpenTest(true)}
-      />
-
-      <div className="rounded-lg border border-border bg-background p-4 space-y-2">
-        <Row label="Número" value={saved.phone_number ?? "—"} />
-        <Row label="Nome verificado" value={saved.display_name} />
-        {saved.page_name && <Row label="Página Facebook" value={saved.page_name} />}
-        <Row label="WABA ID" value={saved.waba_id} mono />
+      {/* Status rápido */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatusPill ok label="Conexão ativa" />
+        <StatusPill ok label="Recebendo mensagens" />
+        <StatusPill ok={testSendOk} label={testSendOk ? "Envio aprovado" : "Aguardando teste"} />
+        <StatusPill ok label="Janela 24h ativa" />
       </div>
 
-      <DiagnosticsPanel integrationId={saved.integration_id} />
+      {/* Modo simples × avançado */}
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-muted-foreground">
+          {advanced ? "Modo avançado" : "Modo simples"}
+        </span>
+        <button
+          type="button"
+          onClick={() => setAdvanced((v) => !v)}
+          className="rounded-md border border-border bg-background hover:bg-muted px-2.5 py-1.5 font-semibold"
+        >
+          {advanced ? "Ocultar detalhes técnicos" : "Mostrar detalhes técnicos"}
+        </button>
+      </div>
+
+      {advanced && (
+        <>
+          <OnboardingChecklist
+            testSendOk={testSendOk}
+            onTestSend={() => setOpenTest(true)}
+          />
+          <div className="rounded-lg border border-border bg-background p-4 space-y-2">
+            <Row label="Número" value={saved.phone_number ?? "—"} />
+            <Row label="Nome verificado" value={saved.display_name} />
+            {saved.page_name && <Row label="Página Facebook" value={saved.page_name} />}
+            <Row label="WABA ID" value={saved.waba_id} mono />
+          </div>
+          <DiagnosticsPanel integrationId={saved.integration_id} />
+        </>
+      )}
 
       <TestSendButton
         externalOpen={openTest}
@@ -1114,6 +1139,27 @@ function StepSuccess({
     </div>
   );
 }
+
+function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-2.5 py-2 text-[11px] flex items-center gap-1.5",
+        ok
+          ? "border-[var(--status-ok)]/30 bg-[var(--status-ok)]/5 text-[var(--status-ok)]"
+          : "border-border bg-muted/40 text-muted-foreground",
+      )}
+    >
+      {ok ? (
+        <Check className="h-3 w-3 shrink-0" />
+      ) : (
+        <Loader2 className="h-3 w-3 shrink-0" />
+      )}
+      <span className="truncate font-medium">{label}</span>
+    </div>
+  );
+}
+
 
 
 function TestSendButton({
