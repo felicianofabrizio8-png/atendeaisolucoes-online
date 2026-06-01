@@ -34,9 +34,12 @@ import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debu
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
+import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
+import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
 import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
@@ -169,6 +172,11 @@ const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
   path: '/api/meta/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiTestNowRoute = ApiAiTestNowRouteImport.update({
+  id: '/api/ai/test-now',
+  path: '/api/ai/test-now',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
   id: '/api/ai/suggest-product',
   path: '/api/ai/suggest-product',
@@ -179,9 +187,19 @@ const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
   path: '/api/ai/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiReadinessRoute = ApiAiReadinessRouteImport.update({
+  id: '/api/ai/readiness',
+  path: '/api/ai/readiness',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiProposeKnowledgeRoute = ApiAiProposeKnowledgeRouteImport.update({
   id: '/api/ai/propose-knowledge',
   path: '/api/ai/propose-knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiPilotToggleRoute = ApiAiPilotToggleRouteImport.update({
+  id: '/api/ai/pilot-toggle',
+  path: '/api/ai/pilot-toggle',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
@@ -238,9 +256,12 @@ export interface FileRoutesByFullPath {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
+  '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -273,9 +294,12 @@ export interface FileRoutesByTo {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
+  '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -310,9 +334,12 @@ export interface FileRoutesById {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/mark-sent': typeof ApiAiMarkSentRoute
+  '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
+  '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -348,9 +375,12 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
+    | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
+    | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/test-now'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -383,9 +413,12 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
+    | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
+    | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/test-now'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -419,9 +452,12 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/mark-sent'
+    | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
+    | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/test-now'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -454,9 +490,12 @@ export interface RootRouteChildren {
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiMarkSentRoute: typeof ApiAiMarkSentRoute
+  ApiAiPilotToggleRoute: typeof ApiAiPilotToggleRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
+  ApiAiReadinessRoute: typeof ApiAiReadinessRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
+  ApiAiTestNowRoute: typeof ApiAiTestNowRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
@@ -648,6 +687,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/test-now': {
+      id: '/api/ai/test-now'
+      path: '/api/ai/test-now'
+      fullPath: '/api/ai/test-now'
+      preLoaderRoute: typeof ApiAiTestNowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/suggest-product': {
       id: '/api/ai/suggest-product'
       path: '/api/ai/suggest-product'
@@ -662,11 +708,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiSuggestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/readiness': {
+      id: '/api/ai/readiness'
+      path: '/api/ai/readiness'
+      fullPath: '/api/ai/readiness'
+      preLoaderRoute: typeof ApiAiReadinessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/propose-knowledge': {
       id: '/api/ai/propose-knowledge'
       path: '/api/ai/propose-knowledge'
       fullPath: '/api/ai/propose-knowledge'
       preLoaderRoute: typeof ApiAiProposeKnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/pilot-toggle': {
+      id: '/api/ai/pilot-toggle'
+      path: '/api/ai/pilot-toggle'
+      fullPath: '/api/ai/pilot-toggle'
+      preLoaderRoute: typeof ApiAiPilotToggleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/mark-sent': {
@@ -744,9 +804,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiMarkSentRoute: ApiAiMarkSentRoute,
+  ApiAiPilotToggleRoute: ApiAiPilotToggleRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
+  ApiAiReadinessRoute: ApiAiReadinessRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
+  ApiAiTestNowRoute: ApiAiTestNowRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,

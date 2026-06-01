@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/ai/test-now")({
             .from("company_settings")
             .update({ ai_last_test_at: new Date().toISOString(), ai_last_test_result: result as never })
             .eq("company_id", companyId);
-          return Response.json({ ok: false, ...result });
+          return Response.json(result);
         }
 
         const inHours = isWithinBusinessHours(ctx.settings);
