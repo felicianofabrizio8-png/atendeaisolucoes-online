@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/configuracoes/ia";
+  to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
