@@ -995,7 +995,7 @@ function ConversationPage() {
                     : "Mensagem…"
               }
               rows={1}
-              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-32 md:rows-2"
+              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-32 md:min-h-[3.5rem]"
             />
             <button
               onClick={() => sendMessage(input)}
