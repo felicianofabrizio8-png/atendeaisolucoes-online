@@ -7,6 +7,7 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendWhatsappText } from "@/lib/ai-agent.server";
+import { getReadiness } from "@/lib/ai-readiness.server";
 
 export type FollowupRule =
   | "quote_no_reply"
@@ -129,37 +130,56 @@ export async function findCandidates(
     .order("last_message_at", { ascending: false })
     .limit(200);
 
+  // Helper: confere se a última mensagem foi do cliente (lead). Evita disparar
+  // logo após o agente ter respondido.
+  async function lastMessageWasFromLead(convId: string): Promise<boolean> {
+    const { data } = await supabaseAdmin
+      .from("messages")
+      .select("role")
+      .eq("conversation_id", convId)
+      .order("at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.role === "lead";
+  }
+
   const candidates: Candidate[] = [];
   for (const c of convs ?? []) {
     if (!c.lead_id) continue;
     if (c.ai_status === "desinteresse" || c.ai_status === "perdido") continue;
     const lastAt = c.last_message_at;
 
-    // hot_lead_idle: lead quente parado > hot delay
+    // hot_lead_idle: lead quente parado > hot delay, mas só se o cliente foi
+    // o último a falar (não disparar logo após resposta do agente).
     if (
       (c.lead_temperature ?? "").toLowerCase() === "quente" &&
       lastAt &&
       lastAt < cutoffs.hot
     ) {
-      candidates.push({
-        conversationId: c.id,
-        leadId: c.lead_id,
-        rule: "hot_lead_idle",
-        lastClientMessageAt: lastAt,
-        signal: "lead quente sem interação",
-      });
+      if (await lastMessageWasFromLead(c.id)) {
+        candidates.push({
+          conversationId: c.id,
+          leadId: c.lead_id,
+          rule: "hot_lead_idle",
+          lastClientMessageAt: lastAt,
+          signal: "lead quente sem interação",
+        });
+      }
       continue;
     }
 
-    // lead_silent: sem mensagem por mais que silenceDelayHours
+    // lead_silent: sem mensagem por mais que silenceDelayHours, e cliente foi
+    // o último a falar (senão estamos esperando resposta dele do nosso lado).
     if (lastAt && lastAt < cutoffs.silence) {
-      candidates.push({
-        conversationId: c.id,
-        leadId: c.lead_id,
-        rule: "lead_silent",
-        lastClientMessageAt: lastAt,
-        signal: "cliente sumiu",
-      });
+      if (await lastMessageWasFromLead(c.id)) {
+        candidates.push({
+          conversationId: c.id,
+          leadId: c.lead_id,
+          rule: "lead_silent",
+          lastClientMessageAt: lastAt,
+          signal: "cliente sumiu",
+        });
+      }
     }
   }
 
@@ -218,6 +238,51 @@ export async function findCandidates(
       });
     }
   }
+
+  // returning_customer: lead já fechado/perdido há ≥ 7 dias que voltou a
+  // mandar mensagem nas últimas 24h (reativação). Sinal forte de oportunidade.
+  const reactivationCutoff = new Date(now - 7 * 24 * 3600_000).toISOString();
+  const recentLeadMsgCutoff = new Date(now - 24 * 3600_000).toISOString();
+  const { data: returnedLeads } = await supabaseAdmin
+    .from("leads")
+    .select("id, status, closed_at, lost_at")
+    .eq("company_id", companyId)
+    .in("status", ["fechado", "perdido"])
+    .limit(200);
+  const returnedIds = (returnedLeads ?? [])
+    .filter((l) => {
+      const ref = l.closed_at ?? l.lost_at;
+      return ref && ref < reactivationCutoff;
+    })
+    .map((l) => l.id);
+  if (returnedIds.length) {
+    const { data: rConvs } = await supabaseAdmin
+      .from("conversations")
+      .select("id, lead_id, last_message_at")
+      .eq("company_id", companyId)
+      .in("lead_id", returnedIds)
+      .gte("last_message_at", recentLeadMsgCutoff);
+    for (const rc of rConvs ?? []) {
+      if (!rc.lead_id) continue;
+      // Confirma que foi o cliente quem voltou a falar
+      const { data: lastMsg } = await supabaseAdmin
+        .from("messages")
+        .select("role, at")
+        .eq("conversation_id", rc.id)
+        .order("at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastMsg?.role !== "lead") continue;
+      candidates.push({
+        conversationId: rc.id,
+        leadId: rc.lead_id,
+        rule: "returning_customer",
+        lastClientMessageAt: lastMsg.at,
+        signal: "cliente antigo voltou a interagir",
+      });
+    }
+  }
+
 
   // Deduplica por conversa, priorizando regras mais "quentes"
   const priority: Record<FollowupRule, number> = {
@@ -357,6 +422,15 @@ export async function runFollowupTickForCompany(
   const s = await getFollowupSettings(companyId);
   if (!s) return result;
   if (!s.enabled) return result;
+
+  // Guard do piloto: só roda se IA estiver em "ativa" ou "piloto".
+  // Bloqueia empresas que apenas ativaram a flag sem completar onboarding.
+  const readiness = await getReadiness(companyId);
+  if (readiness.status !== "ativa" && readiness.status !== "piloto") {
+    result.errors.push(`bloqueado pelo piloto: status=${readiness.status}`);
+    return result;
+  }
+
   if (!isWithinBusinessHours(s)) {
     result.errors.push("fora do horário comercial");
     return result;
