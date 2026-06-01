@@ -116,6 +116,9 @@ function ConfiguracoesIA() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [usage, setUsage] = useState<{ count: number; monthly_limit: number } | null>(null);
   const [proposing, setProposing] = useState(false);
+  const [automation, setAutomation] = useState<AutomationSettings | null>(null);
+  const [savingAutomation, setSavingAutomation] = useState(false);
+  const [events, setEvents] = useState<FlowEvent[]>([]);
 
   const loadAll = useCallback(async () => {
     if (!companyId) return;
@@ -124,7 +127,14 @@ function ConfiguracoesIA() {
     monthStart.setUTCDate(1);
     const monthKey = `${monthStart.getUTCFullYear()}-${String(monthStart.getUTCMonth() + 1).padStart(2, "0")}-01`;
 
-    const [{ data: prof }, { data: props }, { data: lgs }, { data: usg }] = await Promise.all([
+    const [
+      { data: prof },
+      { data: props },
+      { data: lgs },
+      { data: usg },
+      { data: settings },
+      { data: evts },
+    ] = await Promise.all([
       supabase.from("ai_profiles").select("*").eq("company_id", companyId).maybeSingle(),
       supabase
         .from("ai_knowledge_proposals")
@@ -144,6 +154,19 @@ function ConfiguracoesIA() {
         .eq("company_id", companyId)
         .eq("month", monthKey)
         .maybeSingle(),
+      supabase
+        .from("company_settings")
+        .select(
+          "ai_auto_reply_enabled, ai_after_hours_only, ai_initial_message, ai_max_auto_replies, ai_handoff_timeout_minutes, ai_agent_name, business_hours_start, business_hours_end",
+        )
+        .eq("company_id", companyId)
+        .maybeSingle(),
+      supabase
+        .from("ai_flow_events")
+        .select("id, created_at, event_type, conversation_id, payload")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
 
     setData(
