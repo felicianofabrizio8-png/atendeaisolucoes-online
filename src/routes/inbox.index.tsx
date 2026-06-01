@@ -304,8 +304,12 @@ function InboxPage() {
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
-    { key: "quentes", label: "Quentes", count: statusCounts.quentes },
-    { key: "parados", label: "Parados", count: statusCounts.parados },
+    { key: "quentes", label: "Leads quentes", count: statusCounts.quentes },
+    { key: "prontos", label: "Prontos p/ fechar", count: statusCounts.prontos },
+    { key: "aguardando_humano", label: "Aguardando humano", count: statusCounts.aguardando_humano },
+    { key: "pre_ia", label: "Pré-atendidos IA", count: statusCounts.pre_ia },
+    { key: "objecao", label: "Com objeção", count: statusCounts.objecao },
+    { key: "parados", label: "Sem resposta", count: statusCounts.parados },
     { key: "perdidos", label: "Perdidos", count: statusCounts.perdidos },
   ];
 
