@@ -16,10 +16,6 @@ import {
   PowerOff,
   Copy,
   Loader2,
-  QrCode,
-  Cloud,
-  ChevronRight,
-  ArrowLeft,
 } from "lucide-react";
 import {
   getSettings,
