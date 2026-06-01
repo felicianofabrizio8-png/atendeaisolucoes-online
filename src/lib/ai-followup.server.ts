@@ -130,37 +130,56 @@ export async function findCandidates(
     .order("last_message_at", { ascending: false })
     .limit(200);
 
+  // Helper: confere se a última mensagem foi do cliente (lead). Evita disparar
+  // logo após o agente ter respondido.
+  async function lastMessageWasFromLead(convId: string): Promise<boolean> {
+    const { data } = await supabaseAdmin
+      .from("messages")
+      .select("role")
+      .eq("conversation_id", convId)
+      .order("at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.role === "lead";
+  }
+
   const candidates: Candidate[] = [];
   for (const c of convs ?? []) {
     if (!c.lead_id) continue;
     if (c.ai_status === "desinteresse" || c.ai_status === "perdido") continue;
     const lastAt = c.last_message_at;
 
-    // hot_lead_idle: lead quente parado > hot delay
+    // hot_lead_idle: lead quente parado > hot delay, mas só se o cliente foi
+    // o último a falar (não disparar logo após resposta do agente).
     if (
       (c.lead_temperature ?? "").toLowerCase() === "quente" &&
       lastAt &&
       lastAt < cutoffs.hot
     ) {
-      candidates.push({
-        conversationId: c.id,
-        leadId: c.lead_id,
-        rule: "hot_lead_idle",
-        lastClientMessageAt: lastAt,
-        signal: "lead quente sem interação",
-      });
+      if (await lastMessageWasFromLead(c.id)) {
+        candidates.push({
+          conversationId: c.id,
+          leadId: c.lead_id,
+          rule: "hot_lead_idle",
+          lastClientMessageAt: lastAt,
+          signal: "lead quente sem interação",
+        });
+      }
       continue;
     }
 
-    // lead_silent: sem mensagem por mais que silenceDelayHours
+    // lead_silent: sem mensagem por mais que silenceDelayHours, e cliente foi
+    // o último a falar (senão estamos esperando resposta dele do nosso lado).
     if (lastAt && lastAt < cutoffs.silence) {
-      candidates.push({
-        conversationId: c.id,
-        leadId: c.lead_id,
-        rule: "lead_silent",
-        lastClientMessageAt: lastAt,
-        signal: "cliente sumiu",
-      });
+      if (await lastMessageWasFromLead(c.id)) {
+        candidates.push({
+          conversationId: c.id,
+          leadId: c.lead_id,
+          rule: "lead_silent",
+          lastClientMessageAt: lastAt,
+          signal: "cliente sumiu",
+        });
+      }
     }
   }
 
