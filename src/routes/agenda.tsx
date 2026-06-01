@@ -458,13 +458,44 @@ function VisitCard({
   onSend: () => void;
 }) {
   const time = format(new Date(visit.scheduled_at), "HH:mm");
+  const meta = TYPE_META[visit.appointment_type];
+  const Icon = meta.icon;
+  const isStore = visit.appointment_type === "loja";
+
+  const conversation = useMemo(() => {
+    if (!visit.lead_id) return undefined;
+    return getConversations().find((c) => c.leadId === visit.lead_id);
+  }, [visit.lead_id]);
+
+  const phoneDigits = onlyDigits(visit.customer_phone ?? "");
+  const waUrl = phoneDigits
+    ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(
+        `Olá ${visit.customer_name ?? ""}! Confirmando seu compromisso (${meta.label}) em ${format(new Date(visit.scheduled_at), "dd/MM 'às' HH:mm")}.`,
+      )}`
+    : null;
+
   return (
-    <Card>
+    <Card className={cn("border-l-4", meta.class.replace(/bg-[^\s]+/g, "").trim() || "border-l-border")}>
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-base">{visit.title}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">{time}</p>
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className={cn("gap-1 border", meta.class)}>
+                <Icon className="h-3 w-3" />
+                {meta.short}
+              </Badge>
+              {isStore && (
+                <Badge variant="outline" className="gap-1 border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                  <Store className="h-3 w-3" />
+                  Na loja
+                </Badge>
+              )}
+            </div>
+            <CardTitle className="text-base mt-1.5 truncate">{visit.title}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {time}
+            </p>
           </div>
           <Badge variant="secondary" className={STATUS_CLASS[visit.status]}>
             {STATUS_LABEL[visit.status]}
@@ -478,11 +509,20 @@ function VisitCard({
         {visit.customer_phone && (
           <Row icon={<Phone className="h-3.5 w-3.5" />} text={visit.customer_phone} />
         )}
-        {visit.address && (
+        {visit.city && (
+          <Row icon={<Building2 className="h-3.5 w-3.5" />} text={visit.city} />
+        )}
+        {visit.address && !isStore && (
           <Row icon={<MapPin className="h-3.5 w-3.5" />} text={visit.address} />
         )}
         {visit.product && (
           <Row icon={<Package className="h-3.5 w-3.5" />} text={visit.product} />
+        )}
+        {visit.salesperson && (
+          <Row icon={<User className="h-3.5 w-3.5" />} text={`Vendedor: ${visit.salesperson}`} />
+        )}
+        {visit.technician && (
+          <Row icon={<UserCog className="h-3.5 w-3.5" />} text={`Técnico: ${visit.technician}`} />
         )}
         {visit.notes && (
           <Row icon={<StickyNote className="h-3.5 w-3.5" />} text={visit.notes} />
@@ -501,12 +541,38 @@ function VisitCard({
               ))}
             </SelectContent>
           </Select>
+          {waUrl && (
+            <Button
+              size="sm"
+              variant="outline"
+              asChild
+              title="Abrir WhatsApp com o cliente"
+            >
+              <a href={waUrl} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </a>
+            </Button>
+          )}
+          {conversation && (
+            <Button size="sm" variant="outline" asChild title="Abrir conversa no inbox">
+              <Link
+                to="/inbox/$conversationId"
+                params={{ conversationId: conversation.id }}
+              >
+                <MessagesSquare className="h-3.5 w-3.5" />
+                Abrir conversa
+              </Link>
+            </Button>
+          )}
+          {!isStore && (
+            <Button size="sm" onClick={onSend}>
+              <Send className="h-3.5 w-3.5" />
+              Enviar ao técnico
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={onEdit}>
             Editar
-          </Button>
-          <Button size="sm" onClick={onSend}>
-            <Send className="h-3.5 w-3.5" />
-            Enviar ao técnico
           </Button>
           <Button size="sm" variant="ghost" onClick={onDelete}>
             <Trash2 className="h-3.5 w-3.5" />
@@ -516,6 +582,7 @@ function VisitCard({
     </Card>
   );
 }
+
 
 function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
