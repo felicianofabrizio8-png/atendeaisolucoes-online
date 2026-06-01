@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/configuracoes/ia";
+  to: "/" | "/inbox" | "/whatsapp" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -37,7 +37,7 @@ const nav: NavItem[] = [
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/configuracoes/ia", label: "IA de Atendimento", icon: Sparkles },
+  { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 

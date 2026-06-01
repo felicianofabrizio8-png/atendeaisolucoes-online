@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Plus, Trash2, Check, X, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/configuracoes/ia")({
+export const Route = createFileRoute("/ia")({
   component: ConfiguracoesIA,
 });
 
