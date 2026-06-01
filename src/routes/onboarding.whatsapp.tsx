@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+
 
 export const Route = createFileRoute("/onboarding/whatsapp")({
   head: () => ({
