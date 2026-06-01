@@ -638,6 +638,11 @@ function ConfiguracoesIA() {
           <AIFollowupPanel />
         </TabsContent>
 
+        <TabsContent value="templates" className="space-y-4">
+          <WhatsappTemplatesPanel />
+        </TabsContent>
+
+
         {/* ---------- AUTOMAÇÃO ---------- */}
         <TabsContent value="automacao" className="space-y-4">
           <AIPilotPanel />
