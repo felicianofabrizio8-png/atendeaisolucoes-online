@@ -76,7 +76,7 @@ export async function logEvent(
       conversation_id: conversationId,
       lead_id: leadId,
       event_type,
-      payload,
+      payload: payload as never,
     });
   } catch (e) {
     console.error("[AI_AGENT_LOG_FAIL]", e);
@@ -431,7 +431,7 @@ export async function runAgentTurn(params: {
     detected_city: reply.detected_city ?? null,
     detected_pool_size: reply.detected_pool_size ?? null,
     detected_intent: reply.detected_intent ?? null,
-    suggested_products: reply.suggested_products ?? [],
+    suggested_products: reply.suggest_products ?? [],
   };
 }
 
@@ -642,7 +642,14 @@ export async function runAgentTick(conversationId: string): Promise<{
     }
 
     // Atualiza counters + slots
-    const update: Record<string, unknown> = {
+    const update: {
+      ai_status: string;
+      auto_reply_count: number;
+      last_auto_reply_at: string;
+      detected_city?: string;
+      detected_pool_size?: string;
+      detected_intent?: string;
+    } = {
       ai_status: "pre_atendido_ia",
       auto_reply_count: (conv.auto_reply_count ?? 0) + 1,
       last_auto_reply_at: new Date().toISOString(),
