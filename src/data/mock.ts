@@ -49,6 +49,21 @@ export interface Conversation {
   awaitingReply: boolean;
   slaBreached: boolean;
   interactionType?: "direct_message" | "comment";
+  // Qualificação IA (Fase 2)
+  aiStatus?: string | null;
+  aiHandling?: boolean;
+  detectedCity?: string | null;
+  detectedState?: string | null;
+  detectedPoolSize?: string | null;
+  detectedIntent?: string | null;
+  detectedInterest?: string | null;
+  detectedBudget?: string | null;
+  purchaseTiming?: string | null;
+  customerStage?: string | null;
+  leadTemperature?: "frio" | "morno" | "quente" | null;
+  leadScore?: number;
+  leadReadyToClose?: boolean;
+  detectedObjections?: string[];
 }
 
 export const leads: Lead[] = [];
