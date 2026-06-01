@@ -8,6 +8,13 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendWhatsappText } from "@/lib/ai-agent.server";
 import { getReadiness } from "@/lib/ai-readiness.server";
+import {
+  isWithin24hWindow,
+  sendWhatsappTemplate,
+  findApprovedTemplateForPurpose,
+  type TemplatePurpose,
+} from "@/lib/wa-templates.server";
+
 
 export type FollowupRule =
   | "quote_no_reply"
