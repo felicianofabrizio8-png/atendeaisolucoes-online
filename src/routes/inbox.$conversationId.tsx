@@ -879,7 +879,7 @@ function ConversationPage() {
 
         {/* AI suggestion panel — appears right above the composer */}
         {(ai || aiLoading || aiError) && (
-          <div className="border-t border-primary/30 bg-primary/5 p-3">
+          <div className="border-t border-primary/30 bg-primary/5 p-3 shrink-0 max-h-[40vh] overflow-y-auto">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold uppercase tracking-wide text-primary">
