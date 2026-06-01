@@ -422,6 +422,15 @@ export async function runFollowupTickForCompany(
   const s = await getFollowupSettings(companyId);
   if (!s) return result;
   if (!s.enabled) return result;
+
+  // Guard do piloto: só roda se IA estiver em "ativa" ou "piloto".
+  // Bloqueia empresas que apenas ativaram a flag sem completar onboarding.
+  const readiness = await getReadiness(companyId);
+  if (readiness.status !== "ativa" && readiness.status !== "piloto") {
+    result.errors.push(`bloqueado pelo piloto: status=${readiness.status}`);
+    return result;
+  }
+
   if (!isWithinBusinessHours(s)) {
     result.errors.push("fora do horário comercial");
     return result;
