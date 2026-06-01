@@ -15,19 +15,29 @@ export const Route = createFileRoute("/api/public/hooks/followup-tick")({
     handlers: {
       POST: async () => {
         const results = await runFollowupTickAll();
-        // Reconcilia respostas das mesmas empresas
-        const { data: companies } = await supabaseAdmin
-          .from("company_settings")
+
+        // Reconcilia respostas para TODAS as empresas com follow-ups pendentes
+        // nos últimos 14 dias (não apenas as com flag ligada agora). Garante
+        // que followup_responded / lead_recovered atualizem mesmo se a
+        // empresa desativar o follow-up no meio do caminho.
+        const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+        const { data: pendingRows } = await supabaseAdmin
+          .from("follow_ups")
           .select("company_id")
-          .eq("ai_followup_enabled", true);
+          .eq("status", "sent")
+          .gte("sent_at", since);
+        const companyIds = Array.from(
+          new Set((pendingRows ?? []).map((r) => r.company_id).filter(Boolean)),
+        );
         const reconciled: Record<string, number> = {};
-        for (const c of companies ?? []) {
+        for (const cid of companyIds) {
           try {
-            reconciled[c.company_id] = await reconcileResponses(c.company_id);
+            reconciled[cid] = await reconcileResponses(cid);
           } catch {
             /* noop */
           }
         }
+
         const totals = results.reduce(
           (acc, r) => {
             acc.scanned += r.scanned;
