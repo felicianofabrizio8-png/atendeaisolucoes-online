@@ -571,6 +571,7 @@ function InboxPage() {
                       )}
                       {last?.text ?? "—"}
                     </p>
+                    <QualificationInline conv={c} />
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {lead.tags.map((t: string) => (
                         <span
