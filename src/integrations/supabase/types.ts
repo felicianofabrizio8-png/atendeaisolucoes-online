@@ -298,15 +298,24 @@ export type Database = {
           channel: Database["public"]["Enums"]["channel"]
           company_id: string
           created_at: string
+          customer_stage: string | null
+          detected_budget: string | null
           detected_city: string | null
           detected_intent: string | null
+          detected_interest: string | null
+          detected_objections: string[]
           detected_pool_size: string | null
+          detected_state: string | null
           human_takeover_at: string | null
           id: string
           interaction_type: string
           last_auto_reply_at: string | null
           last_message_at: string
           lead_id: string
+          lead_ready_to_close: boolean
+          lead_score: number
+          lead_temperature: string | null
+          purchase_timing: string | null
           unread: number
           updated_at: string
         }
@@ -318,15 +327,24 @@ export type Database = {
           channel: Database["public"]["Enums"]["channel"]
           company_id: string
           created_at?: string
+          customer_stage?: string | null
+          detected_budget?: string | null
           detected_city?: string | null
           detected_intent?: string | null
+          detected_interest?: string | null
+          detected_objections?: string[]
           detected_pool_size?: string | null
+          detected_state?: string | null
           human_takeover_at?: string | null
           id?: string
           interaction_type?: string
           last_auto_reply_at?: string | null
           last_message_at?: string
           lead_id: string
+          lead_ready_to_close?: boolean
+          lead_score?: number
+          lead_temperature?: string | null
+          purchase_timing?: string | null
           unread?: number
           updated_at?: string
         }
@@ -338,15 +356,24 @@ export type Database = {
           channel?: Database["public"]["Enums"]["channel"]
           company_id?: string
           created_at?: string
+          customer_stage?: string | null
+          detected_budget?: string | null
           detected_city?: string | null
           detected_intent?: string | null
+          detected_interest?: string | null
+          detected_objections?: string[]
           detected_pool_size?: string | null
+          detected_state?: string | null
           human_takeover_at?: string | null
           id?: string
           interaction_type?: string
           last_auto_reply_at?: string | null
           last_message_at?: string
           lead_id?: string
+          lead_ready_to_close?: boolean
+          lead_score?: number
+          lead_temperature?: string | null
+          purchase_timing?: string | null
           unread?: number
           updated_at?: string
         }
