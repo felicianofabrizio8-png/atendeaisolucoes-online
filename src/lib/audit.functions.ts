@@ -22,10 +22,11 @@ const ErrorSchema = z.object({
   context: z.record(z.unknown()).optional(),
 });
 
-async function getCompanyId(supabase: ReturnType<typeof Object>, userId: string): Promise<string | null> {
-  // @ts-expect-error supabase é typed pela middleware
+type AuthedSupabase = { from: (t: string) => { select: (c: string) => { eq: (col: string, v: string) => { maybeSingle: () => Promise<{ data: { company_id?: string } | null }> } } } };
+
+async function getCompanyId(supabase: AuthedSupabase, userId: string): Promise<string | null> {
   const { data } = await supabase.from("profiles").select("company_id").eq("id", userId).maybeSingle();
-  return (data?.company_id as string | undefined) ?? null;
+  return data?.company_id ?? null;
 }
 
 export const logAudit = createServerFn({ method: "POST" })
