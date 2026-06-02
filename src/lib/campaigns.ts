@@ -46,6 +46,12 @@ export interface Campaign {
   cta: string | null;
   status: CampaignStatus;
   meta_campaign_id: string | null;
+  meta_adset_id: string | null;
+  meta_ad_id: string | null;
+  meta_sync_status: MetaSyncStatus;
+  meta_last_sync_at: string | null;
+  meta_publish_error: string | null;
+  meta_delivery_status: string | null;
   leads_count: number;
   messages_count: number;
   spent: number;
@@ -53,6 +59,25 @@ export interface Campaign {
   created_at: string;
   updated_at: string;
 }
+
+export type MetaSyncStatus =
+  | "pending"
+  | "syncing"
+  | "active"
+  | "paused"
+  | "rejected"
+  | "failed"
+  | "archived";
+
+export const META_SYNC_LABELS: Record<MetaSyncStatus, string> = {
+  pending: "Aguardando publicação",
+  syncing: "Sincronizando",
+  active: "Ativa no Meta",
+  paused: "Pausada no Meta",
+  rejected: "Rejeitada pelo Meta",
+  failed: "Falha de sincronização",
+  archived: "Arquivada",
+};
 
 export async function listCampaigns(companyId: string): Promise<Campaign[]> {
   const { data, error } = await supabase
