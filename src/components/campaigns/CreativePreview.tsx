@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Check } from "lucide-react";
+import { SmartImage } from "@/components/SmartImage";
 
 export interface CreativePreviewData {
   headline: string;
