@@ -320,10 +320,10 @@ function NewCampaignPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto w-full animate-fade-in">
+    <div className="p-3 md:p-5 max-w-7xl mx-auto w-full animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-5">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3 mb-3.5">
+        <div className="space-y-0.5">
           <Link
             to="/campanhas"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -331,29 +331,28 @@ function NewCampaignPage() {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Nova campanha</h1>
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Nova campanha</h1>
             <StatusBadge status={status} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Crie um anúncio com IA. O preview à direita atualiza em tempo real.
+          <p className="text-xs md:text-sm text-muted-foreground">
+            Crie um anúncio com IA. O preview atualiza em tempo real.
           </p>
         </div>
       </div>
 
       {!META_ADS_READY && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2 mb-5">
-          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2 mb-3.5">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           <div>
-            Publicação automática no Meta Ads ainda em validação. Por enquanto a campanha é
-            salva como rascunho.
+            Publicação automática no Meta Ads em validação. A campanha é salva como rascunho.
           </div>
         </div>
       )}
 
       {/* Two-column layout: form + sticky preview */}
-      <div className="grid lg:grid-cols-[1fr_380px] gap-5 items-start">
+      <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
         {/* LEFT: form */}
-        <div className="space-y-5 min-w-0">
+        <div className="space-y-3.5 min-w-0">
           {/* Produto + IA */}
           <Card>
             <CardHead title="Produto e geração com IA" />
