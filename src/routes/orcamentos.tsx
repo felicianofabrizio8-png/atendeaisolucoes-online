@@ -1037,37 +1037,22 @@ function QuoteFormModal({
     if (!canSubmit || !product) return;
     setSubmitting(true);
     try {
-      // Auto-incorpora textos digitados nos inputs mas ainda não adicionados
-      // (Enter/+) — evita perder "itens inclusos" / "por conta do cliente".
-      const pendingIncluso = newIncluso.trim();
-      const pendingBrinde = newBrinde.trim();
-      const pendingPorConta = newPorConta.trim();
-      const finalInclusos =
-        pendingIncluso && !inclusos.includes(pendingIncluso)
-          ? [...inclusos, pendingIncluso]
-          : inclusos;
-      const finalBrindes =
-        pendingBrinde && !brindes.includes(pendingBrinde)
-          ? [...brindes, pendingBrinde]
-          : brindes;
-      const finalPorConta =
-        pendingPorConta && !porConta.includes(pendingPorConta)
-          ? [...porConta, pendingPorConta]
-          : porConta;
+      const incText = inclusosText.trim();
+      const gifText = brindesText.trim();
+      const cusText = porContaText.trim();
       const finalObservacoes = observacoes.trim();
 
-      if (pendingIncluso && !inclusos.includes(pendingIncluso)) {
-        setInclusos(finalInclusos);
-        setNewIncluso("");
-      }
-      if (pendingBrinde && !brindes.includes(pendingBrinde)) {
-        setBrindes(finalBrindes);
-        setNewBrinde("");
-      }
-      if (pendingPorConta && !porConta.includes(pendingPorConta)) {
-        setPorConta(finalPorConta);
-        setNewPorConta("");
-      }
+      // Para compatibilidade com a base (jsonb arrays), guardamos como
+      // array de linhas não vazias. O texto na mensagem é preservado como
+      // foi digitado (com quebras de linha, emojis e marcadores).
+      const toLines = (s: string) =>
+        s
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .filter((l) => l.length > 0);
+      const finalInclusos = toLines(incText);
+      const finalBrindes = toLines(gifText);
+      const finalPorConta = toLines(cusText);
 
       let finalLeadId = leadId;
       if (clientMode === "new") {
@@ -1084,8 +1069,7 @@ function QuoteFormModal({
         toast.success(`Cliente "${created.name}" criado`);
       }
 
-      // Recompõe a mensagem final usando os valores realmente persistidos,
-      // garantindo que o preview e o que é salvo fiquem sincronizados.
+      // Recompõe a mensagem final preservando exatamente o texto digitado.
       const recomposedAuto = (() => {
         const base = buildQuoteMessage({
           product,
@@ -1096,21 +1080,10 @@ function QuoteFormModal({
           discount,
         });
         const extra: string[] = [];
-        if (finalInclusos.length > 0) {
-          extra.push("", "✅ Itens inclusos:");
-          for (const it of finalInclusos) extra.push(`• ${it}`);
-        }
-        if (finalBrindes.length > 0) {
-          extra.push("", "🎁 Brindes:");
-          for (const it of finalBrindes) extra.push(`• ${it}`);
-        }
-        if (finalPorConta.length > 0) {
-          extra.push("", "⚠️ Por conta do cliente:");
-          for (const it of finalPorConta) extra.push(`• ${it}`);
-        }
-        if (finalObservacoes.length > 0) {
-          extra.push("", "📝 Observações:", finalObservacoes);
-        }
+        if (incText) extra.push("", "✅ Itens inclusos:", incText);
+        if (gifText) extra.push("", "🎁 Brindes:", gifText);
+        if (cusText) extra.push("", "⚠️ Por conta do cliente:", cusText);
+        if (finalObservacoes) extra.push("", "📝 Observações:", finalObservacoes);
         return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
       })();
       const finalMessage = customMessage ?? recomposedAuto;
@@ -1140,6 +1113,34 @@ function QuoteFormModal({
       setSubmitting(false);
     }
   };
+
+  const saveDefaults = async (inc: string, gif: string, cus: string) => {
+    if (!companyId) return;
+    const { error } = await supabase
+      .from("company_settings")
+      .update({
+        default_quote_included_items: inc,
+        default_quote_gifts: gif,
+        default_quote_customer_responsibility: cus,
+      })
+      .eq("company_id", companyId);
+    if (error) {
+      toast.error("Não foi possível salvar os padrões: " + error.message);
+      return;
+    }
+    setDefIncluded(inc);
+    setDefGifts(gif);
+    setDefCustomer(cus);
+    toast.success("Padrões da empresa atualizados");
+  };
+
+  const applyDefaultsNow = () => {
+    setInclusosText(defIncluded);
+    setBrindesText(defGifts);
+    setPorContaText(defCustomer);
+    toast.success("Textos padrão aplicados");
+  };
+
 
 
   return (
