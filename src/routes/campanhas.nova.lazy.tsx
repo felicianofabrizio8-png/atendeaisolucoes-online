@@ -194,6 +194,59 @@ function NewCampaignPage() {
     }
   }
 
+  async function saveCreative() {
+    if (!profile?.company_id) return;
+    if (!form.headline.trim() && !form.primary_text.trim()) {
+      toast.error("Gere ou preencha o anúncio antes de salvar.");
+      return;
+    }
+    setSavingCreative(true);
+    try {
+      const [audienceLine, ...captionParts] = audience.split(/\n\nLegenda sugerida:\n/);
+      const { error } = await supabase.from("campaign_creatives").insert({
+        company_id: profile.company_id,
+        product_id: form.product_id || null,
+        title: form.headline || form.name || "Criativo sem título",
+        primary_text: form.primary_text || null,
+        cta: form.cta || null,
+        social_caption: captionParts.join("\n\nLegenda sugerida:\n") || null,
+        audience_suggestion: audienceLine || null,
+        image_url: form.media_type === "image" ? form.media_url || null : null,
+      });
+      if (error) throw error;
+      toast.success("Criativo salvo!");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao salvar criativo.");
+    } finally {
+      setSavingCreative(false);
+    }
+  }
+
+  function reuseCreative(c: SavedCreative) {
+    setForm((f) => ({
+      ...f,
+      headline: c.title || f.headline,
+      primary_text: c.primary_text || f.primary_text,
+      cta: c.cta || f.cta,
+      media_url: c.image_url || f.media_url,
+      media_type: c.image_url ? "image" : f.media_type,
+      product_id: c.product_id || f.product_id,
+    }));
+    setAudience(
+      [
+        c.audience_suggestion,
+        c.social_caption ? `\n\nLegenda sugerida:\n${c.social_caption}` : "",
+      ]
+        .filter(Boolean)
+        .join(""),
+    );
+    toast.success("Criativo carregado no formulário.");
+    setShowCreatives(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5">
       <Link
