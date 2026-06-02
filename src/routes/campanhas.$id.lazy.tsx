@@ -146,6 +146,7 @@ function CampaignDetailPage() {
 
   const status: DisplayStatus = c.status;
   const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
+  const metaActive = Boolean(c.meta_campaign_id);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-5">
@@ -176,22 +177,59 @@ function CampaignDetailPage() {
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
       </header>
 
-      {/* KPIs Meta-ready */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Kpi icon={Users} label="Leads" value={String(c.leads_count)} />
-        <Kpi icon={MessageSquare} label="Mensagens" value={String(c.messages_count)} />
-        <Kpi
-          icon={TrendingUp}
-          label="Custo / lead"
-          value={c.leads_count > 0 ? formatBRL(cpl) : "—"}
-        />
-        <Kpi icon={DollarSign} label="Gasto real" value={formatBRL(c.spent)} />
-        <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
-        <Kpi icon={Eye} label="Impressões" value="—" muted />
-        <Kpi icon={Users} label="Alcance" value="—" muted />
-        <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
-        <Kpi icon={BarChart3} label="CPC" value="—" muted />
-        <Kpi icon={BarChart3} label="CPM" value="—" muted />
+      {/* Dados reais da campanha */}
+      <section className="space-y-3">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" /> Dados reais da campanha
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Métricas oficiais sincronizadas com a Meta Ads.
+            </p>
+          </div>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium",
+              metaActive
+                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                metaActive ? "bg-emerald-500" : "bg-muted-foreground",
+              )}
+            />
+            {metaActive ? "Meta Ads conectado" : "Aguardando publicação Meta"}
+          </span>
+        </div>
+
+        {!metaActive && (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            Sem dados reais ainda — os KPIs serão preenchidos automaticamente assim que a campanha for publicada na Meta.
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Kpi icon={Users} label="Leads" value={metaActive ? String(c.leads_count) : "—"} muted={!metaActive} />
+          <Kpi icon={MessageSquare} label="Mensagens" value={metaActive ? String(c.messages_count) : "—"} muted={!metaActive} />
+          <Kpi
+            icon={TrendingUp}
+            label="Custo / lead"
+            value={metaActive && c.leads_count > 0 ? formatBRL(cpl) : "—"}
+            muted={!metaActive}
+          />
+          <Kpi icon={DollarSign} label="Gasto real" value={metaActive ? formatBRL(c.spent) : "—"} muted={!metaActive} />
+          <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
+          <Kpi icon={Eye} label="Impressões" value="—" muted />
+          <Kpi icon={Users} label="Alcance" value="—" muted />
+          <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
+          <Kpi icon={BarChart3} label="CPC" value="—" muted />
+          <Kpi icon={BarChart3} label="CPM" value="—" muted />
+        </div>
       </section>
 
       {/* Criativo + Detalhes */}
