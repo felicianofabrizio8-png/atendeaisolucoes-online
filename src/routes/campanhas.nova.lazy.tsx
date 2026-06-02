@@ -1,27 +1,39 @@
 import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
-import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info, Sparkles, Package } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
 });
 
-// Meta Ads ainda não está validado nesta fase. Mantemos flag desligada
-// para garantir fallback como rascunho de forma segura.
 const META_ADS_READY = false;
+
+interface ProductRow {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  price: number | null;
+  promo_price: number | null;
+  images: string[];
+}
 
 function NewCampaignPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [audience, setAudience] = useState<string>("");
 
   const [form, setForm] = useState({
     name: "",
     objective: "whatsapp" as CampaignObjective,
     product: "",
+    product_id: "",
     city: "",
     radius_km: 10,
     daily_budget: 30,
@@ -33,8 +45,119 @@ function NewCampaignPage() {
     cta: "Saiba mais",
   });
 
+  // Carga de produtos sob demanda — somente nesta tela.
+  const [products, setProducts] = useState<ProductRow[] | null>(null);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    let cancelled = false;
+    setLoadingProducts(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id,name,category,description,price,promo_price,images")
+        .eq("company_id", profile.company_id)
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.error(error);
+        toast.error("Não foi possível carregar produtos.");
+        setProducts([]);
+      } else {
+        setProducts(
+          (data ?? []).map((r) => ({
+            id: r.id,
+            name: r.name,
+            category: r.category,
+            description: r.description,
+            price: r.price != null ? Number(r.price) : null,
+            promo_price: r.promo_price != null ? Number(r.promo_price) : null,
+            images: Array.isArray(r.images)
+              ? (r.images.filter((x) => typeof x === "string") as string[])
+              : [],
+          })),
+        );
+      }
+      setLoadingProducts(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.company_id]);
+
   function update<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function pickProduct(id: string) {
+    if (!id) {
+      update("product_id", "");
+      return;
+    }
+    const p = products?.find((x) => x.id === id);
+    if (!p) return;
+    setForm((f) => ({
+      ...f,
+      product_id: p.id,
+      product: p.name,
+      name: f.name || `Campanha – ${p.name}`,
+      headline: f.headline || p.name,
+      primary_text: f.primary_text || p.description || "",
+      media_url: f.media_url || p.images[0] || "",
+      media_type: "image",
+    }));
+  }
+
+  async function generateWithAI() {
+    if (!form.product_id && !form.product.trim()) {
+      toast.error("Selecione um produto ou informe o nome.");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+      const p = products?.find((x) => x.id === form.product_id);
+      const res = await fetch("/api/ai/campaign-creative", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          product: {
+            name: p?.name ?? form.product,
+            description: p?.description ?? form.primary_text ?? null,
+            category: p?.category ?? null,
+            price: p?.price ?? null,
+            promoPrice: p?.promo_price ?? null,
+          },
+          objective: form.objective,
+          city: form.city || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      setForm((f) => ({
+        ...f,
+        headline: j.headline ?? f.headline,
+        primary_text: j.primary_text ?? f.primary_text,
+        cta: j.cta ?? f.cta,
+      }));
+      setAudience(
+        [j.audience_suggestion, j.social_caption ? `\n\nLegenda sugerida:\n${j.social_caption}` : ""]
+          .filter(Boolean)
+          .join(""),
+      );
+      toast.success("Anúncio gerado com IA!");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao gerar anúncio.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   async function save(publish: boolean) {
@@ -45,8 +168,9 @@ function NewCampaignPage() {
     }
     setSaving(true);
     try {
+      const { product_id: _ignored, ...rest } = form;
       const c = await createCampaign(profile.company_id, {
-        ...form,
+        ...rest,
         status: publish && META_ADS_READY ? "scheduled" : "draft",
       });
       toast.success(
@@ -90,6 +214,46 @@ function NewCampaignPage() {
       )}
 
       <div className="rounded-xl border bg-card p-4 md:p-5 space-y-4">
+        <Field label="Produto cadastrado">
+          <div className="flex gap-2">
+            <select
+              value={form.product_id}
+              onChange={(e) => pickProduct(e.target.value)}
+              className="input flex-1"
+              disabled={loadingProducts}
+            >
+              <option value="">
+                {loadingProducts
+                  ? "Carregando produtos…"
+                  : products && products.length === 0
+                    ? "Nenhum produto cadastrado"
+                    : "Selecione um produto…"}
+              </option>
+              {products?.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.category ? ` · ${p.category}` : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={generateWithAI}
+              disabled={aiLoading}
+              className="inline-flex items-center gap-1 h-10 px-3 rounded-md border bg-background text-sm font-medium hover:bg-accent disabled:opacity-50"
+              title="Preenche título, texto, CTA, legenda e público-alvo"
+            >
+              <Sparkles className={`h-4 w-4 ${aiLoading ? "animate-pulse" : ""}`} />
+              {aiLoading ? "Gerando…" : "Gerar anúncio com IA"}
+            </button>
+          </div>
+          {form.product_id && (
+            <p className="mt-1 text-xs text-muted-foreground inline-flex items-center gap-1">
+              <Package className="h-3 w-3" /> Dados do produto preenchidos automaticamente.
+            </p>
+          )}
+        </Field>
+
         <Field label="Nome da campanha">
           <input
             value={form.name}
@@ -234,6 +398,21 @@ function NewCampaignPage() {
             )}
           </select>
         </Field>
+
+        {audience && (
+          <Field label="Sugestão da IA (público / legenda)">
+            <textarea
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              rows={5}
+              className="input resize-y"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Use estas sugestões ao configurar o público no Meta Ads ou ao postar
+              organicamente.
+            </p>
+          </Field>
+        )}
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">

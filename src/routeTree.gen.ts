@@ -48,6 +48,7 @@ import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
 import { Route as ApiAiFollowupStatusRouteImport } from './routes/api.ai.followup-status'
 import { Route as ApiAiFollowupReactivateRouteImport } from './routes/api.ai.followup-reactivate'
 import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
+import { Route as ApiAiCampaignCreativeRouteImport } from './routes/api.ai.campaign-creative'
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
@@ -266,6 +267,11 @@ const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
   path: '/api/ai/followup-config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiCampaignCreativeRoute = ApiAiCampaignCreativeRouteImport.update({
+  id: '/api/ai/campaign-creative',
+  path: '/api/ai/campaign-creative',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
   id: '/api/ai/analytics',
   path: '/api/ai/analytics',
@@ -342,6 +348,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -392,6 +399,7 @@ export interface FileRoutesByTo {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -444,6 +452,7 @@ export interface FileRoutesById {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -497,6 +506,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/campaign-creative'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -547,6 +557,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/campaign-creative'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -598,6 +609,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/campaign-creative'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -648,6 +660,7 @@ export interface RootRouteChildren {
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
+  ApiAiCampaignCreativeRoute: typeof ApiAiCampaignCreativeRoute
   ApiAiFollowupConfigRoute: typeof ApiAiFollowupConfigRoute
   ApiAiFollowupReactivateRoute: typeof ApiAiFollowupReactivateRoute
   ApiAiFollowupStatusRoute: typeof ApiAiFollowupStatusRoute
@@ -958,6 +971,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiFollowupConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/campaign-creative': {
+      id: '/api/ai/campaign-creative'
+      path: '/api/ai/campaign-creative'
+      fullPath: '/api/ai/campaign-creative'
+      preLoaderRoute: typeof ApiAiCampaignCreativeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/analytics': {
       id: '/api/ai/analytics'
       path: '/api/ai/analytics'
@@ -1058,6 +1078,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
+  ApiAiCampaignCreativeRoute: ApiAiCampaignCreativeRoute,
   ApiAiFollowupConfigRoute: ApiAiFollowupConfigRoute,
   ApiAiFollowupReactivateRoute: ApiAiFollowupReactivateRoute,
   ApiAiFollowupStatusRoute: ApiAiFollowupStatusRoute,
@@ -1088,12 +1109,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
