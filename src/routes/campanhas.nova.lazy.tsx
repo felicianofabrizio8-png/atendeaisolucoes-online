@@ -356,7 +356,7 @@ function NewCampaignPage() {
           {/* Produto + IA */}
           <Card>
             <CardHead title="Produto e geração com IA" />
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="Produto cadastrado">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <select
