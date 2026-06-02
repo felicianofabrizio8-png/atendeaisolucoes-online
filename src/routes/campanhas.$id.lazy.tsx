@@ -319,26 +319,24 @@ function CampaignDetailPage() {
       )}
 
       {/* Timeline */}
-      <section className="rounded-xl border bg-card p-4 space-y-3">
+      <section className="rounded-xl border bg-card p-4 space-y-4">
         <h2 className="text-sm font-semibold flex items-center gap-2">
           <Activity className="h-4 w-4 text-primary" /> Timeline da campanha
         </h2>
-        <ol className="space-y-3 pt-1">
-          {timeline.map((ev, i) => (
-            <li key={i} className="flex items-start gap-3">
-              <div className={cn("mt-0.5 h-7 w-7 rounded-full flex items-center justify-center shrink-0", ev.tone)}>
-                <ev.icon className="h-3.5 w-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{ev.label}</div>
-                {ev.detail && (
-                  <div className="text-xs text-muted-foreground">{ev.detail}</div>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground whitespace-nowrap">{relative(ev.at)}</div>
-            </li>
-          ))}
-        </ol>
+
+        <TimelineGroup
+          title="Sistema & IA"
+          subtitle="Eventos internos do Atende Ai"
+          events={timeline.filter((e) => e.source === "system")}
+          emptyLabel="Nenhuma atividade registrada."
+        />
+
+        <TimelineGroup
+          title="Meta Ads"
+          subtitle="Eventos sincronizados com a plataforma Meta"
+          events={timeline.filter((e) => e.source === "meta")}
+          emptyLabel="Aguardando integração com a Meta — eventos aparecerão aqui após a publicação."
+        />
       </section>
 
       {/* Excluir */}
