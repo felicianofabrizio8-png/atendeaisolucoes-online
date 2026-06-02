@@ -507,6 +507,38 @@ function NewCampaignPage() {
       <div className="rounded-xl border bg-card">
         <button
           type="button"
+          onClick={() => setShowPreview((s) => !s)}
+          className="w-full flex items-center justify-between p-4 text-sm font-medium hover:bg-accent/40 rounded-xl"
+        >
+          <span>Preview do anúncio</span>
+          {showPreview ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showPreview && (
+          <div className="p-4 pt-0">
+            <Suspense
+              fallback={
+                <div className="text-sm text-muted-foreground py-6">Carregando preview…</div>
+              }
+            >
+              <CreativePreview
+                data={{
+                  headline: form.headline,
+                  primary_text: form.primary_text,
+                  cta: form.cta,
+                  media_url: form.media_url,
+                  media_type: form.media_type,
+                  product: form.product,
+                }}
+              />
+            </Suspense>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border bg-card">
+
+        <button
+          type="button"
           onClick={() => setShowCreatives((s) => !s)}
           className="w-full flex items-center justify-between p-4 text-sm font-medium hover:bg-accent/40 rounded-xl"
         >
