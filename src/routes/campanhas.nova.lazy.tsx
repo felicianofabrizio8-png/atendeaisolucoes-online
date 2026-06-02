@@ -31,6 +31,7 @@ function NewCampaignPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [audience, setAudience] = useState<string>("");
   const [savingCreative, setSavingCreative] = useState(false);
   const [showCreatives, setShowCreatives] = useState(false);
