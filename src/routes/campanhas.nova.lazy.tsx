@@ -500,6 +500,30 @@ function NewCampaignPage() {
         </button>
       </div>
 
+      <div className="rounded-xl border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowCreatives((s) => !s)}
+          className="w-full flex items-center justify-between p-4 text-sm font-medium hover:bg-accent/40 rounded-xl"
+        >
+          <span>Criativos salvos</span>
+          {showCreatives ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showCreatives && profile?.company_id && (
+          <div className="p-4 pt-0">
+            <Suspense
+              fallback={
+                <div className="text-sm text-muted-foreground py-6">Carregando…</div>
+              }
+            >
+              <SavedCreatives companyId={profile.company_id} onReuse={reuseCreative} />
+            </Suspense>
+          </div>
+        )}
+      </div>
+
+
+
       <style>{`
         .input {
           height: 2.5rem;
