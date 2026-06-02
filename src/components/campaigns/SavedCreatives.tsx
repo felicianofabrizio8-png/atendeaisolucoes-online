@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Trash2, Pencil, RotateCcw, Loader2, Check, X } from "lucide-react";
+import { Trash2, Pencil, RotateCcw, Loader2, Check, X, Image as ImageIcon } from "lucide-react";
 
 export interface CreativeData {
   title: string;
@@ -100,66 +100,93 @@ export function SavedCreatives({
   if (!items?.length) {
     return (
       <p className="text-sm text-muted-foreground py-6">
-        Nenhum criativo salvo ainda. Gere um anúncio com IA e clique em “Salvar criativo”.
+        Nenhum criativo salvo ainda. Gere um anúncio com IA e clique em "Salvar criativo".
       </p>
     );
   }
 
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
+    <div className="flex flex-col gap-2">
       {items.map((c) => (
-        <div key={c.id} className="rounded-lg border bg-card p-3 space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            {editing === c.id ? (
-              <input
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="flex-1 h-8 rounded border px-2 text-sm"
-                autoFocus
-              />
+        <div
+          key={c.id}
+          className="group flex items-center gap-3 rounded-lg border bg-card/50 hover:bg-accent/40 transition-colors p-2 pr-3"
+        >
+          {/* Thumbnail */}
+          <div className="h-14 w-14 shrink-0 rounded-md overflow-hidden border bg-muted flex items-center justify-center">
+            {c.image_url ? (
+              <img src={c.image_url} alt="" className="h-full w-full object-cover" />
             ) : (
-              <h3 className="text-sm font-medium line-clamp-2 flex-1">{c.title}</h3>
+              <ImageIcon className="h-5 w-5 text-muted-foreground" />
             )}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
             {editing === c.id ? (
-              <div className="flex gap-1">
-                <button onClick={() => saveEdit(c.id)} className="p-1 hover:text-primary" title="Salvar">
+              <div className="flex items-center gap-1">
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="flex-1 h-8 rounded border px-2 text-sm bg-background"
+                  autoFocus
+                />
+                <button
+                  onClick={() => saveEdit(c.id)}
+                  className="p-1.5 rounded hover:bg-accent text-primary"
+                  title="Salvar"
+                >
                   <Check className="h-4 w-4" />
                 </button>
-                <button onClick={() => setEditing(null)} className="p-1 hover:text-foreground" title="Cancelar">
+                <button
+                  onClick={() => setEditing(null)}
+                  className="p-1.5 rounded hover:bg-accent"
+                  title="Cancelar"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <>
+                <div className="text-sm font-medium truncate">{c.title}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-2 truncate">
+                  <span className="truncate">{c.product_name ?? "Sem produto"}</span>
+                  <span className="opacity-60">·</span>
+                  <span className="shrink-0">
+                    {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground flex items-center justify-between">
-            <span>{c.product_name ?? "Sem produto"}</span>
-            <span>{new Date(c.created_at).toLocaleDateString("pt-BR")}</span>
-          </div>
-          {c.primary_text && (
-            <p className="text-xs text-muted-foreground line-clamp-3">{c.primary_text}</p>
-          )}
+
+          {/* Actions */}
           {editing !== c.id && (
-            <div className="flex gap-1 pt-1">
+            <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
               <button
                 onClick={() => onReuse(c)}
-                className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded border hover:bg-accent"
+                className="inline-flex items-center gap-1 text-xs h-8 px-2.5 rounded-md border hover:bg-background hover:border-primary/40 hover:text-primary transition-colors"
+                title="Reutilizar"
               >
-                <RotateCcw className="h-3 w-3" /> Reutilizar
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Reutilizar</span>
               </button>
               <button
                 onClick={() => {
                   setEditing(c.id);
                   setEditTitle(c.title);
                 }}
-                className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded border hover:bg-accent"
+                className="p-1.5 rounded-md hover:bg-background hover:text-foreground text-muted-foreground transition-colors"
+                title="Editar"
               >
-                <Pencil className="h-3 w-3" /> Editar
+                <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => remove(c.id)}
-                className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded border hover:bg-destructive/10 hover:text-destructive ml-auto"
+                className="p-1.5 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
+                title="Excluir"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
