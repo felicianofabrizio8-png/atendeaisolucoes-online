@@ -477,10 +477,13 @@ function ProductImagesField({
             });
           if (error) {
             console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
-            toast.error(`Falha ao enviar ${file.name}: ${error.message}`);
+            const msg = /quota/i.test(error.message)
+              ? "Limite de armazenamento da empresa atingido. Remova imagens antigas ou contate o admin."
+              : `Falha ao enviar ${file.name}: ${error.message}`;
+            toast.error(msg);
           } else {
-            const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-            uploaded.push(data.publicUrl);
+            const { getPublicImageUrl } = await import("@/lib/storage");
+            uploaded.push(getPublicImageUrl(path));
           }
         } catch (e) {
           console.error("PRODUCT_IMAGE_COMPRESS_ERROR", e);
