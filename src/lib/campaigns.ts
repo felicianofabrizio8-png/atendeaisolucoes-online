@@ -84,6 +84,7 @@ export async function createCampaign(
       company_id: companyId,
       name: input.name,
       objective: input.objective ?? "whatsapp",
+      goal: input.goal ?? "leads",
       product: input.product ?? null,
       city: input.city ?? null,
       radius_km: input.radius_km ?? null,
