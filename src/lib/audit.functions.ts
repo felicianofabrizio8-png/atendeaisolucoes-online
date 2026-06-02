@@ -19,14 +19,12 @@ const ErrorSchema = z.object({
   source: z.enum(["ia", "upload", "meta", "whatsapp", "storage", "supabase", "client", "other"]),
   severity: z.enum(["info", "warning", "error", "critical"]).default("error"),
   message: z.string().min(1).max(2000),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
 });
 
-async function getCompanyId(
-  supabase: { from: (t: "profiles") => { select: (c: string) => { eq: (col: string, v: string) => { maybeSingle: () => PromiseLike<{ data: { company_id: string } | null }> } } } },
-  userId: string,
-): Promise<string | null> {
-  const { data } = await supabase.from("profiles").select("company_id").eq("id", userId).maybeSingle();
+async function getCompanyId(supabase: unknown, userId: string): Promise<string | null> {
+  const s = supabase as { from: (t: string) => { select: (c: string) => { eq: (col: string, v: string) => { maybeSingle: () => Promise<{ data: { company_id: string } | null }> } } } };
+  const { data } = await s.from("profiles").select("company_id").eq("id", userId).maybeSingle();
   return data?.company_id ?? null;
 }
 
