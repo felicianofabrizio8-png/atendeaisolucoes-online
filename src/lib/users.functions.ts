@@ -337,8 +337,10 @@ export const touchLastSeen = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     try {
-      // @ts-expect-error - touch_last_seen RPC not in generated types yet
-      await context.supabase.rpc("touch_last_seen");
+      const sb = context.supabase as unknown as {
+        rpc: (fn: string) => Promise<unknown>;
+      };
+      await sb.rpc("touch_last_seen");
     } catch {
       /* noop */
     }
