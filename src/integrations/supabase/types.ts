@@ -335,6 +335,7 @@ export type Database = {
           id: string
           name: string
           slug: string | null
+          storage_quota_mb: number
           updated_at: string
         }
         Insert: {
@@ -342,6 +343,7 @@ export type Database = {
           id?: string
           name: string
           slug?: string | null
+          storage_quota_mb?: number
           updated_at?: string
         }
         Update: {
@@ -349,6 +351,7 @@ export type Database = {
           id?: string
           name?: string
           slug?: string | null
+          storage_quota_mb?: number
           updated_at?: string
         }
         Relationships: []
@@ -1191,6 +1194,30 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       visits: {
         Row: {
           address: string | null
@@ -1462,7 +1489,22 @@ export type Database = {
     }
     Functions: {
       ai_agent_maintenance: { Args: never; Returns: undefined }
+      check_storage_quota: {
+        Args: { _company_id: string; _new_size: number }
+        Returns: boolean
+      }
       current_company_id: { Args: never; Returns: string }
+      get_storage_usage_bytes: {
+        Args: { _company_id: string }
+        Returns: number
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       ai_proposal_status: "pending" | "approved" | "rejected"
@@ -1472,6 +1514,7 @@ export type Database = {
         | "recurring_reply"
         | "sales_pattern"
       ai_tone: "comercial" | "amigavel" | "premium" | "tecnico" | "informal"
+      app_role: "admin" | "atendente" | "financeiro"
       appointment_type:
         | "visita_tecnica"
         | "loja"
@@ -1638,6 +1681,7 @@ export const Constants = {
         "sales_pattern",
       ],
       ai_tone: ["comercial", "amigavel", "premium", "tecnico", "informal"],
+      app_role: ["admin", "atendente", "financeiro"],
       appointment_type: [
         "visita_tecnica",
         "loja",
