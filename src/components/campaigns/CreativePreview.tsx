@@ -104,7 +104,7 @@ function FeedPreview({ data }: { data: CreativePreviewData }) {
         <Bookmark className="h-5 w-5 ml-auto" />
       </div>
       <div className="px-3 py-2 text-xs space-y-1">
-        {data.headline && <div className="font-semibold">{data.headline}</div>}
+        {data.headline && <div className="font-semibold leading-snug line-clamp-2 tracking-tight">{data.headline}</div>}
         {data.primary_text && (
           <div className="text-muted-foreground line-clamp-3">{data.primary_text}</div>
         )}
@@ -131,7 +131,7 @@ function StoryPreview({ data }: { data: CreativePreviewData }) {
         <span className="text-[9px] text-white/70 ml-auto">Patrocinado</span>
       </div>
       <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent text-white space-y-2">
-        {data.headline && <div className="text-sm font-semibold drop-shadow line-clamp-2">{data.headline}</div>}
+        {data.headline && <div className="text-sm font-semibold drop-shadow line-clamp-2 leading-snug tracking-tight">{data.headline}</div>}
         {data.cta && (
           <button className="w-full bg-white text-black text-xs font-semibold py-2 rounded-full">
             {data.cta}
@@ -170,7 +170,7 @@ function WhatsAppPreview({ data }: { data: CreativePreviewData }) {
             />
           )}
           <div className="p-2 text-xs space-y-1">
-            {data.headline && <div className="font-semibold">{data.headline}</div>}
+            {data.headline && <div className="font-semibold leading-snug line-clamp-2 tracking-tight">{data.headline}</div>}
             {data.primary_text && (
               <div className="whitespace-pre-wrap line-clamp-4">{data.primary_text}</div>
             )}

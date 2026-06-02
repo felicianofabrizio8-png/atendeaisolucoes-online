@@ -64,7 +64,17 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
           .filter(Boolean)
           .join("\n");
 
-        const systemPrompt = `Você é um copywriter especialista em anúncios pagos no Meta Ads (Facebook e Instagram) e WhatsApp Business no Brasil. Gere um criativo persuasivo, claro, em pt-BR, sem emojis em excesso, dentro dos limites de caracteres do Meta Ads.`;
+        const systemPrompt = `Você é um copywriter sênior de Meta Ads (Facebook/Instagram) e WhatsApp Business no Brasil.
+
+REGRA CRÍTICA DO TÍTULO (headline):
+- Entre 25 e 40 caracteres. NUNCA passar de 40.
+- Curto, forte, direto. Pensado para card de feed mobile.
+- Sem ponto final, sem emojis, sem aspas, sem reticências.
+- Priorizar gancho de oferta, parcela, estação ou benefício imediato.
+- Exemplos do estilo desejado: "Dakota 6x3 em 18x", "Sua piscina em 18x", "Piscina Dakota Promo", "Verão com piscina", "Piscina pronta pro verão".
+- Evitar frases descritivas longas tipo "Aproveite agora nossa incrível promoção de piscinas Dakota".
+
+Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e persuasivos, sem excesso de emojis.`;
 
         const userPrompt = `Crie um anúncio para o objetivo "${objective}" com base no produto:\n${productLine}\n\nDevolva via tool call.`;
 
@@ -83,7 +93,11 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
                 parameters: {
                   type: "object",
                   properties: {
-                    headline: { type: "string", description: "Título curto, até 40 caracteres." },
+                    headline: {
+                      type: "string",
+                      description:
+                        "Título curto e impactante entre 25 e 40 caracteres. Sem ponto final, sem emojis, sem aspas. Estilo: 'Dakota 6x3 em 18x', 'Verão com piscina', 'Piscina Dakota Promo'.",
+                    },
                     primary_text: {
                       type: "string",
                       description: "Texto principal do anúncio, até 500 caracteres.",
@@ -163,6 +177,21 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
         }
         try {
           const parsed = JSON.parse(toolCall.function.arguments);
+          // Heurística: encurtar título se passar de 40 chars.
+          if (typeof parsed.headline === "string") {
+            let h = parsed.headline
+              .replace(/["“”']/g, "")
+              .replace(/\.+$/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (h.length > 40) {
+              // Corta na última palavra dentro de 38 chars.
+              const cut = h.slice(0, 38);
+              const lastSpace = cut.lastIndexOf(" ");
+              h = (lastSpace > 18 ? cut.slice(0, lastSpace) : cut).trim();
+            }
+            parsed.headline = h;
+          }
           return Response.json(parsed);
         } catch (e) {
           console.error("Parse error", e);
