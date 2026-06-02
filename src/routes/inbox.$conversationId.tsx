@@ -330,11 +330,29 @@ function ConversationPage() {
     }
   }, [search.quote, conversationId, navigate]);
 
+  // Auto-scroll só quando o usuário já está perto do final — assim mensagens novas
+  // chegando via Realtime não interrompem quem está lendo o histórico.
+  const lastMessageId = messages[messages.length - 1]?.id;
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, ai, pendingQuote]);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceFromBottom < 160;
+    if (nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [lastMessageId, ai, pendingQuote]);
+
+  // Fallback: se o Realtime do leadRepo falhar por algum motivo, faz um refetch
+  // leve da conversa aberta a cada 25s. Para ao desmontar.
+  useEffect(() => {
+    if (!conversationId) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refetchConversationMessages(conversationId);
+    }, 25_000);
+    return () => window.clearInterval(id);
+  }, [conversationId]);
 
 
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
