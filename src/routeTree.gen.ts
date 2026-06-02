@@ -28,6 +28,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
@@ -166,6 +167,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
+} as any)
+const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
+  id: '/configuracoes_/usuarios',
+  path: '/configuracoes/usuarios',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
@@ -339,6 +345,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
@@ -390,6 +397,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
@@ -443,6 +451,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
@@ -497,6 +506,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
@@ -548,6 +558,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
@@ -600,6 +611,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
@@ -653,6 +665,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
+  ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
   CampanhasNovaLazyRoute: typeof CampanhasNovaLazyRoute
@@ -830,6 +843,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/inbox/$conversationId'
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
+    }
+    '/configuracoes_/usuarios': {
+      id: '/configuracoes_/usuarios'
+      path: '/configuracoes/usuarios'
+      fullPath: '/configuracoes/usuarios'
+      preLoaderRoute: typeof ConfiguracoesUsuariosRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
@@ -1071,6 +1091,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
+  ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   CampanhasIdLazyRoute: CampanhasIdLazyRoute,
   CampanhasNovaLazyRoute: CampanhasNovaLazyRoute,
