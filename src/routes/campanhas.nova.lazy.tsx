@@ -226,16 +226,21 @@ function NewCampaignPage() {
           contentType: toUpload.type || (isVideo ? "video/mp4" : "image/jpeg"),
         });
       if (error) throw error;
-      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+      const { getPublicImageUrl } = await import("@/lib/storage");
       setForm((f) => ({
         ...f,
-        media_url: data.publicUrl,
+        media_url: getPublicImageUrl(path),
         media_type: isVideo ? "video" : "image",
       }));
       toast.success("Mídia enviada!");
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
       console.error(e);
-      toast.error("Erro no upload da mídia.");
+      if (/quota/i.test(msg)) {
+        toast.error("Limite de armazenamento da empresa atingido.");
+      } else {
+        toast.error("Erro no upload da mídia.");
+      }
     } finally {
       setUploadingMedia(false);
       if (fileRef.current) fileRef.current.value = "";
