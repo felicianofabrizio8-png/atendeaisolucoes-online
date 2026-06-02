@@ -664,25 +664,31 @@ function NewCampaignPage() {
 
       <style>{`
         .input {
-          height: 2.5rem;
+          height: 2.25rem;
           border-radius: 0.5rem;
           border: 1px solid hsl(var(--input, var(--border)));
           background: transparent;
-          padding: 0 0.75rem;
+          padding: 0 0.7rem;
           font-size: 0.875rem;
           width: 100%;
           outline: none;
-          transition: border-color .15s ease, box-shadow .15s ease;
+          transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
         }
-        textarea.input { height: auto; padding: 0.5rem 0.75rem; }
-        .input:hover { border-color: color-mix(in oklab, var(--foreground) 25%, transparent); }
-        .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 25%, transparent); }
+        textarea.input { height: auto; padding: 0.45rem 0.7rem; line-height: 1.45; }
+        .input:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
+        .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent); }
 
         @keyframes ai-glow {
           0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
           50% { box-shadow: 0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
         }
         .ai-glow { animation: ai-glow 2.6s ease-in-out infinite; }
+
+        @keyframes publish-pulse {
+          0%, 100% { box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent); }
+          50% { box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent); }
+        }
+        .publish-cta:not(:disabled) { animation: publish-pulse 3.2s ease-in-out infinite; }
       `}</style>
     </div>
   );
