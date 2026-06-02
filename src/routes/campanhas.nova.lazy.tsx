@@ -10,6 +10,9 @@ import type { SavedCreative } from "@/components/campaigns/SavedCreatives";
 const SavedCreatives = lazy(() =>
   import("@/components/campaigns/SavedCreatives").then((m) => ({ default: m.SavedCreatives })),
 );
+const CreativePreview = lazy(() =>
+  import("@/components/campaigns/CreativePreview").then((m) => ({ default: m.CreativePreview })),
+);
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
