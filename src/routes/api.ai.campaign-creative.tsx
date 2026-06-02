@@ -93,7 +93,11 @@ Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e pers
                 parameters: {
                   type: "object",
                   properties: {
-                    headline: { type: "string", description: "Título curto, até 40 caracteres." },
+                    headline: {
+                      type: "string",
+                      description:
+                        "Título curto e impactante entre 25 e 40 caracteres. Sem ponto final, sem emojis, sem aspas. Estilo: 'Dakota 6x3 em 18x', 'Verão com piscina', 'Piscina Dakota Promo'.",
+                    },
                     primary_text: {
                       type: "string",
                       description: "Texto principal do anúncio, até 500 caracteres.",
