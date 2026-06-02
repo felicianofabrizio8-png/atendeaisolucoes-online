@@ -320,10 +320,10 @@ function NewCampaignPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto w-full animate-fade-in">
+    <div className="p-3 md:p-5 max-w-7xl mx-auto w-full animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-5">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3 mb-3.5">
+        <div className="space-y-0.5">
           <Link
             to="/campanhas"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -331,33 +331,32 @@ function NewCampaignPage() {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Nova campanha</h1>
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Nova campanha</h1>
             <StatusBadge status={status} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Crie um anúncio com IA. O preview à direita atualiza em tempo real.
+          <p className="text-xs md:text-sm text-muted-foreground">
+            Crie um anúncio com IA. O preview atualiza em tempo real.
           </p>
         </div>
       </div>
 
       {!META_ADS_READY && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2 mb-5">
-          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2 mb-3.5">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           <div>
-            Publicação automática no Meta Ads ainda em validação. Por enquanto a campanha é
-            salva como rascunho.
+            Publicação automática no Meta Ads em validação. A campanha é salva como rascunho.
           </div>
         </div>
       )}
 
       {/* Two-column layout: form + sticky preview */}
-      <div className="grid lg:grid-cols-[1fr_380px] gap-5 items-start">
+      <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
         {/* LEFT: form */}
-        <div className="space-y-5 min-w-0">
+        <div className="space-y-3.5 min-w-0">
           {/* Produto + IA */}
           <Card>
             <CardHead title="Produto e geração com IA" />
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="Produto cadastrado">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <select
@@ -430,8 +429,8 @@ function NewCampaignPage() {
           {/* Segmentação */}
           <Card>
             <CardHead title="Segmentação e orçamento" />
-            <div className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
                 <Field label="Produto / Serviço">
                   <input
                     value={form.product}
@@ -450,7 +449,7 @@ function NewCampaignPage() {
                 </Field>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-3 gap-3">
                 <Field label="Raio (km)">
                   <input
                     type="number"
@@ -502,7 +501,7 @@ function NewCampaignPage() {
           {/* Copy */}
           <Card>
             <CardHead title="Texto do anúncio" />
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="Título">
                 <input
                   value={form.headline}
@@ -576,9 +575,11 @@ function NewCampaignPage() {
               onClick={() => save(true)}
               disabled={saving || !META_ADS_READY}
               title={!META_ADS_READY ? "Meta Ads ainda não validado" : undefined}
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-50"
+              className="publish-cta group relative inline-flex items-center justify-center gap-2 h-10 px-5 rounded-lg bg-gradient-to-r from-primary via-primary to-primary/85 text-primary-foreground text-sm font-semibold shadow-[0_4px_14px_-2px_color-mix(in_oklab,var(--primary)_45%,transparent)] hover:shadow-[0_8px_22px_-2px_color-mix(in_oklab,var(--primary)_55%,transparent)] hover:-translate-y-px active:translate-y-0 transition-all disabled:opacity-50 disabled:hover:translate-y-0 overflow-hidden"
             >
-              <Rocket className="h-4 w-4" /> Publicar campanha
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:translate-x-full transition-transform duration-700" />
+              <Rocket className="h-4 w-4 group-hover:rotate-[-8deg] group-hover:scale-110 transition-transform relative" />
+              <span className="relative">Publicar campanha</span>
             </button>
           </div>
 
@@ -621,7 +622,7 @@ function NewCampaignPage() {
         {/* RIGHT: sticky preview */}
         <aside className="lg:sticky lg:top-4 space-y-3">
           <Card>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2.5">
               <div className="text-sm font-semibold flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 Preview do anúncio
@@ -630,51 +631,64 @@ function NewCampaignPage() {
                 Tempo real
               </span>
             </div>
-            <div key={`${form.headline}-${form.cta}-${form.media_url}`} className="animate-fade-in">
-              <Suspense
-                fallback={
-                  <div className="text-sm text-muted-foreground py-10 text-center">
-                    Carregando preview…
-                  </div>
-                }
-              >
-                <CreativePreview
-                  data={{
-                    headline: form.headline,
-                    primary_text: form.primary_text,
-                    cta: form.cta,
-                    media_url: form.media_url,
-                    media_type: form.media_type,
-                    product: form.product,
-                  }}
-                />
-              </Suspense>
-            </div>
+            <Suspense
+              fallback={
+                <div className="space-y-2">
+                  <div className="h-7 w-40 rounded-md bg-muted animate-pulse" />
+                  <div className="aspect-square w-full rounded-xl bg-muted animate-pulse" />
+                </div>
+              }
+            >
+              <CreativePreview
+                data={{
+                  headline: form.headline,
+                  primary_text: form.primary_text,
+                  cta: form.cta,
+                  media_url: form.media_url,
+                  media_type: form.media_type,
+                  product: form.product,
+                }}
+              />
+            </Suspense>
           </Card>
+
+          <AIInsights
+            headline={form.headline}
+            primary_text={form.primary_text}
+            cta={form.cta}
+            objective={form.objective}
+            media_url={form.media_url}
+          />
         </aside>
       </div>
 
       <style>{`
         .input {
-          height: 2.5rem;
+          height: 2.25rem;
           border-radius: 0.5rem;
           border: 1px solid hsl(var(--input, var(--border)));
           background: transparent;
-          padding: 0 0.75rem;
+          padding: 0 0.7rem;
           font-size: 0.875rem;
           width: 100%;
           outline: none;
-          transition: border-color .15s ease, box-shadow .15s ease;
+          transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
         }
-        textarea.input { height: auto; padding: 0.5rem 0.75rem; }
-        .input:hover { border-color: color-mix(in oklab, var(--foreground) 25%, transparent); }
-        .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 25%, transparent); }
+        textarea.input { height: auto; padding: 0.45rem 0.7rem; line-height: 1.45; }
+        .input:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
+        .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent); }
 
         @keyframes ai-glow {
           0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
           50% { box-shadow: 0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
         }
         .ai-glow { animation: ai-glow 2.6s ease-in-out infinite; }
+
+        @keyframes publish-pulse {
+          0%, 100% { box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent); }
+          50% { box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent); }
+        }
+        .publish-cta:not(:disabled) { animation: publish-pulse 3.2s ease-in-out infinite; }
       `}</style>
     </div>
   );
@@ -692,7 +706,7 @@ function Card({
   return (
     <div
       className={`rounded-xl border bg-card shadow-[0_1px_0_rgba(0,0,0,0.02)] ${
-        padded ? "p-4 md:p-5" : ""
+        padded ? "p-3.5 md:p-4" : ""
       }`}
     >
       {children}
@@ -702,7 +716,7 @@ function Card({
 
 function CardHead({ title }: { title: string }) {
   return (
-    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
       {title}
     </div>
   );
@@ -850,12 +864,15 @@ function MediaUploader({
           onFiles(e.dataTransfer.files);
         }}
         onClick={onPickFile}
-        className={`relative cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all ${
+        className={`group relative cursor-pointer rounded-xl border border-dashed p-5 text-center transition-all overflow-hidden ${
           dragOver
-            ? "border-primary bg-primary/5 scale-[1.01]"
-            : "border-border hover:border-foreground/30 hover:bg-accent/30"
+            ? "border-primary bg-primary/[0.06] scale-[1.005] shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
+            : "border-border/70 bg-gradient-to-b from-muted/20 to-transparent hover:border-primary/40 hover:shadow-[0_0_24px_-6px_color-mix(in_oklab,var(--primary)_45%,transparent)]"
         }`}
       >
+        <span className="absolute top-2 right-2 inline-flex items-center gap-1 h-5 px-1.5 rounded-full bg-background/80 backdrop-blur border text-[10px] font-medium text-muted-foreground">
+          <Sparkles className="h-2.5 w-2.5 text-primary" /> Formato recomendado
+        </span>
         <input
           ref={fileRef}
           type="file"
@@ -864,18 +881,18 @@ function MediaUploader({
           onChange={(e) => onFiles(e.target.files)}
         />
         {mediaUrl ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-2.5">
             {mediaType === "image" ? (
               <img
                 src={mediaUrl}
                 alt=""
-                className="max-h-48 rounded-lg border object-contain bg-background"
+                className="max-h-44 rounded-lg border object-contain bg-background"
               />
             ) : (
               <video
                 src={mediaUrl}
                 controls
-                className="max-h-48 rounded-lg border bg-background"
+                className="max-h-44 rounded-lg border bg-background"
                 onClick={(e) => e.stopPropagation()}
               />
             )}
@@ -894,19 +911,19 @@ function MediaUploader({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 py-4">
-            <div className="h-14 w-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary flex items-center justify-center ring-1 ring-primary/15 group-hover:scale-105 transition-transform">
               {uploading ? (
-                <Loader2 className="h-7 w-7 animate-spin" />
+                <Loader2 className="h-8 w-8 animate-spin" />
               ) : (
-                <UploadCloud className="h-7 w-7" />
+                <UploadCloud className="h-8 w-8" />
               )}
             </div>
             <div className="text-sm font-medium">
-              {uploading ? "Enviando…" : "Arraste uma imagem ou vídeo aqui"}
+              {uploading ? "Enviando…" : "Arraste imagem ou vídeo aqui"}
             </div>
             <div className="text-xs text-muted-foreground">
-              ou clique para selecionar do dispositivo
+              ou clique para selecionar do dispositivo · JPG, PNG, MP4
             </div>
           </div>
         )}
@@ -937,3 +954,100 @@ function MediaUploader({
     </div>
   );
 }
+
+/* ---------------- AI Insights (heurística local, sem chamada de IA) ---------------- */
+
+function AIInsights({
+  headline,
+  primary_text,
+  cta,
+  objective,
+  media_url,
+}: {
+  headline: string;
+  primary_text: string;
+  cta: string;
+  objective: CampaignObjective;
+  media_url: string;
+}) {
+  const h = headline.trim();
+  const t = primary_text.trim();
+  const hasMedia = !!media_url;
+
+  // Pontuação simples — apenas leitura do estado, sem requests.
+  let score = 0;
+  if (h.length >= 8 && h.length <= 40) score += 25;
+  else if (h.length > 0) score += 12;
+  if (t.length >= 60 && t.length <= 500) score += 25;
+  else if (t.length > 0) score += 12;
+  if (cta && cta !== "Saiba mais") score += 20;
+  else if (cta) score += 10;
+  if (hasMedia) score += 30;
+
+  const potential =
+    score >= 75 ? { label: "Alto", tone: "emerald" as const } :
+    score >= 45 ? { label: "Médio", tone: "amber" as const } :
+                  { label: "Baixo", tone: "rose" as const };
+
+  const ctaStrength =
+    !cta ? "Defina um CTA claro." :
+    cta === "Saiba mais" ? "CTA poderia ser mais direto." :
+    "CTA forte e específico.";
+
+  const clarity =
+    !t ? "Adicione um texto descrevendo a oferta." :
+    t.length < 60 ? "Texto curto — reforce o benefício." :
+    t.length > 500 ? "Texto longo — pode perder atenção." :
+    "Oferta clara e bem dimensionada.";
+
+  const tip =
+    !hasMedia ? "Adicione uma mídia — anúncios com imagem convertem muito mais." :
+    objective === "whatsapp" && !/whats|mensagem|conversar/i.test(t + h) ?
+      "Mencione 'fale no WhatsApp' para incentivar o clique." :
+    objective === "instagram" && !/oferta|promoção|exclusiv/i.test(t + h) ?
+      "Reforce escassez ou exclusividade no Instagram." :
+    "Texto bem alinhado ao objetivo.";
+
+  const toneCls: Record<"emerald" | "amber" | "rose", string> = {
+    emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    rose: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+  };
+
+  return (
+    <div className="rounded-xl border bg-card p-3.5 md:p-4 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Qualidade do anúncio
+        </div>
+        <span className={`inline-flex items-center gap-1 h-5 px-2 rounded-full border text-[10px] font-medium ${toneCls[potential.tone]}`}>
+          {potential.label}
+        </span>
+      </div>
+
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden mb-3">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
+      </div>
+
+      <ul className="space-y-1.5 text-xs">
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Força do CTA:</span>
+          <span className="text-foreground">{ctaStrength}</span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Clareza da oferta:</span>
+          <span className="text-foreground">{clarity}</span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Sugestão:</span>
+          <span className="text-foreground">{tip}</span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+

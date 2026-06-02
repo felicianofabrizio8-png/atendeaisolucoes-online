@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Check } from "lucide-react";
 
 export interface CreativePreviewData {
@@ -14,17 +14,30 @@ type Mode = "feed" | "story" | "whatsapp";
 
 export function CreativePreview({ data }: { data: CreativePreviewData }) {
   const [mode, setMode] = useState<Mode>("feed");
+  const [updating, setUpdating] = useState(false);
+  const firstRender = useRef(true);
+
+  // Pulso curto ao mudar conteúdo — sensação "viva".
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    setUpdating(true);
+    const t = setTimeout(() => setUpdating(false), 220);
+    return () => clearTimeout(t);
+  }, [data.headline, data.primary_text, data.cta, data.media_url, data.media_type, mode]);
 
   return (
-    <div className="space-y-3">
-      <div className="inline-flex rounded-md border bg-background p-1 text-xs">
+    <div className="space-y-2.5">
+      <div className="inline-flex rounded-md border bg-background p-0.5 text-xs">
         {(["feed", "story", "whatsapp"] as const).map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => setMode(m)}
-            className={`px-3 h-8 rounded capitalize transition-colors ${
-              mode === m ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+            className={`px-2.5 h-7 rounded capitalize transition-all ${
+              mode === m ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-accent"
             }`}
           >
             {m === "whatsapp" ? "WhatsApp" : m}
@@ -32,11 +45,28 @@ export function CreativePreview({ data }: { data: CreativePreviewData }) {
         ))}
       </div>
 
-      <div className="flex justify-center bg-muted/30 rounded-xl p-4">
-        {mode === "feed" && <FeedPreview data={data} />}
-        {mode === "story" && <StoryPreview data={data} />}
-        {mode === "whatsapp" && <WhatsAppPreview data={data} />}
+      <div className="relative flex justify-center bg-muted/30 rounded-xl p-3 overflow-hidden">
+        <div
+          key={mode}
+          className={`transition-all duration-200 ${updating ? "opacity-70 scale-[0.995] blur-[0.3px]" : "opacity-100 scale-100 blur-0"} animate-fade-in`}
+        >
+          {mode === "feed" && <FeedPreview data={data} />}
+          {mode === "story" && <StoryPreview data={data} />}
+          {mode === "whatsapp" && <WhatsAppPreview data={data} />}
+        </div>
+        {updating && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden">
+            <div className="h-full w-1/3 bg-primary/60 animate-[preview-shimmer_0.6s_ease-in-out]" />
+          </div>
+        )}
       </div>
+
+      <style>{`
+        @keyframes preview-shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(400%); }
+        }
+      `}</style>
     </div>
   );
 }
