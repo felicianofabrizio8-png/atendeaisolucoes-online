@@ -477,6 +477,13 @@ function NewCampaignPage() {
 
       <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
         <button
+          onClick={saveCreative}
+          disabled={savingCreative}
+          className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border bg-background text-sm font-medium hover:bg-accent disabled:opacity-50"
+        >
+          <BookmarkPlus className="h-4 w-4" /> {savingCreative ? "Salvando…" : "Salvar criativo"}
+        </button>
+        <button
           onClick={() => save(false)}
           disabled={saving}
           className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border bg-background text-sm font-medium hover:bg-accent disabled:opacity-50"
