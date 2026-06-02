@@ -864,12 +864,15 @@ function MediaUploader({
           onFiles(e.dataTransfer.files);
         }}
         onClick={onPickFile}
-        className={`relative cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all ${
+        className={`group relative cursor-pointer rounded-xl border border-dashed p-5 text-center transition-all overflow-hidden ${
           dragOver
-            ? "border-primary bg-primary/5 scale-[1.01]"
-            : "border-border hover:border-foreground/30 hover:bg-accent/30"
+            ? "border-primary bg-primary/[0.06] scale-[1.005] shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
+            : "border-border/70 bg-gradient-to-b from-muted/20 to-transparent hover:border-primary/40 hover:shadow-[0_0_24px_-6px_color-mix(in_oklab,var(--primary)_45%,transparent)]"
         }`}
       >
+        <span className="absolute top-2 right-2 inline-flex items-center gap-1 h-5 px-1.5 rounded-full bg-background/80 backdrop-blur border text-[10px] font-medium text-muted-foreground">
+          <Sparkles className="h-2.5 w-2.5 text-primary" /> Formato recomendado
+        </span>
         <input
           ref={fileRef}
           type="file"
@@ -878,18 +881,18 @@ function MediaUploader({
           onChange={(e) => onFiles(e.target.files)}
         />
         {mediaUrl ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-2.5">
             {mediaType === "image" ? (
               <img
                 src={mediaUrl}
                 alt=""
-                className="max-h-48 rounded-lg border object-contain bg-background"
+                className="max-h-44 rounded-lg border object-contain bg-background"
               />
             ) : (
               <video
                 src={mediaUrl}
                 controls
-                className="max-h-48 rounded-lg border bg-background"
+                className="max-h-44 rounded-lg border bg-background"
                 onClick={(e) => e.stopPropagation()}
               />
             )}
@@ -908,19 +911,19 @@ function MediaUploader({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 py-4">
-            <div className="h-14 w-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary flex items-center justify-center ring-1 ring-primary/15 group-hover:scale-105 transition-transform">
               {uploading ? (
-                <Loader2 className="h-7 w-7 animate-spin" />
+                <Loader2 className="h-8 w-8 animate-spin" />
               ) : (
-                <UploadCloud className="h-7 w-7" />
+                <UploadCloud className="h-8 w-8" />
               )}
             </div>
             <div className="text-sm font-medium">
-              {uploading ? "Enviando…" : "Arraste uma imagem ou vídeo aqui"}
+              {uploading ? "Enviando…" : "Arraste imagem ou vídeo aqui"}
             </div>
             <div className="text-xs text-muted-foreground">
-              ou clique para selecionar do dispositivo
+              ou clique para selecionar do dispositivo · JPG, PNG, MP4
             </div>
           </div>
         )}
