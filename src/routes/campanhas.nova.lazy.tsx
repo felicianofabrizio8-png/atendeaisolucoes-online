@@ -1,10 +1,15 @@
 import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
-import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info, Sparkles, Package } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info, Sparkles, Package, BookmarkPlus, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
+import type { SavedCreative } from "@/components/campaigns/SavedCreatives";
+
+const SavedCreatives = lazy(() =>
+  import("@/components/campaigns/SavedCreatives").then((m) => ({ default: m.SavedCreatives })),
+);
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
