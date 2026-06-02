@@ -120,19 +120,23 @@ export async function logMetaError(params: {
   context?: Record<string, unknown>;
 }): Promise<void> {
   try {
-    await supabase.from("error_log" as never).insert({
+    const payload = {
       company_id: params.companyId,
       source: "meta_sync",
-      severity: params.kind === "token_expired" || params.kind === "permission_denied"
-        ? "warn"
-        : "error",
+      severity:
+        params.kind === "token_expired" || params.kind === "permission_denied"
+          ? "warn"
+          : "error",
       message: `[${params.kind}] ${params.message}`,
       context: {
         kind: params.kind,
         campaign_id: params.campaignId ?? null,
         ...(params.context ?? {}),
       },
-    });
+    };
+    // error_log writes go through service_role in production; cast keeps the
+    // helper usable from any caller without coupling to generated types.
+    await supabase.from("error_log" as never).insert(payload as never);
   } catch {
     // swallow — error logging must never break the caller.
   }
