@@ -374,6 +374,7 @@ export async function updateProduct(
 }
 
 export async function deleteProduct(id: string): Promise<void> {
+  const before = _products.find((p) => p.id === id);
   if (mode === "remote" && companyId) {
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) throw error;
@@ -381,6 +382,10 @@ export async function deleteProduct(id: string): Promise<void> {
   _products = _products.filter((p) => p.id !== id);
   syncExportedRef();
   emit();
+  // Audit best-effort (não bloqueia)
+  void import("@/lib/audit").then(({ recordAudit }) =>
+    recordAudit({ action: "delete_product", entity: "product", entityId: id, before }),
+  );
 }
 
 // ---------- seed ----------
