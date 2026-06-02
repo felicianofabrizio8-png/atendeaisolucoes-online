@@ -71,6 +71,8 @@ function CampaignDetailPage() {
   const navigate = useNavigate();
   const [c, setC] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -80,15 +82,18 @@ function CampaignDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  async function onDelete() {
+  async function performDelete() {
     if (!c) return;
-    if (!confirm("Excluir esta campanha?")) return;
+    setDeleting(true);
     try {
       await deleteCampaign(c.id);
       toast.success("Campanha excluída.");
       navigate({ to: "/campanhas" });
     } catch {
       toast.error("Erro ao excluir.");
+    } finally {
+      setDeleting(false);
+      setConfirmOpen(false);
     }
   }
 
