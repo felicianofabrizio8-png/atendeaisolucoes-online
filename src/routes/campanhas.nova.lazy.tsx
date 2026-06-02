@@ -1,10 +1,15 @@
 import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
-import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info, Sparkles, Package } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info, Sparkles, Package, BookmarkPlus, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
+import type { SavedCreative } from "@/components/campaigns/SavedCreatives";
+
+const SavedCreatives = lazy(() =>
+  import("@/components/campaigns/SavedCreatives").then((m) => ({ default: m.SavedCreatives })),
+);
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
@@ -28,6 +33,8 @@ function NewCampaignPage() {
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [audience, setAudience] = useState<string>("");
+  const [savingCreative, setSavingCreative] = useState(false);
+  const [showCreatives, setShowCreatives] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -186,6 +193,59 @@ function NewCampaignPage() {
       setSaving(false);
     }
   }
+
+  async function saveCreative() {
+    if (!profile?.company_id) return;
+    if (!form.headline.trim() && !form.primary_text.trim()) {
+      toast.error("Gere ou preencha o anúncio antes de salvar.");
+      return;
+    }
+    setSavingCreative(true);
+    try {
+      const [audienceLine, ...captionParts] = audience.split(/\n\nLegenda sugerida:\n/);
+      const { error } = await supabase.from("campaign_creatives").insert({
+        company_id: profile.company_id,
+        product_id: form.product_id || null,
+        title: form.headline || form.name || "Criativo sem título",
+        primary_text: form.primary_text || null,
+        cta: form.cta || null,
+        social_caption: captionParts.join("\n\nLegenda sugerida:\n") || null,
+        audience_suggestion: audienceLine || null,
+        image_url: form.media_type === "image" ? form.media_url || null : null,
+      });
+      if (error) throw error;
+      toast.success("Criativo salvo!");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao salvar criativo.");
+    } finally {
+      setSavingCreative(false);
+    }
+  }
+
+  function reuseCreative(c: SavedCreative) {
+    setForm((f) => ({
+      ...f,
+      headline: c.title || f.headline,
+      primary_text: c.primary_text || f.primary_text,
+      cta: c.cta || f.cta,
+      media_url: c.image_url || f.media_url,
+      media_type: c.image_url ? "image" : f.media_type,
+      product_id: c.product_id || f.product_id,
+    }));
+    setAudience(
+      [
+        c.audience_suggestion,
+        c.social_caption ? `\n\nLegenda sugerida:\n${c.social_caption}` : "",
+      ]
+        .filter(Boolean)
+        .join(""),
+    );
+    toast.success("Criativo carregado no formulário.");
+    setShowCreatives(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5">
@@ -417,6 +477,13 @@ function NewCampaignPage() {
 
       <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
         <button
+          onClick={saveCreative}
+          disabled={savingCreative}
+          className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border bg-background text-sm font-medium hover:bg-accent disabled:opacity-50"
+        >
+          <BookmarkPlus className="h-4 w-4" /> {savingCreative ? "Salvando…" : "Salvar criativo"}
+        </button>
+        <button
           onClick={() => save(false)}
           disabled={saving}
           className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border bg-background text-sm font-medium hover:bg-accent disabled:opacity-50"
@@ -432,6 +499,30 @@ function NewCampaignPage() {
           <Rocket className="h-4 w-4" /> Publicar campanha
         </button>
       </div>
+
+      <div className="rounded-xl border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowCreatives((s) => !s)}
+          className="w-full flex items-center justify-between p-4 text-sm font-medium hover:bg-accent/40 rounded-xl"
+        >
+          <span>Criativos salvos</span>
+          {showCreatives ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showCreatives && profile?.company_id && (
+          <div className="p-4 pt-0">
+            <Suspense
+              fallback={
+                <div className="text-sm text-muted-foreground py-6">Carregando…</div>
+              }
+            >
+              <SavedCreatives companyId={profile.company_id} onReuse={reuseCreative} />
+            </Suspense>
+          </div>
+        )}
+      </div>
+
+
 
       <style>{`
         .input {

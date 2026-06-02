@@ -206,6 +206,51 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_creatives: {
+        Row: {
+          audience_suggestion: string | null
+          campaign_id: string | null
+          company_id: string
+          created_at: string
+          cta: string | null
+          id: string
+          image_url: string | null
+          primary_text: string | null
+          product_id: string | null
+          social_caption: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience_suggestion?: string | null
+          campaign_id?: string | null
+          company_id: string
+          created_at?: string
+          cta?: string | null
+          id?: string
+          image_url?: string | null
+          primary_text?: string | null
+          product_id?: string | null
+          social_caption?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience_suggestion?: string | null
+          campaign_id?: string | null
+          company_id?: string
+          created_at?: string
+          cta?: string | null
+          id?: string
+          image_url?: string | null
+          primary_text?: string | null
+          product_id?: string | null
+          social_caption?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           ai_diagnosis: string | null
