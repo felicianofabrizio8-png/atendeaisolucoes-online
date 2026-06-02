@@ -206,6 +206,81 @@ export type Database = {
         }
         Relationships: []
       }
+      campaigns: {
+        Row: {
+          ai_diagnosis: string | null
+          city: string | null
+          company_id: string
+          created_at: string
+          cta: string | null
+          daily_budget: number | null
+          headline: string | null
+          id: string
+          leads_count: number
+          media_type: string | null
+          media_url: string | null
+          messages_count: number
+          meta_campaign_id: string | null
+          name: string
+          objective: string
+          primary_text: string | null
+          product: string | null
+          radius_km: number | null
+          spent: number
+          start_date: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          ai_diagnosis?: string | null
+          city?: string | null
+          company_id: string
+          created_at?: string
+          cta?: string | null
+          daily_budget?: number | null
+          headline?: string | null
+          id?: string
+          leads_count?: number
+          media_type?: string | null
+          media_url?: string | null
+          messages_count?: number
+          meta_campaign_id?: string | null
+          name: string
+          objective?: string
+          primary_text?: string | null
+          product?: string | null
+          radius_km?: number | null
+          spent?: number
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          ai_diagnosis?: string | null
+          city?: string | null
+          company_id?: string
+          created_at?: string
+          cta?: string | null
+          daily_budget?: number | null
+          headline?: string | null
+          id?: string
+          leads_count?: number
+          media_type?: string | null
+          media_url?: string | null
+          messages_count?: number
+          meta_campaign_id?: string | null
+          name?: string
+          objective?: string
+          primary_text?: string | null
+          product?: string | null
+          radius_km?: number | null
+          spent?: number
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           created_at: string

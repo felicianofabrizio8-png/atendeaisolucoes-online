@@ -10,6 +10,7 @@ import {
   BarChart3,
   Settings,
   Sparkles,
+  Megaphone,
   LogOut,
   LogIn,
   Menu,
@@ -23,7 +24,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia";
+  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -34,6 +35,7 @@ const nav: NavItem[] = [
   { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
+  { to: "/campanhas", label: "Campanhas", icon: Megaphone },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
