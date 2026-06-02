@@ -105,6 +105,9 @@ function CampaignDetailPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [improveOpen, setImproveOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishStage, setPublishStage] = useState<string>("");
+  const publishFn = useServerFn(publishCampaign);
 
   useEffect(() => {
     setLoading(true);
