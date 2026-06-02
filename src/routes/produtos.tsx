@@ -31,6 +31,7 @@ import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/SmartImage";
 
 
 export const Route = createFileRoute("/produtos")({
