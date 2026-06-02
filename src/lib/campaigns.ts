@@ -109,8 +109,12 @@ export async function updateCampaign(id: string, patch: Partial<Campaign>): Prom
 }
 
 export async function deleteCampaign(id: string): Promise<void> {
+  // Snapshot para auditoria (best-effort).
+  const { data: before } = await supabase.from("campaigns").select("*").eq("id", id).maybeSingle();
   const { error } = await supabase.from("campaigns").delete().eq("id", id);
   if (error) throw error;
+  const { recordAudit } = await import("./audit");
+  recordAudit({ action: "delete_campaign", entity: "campaign", entityId: id, before });
 }
 
 export function formatBRL(value: number | null | undefined): string {

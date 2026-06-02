@@ -77,6 +77,7 @@ export function SavedCreatives({
 
   async function performDelete(id: string) {
     setDeleting(true);
+    const before = (items ?? []).find((c) => c.id === id);
     const { error } = await supabase.from("campaign_creatives").delete().eq("id", id);
     setDeleting(false);
     setPendingDeleteId(null);
@@ -85,6 +86,9 @@ export function SavedCreatives({
       return;
     }
     setItems((arr) => (arr ?? []).filter((c) => c.id !== id));
+    void import("@/lib/audit").then(({ recordAudit }) =>
+      recordAudit({ action: "delete_creative", entity: "campaign_creative", entityId: id, before }),
+    );
     toast.success("Criativo excluído.");
   }
 

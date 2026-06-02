@@ -1,140 +1,111 @@
-## Plano: Evolução do módulo Follow-up Automático
 
-Implementação em **camada isolada**, sem tocar inbox, meta-send, meta-webhook ou integrações existentes. Tudo novo é feature-flagged e falha de forma segura.
+# Fase Estabilidade Operacional & Preparação Multiempresa
 
----
-
-### 1. Banco de dados (migration única)
-
-**Novos campos em `company_settings`** (todos com default seguro / desligado):
-- `ai_followup_humanize` boolean default true — ativa variações automáticas de texto
-- `ai_followup_delay_jitter_minutes` int default 35 — janela randômica ± minutos
-- `ai_followup_daily_limit` int default 50 — teto diário anti-ban
-- `ai_followup_min_response_rate` numeric default 0.05 — pausa se cair abaixo
-- `ai_followup_warmup_enabled` boolean default true — aquecimento gradual
-- `ai_followup_reactivation_enabled` boolean default false
-- `ai_followup_reactivation_days` int default 30
-- `ai_followup_reactivation_daily_max` int default 10
-- `ai_followup_reactivation_hours_start` time default '09:00'
-- `ai_followup_reactivation_hours_end` time default '18:00'
-- `ai_followup_reactivation_template` text default 'Oi {{nome}}, faz um tempinho que não nos falamos. Posso te ajudar com algo hoje?'
-
-**Novos campos em `leads`**:
-- `lead_score` int default 0
-- `lead_temperature_cached` text — 'hot' | 'warm' | 'cold'
-- `last_score_at` timestamptz
-- `reactivated_at` timestamptz
-
-**Novos campos em `follow_ups`**:
-- `cancel_reason` text — 'client_replied' | 'human_takeover' | 'daily_limit' | 'no_integration' | 'outside_hours'
-- `cancelled_at` timestamptz
-- `trigger_reason` text — texto humano explicando porque a IA disparou
-- `variant_seed` int — para rastrear variação usada
-- `scheduled_for` timestamptz — quando foi agendado (vs `sent_at`)
-
-**Nova tabela `ai_followup_daily_stats`** (uma linha por empresa por dia) para o painel de analytics:
-- company_id, day, sent, responded, recovered, failed, response_rate
-
-GRANTs + RLS por `current_company_id()` em tudo novo.
+Escopo grande demais para uma única execução. Proponho dividir em **4 sub-fases entregáveis**, cada uma com migração + UI mínima, validável isoladamente, sem tocar inbox/WhatsApp/webhooks/Meta OAuth/IA/lazy loading.
 
 ---
 
-### 2. Backend — `src/lib/ai-followup.server.ts` (extensão)
+## Sub-fase A — Observabilidade (base de tudo)
 
-Adicionar funções **novas** (não substituir as existentes):
-- `humanizeTemplate(text, attemptNumber, seed)` — aplica variações: saudação, emoji, CTA, micro-mudanças
-- `computeLeadScore(leadId)` — calcula 0-100 baseado em msgs, tempo resposta, orçamento, follow-up respondido, recência → mapeia para hot/warm/cold
-- `getWhatsAppIntegrationStatus(companyId)` — retorna `{ connected, hasUnmapped, unmappedCount, tokenValid, error }`
-- `canSendFollowupNow(companyId)` — gate central: integração ativa + janela 24h + limite diário + horário + taxa resposta + warmup
-- `scheduleWithJitter(baseHours, jitterMin)` — calcula `scheduled_for` randômico
-- `cancelPendingFollowups(conversationId, reason)` — chamado quando cliente responde (via gatilho leve)
-- `reactivateOldLeads(companyId)` — varre leads parados há N dias, respeita limite diário e horário
-- `getAdvancedAnalytics(companyId)` — agrega métricas avançadas
+**Por que primeiro:** sem logs não dá pra validar nada das fases seguintes.
 
-**Tick** (`runFollowupTickForCompany`) passa a:
-1. Chamar `canSendFollowupNow` antes de qualquer envio
-2. Humanizar template via `humanizeTemplate`
-3. Registrar `trigger_reason` e `variant_seed` no insert
-4. Logar tudo em `ai_flow_events`
+**Migração:**
+- Tabela `audit_log` (id, company_id, user_id, action, entity, entity_id, before jsonb, after jsonb, created_at, ip, user_agent)
+- Tabela `error_log` (id, company_id, source: ia|upload|meta|storage|supabase, severity, message, context jsonb, created_at)
+- Índices: `(company_id, created_at desc)` em ambas
+- RLS: SELECT por company_id + admin role; INSERT via service_role apenas
+- Helper SQL `log_audit(action, entity, entity_id, before, after)` SECURITY DEFINER
 
----
+**Código:**
+- `src/lib/audit.ts` — helper cliente que chama serverFn `logAudit`
+- ServerFn `logAudit` / `logError`
+- Instrumentar: delete campanha, delete produto, delete lead, delete criativo, update company_settings, update integrations (Meta tokens), insert/delete user_roles
 
-### 3. APIs (rotas TanStack — novas, não tocam as existentes)
-
-- `GET /api/ai/followup-status` — retorna status WhatsApp + score summary + alertas
-- `GET /api/ai/followup-analytics` — métricas avançadas (recuperados, valor, melhor horário, taxa por categoria, série diária)
-- `POST /api/ai/followup-cancel` — cancela follow-ups pendentes de uma conversa (uso manual)
-- `POST /api/ai/followup-reactivate` — dispara reativação manual
-
-Endpoint `/api/ai/followup-config` existente: estender PUT para aceitar os novos campos.
+**Sem UI nova nesta sub-fase** (visualização vem em D).
 
 ---
 
-### 4. Cancelamento automático ao responder
+## Sub-fase B — Gestão de Usuários & Papéis
 
-**Sem mexer no meta-webhook**. Adicionar trigger Postgres em `messages` que:
-- Quando `role='lead'` (mensagem recebida do cliente)
-- Marca `follow_ups` pendentes (`status='sent'` sem `responded_at`) da mesma conversa como `responded` + atualiza `lead_score`
-- Insere evento `ai_flow_events` com tipo `followup_auto_cancelled`
+**Migração:**
+- Tabela `company_invites` (id, company_id, email, role app_role, token, expires_at, accepted_at, invited_by)
+- Adicionar `last_seen_at` em `profiles`
+- Policies: admin gerencia invites e user_roles da própria empresa
+- INSERT/UPDATE/DELETE em `user_roles` liberado para admin via policy nova
 
-Trigger SECURITY DEFINER, isolado, com EXCEPTION WHEN OTHERS RETURN NEW — nunca quebra insert.
-
----
-
-### 5. Frontend — `src/components/AIFollowupPanel.tsx`
-
-Estender o painel atual (não substituir):
-
-**Topo**:
-- Banner de status WhatsApp (verde/amarelo/vermelho)
-- Alerta se `whatsapp_unmapped_events` tem registros recentes
-- Score summary (X quentes / Y mornos / Z frios)
-
-**Nova aba "Inteligência"**:
-- Toggle humanização
-- Slider delay jitter
-- Limite diário
-- Pausa automática se taxa cair
-- Warmup gradual
-
-**Nova aba "Reativação"**:
-- Toggle ativar
-- Dias de inatividade
-- Limite diário
-- Janela de horário
-- Template editável
-
-**Nova aba "Analytics"** (substitui apenas o card de métricas atual):
-- Leads recuperados / valor recuperado
-- Melhor template e melhor horário
-- Taxa por regra
-- Gráfico de série diária (envios + respostas)
-- Taxa de recuperação
-
-**Timeline enriquecida**:
-- Badges adicionais: "cancelado (cliente respondeu)", "lead recuperado", `trigger_reason` em hover
-- Score badge por linha (🔥/🟡/⚪)
+**Código:**
+- Rota `/configuracoes/usuarios` (somente admin)
+  - listar membros (profiles + role)
+  - convidar (cria invite + envia email via serverFn — usa SMTP existente ou apenas gera link copiável nesta fase)
+  - alterar role (com audit_log)
+  - remover usuário (delete user_roles, audit_log)
+- ServerFn `acceptInvite(token)` — usado no signup
+- Hook `useLastSeen()` — pinga `profiles.last_seen_at` a cada 60s
+- Helper `useHasRole('admin'|'atendente'|'financeiro')`
 
 ---
 
-### 6. Proteção anti-ban (centralizada em `canSendFollowupNow`)
+## Sub-fase C — Billing/Plans + Quotas Estendidas
 
-- Limite diário por empresa
-- Pausa se taxa de resposta dos últimos 7 dias < `min_response_rate`
-- Warmup: dia 1 = 10% do limite, dia 2 = 25%, dia 3 = 50%, dia 7+ = 100%
-- Jitter randômico entre cada envio na fila (sleep aleatório)
-- Bloqueio rígido fora do horário comercial (já existente, reforçado)
+**Migração:**
+- Enum `plan_type` ('free','pro','premium')
+- Adicionar em `companies`: `plan_type` default 'free', `feature_flags jsonb`, `limits_json jsonb`
+- Seed defaults por plano:
+  - free: storage 500MB, 1k msgs/mês, 1 user, 3 campanhas
+  - pro: 5GB, 50k msgs, 10 users, ilimitado campanhas
+  - premium: 50GB, ilimitado
+- Função `check_plan_limit(company_id, feature, requested)` SECURITY DEFINER
+- Estender `check_storage_quota` para ler `limits_json->>'storage_mb'` com fallback para `storage_quota_mb`
+
+**Código:**
+- `src/lib/plan.ts` — `getCurrentPlan()`, `canUseFeature(flag)`, `getLimit(key)`
+- Sem cobrança. Sem UI de upgrade. Apenas leitura + enforcement nas mutações existentes.
 
 ---
 
-### Detalhes técnicos
+## Sub-fase D — Painel Operacional + Hardening Meta + Performance
 
-- Migration única, idempotente (ADD COLUMN IF NOT EXISTS)
-- Todas as novas funções com try/catch + fallback silencioso
-- Feature flags: `ai_followup_humanize`, `ai_followup_reactivation_enabled`, `ai_followup_warmup_enabled` — desligar volta ao comportamento atual
-- `routeTree.gen.ts` auto-regenerado pelo Vite plugin
-- Zero alteração em: `meta-send`, `meta-webhook`, `inbox.*`, `api.whatsapp.send`, `integrations` (tabela), client.ts
+**D1 — Painel `/configuracoes/operacao` (admin):**
+- Cards simples (sem charts): storage usado, msgs mês, campanhas ativas, uso IA mês, uploads mês
+- Lista últimos 20 `error_log` da empresa
+- Lista últimos 50 `audit_log` da empresa
+- Status integrações (verde/amarelo/vermelho baseado em `token_expires_at` e `last_error`)
 
-### Não muda
+**D2 — Hardening Meta/WhatsApp (sem tocar webhook):**
+- ServerFn `checkIntegrationHealth(id)` — valida token, atualiza `last_error` e `token_expires_at`
+- Cron leve via rota `/api/public/hooks/integration-health-tick` (apenas marca status; não envia mensagem)
+- UI em `/whatsapp` — badge de status + botão "Revalidar token"
+- Circuit breaker em `src/lib/wa-send.ts` (novo wrapper): se 3 falhas consecutivas em 5min → bloqueia envios por 2min e loga em `error_log`. **NÃO modifica `api.whatsapp.send.tsx` existente** — apenas oferece helper opt-in.
 
-- Inbox, envio manual, webhook Meta, RLS de tabelas existentes, autenticação, rotas existentes (apenas estende `/api/ai/followup-config`).
+**D3 — Performance:**
+- Auditar queries em `/inbox`, `/campanhas`, `/produtos`, `/leads`
+- Adicionar `.range(from, to)` + UI de paginação onde lista pode passar de 100
+- Índices: `messages(conversation_id, at desc)`, `leads(company_id, updated_at desc)`, `campaigns(company_id, created_at desc)` — verificar se já existem antes de criar
+
+---
+
+## Teste multiempresa (executado por você, manualmente)
+
+Não vou criar empresas/usuários automaticamente — isso requer signup real via Supabase Auth (que envia emails). Em vez disso, ao final de cada sub-fase entrego um **checklist de validação manual** para você executar com 3 contas de teste reais (ex: `admin@teste1.com`, `atendente@teste1.com`, etc.) e reportar inconsistências.
+
+---
+
+## Não será alterado
+
+Inbox, webhooks Meta/WhatsApp, Meta OAuth, código das campanhas existentes, pipeline da IA, lazy loading, SmartImage, RLS atual (apenas **adições**, sem remoção/relax), `supabase/functions/*`.
+
+---
+
+## Ordem de execução proposta
+
+1. **Sub-fase A** (audit/error log) — 1 migração + ~4 arquivos
+2. **Sub-fase B** (usuários/papéis) — 1 migração + 1 rota nova + helpers
+3. **Sub-fase C** (plans/limits) — 1 migração + helper lib
+4. **Sub-fase D** (painel + meta health + perf) — 1 migração + 1 rota + ajustes pontuais
+
+Cada sub-fase = **um turno de implementação**, com relatório curto ao final. Ao terminar D, gero o **relatório final consolidado** com readiness SaaS/multiempresa/produção.
+
+---
+
+**Confirma este plano?** Se sim, começo pela **Sub-fase A (Observabilidade)** no próximo turno.
+Se quiser ajustar ordem, cortar algum item, ou unir sub-fases, me diz antes.
