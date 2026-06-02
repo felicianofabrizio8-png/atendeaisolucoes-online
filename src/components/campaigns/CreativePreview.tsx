@@ -131,7 +131,7 @@ function StoryPreview({ data }: { data: CreativePreviewData }) {
         <span className="text-[9px] text-white/70 ml-auto">Patrocinado</span>
       </div>
       <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent text-white space-y-2">
-        {data.headline && <div className="text-sm font-semibold drop-shadow line-clamp-2">{data.headline}</div>}
+        {data.headline && <div className="text-sm font-semibold drop-shadow line-clamp-2 leading-snug tracking-tight">{data.headline}</div>}
         {data.cta && (
           <button className="w-full bg-white text-black text-xs font-semibold py-2 rounded-full">
             {data.cta}
