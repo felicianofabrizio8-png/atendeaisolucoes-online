@@ -168,11 +168,14 @@ function CampaignDetailPage() {
             c.media_type === "video" ? (
               <video src={c.media_url} controls className="w-full rounded-md max-h-72" />
             ) : (
-              <img
+              <SmartImage
                 src={c.media_url}
-                alt=""
-                className="w-full rounded-md max-h-72 object-contain bg-muted"
+                alt={c.headline ?? ""}
+                aspectRatio="16/9"
+                wrapperClassName="w-full rounded-md max-h-72"
+                className="object-contain"
               />
+
             )
           ) : (
             <div className="h-40 rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
