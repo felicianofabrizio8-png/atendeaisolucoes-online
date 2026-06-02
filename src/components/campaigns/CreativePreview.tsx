@@ -61,12 +61,7 @@ export function CreativePreview({ data }: { data: CreativePreviewData }) {
         )}
       </div>
 
-      <style>{`
-        @keyframes preview-shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(400%); }
-        }
-      `}</style>
+      {/* preview-shimmer keyframes moved to src/styles.css */}
     </div>
   );
 }
