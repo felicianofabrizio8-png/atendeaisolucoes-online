@@ -104,7 +104,7 @@ function FeedPreview({ data }: { data: CreativePreviewData }) {
         <Bookmark className="h-5 w-5 ml-auto" />
       </div>
       <div className="px-3 py-2 text-xs space-y-1">
-        {data.headline && <div className="font-semibold">{data.headline}</div>}
+        {data.headline && <div className="font-semibold leading-snug line-clamp-2 tracking-tight">{data.headline}</div>}
         {data.primary_text && (
           <div className="text-muted-foreground line-clamp-3">{data.primary_text}</div>
         )}
