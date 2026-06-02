@@ -1,11 +1,12 @@
-import { createLazyFileRoute, Link, useNavigate, getRouteApi } from "@tanstack/react-router";
+import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   getCampaign,
   deleteCampaign,
   formatBRL,
   statusLabel,
-  objectiveLabel,
+  channelLabel,
+  goalLabel,
   type Campaign,
 } from "@/lib/campaigns";
 import {
@@ -22,11 +23,47 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const routeApi = getRouteApi("/campanhas/$id");
 
 export const Route = createLazyFileRoute("/campanhas/$id")({
   component: CampaignDetailPage,
+  errorComponent: ({ error, reset }) => {
+    const router = useRouter();
+    return (
+      <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+        <h2 className="text-lg font-semibold">Erro ao carregar a campanha</h2>
+        <p className="text-sm text-muted-foreground">{error.message}</p>
+        <div className="flex gap-2 justify-center">
+          <button
+            onClick={() => { router.invalidate(); reset(); }}
+            className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+          >
+            Tentar novamente
+          </button>
+          <Link to="/campanhas" className="h-9 px-4 inline-flex items-center rounded-md border text-sm">
+            Voltar
+          </Link>
+        </div>
+      </div>
+    );
+  },
+  notFoundComponent: () => (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Campanha não encontrada</h2>
+      <Link to="/campanhas" className="text-sm text-primary hover:underline">Voltar</Link>
+    </div>
+  ),
 });
 
 function CampaignDetailPage() {
