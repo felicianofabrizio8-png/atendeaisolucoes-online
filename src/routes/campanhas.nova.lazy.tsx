@@ -448,7 +448,7 @@ function NewCampaignPage() {
                 />
               </Field>
 
-              <Field label="Objetivo">
+              <Field label="Canal de atendimento">
                 <div className="grid grid-cols-3 gap-2">
                   <ObjectiveButton
                     active={form.objective === "whatsapp"}
