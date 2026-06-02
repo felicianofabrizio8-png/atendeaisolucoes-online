@@ -206,6 +206,48 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_log: {
+        Row: {
+          action: string
+          after: Json | null
+          before: Json | null
+          company_id: string
+          created_at: string
+          entity: string
+          entity_id: string | null
+          id: string
+          ip: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          after?: Json | null
+          before?: Json | null
+          company_id: string
+          created_at?: string
+          entity: string
+          entity_id?: string | null
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          after?: Json | null
+          before?: Json | null
+          company_id?: string
+          created_at?: string
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       campaign_creatives: {
         Row: {
           audience_suggestion: string | null
@@ -597,6 +639,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      error_log: {
+        Row: {
+          company_id: string | null
+          context: Json
+          created_at: string
+          id: string
+          message: string
+          severity: string
+          source: string
+          user_id: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          context?: Json
+          created_at?: string
+          id?: string
+          message: string
+          severity?: string
+          source: string
+          user_id?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          context?: Json
+          created_at?: string
+          id?: string
+          message?: string
+          severity?: string
+          source?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       follow_ups: {
         Row: {
@@ -1504,6 +1579,18 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      log_audit: {
+        Args: {
+          _action: string
+          _after: Json
+          _before: Json
+          _company_id: string
+          _entity: string
+          _entity_id: string
+          _user_id: string
+        }
+        Returns: string
       }
     }
     Enums: {
