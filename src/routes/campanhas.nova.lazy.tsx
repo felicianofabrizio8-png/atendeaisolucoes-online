@@ -276,7 +276,7 @@ function NewCampaignPage() {
     setSaving(true);
     if (publish && META_ADS_READY) setStatus("publishing");
     try {
-      const { product_id: _ignored, ...rest } = form;
+      const { product_id: _ignored, goal: _g, ...rest } = form;
       const c = await createCampaign(profile.company_id, {
         ...rest,
         status: publish && META_ADS_READY ? "scheduled" : "draft",
