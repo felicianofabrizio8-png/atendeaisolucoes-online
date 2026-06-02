@@ -383,6 +383,26 @@ function NewCampaignPage() {
       <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
         {/* LEFT: form */}
         <div className="space-y-3.5 min-w-0">
+          {/* Objetivo estratégico */}
+          <Card>
+            <CardHead title="Objetivo da campanha" />
+            <p className="-mt-1 mb-3 text-xs text-muted-foreground">
+              Define como a IA escreve o anúncio e sugere o público.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {GOALS.map((g) => (
+                <GoalCard
+                  key={g.id}
+                  active={form.goal === g.id}
+                  icon={<g.icon className="h-4 w-4" />}
+                  label={g.label}
+                  desc={g.desc}
+                  onClick={() => update("goal", g.id)}
+                />
+              ))}
+            </div>
+          </Card>
+
           {/* Produto + IA */}
           <Card>
             <CardHead title="Produto e geração com IA" />
