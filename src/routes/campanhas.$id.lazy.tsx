@@ -138,7 +138,7 @@ function CampaignDetailPage() {
             <StatusPill status={c.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            Canal: {channelLabel(c.objective)} · Objetivo: {goalLabel((c as any).goal)}
+            Canal: {channelLabel(c.objective)} · Objetivo: {goalLabel(c.goal)}
             {c.product ? ` · ${c.product}` : ""}
           </p>
         </div>
