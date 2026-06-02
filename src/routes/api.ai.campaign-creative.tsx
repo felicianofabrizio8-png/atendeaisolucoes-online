@@ -12,8 +12,18 @@ interface RequestBody {
     promoPrice?: number | null;
   };
   objective?: "whatsapp" | "instagram" | "messenger";
+  goal?: "awareness" | "traffic" | "engagement" | "leads" | "sales" | "reactivation";
   city?: string | null;
 }
+
+const GOAL_GUIDE: Record<NonNullable<RequestBody["goal"]>, string> = {
+  awareness: "Foco em marca e autoridade. Tom institucional e memorável. CTA suave (ex.: 'Saiba mais'). Público amplo.",
+  traffic: "Levar a pessoa para um canal (WhatsApp/Instagram/site). CTA direto de clique. Texto curto e claro.",
+  engagement: "Tom conversacional, perguntas, convite a comentar/responder. CTA 'Enviar mensagem'. Estimular interação.",
+  leads: "Captar contato/orçamento. CTA 'Solicitar orçamento' ou 'Enviar mensagem'. Reforçar benefício + facilidade de contato.",
+  sales: "CTA direto de compra ('Comprar agora'). Destacar preço, promoção, parcelamento, escassez.",
+  reactivation: "Falar com cliente antigo. Tom próximo, lembrar relacionamento, oferta de retorno/desconto exclusivo.",
+};
 
 export const Route = createFileRoute("/api/ai/campaign-creative")({
   server: {
@@ -51,6 +61,8 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
         }
 
         const objective = body.objective ?? "whatsapp";
+        const goal = body.goal ?? "leads";
+        const goalGuide = GOAL_GUIDE[goal];
         const productLine = [
           `Nome: ${body.product.name}`,
           body.product.category ? `Categoria: ${body.product.category}` : null,
@@ -66,17 +78,21 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
 
         const systemPrompt = `Você é um copywriter sênior de Meta Ads (Facebook/Instagram) e WhatsApp Business no Brasil.
 
+OBJETIVO ESTRATÉGICO DA CAMPANHA: "${goal}".
+Diretriz: ${goalGuide}
+Adapte título, texto, CTA, legenda e sugestão de público ao objetivo acima.
+
 REGRA CRÍTICA DO TÍTULO (headline):
 - Entre 25 e 40 caracteres. NUNCA passar de 40.
 - Curto, forte, direto. Pensado para card de feed mobile.
 - Sem ponto final, sem emojis, sem aspas, sem reticências.
 - Priorizar gancho de oferta, parcela, estação ou benefício imediato.
 - Exemplos do estilo desejado: "Dakota 6x3 em 18x", "Sua piscina em 18x", "Piscina Dakota Promo", "Verão com piscina", "Piscina pronta pro verão".
-- Evitar frases descritivas longas tipo "Aproveite agora nossa incrível promoção de piscinas Dakota".
+- Evitar frases descritivas longas.
 
 Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e persuasivos, sem excesso de emojis.`;
 
-        const userPrompt = `Crie um anúncio para o objetivo "${objective}" com base no produto:\n${productLine}\n\nDevolva via tool call.`;
+        const userPrompt = `Crie um anúncio para o canal "${objective}" com objetivo estratégico "${goal}" com base no produto:\n${productLine}\n\nDevolva via tool call.`;
 
         const payload = {
           model: "google/gemini-2.5-flash",

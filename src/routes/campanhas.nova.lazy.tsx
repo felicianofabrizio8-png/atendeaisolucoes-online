@@ -20,7 +20,35 @@ import {
   Send,
   X,
   Loader2,
+  Megaphone,
+  MousePointerClick,
+  MessageSquareHeart,
+  Users,
+  ShoppingBag,
+  RotateCcw,
 } from "lucide-react";
+
+export type CampaignGoal =
+  | "awareness"
+  | "traffic"
+  | "engagement"
+  | "leads"
+  | "sales"
+  | "reactivation";
+
+const GOALS: {
+  id: CampaignGoal;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: "awareness", label: "Reconhecimento", desc: "Mostrar sua empresa para mais pessoas", icon: Megaphone },
+  { id: "traffic", label: "Tráfego", desc: "Levar pessoas para WhatsApp, Instagram ou site", icon: MousePointerClick },
+  { id: "engagement", label: "Engajamento", desc: "Gerar mensagens e interações", icon: MessageSquareHeart },
+  { id: "leads", label: "Leads", desc: "Captar contatos e orçamentos", icon: Users },
+  { id: "sales", label: "Vendas", desc: "Vender produtos ou promoções", icon: ShoppingBag },
+  { id: "reactivation", label: "Reativação", desc: "Trazer antigos clientes de volta", icon: RotateCcw },
+];
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image-compress";
 import type { SavedCreative } from "@/components/campaigns/SavedCreatives";
@@ -65,6 +93,7 @@ function NewCampaignPage() {
 
   const [form, setForm] = useState({
     name: "",
+    goal: "leads" as CampaignGoal,
     objective: "whatsapp" as CampaignObjective,
     product: "",
     product_id: "",
@@ -213,6 +242,7 @@ function NewCampaignPage() {
             promoPrice: p?.promo_price ?? null,
           },
           objective: form.objective,
+          goal: form.goal,
           city: form.city || null,
         }),
       });
@@ -246,7 +276,7 @@ function NewCampaignPage() {
     setSaving(true);
     if (publish && META_ADS_READY) setStatus("publishing");
     try {
-      const { product_id: _ignored, ...rest } = form;
+      const { product_id: _ignored, goal: _g, ...rest } = form;
       const c = await createCampaign(profile.company_id, {
         ...rest,
         status: publish && META_ADS_READY ? "scheduled" : "draft",
@@ -353,6 +383,26 @@ function NewCampaignPage() {
       <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
         {/* LEFT: form */}
         <div className="space-y-3.5 min-w-0">
+          {/* Objetivo estratégico */}
+          <Card>
+            <CardHead title="Objetivo da campanha" />
+            <p className="-mt-1 mb-3 text-xs text-muted-foreground">
+              Define como a IA escreve o anúncio e sugere o público.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {GOALS.map((g) => (
+                <GoalCard
+                  key={g.id}
+                  active={form.goal === g.id}
+                  icon={<g.icon className="h-4 w-4" />}
+                  label={g.label}
+                  desc={g.desc}
+                  onClick={() => update("goal", g.id)}
+                />
+              ))}
+            </div>
+          </Card>
+
           {/* Produto + IA */}
           <Card>
             <CardHead title="Produto e geração com IA" />
@@ -398,7 +448,7 @@ function NewCampaignPage() {
                 />
               </Field>
 
-              <Field label="Objetivo">
+              <Field label="Canal de atendimento">
                 <div className="grid grid-cols-3 gap-2">
                   <ObjectiveButton
                     active={form.objective === "whatsapp"}
@@ -786,6 +836,50 @@ function AIButton({ onClick, loading }: { onClick: () => void; loading: boolean 
       <span className="ml-1 inline-flex items-center justify-center h-5 px-1.5 rounded-md bg-white/20 text-[10px] font-bold tracking-wider">
         IA
       </span>
+    </button>
+  );
+}
+
+function GoalCard({
+  active,
+  icon,
+  label,
+  desc,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group text-left rounded-lg border p-2.5 transition-all hover:-translate-y-px ${
+        active
+          ? "border-primary/70 bg-primary/[0.06] shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_40%,transparent),0_6px_18px_-10px_color-mix(in_oklab,var(--primary)_60%,transparent)]"
+          : "border-input bg-background hover:border-foreground/25 hover:bg-accent/40"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+            active
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground group-hover:text-foreground"
+          }`}
+        >
+          {icon}
+        </span>
+        <span className={`text-sm font-medium ${active ? "text-foreground" : "text-foreground"}`}>
+          {label}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground line-clamp-2">
+        {desc}
+      </p>
     </button>
   );
 }
