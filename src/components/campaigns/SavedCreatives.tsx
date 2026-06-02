@@ -196,7 +196,7 @@ export function SavedCreatives({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => remove(c.id)}
+                onClick={() => setPendingDeleteId(c.id)}
                 className="p-1.5 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
                 title="Excluir"
               >
