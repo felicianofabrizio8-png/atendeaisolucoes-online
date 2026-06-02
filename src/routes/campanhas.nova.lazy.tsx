@@ -706,7 +706,7 @@ function Card({
   return (
     <div
       className={`rounded-xl border bg-card shadow-[0_1px_0_rgba(0,0,0,0.02)] ${
-        padded ? "p-4 md:p-5" : ""
+        padded ? "p-3.5 md:p-4" : ""
       }`}
     >
       {children}
