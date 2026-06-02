@@ -138,7 +138,7 @@ function CampaignDetailPage() {
             <StatusPill status={c.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            Canal: {channelLabel(c.objective)} · Objetivo: {goalLabel((c as any).goal)}
+            Canal: {channelLabel(c.objective)} · Objetivo: {goalLabel(c.goal)}
             {c.product ? ` · ${c.product}` : ""}
           </p>
         </div>
@@ -193,7 +193,7 @@ function CampaignDetailPage() {
         <aside className="rounded-xl border bg-card p-4 space-y-3 text-sm">
           <h2 className="text-sm font-semibold">Detalhes</h2>
           <Info icon={Target} label="Canal" value={channelLabel(c.objective)} />
-          <Info icon={Sparkles} label="Objetivo" value={goalLabel((c as any).goal)} />
+          <Info icon={Sparkles} label="Objetivo" value={goalLabel(c.goal)} />
           <Info icon={MapPin} label="Local" value={c.city ?? "—"} />
           <Info
             icon={MapPin}
