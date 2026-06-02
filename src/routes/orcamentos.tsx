@@ -1581,9 +1581,138 @@ function QuoteFormModal({
         </div>
 
       </div>
+
+      <EditDefaultsDialog
+        open={editDefaultsOpen}
+        onOpenChange={setEditDefaultsOpen}
+        initialIncluded={defIncluded}
+        initialGifts={defGifts}
+        initialCustomer={defCustomer}
+        onSave={async (inc, gif, cus) => {
+          await saveDefaults(inc, gif, cus);
+          setEditDefaultsOpen(false);
+        }}
+      />
     </div>
   );
 }
+
+function TextBlockField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        {label}
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={6}
+        placeholder={placeholder}
+        className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y whitespace-pre-wrap font-mono"
+      />
+    </div>
+  );
+}
+
+function EditDefaultsDialog({
+  open,
+  onOpenChange,
+  initialIncluded,
+  initialGifts,
+  initialCustomer,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initialIncluded: string;
+  initialGifts: string;
+  initialCustomer: string;
+  onSave: (inc: string, gif: string, cus: string) => Promise<void>;
+}) {
+  const [inc, setInc] = useState(initialIncluded);
+  const [gif, setGif] = useState(initialGifts);
+  const [cus, setCus] = useState(initialCustomer);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setInc(initialIncluded);
+      setGif(initialGifts);
+      setCus(initialCustomer);
+    }
+  }, [open, initialIncluded, initialGifts, initialCustomer]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar textos padrão dos orçamentos</DialogTitle>
+          <DialogDescription>
+            Esses textos serão usados automaticamente em todos os novos orçamentos da empresa.
+            Você ainda poderá editar em cada orçamento individualmente.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 gap-3 py-2">
+          <TextBlockField
+            label="✅ Itens inclusos"
+            placeholder={"Ex:\n• Piscina 8x4\n• Instalação completa\n• Filtro"}
+            value={inc}
+            onChange={setInc}
+          />
+          <TextBlockField
+            label="🎁 Brindes"
+            placeholder={"Ex:\n• Led colorido\n• Kit de limpeza"}
+            value={gif}
+            onChange={setGif}
+          />
+          <TextBlockField
+            label="⚠️ Por conta do cliente"
+            placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
+            value={cus}
+            onChange={setCus}
+          />
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await onSave(inc, gif, cus);
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Salvar padrão
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function Field({
   label,
