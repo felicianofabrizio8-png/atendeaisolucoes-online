@@ -388,7 +388,7 @@ function ConversationPage() {
       text: trimmed,
       at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, msg]);
+    setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
     setSendError(null);
 
@@ -418,7 +418,7 @@ function ConversationPage() {
             } catch {
               /* ignore */
             }
-            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
             return;
@@ -457,7 +457,7 @@ function ConversationPage() {
               data,
               full: details.full,
             });
-            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(details.message);
             const label =
               origin === "instagram_direct" || origin === "instagram_comment"
@@ -471,7 +471,7 @@ function ConversationPage() {
         }
       } catch (e) {
         console.error("[chat send] erro", e);
-        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
         setSendError(e instanceof Error ? e.message : "Erro de rede");
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
@@ -552,7 +552,7 @@ function ConversationPage() {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
     if (lead) void markLeadWon(lead.id, value);
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
@@ -569,7 +569,7 @@ function ConversationPage() {
     void markLeadLost(lead.id, reason);
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
@@ -585,7 +585,7 @@ function ConversationPage() {
     if (!pendingQuote) return;
     sendMessage(pendingQuote.message);
     markQuoteSent(pendingQuote.id);
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
