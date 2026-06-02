@@ -207,9 +207,29 @@ function ConversationPage() {
   );
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
-  const initialMessages = conversation ? getMessagesFor(conversationId) : [];
+  const repoMessages = conversation ? getMessagesFor(conversationId) : [];
 
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // `localMessages` guarda apenas adições otimistas (envios ainda não confirmados
+  // pelo backend) e mensagens de sistema locais (ex.: "Venda fechada"). O Realtime
+  // do leadRepo atualiza `repoMessages` automaticamente — não usamos useState para
+  // a lista principal, senão mensagens novas só apareceriam ao reabrir a conversa.
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const messages = useMemo<Message[]>(() => {
+    const ids = new Set(repoMessages.map((m) => m.id));
+    const extras = localMessages.filter((m) => !ids.has(m.id));
+    return [...repoMessages, ...extras].sort(
+      (a, b) => +new Date(a.at) - +new Date(b.at),
+    );
+  }, [repoMessages, localMessages]);
+
+  // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
+  useEffect(() => {
+    if (localMessages.length === 0) return;
+    const ids = new Set(repoMessages.map((m) => m.id));
+    if (localMessages.some((m) => ids.has(m.id))) {
+      setLocalMessages((prev) => prev.filter((m) => !ids.has(m.id)));
+    }
+  }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [ai, setAi] = useState<AISuggestion | null>(null);
