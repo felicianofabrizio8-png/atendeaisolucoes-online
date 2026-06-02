@@ -33,6 +33,7 @@ export interface Campaign {
   company_id: string;
   name: string;
   objective: CampaignObjective;
+  goal: CampaignGoal;
   product: string | null;
   city: string | null;
   radius_km: number | null;
