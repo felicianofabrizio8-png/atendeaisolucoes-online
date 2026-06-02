@@ -429,8 +429,8 @@ function NewCampaignPage() {
           {/* Segmentação */}
           <Card>
             <CardHead title="Segmentação e orçamento" />
-            <div className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
                 <Field label="Produto / Serviço">
                   <input
                     value={form.product}
