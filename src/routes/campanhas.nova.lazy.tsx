@@ -56,7 +56,39 @@ const CreativePreview = lazy(() =>
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
+  errorComponent: CampaignsRouteError,
+  notFoundComponent: CampaignsRouteNotFound,
 });
+
+function CampaignsRouteError({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  return (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Não foi possível carregar Nova campanha</h2>
+      <p className="text-sm text-muted-foreground">{error.message}</p>
+      <div className="flex gap-2 justify-center">
+        <button
+          onClick={() => { router.invalidate(); reset(); }}
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+        >
+          Tentar novamente
+        </button>
+        <Link to="/campanhas" className="h-9 px-4 inline-flex items-center rounded-md border text-sm">
+          Voltar
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function CampaignsRouteNotFound() {
+  return (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Página não encontrada</h2>
+      <Link to="/campanhas" className="text-sm text-primary hover:underline">Voltar para Campanhas</Link>
+    </div>
+  );
+}
 
 const META_ADS_READY = false;
 
