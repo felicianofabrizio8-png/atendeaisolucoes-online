@@ -1423,45 +1423,57 @@ function QuoteFormModal({
             )}
           </div>
 
-          {/* Itens inclusos / Brindes / Por conta do cliente */}
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <ItemListField
-              label="Itens inclusos"
-              placeholder="Ex: Piscina, Instalação"
-              accent="primary"
-              items={inclusos}
-              value={newIncluso}
-              setValue={setNewIncluso}
-              onAdd={() =>
-                addItem(inclusos, setInclusos, newIncluso, () => setNewIncluso(""))
-              }
-              onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
-            />
-            <ItemListField
-              label="Brindes"
-              placeholder="Ex: Led colorido, Kit limpeza"
-              accent="gift"
-              items={brindes}
-              value={newBrinde}
-              setValue={setNewBrinde}
-              onAdd={() =>
-                addItem(brindes, setBrindes, newBrinde, () => setNewBrinde(""))
-              }
-              onRemove={(i) => setBrindes(brindes.filter((_, idx) => idx !== i))}
-            />
-            <ItemListField
-              label="Por conta do cliente"
-              placeholder="Ex: Ponto de energia"
-              accent="warn"
-              items={porConta}
-              value={newPorConta}
-              setValue={setNewPorConta}
-              onAdd={() =>
-                addItem(porConta, setPorConta, newPorConta, () => setNewPorConta(""))
-              }
-              onRemove={(i) => setPorConta(porConta.filter((_, idx) => idx !== i))}
-            />
+          {/* Itens inclusos / Brindes / Por conta do cliente — textos multilinha,
+              pré-preenchidos com os padrões da empresa. */}
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Conteúdo do orçamento
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={applyDefaultsNow}
+                  disabled={!defaultsLoaded}
+                  className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent disabled:opacity-50"
+                  title="Recarrega os textos padrão da empresa neste orçamento"
+                >
+                  <RotateCcw className="h-3 w-3" /> Aplicar padrão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditDefaultsOpen(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+                >
+                  <SettingsIcon className="h-3 w-3" /> Editar padrão
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <TextBlockField
+                label="✅ Itens inclusos"
+                placeholder={"Ex:\n• Piscina 8x4\n• Instalação\n• Filtro"}
+                value={inclusosText}
+                onChange={setInclusosText}
+              />
+              <TextBlockField
+                label="🎁 Brindes"
+                placeholder={"Ex:\n• Led colorido\n• Kit limpeza"}
+                value={brindesText}
+                onChange={setBrindesText}
+              />
+              <TextBlockField
+                label="⚠️ Por conta do cliente"
+                placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
+                value={porContaText}
+                onChange={setPorContaText}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              As quebras de linha, emojis e marcadores são preservados na mensagem do WhatsApp.
+            </p>
           </div>
+
 
           {/* Observações */}
           <div className="md:col-span-2">
