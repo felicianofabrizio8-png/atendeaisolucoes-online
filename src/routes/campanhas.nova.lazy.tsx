@@ -1,8 +1,8 @@
-import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createLazyFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
+import { createCampaign, type CampaignObjective, type CampaignGoal } from "@/lib/campaigns";
 import {
   ArrowLeft,
   Save,
