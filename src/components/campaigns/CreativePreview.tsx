@@ -170,7 +170,7 @@ function WhatsAppPreview({ data }: { data: CreativePreviewData }) {
             />
           )}
           <div className="p-2 text-xs space-y-1">
-            {data.headline && <div className="font-semibold">{data.headline}</div>}
+            {data.headline && <div className="font-semibold leading-snug line-clamp-2 tracking-tight">{data.headline}</div>}
             {data.primary_text && (
               <div className="whitespace-pre-wrap line-clamp-4">{data.primary_text}</div>
             )}
