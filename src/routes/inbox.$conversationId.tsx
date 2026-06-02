@@ -8,6 +8,7 @@ import {
   appendMessage,
   markLeadLost,
   markLeadWon,
+  refetchConversationMessages,
   subscribeRepo,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
@@ -206,9 +207,29 @@ function ConversationPage() {
   );
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
-  const initialMessages = conversation ? getMessagesFor(conversationId) : [];
+  const repoMessages = conversation ? getMessagesFor(conversationId) : [];
 
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // `localMessages` guarda apenas adições otimistas (envios ainda não confirmados
+  // pelo backend) e mensagens de sistema locais (ex.: "Venda fechada"). O Realtime
+  // do leadRepo atualiza `repoMessages` automaticamente — não usamos useState para
+  // a lista principal, senão mensagens novas só apareceriam ao reabrir a conversa.
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const messages = useMemo<Message[]>(() => {
+    const ids = new Set(repoMessages.map((m) => m.id));
+    const extras = localMessages.filter((m) => !ids.has(m.id));
+    return [...repoMessages, ...extras].sort(
+      (a, b) => +new Date(a.at) - +new Date(b.at),
+    );
+  }, [repoMessages, localMessages]);
+
+  // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
+  useEffect(() => {
+    if (localMessages.length === 0) return;
+    const ids = new Set(repoMessages.map((m) => m.id));
+    if (localMessages.some((m) => ids.has(m.id))) {
+      setLocalMessages((prev) => prev.filter((m) => !ids.has(m.id)));
+    }
+  }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [ai, setAi] = useState<AISuggestion | null>(null);
@@ -309,11 +330,29 @@ function ConversationPage() {
     }
   }, [search.quote, conversationId, navigate]);
 
+  // Auto-scroll só quando o usuário já está perto do final — assim mensagens novas
+  // chegando via Realtime não interrompem quem está lendo o histórico.
+  const lastMessageId = messages[messages.length - 1]?.id;
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, ai, pendingQuote]);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceFromBottom < 160;
+    if (nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [lastMessageId, ai, pendingQuote]);
+
+  // Fallback: se o Realtime do leadRepo falhar por algum motivo, faz um refetch
+  // leve da conversa aberta a cada 25s. Para ao desmontar.
+  useEffect(() => {
+    if (!conversationId) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refetchConversationMessages(conversationId);
+    }, 25_000);
+    return () => window.clearInterval(id);
+  }, [conversationId]);
 
 
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
@@ -367,7 +406,7 @@ function ConversationPage() {
       text: trimmed,
       at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, msg]);
+    setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
     setSendError(null);
 
@@ -397,7 +436,7 @@ function ConversationPage() {
             } catch {
               /* ignore */
             }
-            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
             return;
@@ -436,7 +475,7 @@ function ConversationPage() {
               data,
               full: details.full,
             });
-            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(details.message);
             const label =
               origin === "instagram_direct" || origin === "instagram_comment"
@@ -450,7 +489,7 @@ function ConversationPage() {
         }
       } catch (e) {
         console.error("[chat send] erro", e);
-        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
         setSendError(e instanceof Error ? e.message : "Erro de rede");
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
@@ -531,7 +570,7 @@ function ConversationPage() {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
     if (lead) void markLeadWon(lead.id, value);
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
@@ -548,7 +587,7 @@ function ConversationPage() {
     void markLeadLost(lead.id, reason);
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
@@ -564,7 +603,7 @@ function ConversationPage() {
     if (!pendingQuote) return;
     sendMessage(pendingQuote.message);
     markQuoteSent(pendingQuote.id);
-    setMessages((prev) => [
+    setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
