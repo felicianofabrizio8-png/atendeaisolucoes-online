@@ -449,7 +449,7 @@ function NewCampaignPage() {
                 </Field>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-3 gap-3">
                 <Field label="Raio (km)">
                   <input
                     type="number"
