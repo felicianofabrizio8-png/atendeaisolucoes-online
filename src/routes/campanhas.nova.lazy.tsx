@@ -242,6 +242,7 @@ function NewCampaignPage() {
             promoPrice: p?.promo_price ?? null,
           },
           objective: form.objective,
+          goal: form.goal,
           city: form.city || null,
         }),
       });
