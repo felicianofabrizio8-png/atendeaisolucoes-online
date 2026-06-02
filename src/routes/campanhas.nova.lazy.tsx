@@ -954,3 +954,100 @@ function MediaUploader({
     </div>
   );
 }
+
+/* ---------------- AI Insights (heurística local, sem chamada de IA) ---------------- */
+
+function AIInsights({
+  headline,
+  primary_text,
+  cta,
+  objective,
+  media_url,
+}: {
+  headline: string;
+  primary_text: string;
+  cta: string;
+  objective: CampaignObjective;
+  media_url: string;
+}) {
+  const h = headline.trim();
+  const t = primary_text.trim();
+  const hasMedia = !!media_url;
+
+  // Pontuação simples — apenas leitura do estado, sem requests.
+  let score = 0;
+  if (h.length >= 8 && h.length <= 40) score += 25;
+  else if (h.length > 0) score += 12;
+  if (t.length >= 60 && t.length <= 500) score += 25;
+  else if (t.length > 0) score += 12;
+  if (cta && cta !== "Saiba mais") score += 20;
+  else if (cta) score += 10;
+  if (hasMedia) score += 30;
+
+  const potential =
+    score >= 75 ? { label: "Alto", tone: "emerald" as const } :
+    score >= 45 ? { label: "Médio", tone: "amber" as const } :
+                  { label: "Baixo", tone: "rose" as const };
+
+  const ctaStrength =
+    !cta ? "Defina um CTA claro." :
+    cta === "Saiba mais" ? "CTA poderia ser mais direto." :
+    "CTA forte e específico.";
+
+  const clarity =
+    !t ? "Adicione um texto descrevendo a oferta." :
+    t.length < 60 ? "Texto curto — reforce o benefício." :
+    t.length > 500 ? "Texto longo — pode perder atenção." :
+    "Oferta clara e bem dimensionada.";
+
+  const tip =
+    !hasMedia ? "Adicione uma mídia — anúncios com imagem convertem muito mais." :
+    objective === "whatsapp" && !/whats|mensagem|conversar/i.test(t + h) ?
+      "Mencione 'fale no WhatsApp' para incentivar o clique." :
+    objective === "instagram" && !/oferta|promoção|exclusiv/i.test(t + h) ?
+      "Reforce escassez ou exclusividade no Instagram." :
+    "Texto bem alinhado ao objetivo.";
+
+  const toneCls: Record<"emerald" | "amber" | "rose", string> = {
+    emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    rose: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+  };
+
+  return (
+    <div className="rounded-xl border bg-card p-3.5 md:p-4 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Qualidade do anúncio
+        </div>
+        <span className={`inline-flex items-center gap-1 h-5 px-2 rounded-full border text-[10px] font-medium ${toneCls[potential.tone]}`}>
+          {potential.label}
+        </span>
+      </div>
+
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden mb-3">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
+      </div>
+
+      <ul className="space-y-1.5 text-xs">
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Força do CTA:</span>
+          <span className="text-foreground">{ctaStrength}</span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Clareza da oferta:</span>
+          <span className="text-foreground">{clarity}</span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-muted-foreground shrink-0">Sugestão:</span>
+          <span className="text-foreground">{tip}</span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
