@@ -279,13 +279,19 @@ function CampaignDetailPage() {
         </aside>
       </section>
 
-      {/* Diagnóstico IA */}
+      {/* Insights da IA */}
       {scores && (
         <section className="rounded-xl border bg-card p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" /> Diagnóstico da IA
-            </h2>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-primary font-semibold flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3" /> Insights da IA
+              </div>
+              <h2 className="text-sm font-semibold mt-1">Diagnóstico da campanha</h2>
+              <p className="text-xs text-muted-foreground">
+                Análise heurística baseada no criativo, copy e estrutura da campanha — não substitui dados reais da Meta.
+              </p>
+            </div>
             <button
               onClick={() => setImproveOpen(true)}
               className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
