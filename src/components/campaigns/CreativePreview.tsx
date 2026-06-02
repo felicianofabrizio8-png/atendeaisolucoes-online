@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Check } from "lucide-react";
+import { SmartImage } from "@/components/SmartImage";
 
 export interface CreativePreviewData {
   headline: string;
@@ -77,7 +78,7 @@ function Media({ url, type, className }: { url: string; type: string; className:
   if (type === "video") {
     return <video src={url} className={`${className} object-cover`} muted playsInline />;
   }
-  return <img src={url} alt="" className={`${className} object-cover`} />;
+  return <SmartImage src={url} wrapperClassName={className} className="object-cover" />;
 }
 
 function FeedPreview({ data }: { data: CreativePreviewData }) {

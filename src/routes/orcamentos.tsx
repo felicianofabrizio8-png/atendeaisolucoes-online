@@ -47,6 +47,7 @@ import {
 } from "@/data/quotes";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/SmartImage";
 
 
 export const Route = createFileRoute("/orcamentos")({
@@ -764,7 +765,7 @@ function SendWhatsAppModal({
                             : "border-transparent opacity-60 hover:opacity-100",
                         )}
                       >
-                        <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                        <SmartImage src={url} aspectRatio="1/1" wrapperClassName="w-full h-full" />
                         {checked && (
                           <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
                             <Check className="h-2.5 w-2.5 text-primary-foreground" />
