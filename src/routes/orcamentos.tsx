@@ -912,13 +912,50 @@ function QuoteFormModal({
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
   const [submitting, setSubmitting] = useState(false);
 
-  const [inclusos, setInclusos] = useState<string[]>([]);
-  const [brindes, setBrindes] = useState<string[]>([]);
-  const [porConta, setPorConta] = useState<string[]>([]);
-  const [newIncluso, setNewIncluso] = useState("");
-  const [newBrinde, setNewBrinde] = useState("");
-  const [newPorConta, setNewPorConta] = useState("");
+  // Textos multilinha (preservam quebras de linha, emojis e marcadores).
+  const [inclusosText, setInclusosText] = useState("");
+  const [brindesText, setBrindesText] = useState("");
+  const [porContaText, setPorContaText] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // Defaults da empresa (company_settings).
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const [defIncluded, setDefIncluded] = useState("");
+  const [defGifts, setDefGifts] = useState("");
+  const [defCustomer, setDefCustomer] = useState("");
+  const [editDefaultsOpen, setEditDefaultsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("company_settings")
+        .select(
+          "default_quote_included_items,default_quote_gifts,default_quote_customer_responsibility",
+        )
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.warn("load quote defaults", error);
+      }
+      const inc = (data?.default_quote_included_items as string | null) ?? "";
+      const gif = (data?.default_quote_gifts as string | null) ?? "";
+      const cus = (data?.default_quote_customer_responsibility as string | null) ?? "";
+      setDefIncluded(inc);
+      setDefGifts(gif);
+      setDefCustomer(cus);
+      // Pré-preenche apenas se o usuário ainda não digitou nada.
+      setInclusosText((prev) => (prev ? prev : inc));
+      setBrindesText((prev) => (prev ? prev : gif));
+      setPorContaText((prev) => (prev ? prev : cus));
+      setDefaultsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
 
   const [editingMessage, setEditingMessage] = useState(false);
@@ -940,20 +977,23 @@ function QuoteFormModal({
       discount,
     });
     const extra: string[] = [];
-    if (inclusos.length > 0) {
+    const inc = inclusosText.trim();
+    const gif = brindesText.trim();
+    const cus = porContaText.trim();
+    if (inc) {
       extra.push("");
       extra.push("✅ Itens inclusos:");
-      for (const it of inclusos) extra.push(`• ${it}`);
+      extra.push(inc);
     }
-    if (brindes.length > 0) {
+    if (gif) {
       extra.push("");
       extra.push("🎁 Brindes:");
-      for (const it of brindes) extra.push(`• ${it}`);
+      extra.push(gif);
     }
-    if (porConta.length > 0) {
+    if (cus) {
       extra.push("");
       extra.push("⚠️ Por conta do cliente:");
-      for (const it of porConta) extra.push(`• ${it}`);
+      extra.push(cus);
     }
     if (observacoes.trim().length > 0) {
       extra.push("");
@@ -961,7 +1001,7 @@ function QuoteFormModal({
       extra.push(observacoes.trim());
     }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, brindes, porConta, observacoes]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusosText, brindesText, porContaText, observacoes]);
 
 
   const previewMessage = customMessage ?? autoMessage;
