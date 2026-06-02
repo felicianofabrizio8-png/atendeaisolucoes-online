@@ -93,6 +93,7 @@ function NewCampaignPage() {
 
   const [form, setForm] = useState({
     name: "",
+    goal: "leads" as CampaignGoal,
     objective: "whatsapp" as CampaignObjective,
     product: "",
     product_id: "",
