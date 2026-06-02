@@ -250,6 +250,8 @@ function CampaignDetailPage() {
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
       </header>
 
+      {!metaActive && <MetaPublishReadinessPanel campaign={c} />}
+
       {/* Dados reais da campanha */}
       <section className="space-y-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">
