@@ -64,7 +64,17 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
           .filter(Boolean)
           .join("\n");
 
-        const systemPrompt = `Você é um copywriter especialista em anúncios pagos no Meta Ads (Facebook e Instagram) e WhatsApp Business no Brasil. Gere um criativo persuasivo, claro, em pt-BR, sem emojis em excesso, dentro dos limites de caracteres do Meta Ads.`;
+        const systemPrompt = `Você é um copywriter sênior de Meta Ads (Facebook/Instagram) e WhatsApp Business no Brasil.
+
+REGRA CRÍTICA DO TÍTULO (headline):
+- Entre 25 e 40 caracteres. NUNCA passar de 40.
+- Curto, forte, direto. Pensado para card de feed mobile.
+- Sem ponto final, sem emojis, sem aspas, sem reticências.
+- Priorizar gancho de oferta, parcela, estação ou benefício imediato.
+- Exemplos do estilo desejado: "Dakota 6x3 em 18x", "Sua piscina em 18x", "Piscina Dakota Promo", "Verão com piscina", "Piscina pronta pro verão".
+- Evitar frases descritivas longas tipo "Aproveite agora nossa incrível promoção de piscinas Dakota".
+
+Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e persuasivos, sem excesso de emojis.`;
 
         const userPrompt = `Crie um anúncio para o objetivo "${objective}" com base no produto:\n${productLine}\n\nDevolva via tool call.`;
 
