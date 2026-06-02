@@ -336,11 +336,9 @@ export const removeUser = createServerFn({ method: "POST" })
 export const touchLastSeen = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const s = context.supabase as {
-      rpc: (fn: string) => Promise<{ error: unknown }>;
-    };
     try {
-      await s.rpc("touch_last_seen");
+      // @ts-expect-error - touch_last_seen RPC not in generated types yet
+      await context.supabase.rpc("touch_last_seen");
     } catch {
       /* noop */
     }
