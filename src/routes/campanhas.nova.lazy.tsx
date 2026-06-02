@@ -575,9 +575,11 @@ function NewCampaignPage() {
               onClick={() => save(true)}
               disabled={saving || !META_ADS_READY}
               title={!META_ADS_READY ? "Meta Ads ainda não validado" : undefined}
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-50"
+              className="publish-cta group relative inline-flex items-center justify-center gap-2 h-10 px-5 rounded-lg bg-gradient-to-r from-primary via-primary to-primary/85 text-primary-foreground text-sm font-semibold shadow-[0_4px_14px_-2px_color-mix(in_oklab,var(--primary)_45%,transparent)] hover:shadow-[0_8px_22px_-2px_color-mix(in_oklab,var(--primary)_55%,transparent)] hover:-translate-y-px active:translate-y-0 transition-all disabled:opacity-50 disabled:hover:translate-y-0 overflow-hidden"
             >
-              <Rocket className="h-4 w-4" /> Publicar campanha
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:translate-x-full transition-transform duration-700" />
+              <Rocket className="h-4 w-4 group-hover:rotate-[-8deg] group-hover:scale-110 transition-transform relative" />
+              <span className="relative">Publicar campanha</span>
             </button>
           </div>
 
