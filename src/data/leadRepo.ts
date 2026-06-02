@@ -343,6 +343,26 @@ export function unsubscribeRealtime() {
   }
 }
 
+// Fallback usado pela tela de conversa quando o Realtime falhar:
+// busca mensagens recentes e mescla no estado em memória (sem duplicar).
+export async function refetchConversationMessages(conversationId: string) {
+  if (mode !== "remote") return;
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id,conversation_id,role,text,at,source_subtype,source_metadata")
+    .eq("conversation_id", conversationId)
+    .order("at", { ascending: true })
+    .limit(200);
+  if (error || !data) return;
+  const existing = new Set(remoteMessages.map((m) => m.id));
+  const fresh = data
+    .map((r) => toMessage(r as DbMessage))
+    .filter((m) => !existing.has(m.id));
+  if (fresh.length === 0) return;
+  remoteMessages = [...remoteMessages, ...fresh];
+  notify();
+}
+
 // ---------- mutations ----------
 export async function markLeadWon(leadId: string, value: number) {
   if (mode === "demo") {
