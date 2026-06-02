@@ -128,7 +128,7 @@ function CampaignsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{c.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {objectiveLabel(c.objective)}
+                      Canal: {channelLabel(c.objective)}
                       {c.city ? ` · ${c.city}` : ""}
                       {c.daily_budget ? ` · ${formatBRL(c.daily_budget)}/dia` : ""}
                     </div>
