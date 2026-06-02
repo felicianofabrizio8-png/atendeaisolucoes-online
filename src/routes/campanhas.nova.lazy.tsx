@@ -501,7 +501,7 @@ function NewCampaignPage() {
           {/* Copy */}
           <Card>
             <CardHead title="Texto do anúncio" />
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="Título">
                 <input
                   value={form.headline}
