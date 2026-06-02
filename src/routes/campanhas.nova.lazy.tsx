@@ -840,6 +840,50 @@ function AIButton({ onClick, loading }: { onClick: () => void; loading: boolean 
   );
 }
 
+function GoalCard({
+  active,
+  icon,
+  label,
+  desc,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group text-left rounded-lg border p-2.5 transition-all hover:-translate-y-px ${
+        active
+          ? "border-primary/70 bg-primary/[0.06] shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_40%,transparent),0_6px_18px_-10px_color-mix(in_oklab,var(--primary)_60%,transparent)]"
+          : "border-input bg-background hover:border-foreground/25 hover:bg-accent/40"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+            active
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground group-hover:text-foreground"
+          }`}
+        >
+          {icon}
+        </span>
+        <span className={`text-sm font-medium ${active ? "text-foreground" : "text-foreground"}`}>
+          {label}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground line-clamp-2">
+        {desc}
+      </p>
+    </button>
+  );
+}
+
 function ObjectiveButton({
   active,
   onClick,
