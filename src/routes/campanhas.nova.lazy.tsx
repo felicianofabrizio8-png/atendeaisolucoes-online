@@ -38,6 +38,7 @@ function NewCampaignPage() {
   const [audience, setAudience] = useState<string>("");
   const [savingCreative, setSavingCreative] = useState(false);
   const [showCreatives, setShowCreatives] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
