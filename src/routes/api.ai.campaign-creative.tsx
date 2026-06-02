@@ -177,6 +177,21 @@ Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e pers
         }
         try {
           const parsed = JSON.parse(toolCall.function.arguments);
+          // Heurística: encurtar título se passar de 40 chars.
+          if (typeof parsed.headline === "string") {
+            let h = parsed.headline
+              .replace(/["“”']/g, "")
+              .replace(/\.+$/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (h.length > 40) {
+              // Corta na última palavra dentro de 38 chars.
+              const cut = h.slice(0, 38);
+              const lastSpace = cut.lastIndexOf(" ");
+              h = (lastSpace > 18 ? cut.slice(0, lastSpace) : cut).trim();
+            }
+            parsed.headline = h;
+          }
           return Response.json(parsed);
         } catch (e) {
           console.error("Parse error", e);
