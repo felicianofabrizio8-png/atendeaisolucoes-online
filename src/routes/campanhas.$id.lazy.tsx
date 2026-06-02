@@ -146,6 +146,7 @@ function CampaignDetailPage() {
 
   const status: DisplayStatus = c.status;
   const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
+  const metaActive = Boolean(c.meta_campaign_id);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-5">
@@ -176,22 +177,59 @@ function CampaignDetailPage() {
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
       </header>
 
-      {/* KPIs Meta-ready */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Kpi icon={Users} label="Leads" value={String(c.leads_count)} />
-        <Kpi icon={MessageSquare} label="Mensagens" value={String(c.messages_count)} />
-        <Kpi
-          icon={TrendingUp}
-          label="Custo / lead"
-          value={c.leads_count > 0 ? formatBRL(cpl) : "—"}
-        />
-        <Kpi icon={DollarSign} label="Gasto real" value={formatBRL(c.spent)} />
-        <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
-        <Kpi icon={Eye} label="Impressões" value="—" muted />
-        <Kpi icon={Users} label="Alcance" value="—" muted />
-        <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
-        <Kpi icon={BarChart3} label="CPC" value="—" muted />
-        <Kpi icon={BarChart3} label="CPM" value="—" muted />
+      {/* Dados reais da campanha */}
+      <section className="space-y-3">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" /> Dados reais da campanha
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Métricas oficiais sincronizadas com a Meta Ads.
+            </p>
+          </div>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium",
+              metaActive
+                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                metaActive ? "bg-emerald-500" : "bg-muted-foreground",
+              )}
+            />
+            {metaActive ? "Meta Ads conectado" : "Aguardando publicação Meta"}
+          </span>
+        </div>
+
+        {!metaActive && (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            Sem dados reais ainda — os KPIs serão preenchidos automaticamente assim que a campanha for publicada na Meta.
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Kpi icon={Users} label="Leads" value={metaActive ? String(c.leads_count) : "—"} muted={!metaActive} />
+          <Kpi icon={MessageSquare} label="Mensagens" value={metaActive ? String(c.messages_count) : "—"} muted={!metaActive} />
+          <Kpi
+            icon={TrendingUp}
+            label="Custo / lead"
+            value={metaActive && c.leads_count > 0 ? formatBRL(cpl) : "—"}
+            muted={!metaActive}
+          />
+          <Kpi icon={DollarSign} label="Gasto real" value={metaActive ? formatBRL(c.spent) : "—"} muted={!metaActive} />
+          <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
+          <Kpi icon={Eye} label="Impressões" value="—" muted />
+          <Kpi icon={Users} label="Alcance" value="—" muted />
+          <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
+          <Kpi icon={BarChart3} label="CPC" value="—" muted />
+          <Kpi icon={BarChart3} label="CPM" value="—" muted />
+        </div>
       </section>
 
       {/* Criativo + Detalhes */}
@@ -241,13 +279,19 @@ function CampaignDetailPage() {
         </aside>
       </section>
 
-      {/* Diagnóstico IA */}
+      {/* Insights da IA */}
       {scores && (
         <section className="rounded-xl border bg-card p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" /> Diagnóstico da IA
-            </h2>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-primary font-semibold flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3" /> Insights da IA
+              </div>
+              <h2 className="text-sm font-semibold mt-1">Diagnóstico da campanha</h2>
+              <p className="text-xs text-muted-foreground">
+                Análise heurística baseada no criativo, copy e estrutura da campanha — não substitui dados reais da Meta.
+              </p>
+            </div>
             <button
               onClick={() => setImproveOpen(true)}
               className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -275,26 +319,24 @@ function CampaignDetailPage() {
       )}
 
       {/* Timeline */}
-      <section className="rounded-xl border bg-card p-4 space-y-3">
+      <section className="rounded-xl border bg-card p-4 space-y-4">
         <h2 className="text-sm font-semibold flex items-center gap-2">
           <Activity className="h-4 w-4 text-primary" /> Timeline da campanha
         </h2>
-        <ol className="space-y-3 pt-1">
-          {timeline.map((ev, i) => (
-            <li key={i} className="flex items-start gap-3">
-              <div className={cn("mt-0.5 h-7 w-7 rounded-full flex items-center justify-center shrink-0", ev.tone)}>
-                <ev.icon className="h-3.5 w-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{ev.label}</div>
-                {ev.detail && (
-                  <div className="text-xs text-muted-foreground">{ev.detail}</div>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground whitespace-nowrap">{relative(ev.at)}</div>
-            </li>
-          ))}
-        </ol>
+
+        <TimelineGroup
+          title="Sistema & IA"
+          subtitle="Eventos internos do Atende Ai"
+          events={timeline.filter((e) => e.source === "system")}
+          emptyLabel="Nenhuma atividade registrada."
+        />
+
+        <TimelineGroup
+          title="Meta Ads"
+          subtitle="Eventos sincronizados com a plataforma Meta"
+          events={timeline.filter((e) => e.source === "meta")}
+          emptyLabel="Aguardando integração com a Meta — eventos aparecerão aqui após a publicação."
+        />
       </section>
 
       {/* Excluir */}
@@ -614,9 +656,21 @@ function buildSuggestions(c: Campaign) {
   ];
 }
 
-function buildTimeline(c: Campaign) {
-  const events: { icon: typeof CheckCircle2; label: string; detail?: string; at: string; tone: string }[] = [];
+type TimelineEvent = {
+  icon: typeof CheckCircle2;
+  label: string;
+  detail?: string;
+  at: string;
+  tone: string;
+  source: "system" | "meta";
+};
+
+function buildTimeline(c: Campaign): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  // Sistema & IA
   events.push({
+    source: "system",
     icon: CircleDashed,
     label: "Campanha criada",
     at: c.created_at,
@@ -624,56 +678,125 @@ function buildTimeline(c: Campaign) {
   });
   if (c.media_url || c.headline || c.primary_text) {
     events.push({
+      source: "system",
       icon: ImageIcon,
       label: "Criativo salvo",
       detail: c.headline ?? undefined,
       at: c.updated_at,
       tone: "bg-primary/15 text-primary",
     });
+    events.push({
+      source: "system",
+      icon: Sparkles,
+      label: "IA analisou o anúncio",
+      detail: "Diagnóstico heurístico gerado a partir do criativo e copy.",
+      at: c.updated_at,
+      tone: "bg-primary/15 text-primary",
+    });
   }
+
+  // Meta Ads
   if (c.meta_campaign_id) {
     events.push({
+      source: "meta",
       icon: Send,
       label: "Publicada na Meta",
       detail: `ID: ${c.meta_campaign_id}`,
       at: c.updated_at,
       tone: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
     });
+    if (c.status === "active") {
+      events.push({
+        source: "meta",
+        icon: PlayCircle,
+        label: "Entrega iniciada",
+        at: c.updated_at,
+        tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+      });
+    }
+    if (c.leads_count > 0) {
+      events.push({
+        source: "meta",
+        icon: Users,
+        label: `${c.leads_count} lead${c.leads_count > 1 ? "s" : ""} gerado${c.leads_count > 1 ? "s" : ""}`,
+        at: c.updated_at,
+        tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+      });
+    }
+    if (c.status === "paused") {
+      events.push({
+        source: "meta",
+        icon: PauseCircle,
+        label: "Campanha pausada",
+        at: c.updated_at,
+        tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      });
+    }
+    if (c.status === "ended") {
+      events.push({
+        source: "meta",
+        icon: CheckCircle2,
+        label: "Campanha encerrada",
+        at: c.updated_at,
+        tone: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
+      });
+    }
   }
-  if (c.status === "active") {
-    events.push({
-      icon: PlayCircle,
-      label: "Entrega iniciada",
-      at: c.updated_at,
-      tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    });
-  }
-  if (c.leads_count > 0) {
-    events.push({
-      icon: Users,
-      label: `${c.leads_count} lead${c.leads_count > 1 ? "s" : ""} gerado${c.leads_count > 1 ? "s" : ""}`,
-      at: c.updated_at,
-      tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    });
-  }
-  if (c.status === "paused") {
-    events.push({
-      icon: PauseCircle,
-      label: "Campanha pausada",
-      at: c.updated_at,
-      tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    });
-  }
-  if (c.status === "ended") {
-    events.push({
-      icon: CheckCircle2,
-      label: "Campanha encerrada",
-      at: c.updated_at,
-      tone: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
-    });
-  }
-  // Sort newest first
+
+  // Sort newest first within each section preserved by caller
   return events.sort((a, b) => +new Date(b.at) - +new Date(a.at));
+}
+
+function TimelineGroup({
+  title,
+  subtitle,
+  events,
+  emptyLabel,
+}: {
+  title: string;
+  subtitle: string;
+  events: TimelineEvent[];
+  emptyLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <div className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+          {title}
+        </div>
+        <div className="text-[11px] text-muted-foreground/80">{subtitle}</div>
+      </div>
+      {events.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          {emptyLabel}
+        </div>
+      ) : (
+        <ol className="space-y-3 pt-1">
+          {events.map((ev, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <div
+                className={cn(
+                  "mt-0.5 h-7 w-7 rounded-full flex items-center justify-center shrink-0",
+                  ev.tone,
+                )}
+              >
+                <ev.icon className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{ev.label}</div>
+                {ev.detail && (
+                  <div className="text-xs text-muted-foreground">{ev.detail}</div>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground whitespace-nowrap">
+                {relative(ev.at)}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 function relative(iso: string): string {
