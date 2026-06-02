@@ -74,9 +74,11 @@ export function SavedCreatives({
     };
   }, [companyId]);
 
-  async function remove(id: string) {
-    if (!confirm("Excluir este criativo?")) return;
+  async function performDelete(id: string) {
+    setDeleting(true);
     const { error } = await supabase.from("campaign_creatives").delete().eq("id", id);
+    setDeleting(false);
+    setPendingDeleteId(null);
     if (error) {
       toast.error("Erro ao excluir.");
       return;
