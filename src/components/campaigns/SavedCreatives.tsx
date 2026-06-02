@@ -127,13 +127,15 @@ export function SavedCreatives({
           className="group flex items-center gap-3 rounded-lg border bg-card/50 hover:bg-accent/40 transition-colors p-2 pr-3"
         >
           {/* Thumbnail */}
-          <div className="h-14 w-14 shrink-0 rounded-md overflow-hidden border bg-muted flex items-center justify-center">
-            {c.image_url ? (
-              <img src={c.image_url} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            )}
+          <div className="h-14 w-14 shrink-0 rounded-md overflow-hidden border bg-muted">
+            <SmartImage
+              src={c.image_url}
+              alt={c.title}
+              aspectRatio="1/1"
+              wrapperClassName="h-full w-full"
+            />
           </div>
+
 
           {/* Content */}
           <div className="flex-1 min-w-0">
