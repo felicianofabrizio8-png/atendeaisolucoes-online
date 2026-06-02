@@ -138,12 +138,12 @@ function CampaignDetailPage() {
             <StatusPill status={c.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            {objectiveLabel(c.objective)}
+            Canal: {channelLabel(c.objective)} · Objetivo: {goalLabel((c as any).goal)}
             {c.product ? ` · ${c.product}` : ""}
           </p>
         </div>
         <button
-          onClick={onDelete}
+          onClick={() => setConfirmOpen(true)}
           className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
         >
           <Trash2 className="h-4 w-4" /> Excluir
