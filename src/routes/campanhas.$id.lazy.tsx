@@ -217,12 +217,34 @@ function CampaignDetailPage() {
               {c.product ? ` · ${c.product}` : ""}
             </p>
           </div>
-          <button
-            onClick={() => setConfirmOpen(true)}
-            className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
-          >
-            <Trash2 className="h-4 w-4" /> Excluir
-          </button>
+          <div className="flex items-center gap-2">
+            {!metaActive && c.status !== "active" && (
+              <button
+                onClick={performPublish}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {publishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {publishStage || "Publicando…"}
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="h-4 w-4" /> Publicar campanha
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={publishing}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" /> Excluir
+            </button>
+          </div>
+
         </div>
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
       </header>
