@@ -8,6 +8,8 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+import { createFileRoute } from '@tanstack/react-router'
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhatsappRouteImport } from './routes/whatsapp'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -24,11 +26,8 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
-import { Route as CampanhasIndexRouteImport } from './routes/campanhas.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
-import { Route as CampanhasNovaRouteImport } from './routes/campanhas.nova'
-import { Route as CampanhasIdRouteImport } from './routes/campanhas.$id'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
@@ -58,6 +57,10 @@ import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whats
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
+
+const CampanhasIndexLazyRouteImport = createFileRoute('/campanhas/')()
+const CampanhasNovaLazyRouteImport = createFileRoute('/campanhas/nova')()
+const CampanhasIdLazyRouteImport = createFileRoute('/campanhas/$id')()
 
 const WhatsappRoute = WhatsappRouteImport.update({
   id: '/whatsapp',
@@ -129,16 +132,30 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CampanhasIndexLazyRoute = CampanhasIndexLazyRouteImport.update({
+  id: '/campanhas/',
+  path: '/campanhas/',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import('./routes/campanhas.index.lazy').then((d) => d.Route),
+)
 const InboxIndexRoute = InboxIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => InboxRoute,
 } as any)
-const CampanhasIndexRoute = CampanhasIndexRouteImport.update({
-  id: '/campanhas/',
-  path: '/campanhas/',
+const CampanhasNovaLazyRoute = CampanhasNovaLazyRouteImport.update({
+  id: '/campanhas/nova',
+  path: '/campanhas/nova',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any).lazy(() =>
+  import('./routes/campanhas.nova.lazy').then((d) => d.Route),
+)
+const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
+  id: '/campanhas/$id',
+  path: '/campanhas/$id',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/campanhas.$id.lazy').then((d) => d.Route))
 const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
   id: '/onboarding/whatsapp',
   path: '/onboarding/whatsapp',
@@ -148,16 +165,6 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
-} as any)
-const CampanhasNovaRoute = CampanhasNovaRouteImport.update({
-  id: '/campanhas/nova',
-  path: '/campanhas/nova',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CampanhasIdRoute = CampanhasIdRouteImport.update({
-  id: '/campanhas/$id',
-  path: '/campanhas/$id',
-  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
@@ -326,12 +333,12 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
-  '/campanhas/$id': typeof CampanhasIdRoute
-  '/campanhas/nova': typeof CampanhasNovaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
-  '/campanhas/': typeof CampanhasIndexRoute
+  '/campanhas/$id': typeof CampanhasIdLazyRoute
+  '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox/': typeof InboxIndexRoute
+  '/campanhas/': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
@@ -376,12 +383,12 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
-  '/campanhas/$id': typeof CampanhasIdRoute
-  '/campanhas/nova': typeof CampanhasNovaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
-  '/campanhas': typeof CampanhasIndexRoute
+  '/campanhas/$id': typeof CampanhasIdLazyRoute
+  '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox': typeof InboxIndexRoute
+  '/campanhas': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
@@ -428,12 +435,12 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
-  '/campanhas/$id': typeof CampanhasIdRoute
-  '/campanhas/nova': typeof CampanhasNovaRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
-  '/campanhas/': typeof CampanhasIndexRoute
+  '/campanhas/$id': typeof CampanhasIdLazyRoute
+  '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox/': typeof InboxIndexRoute
+  '/campanhas/': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
@@ -481,12 +488,12 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
-    | '/campanhas/$id'
-    | '/campanhas/nova'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
-    | '/campanhas/'
+    | '/campanhas/$id'
+    | '/campanhas/nova'
     | '/inbox/'
+    | '/campanhas/'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
@@ -531,12 +538,12 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
-    | '/campanhas/$id'
-    | '/campanhas/nova'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
-    | '/campanhas'
+    | '/campanhas/$id'
+    | '/campanhas/nova'
     | '/inbox'
+    | '/campanhas'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
@@ -582,12 +589,12 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
-    | '/campanhas/$id'
-    | '/campanhas/nova'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
-    | '/campanhas/'
+    | '/campanhas/$id'
+    | '/campanhas/nova'
     | '/inbox/'
+    | '/campanhas/'
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
@@ -634,10 +641,10 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
-  CampanhasIdRoute: typeof CampanhasIdRoute
-  CampanhasNovaRoute: typeof CampanhasNovaRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
-  CampanhasIndexRoute: typeof CampanhasIndexRoute
+  CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
+  CampanhasNovaLazyRoute: typeof CampanhasNovaLazyRoute
+  CampanhasIndexLazyRoute: typeof CampanhasIndexLazyRoute
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
@@ -769,6 +776,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/campanhas/': {
+      id: '/campanhas/'
+      path: '/campanhas'
+      fullPath: '/campanhas/'
+      preLoaderRoute: typeof CampanhasIndexLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/inbox/': {
       id: '/inbox/'
       path: '/'
@@ -776,11 +790,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxIndexRouteImport
       parentRoute: typeof InboxRoute
     }
-    '/campanhas/': {
-      id: '/campanhas/'
-      path: '/campanhas'
-      fullPath: '/campanhas/'
-      preLoaderRoute: typeof CampanhasIndexRouteImport
+    '/campanhas/nova': {
+      id: '/campanhas/nova'
+      path: '/campanhas/nova'
+      fullPath: '/campanhas/nova'
+      preLoaderRoute: typeof CampanhasNovaLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campanhas/$id': {
+      id: '/campanhas/$id'
+      path: '/campanhas/$id'
+      fullPath: '/campanhas/$id'
+      preLoaderRoute: typeof CampanhasIdLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding/whatsapp': {
@@ -796,20 +817,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/inbox/$conversationId'
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
-    }
-    '/campanhas/nova': {
-      id: '/campanhas/nova'
-      path: '/campanhas/nova'
-      fullPath: '/campanhas/nova'
-      preLoaderRoute: typeof CampanhasNovaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/campanhas/$id': {
-      id: '/campanhas/$id'
-      path: '/campanhas/$id'
-      fullPath: '/campanhas/$id'
-      preLoaderRoute: typeof CampanhasIdRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
@@ -1044,10 +1051,10 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
-  CampanhasIdRoute: CampanhasIdRoute,
-  CampanhasNovaRoute: CampanhasNovaRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
-  CampanhasIndexRoute: CampanhasIndexRoute,
+  CampanhasIdLazyRoute: CampanhasIdLazyRoute,
+  CampanhasNovaLazyRoute: CampanhasNovaLazyRoute,
+  CampanhasIndexLazyRoute: CampanhasIndexLazyRoute,
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
@@ -1081,3 +1088,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

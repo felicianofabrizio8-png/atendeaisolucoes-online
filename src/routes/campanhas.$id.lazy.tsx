@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createLazyFileRoute, Link, useNavigate, getRouteApi } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   getCampaign,
@@ -23,12 +23,14 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/campanhas/$id")({
+const routeApi = getRouteApi("/campanhas/$id");
+
+export const Route = createLazyFileRoute("/campanhas/$id")({
   component: CampaignDetailPage,
 });
 
 function CampaignDetailPage() {
-  const { id } = Route.useParams();
+  const { id } = routeApi.useParams();
   const navigate = useNavigate();
   const [c, setC] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);

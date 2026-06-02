@@ -1,11 +1,11 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
 import { ArrowLeft, Save, Rocket, Image as ImageIcon, Info } from "lucide-react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/campanhas/nova")({
+export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
 });
 

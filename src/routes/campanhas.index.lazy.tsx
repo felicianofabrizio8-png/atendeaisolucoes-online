@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createLazyFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import {
@@ -11,7 +11,7 @@ import {
 import { Megaphone, Plus, TrendingUp, Users, DollarSign, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/campanhas/")({
+export const Route = createLazyFileRoute("/campanhas/")({
   component: CampaignsPage,
 });
 
