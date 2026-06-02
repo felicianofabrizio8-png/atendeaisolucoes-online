@@ -12,8 +12,18 @@ interface RequestBody {
     promoPrice?: number | null;
   };
   objective?: "whatsapp" | "instagram" | "messenger";
+  goal?: "awareness" | "traffic" | "engagement" | "leads" | "sales" | "reactivation";
   city?: string | null;
 }
+
+const GOAL_GUIDE: Record<NonNullable<RequestBody["goal"]>, string> = {
+  awareness: "Foco em marca e autoridade. Tom institucional e memorável. CTA suave (ex.: 'Saiba mais'). Público amplo.",
+  traffic: "Levar a pessoa para um canal (WhatsApp/Instagram/site). CTA direto de clique. Texto curto e claro.",
+  engagement: "Tom conversacional, perguntas, convite a comentar/responder. CTA 'Enviar mensagem'. Estimular interação.",
+  leads: "Captar contato/orçamento. CTA 'Solicitar orçamento' ou 'Enviar mensagem'. Reforçar benefício + facilidade de contato.",
+  sales: "CTA direto de compra ('Comprar agora'). Destacar preço, promoção, parcelamento, escassez.",
+  reactivation: "Falar com cliente antigo. Tom próximo, lembrar relacionamento, oferta de retorno/desconto exclusivo.",
+};
 
 export const Route = createFileRoute("/api/ai/campaign-creative")({
   server: {
