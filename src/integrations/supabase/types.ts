@@ -259,6 +259,7 @@ export type Database = {
           created_at: string
           cta: string | null
           daily_budget: number | null
+          goal: string
           headline: string | null
           id: string
           leads_count: number
@@ -283,6 +284,7 @@ export type Database = {
           created_at?: string
           cta?: string | null
           daily_budget?: number | null
+          goal?: string
           headline?: string | null
           id?: string
           leads_count?: number
@@ -307,6 +309,7 @@ export type Database = {
           created_at?: string
           cta?: string | null
           daily_budget?: number | null
+          goal?: string
           headline?: string | null
           id?: string
           leads_count?: number
