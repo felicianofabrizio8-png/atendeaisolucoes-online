@@ -47,6 +47,7 @@ import {
 } from "@/data/quotes";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/SmartImage";
 
 
 export const Route = createFileRoute("/orcamentos")({
