@@ -398,6 +398,48 @@ export type Database = {
         }
         Relationships: []
       }
+      company_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          cancelled_at: string | null
+          company_id: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          cancelled_at?: string | null
+          company_id: string
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          cancelled_at?: string | null
+          company_id?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          token?: string
+        }
+        Relationships: []
+      }
       company_settings: {
         Row: {
           ai_after_hours_only: boolean
@@ -1139,6 +1181,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          last_seen_at: string | null
           updated_at: string
         }
         Insert: {
@@ -1147,6 +1190,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          last_seen_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -1155,6 +1199,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          last_seen_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1568,6 +1613,7 @@ export type Database = {
         Args: { _company_id: string; _new_size: number }
         Returns: boolean
       }
+      count_company_admins: { Args: { _company_id: string }; Returns: number }
       current_company_id: { Args: never; Returns: string }
       get_storage_usage_bytes: {
         Args: { _company_id: string }
@@ -1592,6 +1638,7 @@ export type Database = {
         }
         Returns: string
       }
+      touch_last_seen: { Args: never; Returns: undefined }
     }
     Enums: {
       ai_proposal_status: "pending" | "approved" | "rejected"

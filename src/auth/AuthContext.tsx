@@ -71,6 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle();
         if (comp) setCompany(comp);
       }
+      // Atualiza last_seen_at do usuário (fire-and-forget, não bloqueia auth)
+      try {
+        const sb = supabase as unknown as { rpc: (fn: string) => Promise<unknown> };
+        void sb.rpc("touch_last_seen");
+      } catch {
+        /* noop */
+      }
+
     } finally {
       fetchingRef.current = false;
     }
