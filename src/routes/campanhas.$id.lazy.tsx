@@ -656,9 +656,21 @@ function buildSuggestions(c: Campaign) {
   ];
 }
 
-function buildTimeline(c: Campaign) {
-  const events: { icon: typeof CheckCircle2; label: string; detail?: string; at: string; tone: string }[] = [];
+type TimelineEvent = {
+  icon: typeof CheckCircle2;
+  label: string;
+  detail?: string;
+  at: string;
+  tone: string;
+  source: "system" | "meta";
+};
+
+function buildTimeline(c: Campaign): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  // Sistema & IA
   events.push({
+    source: "system",
     icon: CircleDashed,
     label: "Campanha criada",
     at: c.created_at,
@@ -666,56 +678,125 @@ function buildTimeline(c: Campaign) {
   });
   if (c.media_url || c.headline || c.primary_text) {
     events.push({
+      source: "system",
       icon: ImageIcon,
       label: "Criativo salvo",
       detail: c.headline ?? undefined,
       at: c.updated_at,
       tone: "bg-primary/15 text-primary",
     });
+    events.push({
+      source: "system",
+      icon: Sparkles,
+      label: "IA analisou o anúncio",
+      detail: "Diagnóstico heurístico gerado a partir do criativo e copy.",
+      at: c.updated_at,
+      tone: "bg-primary/15 text-primary",
+    });
   }
+
+  // Meta Ads
   if (c.meta_campaign_id) {
     events.push({
+      source: "meta",
       icon: Send,
       label: "Publicada na Meta",
       detail: `ID: ${c.meta_campaign_id}`,
       at: c.updated_at,
       tone: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
     });
+    if (c.status === "active") {
+      events.push({
+        source: "meta",
+        icon: PlayCircle,
+        label: "Entrega iniciada",
+        at: c.updated_at,
+        tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+      });
+    }
+    if (c.leads_count > 0) {
+      events.push({
+        source: "meta",
+        icon: Users,
+        label: `${c.leads_count} lead${c.leads_count > 1 ? "s" : ""} gerado${c.leads_count > 1 ? "s" : ""}`,
+        at: c.updated_at,
+        tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+      });
+    }
+    if (c.status === "paused") {
+      events.push({
+        source: "meta",
+        icon: PauseCircle,
+        label: "Campanha pausada",
+        at: c.updated_at,
+        tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      });
+    }
+    if (c.status === "ended") {
+      events.push({
+        source: "meta",
+        icon: CheckCircle2,
+        label: "Campanha encerrada",
+        at: c.updated_at,
+        tone: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
+      });
+    }
   }
-  if (c.status === "active") {
-    events.push({
-      icon: PlayCircle,
-      label: "Entrega iniciada",
-      at: c.updated_at,
-      tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    });
-  }
-  if (c.leads_count > 0) {
-    events.push({
-      icon: Users,
-      label: `${c.leads_count} lead${c.leads_count > 1 ? "s" : ""} gerado${c.leads_count > 1 ? "s" : ""}`,
-      at: c.updated_at,
-      tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    });
-  }
-  if (c.status === "paused") {
-    events.push({
-      icon: PauseCircle,
-      label: "Campanha pausada",
-      at: c.updated_at,
-      tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    });
-  }
-  if (c.status === "ended") {
-    events.push({
-      icon: CheckCircle2,
-      label: "Campanha encerrada",
-      at: c.updated_at,
-      tone: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
-    });
-  }
-  // Sort newest first
+
+  // Sort newest first within each section preserved by caller
   return events.sort((a, b) => +new Date(b.at) - +new Date(a.at));
+}
+
+function TimelineGroup({
+  title,
+  subtitle,
+  events,
+  emptyLabel,
+}: {
+  title: string;
+  subtitle: string;
+  events: TimelineEvent[];
+  emptyLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <div className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+          {title}
+        </div>
+        <div className="text-[11px] text-muted-foreground/80">{subtitle}</div>
+      </div>
+      {events.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          {emptyLabel}
+        </div>
+      ) : (
+        <ol className="space-y-3 pt-1">
+          {events.map((ev, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <div
+                className={cn(
+                  "mt-0.5 h-7 w-7 rounded-full flex items-center justify-center shrink-0",
+                  ev.tone,
+                )}
+              >
+                <ev.icon className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{ev.label}</div>
+                {ev.detail && (
+                  <div className="text-xs text-muted-foreground">{ev.detail}</div>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground whitespace-nowrap">
+                {relative(ev.at)}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 function relative(iso: string): string {
