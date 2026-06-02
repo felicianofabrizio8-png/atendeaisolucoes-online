@@ -22,9 +22,10 @@ const ErrorSchema = z.object({
   context: z.record(z.unknown()).optional(),
 });
 
-type AuthedSupabase = { from: (t: string) => { select: (c: string) => { eq: (col: string, v: string) => { maybeSingle: () => Promise<{ data: { company_id?: string } | null }> } } } };
-
-async function getCompanyId(supabase: AuthedSupabase, userId: string): Promise<string | null> {
+async function getCompanyId(
+  supabase: { from: (t: "profiles") => { select: (c: string) => { eq: (col: string, v: string) => { maybeSingle: () => PromiseLike<{ data: { company_id: string } | null }> } } } },
+  userId: string,
+): Promise<string | null> {
   const { data } = await supabase.from("profiles").select("company_id").eq("id", userId).maybeSingle();
   return data?.company_id ?? null;
 }
