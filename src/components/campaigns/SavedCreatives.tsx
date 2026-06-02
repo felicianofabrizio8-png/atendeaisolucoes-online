@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Trash2, Pencil, RotateCcw, Loader2, Check, X, Image as ImageIcon } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface CreativeData {
   title: string;
@@ -31,6 +41,8 @@ export function SavedCreatives({
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,9 +74,11 @@ export function SavedCreatives({
     };
   }, [companyId]);
 
-  async function remove(id: string) {
-    if (!confirm("Excluir este criativo?")) return;
+  async function performDelete(id: string) {
+    setDeleting(true);
     const { error } = await supabase.from("campaign_creatives").delete().eq("id", id);
+    setDeleting(false);
+    setPendingDeleteId(null);
     if (error) {
       toast.error("Erro ao excluir.");
       return;
@@ -182,7 +196,7 @@ export function SavedCreatives({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => remove(c.id)}
+                onClick={() => setPendingDeleteId(c.id)}
                 className="p-1.5 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
                 title="Excluir"
               >

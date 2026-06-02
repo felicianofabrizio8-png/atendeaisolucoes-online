@@ -1,8 +1,8 @@
-import { createLazyFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createLazyFileRoute, useNavigate, Link, useRouter } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { createCampaign, type CampaignObjective } from "@/lib/campaigns";
+import { createCampaign, type CampaignObjective, type CampaignGoal } from "@/lib/campaigns";
 import {
   ArrowLeft,
   Save,
@@ -28,13 +28,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-export type CampaignGoal =
-  | "awareness"
-  | "traffic"
-  | "engagement"
-  | "leads"
-  | "sales"
-  | "reactivation";
+// CampaignGoal type now lives in @/lib/campaigns
 
 const GOALS: {
   id: CampaignGoal;
@@ -62,7 +56,39 @@ const CreativePreview = lazy(() =>
 
 export const Route = createLazyFileRoute("/campanhas/nova")({
   component: NewCampaignPage,
+  errorComponent: CampaignsRouteError,
+  notFoundComponent: CampaignsRouteNotFound,
 });
+
+function CampaignsRouteError({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  return (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Não foi possível carregar Nova campanha</h2>
+      <p className="text-sm text-muted-foreground">{error.message}</p>
+      <div className="flex gap-2 justify-center">
+        <button
+          onClick={() => { router.invalidate(); reset(); }}
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+        >
+          Tentar novamente
+        </button>
+        <Link to="/campanhas" className="h-9 px-4 inline-flex items-center rounded-md border text-sm">
+          Voltar
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function CampaignsRouteNotFound() {
+  return (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Página não encontrada</h2>
+      <Link to="/campanhas" className="text-sm text-primary hover:underline">Voltar para Campanhas</Link>
+    </div>
+  );
+}
 
 const META_ADS_READY = false;
 
@@ -276,7 +302,7 @@ function NewCampaignPage() {
     setSaving(true);
     if (publish && META_ADS_READY) setStatus("publishing");
     try {
-      const { product_id: _ignored, goal: _g, ...rest } = form;
+      const { product_id: _ignored, ...rest } = form;
       const c = await createCampaign(profile.company_id, {
         ...rest,
         status: publish && META_ADS_READY ? "scheduled" : "draft",
@@ -712,34 +738,7 @@ function NewCampaignPage() {
         </aside>
       </div>
 
-      <style>{`
-        .input {
-          height: 2.25rem;
-          border-radius: 0.5rem;
-          border: 1px solid hsl(var(--input, var(--border)));
-          background: transparent;
-          padding: 0 0.7rem;
-          font-size: 0.875rem;
-          width: 100%;
-          outline: none;
-          transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
-        }
-        textarea.input { height: auto; padding: 0.45rem 0.7rem; line-height: 1.45; }
-        .input:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
-        .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent); }
-
-        @keyframes ai-glow {
-          0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
-          50% { box-shadow: 0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
-        }
-        .ai-glow { animation: ai-glow 2.6s ease-in-out infinite; }
-
-        @keyframes publish-pulse {
-          0%, 100% { box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent); }
-          50% { box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent); }
-        }
-        .publish-cta:not(:disabled) { animation: publish-pulse 3.2s ease-in-out infinite; }
-      `}</style>
+      {/* keyframes & .input moved to src/styles.css (@layer components) */}
     </div>
   );
 }

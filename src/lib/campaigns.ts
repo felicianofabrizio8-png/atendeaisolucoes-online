@@ -2,13 +2,38 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export type CampaignObjective = "whatsapp" | "instagram" | "messenger";
+export type CampaignGoal =
+  | "awareness"
+  | "traffic"
+  | "engagement"
+  | "leads"
+  | "sales"
+  | "reactivation";
 export type CampaignStatus = "draft" | "scheduled" | "active" | "paused" | "ended";
+
+export const GOAL_LABELS: Record<CampaignGoal, string> = {
+  awareness: "Reconhecimento",
+  traffic: "Tráfego",
+  engagement: "Engajamento",
+  leads: "Leads",
+  sales: "Vendas",
+  reactivation: "Reativação",
+};
+
+export function goalLabel(g: CampaignGoal | null | undefined): string {
+  return g ? GOAL_LABELS[g] ?? "Leads" : "Leads";
+}
+
+export function channelLabel(o: CampaignObjective): string {
+  return ({ whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger" } as const)[o];
+}
 
 export interface Campaign {
   id: string;
   company_id: string;
   name: string;
   objective: CampaignObjective;
+  goal: CampaignGoal;
   product: string | null;
   city: string | null;
   radius_km: number | null;
@@ -59,6 +84,7 @@ export async function createCampaign(
       company_id: companyId,
       name: input.name,
       objective: input.objective ?? "whatsapp",
+      goal: input.goal ?? "leads",
       product: input.product ?? null,
       city: input.city ?? null,
       radius_km: input.radius_km ?? null,

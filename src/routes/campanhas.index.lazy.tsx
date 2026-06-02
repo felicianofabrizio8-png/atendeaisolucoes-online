@@ -1,11 +1,11 @@
-import { createLazyFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createLazyFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import {
   listCampaigns,
   formatBRL,
   statusLabel,
-  objectiveLabel,
+  channelLabel,
   type Campaign,
 } from "@/lib/campaigns";
 import { Megaphone, Plus, TrendingUp, Users, DollarSign, Target } from "lucide-react";
@@ -13,6 +13,27 @@ import { cn } from "@/lib/utils";
 
 export const Route = createLazyFileRoute("/campanhas/")({
   component: CampaignsPage,
+  errorComponent: ({ error, reset }) => {
+    const router = useRouter();
+    return (
+      <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+        <h2 className="text-lg font-semibold">Erro ao carregar campanhas</h2>
+        <p className="text-sm text-muted-foreground">{error.message}</p>
+        <button
+          onClick={() => { router.invalidate(); reset(); }}
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  },
+  notFoundComponent: () => (
+    <div className="p-6 max-w-md mx-auto space-y-3 text-center">
+      <h2 className="text-lg font-semibold">Página não encontrada</h2>
+      <Link to="/campanhas" className="text-sm text-primary hover:underline">Voltar</Link>
+    </div>
+  ),
 });
 
 function CampaignsPage() {
@@ -107,7 +128,7 @@ function CampaignsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{c.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {objectiveLabel(c.objective)}
+                      Canal: {channelLabel(c.objective)}
                       {c.city ? ` · ${c.city}` : ""}
                       {c.daily_budget ? ` · ${formatBRL(c.daily_budget)}/dia` : ""}
                     </div>
