@@ -453,6 +453,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          meta_campaigns_beta: boolean
           name: string
           slug: string | null
           storage_quota_mb: number
@@ -461,6 +462,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          meta_campaigns_beta?: boolean
           name: string
           slug?: string | null
           storage_quota_mb?: number
@@ -469,6 +471,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          meta_campaigns_beta?: boolean
           name?: string
           slug?: string | null
           storage_quota_mb?: number

@@ -1,5 +1,8 @@
 import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { publishCampaign } from "@/lib/campaign-publish.functions";
+import { Loader2, Rocket } from "lucide-react";
 import {
   getCampaign,
   deleteCampaign,
@@ -102,6 +105,9 @@ function CampaignDetailPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [improveOpen, setImproveOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishStage, setPublishStage] = useState<string>("");
+  const publishFn = useServerFn(publishCampaign);
 
   useEffect(() => {
     setLoading(true);
@@ -125,6 +131,50 @@ function CampaignDetailPage() {
       setConfirmOpen(false);
     }
   }
+
+  async function performPublish() {
+    if (!c || publishing) return;
+    const canPublish =
+      c.objective === "whatsapp" &&
+      c.goal === "leads" &&
+      Boolean(c.media_url) &&
+      c.media_type !== "video" &&
+      Number(c.daily_budget ?? 0) > 0;
+    if (!canPublish) {
+      toast.error("No beta: WhatsApp + Leads + imagem única + orçamento diário.");
+      return;
+    }
+    setPublishing(true);
+    setPublishStage("Validando integração Meta…");
+    // Progresso simulado (o pipeline real é sequencial mas atômico do lado do servidor).
+    const stages = ["Enviando mídia…", "Criando campanha…", "Criando público…", "Publicando anúncio…"];
+    let i = 0;
+    const tick = window.setInterval(() => {
+      i = Math.min(i + 1, stages.length - 1);
+      setPublishStage(stages[i]);
+    }, 1200);
+    try {
+      const r = await publishFn({ data: { campaignId: c.id } });
+      window.clearInterval(tick);
+      if (r.ok) {
+        toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+      } else {
+        const msg = "message" in r && r.message ? r.message : "Falha ao publicar.";
+        toast.error(msg);
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+      }
+    } catch (e) {
+      window.clearInterval(tick);
+      toast.error(e instanceof Error ? e.message : "Erro inesperado ao publicar.");
+    } finally {
+      setPublishing(false);
+      setPublishStage("");
+    }
+  }
+
 
   const scores = useMemo(() => (c ? scoreCampaign(c) : null), [c]);
   const suggestions = useMemo(() => (c ? buildSuggestions(c) : []), [c]);
@@ -167,12 +217,34 @@ function CampaignDetailPage() {
               {c.product ? ` · ${c.product}` : ""}
             </p>
           </div>
-          <button
-            onClick={() => setConfirmOpen(true)}
-            className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
-          >
-            <Trash2 className="h-4 w-4" /> Excluir
-          </button>
+          <div className="flex items-center gap-2">
+            {!metaActive && c.status !== "active" && (
+              <button
+                onClick={performPublish}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {publishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {publishStage || "Publicando…"}
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="h-4 w-4" /> Publicar campanha
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={publishing}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" /> Excluir
+            </button>
+          </div>
+
         </div>
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
       </header>

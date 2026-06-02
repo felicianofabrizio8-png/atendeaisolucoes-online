@@ -1,0 +1,299 @@
+// Pipeline de publicação Meta Ads — Beta controlado.
+// Gates: admin + meta_campaigns_beta=true + canal WhatsApp + objetivo leads
+// + mídia única (imagem) + orçamento diário + integração Meta conectada com
+// ad_account_id em account_metadata.
+//
+// Cada etapa atualiza o status (publishing → active|failed) e grava IDs Meta.
+// Erros são classificados e gravados em error_log (best-effort).
+//
+// Importante: este pipeline NÃO altera inbox, WhatsApp, IA, RLS ou campanhas
+// existentes — apenas a campanha alvo é mutada.
+
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+const PublishInput = z.object({ campaignId: z.string().uuid() });
+
+type GraphErrorBody = { error?: { message?: string; code?: number; type?: string } };
+
+const GRAPH = "https://graph.facebook.com/v21.0";
+
+async function graphFetch<T>(
+  url: string,
+  init: RequestInit,
+): Promise<{ ok: true; data: T } | { ok: false; status: number; body: GraphErrorBody; message: string }> {
+  try {
+    const res = await fetch(url, init);
+    const text = await res.text();
+    const body = text ? (JSON.parse(text) as T & GraphErrorBody) : ({} as T & GraphErrorBody);
+    if (!res.ok) {
+      const msg = (body as GraphErrorBody).error?.message ?? `HTTP ${res.status}`;
+      return { ok: false, status: res.status, body, message: msg };
+    }
+    return { ok: true, data: body };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "network_error";
+    return { ok: false, status: 0, body: {}, message };
+  }
+}
+
+export const publishCampaign = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => PublishInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { campaignId } = data;
+
+    // 1) Carrega perfil e checa admin + flag beta da empresa.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("company_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!profile?.company_id) return { ok: false as const, error: "no_company" };
+
+    const companyId = profile.company_id;
+
+    const { data: company } = await supabase
+      .from("companies")
+      .select("id, meta_campaigns_beta" as never)
+      .eq("id", companyId)
+      .maybeSingle();
+    const betaEnabled = Boolean((company as unknown as { meta_campaigns_beta?: boolean } | null)?.meta_campaigns_beta);
+    if (!betaEnabled) {
+      return { ok: false as const, error: "beta_not_enabled", message: "Publicação Meta Ads ainda não liberada para esta empresa." };
+    }
+
+    // Checa papel admin via has_role.
+    const sb = supabase as unknown as {
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null; error: unknown }>;
+    };
+    const { data: isAdmin } = await sb.rpc("has_role", { _user_id: userId, _role: "admin" });
+    if (!isAdmin) {
+      return { ok: false as const, error: "not_admin", message: "Apenas administradores podem publicar campanhas." };
+    }
+
+    // 2) Carrega campanha (RLS já garante company_id).
+    const { data: campaign } = await supabase
+      .from("campaigns")
+      .select("*")
+      .eq("id", campaignId)
+      .maybeSingle();
+    if (!campaign) return { ok: false as const, error: "campaign_not_found" };
+
+    // Escopo do Beta: WhatsApp + Leads + imagem única + orçamento diário.
+    if (campaign.objective !== "whatsapp") {
+      return { ok: false as const, error: "scope_objective", message: "No beta apenas campanhas WhatsApp podem ser publicadas." };
+    }
+    if (campaign.goal !== "leads") {
+      return { ok: false as const, error: "scope_goal", message: "No beta apenas objetivo Leads é suportado." };
+    }
+    if (!campaign.media_url || campaign.media_type === "video") {
+      return { ok: false as const, error: "scope_media", message: "No beta apenas imagem única é suportada." };
+    }
+    if (!campaign.daily_budget || Number(campaign.daily_budget) <= 0) {
+      return { ok: false as const, error: "scope_budget", message: "Defina um orçamento diário maior que zero." };
+    }
+    if (campaign.status === "publishing") {
+      return { ok: false as const, error: "already_publishing", message: "Já existe uma publicação em andamento." };
+    }
+
+    // 3) Busca integração Meta ativa (instagram/facebook) com ad_account_id.
+    const { data: integrations } = await supabase
+      .from("integrations")
+      .select("id, channel, access_token, account_metadata, external_account_id")
+      .eq("company_id", companyId)
+      .eq("active", true)
+      .in("channel", ["instagram", "facebook"]);
+    type Integ = {
+      id: string;
+      channel: string;
+      access_token: string | null;
+      account_metadata: Record<string, unknown> | null;
+      external_account_id: string | null;
+    };
+    const list = (integrations ?? []) as unknown as Integ[];
+    const integ = list.find((i) => Boolean((i.account_metadata ?? {})["ad_account_id"])) ?? list[0] ?? null;
+    if (!integ || !integ.access_token) {
+      return { ok: false as const, error: "no_integration", message: "Conecte uma conta Meta antes de publicar." };
+    }
+    const meta = (integ.account_metadata ?? {}) as Record<string, unknown>;
+    const adAccountId = String(meta["ad_account_id"] ?? "");
+    const pageId = String(meta["fb_page_id"] ?? integ.external_account_id ?? "");
+    if (!adAccountId) {
+      return {
+        ok: false as const,
+        error: "no_ad_account",
+        message: "Sua integração Meta não tem ad_account_id configurado. Vincule uma conta de anúncios para publicar.",
+      };
+    }
+    if (!pageId) {
+      return { ok: false as const, error: "no_page", message: "Vincule uma página Facebook à integração Meta." };
+    }
+    const accessToken = integ.access_token;
+    const actId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
+
+    // 4) Marca status=publishing.
+    await supabase
+      .from("campaigns")
+      .update({
+        status: "publishing",
+        meta_sync_status: "syncing",
+        meta_publish_error: null,
+      } as never)
+      .eq("id", campaignId);
+
+    const adminClient = await import("@/integrations/supabase/client.server");
+
+    async function fail(stage: string, message: string, raw?: unknown) {
+      await supabase
+        .from("campaigns")
+        .update({
+          status: "draft",
+          meta_sync_status: "failed",
+          meta_publish_error: `${stage}: ${message}`.slice(0, 500),
+        } as never)
+        .eq("id", campaignId);
+      try {
+        await adminClient.supabaseAdmin.from("error_log").insert({
+          company_id: companyId,
+          user_id: userId,
+          source: "meta",
+          severity: "error",
+          message: `[publish:${stage}] ${message}`.slice(0, 1900),
+          context: { campaign_id: campaignId, raw: raw ?? null, stage } as never,
+        });
+      } catch {
+        /* noop */
+      }
+      return { ok: false as const, error: "publish_failed", stage, message };
+    }
+
+    // Step A: upload da imagem para a ad account.
+    const uploadRes = await graphFetch<{ images?: Record<string, { hash: string }> }>(
+      `${GRAPH}/${actId}/adimages?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: campaign.media_url }),
+      },
+    );
+    if (!uploadRes.ok) return fail("upload_media", uploadRes.message, uploadRes.body);
+    const images = uploadRes.data.images ?? {};
+    const firstImage = Object.values(images)[0];
+    const imageHash = firstImage?.hash;
+    if (!imageHash) return fail("upload_media", "no_image_hash_returned", uploadRes.data);
+
+    // Step B: cria campaign (OUTCOME_LEADS).
+    const campRes = await graphFetch<{ id: string }>(
+      `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: campaign.name,
+          objective: "OUTCOME_LEADS",
+          status: "PAUSED",
+          special_ad_categories: [],
+          buying_type: "AUCTION",
+        }),
+      },
+    );
+    if (!campRes.ok) return fail("create_campaign", campRes.message, campRes.body);
+    const metaCampaignId = campRes.data.id;
+
+    // Step C: cria adset (Click to WhatsApp).
+    const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
+    const adsetRes = await graphFetch<{ id: string }>(
+      `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${campaign.name} — adset`,
+          campaign_id: metaCampaignId,
+          daily_budget: dailyBudgetCents,
+          billing_event: "IMPRESSIONS",
+          optimization_goal: "CONVERSATIONS",
+          destination_type: "WHATSAPP",
+          bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+          status: "PAUSED",
+          targeting: {
+            geo_locations: campaign.city
+              ? { custom_locations: [{ name: campaign.city, radius: campaign.radius_km ?? 25, distance_unit: "kilometer" }] }
+              : { countries: ["BR"] },
+          },
+          promoted_object: { page_id: pageId },
+        }),
+      },
+    );
+    if (!adsetRes.ok) {
+      // Tenta rollback da campaign criada (best-effort).
+      void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
+      return fail("create_adset", adsetRes.message, adsetRes.body);
+    }
+    const metaAdsetId = adsetRes.data.id;
+
+    // Step D: cria creative.
+    const creativeRes = await graphFetch<{ id: string }>(
+      `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${campaign.name} — creative`,
+          object_story_spec: {
+            page_id: pageId,
+            link_data: {
+              message: campaign.primary_text ?? "",
+              name: campaign.headline ?? campaign.name,
+              link: `https://wa.me/`,
+              call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+              image_hash: imageHash,
+            },
+          },
+        }),
+      },
+    );
+    if (!creativeRes.ok) return fail("create_creative", creativeRes.message, creativeRes.body);
+    const creativeId = creativeRes.data.id;
+
+    // Step E: cria ad.
+    const adRes = await graphFetch<{ id: string }>(
+      `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${campaign.name} — ad`,
+          adset_id: metaAdsetId,
+          creative: { creative_id: creativeId },
+          status: "PAUSED",
+        }),
+      },
+    );
+    if (!adRes.ok) return fail("create_ad", adRes.message, adRes.body);
+    const metaAdId = adRes.data.id;
+
+    // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
+    // o usuário ativa pelo Gerenciador da Meta na primeira rodada do Beta).
+    await supabase
+      .from("campaigns")
+      .update({
+        status: "active",
+        meta_campaign_id: metaCampaignId,
+        meta_adset_id: metaAdsetId,
+        meta_ad_id: metaAdId,
+        meta_sync_status: "active",
+        meta_last_sync_at: new Date().toISOString(),
+        meta_delivery_status: "paused_on_meta",
+        meta_publish_error: null,
+      } as never)
+      .eq("id", campaignId);
+
+    return {
+      ok: true as const,
+      ids: { campaign: metaCampaignId, adset: metaAdsetId, creative: creativeId, ad: metaAdId },
+    };
+  });
