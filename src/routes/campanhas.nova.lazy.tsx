@@ -20,7 +20,35 @@ import {
   Send,
   X,
   Loader2,
+  Megaphone,
+  MousePointerClick,
+  MessageSquareHeart,
+  Users,
+  ShoppingBag,
+  RotateCcw,
 } from "lucide-react";
+
+export type CampaignGoal =
+  | "awareness"
+  | "traffic"
+  | "engagement"
+  | "leads"
+  | "sales"
+  | "reactivation";
+
+const GOALS: {
+  id: CampaignGoal;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: "awareness", label: "Reconhecimento", desc: "Mostrar sua empresa para mais pessoas", icon: Megaphone },
+  { id: "traffic", label: "Tráfego", desc: "Levar pessoas para WhatsApp, Instagram ou site", icon: MousePointerClick },
+  { id: "engagement", label: "Engajamento", desc: "Gerar mensagens e interações", icon: MessageSquareHeart },
+  { id: "leads", label: "Leads", desc: "Captar contatos e orçamentos", icon: Users },
+  { id: "sales", label: "Vendas", desc: "Vender produtos ou promoções", icon: ShoppingBag },
+  { id: "reactivation", label: "Reativação", desc: "Trazer antigos clientes de volta", icon: RotateCcw },
+];
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image-compress";
 import type { SavedCreative } from "@/components/campaigns/SavedCreatives";
