@@ -8,6 +8,7 @@ import {
   appendMessage,
   markLeadLost,
   markLeadWon,
+  refetchConversationMessages,
   subscribeRepo,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
