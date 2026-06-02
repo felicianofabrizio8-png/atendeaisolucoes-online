@@ -17,8 +17,17 @@ import {
   Pencil,
   RotateCcw,
   Trash2,
-
+  Settings as SettingsIcon,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -903,13 +912,50 @@ function QuoteFormModal({
   const [validUntil, setValidUntil] = useState(todayPlusDays(7));
   const [submitting, setSubmitting] = useState(false);
 
-  const [inclusos, setInclusos] = useState<string[]>([]);
-  const [brindes, setBrindes] = useState<string[]>([]);
-  const [porConta, setPorConta] = useState<string[]>([]);
-  const [newIncluso, setNewIncluso] = useState("");
-  const [newBrinde, setNewBrinde] = useState("");
-  const [newPorConta, setNewPorConta] = useState("");
+  // Textos multilinha (preservam quebras de linha, emojis e marcadores).
+  const [inclusosText, setInclusosText] = useState("");
+  const [brindesText, setBrindesText] = useState("");
+  const [porContaText, setPorContaText] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // Defaults da empresa (company_settings).
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const [defIncluded, setDefIncluded] = useState("");
+  const [defGifts, setDefGifts] = useState("");
+  const [defCustomer, setDefCustomer] = useState("");
+  const [editDefaultsOpen, setEditDefaultsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("company_settings")
+        .select(
+          "default_quote_included_items,default_quote_gifts,default_quote_customer_responsibility",
+        )
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.warn("load quote defaults", error);
+      }
+      const inc = (data?.default_quote_included_items as string | null) ?? "";
+      const gif = (data?.default_quote_gifts as string | null) ?? "";
+      const cus = (data?.default_quote_customer_responsibility as string | null) ?? "";
+      setDefIncluded(inc);
+      setDefGifts(gif);
+      setDefCustomer(cus);
+      // Pré-preenche apenas se o usuário ainda não digitou nada.
+      setInclusosText((prev) => (prev ? prev : inc));
+      setBrindesText((prev) => (prev ? prev : gif));
+      setPorContaText((prev) => (prev ? prev : cus));
+      setDefaultsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
 
   const [editingMessage, setEditingMessage] = useState(false);
@@ -931,20 +977,23 @@ function QuoteFormModal({
       discount,
     });
     const extra: string[] = [];
-    if (inclusos.length > 0) {
+    const inc = inclusosText.trim();
+    const gif = brindesText.trim();
+    const cus = porContaText.trim();
+    if (inc) {
       extra.push("");
       extra.push("✅ Itens inclusos:");
-      for (const it of inclusos) extra.push(`• ${it}`);
+      extra.push(inc);
     }
-    if (brindes.length > 0) {
+    if (gif) {
       extra.push("");
       extra.push("🎁 Brindes:");
-      for (const it of brindes) extra.push(`• ${it}`);
+      extra.push(gif);
     }
-    if (porConta.length > 0) {
+    if (cus) {
       extra.push("");
       extra.push("⚠️ Por conta do cliente:");
-      for (const it of porConta) extra.push(`• ${it}`);
+      extra.push(cus);
     }
     if (observacoes.trim().length > 0) {
       extra.push("");
@@ -952,7 +1001,7 @@ function QuoteFormModal({
       extra.push(observacoes.trim());
     }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusos, brindes, porConta, observacoes]);
+  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusosText, brindesText, porContaText, observacoes]);
 
 
   const previewMessage = customMessage ?? autoMessage;
@@ -988,37 +1037,22 @@ function QuoteFormModal({
     if (!canSubmit || !product) return;
     setSubmitting(true);
     try {
-      // Auto-incorpora textos digitados nos inputs mas ainda não adicionados
-      // (Enter/+) — evita perder "itens inclusos" / "por conta do cliente".
-      const pendingIncluso = newIncluso.trim();
-      const pendingBrinde = newBrinde.trim();
-      const pendingPorConta = newPorConta.trim();
-      const finalInclusos =
-        pendingIncluso && !inclusos.includes(pendingIncluso)
-          ? [...inclusos, pendingIncluso]
-          : inclusos;
-      const finalBrindes =
-        pendingBrinde && !brindes.includes(pendingBrinde)
-          ? [...brindes, pendingBrinde]
-          : brindes;
-      const finalPorConta =
-        pendingPorConta && !porConta.includes(pendingPorConta)
-          ? [...porConta, pendingPorConta]
-          : porConta;
+      const incText = inclusosText.trim();
+      const gifText = brindesText.trim();
+      const cusText = porContaText.trim();
       const finalObservacoes = observacoes.trim();
 
-      if (pendingIncluso && !inclusos.includes(pendingIncluso)) {
-        setInclusos(finalInclusos);
-        setNewIncluso("");
-      }
-      if (pendingBrinde && !brindes.includes(pendingBrinde)) {
-        setBrindes(finalBrindes);
-        setNewBrinde("");
-      }
-      if (pendingPorConta && !porConta.includes(pendingPorConta)) {
-        setPorConta(finalPorConta);
-        setNewPorConta("");
-      }
+      // Para compatibilidade com a base (jsonb arrays), guardamos como
+      // array de linhas não vazias. O texto na mensagem é preservado como
+      // foi digitado (com quebras de linha, emojis e marcadores).
+      const toLines = (s: string) =>
+        s
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .filter((l) => l.length > 0);
+      const finalInclusos = toLines(incText);
+      const finalBrindes = toLines(gifText);
+      const finalPorConta = toLines(cusText);
 
       let finalLeadId = leadId;
       if (clientMode === "new") {
@@ -1035,8 +1069,7 @@ function QuoteFormModal({
         toast.success(`Cliente "${created.name}" criado`);
       }
 
-      // Recompõe a mensagem final usando os valores realmente persistidos,
-      // garantindo que o preview e o que é salvo fiquem sincronizados.
+      // Recompõe a mensagem final preservando exatamente o texto digitado.
       const recomposedAuto = (() => {
         const base = buildQuoteMessage({
           product,
@@ -1047,21 +1080,10 @@ function QuoteFormModal({
           discount,
         });
         const extra: string[] = [];
-        if (finalInclusos.length > 0) {
-          extra.push("", "✅ Itens inclusos:");
-          for (const it of finalInclusos) extra.push(`• ${it}`);
-        }
-        if (finalBrindes.length > 0) {
-          extra.push("", "🎁 Brindes:");
-          for (const it of finalBrindes) extra.push(`• ${it}`);
-        }
-        if (finalPorConta.length > 0) {
-          extra.push("", "⚠️ Por conta do cliente:");
-          for (const it of finalPorConta) extra.push(`• ${it}`);
-        }
-        if (finalObservacoes.length > 0) {
-          extra.push("", "📝 Observações:", finalObservacoes);
-        }
+        if (incText) extra.push("", "✅ Itens inclusos:", incText);
+        if (gifText) extra.push("", "🎁 Brindes:", gifText);
+        if (cusText) extra.push("", "⚠️ Por conta do cliente:", cusText);
+        if (finalObservacoes) extra.push("", "📝 Observações:", finalObservacoes);
         return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
       })();
       const finalMessage = customMessage ?? recomposedAuto;
@@ -1091,6 +1113,34 @@ function QuoteFormModal({
       setSubmitting(false);
     }
   };
+
+  const saveDefaults = async (inc: string, gif: string, cus: string) => {
+    if (!companyId) return;
+    const { error } = await supabase
+      .from("company_settings")
+      .update({
+        default_quote_included_items: inc,
+        default_quote_gifts: gif,
+        default_quote_customer_responsibility: cus,
+      })
+      .eq("company_id", companyId);
+    if (error) {
+      toast.error("Não foi possível salvar os padrões: " + error.message);
+      return;
+    }
+    setDefIncluded(inc);
+    setDefGifts(gif);
+    setDefCustomer(cus);
+    toast.success("Padrões da empresa atualizados");
+  };
+
+  const applyDefaultsNow = () => {
+    setInclusosText(defIncluded);
+    setBrindesText(defGifts);
+    setPorContaText(defCustomer);
+    toast.success("Textos padrão aplicados");
+  };
+
 
 
   return (
@@ -1373,45 +1423,57 @@ function QuoteFormModal({
             )}
           </div>
 
-          {/* Itens inclusos / Brindes / Por conta do cliente */}
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <ItemListField
-              label="Itens inclusos"
-              placeholder="Ex: Piscina, Instalação"
-              accent="primary"
-              items={inclusos}
-              value={newIncluso}
-              setValue={setNewIncluso}
-              onAdd={() =>
-                addItem(inclusos, setInclusos, newIncluso, () => setNewIncluso(""))
-              }
-              onRemove={(i) => setInclusos(inclusos.filter((_, idx) => idx !== i))}
-            />
-            <ItemListField
-              label="Brindes"
-              placeholder="Ex: Led colorido, Kit limpeza"
-              accent="gift"
-              items={brindes}
-              value={newBrinde}
-              setValue={setNewBrinde}
-              onAdd={() =>
-                addItem(brindes, setBrindes, newBrinde, () => setNewBrinde(""))
-              }
-              onRemove={(i) => setBrindes(brindes.filter((_, idx) => idx !== i))}
-            />
-            <ItemListField
-              label="Por conta do cliente"
-              placeholder="Ex: Ponto de energia"
-              accent="warn"
-              items={porConta}
-              value={newPorConta}
-              setValue={setNewPorConta}
-              onAdd={() =>
-                addItem(porConta, setPorConta, newPorConta, () => setNewPorConta(""))
-              }
-              onRemove={(i) => setPorConta(porConta.filter((_, idx) => idx !== i))}
-            />
+          {/* Itens inclusos / Brindes / Por conta do cliente — textos multilinha,
+              pré-preenchidos com os padrões da empresa. */}
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Conteúdo do orçamento
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={applyDefaultsNow}
+                  disabled={!defaultsLoaded}
+                  className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent disabled:opacity-50"
+                  title="Recarrega os textos padrão da empresa neste orçamento"
+                >
+                  <RotateCcw className="h-3 w-3" /> Aplicar padrão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditDefaultsOpen(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+                >
+                  <SettingsIcon className="h-3 w-3" /> Editar padrão
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <TextBlockField
+                label="✅ Itens inclusos"
+                placeholder={"Ex:\n• Piscina 8x4\n• Instalação\n• Filtro"}
+                value={inclusosText}
+                onChange={setInclusosText}
+              />
+              <TextBlockField
+                label="🎁 Brindes"
+                placeholder={"Ex:\n• Led colorido\n• Kit limpeza"}
+                value={brindesText}
+                onChange={setBrindesText}
+              />
+              <TextBlockField
+                label="⚠️ Por conta do cliente"
+                placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
+                value={porContaText}
+                onChange={setPorContaText}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              As quebras de linha, emojis e marcadores são preservados na mensagem do WhatsApp.
+            </p>
           </div>
+
 
           {/* Observações */}
           <div className="md:col-span-2">
@@ -1519,9 +1581,138 @@ function QuoteFormModal({
         </div>
 
       </div>
+
+      <EditDefaultsDialog
+        open={editDefaultsOpen}
+        onOpenChange={setEditDefaultsOpen}
+        initialIncluded={defIncluded}
+        initialGifts={defGifts}
+        initialCustomer={defCustomer}
+        onSave={async (inc, gif, cus) => {
+          await saveDefaults(inc, gif, cus);
+          setEditDefaultsOpen(false);
+        }}
+      />
     </div>
   );
 }
+
+function TextBlockField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        {label}
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={6}
+        placeholder={placeholder}
+        className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y whitespace-pre-wrap font-mono"
+      />
+    </div>
+  );
+}
+
+function EditDefaultsDialog({
+  open,
+  onOpenChange,
+  initialIncluded,
+  initialGifts,
+  initialCustomer,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initialIncluded: string;
+  initialGifts: string;
+  initialCustomer: string;
+  onSave: (inc: string, gif: string, cus: string) => Promise<void>;
+}) {
+  const [inc, setInc] = useState(initialIncluded);
+  const [gif, setGif] = useState(initialGifts);
+  const [cus, setCus] = useState(initialCustomer);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setInc(initialIncluded);
+      setGif(initialGifts);
+      setCus(initialCustomer);
+    }
+  }, [open, initialIncluded, initialGifts, initialCustomer]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar textos padrão dos orçamentos</DialogTitle>
+          <DialogDescription>
+            Esses textos serão usados automaticamente em todos os novos orçamentos da empresa.
+            Você ainda poderá editar em cada orçamento individualmente.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 gap-3 py-2">
+          <TextBlockField
+            label="✅ Itens inclusos"
+            placeholder={"Ex:\n• Piscina 8x4\n• Instalação completa\n• Filtro"}
+            value={inc}
+            onChange={setInc}
+          />
+          <TextBlockField
+            label="🎁 Brindes"
+            placeholder={"Ex:\n• Led colorido\n• Kit de limpeza"}
+            value={gif}
+            onChange={setGif}
+          />
+          <TextBlockField
+            label="⚠️ Por conta do cliente"
+            placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
+            value={cus}
+            onChange={setCus}
+          />
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await onSave(inc, gif, cus);
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Salvar padrão
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function Field({
   label,

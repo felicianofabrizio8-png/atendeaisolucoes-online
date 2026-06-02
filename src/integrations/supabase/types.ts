@@ -478,6 +478,9 @@ export type Database = {
           business_hours_start: string
           company_id: string
           created_at: string
+          default_quote_customer_responsibility: string | null
+          default_quote_gifts: string | null
+          default_quote_included_items: string | null
           greeting_message: string | null
           signature: string | null
           sla_minutes: number
@@ -520,6 +523,9 @@ export type Database = {
           business_hours_start?: string
           company_id: string
           created_at?: string
+          default_quote_customer_responsibility?: string | null
+          default_quote_gifts?: string | null
+          default_quote_included_items?: string | null
           greeting_message?: string | null
           signature?: string | null
           sla_minutes?: number
@@ -562,6 +568,9 @@ export type Database = {
           business_hours_start?: string
           company_id?: string
           created_at?: string
+          default_quote_customer_responsibility?: string | null
+          default_quote_gifts?: string | null
+          default_quote_included_items?: string | null
           greeting_message?: string | null
           signature?: string | null
           sla_minutes?: number
