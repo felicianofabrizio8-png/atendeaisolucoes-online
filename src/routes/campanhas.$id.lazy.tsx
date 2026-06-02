@@ -132,6 +132,50 @@ function CampaignDetailPage() {
     }
   }
 
+  async function performPublish() {
+    if (!c || publishing) return;
+    const canPublish =
+      c.objective === "whatsapp" &&
+      c.goal === "leads" &&
+      Boolean(c.media_url) &&
+      c.media_type !== "video" &&
+      Number(c.daily_budget ?? 0) > 0;
+    if (!canPublish) {
+      toast.error("No beta: WhatsApp + Leads + imagem única + orçamento diário.");
+      return;
+    }
+    setPublishing(true);
+    setPublishStage("Validando integração Meta…");
+    // Progresso simulado (o pipeline real é sequencial mas atômico do lado do servidor).
+    const stages = ["Enviando mídia…", "Criando campanha…", "Criando público…", "Publicando anúncio…"];
+    let i = 0;
+    const tick = window.setInterval(() => {
+      i = Math.min(i + 1, stages.length - 1);
+      setPublishStage(stages[i]);
+    }, 1200);
+    try {
+      const r = await publishFn({ data: { campaignId: c.id } });
+      window.clearInterval(tick);
+      if (r.ok) {
+        toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+      } else {
+        const msg = "message" in r && r.message ? r.message : "Falha ao publicar.";
+        toast.error(msg);
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+      }
+    } catch (e) {
+      window.clearInterval(tick);
+      toast.error(e instanceof Error ? e.message : "Erro inesperado ao publicar.");
+    } finally {
+      setPublishing(false);
+      setPublishStage("");
+    }
+  }
+
+
   const scores = useMemo(() => (c ? scoreCampaign(c) : null), [c]);
   const suggestions = useMemo(() => (c ? buildSuggestions(c) : []), [c]);
   const timeline = useMemo(() => (c ? buildTimeline(c) : []), [c]);
