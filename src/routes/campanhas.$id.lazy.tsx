@@ -192,7 +192,8 @@ function CampaignDetailPage() {
 
         <aside className="rounded-xl border bg-card p-4 space-y-3 text-sm">
           <h2 className="text-sm font-semibold">Detalhes</h2>
-          <Info icon={Target} label="Objetivo" value={objectiveLabel(c.objective)} />
+          <Info icon={Target} label="Canal" value={channelLabel(c.objective)} />
+          <Info icon={Sparkles} label="Objetivo" value={goalLabel((c as any).goal)} />
           <Info icon={MapPin} label="Local" value={c.city ?? "—"} />
           <Info
             icon={MapPin}
