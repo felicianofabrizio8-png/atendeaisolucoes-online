@@ -293,6 +293,66 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_metrics: {
+        Row: {
+          campaign_id: string
+          clicks: number
+          company_id: string
+          cpc: number
+          cpm: number
+          created_at: string
+          ctr: number
+          id: string
+          impressions: number
+          leads: number
+          messages: number
+          metric_date: string | null
+          raw: Json
+          reach: number
+          source: string
+          spent: number
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          clicks?: number
+          company_id: string
+          cpc?: number
+          cpm?: number
+          created_at?: string
+          ctr?: number
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          metric_date?: string | null
+          raw?: Json
+          reach?: number
+          source?: string
+          spent?: number
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          clicks?: number
+          company_id?: string
+          cpc?: number
+          cpm?: number
+          created_at?: string
+          ctr?: number
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          metric_date?: string | null
+          raw?: Json
+          reach?: number
+          source?: string
+          spent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           ai_diagnosis: string | null
@@ -308,7 +368,13 @@ export type Database = {
           media_type: string | null
           media_url: string | null
           messages_count: number
+          meta_ad_id: string | null
+          meta_adset_id: string | null
           meta_campaign_id: string | null
+          meta_delivery_status: string | null
+          meta_last_sync_at: string | null
+          meta_publish_error: string | null
+          meta_sync_status: string
           name: string
           objective: string
           primary_text: string | null
@@ -333,7 +399,13 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           messages_count?: number
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
           meta_campaign_id?: string | null
+          meta_delivery_status?: string | null
+          meta_last_sync_at?: string | null
+          meta_publish_error?: string | null
+          meta_sync_status?: string
           name: string
           objective?: string
           primary_text?: string | null
@@ -358,7 +430,13 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           messages_count?: number
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
           meta_campaign_id?: string | null
+          meta_delivery_status?: string | null
+          meta_last_sync_at?: string | null
+          meta_publish_error?: string | null
+          meta_sync_status?: string
           name?: string
           objective?: string
           primary_text?: string | null
