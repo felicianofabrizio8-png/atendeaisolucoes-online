@@ -716,7 +716,7 @@ function Card({
 
 function CardHead({ title }: { title: string }) {
   return (
-    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
       {title}
     </div>
   );
