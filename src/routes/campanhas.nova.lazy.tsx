@@ -622,7 +622,7 @@ function NewCampaignPage() {
         {/* RIGHT: sticky preview */}
         <aside className="lg:sticky lg:top-4 space-y-3">
           <Card>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2.5">
               <div className="text-sm font-semibold flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 Preview do anúncio
@@ -631,27 +631,34 @@ function NewCampaignPage() {
                 Tempo real
               </span>
             </div>
-            <div key={`${form.headline}-${form.cta}-${form.media_url}`} className="animate-fade-in">
-              <Suspense
-                fallback={
-                  <div className="text-sm text-muted-foreground py-10 text-center">
-                    Carregando preview…
-                  </div>
-                }
-              >
-                <CreativePreview
-                  data={{
-                    headline: form.headline,
-                    primary_text: form.primary_text,
-                    cta: form.cta,
-                    media_url: form.media_url,
-                    media_type: form.media_type,
-                    product: form.product,
-                  }}
-                />
-              </Suspense>
-            </div>
+            <Suspense
+              fallback={
+                <div className="space-y-2">
+                  <div className="h-7 w-40 rounded-md bg-muted animate-pulse" />
+                  <div className="aspect-square w-full rounded-xl bg-muted animate-pulse" />
+                </div>
+              }
+            >
+              <CreativePreview
+                data={{
+                  headline: form.headline,
+                  primary_text: form.primary_text,
+                  cta: form.cta,
+                  media_url: form.media_url,
+                  media_type: form.media_type,
+                  product: form.product,
+                }}
+              />
+            </Suspense>
           </Card>
+
+          <AIInsights
+            headline={form.headline}
+            primary_text={form.primary_text}
+            cta={form.cta}
+            objective={form.objective}
+            media_url={form.media_url}
+          />
         </aside>
       </div>
 
