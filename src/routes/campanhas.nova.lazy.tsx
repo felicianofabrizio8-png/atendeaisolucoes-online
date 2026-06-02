@@ -28,13 +28,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-export type CampaignGoal =
-  | "awareness"
-  | "traffic"
-  | "engagement"
-  | "leads"
-  | "sales"
-  | "reactivation";
+// CampaignGoal type now lives in @/lib/campaigns
 
 const GOALS: {
   id: CampaignGoal;
