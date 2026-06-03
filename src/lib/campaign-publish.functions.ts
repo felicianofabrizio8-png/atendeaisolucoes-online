@@ -204,7 +204,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
 
-    async function fail(stage: string, message: string, raw?: unknown) {
+    async function fail(stage: string, message: string, raw?: unknown, extra?: Record<string, unknown>) {
       const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
       const err = rawBody.error ?? {};
       const tags = [
@@ -217,6 +217,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         error_subcode: err.error_subcode ?? null,
         fbtrace_id: err.fbtrace_id ?? null,
         raw: raw ?? null,
+        extra: extra ?? null,
       });
       await supabase
         .from("campaigns")
@@ -239,6 +240,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
             error_subcode: err.error_subcode ?? null,
             fbtrace_id: err.fbtrace_id ?? null,
             raw: raw ?? null,
+            ...(extra ?? {}),
           } as never,
         });
       } catch (e) {
