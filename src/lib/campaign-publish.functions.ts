@@ -346,26 +346,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const isStory = /story|reel|vertical/i.test(placementHint);
       const maxW = 1080;
       const maxH = isStory ? 1920 : 1080;
-      const photon = await import("@cf-wasm/photon");
+      const { Jimp } = await import("jimp");
       const rawBytes = new Uint8Array(await imgBlob.arrayBuffer());
-      const img = photon.PhotonImage.new_from_byteslice(rawBytes);
-      const w0 = img.get_width();
-      const h0 = img.get_height();
+      const img = await Jimp.read(rawBytes as unknown as Buffer);
+      const w0 = img.bitmap.width;
+      const h0 = img.bitmap.height;
       const scale = Math.min(1, maxW / w0, maxH / h0);
       const tw = Math.max(1, Math.round(w0 * scale));
       const th = Math.max(1, Math.round(h0 * scale));
-      const resized = scale < 1
-        ? photon.resize(img, tw, th, photon.SamplingFilter.Lanczos3)
-        : img;
-      let quality = 85;
-      let outBytes = resized.get_bytes_jpeg(quality);
-      while (outBytes.byteLength > 4 * 1024 * 1024 && quality > 50) {
-        quality -= 10;
-        outBytes = resized.get_bytes_jpeg(quality);
+      if (scale < 1) {
+        img.resize({ w: tw, h: th });
       }
-      if (resized !== img) resized.free();
-      img.free();
-      imgBlob = new Blob([outBytes.slice().buffer as ArrayBuffer], { type: "image/jpeg" });
+      // Flatten alpha onto white to ensure RGB JPEG output
+      let quality = 85;
+      let outBuf = await img.getBuffer("image/jpeg", { quality });
+      while (outBuf.byteLength > 4 * 1024 * 1024 && quality > 50) {
+        quality -= 10;
+        outBuf = await img.getBuffer("image/jpeg", { quality });
+      }
+      imgBlob = new Blob([new Uint8Array(outBuf).buffer as ArrayBuffer], { type: "image/jpeg" });
       imgSize = imgBlob.size;
       imgContentType = "image/jpeg";
       console.log("[publishCampaign] media normalized", {
