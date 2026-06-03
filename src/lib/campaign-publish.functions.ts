@@ -359,7 +359,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         }),
       },
     );
-    if (!adRes.ok) return fail("create_ad", adRes.message, adRes.body);
+    if (!adRes.ok) return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
     const metaAdId = adRes.data.id;
 
     // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
