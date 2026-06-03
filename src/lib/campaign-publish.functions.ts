@@ -651,15 +651,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       );
     }
 
-    const waLink = waPhone ? `https://wa.me/${waPhone}` : "";
+    // Meta aceita wa.me OU api.whatsapp.com/send. Usamos o formato oficial recomendado.
+    const waLink = waPhone ? `https://api.whatsapp.com/send?phone=${waPhone}` : "";
     const messengerLink = `https://m.me/${pageId}`;
     const igLink = `https://ig.me/m/${igActorId}`;
     const destLink = channel === "whatsapp" ? waLink : channel === "messenger" ? messengerLink : igLink;
     const fallbackMessage = (camp.primary_text ?? camp.headline ?? camp.name ?? "Olá! Posso te ajudar?").trim() || "Olá! Posso te ajudar?";
 
+    // CTA value: APENAS app_destination + link. Campos extras (ex.: whatsapp_number)
+    // fazem a Meta rejeitar com code=100 subcode=1487390 (erro genérico de creative).
     function buildCtaValue(): Record<string, unknown> {
       if (channel === "whatsapp") {
-        return { app_destination: "WHATSAPP", link: waLink, whatsapp_number: waPhone };
+        return { app_destination: "WHATSAPP", link: waLink };
       }
       if (channel === "messenger") {
         return { app_destination: "MESSENGER", link: messengerLink };
@@ -667,30 +670,38 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { app_destination: "INSTAGRAM_DIRECT", link: igLink };
     }
 
-    function buildLinkData(simple: boolean): Record<string, unknown> {
+    type CreativeMode = "advanced" | "simple" | "picture";
+
+    function buildLinkData(mode: CreativeMode): Record<string, unknown> {
       const ld: Record<string, unknown> = {
         message: fallbackMessage,
         link: destLink,
-        image_hash: imageHash,
         call_to_action: { type: ctaEnum, value: buildCtaValue() },
       };
-      if (!simple) {
+      // Modo "picture" usa URL pública (camp.media_url) em vez de image_hash —
+      // último recurso quando o hash é rejeitado pela Meta.
+      if (mode === "picture" && camp.media_url) {
+        ld.picture = camp.media_url;
+      } else {
+        ld.image_hash = imageHash;
+      }
+      if (mode === "advanced") {
         ld.name = camp.headline ?? camp.name;
       }
       return ld;
     }
 
-    function buildCreativePayload(simple: boolean) {
+    function buildCreativePayload(mode: CreativeMode) {
       const oss: Record<string, unknown> = {
         page_id: pageId,
-        link_data: buildLinkData(simple),
+        link_data: buildLinkData(mode),
       };
-      // Instagram requer instagram_actor_id no object_story_spec.
       if (channel === "instagram" && igActorId) {
         oss.instagram_actor_id = igActorId;
       }
+      const suffix = mode === "advanced" ? "" : mode === "simple" ? " (fallback)" : " (picture)";
       return {
-        name: `${camp.name} — creative${simple ? " (fallback)" : ""}`,
+        name: `${camp.name} — creative${suffix}`,
         object_story_spec: oss,
       };
     }
