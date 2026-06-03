@@ -137,7 +137,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     } finally { setLoadingAccounts(false); }
   }, [fetchAccounts, fetchPages]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh({ silent: true }); }, [refresh]);
 
   // Carrega assets automaticamente assim que tivermos integração Meta conectada.
   useEffect(() => {
