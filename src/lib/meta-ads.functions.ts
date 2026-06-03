@@ -32,30 +32,24 @@ type Integ = {
   active: boolean;
 };
 
-async function loadActiveMetaIntegrations(
-  supabase: { from: (t: string) => unknown },
-  companyId: string,
-): Promise<Integ[]> {
-  const sb = supabase as unknown as {
-    from: (t: string) => {
-      select: (s: string) => {
-        eq: (k: string, v: unknown) => {
-          eq: (k: string, v: unknown) => {
-            in: (k: string, v: string[]) => Promise<{ data: unknown }>;
-          };
-        };
-      };
-    };
-  };
-  const { data } = await sb
+async function loadActiveMetaIntegrations(companyId: string): Promise<Integ[]> {
+  // Usa admin client porque a tabela `integrations` tem SELECT revogado de
+  // authenticated (para proteger access_token). RLS sozinho não basta — sem
+  // GRANT a leitura volta vazia e cai em "no_integration".
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
     .from("integrations")
-    .select(
-      "id, channel, access_token, account_metadata, external_account_id, display_name, active",
-    )
+    .select("id, channel, access_token, account_metadata, external_account_id, display_name, active")
     .eq("company_id", companyId)
     .eq("active", true)
     .in("channel", ["instagram", "facebook"]);
-  return ((data ?? []) as unknown as Integ[]).filter((i) => Boolean(i.access_token));
+  if (error) {
+    console.error("[meta-ads] loadActiveMetaIntegrations error", error);
+    return [];
+  }
+  const rows = ((data ?? []) as unknown as Integ[]).filter((i) => Boolean(i.access_token));
+  console.log("[meta-ads] loadActiveMetaIntegrations", { companyId, total: data?.length ?? 0, withToken: rows.length });
+  return rows;
 }
 
 function pickPrimaryIntegration(list: Integ[]): Integ | null {
