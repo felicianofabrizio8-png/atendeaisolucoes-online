@@ -1,8 +1,11 @@
 // Server functions for Meta Ads pilot readiness.
-// - listMetaAdAccounts: busca contas de anúncio da Meta via Graph API
+// - listMetaAdAccounts: agrega contas via tokens de TODAS integrações Meta ativas
+//                       + fallback /me/businesses → owned_ad_accounts/client_ad_accounts
+// - listMetaPages: lista páginas Facebook conhecidas (tabela meta_pages)
 // - selectMetaAdAccount: salva ad_account_id em integrations.account_metadata
-// - getMetaPublishReadiness: checklist agregado para a empresa
-// - enableMetaBeta: liga/desliga a flag meta_campaigns_beta (admin)
+// - selectMetaPage: salva fb_page_id em integrations.account_metadata
+// - getMetaPublishReadiness: checklist agregado para a empresa (auto-resolve assets)
+// - setMetaBetaFlag: liga/desliga meta_campaigns_beta (admin)
 //
 // Nada de inbox/WhatsApp/webhooks/IA/storage é alterado aqui.
 
@@ -29,11 +32,22 @@ type Integ = {
   active: boolean;
 };
 
-async function loadActiveMetaIntegration(
-  supabase: { from: (t: string) => { select: (s: string) => { eq: (k: string, v: unknown) => { eq: (k: string, v: unknown) => { in: (k: string, v: string[]) => Promise<{ data: unknown }> } } } } },
+async function loadActiveMetaIntegrations(
+  supabase: { from: (t: string) => unknown },
   companyId: string,
-): Promise<Integ | null> {
-  const { data } = await supabase
+): Promise<Integ[]> {
+  const sb = supabase as unknown as {
+    from: (t: string) => {
+      select: (s: string) => {
+        eq: (k: string, v: unknown) => {
+          eq: (k: string, v: unknown) => {
+            in: (k: string, v: string[]) => Promise<{ data: unknown }>;
+          };
+        };
+      };
+    };
+  };
+  const { data } = await sb
     .from("integrations")
     .select(
       "id, channel, access_token, account_metadata, external_account_id, display_name, active",
@@ -41,10 +55,15 @@ async function loadActiveMetaIntegration(
     .eq("company_id", companyId)
     .eq("active", true)
     .in("channel", ["instagram", "facebook"]);
-  const list = (data ?? []) as unknown as Integ[];
+  return ((data ?? []) as unknown as Integ[]).filter((i) => Boolean(i.access_token));
+}
+
+function pickPrimaryIntegration(list: Integ[]): Integ | null {
   if (list.length === 0) return null;
-  // Prefer integration that already has ad_account_id; else first.
-  return list.find((i) => Boolean((i.account_metadata ?? {})["ad_account_id"])) ?? list[0];
+  return (
+    list.find((i) => Boolean((i.account_metadata ?? {})["ad_account_id"])) ??
+    list[0]
+  );
 }
 
 async function getCompanyId(
@@ -59,15 +78,108 @@ async function getCompanyId(
   return data?.company_id ?? null;
 }
 
-async function hasAdminRole(
-  supabase: unknown,
-  userId: string,
-): Promise<boolean> {
+async function hasAdminRole(supabase: unknown, userId: string): Promise<boolean> {
   const sb = supabase as {
     rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null }>;
   };
   const { data } = await sb.rpc("has_role", { _user_id: userId, _role: "admin" });
   return Boolean(data);
+}
+
+type AdAcc = {
+  id: string;
+  account_id: string;
+  name: string;
+  status: number;
+  currency: string;
+  timezone: string;
+  business: string | null;
+  source: string;
+};
+
+async function fetchJSON(url: string): Promise<{ ok: boolean; status: number; body: unknown }> {
+  try {
+    const r = await fetch(url);
+    const t = await r.text();
+    let body: unknown = {};
+    try { body = t ? JSON.parse(t) : {}; } catch { body = { _raw: t }; }
+    return { ok: r.ok, status: r.status, body };
+  } catch (e) {
+    return { ok: false, status: 0, body: { error: { message: e instanceof Error ? e.message : "network" } } };
+  }
+}
+
+async function gatherAdAccountsForToken(token: string): Promise<{ accounts: AdAcc[]; logs: string[] }> {
+  const accounts: AdAcc[] = [];
+  const logs: string[] = [];
+  const fields = "id,account_id,name,account_status,currency,timezone_name,business{id,name}";
+
+  // 1) /me/adaccounts
+  const me = await fetchJSON(`${GRAPH}/me/adaccounts?fields=${fields}&limit=200&access_token=${encodeURIComponent(token)}`);
+  if (me.ok) {
+    const data = ((me.body as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>;
+    logs.push(`/me/adaccounts → ${data.length}`);
+    for (const a of data) {
+      accounts.push({
+        id: String(a.id ?? ""),
+        account_id: String((a.account_id as string) ?? String(a.id ?? "").replace(/^act_/, "")),
+        name: String(a.name ?? a.id ?? ""),
+        status: Number(a.account_status ?? 0),
+        currency: String(a.currency ?? ""),
+        timezone: String(a.timezone_name ?? ""),
+        business: ((a.business as { name?: string } | undefined)?.name) ?? null,
+        source: "me",
+      });
+    }
+  } else {
+    logs.push(`/me/adaccounts ERR ${me.status}: ${JSON.stringify((me.body as { error?: unknown }).error ?? me.body).slice(0, 200)}`);
+  }
+
+  // 2) /me/businesses → owned_ad_accounts + client_ad_accounts
+  const biz = await fetchJSON(`${GRAPH}/me/businesses?fields=id,name&limit=50&access_token=${encodeURIComponent(token)}`);
+  if (biz.ok) {
+    const businesses = ((biz.body as { data?: unknown[] }).data ?? []) as Array<{ id?: string; name?: string }>;
+    logs.push(`/me/businesses → ${businesses.length}`);
+    for (const b of businesses) {
+      if (!b.id) continue;
+      for (const edge of ["owned_ad_accounts", "client_ad_accounts"] as const) {
+        const r = await fetchJSON(`${GRAPH}/${b.id}/${edge}?fields=${fields}&limit=200&access_token=${encodeURIComponent(token)}`);
+        if (r.ok) {
+          const data = ((r.body as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>;
+          logs.push(`biz ${b.id}/${edge} → ${data.length}`);
+          for (const a of data) {
+            accounts.push({
+              id: String(a.id ?? ""),
+              account_id: String((a.account_id as string) ?? String(a.id ?? "").replace(/^act_/, "")),
+              name: String(a.name ?? a.id ?? ""),
+              status: Number(a.account_status ?? 0),
+              currency: String(a.currency ?? ""),
+              timezone: String(a.timezone_name ?? ""),
+              business: b.name ?? null,
+              source: `biz:${edge}`,
+            });
+          }
+        } else {
+          logs.push(`biz ${b.id}/${edge} ERR ${r.status}`);
+        }
+      }
+    }
+  } else {
+    logs.push(`/me/businesses ERR ${biz.status}`);
+  }
+
+  return { accounts, logs };
+}
+
+async function fetchScopes(token: string): Promise<string[]> {
+  try {
+    const r = await fetchJSON(
+      `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
+    );
+    if (!r.ok) return [];
+    const scopes = ((r.body as { data?: { scopes?: string[] } }).data?.scopes) ?? [];
+    return scopes;
+  } catch { return []; }
 }
 
 // ----------------- LIST AD ACCOUNTS -----------------
@@ -78,70 +190,87 @@ export const listMetaAdAccounts = createServerFn({ method: "POST" })
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
 
-    const integ = await loadActiveMetaIntegration(supabase as never, companyId);
-    if (!integ?.access_token) {
+    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    if (integrations.length === 0) {
       return { ok: false as const, error: "no_integration", message: "Conecte uma conta Meta antes." };
     }
 
-    const token = integ.access_token;
-
-    // 1) Lista ad accounts
-    const accRes = await fetch(
-      `${GRAPH}/me/adaccounts?fields=id,account_id,name,account_status,currency,timezone_name,business{id,name}&access_token=${encodeURIComponent(token)}`,
-    );
-    const accText = await accRes.text();
-    if (!accRes.ok) {
-      return { ok: false as const, error: "graph_error", message: accText.slice(0, 500) };
-    }
-    const accBody = JSON.parse(accText) as {
-      data?: Array<{
-        id: string;
-        account_id?: string;
-        name?: string;
-        account_status?: number;
-        currency?: string;
-        timezone_name?: string;
-        business?: { id?: string; name?: string };
-      }>;
-    };
-
-    // 2) Lista scopes do token (debug_token requer app token; usar o próprio token funciona em modo dev)
-    let scopes: string[] = [];
-    try {
-      const dbgRes = await fetch(
-        `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
-      );
-      if (dbgRes.ok) {
-        const dbg = (await dbgRes.json()) as { data?: { scopes?: string[] } };
-        scopes = dbg.data?.scopes ?? [];
+    // Agrega contas de todos os tokens.
+    const seen = new Map<string, AdAcc>();
+    const allLogs: string[] = [];
+    const allScopes = new Set<string>();
+    for (const integ of integrations) {
+      const token = integ.access_token!;
+      allLogs.push(`# integration ${integ.display_name ?? integ.id}`);
+      const [{ accounts, logs }, scopes] = await Promise.all([
+        gatherAdAccountsForToken(token),
+        fetchScopes(token),
+      ]);
+      scopes.forEach((s) => allScopes.add(s));
+      allLogs.push(...logs);
+      for (const a of accounts) {
+        if (!a.account_id) continue;
+        if (!seen.has(a.account_id)) seen.set(a.account_id, a);
       }
-    } catch {
-      /* noop */
     }
 
-    const accounts = (accBody.data ?? []).map((a) => ({
-      id: a.id,
-      account_id: a.account_id ?? a.id.replace(/^act_/, ""),
-      name: a.name ?? a.id,
-      status: a.account_status ?? 0,
-      currency: a.currency ?? "",
-      timezone: a.timezone_name ?? "",
-      business: a.business?.name ?? null,
-    }));
+    const accounts = Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const primary = pickPrimaryIntegration(integrations)!;
+    const selectedAdAccountId = String(((primary.account_metadata ?? {}) as Record<string, unknown>)["ad_account_id"] ?? "");
+    const missingScopes = REQUIRED_SCOPES.filter((s) => !allScopes.has(s));
 
-    const meta = (integ.account_metadata ?? {}) as Record<string, unknown>;
-    const selectedAdAccountId = String(meta["ad_account_id"] ?? "");
-
-    const missingScopes = REQUIRED_SCOPES.filter((s) => !scopes.includes(s));
+    // Server-side debug log (aparece em server-function-logs).
+    console.log("[meta-ads] listMetaAdAccounts", {
+      companyId,
+      integrations: integrations.length,
+      accountsFound: accounts.length,
+      missingScopes,
+      logs: allLogs,
+    });
 
     return {
       ok: true as const,
-      integrationId: integ.id,
-      integrationName: integ.display_name ?? "",
+      integrationId: primary.id,
+      integrationName: primary.display_name ?? "",
       accounts,
       selectedAdAccountId,
-      scopes,
+      scopes: Array.from(allScopes),
       missingScopes,
+      debug: allLogs,
+    };
+  });
+
+// ----------------- LIST META PAGES -----------------
+export const listMetaPages = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+
+    const { data } = await supabase
+      .from("meta_pages")
+      .select("id, page_id, page_name, ig_business_account_id, ig_username, active, integration_id")
+      .eq("company_id", companyId)
+      .eq("active", true);
+
+    const pages = (data ?? []) as Array<{
+      id: string; page_id: string; page_name: string;
+      ig_business_account_id: string | null; ig_username: string | null;
+      active: boolean; integration_id: string | null;
+    }>;
+
+    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const primary = pickPrimaryIntegration(integrations);
+    const selectedPageId = primary
+      ? String(((primary.account_metadata ?? {}) as Record<string, unknown>)["fb_page_id"] ?? primary.external_account_id ?? "")
+      : "";
+
+    return {
+      ok: true as const,
+      integrationId: primary?.id ?? null,
+      pages,
+      selectedPageId,
     };
   });
 
@@ -151,7 +280,7 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z
       .object({
-        integrationId: z.string().uuid(),
+        integrationId: z.string().uuid().optional(),
         adAccountId: z.string().min(1).max(64).regex(/^(act_)?[0-9]+$/),
       })
       .parse(input),
@@ -163,31 +292,61 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
     const isAdmin = await hasAdminRole(supabase, userId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin pode alterar." };
 
-    // Verifica que a integração pertence à empresa.
-    const { data: integ } = await supabase
-      .from("integrations")
-      .select("id, company_id, account_metadata")
-      .eq("id", data.integrationId)
-      .maybeSingle();
-    const row = integ as { id: string; company_id: string; account_metadata: Record<string, unknown> | null } | null;
-    if (!row || row.company_id !== companyId) {
-      return { ok: false as const, error: "not_found" };
-    }
+    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const target = data.integrationId
+      ? integrations.find((i) => i.id === data.integrationId)
+      : pickPrimaryIntegration(integrations);
+    if (!target) return { ok: false as const, error: "not_found", message: "Integração Meta não encontrada." };
 
-    const normalized = data.adAccountId.startsWith("act_")
-      ? data.adAccountId
-      : `act_${data.adAccountId}`;
-    const newMeta = { ...(row.account_metadata ?? {}), ad_account_id: normalized };
+    const normalized = data.adAccountId.startsWith("act_") ? data.adAccountId : `act_${data.adAccountId}`;
+    const newMeta = { ...(target.account_metadata ?? {}), ad_account_id: normalized };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Propaga ad_account_id em TODAS integrações Meta da empresa (mesma conta de anúncios).
+    const ids = integrations.map((i) => i.id);
+    const updates = await Promise.all(ids.map(async (id) => {
+      const current = integrations.find((i) => i.id === id)!;
+      const meta = { ...(current.account_metadata ?? {}), ad_account_id: normalized };
+      return supabaseAdmin.from("integrations").update({ account_metadata: meta }).eq("id", id).eq("company_id", companyId);
+    }));
+    const firstErr = updates.find((u) => u.error)?.error;
+    if (firstErr) return { ok: false as const, error: "update_failed", message: firstErr.message };
+
+    console.log("[meta-ads] selectMetaAdAccount saved", { companyId, adAccount: normalized, target: target.id, propagated: ids.length, newMeta });
+    return { ok: true as const, adAccountId: normalized };
+  });
+
+// ----------------- SELECT PAGE -----------------
+export const selectMetaPage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      pageId: z.string().min(1).max(64).regex(/^[0-9]+$/),
+      integrationId: z.string().uuid().optional(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+    const isAdmin = await hasAdminRole(supabase, userId);
+    if (!isAdmin) return { ok: false as const, error: "not_admin" };
+
+    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const target = data.integrationId
+      ? integrations.find((i) => i.id === data.integrationId)
+      : pickPrimaryIntegration(integrations);
+    if (!target) return { ok: false as const, error: "not_found" };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const newMeta = { ...(target.account_metadata ?? {}), fb_page_id: data.pageId };
     const { error } = await supabaseAdmin
-      .from("integrations")
-      .update({ account_metadata: newMeta })
-      .eq("id", data.integrationId)
-      .eq("company_id", companyId);
+      .from("integrations").update({ account_metadata: newMeta })
+      .eq("id", target.id).eq("company_id", companyId);
     if (error) return { ok: false as const, error: "update_failed", message: error.message };
 
-    return { ok: true as const, adAccountId: normalized };
+    console.log("[meta-ads] selectMetaPage saved", { companyId, pageId: data.pageId, target: target.id });
+    return { ok: true as const, pageId: data.pageId };
   });
 
 // ----------------- READINESS CHECKLIST -----------------
@@ -209,13 +368,14 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
 
     const isAdmin = await hasAdminRole(supabase, userId);
 
-    const integ = await loadActiveMetaIntegration(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integ = pickPrimaryIntegration(integrations);
     const meta = (integ?.account_metadata ?? {}) as Record<string, unknown>;
     const adAccountId = String(meta["ad_account_id"] ?? "");
     const pageId = String(meta["fb_page_id"] ?? integ?.external_account_id ?? "");
     const igId = String(meta["ig_business_account_id"] ?? "");
 
-    // WhatsApp connection
+    // WhatsApp
     const { data: waList } = await supabase
       .from("integrations")
       .select("id, active, account_metadata, external_account_id")
@@ -224,6 +384,11 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
       .eq("active", true);
     const waConnected = Array.isArray(waList) && waList.length > 0;
 
+    console.log("[meta-ads] readiness", {
+      companyId, integrations: integrations.length,
+      primary: integ?.id, adAccountId, pageId, betaEnabled, waConnected,
+    });
+
     return {
       ok: true as const,
       betaEnabled,
@@ -231,6 +396,7 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
       metaConnected: Boolean(integ?.access_token),
       integrationId: integ?.id ?? null,
       integrationName: integ?.display_name ?? "",
+      integrationCount: integrations.length,
       adAccountId,
       pageId,
       igBusinessAccountId: igId,
@@ -249,7 +415,6 @@ export const setMetaBetaFlag = createServerFn({ method: "POST" })
     const isAdmin = await hasAdminRole(supabase, userId);
     if (!isAdmin) return { ok: false as const, error: "not_admin" };
 
-    // RLS permite update da própria empresa por membros; ok via cliente do usuário.
     const { error } = await supabase
       .from("companies")
       .update({ meta_campaigns_beta: data.enabled } as never)
