@@ -98,7 +98,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         setReadiness(r as Readiness);
         if (!opts?.silent) toast.success("Status atualizado.");
       } else {
-        toast.error(("message" in r && r.message) || "Falha ao verificar prontidão.");
+        toast.error((("message" in r && typeof r.message === "string" && r.message) || "Falha ao verificar prontidão."));
       }
     } catch (e) {
       console.error("[MetaPanel] refresh error", e);
