@@ -103,22 +103,43 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { ok: false as const, error: "already_publishing", message: "Já existe uma publicação em andamento." };
     }
 
-    // 3) Busca integração Meta ativa (instagram/facebook) com ad_account_id.
-    const { data: integrations } = await supabase
-      .from("integrations")
-      .select("id, channel, access_token, account_metadata, external_account_id")
-      .eq("company_id", companyId)
-      .eq("active", true)
-      .in("channel", ["instagram", "facebook"]);
+    // 3) Busca integração Meta ativa via admin client — mesma rotina segura
+    // usada pelo readiness/listMetaAdAccounts. A tabela `integrations` tem
+    // SELECT revogado de authenticated (para proteger access_token), então
+    // o client do usuário retorna 0 linhas mesmo com integrações válidas.
+    const adminClient = await import("@/integrations/supabase/client.server");
     type Integ = {
       id: string;
       channel: string;
       access_token: string | null;
       account_metadata: Record<string, unknown> | null;
       external_account_id: string | null;
+      active: boolean;
+      display_name: string | null;
     };
-    const list = (integrations ?? []) as unknown as Integ[];
-    const integ = list.find((i) => Boolean((i.account_metadata ?? {})["ad_account_id"])) ?? list[0] ?? null;
+    const { data: integrations, error: integError } = await adminClient.supabaseAdmin
+      .from("integrations")
+      .select("id, channel, access_token, account_metadata, external_account_id, active, display_name")
+      .eq("company_id", companyId)
+      .eq("active", true)
+      .in("channel", ["instagram", "facebook"]);
+    if (integError) {
+      console.error("[publishCampaign] integrations query error", { campaignId, companyId, error: integError });
+    }
+    const list = ((integrations ?? []) as unknown as Integ[]).filter((i) => Boolean(i.access_token));
+    const integ =
+      list.find((i) => Boolean((i.account_metadata ?? {})["ad_account_id"])) ??
+      list[0] ??
+      null;
+    console.log("[publishCampaign] integration lookup", {
+      campaignId,
+      companyId,
+      totalFound: integrations?.length ?? 0,
+      withToken: list.length,
+      filter: { active: true, channels: ["instagram", "facebook"] },
+      picked: integ?.id ?? null,
+      pickedName: integ?.display_name ?? null,
+    });
     if (!integ || !integ.access_token) {
       return { ok: false as const, error: "no_integration", message: "Conecte uma conta Meta antes de publicar." };
     }
@@ -148,7 +169,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
       } as never)
       .eq("id", campaignId);
 
-    const adminClient = await import("@/integrations/supabase/client.server");
+
+
 
     async function fail(stage: string, message: string, raw?: unknown) {
       await supabase
