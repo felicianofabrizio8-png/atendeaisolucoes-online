@@ -751,7 +751,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         status: advanced.res.status, message: advanced.res.message,
       });
       const simple = await tryCreateCreative("simple");
-      attempts.push({ mode: "simple", payload: simple.payload, response: simple.res.body });
+      attempts.push({ mode: "simple", payload: simple.payload, response: resBody(simple.res) });
 
       if (simple.res.ok) {
         creativeId = simple.res.data.id;
@@ -761,7 +761,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           status: simple.res.status, message: simple.res.message,
         });
         const pic = await tryCreateCreative("picture");
-        attempts.push({ mode: "picture", payload: pic.payload, response: pic.res.body });
+        attempts.push({ mode: "picture", payload: pic.payload, response: resBody(pic.res) });
 
         if (!pic.res.ok) {
           console.error("[publishCampaign] all creative modes failed", { attempts });
