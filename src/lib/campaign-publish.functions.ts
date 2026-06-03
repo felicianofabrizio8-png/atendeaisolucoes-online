@@ -204,7 +204,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
 
-    async function fail(stage: string, message: string, raw?: unknown) {
+    async function fail(stage: string, message: string, raw?: unknown, extra?: Record<string, unknown>) {
       const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
       const err = rawBody.error ?? {};
       const tags = [
@@ -217,6 +217,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         error_subcode: err.error_subcode ?? null,
         fbtrace_id: err.fbtrace_id ?? null,
         raw: raw ?? null,
+        extra: extra ?? null,
       });
       await supabase
         .from("campaigns")
@@ -239,6 +240,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
             error_subcode: err.error_subcode ?? null,
             fbtrace_id: err.fbtrace_id ?? null,
             raw: raw ?? null,
+            ...(extra ?? {}),
           } as never,
         });
       } catch (e) {
@@ -566,43 +568,102 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Step D: cria creative. Usa image_hash (upload do usuário) se possível;
-    // caso contrário, passa `picture` com a URL pública direto (fallback).
-    // O link do CTA WHATSAPP_MESSAGE precisa de um wa.me válido com o número
-    // da página/empresa — sem isso a Meta retorna 400 em /adcreatives.
+    // Step D: cria creative. Tenta primeiro um payload "completo" (com headline
+    // e message) e, se a Meta recusar (typicamente code=100 / subcode=1487390
+    // por incompatibilidade de imagem / placements), faz fallback automático
+    // para o creative mínimo (somente link + CTA WhatsApp, feed only).
     const waLink = waPhone ? `https://wa.me/${waPhone}` : `https://www.facebook.com/${pageId}`;
-    const linkData: Record<string, unknown> = {
-      message: campaign.primary_text ?? "",
-      name: campaign.headline ?? campaign.name,
-      link: waLink,
-      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: waLink } },
-    };
-    if (imageHash) linkData.image_hash = imageHash;
-    else if (campaign.media_url) linkData.picture = campaign.media_url;
-    const creativePayload = {
-      name: `${campaign.name} — creative`,
-      object_story_spec: { page_id: pageId, link_data: linkData },
-    };
-    console.log("[publishCampaign] create_creative", {
-      pageId, usingImageHash: Boolean(imageHash), usingPictureUrl: !imageHash && Boolean(campaign.media_url),
-      waLink, payload: creativePayload,
-    });
-    const creativeRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(creativePayload),
-      },
-    );
-    if (!creativeRes.ok) {
-      console.error("[publishCampaign] create_creative fail", {
-        status: creativeRes.status, message: creativeRes.message, body: creativeRes.body,
-      });
-      return fail("create_creative", formatGraphError(creativeRes.body, creativeRes.message), creativeRes.body);
+    const camp = campaign!;
+
+    function buildLinkData(simple: boolean): Record<string, unknown> {
+      const ld: Record<string, unknown> = {
+        link: waLink,
+        call_to_action: {
+          type: "WHATSAPP_MESSAGE",
+          value: { app_destination: "WHATSAPP", link: waLink },
+        },
+      };
+      if (!simple) {
+        ld.message = camp.primary_text ?? "";
+        ld.name = camp.headline ?? camp.name;
+      }
+      if (imageHash) ld.image_hash = imageHash;
+      else if (camp.media_url) ld.picture = camp.media_url;
+      return ld;
     }
-    const creativeId = creativeRes.data.id;
-    console.log("[publishCampaign] create_creative ok", { creativeId });
+
+    function buildCreativePayload(simple: boolean) {
+      return {
+        name: `${camp.name} — creative${simple ? " (fallback)" : ""}`,
+        object_story_spec: { page_id: pageId, link_data: buildLinkData(simple) },
+      };
+    }
+
+    async function tryCreateCreative(simple: boolean) {
+      const payload = buildCreativePayload(simple);
+      const linkData = (payload.object_story_spec as { link_data: Record<string, unknown> }).link_data;
+      console.log("[publishCampaign] create_creative attempt", {
+        mode: simple ? "simple_fallback" : "advanced",
+        pageId,
+        instagram_actor_id: null,
+        image_hash: linkData.image_hash ?? null,
+        picture: linkData.picture ?? null,
+        call_to_action: linkData.call_to_action,
+        link_data: linkData,
+        object_story_spec: payload.object_story_spec,
+        degrees_of_freedom_spec: null,
+        asset_feed_spec: null,
+        creative_features_spec: null,
+        placement: simple ? "feed_only" : "default",
+        waLink,
+        payload,
+      });
+      const res = await graphFetch<{ id: string }>(
+        `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      return { res, payload };
+    }
+
+    let creativeId: string;
+    const primary = await tryCreateCreative(false);
+    if (primary.res.ok) {
+      creativeId = primary.res.data.id;
+      console.log("[publishCampaign] create_creative ok", { creativeId, mode: "advanced" });
+    } else {
+      console.warn("[publishCampaign] create_creative advanced fail — tentando fallback simples", {
+        status: primary.res.status, message: primary.res.message, body: primary.res.body,
+        payload: primary.payload,
+      });
+      const fallback = await tryCreateCreative(true);
+      if (!fallback.res.ok) {
+        console.error("[publishCampaign] create_creative fallback fail", {
+          status: fallback.res.status, message: fallback.res.message, body: fallback.res.body,
+          payload: fallback.payload,
+        });
+        return fail(
+          "create_creative",
+          formatGraphError(fallback.res.body, fallback.res.message),
+          fallback.res.body,
+          {
+            advanced_payload: primary.payload,
+            advanced_response: primary.res.body,
+            fallback_payload: fallback.payload,
+            fallback_response: fallback.res.body,
+            page_id: pageId,
+            image_hash: imageHash ?? null,
+            wa_link: waLink,
+          },
+        );
+      }
+      creativeId = fallback.res.data.id;
+      console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple_fallback" });
+    }
+
 
     // Step E: cria ad.
     const adPayload = {
