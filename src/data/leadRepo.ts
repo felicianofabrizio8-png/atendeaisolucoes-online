@@ -184,6 +184,9 @@ type DbMessage = {
   at: string;
   source_subtype?: string | null;
   source_metadata?: Record<string, unknown> | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_for?: string | null;
 };
 
 function toMessage(r: DbMessage): Message {
@@ -195,6 +198,9 @@ function toMessage(r: DbMessage): Message {
     at: r.at,
     sourceSubtype: r.source_subtype ?? undefined,
     sourceMetadata: r.source_metadata ?? undefined,
+    editedAt: r.edited_at ?? undefined,
+    deletedAt: r.deleted_at ?? undefined,
+    deletedFor: (r.deleted_for as "me" | "everyone" | null) ?? undefined,
   };
 }
 
