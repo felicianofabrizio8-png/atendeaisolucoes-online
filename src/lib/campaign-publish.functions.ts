@@ -348,7 +348,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const maxH = isStory ? 1920 : 1080;
       const { Jimp } = await import("jimp");
       const rawBytes = new Uint8Array(await imgBlob.arrayBuffer());
-      const img = await Jimp.read(rawBytes as unknown as Buffer);
+      const sig = Array.from(rawBytes.slice(0, 4)).join(",");
+      console.log("[publishCampaign] image input", {
+        inputType: "Blob", mime: imgContentType, size: imgSize,
+        bufferLength: rawBytes.byteLength, signature: sig, source: imgSource,
+      });
+      // Jimp.read trata string como URL/path. Para bytes brutos é obrigatório
+      // usar Jimp.fromBuffer com um Buffer real (não Uint8Array).
+      const buf = Buffer.from(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+      const img = await Jimp.fromBuffer(buf);
       const w0 = img.bitmap.width;
       const h0 = img.bitmap.height;
       const scale = Math.min(1, maxW / w0, maxH / h0);
