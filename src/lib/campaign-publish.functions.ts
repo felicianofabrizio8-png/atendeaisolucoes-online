@@ -289,6 +289,44 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
     // Step C: cria adset (Click to WhatsApp).
     const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
+
+    // Resolve cidade via Meta Targeting Search (geo_locations.cities exige `key`).
+    let geoLocations: Record<string, unknown> = { countries: ["BR"] };
+    if (campaign.city) {
+      const searchUrl =
+        `${GRAPH}/search?type=adgeolocation` +
+        `&q=${encodeURIComponent(campaign.city)}` +
+        `&location_types=${encodeURIComponent(JSON.stringify(["city"]))}` +
+        `&country_code=BR&limit=5` +
+        `&access_token=${encodeURIComponent(accessToken)}`;
+      const geoRes = await graphFetch<{ data: Array<{ key: string; name: string; country_code?: string }> }>(
+        searchUrl,
+        { method: "GET" },
+      );
+      const results = geoRes.ok ? geoRes.data?.data ?? [] : [];
+      const match =
+        results.find((r) => (r.country_code ?? "").toUpperCase() === "BR") ?? results[0];
+      console.log("[publishCampaign] geo search", {
+        city: campaign.city,
+        results: results.map((r) => ({ key: r.key, name: r.name, cc: r.country_code })),
+        chosen: match?.key ?? null,
+      });
+      if (match?.key) {
+        geoLocations = {
+          cities: [
+            {
+              key: match.key,
+              radius: campaign.radius_km ?? 25,
+              distance_unit: "kilometer",
+            },
+          ],
+        };
+      }
+    }
+
+    const targeting = { geo_locations: geoLocations };
+    console.log("[publishCampaign] adset targeting", targeting);
+
     const adsetRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
       {
@@ -303,11 +341,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           destination_type: "WHATSAPP",
           bid_strategy: "LOWEST_COST_WITHOUT_CAP",
           status: "PAUSED",
-          targeting: {
-            geo_locations: campaign.city
-              ? { custom_locations: [{ name: campaign.city, radius: campaign.radius_km ?? 25, distance_unit: "kilometer" }] }
-              : { countries: ["BR"] },
-          },
+          targeting,
           promoted_object: { page_id: pageId },
         }),
       },
