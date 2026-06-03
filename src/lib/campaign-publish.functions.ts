@@ -446,59 +446,82 @@ export const publishCampaign = createServerFn({ method: "POST" })
       },
     );
     if (!adsetRes.ok) {
+      console.error("[publishCampaign] create_adset fail", {
+        status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
+      });
       // Tenta rollback da campaign criada (best-effort).
       void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
       return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
     }
     const metaAdsetId = adsetRes.data.id;
+    console.log("[publishCampaign] create_adset ok", { metaAdsetId });
 
-    // Step D: cria creative. Usa image_hash se conseguimos upload; caso
-    // contrário, passa `picture` com a URL pública direto (fallback).
+    // Step D: cria creative. Usa image_hash (upload do usuário) se possível;
+    // caso contrário, passa `picture` com a URL pública direto (fallback).
+    // O link do CTA WHATSAPP_MESSAGE precisa de um wa.me válido com o número
+    // da página/empresa — sem isso a Meta retorna 400 em /adcreatives.
+    const waLink = waPhone ? `https://wa.me/${waPhone}` : `https://www.facebook.com/${pageId}`;
     const linkData: Record<string, unknown> = {
       message: campaign.primary_text ?? "",
       name: campaign.headline ?? campaign.name,
-      link: `https://wa.me/`,
-      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+      link: waLink,
+      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: waLink } },
     };
     if (imageHash) linkData.image_hash = imageHash;
     else if (campaign.media_url) linkData.picture = campaign.media_url;
+    const creativePayload = {
+      name: `${campaign.name} — creative`,
+      object_story_spec: { page_id: pageId, link_data: linkData },
+    };
     console.log("[publishCampaign] create_creative", {
       pageId, usingImageHash: Boolean(imageHash), usingPictureUrl: !imageHash && Boolean(campaign.media_url),
+      waLink, payload: creativePayload,
     });
     const creativeRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${campaign.name} — creative`,
-          object_story_spec: { page_id: pageId, link_data: linkData },
-        }),
+        body: JSON.stringify(creativePayload),
       },
     );
-    if (!creativeRes.ok) return fail("create_creative", formatGraphError(creativeRes.body, creativeRes.message), creativeRes.body);
+    if (!creativeRes.ok) {
+      console.error("[publishCampaign] create_creative fail", {
+        status: creativeRes.status, message: creativeRes.message, body: creativeRes.body,
+      });
+      return fail("create_creative", formatGraphError(creativeRes.body, creativeRes.message), creativeRes.body);
+    }
     const creativeId = creativeRes.data.id;
+    console.log("[publishCampaign] create_creative ok", { creativeId });
 
     // Step E: cria ad.
+    const adPayload = {
+      name: `${campaign.name} — ad`,
+      adset_id: metaAdsetId,
+      creative: { creative_id: creativeId },
+      status: "PAUSED",
+    };
+    console.log("[publishCampaign] create_ad", { payload: adPayload });
     const adRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${campaign.name} — ad`,
-          adset_id: metaAdsetId,
-          creative: { creative_id: creativeId },
-          status: "PAUSED",
-        }),
+        body: JSON.stringify(adPayload),
       },
     );
-    if (!adRes.ok) return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
+    if (!adRes.ok) {
+      console.error("[publishCampaign] create_ad fail", {
+        status: adRes.status, message: adRes.message, body: adRes.body,
+      });
+      return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
+    }
     const metaAdId = adRes.data.id;
+    console.log("[publishCampaign] create_ad ok", { metaAdId });
 
     // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
     // o usuário ativa pelo Gerenciador da Meta na primeira rodada do Beta).
-    await supabase
+    const { error: saveErr } = await supabase
       .from("campaigns")
       .update({
         status: "active",
@@ -511,6 +534,13 @@ export const publishCampaign = createServerFn({ method: "POST" })
         meta_publish_error: null,
       } as never)
       .eq("id", campaignId);
+    if (saveErr) {
+      console.error("[publishCampaign] save ids failed", { campaignId, error: saveErr });
+    } else {
+      console.log("[publishCampaign] success — saved ids", {
+        campaignId, metaCampaignId, metaAdsetId, creativeId, metaAdId,
+      });
+    }
 
     return {
       ok: true as const,
