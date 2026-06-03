@@ -287,7 +287,19 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     const metaAdsetId = adsetRes.data.id;
 
-    // Step D: cria creative.
+    // Step D: cria creative. Usa image_hash se conseguimos upload; caso
+    // contrário, passa `picture` com a URL pública direto (fallback).
+    const linkData: Record<string, unknown> = {
+      message: campaign.primary_text ?? "",
+      name: campaign.headline ?? campaign.name,
+      link: `https://wa.me/`,
+      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+    };
+    if (imageHash) linkData.image_hash = imageHash;
+    else if (campaign.media_url) linkData.picture = campaign.media_url;
+    console.log("[publishCampaign] create_creative", {
+      pageId, usingImageHash: Boolean(imageHash), usingPictureUrl: !imageHash && Boolean(campaign.media_url),
+    });
     const creativeRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
       {
@@ -295,16 +307,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: `${campaign.name} — creative`,
-          object_story_spec: {
-            page_id: pageId,
-            link_data: {
-              message: campaign.primary_text ?? "",
-              name: campaign.headline ?? campaign.name,
-              link: `https://wa.me/`,
-              call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
-              image_hash: imageHash,
-            },
-          },
+          object_story_spec: { page_id: pageId, link_data: linkData },
         }),
       },
     );
