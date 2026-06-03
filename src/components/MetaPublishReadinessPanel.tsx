@@ -201,20 +201,46 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   }
   if (!readiness) return null;
 
-  const campaignValid = campaign.objective === "whatsapp" && campaign.goal === "leads" && Number(campaign.daily_budget ?? 0) > 0;
+  const channel = campaign.objective; // "whatsapp" | "messenger" | "instagram"
+  const goalValid = campaign.goal === "leads";
   const imageValid = Boolean(campaign.media_url) && campaign.media_type !== "video";
   const budgetValid = Number(campaign.daily_budget ?? 0) > 0;
+  const campaignValid = goalValid && Number(campaign.daily_budget ?? 0) > 0;
+  const channelLabelMap = { whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram" } as const;
 
-  const checks = [
+  // Checks comuns
+  const baseChecks = [
     { ok: readiness.betaEnabled, label: "Beta Meta Ads liberado" },
     { ok: readiness.metaConnected, label: "Meta conectado", hint: readiness.metaConnected ? `${readiness.integrationCount} integração(ões)` : "Conecte a Meta." },
     { ok: Boolean(readiness.adAccountId), label: "Conta de anúncios selecionada", hint: readiness.adAccountId || "Escolha ou digite o ID abaixo." },
     { ok: Boolean(readiness.pageId), label: "Página Facebook selecionada", hint: readiness.pageId || "Escolha a página abaixo." },
-    { ok: readiness.whatsappConnected, label: "WhatsApp conectado" },
-    { ok: campaignValid, label: "Campanha válida (WhatsApp + Leads)" },
+  ];
+
+  // Checks específicos por canal
+  const channelChecks =
+    channel === "whatsapp"
+      ? [
+          { ok: readiness.whatsappConnected, label: "WhatsApp Business conectado" },
+          { ok: campaignValid, label: "Campanha válida (WhatsApp + Leads)" },
+        ]
+      : channel === "messenger"
+      ? [
+          { ok: Boolean(readiness.pageId), label: "Página Facebook vinculada (Messenger)" },
+          { ok: campaignValid, label: "Campanha válida (Messenger + Leads)" },
+        ]
+      : [
+          { ok: Boolean(readiness.igBusinessAccountId), label: "Instagram Business vinculado", hint: readiness.igBusinessAccountId || "Vincule um Instagram à página." },
+          { ok: Boolean(readiness.pageId), label: "Página Facebook vinculada (Instagram)" },
+          { ok: campaignValid, label: "Campanha válida (Instagram + Leads)" },
+        ];
+
+  const checks = [
+    ...baseChecks,
+    ...channelChecks,
     { ok: imageValid, label: "Imagem válida" },
     { ok: budgetValid, label: "Orçamento diário válido" },
   ];
+  void channelLabelMap;
   const passed = checks.filter((c) => c.ok).length;
   const ready = checks.every((c) => c.ok);
   const selectedAdNorm = readiness.adAccountId.replace(/^act_/, "");

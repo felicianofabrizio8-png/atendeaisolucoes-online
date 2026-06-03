@@ -106,9 +106,13 @@ export const publishCampaign = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!campaign) return { ok: false as const, error: "campaign_not_found" };
 
-    // Escopo do Beta: WhatsApp + Leads + imagem única + orçamento diário.
-    if (campaign.objective !== "whatsapp") {
-      return { ok: false as const, error: "scope_objective", message: "No beta apenas campanhas WhatsApp podem ser publicadas." };
+    // Escopo do Beta: canal suportado (whatsapp/messenger/instagram) + Leads
+    // + imagem única + orçamento diário. Requisitos específicos por canal
+    // (número WA, página FB, ig_business_account_id) são checados mais abaixo
+    // antes da criação do creative, com mensagens dedicadas.
+    const supportedChannels = ["whatsapp", "messenger", "instagram"] as const;
+    if (!supportedChannels.includes(campaign.objective as (typeof supportedChannels)[number])) {
+      return { ok: false as const, error: "scope_objective", message: `Canal '${campaign.objective}' não suportado. Use WhatsApp, Messenger ou Instagram.` };
     }
     if (campaign.goal !== "leads") {
       return { ok: false as const, error: "scope_goal", message: "No beta apenas objetivo Leads é suportado." };
@@ -529,13 +533,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       }
 
       const targeting = { geo_locations: geoLocations };
+      // destination_type por canal — define onde a conversa acontece
+      const channelDestination =
+        campaign.objective === "whatsapp" ? "WHATSAPP"
+        : campaign.objective === "messenger" ? "MESSENGER"
+        : "INSTAGRAM_DIRECT";
       const adsetPayload = {
         name: `${campaign.name} — adset`,
         campaign_id: metaCampaignId,
         daily_budget: dailyBudgetCents,
         billing_event: "IMPRESSIONS",
         optimization_goal: "CONVERSATIONS",
-        destination_type: "WHATSAPP",
+        destination_type: channelDestination,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         status: "PAUSED",
         targeting,
@@ -571,67 +580,99 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // Step D: cria creative. Tenta primeiro um payload "completo" (com headline
     // e message) e, se a Meta recusar (typicamente code=100 / subcode=1487390
     // por incompatibilidade de imagem / placements), faz fallback automático
-    // para o creative mínimo (somente link + CTA WhatsApp, feed only).
+    // para o creative mínimo (somente link + CTA, feed only).
     const camp = campaign!;
+    const channel = camp.objective as "whatsapp" | "messenger" | "instagram";
 
-    // Mapeia o texto de CTA em português (vindo do app) para o enum aceito
-    // pela Meta. Para campanhas com objetivo WhatsApp o único válido é
-    // WHATSAPP_MESSAGE — nunca enviar o texto livre ("Solicitar orçamento" etc.).
-    function mapCtaToMetaEnum(raw: string | null | undefined): string {
+    // Mapeia o texto de CTA (PT-BR) para o enum aceito pela Meta, conforme o canal.
+    // A Meta valida CTA enum × destination_type — texto livre nunca é aceito.
+    function mapCtaToMetaEnum(raw: string | null | undefined, ch: typeof channel): string {
       const t = (raw ?? "").trim().toLowerCase();
-      const waAliases = [
+      // Aliases comuns que indicam "abrir conversa" — caem no enum do canal.
+      const messageAliases = [
         "solicitar orçamento", "solicitar orcamento",
-        "enviar mensagem", "fale conosco", "falar no whatsapp",
-        "whatsapp", "mensagem", "conversar", "tirar dúvidas", "tirar duvidas",
+        "enviar mensagem", "fale conosco", "falar", "mensagem", "conversar",
+        "tirar dúvidas", "tirar duvidas", "chamar", "whatsapp", "messenger", "instagram",
       ];
-      if (!t || waAliases.some((a) => t.includes(a))) return "WHATSAPP_MESSAGE";
-      // Para o beta atual só publicamos WhatsApp; qualquer outro texto cai no enum seguro.
-      return "WHATSAPP_MESSAGE";
+      const looksLikeMessage = !t || messageAliases.some((a) => t.includes(a));
+      if (ch === "whatsapp") return "WHATSAPP_MESSAGE";
+      if (ch === "messenger") return looksLikeMessage ? "MESSAGE_PAGE" : "MESSAGE_PAGE";
+      // instagram
+      return looksLikeMessage ? "INSTAGRAM_MESSAGE" : "INSTAGRAM_MESSAGE";
     }
 
-    const ctaEnum = mapCtaToMetaEnum(camp.cta);
+    const ctaEnum = mapCtaToMetaEnum(camp.cta, channel);
+
+    // Busca instagram_actor_id (necessário p/ creative IG) a partir da integração Meta.
+    const igActorId = String((meta["ig_business_account_id"] ?? "") as string);
+
     console.log("[publishCampaign] cta_mapping", {
       raw_cta: camp.cta ?? null,
       mapped_enum: ctaEnum,
       objective: camp.objective,
       goal: camp.goal,
+      channel,
+      page_id: pageId,
+      ig_actor_id: igActorId || null,
+      wa_phone: waPhone || null,
     });
 
-    // Validações duras: a Meta exige page_id + image_hash + message + número de WhatsApp
-    // para criar um adcreative de WHATSAPP_MESSAGE.
-    if (!waPhone) {
-      return fail(
-        "create_creative",
-        "Número de WhatsApp da página não encontrado — vincule um WhatsApp Business no Gerenciador da Meta antes de publicar.",
-        null,
-        { page_id: pageId, image_hash: imageHash ?? null },
-      );
-    }
+    // Validações duras por canal — Meta rejeita o creative sem esses dados.
     if (!imageHash) {
       return fail(
         "create_creative",
         "image_hash ausente — o upload da imagem em /adimages falhou e a Meta não aceita criativo sem hash.",
         null,
-        { page_id: pageId, wa_phone: waPhone },
+        { page_id: pageId, channel },
+      );
+    }
+    if (channel === "whatsapp" && !waPhone) {
+      return fail(
+        "create_creative",
+        "Número de WhatsApp da página não encontrado — vincule um WhatsApp Business no Gerenciador da Meta antes de publicar.",
+        null,
+        { page_id: pageId, image_hash: imageHash },
+      );
+    }
+    if (channel === "instagram" && !igActorId) {
+      return fail(
+        "create_creative",
+        "Instagram Business não vinculado — conecte um Instagram à sua Página Facebook antes de publicar.",
+        null,
+        { page_id: pageId, image_hash: imageHash },
+      );
+    }
+    if (channel === "messenger" && !pageId) {
+      return fail(
+        "create_creative",
+        "Página Facebook não selecionada — Messenger exige uma Página vinculada.",
+        null,
+        { image_hash: imageHash },
       );
     }
 
-    const waLink = `https://wa.me/${waPhone}`;
+    const waLink = waPhone ? `https://wa.me/${waPhone}` : "";
+    const messengerLink = `https://m.me/${pageId}`;
+    const igLink = `https://ig.me/m/${igActorId}`;
+    const destLink = channel === "whatsapp" ? waLink : channel === "messenger" ? messengerLink : igLink;
     const fallbackMessage = (camp.primary_text ?? camp.headline ?? camp.name ?? "Olá! Posso te ajudar?").trim() || "Olá! Posso te ajudar?";
+
+    function buildCtaValue(): Record<string, unknown> {
+      if (channel === "whatsapp") {
+        return { app_destination: "WHATSAPP", link: waLink, whatsapp_number: waPhone };
+      }
+      if (channel === "messenger") {
+        return { app_destination: "MESSENGER", link: messengerLink };
+      }
+      return { app_destination: "INSTAGRAM_DIRECT", link: igLink };
+    }
 
     function buildLinkData(simple: boolean): Record<string, unknown> {
       const ld: Record<string, unknown> = {
         message: fallbackMessage,
-        link: waLink,
+        link: destLink,
         image_hash: imageHash,
-        call_to_action: {
-          type: ctaEnum, // sempre WHATSAPP_MESSAGE — enum, nunca texto livre
-          value: {
-            app_destination: "WHATSAPP",
-            link: waLink,
-            whatsapp_number: waPhone,
-          },
-        },
+        call_to_action: { type: ctaEnum, value: buildCtaValue() },
       };
       if (!simple) {
         ld.name = camp.headline ?? camp.name;
@@ -640,9 +681,17 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
     function buildCreativePayload(simple: boolean) {
+      const oss: Record<string, unknown> = {
+        page_id: pageId,
+        link_data: buildLinkData(simple),
+      };
+      // Instagram requer instagram_actor_id no object_story_spec.
+      if (channel === "instagram" && igActorId) {
+        oss.instagram_actor_id = igActorId;
+      }
       return {
         name: `${camp.name} — creative${simple ? " (fallback)" : ""}`,
-        object_story_spec: { page_id: pageId, link_data: buildLinkData(simple) },
+        object_story_spec: oss,
       };
     }
 
