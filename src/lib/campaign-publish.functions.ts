@@ -533,13 +533,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       }
 
       const targeting = { geo_locations: geoLocations };
+      // destination_type por canal — define onde a conversa acontece
+      const channelDestination =
+        campaign.objective === "whatsapp" ? "WHATSAPP"
+        : campaign.objective === "messenger" ? "MESSENGER"
+        : "INSTAGRAM_DIRECT";
       const adsetPayload = {
         name: `${campaign.name} — adset`,
         campaign_id: metaCampaignId,
         daily_budget: dailyBudgetCents,
         billing_event: "IMPRESSIONS",
         optimization_goal: "CONVERSATIONS",
-        destination_type: "WHATSAPP",
+        destination_type: channelDestination,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         status: "PAUSED",
         targeting,
