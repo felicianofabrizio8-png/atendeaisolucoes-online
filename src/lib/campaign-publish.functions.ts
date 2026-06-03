@@ -216,44 +216,89 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { ok: false as const, error: "publish_failed", stage, message };
     }
 
-    // Step A: tenta upload da imagem para a ad account (gera image_hash).
-    // Se a Meta App não tiver capability `ads_management` aprovada, o
-    // endpoint `/adimages` retorna erro (#3). Nesse caso seguimos sem hash e
-    // usamos a URL pública direto no `picture` do creative (suportado).
+    // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
+    // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
+    // consegue baixar a URL pública). Usa o `image_hash` retornado no creative.
     console.log("[publishCampaign] upload_media start", {
       campaignId, actId, mediaUrl: campaign.media_url,
       endpoint: `${GRAPH}/${actId}/adimages`,
     });
+
     let imageHash: string | null = null;
-    const uploadRes = await graphFetch<{ images?: Record<string, { hash: string }> }>(
-      `${GRAPH}/${actId}/adimages?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: campaign.media_url }),
-      },
-    );
-    if (uploadRes.ok) {
-      const images = uploadRes.data.images ?? {};
-      imageHash = Object.values(images)[0]?.hash ?? null;
-      console.log("[publishCampaign] upload_media ok", { imageHash, raw: uploadRes.data });
-    } else {
-      const errCode = (uploadRes.body as GraphErrorBody).error?.code;
-      const isCapability =
-        errCode === 3 || errCode === 10 || errCode === 200 || errCode === 294 ||
-        /capability|permission|not have/i.test(uploadRes.message);
-      console.warn("[publishCampaign] upload_media fail", {
-        status: uploadRes.status, message: uploadRes.message, body: uploadRes.body,
-        willFallbackToPictureUrl: isCapability,
+    let imgBlob: Blob | null = null;
+    let imgContentType = "";
+    let imgSize = 0;
+
+    try {
+      const imgRes = await fetch(campaign.media_url, { method: "GET" });
+      imgContentType = imgRes.headers.get("content-type") ?? "";
+      const lenHeader = imgRes.headers.get("content-length");
+      console.log("[publishCampaign] media fetch", {
+        url: campaign.media_url,
+        status: imgRes.status,
+        contentType: imgContentType,
+        contentLength: lenHeader,
       });
-      if (!isCapability) {
+      if (!imgRes.ok) {
         return fail(
           "upload_media",
-          `Não foi possível enviar a imagem para a Meta (${uploadRes.message}). Verifique se a URL é pública.`,
-          uploadRes.body,
+          `Imagem não está pública para a Meta (HTTP ${imgRes.status}). Reenvie a imagem ou publique novamente.`,
         );
       }
-      // Fallback: segue sem image_hash, usa picture URL no creative.
+      if (!/^image\/(jpeg|jpg|png|webp)/i.test(imgContentType)) {
+        return fail(
+          "upload_media",
+          `Tipo de imagem inválido (${imgContentType || "desconhecido"}). Use JPG ou PNG.`,
+        );
+      }
+      imgBlob = await imgRes.blob();
+      imgSize = imgBlob.size;
+      if (!imgSize) {
+        return fail("upload_media", "Imagem vazia. Reenvie a imagem.");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "network_error";
+      console.error("[publishCampaign] media fetch error", { url: campaign.media_url, msg });
+      return fail("upload_media", `Não foi possível baixar a imagem (${msg}).`);
+    }
+
+    // Upload por bytes via multipart/form-data
+    try {
+      const ext = /png/i.test(imgContentType) ? "png" : /webp/i.test(imgContentType) ? "webp" : "jpg";
+      const fd = new FormData();
+      fd.append("access_token", accessToken);
+      fd.append("source", imgBlob, `campaign_${campaignId}.${ext}`);
+      const upRes = await fetch(`${GRAPH}/${actId}/adimages`, { method: "POST", body: fd });
+      const upText = await upRes.text();
+      const upBody = upText ? (JSON.parse(upText) as { images?: Record<string, { hash: string }> } & GraphErrorBody) : {};
+      if (!upRes.ok) {
+        const errCode = (upBody as GraphErrorBody).error?.code;
+        const isCapability =
+          errCode === 3 || errCode === 10 || errCode === 200 || errCode === 294 ||
+          /capability|permission|not have/i.test((upBody as GraphErrorBody).error?.message ?? "");
+        console.warn("[publishCampaign] upload_media (bytes) fail", {
+          status: upRes.status, body: upBody, size: imgSize, contentType: imgContentType,
+          willFallbackToPictureUrl: isCapability,
+        });
+        if (!isCapability) {
+          return fail(
+            "upload_media",
+            formatGraphError(upBody as GraphErrorBody, `HTTP ${upRes.status}`),
+            upBody,
+          );
+        }
+        // Capability bloqueada: fallback para picture URL no creative.
+      } else {
+        const images = (upBody as { images?: Record<string, { hash: string }> }).images ?? {};
+        imageHash = Object.values(images)[0]?.hash ?? null;
+        console.log("[publishCampaign] upload_media (bytes) ok", {
+          imageHash, size: imgSize, contentType: imgContentType, usedUploadByBytes: true,
+        });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "network_error";
+      console.error("[publishCampaign] upload_media (bytes) error", { msg });
+      return fail("upload_media", `Falha ao enviar bytes para a Meta (${msg}).`);
     }
 
 
