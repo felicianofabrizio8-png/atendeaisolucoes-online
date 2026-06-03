@@ -15,7 +15,27 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const PublishInput = z.object({ campaignId: z.string().uuid() });
 
-type GraphErrorBody = { error?: { message?: string; code?: number; type?: string } };
+type GraphErrorBody = {
+  error?: {
+    message?: string;
+    code?: number;
+    type?: string;
+    error_subcode?: number;
+    error_user_title?: string;
+    error_user_msg?: string;
+    fbtrace_id?: string;
+  };
+};
+
+function formatGraphError(body: GraphErrorBody, fallback: string): string {
+  const e = body.error ?? {};
+  const parts = [e.message ?? fallback];
+  if (e.code !== undefined) parts.push(`code=${e.code}`);
+  if (e.error_subcode !== undefined) parts.push(`subcode=${e.error_subcode}`);
+  if (e.fbtrace_id) parts.push(`fbtrace=${e.fbtrace_id}`);
+  if (e.error_user_msg) parts.push(`user_msg=${e.error_user_msg}`);
+  return parts.join(" ");
+}
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
