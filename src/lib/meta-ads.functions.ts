@@ -184,7 +184,7 @@ export const listMetaAdAccounts = createServerFn({ method: "POST" })
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
 
-    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(companyId);
     if (integrations.length === 0) {
       return { ok: false as const, error: "no_integration", message: "Conecte uma conta Meta antes." };
     }
@@ -254,7 +254,7 @@ export const listMetaPages = createServerFn({ method: "GET" })
       active: boolean; integration_id: string | null;
     }>;
 
-    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(companyId);
     const primary = pickPrimaryIntegration(integrations);
     const selectedPageId = primary
       ? String(((primary.account_metadata ?? {}) as Record<string, unknown>)["fb_page_id"] ?? primary.external_account_id ?? "")
@@ -286,7 +286,7 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
     const isAdmin = await hasAdminRole(supabase, userId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin pode alterar." };
 
-    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(companyId);
     const target = data.integrationId
       ? integrations.find((i) => i.id === data.integrationId)
       : pickPrimaryIntegration(integrations);
@@ -326,7 +326,7 @@ export const selectMetaPage = createServerFn({ method: "POST" })
     const isAdmin = await hasAdminRole(supabase, userId);
     if (!isAdmin) return { ok: false as const, error: "not_admin" };
 
-    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(companyId);
     const target = data.integrationId
       ? integrations.find((i) => i.id === data.integrationId)
       : pickPrimaryIntegration(integrations);
@@ -362,7 +362,7 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
 
     const isAdmin = await hasAdminRole(supabase, userId);
 
-    const integrations = await loadActiveMetaIntegrations(supabase as never, companyId);
+    const integrations = await loadActiveMetaIntegrations(companyId);
     const integ = pickPrimaryIntegration(integrations);
     const meta = (integ?.account_metadata ?? {}) as Record<string, unknown>;
     const adAccountId = String(meta["ad_account_id"] ?? "");
