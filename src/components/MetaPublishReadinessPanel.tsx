@@ -250,11 +250,15 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
               </button>
             )}
             <button onClick={() => { setAccounts(null); setPages(null); void loadAssets(); }}
-              className="inline-flex items-center gap-1 h-8 px-3 rounded-md border text-xs hover:bg-muted">
-              <RefreshCw className="h-3.5 w-3.5" /> Recarregar assets Meta
+              disabled={loadingAccounts}
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-60">
+              {loadingAccounts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Recarregar assets Meta
             </button>
-            <button onClick={refresh}
-              className="inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground">
+            <button onClick={() => { void refresh(); }}
+              disabled={loading}
+              className="inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground disabled:opacity-60">
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Reverificar
             </button>
           </div>
