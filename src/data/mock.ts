@@ -14,6 +14,9 @@ export interface Message {
   at: string; // ISO
   sourceSubtype?: string;
   sourceMetadata?: Record<string, unknown>;
+  editedAt?: string;
+  deletedAt?: string;
+  deletedFor?: "me" | "everyone";
 }
 
 export interface NextAction {

@@ -184,6 +184,9 @@ type DbMessage = {
   at: string;
   source_subtype?: string | null;
   source_metadata?: Record<string, unknown> | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_for?: string | null;
 };
 
 function toMessage(r: DbMessage): Message {
@@ -195,6 +198,9 @@ function toMessage(r: DbMessage): Message {
     at: r.at,
     sourceSubtype: r.source_subtype ?? undefined,
     sourceMetadata: r.source_metadata ?? undefined,
+    editedAt: r.edited_at ?? undefined,
+    deletedAt: r.deleted_at ?? undefined,
+    deletedFor: (r.deleted_for as "me" | "everyone" | null) ?? undefined,
   };
 }
 
@@ -241,7 +247,7 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("messages")
-        .select("id,conversation_id,role,text,at,source_subtype,source_metadata")
+        .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for")
         .eq("company_id", companyId)
         .order("at", { ascending: true }),
     ]);
@@ -349,7 +355,7 @@ export async function refetchConversationMessages(conversationId: string) {
   if (mode !== "remote") return;
   const { data, error } = await supabase
     .from("messages")
-    .select("id,conversation_id,role,text,at,source_subtype,source_metadata")
+    .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for")
     .eq("conversation_id", conversationId)
     .order("at", { ascending: true })
     .limit(200);
@@ -363,7 +369,50 @@ export async function refetchConversationMessages(conversationId: string) {
   notify();
 }
 
-// ---------- mutations ----------
+// Edita o texto de uma mensagem (somente role=agent). Registra edited_at.
+export async function editMessage(messageId: string, newText: string) {
+  const editedAt = new Date().toISOString();
+  if (mode === "remote") {
+    const { error } = await supabase
+      .from("messages")
+      .update({ text: newText, edited_at: editedAt })
+      .eq("id", messageId)
+      .eq("role", "agent");
+    if (error) throw error;
+  }
+  remoteMessages = remoteMessages.map((m) =>
+    m.id === messageId && m.role === "agent"
+      ? { ...m, text: newText, editedAt }
+      : m,
+  );
+  notify();
+}
+
+// Apaga uma mensagem do agente. scope:
+// - "me": só esconde localmente (deleted_for=me)
+// - "everyone": marca deleted_at + deleted_for=everyone (mantém histórico no DB)
+export async function deleteMessage(
+  messageId: string,
+  scope: "me" | "everyone",
+) {
+  const deletedAt = new Date().toISOString();
+  if (mode === "remote") {
+    const { error } = await supabase
+      .from("messages")
+      .update({ deleted_at: deletedAt, deleted_for: scope })
+      .eq("id", messageId)
+      .eq("role", "agent");
+    if (error) throw error;
+  }
+  console.warn("[inbox] mensagem apagada", { messageId, scope, deletedAt });
+  remoteMessages = remoteMessages.map((m) =>
+    m.id === messageId && m.role === "agent"
+      ? { ...m, deletedAt, deletedFor: scope }
+      : m,
+  );
+  notify();
+}
+
 export async function markLeadWon(leadId: string, value: number) {
   if (mode === "demo") {
     markLeadWonMock(leadId, value);
