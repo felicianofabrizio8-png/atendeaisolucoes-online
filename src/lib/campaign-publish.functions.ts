@@ -205,15 +205,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
     async function fail(stage: string, message: string, raw?: unknown) {
+      const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
+      const err = rawBody.error ?? {};
+      const tags = [
+        err.code !== undefined ? `code=${err.code}` : null,
+        err.error_subcode !== undefined ? `subcode=${err.error_subcode}` : null,
+        err.fbtrace_id ? `fbtrace=${err.fbtrace_id}` : null,
+      ].filter(Boolean).join(" ");
       console.error(`[publishCampaign] FAIL stage=${stage}`, {
-        campaignId, message, raw: raw ?? null,
+        campaignId, message, error_code: err.code ?? null,
+        error_subcode: err.error_subcode ?? null,
+        fbtrace_id: err.fbtrace_id ?? null,
+        raw: raw ?? null,
       });
       await supabase
         .from("campaigns")
         .update({
           status: "draft",
           meta_sync_status: "failed",
-          meta_publish_error: `${stage}: ${message}`.slice(0, 500),
+          meta_publish_error: `${stage}: ${message}${tags ? " · " + tags : ""}`.slice(0, 500),
         } as never)
         .eq("id", campaignId);
       try {
@@ -223,13 +233,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
           source: "meta",
           severity: "error",
           message: `[publish:${stage}] ${message}`.slice(0, 1900),
-          context: { campaign_id: campaignId, raw: raw ?? null, stage } as never,
+          context: {
+            campaign_id: campaignId, stage,
+            error_code: err.code ?? null,
+            error_subcode: err.error_subcode ?? null,
+            fbtrace_id: err.fbtrace_id ?? null,
+            raw: raw ?? null,
+          } as never,
         });
       } catch (e) {
         console.warn("[publishCampaign] error_log insert failed", e);
       }
-      return { ok: false as const, error: "publish_failed", stage, message };
+      return {
+        ok: false as const, error: "publish_failed", stage, message,
+        error_code: err.code ?? null,
+        error_subcode: err.error_subcode ?? null,
+        fbtrace_id: err.fbtrace_id ?? null,
+      };
     }
+
 
     // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
     // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
