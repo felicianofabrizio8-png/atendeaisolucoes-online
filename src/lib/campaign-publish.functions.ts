@@ -572,23 +572,70 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // e message) e, se a Meta recusar (typicamente code=100 / subcode=1487390
     // por incompatibilidade de imagem / placements), faz fallback automático
     // para o creative mínimo (somente link + CTA WhatsApp, feed only).
-    const waLink = waPhone ? `https://wa.me/${waPhone}` : `https://www.facebook.com/${pageId}`;
     const camp = campaign!;
+
+    // Mapeia o texto de CTA em português (vindo do app) para o enum aceito
+    // pela Meta. Para campanhas com objetivo WhatsApp o único válido é
+    // WHATSAPP_MESSAGE — nunca enviar o texto livre ("Solicitar orçamento" etc.).
+    function mapCtaToMetaEnum(raw: string | null | undefined): string {
+      const t = (raw ?? "").trim().toLowerCase();
+      const waAliases = [
+        "solicitar orçamento", "solicitar orcamento",
+        "enviar mensagem", "fale conosco", "falar no whatsapp",
+        "whatsapp", "mensagem", "conversar", "tirar dúvidas", "tirar duvidas",
+      ];
+      if (!t || waAliases.some((a) => t.includes(a))) return "WHATSAPP_MESSAGE";
+      // Para o beta atual só publicamos WhatsApp; qualquer outro texto cai no enum seguro.
+      return "WHATSAPP_MESSAGE";
+    }
+
+    const ctaEnum = mapCtaToMetaEnum(camp.cta);
+    console.log("[publishCampaign] cta_mapping", {
+      raw_cta: camp.cta ?? null,
+      mapped_enum: ctaEnum,
+      objective: camp.objective,
+      goal: camp.goal,
+    });
+
+    // Validações duras: a Meta exige page_id + image_hash + message + número de WhatsApp
+    // para criar um adcreative de WHATSAPP_MESSAGE.
+    if (!waPhone) {
+      return fail(
+        "create_creative",
+        "Número de WhatsApp da página não encontrado — vincule um WhatsApp Business no Gerenciador da Meta antes de publicar.",
+        null,
+        { page_id: pageId, image_hash: imageHash ?? null },
+      );
+    }
+    if (!imageHash) {
+      return fail(
+        "create_creative",
+        "image_hash ausente — o upload da imagem em /adimages falhou e a Meta não aceita criativo sem hash.",
+        null,
+        { page_id: pageId, wa_phone: waPhone },
+      );
+    }
+
+    const waLink = `https://wa.me/${waPhone}`;
+    const fallbackMessage = (camp.primary_text ?? camp.headline ?? camp.name ?? "Olá! Posso te ajudar?").trim() || "Olá! Posso te ajudar?";
 
     function buildLinkData(simple: boolean): Record<string, unknown> {
       const ld: Record<string, unknown> = {
+        message: fallbackMessage,
         link: waLink,
+        image_hash: imageHash,
         call_to_action: {
-          type: "WHATSAPP_MESSAGE",
-          value: { app_destination: "WHATSAPP", link: waLink },
+          type: ctaEnum, // sempre WHATSAPP_MESSAGE — enum, nunca texto livre
+          value: {
+            app_destination: "WHATSAPP",
+            link: waLink,
+            whatsapp_number: waPhone,
+          },
         },
       };
       if (!simple) {
-        ld.message = camp.primary_text ?? "";
         ld.name = camp.headline ?? camp.name;
       }
-      if (imageHash) ld.image_hash = imageHash;
-      else if (camp.media_url) ld.picture = camp.media_url;
       return ld;
     }
 
@@ -598,6 +645,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         object_story_spec: { page_id: pageId, link_data: buildLinkData(simple) },
       };
     }
+
 
     async function tryCreateCreative(simple: boolean) {
       const payload = buildCreativePayload(simple);
