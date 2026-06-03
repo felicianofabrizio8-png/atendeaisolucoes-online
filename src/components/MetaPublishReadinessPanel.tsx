@@ -271,7 +271,15 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
               {missingScopes.length > 0 && (
                 <div className="flex items-start gap-2 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded p-2">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <div>Permissões faltando no token: {missingScopes.join(", ")}.</div>
+                  <div className="flex-1 space-y-1.5">
+                    <div>Permissões faltando no token: {missingScopes.join(", ")}.</div>
+                    <a
+                      href="/configuracoes#meta"
+                      className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
+                    >
+                      <RefreshCw className="h-3 w-3" /> Reconectar Meta
+                    </a>
+                  </div>
                 </div>
               )}
 
