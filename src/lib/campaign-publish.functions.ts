@@ -266,6 +266,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       status: "PAUSED",
       special_ad_categories: [] as string[],
       buying_type: "AUCTION",
+      is_adset_budget_sharing_enabled: false,
     };
     console.log("[publishCampaign] create_campaign payload", {
       campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
