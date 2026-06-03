@@ -707,22 +707,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    async function tryCreateCreative(simple: boolean) {
-      const payload = buildCreativePayload(simple);
+    async function tryCreateCreative(mode: CreativeMode) {
+      const payload = buildCreativePayload(mode);
       const linkData = (payload.object_story_spec as { link_data: Record<string, unknown> }).link_data;
       console.log("[publishCampaign] create_creative attempt", {
-        mode: simple ? "simple_fallback" : "advanced",
+        mode,
         pageId,
-        instagram_actor_id: null,
+        instagram_actor_id: igActorId || null,
         image_hash: linkData.image_hash ?? null,
         picture: linkData.picture ?? null,
         call_to_action: linkData.call_to_action,
         link_data: linkData,
         object_story_spec: payload.object_story_spec,
-        degrees_of_freedom_spec: null,
-        asset_feed_spec: null,
-        creative_features_spec: null,
-        placement: simple ? "feed_only" : "default",
         waLink,
         payload,
       });
@@ -738,38 +734,65 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
     let creativeId: string;
-    const primary = await tryCreateCreative(false);
-    if (primary.res.ok) {
-      creativeId = primary.res.data.id;
+    const attempts: Array<{ mode: CreativeMode; payload: unknown; response: unknown }> = [];
+
+    const advanced = await tryCreateCreative("advanced");
+    attempts.push({ mode: "advanced", payload: advanced.payload, response: advanced.res.body });
+
+    if (advanced.res.ok) {
+      creativeId = advanced.res.data.id;
       console.log("[publishCampaign] create_creative ok", { creativeId, mode: "advanced" });
     } else {
-      console.warn("[publishCampaign] create_creative advanced fail — tentando fallback simples", {
-        status: primary.res.status, message: primary.res.message, body: primary.res.body,
-        payload: primary.payload,
+      console.warn("[publishCampaign] advanced fail — tentando simple", {
+        status: advanced.res.status, message: advanced.res.message,
       });
-      const fallback = await tryCreateCreative(true);
-      if (!fallback.res.ok) {
-        console.error("[publishCampaign] create_creative fallback fail", {
-          status: fallback.res.status, message: fallback.res.message, body: fallback.res.body,
-          payload: fallback.payload,
+      const simple = await tryCreateCreative("simple");
+      attempts.push({ mode: "simple", payload: simple.payload, response: simple.res.body });
+
+      if (simple.res.ok) {
+        creativeId = simple.res.data.id;
+        console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple" });
+      } else if (camp.media_url) {
+        console.warn("[publishCampaign] simple fail — tentando picture URL", {
+          status: simple.res.status, message: simple.res.message,
         });
+        const pic = await tryCreateCreative("picture");
+        attempts.push({ mode: "picture", payload: pic.payload, response: pic.res.body });
+
+        if (!pic.res.ok) {
+          console.error("[publishCampaign] all creative modes failed", { attempts });
+          return fail(
+            "create_creative",
+            formatGraphError(pic.res.body, pic.res.message),
+            pic.res.body,
+            {
+              attempts,
+              page_id: pageId,
+              image_hash: imageHash ?? null,
+              wa_link: waLink,
+              channel,
+              cta_enum: ctaEnum,
+            },
+          );
+        }
+        creativeId = pic.res.data.id;
+        console.log("[publishCampaign] create_creative ok", { creativeId, mode: "picture" });
+      } else {
+        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts });
         return fail(
           "create_creative",
-          formatGraphError(fallback.res.body, fallback.res.message),
-          fallback.res.body,
+          formatGraphError(simple.res.body, simple.res.message),
+          simple.res.body,
           {
-            advanced_payload: primary.payload,
-            advanced_response: primary.res.body,
-            fallback_payload: fallback.payload,
-            fallback_response: fallback.res.body,
+            attempts,
             page_id: pageId,
             image_hash: imageHash ?? null,
             wa_link: waLink,
+            channel,
+            cta_enum: ctaEnum,
           },
         );
       }
-      creativeId = fallback.res.data.id;
-      console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple_fallback" });
     }
 
 
