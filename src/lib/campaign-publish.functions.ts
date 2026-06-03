@@ -651,15 +651,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       );
     }
 
-    const waLink = waPhone ? `https://wa.me/${waPhone}` : "";
+    // Meta aceita wa.me OU api.whatsapp.com/send. Usamos o formato oficial recomendado.
+    const waLink = waPhone ? `https://api.whatsapp.com/send?phone=${waPhone}` : "";
     const messengerLink = `https://m.me/${pageId}`;
     const igLink = `https://ig.me/m/${igActorId}`;
     const destLink = channel === "whatsapp" ? waLink : channel === "messenger" ? messengerLink : igLink;
     const fallbackMessage = (camp.primary_text ?? camp.headline ?? camp.name ?? "Olá! Posso te ajudar?").trim() || "Olá! Posso te ajudar?";
 
+    // CTA value: APENAS app_destination + link. Campos extras (ex.: whatsapp_number)
+    // fazem a Meta rejeitar com code=100 subcode=1487390 (erro genérico de creative).
     function buildCtaValue(): Record<string, unknown> {
       if (channel === "whatsapp") {
-        return { app_destination: "WHATSAPP", link: waLink, whatsapp_number: waPhone };
+        return { app_destination: "WHATSAPP", link: waLink };
       }
       if (channel === "messenger") {
         return { app_destination: "MESSENGER", link: messengerLink };
@@ -667,51 +670,55 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { app_destination: "INSTAGRAM_DIRECT", link: igLink };
     }
 
-    function buildLinkData(simple: boolean): Record<string, unknown> {
+    type CreativeMode = "advanced" | "simple" | "picture";
+
+    function buildLinkData(mode: CreativeMode): Record<string, unknown> {
       const ld: Record<string, unknown> = {
         message: fallbackMessage,
         link: destLink,
-        image_hash: imageHash,
         call_to_action: { type: ctaEnum, value: buildCtaValue() },
       };
-      if (!simple) {
+      // Modo "picture" usa URL pública (camp.media_url) em vez de image_hash —
+      // último recurso quando o hash é rejeitado pela Meta.
+      if (mode === "picture" && camp.media_url) {
+        ld.picture = camp.media_url;
+      } else {
+        ld.image_hash = imageHash;
+      }
+      if (mode === "advanced") {
         ld.name = camp.headline ?? camp.name;
       }
       return ld;
     }
 
-    function buildCreativePayload(simple: boolean) {
+    function buildCreativePayload(mode: CreativeMode) {
       const oss: Record<string, unknown> = {
         page_id: pageId,
-        link_data: buildLinkData(simple),
+        link_data: buildLinkData(mode),
       };
-      // Instagram requer instagram_actor_id no object_story_spec.
       if (channel === "instagram" && igActorId) {
         oss.instagram_actor_id = igActorId;
       }
+      const suffix = mode === "advanced" ? "" : mode === "simple" ? " (fallback)" : " (picture)";
       return {
-        name: `${camp.name} — creative${simple ? " (fallback)" : ""}`,
+        name: `${camp.name} — creative${suffix}`,
         object_story_spec: oss,
       };
     }
 
 
-    async function tryCreateCreative(simple: boolean) {
-      const payload = buildCreativePayload(simple);
+    async function tryCreateCreative(mode: CreativeMode) {
+      const payload = buildCreativePayload(mode);
       const linkData = (payload.object_story_spec as { link_data: Record<string, unknown> }).link_data;
       console.log("[publishCampaign] create_creative attempt", {
-        mode: simple ? "simple_fallback" : "advanced",
+        mode,
         pageId,
-        instagram_actor_id: null,
+        instagram_actor_id: igActorId || null,
         image_hash: linkData.image_hash ?? null,
         picture: linkData.picture ?? null,
         call_to_action: linkData.call_to_action,
         link_data: linkData,
         object_story_spec: payload.object_story_spec,
-        degrees_of_freedom_spec: null,
-        asset_feed_spec: null,
-        creative_features_spec: null,
-        placement: simple ? "feed_only" : "default",
         waLink,
         payload,
       });
@@ -726,39 +733,70 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { res, payload };
     }
 
+    function resBody(r: { ok: boolean; body?: unknown }) {
+      return r.ok ? null : (r as { body: unknown }).body;
+    }
+
     let creativeId: string;
-    const primary = await tryCreateCreative(false);
-    if (primary.res.ok) {
-      creativeId = primary.res.data.id;
+    const attempts: Array<{ mode: CreativeMode; payload: unknown; response: unknown }> = [];
+
+    const advanced = await tryCreateCreative("advanced");
+    attempts.push({ mode: "advanced", payload: advanced.payload, response: resBody(advanced.res) });
+
+    if (advanced.res.ok) {
+      creativeId = advanced.res.data.id;
       console.log("[publishCampaign] create_creative ok", { creativeId, mode: "advanced" });
     } else {
-      console.warn("[publishCampaign] create_creative advanced fail — tentando fallback simples", {
-        status: primary.res.status, message: primary.res.message, body: primary.res.body,
-        payload: primary.payload,
+      console.warn("[publishCampaign] advanced fail — tentando simple", {
+        status: advanced.res.status, message: advanced.res.message,
       });
-      const fallback = await tryCreateCreative(true);
-      if (!fallback.res.ok) {
-        console.error("[publishCampaign] create_creative fallback fail", {
-          status: fallback.res.status, message: fallback.res.message, body: fallback.res.body,
-          payload: fallback.payload,
+      const simple = await tryCreateCreative("simple");
+      attempts.push({ mode: "simple", payload: simple.payload, response: resBody(simple.res) });
+
+      if (simple.res.ok) {
+        creativeId = simple.res.data.id;
+        console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple" });
+      } else if (camp.media_url) {
+        console.warn("[publishCampaign] simple fail — tentando picture URL", {
+          status: simple.res.status, message: simple.res.message,
         });
+        const pic = await tryCreateCreative("picture");
+        attempts.push({ mode: "picture", payload: pic.payload, response: resBody(pic.res) });
+
+        if (!pic.res.ok) {
+          console.error("[publishCampaign] all creative modes failed", { attempts });
+          return fail(
+            "create_creative",
+            formatGraphError(pic.res.body, pic.res.message),
+            pic.res.body,
+            {
+              attempts,
+              page_id: pageId,
+              image_hash: imageHash ?? null,
+              wa_link: waLink,
+              channel,
+              cta_enum: ctaEnum,
+            },
+          );
+        }
+        creativeId = pic.res.data.id;
+        console.log("[publishCampaign] create_creative ok", { creativeId, mode: "picture" });
+      } else {
+        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts });
         return fail(
           "create_creative",
-          formatGraphError(fallback.res.body, fallback.res.message),
-          fallback.res.body,
+          formatGraphError(simple.res.body, simple.res.message),
+          simple.res.body,
           {
-            advanced_payload: primary.payload,
-            advanced_response: primary.res.body,
-            fallback_payload: fallback.payload,
-            fallback_response: fallback.res.body,
+            attempts,
             page_id: pageId,
             image_hash: imageHash ?? null,
             wa_link: waLink,
+            channel,
+            cta_enum: ctaEnum,
           },
         );
       }
-      creativeId = fallback.res.data.id;
-      console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple_fallback" });
     }
 
 
