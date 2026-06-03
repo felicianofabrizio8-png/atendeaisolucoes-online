@@ -169,7 +169,12 @@ function CampaignDetailPage() {
       }
     } catch (e) {
       window.clearInterval(tick);
-      toast.error(e instanceof Error ? e.message : "Erro inesperado ao publicar.");
+      const raw = e instanceof Error ? e.message : String(e ?? "");
+      if (/unauthorized|no authorization header|401/i.test(raw)) {
+        toast.error("Sessão expirada. Faça login novamente para publicar.");
+      } else {
+        toast.error(raw || "Erro inesperado ao publicar.");
+      }
     } finally {
       setPublishing(false);
       setPublishStage("");
