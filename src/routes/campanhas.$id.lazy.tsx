@@ -135,14 +135,18 @@ function CampaignDetailPage() {
 
   async function performPublish() {
     if (!c || publishing) return;
+    // Validação base (independente do canal). Requisitos específicos por canal
+    // (WhatsApp número, Página FB, Instagram actor) são validados no servidor
+    // com mensagens dedicadas — aqui apenas garantimos o mínimo universal.
+    const channelOk = c.objective === "whatsapp" || c.objective === "messenger" || c.objective === "instagram";
     const canPublish =
-      c.objective === "whatsapp" &&
+      channelOk &&
       c.goal === "leads" &&
       Boolean(c.media_url) &&
       c.media_type !== "video" &&
       Number(c.daily_budget ?? 0) > 0;
     if (!canPublish) {
-      toast.error("No beta: WhatsApp + Leads + imagem única + orçamento diário.");
+      toast.error("Requisitos mínimos: canal válido + Leads + imagem única + orçamento diário.");
       return;
     }
     setPublishing(true);
