@@ -123,6 +123,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { ok: false as const, error: "already_publishing", message: "Já existe uma publicação em andamento." };
     }
 
+    // Modo retomada: se já temos campaign_id/adset_id na Meta e falta o ad,
+    // reutiliza-os e tenta apenas as etapas restantes (creative + ad).
+    const resumeMetaCampaignId = (campaign as { meta_campaign_id?: string | null }).meta_campaign_id ?? null;
+    const resumeMetaAdsetId = (campaign as { meta_adset_id?: string | null }).meta_adset_id ?? null;
+    const resumeMetaAdId = (campaign as { meta_ad_id?: string | null }).meta_ad_id ?? null;
+    const isResume = Boolean(resumeMetaCampaignId && resumeMetaAdsetId && !resumeMetaAdId);
+    console.log("[publishCampaign] mode", {
+      campaignId, isResume,
+      have: { campaign: resumeMetaCampaignId, adset: resumeMetaAdsetId, ad: resumeMetaAdId },
+    });
+
+
     // 3) Busca integração Meta ativa via admin client — mesma rotina segura
     // usada pelo readiness/listMetaAdAccounts. A tabela `integrations` tem
     // SELECT revogado de authenticated (para proteger access_token), então
