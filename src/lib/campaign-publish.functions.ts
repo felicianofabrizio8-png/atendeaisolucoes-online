@@ -15,7 +15,27 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const PublishInput = z.object({ campaignId: z.string().uuid() });
 
-type GraphErrorBody = { error?: { message?: string; code?: number; type?: string } };
+type GraphErrorBody = {
+  error?: {
+    message?: string;
+    code?: number;
+    type?: string;
+    error_subcode?: number;
+    error_user_title?: string;
+    error_user_msg?: string;
+    fbtrace_id?: string;
+  };
+};
+
+function formatGraphError(body: GraphErrorBody, fallback: string): string {
+  const e = body.error ?? {};
+  const parts = [e.message ?? fallback];
+  if (e.code !== undefined) parts.push(`code=${e.code}`);
+  if (e.error_subcode !== undefined) parts.push(`subcode=${e.error_subcode}`);
+  if (e.fbtrace_id) parts.push(`fbtrace=${e.fbtrace_id}`);
+  if (e.error_user_msg) parts.push(`user_msg=${e.error_user_msg}`);
+  return parts.join(" ");
+}
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -237,22 +257,33 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Step B: cria campaign (OUTCOME_LEADS).
+    // Step B: cria campaign (OUTCOME_LEADS). Payload mínimo aceito pela Meta:
+    // não enviar daily_budget/targeting/creative/page_id aqui — esses pertencem
+    // a adset/ad/creative.
+    const campaignPayload = {
+      name: campaign.name,
+      objective: "OUTCOME_LEADS",
+      status: "PAUSED",
+      special_ad_categories: [] as string[],
+      buying_type: "AUCTION",
+    };
+    console.log("[publishCampaign] create_campaign payload", {
+      campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
+    });
     const campRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: campaign.name,
-          objective: "OUTCOME_LEADS",
-          status: "PAUSED",
-          special_ad_categories: [],
-          buying_type: "AUCTION",
-        }),
+        body: JSON.stringify(campaignPayload),
       },
     );
-    if (!campRes.ok) return fail("create_campaign", campRes.message, campRes.body);
+    if (!campRes.ok) {
+      console.error("[publishCampaign] create_campaign fail", {
+        status: campRes.status, message: campRes.message, body: campRes.body,
+      });
+      return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
+    }
     const metaCampaignId = campRes.data.id;
 
     // Step C: cria adset (Click to WhatsApp).
@@ -283,7 +314,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     if (!adsetRes.ok) {
       // Tenta rollback da campaign criada (best-effort).
       void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
-      return fail("create_adset", adsetRes.message, adsetRes.body);
+      return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
     }
     const metaAdsetId = adsetRes.data.id;
 
@@ -311,7 +342,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         }),
       },
     );
-    if (!creativeRes.ok) return fail("create_creative", creativeRes.message, creativeRes.body);
+    if (!creativeRes.ok) return fail("create_creative", formatGraphError(creativeRes.body, creativeRes.message), creativeRes.body);
     const creativeId = creativeRes.data.id;
 
     // Step E: cria ad.
@@ -328,7 +359,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         }),
       },
     );
-    if (!adRes.ok) return fail("create_ad", adRes.message, adRes.body);
+    if (!adRes.ok) return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
     const metaAdId = adRes.data.id;
 
     // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
