@@ -367,6 +367,24 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
     }
     const metaCampaignId = campRes.data.id;
+    console.log("[publishCampaign] create_campaign ok", { metaCampaignId });
+
+    // Busca telefone WhatsApp da empresa (para o link wa.me do CTA).
+    let waPhone = "";
+    try {
+      const { data: waInteg } = await adminClient.supabaseAdmin
+        .from("integrations")
+        .select("account_metadata, external_account_id")
+        .eq("company_id", companyId)
+        .eq("channel", "whatsapp")
+        .eq("active", true)
+        .maybeSingle();
+      const md = (waInteg?.account_metadata ?? {}) as Record<string, unknown>;
+      waPhone = String(md["phone_number"] ?? md["display_phone_number"] ?? "").replace(/\D/g, "");
+      console.log("[publishCampaign] whatsapp phone lookup", { found: Boolean(waPhone), waPhone });
+    } catch (e) {
+      console.warn("[publishCampaign] whatsapp phone lookup failed", e);
+    }
 
     // Step C: cria adset (Click to WhatsApp).
     const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
