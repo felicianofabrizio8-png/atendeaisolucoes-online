@@ -572,6 +572,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
     const metaAdId = adRes.data.id;
     console.log("[publishCampaign] create_ad ok", { metaAdId });
 
+    // Step F: confirma que o ad existe na Meta antes de marcar como publicada.
+    const verifyRes = await graphFetch<{ id: string; status?: string }>(
+      `${GRAPH}/${metaAdId}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    if (!verifyRes.ok || !verifyRes.data?.id) {
+      console.error("[publishCampaign] verify_ad fail", {
+        metaAdId, status: verifyRes.ok ? 200 : verifyRes.status,
+        body: verifyRes.ok ? verifyRes.data : verifyRes.body,
+      });
+      return fail(
+        "verify_ad",
+        verifyRes.ok ? "Meta não confirmou o ad criado." : formatGraphError(verifyRes.body, verifyRes.message),
+        verifyRes.ok ? verifyRes.data : verifyRes.body,
+      );
+    }
+    console.log("[publishCampaign] verify_ad ok", { metaAdId, verified: verifyRes.data });
+
+
     // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
     // o usuário ativa pelo Gerenciador da Meta na primeira rodada do Beta).
     const { error: saveErr } = await supabase
