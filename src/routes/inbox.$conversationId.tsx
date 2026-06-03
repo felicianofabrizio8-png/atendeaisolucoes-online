@@ -479,6 +479,15 @@ function ConversationPage() {
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize do textarea conforme o conteúdo (cap em max-h via CSS).
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
   const [aiLoading, setAiLoading] = useState(false);
   const [ai, setAi] = useState<AISuggestion | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
