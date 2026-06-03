@@ -106,9 +106,13 @@ export const publishCampaign = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!campaign) return { ok: false as const, error: "campaign_not_found" };
 
-    // Escopo do Beta: WhatsApp + Leads + imagem única + orçamento diário.
-    if (campaign.objective !== "whatsapp") {
-      return { ok: false as const, error: "scope_objective", message: "No beta apenas campanhas WhatsApp podem ser publicadas." };
+    // Escopo do Beta: canal suportado (whatsapp/messenger/instagram) + Leads
+    // + imagem única + orçamento diário. Requisitos específicos por canal
+    // (número WA, página FB, ig_business_account_id) são checados mais abaixo
+    // antes da criação do creative, com mensagens dedicadas.
+    const supportedChannels = ["whatsapp", "messenger", "instagram"] as const;
+    if (!supportedChannels.includes(campaign.objective as (typeof supportedChannels)[number])) {
+      return { ok: false as const, error: "scope_objective", message: `Canal '${campaign.objective}' não suportado. Use WhatsApp, Messenger ou Instagram.` };
     }
     if (campaign.goal !== "leads") {
       return { ok: false as const, error: "scope_goal", message: "No beta apenas objetivo Leads é suportado." };
