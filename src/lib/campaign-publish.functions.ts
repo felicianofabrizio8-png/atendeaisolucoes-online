@@ -573,6 +573,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // por incompatibilidade de imagem / placements), faz fallback automático
     // para o creative mínimo (somente link + CTA WhatsApp, feed only).
     const waLink = waPhone ? `https://wa.me/${waPhone}` : `https://www.facebook.com/${pageId}`;
+    const camp = campaign!;
 
     function buildLinkData(simple: boolean): Record<string, unknown> {
       const ld: Record<string, unknown> = {
@@ -583,17 +584,17 @@ export const publishCampaign = createServerFn({ method: "POST" })
         },
       };
       if (!simple) {
-        ld.message = campaign.primary_text ?? "";
-        ld.name = campaign.headline ?? campaign.name;
+        ld.message = camp.primary_text ?? "";
+        ld.name = camp.headline ?? camp.name;
       }
       if (imageHash) ld.image_hash = imageHash;
-      else if (campaign.media_url) ld.picture = campaign.media_url;
+      else if (camp.media_url) ld.picture = camp.media_url;
       return ld;
     }
 
     function buildCreativePayload(simple: boolean) {
       return {
-        name: `${campaign.name} — creative${simple ? " (fallback)" : ""}`,
+        name: `${camp.name} — creative${simple ? " (fallback)" : ""}`,
         object_story_spec: { page_id: pageId, link_data: buildLinkData(simple) },
       };
     }
