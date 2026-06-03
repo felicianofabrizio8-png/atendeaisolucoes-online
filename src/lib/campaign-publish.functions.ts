@@ -193,6 +193,9 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
     async function fail(stage: string, message: string, raw?: unknown) {
+      console.error(`[publishCampaign] FAIL stage=${stage}`, {
+        campaignId, message, raw: raw ?? null,
+      });
       await supabase
         .from("campaigns")
         .update({
@@ -210,8 +213,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
           message: `[publish:${stage}] ${message}`.slice(0, 1900),
           context: { campaign_id: campaignId, raw: raw ?? null, stage } as never,
         });
-      } catch {
-        /* noop */
+      } catch (e) {
+        console.warn("[publishCampaign] error_log insert failed", e);
       }
       return { ok: false as const, error: "publish_failed", stage, message };
     }
