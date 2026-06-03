@@ -203,6 +203,8 @@ function CampaignDetailPage() {
   const status: DisplayStatus = c.status;
   const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
   const metaActive = Boolean(c.meta_campaign_id);
+  // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
+  const needsAdRetry = Boolean(c.meta_campaign_id && c.meta_adset_id && !c.meta_ad_id);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-5">
@@ -224,7 +226,21 @@ function CampaignDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {!metaActive && c.status !== "active" && (
+            {needsAdRetry && (
+              <button
+                onClick={performPublish}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-500/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                title="A campanha e o conjunto já existem na Meta, mas o anúncio final não foi criado."
+              >
+                {publishing ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> {publishStage || "Retomando…"}</>
+                ) : (
+                  <><Rocket className="h-4 w-4" /> Tentar criar anúncio novamente</>
+                )}
+              </button>
+            )}
+            {!metaActive && c.status !== "active" && !needsAdRetry && (
               <button
                 onClick={performPublish}
                 disabled={publishing}
@@ -253,7 +269,21 @@ function CampaignDetailPage() {
 
         </div>
         <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
+        {(needsAdRetry || c.meta_publish_error) && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              {needsAdRetry && (
+                <div className="font-medium">Anúncio não foi finalizado na Meta. Use “Tentar criar anúncio novamente”.</div>
+              )}
+              {c.meta_publish_error && (
+                <div className="font-mono break-all opacity-80">{c.meta_publish_error}</div>
+              )}
+            </div>
+          </div>
+        )}
       </header>
+
 
       {!metaActive && <MetaPublishReadinessPanel campaign={c} />}
 

@@ -123,6 +123,18 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { ok: false as const, error: "already_publishing", message: "Já existe uma publicação em andamento." };
     }
 
+    // Modo retomada: se já temos campaign_id/adset_id na Meta e falta o ad,
+    // reutiliza-os e tenta apenas as etapas restantes (creative + ad).
+    const resumeMetaCampaignId = (campaign as { meta_campaign_id?: string | null }).meta_campaign_id ?? null;
+    const resumeMetaAdsetId = (campaign as { meta_adset_id?: string | null }).meta_adset_id ?? null;
+    const resumeMetaAdId = (campaign as { meta_ad_id?: string | null }).meta_ad_id ?? null;
+    const isResume = Boolean(resumeMetaCampaignId && resumeMetaAdsetId && !resumeMetaAdId);
+    console.log("[publishCampaign] mode", {
+      campaignId, isResume,
+      have: { campaign: resumeMetaCampaignId, adset: resumeMetaAdsetId, ad: resumeMetaAdId },
+    });
+
+
     // 3) Busca integração Meta ativa via admin client — mesma rotina segura
     // usada pelo readiness/listMetaAdAccounts. A tabela `integrations` tem
     // SELECT revogado de authenticated (para proteger access_token), então
@@ -193,15 +205,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
     async function fail(stage: string, message: string, raw?: unknown) {
+      const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
+      const err = rawBody.error ?? {};
+      const tags = [
+        err.code !== undefined ? `code=${err.code}` : null,
+        err.error_subcode !== undefined ? `subcode=${err.error_subcode}` : null,
+        err.fbtrace_id ? `fbtrace=${err.fbtrace_id}` : null,
+      ].filter(Boolean).join(" ");
       console.error(`[publishCampaign] FAIL stage=${stage}`, {
-        campaignId, message, raw: raw ?? null,
+        campaignId, message, error_code: err.code ?? null,
+        error_subcode: err.error_subcode ?? null,
+        fbtrace_id: err.fbtrace_id ?? null,
+        raw: raw ?? null,
       });
       await supabase
         .from("campaigns")
         .update({
           status: "draft",
           meta_sync_status: "failed",
-          meta_publish_error: `${stage}: ${message}`.slice(0, 500),
+          meta_publish_error: `${stage}: ${message}${tags ? " · " + tags : ""}`.slice(0, 500),
         } as never)
         .eq("id", campaignId);
       try {
@@ -211,13 +233,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
           source: "meta",
           severity: "error",
           message: `[publish:${stage}] ${message}`.slice(0, 1900),
-          context: { campaign_id: campaignId, raw: raw ?? null, stage } as never,
+          context: {
+            campaign_id: campaignId, stage,
+            error_code: err.code ?? null,
+            error_subcode: err.error_subcode ?? null,
+            fbtrace_id: err.fbtrace_id ?? null,
+            raw: raw ?? null,
+          } as never,
         });
       } catch (e) {
         console.warn("[publishCampaign] error_log insert failed", e);
       }
-      return { ok: false as const, error: "publish_failed", stage, message };
+      return {
+        ok: false as const, error: "publish_failed", stage, message,
+        error_code: err.code ?? null,
+        error_subcode: err.error_subcode ?? null,
+        fbtrace_id: err.fbtrace_id ?? null,
+      };
     }
+
 
     // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
     // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
@@ -338,36 +372,47 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Step B: cria campaign (OUTCOME_LEADS). Payload mínimo aceito pela Meta:
-    // não enviar daily_budget/targeting/creative/page_id aqui — esses pertencem
-    // a adset/ad/creative.
-    const campaignPayload = {
-      name: campaign.name,
-      objective: "OUTCOME_LEADS",
-      status: "PAUSED",
-      special_ad_categories: [] as string[],
-      buying_type: "AUCTION",
-      is_adset_budget_sharing_enabled: false,
-    };
-    console.log("[publishCampaign] create_campaign payload", {
-      campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
-    });
-    const campRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(campaignPayload),
-      },
-    );
-    if (!campRes.ok) {
-      console.error("[publishCampaign] create_campaign fail", {
-        status: campRes.status, message: campRes.message, body: campRes.body,
+    // Step B: cria campaign (OUTCOME_LEADS). Em modo retomada, reutiliza o
+    // meta_campaign_id já gravado.
+    let metaCampaignId: string;
+    if (isResume && resumeMetaCampaignId) {
+      metaCampaignId = resumeMetaCampaignId;
+      console.log("[publishCampaign] create_campaign skipped (resume)", { metaCampaignId });
+    } else {
+      const campaignPayload = {
+        name: campaign.name,
+        objective: "OUTCOME_LEADS",
+        status: "PAUSED",
+        special_ad_categories: [] as string[],
+        buying_type: "AUCTION",
+        is_adset_budget_sharing_enabled: false,
+      };
+      console.log("[publishCampaign] create_campaign payload", {
+        campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
       });
-      return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
+      const campRes = await graphFetch<{ id: string }>(
+        `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(campaignPayload),
+        },
+      );
+      if (!campRes.ok) {
+        console.error("[publishCampaign] create_campaign fail", {
+          status: campRes.status, message: campRes.message, body: campRes.body,
+        });
+        return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
+      }
+      metaCampaignId = campRes.data.id;
+      console.log("[publishCampaign] create_campaign ok", { metaCampaignId });
+      // Persiste imediatamente para permitir retomada se etapas seguintes falharem.
+      await supabase
+        .from("campaigns")
+        .update({ meta_campaign_id: metaCampaignId } as never)
+        .eq("id", campaignId);
     }
-    const metaCampaignId = campRes.data.id;
-    console.log("[publishCampaign] create_campaign ok", { metaCampaignId });
+
 
     // Busca telefone WhatsApp da empresa (para o link wa.me do CTA).
     let waPhone = "";
@@ -386,75 +431,83 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.warn("[publishCampaign] whatsapp phone lookup failed", e);
     }
 
-    // Step C: cria adset (Click to WhatsApp).
-    const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
+    // Step C: cria adset (Click to WhatsApp). Em modo retomada, reutiliza.
+    let metaAdsetId: string;
+    if (isResume && resumeMetaAdsetId) {
+      metaAdsetId = resumeMetaAdsetId;
+      console.log("[publishCampaign] create_adset skipped (resume)", { metaAdsetId });
+    } else {
+      const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
 
-    // Resolve cidade via Meta Targeting Search (geo_locations.cities exige `key`).
-    let geoLocations: Record<string, unknown> = { countries: ["BR"] };
-    if (campaign.city) {
-      const searchUrl =
-        `${GRAPH}/search?type=adgeolocation` +
-        `&q=${encodeURIComponent(campaign.city)}` +
-        `&location_types=${encodeURIComponent(JSON.stringify(["city"]))}` +
-        `&country_code=BR&limit=5` +
-        `&access_token=${encodeURIComponent(accessToken)}`;
-      const geoRes = await graphFetch<{ data: Array<{ key: string; name: string; country_code?: string }> }>(
-        searchUrl,
-        { method: "GET" },
-      );
-      const results = geoRes.ok ? geoRes.data?.data ?? [] : [];
-      const match =
-        results.find((r) => (r.country_code ?? "").toUpperCase() === "BR") ?? results[0];
-      console.log("[publishCampaign] geo search", {
-        city: campaign.city,
-        results: results.map((r) => ({ key: r.key, name: r.name, cc: r.country_code })),
-        chosen: match?.key ?? null,
-      });
-      if (match?.key) {
-        geoLocations = {
-          cities: [
-            {
-              key: match.key,
-              radius: campaign.radius_km ?? 25,
-              distance_unit: "kilometer",
-            },
-          ],
-        };
+      // Resolve cidade via Meta Targeting Search (geo_locations.cities exige `key`).
+      let geoLocations: Record<string, unknown> = { countries: ["BR"] };
+      if (campaign.city) {
+        const searchUrl =
+          `${GRAPH}/search?type=adgeolocation` +
+          `&q=${encodeURIComponent(campaign.city)}` +
+          `&location_types=${encodeURIComponent(JSON.stringify(["city"]))}` +
+          `&country_code=BR&limit=5` +
+          `&access_token=${encodeURIComponent(accessToken)}`;
+        const geoRes = await graphFetch<{ data: Array<{ key: string; name: string; country_code?: string }> }>(
+          searchUrl,
+          { method: "GET" },
+        );
+        const results = geoRes.ok ? geoRes.data?.data ?? [] : [];
+        const match =
+          results.find((r) => (r.country_code ?? "").toUpperCase() === "BR") ?? results[0];
+        console.log("[publishCampaign] geo search", {
+          city: campaign.city,
+          results: results.map((r) => ({ key: r.key, name: r.name, cc: r.country_code })),
+          chosen: match?.key ?? null,
+        });
+        if (match?.key) {
+          geoLocations = {
+            cities: [
+              { key: match.key, radius: campaign.radius_km ?? 25, distance_unit: "kilometer" },
+            ],
+          };
+        }
       }
+
+      const targeting = { geo_locations: geoLocations };
+      const adsetPayload = {
+        name: `${campaign.name} — adset`,
+        campaign_id: metaCampaignId,
+        daily_budget: dailyBudgetCents,
+        billing_event: "IMPRESSIONS",
+        optimization_goal: "CONVERSATIONS",
+        destination_type: "WHATSAPP",
+        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+        status: "PAUSED",
+        targeting,
+        promoted_object: { page_id: pageId },
+      };
+      console.log("[publishCampaign] adset targeting", targeting);
+      console.log("[publishCampaign] create_adset payload", adsetPayload);
+
+      const adsetRes = await graphFetch<{ id: string }>(
+        `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(adsetPayload),
+        },
+      );
+      if (!adsetRes.ok) {
+        console.error("[publishCampaign] create_adset fail", {
+          status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
+        });
+        // NÃO faz rollback da campaign — mantemos para permitir retomada.
+        return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
+      }
+      metaAdsetId = adsetRes.data.id;
+      console.log("[publishCampaign] create_adset ok", { metaAdsetId });
+      await supabase
+        .from("campaigns")
+        .update({ meta_adset_id: metaAdsetId } as never)
+        .eq("id", campaignId);
     }
 
-    const targeting = { geo_locations: geoLocations };
-    console.log("[publishCampaign] adset targeting", targeting);
-
-    const adsetRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${campaign.name} — adset`,
-          campaign_id: metaCampaignId,
-          daily_budget: dailyBudgetCents,
-          billing_event: "IMPRESSIONS",
-          optimization_goal: "CONVERSATIONS",
-          destination_type: "WHATSAPP",
-          bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-          status: "PAUSED",
-          targeting,
-          promoted_object: { page_id: pageId },
-        }),
-      },
-    );
-    if (!adsetRes.ok) {
-      console.error("[publishCampaign] create_adset fail", {
-        status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
-      });
-      // Tenta rollback da campaign criada (best-effort).
-      void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
-      return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
-    }
-    const metaAdsetId = adsetRes.data.id;
-    console.log("[publishCampaign] create_adset ok", { metaAdsetId });
 
     // Step D: cria creative. Usa image_hash (upload do usuário) se possível;
     // caso contrário, passa `picture` com a URL pública direto (fallback).
@@ -518,6 +571,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     const metaAdId = adRes.data.id;
     console.log("[publishCampaign] create_ad ok", { metaAdId });
+
+    // Step F: confirma que o ad existe na Meta antes de marcar como publicada.
+    const verifyRes = await graphFetch<{ id: string; status?: string }>(
+      `${GRAPH}/${metaAdId}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    if (!verifyRes.ok || !verifyRes.data?.id) {
+      console.error("[publishCampaign] verify_ad fail", {
+        metaAdId, status: verifyRes.ok ? 200 : verifyRes.status,
+        body: verifyRes.ok ? verifyRes.data : verifyRes.body,
+      });
+      return fail(
+        "verify_ad",
+        verifyRes.ok ? "Meta não confirmou o ad criado." : formatGraphError(verifyRes.body, verifyRes.message),
+        verifyRes.ok ? verifyRes.data : verifyRes.body,
+      );
+    }
+    console.log("[publishCampaign] verify_ad ok", { metaAdId, verified: verifyRes.data });
+
 
     // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
     // o usuário ativa pelo Gerenciador da Meta na primeira rodada do Beta).
