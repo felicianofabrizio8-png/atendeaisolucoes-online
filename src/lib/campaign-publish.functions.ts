@@ -342,7 +342,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         }),
       },
     );
-    if (!creativeRes.ok) return fail("create_creative", creativeRes.message, creativeRes.body);
+    if (!creativeRes.ok) return fail("create_creative", formatGraphError(creativeRes.body, creativeRes.message), creativeRes.body);
     const creativeId = creativeRes.data.id;
 
     // Step E: cria ad.
