@@ -88,31 +88,51 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const savePage = useServerFn(selectMetaPage);
   const toggleBeta = useServerFn(setMetaBetaFlag);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
+    console.log("[MetaPanel] refresh readiness");
     setLoading(true);
     try {
       const r = await fetchReadiness();
-      if (r.ok) setReadiness(r as Readiness);
+      console.log("[MetaPanel] readiness response", r);
+      if (r.ok) {
+        setReadiness(r as Readiness);
+        if (!opts?.silent) toast.success("Status atualizado.");
+      } else {
+        toast.error(("message" in r && r.message) || "Falha ao verificar prontidão.");
+      }
+    } catch (e) {
+      console.error("[MetaPanel] refresh error", e);
+      toast.error(e instanceof Error ? e.message : "Erro ao verificar prontidão.");
     } finally { setLoading(false); }
   }, [fetchReadiness]);
 
   const loadAssets = useCallback(async () => {
+    console.log("[MetaPanel] load assets clicked");
     setLoadingAccounts(true);
     try {
       const [a, p] = await Promise.all([fetchAccounts(), fetchPages()]);
+      console.log("[MetaPanel] assets response", { accounts: a, pages: p });
       if (a.ok) {
         const accs = a.accounts as AdAccount[];
         setAccounts(accs);
         setMissingScopes(a.missingScopes as string[]);
-        console.log("[MetaPanel] ad accounts:", accs.length, accs);
+        if (accs.length === 0) {
+          toast.warning("Nenhuma conta de anúncios Meta encontrada. Cole o ID manualmente abaixo.");
+        } else {
+          toast.success(`${accs.length} conta(s) carregada(s).`);
+        }
       } else {
         toast.error(("message" in a && a.message) || "Erro ao listar contas Meta.");
       }
       if (p.ok) {
-        setPages(p.pages as MetaPage[]);
-        console.log("[MetaPanel] meta pages:", (p.pages as MetaPage[]).length, p.pages);
+        const pgs = p.pages as MetaPage[];
+        setPages(pgs);
+        if (pgs.length === 0) toast.warning("Nenhuma página Facebook encontrada.");
+      } else {
+        toast.error(("message" in p && p.message) || "Erro ao listar páginas.");
       }
     } catch (e) {
+      console.error("[MetaPanel] loadAssets error", e);
       toast.error(e instanceof Error ? e.message : "Erro ao carregar assets Meta.");
     } finally { setLoadingAccounts(false); }
   }, [fetchAccounts, fetchPages]);
