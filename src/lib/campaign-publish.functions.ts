@@ -314,7 +314,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     if (!adsetRes.ok) {
       // Tenta rollback da campaign criada (best-effort).
       void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
-      return fail("create_adset", adsetRes.message, adsetRes.body);
+      return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
     }
     const metaAdsetId = adsetRes.data.id;
 
