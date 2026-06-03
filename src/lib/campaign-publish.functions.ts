@@ -431,75 +431,83 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.warn("[publishCampaign] whatsapp phone lookup failed", e);
     }
 
-    // Step C: cria adset (Click to WhatsApp).
-    const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
+    // Step C: cria adset (Click to WhatsApp). Em modo retomada, reutiliza.
+    let metaAdsetId: string;
+    if (isResume && resumeMetaAdsetId) {
+      metaAdsetId = resumeMetaAdsetId;
+      console.log("[publishCampaign] create_adset skipped (resume)", { metaAdsetId });
+    } else {
+      const dailyBudgetCents = Math.round(Number(campaign.daily_budget) * 100);
 
-    // Resolve cidade via Meta Targeting Search (geo_locations.cities exige `key`).
-    let geoLocations: Record<string, unknown> = { countries: ["BR"] };
-    if (campaign.city) {
-      const searchUrl =
-        `${GRAPH}/search?type=adgeolocation` +
-        `&q=${encodeURIComponent(campaign.city)}` +
-        `&location_types=${encodeURIComponent(JSON.stringify(["city"]))}` +
-        `&country_code=BR&limit=5` +
-        `&access_token=${encodeURIComponent(accessToken)}`;
-      const geoRes = await graphFetch<{ data: Array<{ key: string; name: string; country_code?: string }> }>(
-        searchUrl,
-        { method: "GET" },
-      );
-      const results = geoRes.ok ? geoRes.data?.data ?? [] : [];
-      const match =
-        results.find((r) => (r.country_code ?? "").toUpperCase() === "BR") ?? results[0];
-      console.log("[publishCampaign] geo search", {
-        city: campaign.city,
-        results: results.map((r) => ({ key: r.key, name: r.name, cc: r.country_code })),
-        chosen: match?.key ?? null,
-      });
-      if (match?.key) {
-        geoLocations = {
-          cities: [
-            {
-              key: match.key,
-              radius: campaign.radius_km ?? 25,
-              distance_unit: "kilometer",
-            },
-          ],
-        };
+      // Resolve cidade via Meta Targeting Search (geo_locations.cities exige `key`).
+      let geoLocations: Record<string, unknown> = { countries: ["BR"] };
+      if (campaign.city) {
+        const searchUrl =
+          `${GRAPH}/search?type=adgeolocation` +
+          `&q=${encodeURIComponent(campaign.city)}` +
+          `&location_types=${encodeURIComponent(JSON.stringify(["city"]))}` +
+          `&country_code=BR&limit=5` +
+          `&access_token=${encodeURIComponent(accessToken)}`;
+        const geoRes = await graphFetch<{ data: Array<{ key: string; name: string; country_code?: string }> }>(
+          searchUrl,
+          { method: "GET" },
+        );
+        const results = geoRes.ok ? geoRes.data?.data ?? [] : [];
+        const match =
+          results.find((r) => (r.country_code ?? "").toUpperCase() === "BR") ?? results[0];
+        console.log("[publishCampaign] geo search", {
+          city: campaign.city,
+          results: results.map((r) => ({ key: r.key, name: r.name, cc: r.country_code })),
+          chosen: match?.key ?? null,
+        });
+        if (match?.key) {
+          geoLocations = {
+            cities: [
+              { key: match.key, radius: campaign.radius_km ?? 25, distance_unit: "kilometer" },
+            ],
+          };
+        }
       }
+
+      const targeting = { geo_locations: geoLocations };
+      const adsetPayload = {
+        name: `${campaign.name} — adset`,
+        campaign_id: metaCampaignId,
+        daily_budget: dailyBudgetCents,
+        billing_event: "IMPRESSIONS",
+        optimization_goal: "CONVERSATIONS",
+        destination_type: "WHATSAPP",
+        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+        status: "PAUSED",
+        targeting,
+        promoted_object: { page_id: pageId },
+      };
+      console.log("[publishCampaign] adset targeting", targeting);
+      console.log("[publishCampaign] create_adset payload", adsetPayload);
+
+      const adsetRes = await graphFetch<{ id: string }>(
+        `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(adsetPayload),
+        },
+      );
+      if (!adsetRes.ok) {
+        console.error("[publishCampaign] create_adset fail", {
+          status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
+        });
+        // NÃO faz rollback da campaign — mantemos para permitir retomada.
+        return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
+      }
+      metaAdsetId = adsetRes.data.id;
+      console.log("[publishCampaign] create_adset ok", { metaAdsetId });
+      await supabase
+        .from("campaigns")
+        .update({ meta_adset_id: metaAdsetId } as never)
+        .eq("id", campaignId);
     }
 
-    const targeting = { geo_locations: geoLocations };
-    console.log("[publishCampaign] adset targeting", targeting);
-
-    const adsetRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${campaign.name} — adset`,
-          campaign_id: metaCampaignId,
-          daily_budget: dailyBudgetCents,
-          billing_event: "IMPRESSIONS",
-          optimization_goal: "CONVERSATIONS",
-          destination_type: "WHATSAPP",
-          bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-          status: "PAUSED",
-          targeting,
-          promoted_object: { page_id: pageId },
-        }),
-      },
-    );
-    if (!adsetRes.ok) {
-      console.error("[publishCampaign] create_adset fail", {
-        status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
-      });
-      // Tenta rollback da campaign criada (best-effort).
-      void graphFetch(`${GRAPH}/${metaCampaignId}?access_token=${encodeURIComponent(accessToken)}`, { method: "DELETE" });
-      return fail("create_adset", formatGraphError(adsetRes.body, adsetRes.message), adsetRes.body);
-    }
-    const metaAdsetId = adsetRes.data.id;
-    console.log("[publishCampaign] create_adset ok", { metaAdsetId });
 
     // Step D: cria creative. Usa image_hash (upload do usuário) se possível;
     // caso contrário, passa `picture` com a URL pública direto (fallback).
