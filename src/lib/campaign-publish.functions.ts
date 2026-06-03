@@ -329,15 +329,65 @@ export const publishCampaign = createServerFn({ method: "POST" })
         `Tipo de imagem inválido (${imgContentType || "desconhecido"}). Use JPG ou PNG.`,
       );
     }
-    console.log("[publishCampaign] media ready", { source: imgSource, size: imgSize, contentType: imgContentType });
+    console.log("[publishCampaign] media ready (raw)", { source: imgSource, size: imgSize, contentType: imgContentType });
 
-
-    // Upload por bytes via multipart/form-data
+    // Normaliza a imagem ANTES do upload para Meta:
+    // - converte para JPG RGB
+    // - resize para caber em 1080x1080 (feed) preservando aspect ratio
+    //   (1080x1920 se a campanha for marcada como story/reel)
+    // - qualidade 85, peso < 4MB (re-encoda menor se necessário)
+    // - filename ASCII simples
+    // Isso evita rejeições da Meta por formato/cor/tamanho.
     try {
-      const ext = /png/i.test(imgContentType) ? "png" : /webp/i.test(imgContentType) ? "webp" : "jpg";
+      const placementHint = String(
+        (campaign as { placement?: string }).placement ??
+        (campaign as { format?: string }).format ?? "",
+      );
+      const isStory = /story|reel|vertical/i.test(placementHint);
+      const maxW = 1080;
+      const maxH = isStory ? 1920 : 1080;
+      const photon = await import("@cf-wasm/photon");
+      const rawBytes = new Uint8Array(await imgBlob.arrayBuffer());
+      const img = photon.PhotonImage.new_from_byteslice(rawBytes);
+      const w0 = img.get_width();
+      const h0 = img.get_height();
+      const scale = Math.min(1, maxW / w0, maxH / h0);
+      const tw = Math.max(1, Math.round(w0 * scale));
+      const th = Math.max(1, Math.round(h0 * scale));
+      const resized = scale < 1
+        ? photon.resize(img, tw, th, photon.SamplingFilter.Lanczos3)
+        : img;
+      let quality = 85;
+      let outBytes = resized.get_bytes_jpeg(quality);
+      while (outBytes.byteLength > 4 * 1024 * 1024 && quality > 50) {
+        quality -= 10;
+        outBytes = resized.get_bytes_jpeg(quality);
+      }
+      if (resized !== img) resized.free();
+      img.free();
+      imgBlob = new Blob([outBytes.slice().buffer as ArrayBuffer], { type: "image/jpeg" });
+      imgSize = imgBlob.size;
+      imgContentType = "image/jpeg";
+      console.log("[publishCampaign] media normalized", {
+        from: { w: w0, h: h0 }, to: { w: tw, h: th },
+        quality, size: imgSize,
+        target: isStory ? "story_1080x1920" : "feed_1080x1080",
+      });
+      if (!imgSize) {
+        return fail("upload_media", "Falha ao normalizar a imagem (saída vazia).");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[publishCampaign] image normalize failed", { msg });
+      return fail("upload_media", `Não foi possível processar a imagem (${msg}). Reenvie em JPG/PNG.`);
+    }
+
+
+    // Upload por bytes via multipart/form-data (filename ASCII simples)
+    try {
       const fd = new FormData();
       fd.append("access_token", accessToken);
-      fd.append("source", imgBlob, `campaign_${campaignId}.${ext}`);
+      fd.append("source", imgBlob, `campaign_${campaignId}.jpg`);
       const upRes = await fetch(`${GRAPH}/${actId}/adimages`, { method: "POST", body: fd });
       const upText = await upRes.text();
       const upBody = upText ? (JSON.parse(upText) as { images?: Record<string, { hash: string }> } & GraphErrorBody) : {};
