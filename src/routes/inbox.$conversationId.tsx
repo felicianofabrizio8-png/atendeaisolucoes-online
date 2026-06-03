@@ -1064,35 +1064,15 @@ function ConversationPage() {
                 </div>
               );
             }
-            const tplMeta = m.sourceMetadata as { template_name?: string; category?: string } | undefined;
-            const isTemplate = m.role === "agent" && !!tplMeta?.template_name;
+            // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
+            if (m.deletedAt && m.deletedFor === "me") return null;
             return (
-              <div
+              <MessageBubble
                 key={m.id}
-                className={cn(
-                  "flex flex-col max-w-[90%] md:max-w-[75%]",
-                  m.role === "agent" ? "ml-auto items-end" : "items-start",
-                )}
-              >
-                <div
-                  className={cn(
-                    "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
-                    m.role === "agent"
-                      ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-card border border-border rounded-bl-sm",
-                  )}
-                >
-                  <MessageContent message={m} />
-                </div>
-                {isTemplate && (
-                  <span className="text-[10px] mt-1 px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
-                    Enviado via template Utility{tplMeta?.template_name ? ` · ${tplMeta.template_name}` : ""}
-                  </span>
-                )}
-                <span className="text-[10px] text-muted-foreground mt-1 px-1">{timeAgo(m.at)}</span>
-              </div>
+                m={m}
+                canManage={!closedInfo}
+              />
             );
-
           })}
         </div>
 
