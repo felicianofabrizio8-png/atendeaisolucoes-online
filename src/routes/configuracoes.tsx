@@ -1497,13 +1497,16 @@ function MetaIntegrationSection() {
     "pages_read_engagement",
     "pages_manage_metadata",
     "pages_manage_engagement",
+    "pages_manage_ads",
     "pages_messaging",
     "business_management",
     "ads_management",
+    "ads_read",
     "instagram_basic",
     "whatsapp_business_management",
     "whatsapp_business_messaging",
   ].join(",");
+
 
   const REDIRECT_URI = "https://app.atendeaisolucoes.online/auth/meta/callback";
 
