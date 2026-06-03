@@ -199,6 +199,248 @@ function MessageContent({ message }: { message: Message }) {
   );
 }
 
+function MessageBubble({
+  m,
+  canManage,
+}: {
+  m: Message;
+  canManage: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(m.text);
+  const [confirmDelete, setConfirmDelete] = useState<null | "me" | "everyone">(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+
+  const tplMeta = m.sourceMetadata as
+    | { template_name?: string; category?: string }
+    | undefined;
+  const isTemplate = m.role === "agent" && !!tplMeta?.template_name;
+  const isAgent = m.role === "agent";
+  const isDeleted = !!m.deletedAt;
+  const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
+    ?.external_id;
+
+  async function commitEdit() {
+    const next = draft.trim();
+    if (!next || next === m.text) {
+      setEditing(false);
+      setDraft(m.text);
+      return;
+    }
+    try {
+      setBusy(true);
+      await editMessage(m.id, next);
+      toast.success("Mensagem editada");
+      setEditing(false);
+    } catch (e) {
+      toast.error("Falha ao editar", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitDelete(scope: "me" | "everyone") {
+    try {
+      setBusy(true);
+      await deleteMessage(m.id, scope);
+      toast.success(scope === "me" ? "Apagada para você" : "Mensagem apagada");
+      setConfirmDelete(null);
+    } catch (e) {
+      toast.error("Falha ao apagar", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "group flex flex-col max-w-[90%] md:max-w-[75%] relative",
+        isAgent ? "ml-auto items-end" : "items-start",
+      )}
+    >
+      <div className="flex items-end gap-1">
+        {isAgent && canManage && !isDeleted && !editing && (
+          <div className="relative opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
+              aria-label="Opções da mensagem"
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 bottom-8 z-20 min-w-[170px] rounded-md border border-border bg-popover shadow-md p-1 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setDraft(m.text);
+                      setEditing(true);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setConfirmDelete("me");
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Apagar para mim
+                  </button>
+                  {!externalId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setConfirmDelete("everyone");
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Apagar da conversa
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <div
+          className={cn(
+            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
+            isAgent
+              ? "bg-primary text-primary-foreground rounded-br-sm"
+              : "bg-card border border-border rounded-bl-sm",
+            isDeleted && "italic opacity-70",
+          )}
+        >
+          {isDeleted ? (
+            <span>Mensagem apagada</span>
+          ) : editing ? (
+            <div className="flex flex-col gap-2 min-w-[220px]">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                spellCheck
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                rows={Math.min(6, Math.max(1, draft.split("\n").length))}
+                className="resize-none rounded-md bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring border border-border"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void commitEdit();
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditing(false);
+                    setDraft(m.text);
+                  }
+                }}
+                autoFocus
+              />
+              <div className="flex items-center gap-1.5 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false);
+                    setDraft(m.text);
+                  }}
+                  className="text-xs px-2 py-1 rounded bg-background/20 hover:bg-background/30"
+                  disabled={busy}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void commitEdit()}
+                  disabled={busy || !draft.trim()}
+                  className="text-xs px-2 py-1 rounded bg-background text-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <Check className="h-3 w-3" /> Salvar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <MessageContent message={m} />
+          )}
+        </div>
+      </div>
+
+      {isTemplate && !isDeleted && (
+        <span className="text-[10px] mt-1 px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
+          Enviado via template Utility
+          {tplMeta?.template_name ? ` · ${tplMeta.template_name}` : ""}
+        </span>
+      )}
+      <span className="text-[10px] text-muted-foreground mt-1 px-1">
+        {timeAgo(m.at)}
+        {m.editedAt && !isDeleted ? " · editada" : ""}
+      </span>
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !busy && setConfirmDelete(null)}
+        >
+          <div
+            className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-semibold mb-1">
+              {confirmDelete === "me"
+                ? "Apagar para mim?"
+                : "Apagar da conversa?"}
+            </div>
+            <div className="text-sm text-muted-foreground mb-3">
+              {confirmDelete === "me"
+                ? "A mensagem ficará oculta apenas para você. O cliente continua vendo."
+                : "A mensagem será marcada como apagada. Esta ação não pode ser desfeita."}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                disabled={busy}
+                className="text-sm px-3 py-1.5 rounded-md hover:bg-accent"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void commitDelete(confirmDelete)}
+                disabled={busy}
+                className="text-sm px-3 py-1.5 rounded-md bg-[var(--status-urgent)] text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConversationPage() {
 
   const { conversationId } = Route.useParams();
