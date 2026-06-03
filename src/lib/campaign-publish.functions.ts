@@ -372,36 +372,47 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Step B: cria campaign (OUTCOME_LEADS). Payload mínimo aceito pela Meta:
-    // não enviar daily_budget/targeting/creative/page_id aqui — esses pertencem
-    // a adset/ad/creative.
-    const campaignPayload = {
-      name: campaign.name,
-      objective: "OUTCOME_LEADS",
-      status: "PAUSED",
-      special_ad_categories: [] as string[],
-      buying_type: "AUCTION",
-      is_adset_budget_sharing_enabled: false,
-    };
-    console.log("[publishCampaign] create_campaign payload", {
-      campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
-    });
-    const campRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(campaignPayload),
-      },
-    );
-    if (!campRes.ok) {
-      console.error("[publishCampaign] create_campaign fail", {
-        status: campRes.status, message: campRes.message, body: campRes.body,
+    // Step B: cria campaign (OUTCOME_LEADS). Em modo retomada, reutiliza o
+    // meta_campaign_id já gravado.
+    let metaCampaignId: string;
+    if (isResume && resumeMetaCampaignId) {
+      metaCampaignId = resumeMetaCampaignId;
+      console.log("[publishCampaign] create_campaign skipped (resume)", { metaCampaignId });
+    } else {
+      const campaignPayload = {
+        name: campaign.name,
+        objective: "OUTCOME_LEADS",
+        status: "PAUSED",
+        special_ad_categories: [] as string[],
+        buying_type: "AUCTION",
+        is_adset_budget_sharing_enabled: false,
+      };
+      console.log("[publishCampaign] create_campaign payload", {
+        campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
       });
-      return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
+      const campRes = await graphFetch<{ id: string }>(
+        `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(campaignPayload),
+        },
+      );
+      if (!campRes.ok) {
+        console.error("[publishCampaign] create_campaign fail", {
+          status: campRes.status, message: campRes.message, body: campRes.body,
+        });
+        return fail("create_campaign", formatGraphError(campRes.body, campRes.message), campRes.body);
+      }
+      metaCampaignId = campRes.data.id;
+      console.log("[publishCampaign] create_campaign ok", { metaCampaignId });
+      // Persiste imediatamente para permitir retomada se etapas seguintes falharem.
+      await supabase
+        .from("campaigns")
+        .update({ meta_campaign_id: metaCampaignId } as never)
+        .eq("id", campaignId);
     }
-    const metaCampaignId = campRes.data.id;
-    console.log("[publishCampaign] create_campaign ok", { metaCampaignId });
+
 
     // Busca telefone WhatsApp da empresa (para o link wa.me do CTA).
     let waPhone = "";
