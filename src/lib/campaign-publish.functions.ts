@@ -365,7 +365,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       }
       if (resized !== img) resized.free();
       img.free();
-      imgBlob = new Blob([new Uint8Array(outBytes)], { type: "image/jpeg" });
+      imgBlob = new Blob([outBytes.slice().buffer as ArrayBuffer], { type: "image/jpeg" });
       imgSize = imgBlob.size;
       imgContentType = "image/jpeg";
       console.log("[publishCampaign] media normalized", {
