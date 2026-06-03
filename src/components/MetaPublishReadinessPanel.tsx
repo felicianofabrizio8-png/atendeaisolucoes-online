@@ -129,7 +129,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         setPages(pgs);
         if (pgs.length === 0) toast.warning("Nenhuma página Facebook encontrada.");
       } else {
-        toast.error(("message" in p && p.message) || "Erro ao listar páginas.");
+        toast.error((("message" in p && typeof p.message === "string" && p.message) || "Erro ao listar páginas."));
       }
     } catch (e) {
       console.error("[MetaPanel] loadAssets error", e);
