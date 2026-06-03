@@ -228,39 +228,72 @@ export const publishCampaign = createServerFn({ method: "POST" })
     let imgBlob: Blob | null = null;
     let imgContentType = "";
     let imgSize = 0;
+    let imgSource: "public_url" | "admin_download" = "public_url";
 
+    // Helper: extrai { bucket, path } de URLs Supabase Storage públicas/assinadas
+    function parseSupabaseStoragePath(url: string): { bucket: string; path: string } | null {
+      try {
+        const u = new URL(url);
+        const m = u.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/);
+        if (!m) return null;
+        return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2].split("?")[0]) };
+      } catch {
+        return null;
+      }
+    }
+
+    // Tenta primeiro a URL pública; se falhar (bucket privado, 400/404), faz
+    // fallback baixando direto pelo admin client a partir do storage_path.
     try {
       const imgRes = await fetch(campaign.media_url, { method: "GET" });
       imgContentType = imgRes.headers.get("content-type") ?? "";
-      const lenHeader = imgRes.headers.get("content-length");
-      console.log("[publishCampaign] media fetch", {
-        url: campaign.media_url,
-        status: imgRes.status,
-        contentType: imgContentType,
-        contentLength: lenHeader,
+      console.log("[publishCampaign] media fetch (public)", {
+        url: campaign.media_url, status: imgRes.status,
+        contentType: imgContentType, contentLength: imgRes.headers.get("content-length"),
       });
-      if (!imgRes.ok) {
-        return fail(
-          "upload_media",
-          `Imagem não está pública para a Meta (HTTP ${imgRes.status}). Reenvie a imagem ou publique novamente.`,
-        );
-      }
-      if (!/^image\/(jpeg|jpg|png|webp)/i.test(imgContentType)) {
-        return fail(
-          "upload_media",
-          `Tipo de imagem inválido (${imgContentType || "desconhecido"}). Use JPG ou PNG.`,
-        );
-      }
-      imgBlob = await imgRes.blob();
-      imgSize = imgBlob.size;
-      if (!imgSize) {
-        return fail("upload_media", "Imagem vazia. Reenvie a imagem.");
+      if (imgRes.ok && /^image\//i.test(imgContentType)) {
+        imgBlob = await imgRes.blob();
+        imgSize = imgBlob.size;
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "network_error";
-      console.error("[publishCampaign] media fetch error", { url: campaign.media_url, msg });
-      return fail("upload_media", `Não foi possível baixar a imagem (${msg}).`);
+      console.warn("[publishCampaign] public fetch failed", { msg: e instanceof Error ? e.message : String(e) });
     }
+
+    if (!imgBlob || !imgSize) {
+      const parsed = parseSupabaseStoragePath(campaign.media_url);
+      console.log("[publishCampaign] fallback admin download", { parsed });
+      if (!parsed) {
+        return fail(
+          "upload_media",
+          "Imagem não está acessível publicamente. Reenvie a imagem na campanha.",
+        );
+      }
+      const { data: dl, error: dlErr } = await adminClient.supabaseAdmin
+        .storage.from(parsed.bucket).download(parsed.path);
+      if (dlErr || !dl) {
+        console.error("[publishCampaign] admin download failed", { parsed, error: dlErr });
+        return fail(
+          "upload_media",
+          `Imagem não encontrada no storage (${parsed.path}). Reenvie a imagem na campanha.`,
+        );
+      }
+      imgBlob = dl;
+      imgSize = dl.size;
+      imgContentType = dl.type || imgContentType || "image/jpeg";
+      imgSource = "admin_download";
+      console.log("[publishCampaign] admin download ok", {
+        bucket: parsed.bucket, path: parsed.path, size: imgSize, contentType: imgContentType,
+      });
+    }
+
+    if (!/^image\/(jpeg|jpg|png|webp)/i.test(imgContentType)) {
+      return fail(
+        "upload_media",
+        `Tipo de imagem inválido (${imgContentType || "desconhecido"}). Use JPG ou PNG.`,
+      );
+    }
+    console.log("[publishCampaign] media ready", { source: imgSource, size: imgSize, contentType: imgContentType });
+
 
     // Upload por bytes via multipart/form-data
     try {
