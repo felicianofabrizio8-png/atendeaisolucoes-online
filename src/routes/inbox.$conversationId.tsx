@@ -10,6 +10,8 @@ import {
   markLeadWon,
   refetchConversationMessages,
   subscribeRepo,
+  editMessage,
+  deleteMessage,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
@@ -31,6 +33,10 @@ import {
   X,
   DollarSign,
   MessageSquare,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Check,
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
