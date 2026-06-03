@@ -733,11 +733,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { res, payload };
     }
 
+    function resBody(r: { ok: boolean; body?: unknown }) {
+      return r.ok ? null : (r as { body: unknown }).body;
+    }
+
     let creativeId: string;
     const attempts: Array<{ mode: CreativeMode; payload: unknown; response: unknown }> = [];
 
     const advanced = await tryCreateCreative("advanced");
-    attempts.push({ mode: "advanced", payload: advanced.payload, response: advanced.res.body });
+    attempts.push({ mode: "advanced", payload: advanced.payload, response: resBody(advanced.res) });
 
     if (advanced.res.ok) {
       creativeId = advanced.res.data.id;
