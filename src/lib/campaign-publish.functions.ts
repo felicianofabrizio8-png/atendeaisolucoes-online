@@ -196,7 +196,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { ok: false as const, error: "publish_failed", stage, message };
     }
 
-    // Step A: upload da imagem para a ad account.
+    // Step A: tenta upload da imagem para a ad account (gera image_hash).
+    // Se a Meta App não tiver capability `ads_management` aprovada, o
+    // endpoint `/adimages` retorna erro (#3). Nesse caso seguimos sem hash e
+    // usamos a URL pública direto no `picture` do creative (suportado).
+    console.log("[publishCampaign] upload_media start", {
+      campaignId, actId, mediaUrl: campaign.media_url,
+      endpoint: `${GRAPH}/${actId}/adimages`,
+    });
+    let imageHash: string | null = null;
     const uploadRes = await graphFetch<{ images?: Record<string, { hash: string }> }>(
       `${GRAPH}/${actId}/adimages?access_token=${encodeURIComponent(accessToken)}`,
       {
@@ -205,11 +213,29 @@ export const publishCampaign = createServerFn({ method: "POST" })
         body: JSON.stringify({ url: campaign.media_url }),
       },
     );
-    if (!uploadRes.ok) return fail("upload_media", uploadRes.message, uploadRes.body);
-    const images = uploadRes.data.images ?? {};
-    const firstImage = Object.values(images)[0];
-    const imageHash = firstImage?.hash;
-    if (!imageHash) return fail("upload_media", "no_image_hash_returned", uploadRes.data);
+    if (uploadRes.ok) {
+      const images = uploadRes.data.images ?? {};
+      imageHash = Object.values(images)[0]?.hash ?? null;
+      console.log("[publishCampaign] upload_media ok", { imageHash, raw: uploadRes.data });
+    } else {
+      const errCode = (uploadRes.body as GraphErrorBody).error?.code;
+      const isCapability =
+        errCode === 3 || errCode === 10 || errCode === 200 || errCode === 294 ||
+        /capability|permission|not have/i.test(uploadRes.message);
+      console.warn("[publishCampaign] upload_media fail", {
+        status: uploadRes.status, message: uploadRes.message, body: uploadRes.body,
+        willFallbackToPictureUrl: isCapability,
+      });
+      if (!isCapability) {
+        return fail(
+          "upload_media",
+          `Não foi possível enviar a imagem para a Meta (${uploadRes.message}). Verifique se a URL é pública.`,
+          uploadRes.body,
+        );
+      }
+      // Fallback: segue sem image_hash, usa picture URL no creative.
+    }
+
 
     // Step B: cria campaign (OUTCOME_LEADS).
     const campRes = await graphFetch<{ id: string }>(
@@ -261,7 +287,19 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     const metaAdsetId = adsetRes.data.id;
 
-    // Step D: cria creative.
+    // Step D: cria creative. Usa image_hash se conseguimos upload; caso
+    // contrário, passa `picture` com a URL pública direto (fallback).
+    const linkData: Record<string, unknown> = {
+      message: campaign.primary_text ?? "",
+      name: campaign.headline ?? campaign.name,
+      link: `https://wa.me/`,
+      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+    };
+    if (imageHash) linkData.image_hash = imageHash;
+    else if (campaign.media_url) linkData.picture = campaign.media_url;
+    console.log("[publishCampaign] create_creative", {
+      pageId, usingImageHash: Boolean(imageHash), usingPictureUrl: !imageHash && Boolean(campaign.media_url),
+    });
     const creativeRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
       {
@@ -269,16 +307,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: `${campaign.name} — creative`,
-          object_story_spec: {
-            page_id: pageId,
-            link_data: {
-              message: campaign.primary_text ?? "",
-              name: campaign.headline ?? campaign.name,
-              link: `https://wa.me/`,
-              call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
-              image_hash: imageHash,
-            },
-          },
+          object_story_spec: { page_id: pageId, link_data: linkData },
         }),
       },
     );
