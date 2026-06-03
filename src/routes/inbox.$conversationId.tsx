@@ -1254,9 +1254,15 @@ function ConversationPage() {
               <span className="hidden md:inline">Responder com IA</span>
             </button>
             <textarea
+              ref={composerRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={!!closedInfo}
+              spellCheck
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              autoComplete="on"
+              enterKeyHint="send"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -1268,10 +1274,10 @@ function ConversationPage() {
                   ? "Venda fechada."
                   : isComment
                     ? "Resposta ao comentário…"
-                    : "Mensagem…"
+                    : "Mensagem… (Enter envia · Shift+Enter quebra linha)"
               }
               rows={1}
-              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-32 md:min-h-[3.5rem]"
+              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 md:min-h-[3.5rem]"
             />
             <button
               onClick={() => sendMessage(input)}
