@@ -62,7 +62,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
       .maybeSingle();
     const betaEnabled = Boolean((company as unknown as { meta_campaigns_beta?: boolean } | null)?.meta_campaigns_beta);
     if (!betaEnabled) {
-      return { ok: false as const, error: "beta_not_enabled", message: "Publicação Meta Ads ainda não liberada para esta empresa." };
+      return {
+        ok: false as const,
+        error: "beta_not_enabled",
+        message: "Publicação Meta Ads ainda não está liberada para sua empresa. Entre em contato com o suporte.",
+      };
     }
 
     // Checa papel admin via has_role.
