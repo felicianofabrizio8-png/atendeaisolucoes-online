@@ -617,7 +617,7 @@ Deno.serve(async (req) => {
           { onConflict: "company_id,page_id" },
         );
 
-      const subResult = await subscribePage(p.id, pageToken);
+      const subResult = await subscribePage(p.id, safeLoopPageToken);
       if (!subResult.ok) {
         await sb
           .from("meta_pages")
