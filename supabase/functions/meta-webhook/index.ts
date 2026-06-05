@@ -405,6 +405,34 @@ function extractWaText(m: any): string {
   return `[${m?.type ?? "mensagem"}]`;
 }
 
+// Constrói um preview textual curto da mensagem original que foi respondida.
+// Usado no inbox para mostrar o "balão citado" acima da resposta (igual WhatsApp).
+function buildReplyPreview(
+  kind: string,
+  text: string,
+  meta: Record<string, unknown>,
+): string {
+  const t = (text ?? "").trim();
+  switch (kind) {
+    case "image":
+      return t && !t.startsWith("[") ? `📷 ${t}` : "📷 Foto";
+    case "audio":
+      return "🎤 Mensagem de voz";
+    case "video":
+      return t && !t.startsWith("[") ? `🎬 ${t}` : "🎬 Vídeo";
+    case "document": {
+      const fn = (meta?.media_filename as string | undefined) ?? "";
+      return fn ? `📎 ${fn}` : "📎 Documento";
+    }
+    case "sticker":
+      return "🟢 Sticker";
+    case "location":
+      return "📍 Localização";
+    default:
+      return t.length > 120 ? `${t.slice(0, 117)}…` : t || "[mensagem]";
+  }
+}
+
 // ---------- Media download (WhatsApp) ----------
 async function logMedia(
   sb: Sb,
