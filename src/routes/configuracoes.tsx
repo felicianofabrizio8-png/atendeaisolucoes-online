@@ -125,6 +125,10 @@ function ConfigPage() {
           <span className="text-xs text-muted-foreground">→</span>
         </Link>
 
+        <NotificationsCard />
+
+
+
         <section className="rounded-lg border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="h-4 w-4 text-primary" />
