@@ -42,19 +42,24 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 async function graphFetch<T>(
   url: string,
   init: RequestInit,
-): Promise<{ ok: true; data: T } | { ok: false; status: number; body: GraphErrorBody; message: string }> {
+): Promise<
+  | { ok: true; data: T; status: number; rawText: string; responseHeaders: Record<string, string> }
+  | { ok: false; status: number; body: GraphErrorBody; message: string; rawText: string; responseHeaders: Record<string, string> }
+> {
   try {
     const res = await fetch(url, init);
     const text = await res.text();
+    const responseHeaders: Record<string, string> = {};
+    res.headers.forEach((v, k) => { responseHeaders[k] = v; });
     const body = text ? (JSON.parse(text) as T & GraphErrorBody) : ({} as T & GraphErrorBody);
     if (!res.ok) {
       const msg = (body as GraphErrorBody).error?.message ?? `HTTP ${res.status}`;
-      return { ok: false, status: res.status, body, message: msg };
+      return { ok: false, status: res.status, body, message: msg, rawText: text, responseHeaders };
     }
-    return { ok: true, data: body };
+    return { ok: true, data: body, status: res.status, rawText: text, responseHeaders };
   } catch (e) {
     const message = e instanceof Error ? e.message : "network_error";
-    return { ok: false, status: 0, body: {}, message };
+    return { ok: false, status: 0, body: {}, message, rawText: "", responseHeaders: {} };
   }
 }
 
