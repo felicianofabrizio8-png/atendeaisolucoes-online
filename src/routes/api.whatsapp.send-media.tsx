@@ -124,12 +124,13 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           );
         }
 
-        // Resolve path → signed URL. Se vier mediaUrl externa, usa direto.
-        let resolvedPath = body.mediaPath
-          ? body.mediaPath.replace(/^\/+/, "")
-          : body.mediaUrl
-            ? pathFromUrl(body.mediaUrl)
-            : null;
+        // Resolve path/URL → signed URL. A biblioteca de produtos pode enviar
+        // uma URL pública/assinada antiga; nesses casos extraímos o path real.
+        const incomingRef = (body.mediaPath ?? body.mediaUrl ?? "").trim();
+        const isHttpRef = /^https?:\/\//i.test(incomingRef);
+        const resolvedPath = isHttpRef
+          ? pathFromUrl(incomingRef)
+          : incomingRef.replace(/^\/+/, "");
         let publicLink: string;
         let storedRef: string; // o que salvamos no source_metadata
         if (resolvedPath) {
@@ -152,9 +153,11 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           }
           publicLink = signed.signedUrl;
           storedRef = resolvedPath; // salvamos o path, signed URL é gerada na exibição
+        } else if (isHttpRef) {
+          publicLink = incomingRef;
+          storedRef = incomingRef;
         } else {
-          publicLink = body.mediaUrl!;
-          storedRef = body.mediaUrl!;
+          return Response.json({ error: "Referência de mídia inválida" }, { status: 400 });
         }
 
         // HEAD validate
