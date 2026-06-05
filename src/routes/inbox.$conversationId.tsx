@@ -145,87 +145,283 @@ async function readFunctionError(
 
 const IMAGE_URL_RE = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s]*)?)/gi;
 
-function ImagePreview({ url }: { url: string }) {
-  const [error, setError] = useState(false);
+type MediaKind = "image" | "video" | "audio" | "document" | "sticker";
+
+function useResolvedMediaSrc(opts: {
+  path?: string | null;
+  url?: string | null;
+}): string | null {
+  const { path, url } = opts;
   const [resolved, setResolved] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    if (url.startsWith("blob:") || url.startsWith("data:")) {
-      setResolved(url);
-      return;
-    }
-    void getSignedImageUrl(url).then((r) => {
+    async function run() {
+      if (path) {
+        const r = await getSignedWaMediaUrl(path);
+        if (!cancelled) setResolved(r);
+        return;
+      }
+      if (!url) {
+        setResolved(null);
+        return;
+      }
+      if (url.startsWith("blob:") || url.startsWith("data:")) {
+        setResolved(url);
+        return;
+      }
+      const r = await getSignedImageUrl(url);
       if (!cancelled) setResolved(r);
-    });
+    }
+    void run();
     return () => {
       cancelled = true;
     };
-  }, [url]);
-  if (error) {
-    return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
-  }
-  const display = resolved ?? url;
+  }, [path, url]);
+  return resolved;
+}
+
+function DownloadButton({
+  href,
+  filename,
+  className,
+}: {
+  href: string | null;
+  filename?: string | null;
+  className?: string;
+}) {
+  if (!href) return null;
   return (
-    <a href={display} target="_blank" rel="noopener noreferrer" className="block">
-      <img
-        src={display}
-        alt="Imagem"
-        onError={() => setError(true)}
-        className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
-        loading="lazy"
-      />
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={filename ?? true}
+      className={cn(
+        "inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline",
+        className,
+      )}
+      aria-label="Baixar mídia"
+    >
+      <Download className="size-3.5" />
+      Baixar
     </a>
   );
 }
 
-function VideoPreview({ url }: { url: string }) {
-  const [resolved, setResolved] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (url.startsWith("blob:") || url.startsWith("data:")) {
-      setResolved(url);
-      return;
-    }
-    void getSignedImageUrl(url).then((r) => {
-      if (!cancelled) setResolved(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-  const display = resolved ?? url;
+function ImagePreview({
+  path,
+  url,
+  filename,
+}: {
+  path?: string | null;
+  url?: string | null;
+  filename?: string | null;
+}) {
+  const [error, setError] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+  const display = useResolvedMediaSrc({ path, url });
+  if (error) {
+    return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
+  }
+  if (!display) {
+    return <div className="h-32 w-48 rounded-md bg-muted animate-pulse" />;
+  }
   return (
-    <video
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setLightbox(true)}
+        className="block focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
+      >
+        <img
+          src={display}
+          alt={filename ?? "Imagem"}
+          onError={() => setError(true)}
+          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
+          loading="lazy"
+        />
+      </button>
+      <DownloadButton href={display} filename={filename} />
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setLightbox(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightbox(false);
+            }}
+            className="absolute top-4 right-4 text-white/90 hover:text-white"
+            aria-label="Fechar"
+          >
+            <X className="size-6" />
+          </button>
+          <img
+            src={display}
+            alt={filename ?? "Imagem ampliada"}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoPreview({
+  path,
+  url,
+  filename,
+}: {
+  path?: string | null;
+  url?: string | null;
+  filename?: string | null;
+}) {
+  const display = useResolvedMediaSrc({ path, url });
+  if (!display) {
+    return <div className="h-40 w-64 rounded-md bg-muted animate-pulse" />;
+  }
+  return (
+    <div className="space-y-1">
+      <video
+        src={display}
+        controls
+        className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
+        preload="metadata"
+      />
+      <DownloadButton href={display} filename={filename} />
+    </div>
+  );
+}
+
+function AudioPreview({
+  path,
+  mime,
+  filename,
+}: {
+  path?: string | null;
+  mime?: string | null;
+  filename?: string | null;
+}) {
+  const display = useResolvedMediaSrc({ path });
+  if (!display) {
+    return <div className="h-12 w-64 rounded-md bg-muted animate-pulse" />;
+  }
+  return (
+    <div className="space-y-1">
+      <audio src={display} controls preload="metadata" className="max-w-full md:w-[280px]">
+        {mime ? <source src={display} type={mime} /> : null}
+      </audio>
+      <DownloadButton href={display} filename={filename ?? "audio"} />
+    </div>
+  );
+}
+
+function DocumentPreview({
+  path,
+  filename,
+  mime,
+  size,
+}: {
+  path?: string | null;
+  filename?: string | null;
+  mime?: string | null;
+  size?: number | null;
+}) {
+  const display = useResolvedMediaSrc({ path });
+  const sizeLabel =
+    typeof size === "number" && size > 0
+      ? size > 1024 * 1024
+        ? `${(size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(size / 1024))} KB`
+      : null;
+  return (
+    <div className="rounded-md border bg-background/60 px-3 py-2 flex items-center gap-3 max-w-full md:max-w-[300px]">
+      <FileText className="size-6 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">{filename ?? "Documento"}</div>
+        <div className="text-[11px] text-muted-foreground truncate">
+          {[mime, sizeLabel].filter(Boolean).join(" • ") || "Arquivo"}
+        </div>
+      </div>
+      <DownloadButton href={display} filename={filename} className="shrink-0" />
+    </div>
+  );
+}
+
+function StickerPreview({
+  path,
+  filename,
+}: {
+  path?: string | null;
+  filename?: string | null;
+}) {
+  const display = useResolvedMediaSrc({ path });
+  if (!display) {
+    return <div className="h-24 w-24 rounded-md bg-muted animate-pulse" />;
+  }
+  return (
+    <img
       src={display}
-      controls
-      className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
-      preload="metadata"
+      alt={filename ?? "Sticker"}
+      className="rounded-md w-24 h-24 object-contain bg-transparent"
+      loading="lazy"
     />
   );
 }
 
-type MediaKind = "image" | "video" | "audio" | "document";
-function getMediaInfo(m: Message): { url: string; kind: MediaKind } | null {
+type MediaInfo = {
+  path?: string | null;
+  url?: string | null;
+  kind: MediaKind;
+  mime?: string | null;
+  filename?: string | null;
+  size?: number | null;
+};
+
+function getMediaInfo(m: Message): MediaInfo | null {
   const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const path = (meta?.media_path as string | undefined) ?? null;
   const url =
     (meta?.media_url as string | undefined) ??
     (meta?.mediaUrl as string | undefined) ??
-    (meta?.image_url as string | undefined);
-  const t = (meta?.type as string | undefined) ?? m.sourceSubtype;
-  if (url) {
-    const kind: MediaKind =
-      t === "image" || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)
-        ? "image"
-        : t === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(url)
-          ? "video"
-          : t === "audio" || /\.(mp3|ogg|m4a|wav)(\?|$)/i.test(url)
-            ? "audio"
-            : "document";
-    return { url, kind };
+    (meta?.image_url as string | undefined) ??
+    null;
+  const mime = (meta?.media_mime as string | undefined) ?? null;
+  const filename = (meta?.media_filename as string | undefined) ?? null;
+  const size = (meta?.media_size as number | undefined) ?? null;
+  const t =
+    (meta?.media_kind as string | undefined) ??
+    (meta?.type as string | undefined) ??
+    m.sourceSubtype ??
+    "";
+
+  function kindFor(): MediaKind | null {
+    if (t === "sticker") return "sticker";
+    if (t === "image") return "image";
+    if (t === "video") return "video";
+    if (t === "audio") return "audio";
+    if (t === "document") return "document";
+    const ref = (path ?? url ?? "").toLowerCase();
+    if (/\.(jpe?g|png|webp|gif)(\?|$)/.test(ref)) return "image";
+    if (/\.(mp4|webm|mov|3gp)(\?|$)/.test(ref)) return "video";
+    if (/\.(mp3|ogg|m4a|wav|aac|opus)(\?|$)/.test(ref)) return "audio";
+    if (/\.(pdf|docx?|xlsx?|pptx?|txt|csv)(\?|$)/.test(ref)) return "document";
+    return null;
   }
+
+  if (path || url) {
+    const kind = kindFor();
+    if (kind) return { path, url, kind, mime, filename, size };
+  }
+
   IMAGE_URL_RE.lastIndex = 0;
   const match = IMAGE_URL_RE.exec(m.text ?? "");
-  if (match) return { url: match[1], kind: "image" };
+  if (match) return { url: match[1], kind: "image", mime, filename, size };
   return null;
 }
 
@@ -239,45 +435,63 @@ function deletedLabelFor(kind: MediaKind | null): string {
       return "🗑️ Áudio removido";
     case "document":
       return "🗑️ Arquivo removido";
+    case "sticker":
+      return "🗑️ Sticker removido";
     default:
       return "🗑️ Mensagem removida";
   }
 }
 
 function MessageContent({ message }: { message: Message }) {
-  const meta = message.sourceMetadata as Record<string, unknown> | undefined;
-  const mediaUrl =
-    (meta?.media_url as string | undefined) ??
-    (meta?.mediaUrl as string | undefined) ??
-    (meta?.image_url as string | undefined);
-  const mediaType = (meta?.type as string | undefined) ?? message.sourceSubtype ?? "";
-  const isVideoType =
-    mediaType === "video" || (mediaUrl ? /\.(mp4|webm|mov)(\?|$)/i.test(mediaUrl) : false);
-  const isImageType =
-    mediaType === "image" ||
-    (mediaUrl ? /\.(jpe?g|png|webp|gif)(\?|$)/i.test(mediaUrl) : false);
+  const info = getMediaInfo(message);
 
-  if (mediaUrl && isVideoType) {
-    return (
-      <div className="space-y-1">
-        <VideoPreview url={mediaUrl} />
-        {message.text && !/^\[/.test(message.text.trim()) && (
-          <div>{message.text}</div>
-        )}
-      </div>
-    );
-  }
+  if (info) {
+    const trimmed = (message.text ?? "").trim();
+    const showCaption =
+      trimmed.length > 0 && !/^\[/.test(trimmed) && !/^https?:\/\//.test(trimmed);
+    const caption = showCaption ? <div>{trimmed}</div> : null;
 
-  if (mediaUrl && (isImageType || IMAGE_URL_RE.test(mediaUrl))) {
-    IMAGE_URL_RE.lastIndex = 0;
-    return (
-      <div className="space-y-1">
-        <ImagePreview url={mediaUrl} />
-        {message.text && !/^https?:\/\//.test(message.text.trim()) && !/^\[/.test(message.text.trim()) && (
-          <div>{message.text}</div>
-        )}
-      </div>
-    );
+    switch (info.kind) {
+      case "image":
+        return (
+          <div className="space-y-1">
+            <ImagePreview path={info.path} url={info.url} filename={info.filename} />
+            {caption}
+          </div>
+        );
+      case "video":
+        return (
+          <div className="space-y-1">
+            <VideoPreview path={info.path} url={info.url} filename={info.filename} />
+            {caption}
+          </div>
+        );
+      case "audio":
+        return (
+          <div className="space-y-1">
+            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} />
+            {caption}
+          </div>
+        );
+      case "document":
+        return (
+          <div className="space-y-1">
+            <DocumentPreview
+              path={info.path}
+              filename={info.filename}
+              mime={info.mime}
+              size={info.size}
+            />
+            {caption}
+          </div>
+        );
+      case "sticker":
+        return (
+          <div className="space-y-1">
+            <StickerPreview path={info.path} filename={info.filename} />
+          </div>
+        );
+    }
   }
 
   const text = message.text ?? "";
