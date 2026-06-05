@@ -556,7 +556,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
             .eq("external_id", externalId)
             .maybeSingle();
           if (!dup?.id) {
-            await sb.from("messages").insert({
+            const { data: inserted } = await sb.from("messages").insert({
               company_id: companyId,
               conversation_id: conversationId,
               role: "lead",
@@ -567,7 +567,27 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
               source: "whatsapp",
               source_subtype: m?.type ?? "text",
               source_metadata: { wa_id: waId, raw: m },
-            });
+            }).select("id").single();
+
+            // 3b) media download (best-effort, must not break webhook)
+            const messageId = inserted?.id as string | undefined;
+            const mediaKind = m?.type as string | undefined;
+            if (messageId && mediaKind && ["image", "audio", "video", "document", "sticker"].includes(mediaKind)) {
+              try {
+                await downloadAndStoreMedia(sb, {
+                  companyId,
+                  conversationId,
+                  messageId,
+                  mediaKind,
+                  payload: m?.[mediaKind] ?? {},
+                  accessToken,
+                  waId,
+                  raw: m,
+                });
+              } catch (e) {
+                console.error("META_WEBHOOK_MEDIA_UNCAUGHT", e instanceof Error ? e.message : String(e));
+              }
+            }
           }
         }
 
