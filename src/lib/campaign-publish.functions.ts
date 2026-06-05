@@ -480,6 +480,79 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return fail("upload_media", `Falha ao enviar bytes para a Meta (${msg}).`);
     }
 
+    // Pré-check de acessibilidade externa via SIGNED URL (24h).
+    // - Bucket product-images é privado: jamais usar URL /object/public/ na Meta.
+    // - Gera signed URL e faz HEAD/GET. Se falhar e não tivermos image_hash, aborta
+    //   antes de create_creative com mensagem clara.
+    // - Pré-aquece `pictureUrlForMeta` para reutilização no fallback "picture".
+    // - Loga campos obrigatórios em error_log (severity=info quando ok).
+    const parsedForCheck = parseSupabaseStoragePath(campaign.media_url ?? "");
+    const metaUploadStatus: "success" | "skipped_capability" =
+      imageHash ? "success" : "skipped_capability";
+    if (parsedForCheck) {
+      const { data: signed, error: signErr } = await adminClient.supabaseAdmin
+        .storage.from(parsedForCheck.bucket).createSignedUrl(parsedForCheck.path, 60 * 60 * 24);
+      if (signErr || !signed?.signedUrl) {
+        console.warn("[publishCampaign] createSignedUrl failed", { signErr });
+      } else {
+        // (signed URL será regenerado dentro de getPictureUrlForMeta se o fallback "picture" for usado)
+        mediaCheck = await probePublicUrl(signed.signedUrl, "signed");
+        const safeUrl = signed.signedUrl.split("?")[0] + "?token=***";
+        console.log("[publishCampaign] image_access_check", {
+          campaign_id: campaignId,
+          stage: "image_access_check",
+          image_path: parsedForCheck.path,
+          storage_bucket: parsedForCheck.bucket,
+          image_access_check_status: mediaCheck.status,
+          method: mediaCheck.method,
+          content_type: mediaCheck.contentType,
+          ok: mediaCheck.ok,
+          signed_url_preview: safeUrl,
+          meta_upload_status: metaUploadStatus,
+          image_hash: imageHash,
+        });
+        try {
+          await adminClient.supabaseAdmin.from("error_log").insert({
+            company_id: companyId,
+            user_id: userId,
+            source: "meta",
+            severity: mediaCheck.ok ? "info" : "warning",
+            message: `[publish:image_access_check] status=${mediaCheck.status ?? "—"} ok=${mediaCheck.ok}`,
+            context: {
+              campaign_id: campaignId,
+              stage: "image_access_check",
+              image_path: parsedForCheck.path,
+              storage_bucket: parsedForCheck.bucket,
+              image_access_check_status: mediaCheck.status,
+              meta_upload_status: metaUploadStatus,
+              image_hash: imageHash,
+              content_type: mediaCheck.contentType,
+              method: mediaCheck.method,
+              signed_url_preview: safeUrl,
+            } as never,
+          });
+        } catch (e) {
+          console.warn("[publishCampaign] image_access_check log failed", e);
+        }
+        if (!imageHash && !mediaCheck.ok) {
+          return fail(
+            "image_access_check",
+            `Imagem inacessível para a Meta (HTTP ${mediaCheck.status ?? "—"}, ${mediaCheck.contentType ?? "sem content-type"}) e upload por bytes não disponível. Reenvie a imagem na campanha.`,
+            null,
+            {
+              image_path: parsedForCheck.path,
+              storage_bucket: parsedForCheck.bucket,
+              image_access_check_status: mediaCheck.status,
+              meta_upload_status: metaUploadStatus,
+              image_hash: imageHash,
+            },
+          );
+        }
+      }
+    }
+
+
+
 
     // Step B: cria campaign (OUTCOME_LEADS). Em modo retomada, reutiliza o
     // meta_campaign_id já gravado.
