@@ -658,12 +658,14 @@ function MediaSendPanel({
   channel,
   disabled,
   companyId,
+  leadId,
   onSent,
 }: {
   conversationId: string;
   channel: string | undefined;
   disabled: boolean;
   companyId: string | null;
+  leadId?: string | null;
   onSent: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
