@@ -387,10 +387,10 @@ async function processMessages(args: {
           integration_id: integrationId,
           source_subtype: mediaPart?.kind ?? null,
           source_metadata: {
-            raw: m,
+            raw: m as unknown,
             wa_id: waId,
             ...(mediaMeta ?? {}),
-          },
+          } as never,
         },
         { onConflict: "integration_id,external_id", ignoreDuplicates: true },
       );
