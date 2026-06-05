@@ -669,6 +669,7 @@ function MediaSendPanel({
   leadId,
   onSent,
   onSendText,
+  onInsertText,
 }: {
   conversationId: string;
   channel: string | undefined;
@@ -677,7 +678,9 @@ function MediaSendPanel({
   leadId?: string | null;
   onSent: () => void;
   onSendText: (text: string) => void;
+  onInsertText: (text: string) => void;
 }) {
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [pending, setPending] = useState<PendingMedia | null>(null);
@@ -895,8 +898,7 @@ function MediaSendPanel({
                     onClick={() => {
                       console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
                       setMenuOpen(false);
-                      setActiveReply(q);
-                      setReplyText(q.content);
+                      onInsertText(q.content);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
                     title={q.category ?? undefined}
@@ -905,6 +907,7 @@ function MediaSendPanel({
                     <span className="truncate">{q.name}</span>
                   </button>
                 ))}
+
               </div>
             )}
           </div>
@@ -2064,6 +2067,11 @@ function ConversationPage() {
               leadId={lead?.id ?? null}
               onSent={() => void refetchConversationMessages(conversationId)}
               onSendText={(t) => sendMessage(t)}
+              onInsertText={(t) => {
+                setInput((prev) => (prev ? `${prev}\n${t}` : t));
+                requestAnimationFrame(() => composerRef.current?.focus());
+              }}
+
             />
             <button
               onClick={() => sendMessage(input)}
