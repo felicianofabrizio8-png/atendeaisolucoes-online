@@ -116,7 +116,10 @@ function QuickRepliesPage() {
   };
 
   const save = async () => {
-    if (!companyId) return;
+    if (!companyId) {
+      toast.error("Empresa não carregada. Faça login novamente.");
+      return;
+    }
     if (!form.name.trim() || !form.content.trim()) {
       toast.error("Nome e conteúdo são obrigatórios");
       return;
@@ -128,7 +131,7 @@ function QuickRepliesPage() {
         icon: form.icon,
         category: form.category,
         content: form.content,
-        active: form.active,
+        active: form.id ? form.active : true,
       };
       if (form.id) {
         console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: form.id, company_id: companyId, name: form.name });
