@@ -108,6 +108,15 @@ function CampaignDetailPage() {
   const [improveOpen, setImproveOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStage, setPublishStage] = useState<string>("");
+  const [mediaCheck, setMediaCheck] = useState<{
+    url: string;
+    status: number | null;
+    contentType: string | null;
+    ok: boolean;
+    method: string;
+    source: string;
+    error?: string;
+  } | null>(null);
   const publishFn = useServerFn(publishCampaign);
 
   useEffect(() => {
