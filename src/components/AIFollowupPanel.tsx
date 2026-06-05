@@ -402,41 +402,41 @@ export function AIFollowupPanel() {
           className={
             !whatsapp.connected
               ? "border-destructive/40 bg-destructive/5"
-              : whatsapp.hasUnmapped
-                ? "border-amber-500/40 bg-amber-500/5"
-                : "border-emerald-500/40 bg-emerald-500/5"
+              : "border-emerald-500/40 bg-emerald-500/5"
           }
         >
-          <CardContent className="p-3 text-sm flex items-center gap-2">
+          <CardContent className="p-3 text-sm flex flex-col gap-1.5">
             {!whatsapp.connected ? (
-              <>
-                <XCircle className="h-4 w-4 text-destructive" />
+              <div className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-destructive shrink-0" />
                 <span>
                   ⚠️ Sem integração WhatsApp ativa — follow-up automático não
                   enviará mensagens até conectar um número.
                 </span>
-              </>
-            ) : whatsapp.hasUnmapped ? (
-              <>
-                <Bell className="h-4 w-4 text-amber-600" />
-                <span>
-                  ⚠️ Número WhatsApp não vinculado detectado (
-                  {whatsapp.unmappedCount}). Conecte em Configurações para a IA
-                  responder.
-                </span>
-              </>
+              </div>
             ) : (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>
                   ✅ WhatsApp conectado
                   {whatsapp.displayName ? ` — ${whatsapp.displayName}` : ""}
                 </span>
-              </>
+              </div>
+            )}
+            {whatsapp.connected && whatsapp.hasUnmapped && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pl-6">
+                <Bell className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span>
+                  Existem {whatsapp.unmappedCount} evento(s) WhatsApp antigo(s)
+                  não mapeado(s) para análise (histórico — não afeta a integração
+                  atual).
+                </span>
+              </div>
             )}
           </CardContent>
         </Card>
       )}
+
 
       {/* Gate de envio */}
       {gate && !gate.ok && (
