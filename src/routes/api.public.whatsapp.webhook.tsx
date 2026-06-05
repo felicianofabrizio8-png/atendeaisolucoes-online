@@ -71,7 +71,7 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
 
               const { data: integration } = await supabaseAdmin
                 .from("integrations")
-                .select("id, company_id, webhook_secret")
+                .select("id, company_id, webhook_secret, access_token")
                 .eq("channel", "whatsapp")
                 .eq("external_account_id", phoneNumberId)
                 .eq("active", true)
@@ -95,6 +95,7 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
               await processMessages({
                 integrationId: integration.id,
                 companyId: integration.company_id,
+                accessToken: integration.access_token ?? null,
                 value,
               });
             }
