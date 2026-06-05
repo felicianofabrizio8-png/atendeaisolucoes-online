@@ -713,16 +713,36 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
     type CreativeMode = "advanced" | "simple" | "picture";
 
-    function buildLinkData(mode: CreativeMode): Record<string, unknown> {
+    // Gera (sob demanda) uma URL acessível externamente para a Meta baixar a
+    // imagem no fallback "picture". Sempre prefere signed URL (1 dia) porque o
+    // bucket pode estar privado — a URL pública crua retornaria 400/404.
+    let pictureUrlForMeta: string | null = null;
+    async function getPictureUrlForMeta(): Promise<string | null> {
+      if (pictureUrlForMeta) return pictureUrlForMeta;
+      const raw = camp.media_url ?? "";
+      if (!raw) return null;
+      const parsed = parseSupabaseStoragePath(raw);
+      if (parsed) {
+        const { data: signed, error: signErr } = await adminClient.supabaseAdmin
+          .storage.from(parsed.bucket).createSignedUrl(parsed.path, 60 * 60 * 24);
+        if (!signErr && signed?.signedUrl) {
+          pictureUrlForMeta = signed.signedUrl;
+          return pictureUrlForMeta;
+        }
+        console.warn("[publishCampaign] createSignedUrl failed — usando URL crua", { signErr });
+      }
+      pictureUrlForMeta = raw;
+      return pictureUrlForMeta;
+    }
+
+    function buildLinkData(mode: CreativeMode, pictureUrl: string | null): Record<string, unknown> {
       const ld: Record<string, unknown> = {
         message: fallbackMessage,
         link: destLink,
         call_to_action: { type: ctaEnum, value: buildCtaValue() },
       };
-      // Modo "picture" usa URL pública (camp.media_url) em vez de image_hash —
-      // último recurso quando o hash é rejeitado pela Meta.
-      if (mode === "picture" && camp.media_url) {
-        ld.picture = camp.media_url;
+      if (mode === "picture" && pictureUrl) {
+        ld.picture = pictureUrl;
       } else {
         ld.image_hash = imageHash;
       }
