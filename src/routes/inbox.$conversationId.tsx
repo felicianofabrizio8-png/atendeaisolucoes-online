@@ -1241,6 +1241,7 @@ function ConversationPage() {
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialScrollConversationRef = useRef<string | null>(null);
 
   // Carrega ai_status da conversa + realtime + último motivo de handoff
   useEffect(() => {
@@ -1326,6 +1327,18 @@ function ConversationPage() {
       });
     }
   }, [search.quote, conversationId, navigate]);
+
+  // Ao abrir/trocar de conversa, começa na mensagem mais recente.
+  useEffect(() => {
+    if (initialScrollConversationRef.current === conversationId) return;
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      initialScrollConversationRef.current = conversationId;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationId, messages.length]);
 
   // Auto-scroll só quando o usuário já está perto do final — assim mensagens novas
   // chegando via Realtime não interrompem quem está lendo o histórico.
