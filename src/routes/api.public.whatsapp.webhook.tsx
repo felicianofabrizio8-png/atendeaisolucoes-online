@@ -165,30 +165,50 @@ function extOf(mime: string | undefined, filename: string | undefined): string {
 
 async function logMediaError(args: {
   companyId: string;
+  conversationId?: string | null;
   mediaId: string;
   messageId: string;
   kind: WaMediaKind;
   status?: number;
+  responseBody?: string | null;
+  errorMessage?: string | null;
   meta?: unknown;
   stage: string;
 }) {
+  const context = {
+    subsource: "whatsapp.webhook.media",
+    stage: args.stage,
+    kind: args.kind,
+    media_id: args.mediaId,
+    message_id: args.messageId,
+    conversation_id: args.conversationId ?? null,
+    company_id: args.companyId,
+    http_status: args.status ?? null,
+    response_body: args.responseBody ?? null,
+    error_message: args.errorMessage ?? null,
+    meta_response: (args.meta ?? null) as unknown,
+  };
   try {
-    await supabaseAdmin.from("error_log").insert({
-      source: "whatsapp.webhook.media",
+    const { error } = await supabaseAdmin.from("error_log").insert({
+      source: "whatsapp",
       company_id: args.companyId,
       severity: "error",
       message: `Falha ao baixar mídia ${args.kind} (${args.stage})`,
-      context: {
-        media_id: args.mediaId,
-        message_id: args.messageId,
-        kind: args.kind,
-        stage: args.stage,
-        status: args.status ?? null,
-        meta_response: (args.meta ?? null) as unknown,
-      } as never,
+      context: context as never,
     } as never);
+    if (error) {
+      console.error("[wa-webhook] error_log insert retornou erro", {
+        error_message: error.message,
+        error_details: (error as { details?: string }).details ?? null,
+        error_hint: (error as { hint?: string }).hint ?? null,
+        context,
+      });
+    }
   } catch (e) {
-    console.error("[wa-webhook] error_log insert falhou", e);
+    console.error("[wa-webhook] error_log insert lançou exceção", {
+      exception: e instanceof Error ? e.message : String(e),
+      context,
+    });
   }
 }
 
@@ -219,17 +239,17 @@ async function downloadAndStoreMedia(args: {
     });
   } catch (e) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "graph_metadata_fetch",
-      meta: { error: e instanceof Error ? e.message : String(e) },
+      errorMessage: e instanceof Error ? e.message : String(e),
     });
     return null;
   }
   if (!metaRes.ok) {
     const body = await metaRes.text().catch(() => "");
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "graph_metadata", status: metaRes.status, meta: body.slice(0, 1000),
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "graph_metadata", status: metaRes.status, responseBody: body.slice(0, 1000),
     });
     return null;
   }
@@ -240,7 +260,7 @@ async function downloadAndStoreMedia(args: {
   const mime = metaJson.mime_type ?? args.fallbackMime ?? "application/octet-stream";
   if (!tempUrl) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "graph_metadata_no_url", meta: metaJson,
     });
     return null;
@@ -252,17 +272,17 @@ async function downloadAndStoreMedia(args: {
     binRes = await fetch(tempUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
   } catch (e) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "binary_fetch",
-      meta: { error: e instanceof Error ? e.message : String(e) },
+      errorMessage: e instanceof Error ? e.message : String(e),
     });
     return null;
   }
   if (!binRes.ok) {
     const body = await binRes.text().catch(() => "");
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "binary_download", status: binRes.status, meta: body.slice(0, 500),
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "binary_download", status: binRes.status, responseBody: body.slice(0, 500),
     });
     return null;
   }
@@ -277,8 +297,8 @@ async function downloadAndStoreMedia(args: {
     .upload(path, buf, { contentType: mime, upsert: true });
   if (upErr) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "storage_upload", meta: { error: upErr.message },
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "storage_upload", errorMessage: upErr.message,
     });
     return null;
   }
@@ -366,6 +386,7 @@ async function processMessages(args: {
     } else if (mediaPart && !accessToken) {
       await logMediaError({
         companyId,
+        conversationId,
         mediaId: mediaPart.mediaId,
         messageId: m.id,
         kind: mediaPart.kind,
