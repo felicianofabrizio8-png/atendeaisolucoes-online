@@ -150,14 +150,20 @@ type MediaKind = "image" | "video" | "audio" | "document" | "sticker";
 function useResolvedMediaSrc(opts: {
   path?: string | null;
   url?: string | null;
+  bucket?: string | null;
 }): string | null {
-  const { path, url } = opts;
+  const { path, url, bucket } = opts;
   const [resolved, setResolved] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     async function run() {
       if (path) {
-        const r = await getSignedWaMediaUrl(path);
+        // Quando um bucket explícito é informado (mídia do agente em
+        // `product-images`, por exemplo), assinamos contra esse bucket.
+        // Default mantém o comportamento atual (whatsapp-media).
+        const r = bucket
+          ? await getSignedMediaUrl(bucket, path)
+          : await getSignedWaMediaUrl(path);
         if (!cancelled) setResolved(r);
         return;
       }
@@ -176,7 +182,7 @@ function useResolvedMediaSrc(opts: {
     return () => {
       cancelled = true;
     };
-  }, [path, url]);
+  }, [path, url, bucket]);
   return resolved;
 }
 
