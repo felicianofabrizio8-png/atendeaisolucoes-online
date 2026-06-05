@@ -40,8 +40,14 @@ import {
   Copy,
   Eye,
   Download,
-
+  Plus,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Library as LibraryIcon,
 } from "lucide-react";
+import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { getSignedImageUrl } from "@/lib/storage";
+import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,19 +139,60 @@ const IMAGE_URL_RE = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s]*)
 
 function ImagePreview({ url }: { url: string }) {
   const [error, setError] = useState(false);
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (url.startsWith("blob:") || url.startsWith("data:")) {
+      setResolved(url);
+      return;
+    }
+    void getSignedImageUrl(url).then((r) => {
+      if (!cancelled) setResolved(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
   if (error) {
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
+  const display = resolved ?? url;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+    <a href={display} target="_blank" rel="noopener noreferrer" className="block">
       <img
-        src={url}
+        src={display}
         alt="Imagem"
         onError={() => setError(true)}
         className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
         loading="lazy"
       />
     </a>
+  );
+}
+
+function VideoPreview({ url }: { url: string }) {
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (url.startsWith("blob:") || url.startsWith("data:")) {
+      setResolved(url);
+      return;
+    }
+    void getSignedImageUrl(url).then((r) => {
+      if (!cancelled) setResolved(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  const display = resolved ?? url;
+  return (
+    <video
+      src={display}
+      controls
+      className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
+      preload="metadata"
+    />
   );
 }
 
@@ -195,16 +242,30 @@ function MessageContent({ message }: { message: Message }) {
     (meta?.media_url as string | undefined) ??
     (meta?.mediaUrl as string | undefined) ??
     (meta?.image_url as string | undefined);
+  const mediaType = (meta?.type as string | undefined) ?? message.sourceSubtype ?? "";
+  const isVideoType =
+    mediaType === "video" || (mediaUrl ? /\.(mp4|webm|mov)(\?|$)/i.test(mediaUrl) : false);
   const isImageType =
-    message.sourceSubtype === "image" ||
-    (meta?.type as string | undefined) === "image";
+    mediaType === "image" ||
+    (mediaUrl ? /\.(jpe?g|png|webp|gif)(\?|$)/i.test(mediaUrl) : false);
+
+  if (mediaUrl && isVideoType) {
+    return (
+      <div className="space-y-1">
+        <VideoPreview url={mediaUrl} />
+        {message.text && !/^\[/.test(message.text.trim()) && (
+          <div>{message.text}</div>
+        )}
+      </div>
+    );
+  }
 
   if (mediaUrl && (isImageType || IMAGE_URL_RE.test(mediaUrl))) {
     IMAGE_URL_RE.lastIndex = 0;
     return (
       <div className="space-y-1">
         <ImagePreview url={mediaUrl} />
-        {message.text && !/^https?:\/\//.test(message.text.trim()) && (
+        {message.text && !/^https?:\/\//.test(message.text.trim()) && !/^\[/.test(message.text.trim()) && (
           <div>{message.text}</div>
         )}
       </div>
@@ -574,6 +635,375 @@ function MessageBubble({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================================
+// MediaSendPanel — botão "+" do composer (foto / vídeo / biblioteca de produtos)
+// ============================================================================
+type PendingMedia = {
+  kind: "image" | "video";
+  // Path no bucket product-images (para mídias já carregadas via produto)
+  // ou null quando ainda precisamos fazer upload de um File local.
+  path: string | null;
+  // URL local (blob:) ou signed URL para pré-visualização.
+  previewUrl: string;
+  file?: File;
+  fileName?: string;
+};
+
+function MediaSendPanel({
+  conversationId,
+  channel,
+  disabled,
+  companyId,
+  onSent,
+}: {
+  conversationId: string;
+  channel: string | undefined;
+  disabled: boolean;
+  companyId: string | null;
+  onSent: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [pending, setPending] = useState<PendingMedia | null>(null);
+  const [caption, setCaption] = useState("");
+  const [sending, setSending] = useState(false);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const vidInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isWhats = channel === "whatsapp";
+
+  // Fecha menu ao clicar fora
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
+
+  const pickFile = (kind: "image" | "video") => {
+    setMenuOpen(false);
+    (kind === "image" ? imgInputRef : vidInputRef).current?.click();
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "image" | "video") => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setPending({
+      kind,
+      path: null,
+      previewUrl: URL.createObjectURL(f),
+      file: f,
+      fileName: f.name,
+    });
+    setCaption("");
+  };
+
+  const cancelPending = () => {
+    if (pending?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(pending.previewUrl);
+    setPending(null);
+    setCaption("");
+  };
+
+  const send = async () => {
+    if (!pending || sending) return;
+    if (!isWhats) {
+      toast.error("Envio de mídia disponível apenas para WhatsApp.");
+      return;
+    }
+    setSending(true);
+    try {
+      let path = pending.path;
+      // Upload se for arquivo local
+      if (!path && pending.file && companyId) {
+        const ext = (pending.file.name.split(".").pop() ?? "bin").toLowerCase().slice(0, 6);
+        const uploadPath = `${companyId}/inbox/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("product-images")
+          .upload(uploadPath, pending.file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: pending.file.type || undefined,
+          });
+        if (upErr) {
+          console.error("[media upload]", upErr);
+          throw new Error(upErr.message);
+        }
+        path = uploadPath;
+      }
+      if (!path) throw new Error("Arquivo inválido");
+
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada");
+
+      const res = await fetch("/api/whatsapp/send-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          conversationId,
+          mediaPath: path,
+          kind: pending.kind,
+          caption: caption.trim() || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      toast.success(`${pending.kind === "video" ? "Vídeo" : "Foto"} enviado(a)`);
+      cancelPending();
+      onSent();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao enviar";
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const selectFromLibrary = (url: string) => {
+    setLibraryOpen(false);
+    setPending({ kind: "image", path: url, previewUrl: url });
+    setCaption("");
+  };
+
+  return (
+    <>
+      <input
+        ref={imgInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => onFile(e, "image")}
+      />
+      <input
+        ref={vidInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(e) => onFile(e, "video")}
+      />
+
+      <div className="relative" ref={menuRef}>
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          disabled={disabled}
+          className="h-9 w-9 inline-flex items-center justify-center rounded-md bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 shrink-0"
+          title="Anexar mídia"
+          aria-label="Anexar mídia"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+        {menuOpen && (
+          <div className="absolute bottom-full mb-2 right-0 w-52 rounded-md border border-border bg-popover shadow-lg z-30 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => pickFile("image")}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+            >
+              <ImageIcon className="h-4 w-4 text-primary" /> Foto
+            </button>
+            <button
+              type="button"
+              onClick={() => pickFile("video")}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+            >
+              <VideoIcon className="h-4 w-4 text-primary" /> Vídeo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                setLibraryOpen(true);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left border-t border-border"
+            >
+              <LibraryIcon className="h-4 w-4 text-primary" /> Biblioteca de Produtos
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Modal: preview + caption */}
+      {pending && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={cancelPending}
+        >
+          <div
+            className="bg-card rounded-lg border border-border max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="font-semibold text-sm">
+                Enviar {pending.kind === "video" ? "vídeo" : "foto"}
+                {pending.fileName ? ` · ${pending.fileName}` : ""}
+              </div>
+              <button onClick={cancelPending} className="p-1 hover:bg-muted rounded">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-auto flex items-center justify-center bg-muted/30">
+              {pending.kind === "video" ? (
+                <video
+                  src={pending.previewUrl}
+                  controls
+                  className="max-h-[55vh] max-w-full rounded"
+                />
+              ) : pending.path ? (
+                <SmartImage
+                  src={pending.previewUrl}
+                  alt="Pré-visualização"
+                  wrapperClassName="rounded max-h-[55vh] max-w-full"
+                  className="object-contain"
+                />
+              ) : (
+                <img
+                  src={pending.previewUrl}
+                  alt="Pré-visualização"
+                  className="max-h-[55vh] max-w-full rounded object-contain"
+                />
+              )}
+            </div>
+            <div className="p-4 space-y-3 border-t border-border">
+              <input
+                type="text"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Legenda (opcional)"
+                maxLength={1024}
+                className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={cancelPending}
+                  className="h-9 px-3 rounded-md text-sm hover:bg-muted"
+                  disabled={sending}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={send}
+                  disabled={sending}
+                  className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {libraryOpen && (
+        <ProductsLibraryModal
+          onClose={() => setLibraryOpen(false)}
+          onPick={selectFromLibrary}
+        />
+      )}
+    </>
+  );
+}
+
+function ProductsLibraryModal({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (path: string) => void;
+}) {
+  const [, force] = useState(0);
+  useEffect(() => subscribeProducts(() => force((n) => n + 1)), []);
+  const [query, setQuery] = useState("");
+  const all = listProducts();
+  const filtered = useMemo<Product[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q),
+    );
+  }, [all, query]);
+  const byCategory = useMemo(() => {
+    const map = new Map<string, Product[]>();
+    for (const p of filtered) {
+      if (!p.images || p.images.length === 0) continue;
+      const list = map.get(p.category) ?? [];
+      list.push(p);
+      map.set(p.category, list);
+    }
+    return Array.from(map.entries());
+  }, [filtered]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card rounded-lg border border-border max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center justify-between gap-3">
+          <div className="font-semibold text-sm flex items-center gap-2">
+            <LibraryIcon className="h-4 w-4" /> Biblioteca de Produtos
+          </div>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar produto ou categoria…"
+            className="flex-1 max-w-xs rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-4 space-y-6">
+          {byCategory.length === 0 && (
+            <div className="text-center text-sm text-muted-foreground py-12">
+              Nenhuma foto disponível. Adicione fotos aos seus produtos em /produtos.
+            </div>
+          )}
+          {byCategory.map(([cat, items]) => (
+            <div key={cat}>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                {cat}
+              </div>
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                {items.flatMap((p) =>
+                  (p.images ?? []).map((img, i) => (
+                    <button
+                      key={`${p.id}-${i}`}
+                      onClick={() => onPick(img)}
+                      className="group relative rounded-md overflow-hidden border border-border hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
+                      title={p.name}
+                    >
+                      <SmartImage
+                        src={img}
+                        alt={p.name}
+                        aspectRatio="1/1"
+                        wrapperClassName="w-full"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                        <div className="text-[10px] text-white truncate">{p.name}</div>
+                      </div>
+                    </button>
+                  )),
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1415,6 +1845,13 @@ function ConversationPage() {
               }
               rows={1}
               className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 md:min-h-[3.5rem]"
+            />
+            <MediaSendPanel
+              conversationId={conversationId}
+              channel={lead?.channel}
+              disabled={!!closedInfo}
+              companyId={profile?.company_id ?? null}
+              onSent={() => void refetchConversationMessages(conversationId)}
             />
             <button
               onClick={() => sendMessage(input)}
