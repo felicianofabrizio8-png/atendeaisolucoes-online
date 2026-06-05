@@ -44,6 +44,38 @@ function notify() {
   for (const l of listeners) l();
 }
 
+// ---------- emitter de novas mensagens de lead (observador) ----------
+export type NewLeadMessageEvent = {
+  messageId: string;
+  externalId: string | null;
+  conversationId: string;
+  text: string;
+  subtype: string | null;
+  metadata: Record<string, unknown> | null;
+  at: string;
+};
+
+const newLeadMessageListeners = new Set<(evt: NewLeadMessageEvent) => void>();
+
+function emitNewLeadMessage(evt: NewLeadMessageEvent) {
+  for (const l of newLeadMessageListeners) {
+    try {
+      l(evt);
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+export function subscribeNewLeadMessage(
+  cb: (evt: NewLeadMessageEvent) => void,
+): () => void {
+  newLeadMessageListeners.add(cb);
+  return () => {
+    newLeadMessageListeners.delete(cb);
+  };
+}
+
 export function subscribeRepo(cb: () => void): () => void {
   listeners.add(cb);
   // também escuta mutações do mock pra propagar quando em demo
