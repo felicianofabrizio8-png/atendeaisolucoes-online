@@ -497,7 +497,35 @@ function messageForAi(m: Message): { role: Message["role"]; text: string } {
 
 function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const kind = (reply.type ?? "text").toLowerCase();
-  const thumb = useResolvedMediaSrc({ path: reply.media_path ?? undefined });
+  const allMessages = useContext(MessagesContext);
+
+  // Resolve a mensagem original (por id local ou external_id) para extrair
+  // media_path/bucket quando o reply_to não traz — necessário p/ thumb de
+  // resposta a imagens enviadas pelo agente (bucket product-images).
+  const original = useMemo(() => {
+    if (!allMessages.length) return null;
+    if (reply.message_id) {
+      const byId = allMessages.find((m) => m.id === reply.message_id);
+      if (byId) return byId;
+    }
+    if (reply.external_id) {
+      const byExt = allMessages.find(
+        (m) =>
+          (m.sourceMetadata as Record<string, unknown> | undefined)?.external_id ===
+            reply.external_id ||
+          // alguns repos guardam external_id em coluna dedicada, exposta como any
+          (m as unknown as { external_id?: string }).external_id === reply.external_id,
+      );
+      if (byExt) return byExt;
+    }
+    return null;
+  }, [allMessages, reply.message_id, reply.external_id]);
+
+  const fallbackInfo = original ? getMediaInfo(original) : null;
+  const path = reply.media_path ?? fallbackInfo?.path ?? null;
+  const bucket = fallbackInfo?.bucket ?? null;
+
+  const thumb = useResolvedMediaSrc({ path, bucket });
   const isImage = kind === "image" || kind === "sticker";
   const isAudio = kind === "audio";
   const label =
