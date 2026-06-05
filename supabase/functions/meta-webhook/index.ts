@@ -456,6 +456,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
     const companyId = integration.company_id as string;
     const integrationId = integration.id as string;
+    const accessToken = (integration as any).access_token ? String((integration as any).access_token) : "";
     const messages = Array.isArray(value.messages) ? value.messages : [];
     const contactsById = new Map<string, any>();
     for (const c of value.contacts ?? []) contactsById.set(c.wa_id, c);
