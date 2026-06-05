@@ -405,6 +405,160 @@ function extractWaText(m: any): string {
   return `[${m?.type ?? "mensagem"}]`;
 }
 
+// ---------- Media download (WhatsApp) ----------
+async function logMedia(
+  sb: Sb,
+  stage: string,
+  ctx: Record<string, unknown>,
+  severity: "info" | "error" = "info",
+): Promise<void> {
+  try {
+    await sb.from("error_log").insert({
+      source: "whatsapp",
+      severity,
+      message: `whatsapp.webhook.media:${stage}`,
+      company_id: (ctx.company_id as string) ?? null,
+      context: { subsource: "whatsapp.webhook.media", stage, ...ctx },
+    });
+  } catch (e) {
+    console.error("META_WEBHOOK_MEDIA_LOG_FAIL", stage, e instanceof Error ? e.message : String(e), ctx);
+  }
+}
+
+function extFromMime(mime: string): string {
+  const m = (mime || "").toLowerCase().split(";")[0].trim();
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr", "audio/wav": "wav",
+    "video/mp4": "mp4", "video/3gpp": "3gp", "video/quicktime": "mov",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  };
+  if (map[m]) return map[m];
+  const sub = m.split("/")[1] ?? "bin";
+  return sub.replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+}
+
+async function downloadAndStoreMedia(
+  sb: Sb,
+  args: {
+    companyId: string;
+    conversationId: string;
+    messageId: string;
+    mediaKind: string;
+    payload: any;
+    accessToken: string;
+    waId: string;
+    raw: any;
+  },
+): Promise<void> {
+  const { companyId, conversationId, messageId, mediaKind, payload, accessToken } = args;
+  const mediaId = payload?.id ? String(payload.id) : "";
+  const mimeFromPayload = payload?.mime_type ? String(payload.mime_type) : "";
+  const filenameFromPayload = payload?.filename ? String(payload.filename) : "";
+
+  const baseCtx = {
+    company_id: companyId,
+    conversation_id: conversationId,
+    message_id: messageId,
+    media_id: mediaId,
+    media_kind: mediaKind,
+    media_mime: mimeFromPayload,
+  };
+
+  await logMedia(sb, "media_detected", baseCtx);
+
+  if (!mediaId) {
+    await logMedia(sb, "graph_metadata_no_url", { ...baseCtx, error_message: "missing media id in payload" }, "error");
+    return;
+  }
+  if (!accessToken) {
+    await logMedia(sb, "no_access_token", baseCtx, "error");
+    return;
+  }
+
+  // 1) metadata
+  await logMedia(sb, "graph_metadata_fetch", baseCtx);
+  let metaResp: Response;
+  try {
+    metaResp = await fetch(`${GRAPH}/${encodeURIComponent(mediaId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch (e) {
+    await logMedia(sb, "graph_metadata", { ...baseCtx, error_message: e instanceof Error ? e.message : String(e) }, "error");
+    return;
+  }
+  const metaBody = await metaResp.text();
+  if (!metaResp.ok) {
+    await logMedia(sb, "graph_metadata", { ...baseCtx, http_status: metaResp.status, response_body: metaBody.slice(0, 1000) }, "error");
+    return;
+  }
+  let metaJson: any;
+  try { metaJson = JSON.parse(metaBody); } catch {
+    await logMedia(sb, "graph_metadata", { ...baseCtx, http_status: metaResp.status, response_body: metaBody.slice(0, 500), error_message: "invalid JSON" }, "error");
+    return;
+  }
+  const downloadUrl = metaJson?.url as string | undefined;
+  const mime = (metaJson?.mime_type as string | undefined) || mimeFromPayload || "application/octet-stream";
+  const sizeFromMeta = typeof metaJson?.file_size === "number" ? metaJson.file_size : null;
+  if (!downloadUrl) {
+    await logMedia(sb, "graph_metadata_no_url", { ...baseCtx, http_status: metaResp.status, response_body: metaBody.slice(0, 500) }, "error");
+    return;
+  }
+
+  // 2) binary
+  await logMedia(sb, "binary_fetch", { ...baseCtx, media_mime: mime });
+  let binResp: Response;
+  try {
+    binResp = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  } catch (e) {
+    await logMedia(sb, "binary_download", { ...baseCtx, error_message: e instanceof Error ? e.message : String(e) }, "error");
+    return;
+  }
+  if (!binResp.ok) {
+    const bodyText = await binResp.text().catch(() => "");
+    await logMedia(sb, "binary_download", { ...baseCtx, http_status: binResp.status, response_body: bodyText.slice(0, 500) }, "error");
+    return;
+  }
+  const buf = new Uint8Array(await binResp.arrayBuffer());
+  const size = buf.byteLength;
+
+  // 3) storage upload
+  const ext = extFromMime(mime);
+  const filename = filenameFromPayload || `${mediaId}.${ext}`;
+  const path = `${companyId}/${conversationId}/${messageId}-${mediaId}.${ext}`;
+  const { error: upErr } = await sb.storage.from("whatsapp-media").upload(path, buf, {
+    contentType: mime,
+    upsert: true,
+  });
+  if (upErr) {
+    await logMedia(sb, "storage_upload", { ...baseCtx, error_message: upErr.message }, "error");
+    return;
+  }
+
+  // 4) update message metadata
+  const { data: current } = await sb.from("messages").select("source_metadata").eq("id", messageId).maybeSingle();
+  const merged = {
+    ...(current?.source_metadata ?? {}),
+    media_path: path,
+    media_kind: mediaKind,
+    media_mime: mime,
+    media_filename: filename,
+    media_size: sizeFromMeta ?? size,
+    media_downloaded_at: new Date().toISOString(),
+  };
+  const { error: updErr } = await sb.from("messages").update({ source_metadata: merged }).eq("id", messageId);
+  if (updErr) {
+    await logMedia(sb, "database_update", { ...baseCtx, error_message: updErr.message, media_path: path }, "error");
+    return;
+  }
+
+  await logMedia(sb, "media_success", { ...baseCtx, media_mime: mime, media_path: path, media_size: sizeFromMeta ?? size });
+}
+
 async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
   const changes = Array.isArray(entry?.changes) ? entry.changes : [];
   const wabaIdFromEntry = entry?.id ? String(entry.id) : null;
@@ -420,7 +574,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
     const { data: integration } = await sb
       .from("integrations")
-      .select("id, company_id")
+      .select("id, company_id, access_token")
       .eq("channel", "whatsapp")
       .eq("external_account_id", phoneNumberId)
       .eq("active", true)
@@ -456,6 +610,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
     const companyId = integration.company_id as string;
     const integrationId = integration.id as string;
+    const accessToken = (integration as any).access_token ? String((integration as any).access_token) : "";
     const messages = Array.isArray(value.messages) ? value.messages : [];
     const contactsById = new Map<string, any>();
     for (const c of value.contacts ?? []) contactsById.set(c.wa_id, c);
@@ -555,7 +710,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
             .eq("external_id", externalId)
             .maybeSingle();
           if (!dup?.id) {
-            await sb.from("messages").insert({
+            const { data: inserted } = await sb.from("messages").insert({
               company_id: companyId,
               conversation_id: conversationId,
               role: "lead",
@@ -566,7 +721,27 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
               source: "whatsapp",
               source_subtype: m?.type ?? "text",
               source_metadata: { wa_id: waId, raw: m },
-            });
+            }).select("id").single();
+
+            // 3b) media download (best-effort, must not break webhook)
+            const messageId = inserted?.id as string | undefined;
+            const mediaKind = m?.type as string | undefined;
+            if (messageId && mediaKind && ["image", "audio", "video", "document", "sticker"].includes(mediaKind)) {
+              try {
+                await downloadAndStoreMedia(sb, {
+                  companyId,
+                  conversationId,
+                  messageId,
+                  mediaKind,
+                  payload: m?.[mediaKind] ?? {},
+                  accessToken,
+                  waId,
+                  raw: m,
+                });
+              } catch (e) {
+                console.error("META_WEBHOOK_MEDIA_UNCAUGHT", e instanceof Error ? e.message : String(e));
+              }
+            }
           }
         }
 
