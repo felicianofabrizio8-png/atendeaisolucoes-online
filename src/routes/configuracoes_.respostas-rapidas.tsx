@@ -208,6 +208,7 @@ function QuickRepliesPage() {
   );
 
   const onDragEnd = async (e: DragEndEvent) => {
+    if (!companyId) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldIdx = items.findIndex((i) => i.id === active.id);
