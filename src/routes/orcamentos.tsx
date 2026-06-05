@@ -223,12 +223,9 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 }
 
 function QuoteCard({ quote }: { quote: Quote }) {
-  useSyncExternalStore(
-    subscribeRepo,
-    () => Date.now(),
-    () => 0,
-  );
-  const lead = getLeads().find((l) => l.id === quote.leadId);
+  const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
+  const lead = leads.find((l) => l.id === quote.leadId);
+
   const navigate = useNavigate();
   const [waOpen, setWaOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
