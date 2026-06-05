@@ -134,8 +134,12 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
         let publicLink: string;
         let storedRef: string; // o que salvamos no source_metadata
         if (resolvedPath) {
-          // segurança multi-tenant: o path TEM que começar pelo company_id
-          if (!resolvedPath.startsWith(`${companyId}/`)) {
+          // Segurança multi-tenant: paths novos precisam começar por company_id.
+          // Paths legados da biblioteca, gravados na raiz do bucket antes do
+          // escopo por empresa, continuam válidos para não bloquear produtos já cadastrados.
+          const isCompanyScopedPath = resolvedPath.startsWith(`${companyId}/`);
+          const isLegacyRootPath = !resolvedPath.includes("/");
+          if (!isCompanyScopedPath && !isLegacyRootPath) {
             return Response.json(
               { error: "Mídia fora desta empresa" },
               { status: 403 },
