@@ -56,6 +56,12 @@ import { toast } from "sonner";
 import { QualificationPanel } from "@/components/QualificationBadges";
 import { AITimeline } from "@/components/AITimeline";
 
+// Contexto leve com as mensagens da conversa atual.
+// Usado pelo ReplyPreview para localizar a mensagem original e reconstruir
+// a miniatura quando o reply_to (vindo do webhook) não traz media_path —
+// caso típico de respostas a imagens enviadas pelo próprio agente.
+const MessagesContext = createContext<Message[]>([]);
+
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
   validateSearch: (search: Record<string, unknown>): { quote?: string } => {
