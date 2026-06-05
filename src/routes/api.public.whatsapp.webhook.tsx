@@ -386,6 +386,7 @@ async function processMessages(args: {
     } else if (mediaPart && !accessToken) {
       await logMediaError({
         companyId,
+        conversationId,
         mediaId: mediaPart.mediaId,
         messageId: m.id,
         kind: mediaPart.kind,
