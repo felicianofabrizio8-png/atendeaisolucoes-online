@@ -426,6 +426,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    // IMPORTANTE: integrations.access_token DEVE ser o USER token long-lived.
+    // A Marketing API (campaigns/adsets/adcreatives/ads) rejeita PAGE tokens
+    // mesmo com ads_management no app. O PAGE token vai apenas em meta_pages.
+    // Preserva qualquer ad_account_id já vinculado anteriormente.
+    const { data: existingInteg } = await sb
+      .from("integrations")
+      .select("account_metadata")
+      .eq("company_id", companyId)
+      .eq("channel", igId ? "instagram" : "facebook")
+      .eq("external_account_id", page.id)
+      .maybeSingle();
+    const existingMeta = (existingInteg?.account_metadata ?? {}) as Record<string, unknown>;
     const { data: integ, error: integErr } = await sb
       .from("integrations")
       .upsert(
@@ -434,14 +446,16 @@ Deno.serve(async (req) => {
           channel: igId ? "instagram" : "facebook",
           display_name: pageName,
           external_account_id: page.id,
-          access_token: pageToken,
+          access_token: longUserToken,
           token_expires_at: userTokenExpiresAt,
           active: true,
           account_metadata: {
+            ...existingMeta,
             mode: "page",
             fb_page_id: page.id,
             ig_business_account_id: igId,
             ig_username: igUsername,
+            token_type: "USER",
           },
           last_error: null,
           last_synced_at: new Date().toISOString(),
@@ -450,6 +464,8 @@ Deno.serve(async (req) => {
       )
       .select("id")
       .maybeSingle();
+
+
 
     if (integErr) {
       console.log("INTEG_UPSERT_FAIL", integErr);
@@ -567,7 +583,17 @@ Deno.serve(async (req) => {
       const ig = details.instagram_business_account?.id ?? null;
       const igUsername = details.instagram_business_account?.username ?? null;
 
-      // Upsert integration row (one per page).
+      // Upsert integration row (one per page). access_token = USER long-lived
+      // token (Marketing API exige USER/SYSTEM_USER, nunca PAGE). Page token
+      // vai apenas em meta_pages.page_access_token. Preserva ad_account_id.
+      const { data: existing } = await sb
+        .from("integrations")
+        .select("account_metadata")
+        .eq("company_id", companyId)
+        .eq("channel", ig ? "instagram" : "facebook")
+        .eq("external_account_id", p.id)
+        .maybeSingle();
+      const existingMeta = (existing?.account_metadata ?? {}) as Record<string, unknown>;
       const { data: integ } = await sb
         .from("integrations")
         .upsert(
@@ -576,10 +602,15 @@ Deno.serve(async (req) => {
             channel: ig ? "instagram" : "facebook",
             display_name: pageName,
             external_account_id: p.id,
-            access_token: pageToken,
+            access_token: longUserToken,
             token_expires_at: userTokenExpiresAt,
             active: true,
-            account_metadata: { ig_business_account_id: ig, ig_username: igUsername },
+            account_metadata: {
+              ...existingMeta,
+              ig_business_account_id: ig,
+              ig_username: igUsername,
+              token_type: "USER",
+            },
             last_error: null,
             last_synced_at: new Date().toISOString(),
           },
@@ -587,6 +618,7 @@ Deno.serve(async (req) => {
         )
         .select("id")
         .maybeSingle();
+
 
       const loopTokenCheck = await validatePageAccessToken(pageToken, p.id);
       if (!loopTokenCheck.ok || !loopTokenCheck.token) {
