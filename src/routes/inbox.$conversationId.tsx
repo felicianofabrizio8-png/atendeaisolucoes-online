@@ -355,7 +355,7 @@ function MessageBubble({
     >
       <div className="flex items-end gap-1">
         {isAgent && canManage && !isDeleted && !editing && (
-          <div className="relative opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <div className="relative md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -367,21 +367,59 @@ function MessageBubble({
             {menuOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-10"
+                  className="fixed inset-0 z-40"
                   onClick={() => setMenuOpen(false)}
                 />
-                <div className="absolute right-0 bottom-8 z-20 min-w-[170px] rounded-md border border-border bg-popover shadow-md p-1 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setDraft(m.text);
-                      setEditing(true);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Editar
-                  </button>
+                <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[200px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
+                  {mediaInfo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        window.open(mediaInfo.url, "_blank", "noopener,noreferrer");
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Visualizar
+                    </button>
+                  )}
+                  {mediaInfo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void downloadMedia(mediaInfo.url);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Baixar
+                    </button>
+                  )}
+                  {!mediaInfo && hasText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setDraft(m.text);
+                        setEditing(true);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar mensagem
+                    </button>
+                  )}
+                  {hasText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void copyText();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copiar texto
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -390,7 +428,8 @@ function MessageBubble({
                     }}
                     className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Apagar para mim
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {mediaInfo ? "Ocultar para mim" : "Apagar para mim"}
                   </button>
                   {!externalId && (
                     <button
@@ -401,7 +440,8 @@ function MessageBubble({
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
                     >
-                      <Trash2 className="h-3.5 w-3.5" /> Apagar da conversa
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {mediaInfo ? "Excluir mídia" : "Excluir mensagem"}
                     </button>
                   )}
                 </div>
@@ -411,8 +451,18 @@ function MessageBubble({
         )}
 
         <div
+          onTouchStart={startLongPress}
+          onTouchEnd={cancelLongPress}
+          onTouchMove={cancelLongPress}
+          onTouchCancel={cancelLongPress}
+          onContextMenu={(e) => {
+            if (canManage && isAgent && !isDeleted && !editing) {
+              e.preventDefault();
+              setMenuOpen(true);
+            }
+          }}
           className={cn(
-            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
+            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words select-none md:select-text transition-transform active:scale-[0.99]",
             isAgent
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-card border border-border rounded-bl-sm",
@@ -420,7 +470,7 @@ function MessageBubble({
           )}
         >
           {isDeleted ? (
-            <span>Mensagem apagada</span>
+            <span>{deletedLabelFor(mediaInfo?.kind ?? null)}</span>
           ) : editing ? (
             <div className="flex flex-col gap-2 min-w-[220px]">
               <textarea
