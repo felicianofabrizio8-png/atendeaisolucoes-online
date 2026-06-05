@@ -2229,26 +2229,28 @@ function ConversationPage() {
         )}
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
-          {messages.map((m) => {
-            if (m.role === "system") {
+          <MessagesContext.Provider value={messages}>
+            {messages.map((m) => {
+              if (m.role === "system") {
+                return (
+                  <div key={m.id} className="flex justify-center">
+                    <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                      {m.text}
+                    </span>
+                  </div>
+                );
+              }
+              // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
+              if (m.deletedAt && m.deletedFor === "me") return null;
               return (
-                <div key={m.id} className="flex justify-center">
-                  <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                    {m.text}
-                  </span>
-                </div>
+                <MessageBubble
+                  key={m.id}
+                  m={m}
+                  canManage={!closedInfo}
+                />
               );
-            }
-            // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
-            if (m.deletedAt && m.deletedFor === "me") return null;
-            return (
-              <MessageBubble
-                key={m.id}
-                m={m}
-                canManage={!closedInfo}
-              />
-            );
-          })}
+            })}
+          </MessagesContext.Provider>
         </div>
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
