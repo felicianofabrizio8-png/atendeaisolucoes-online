@@ -40,8 +40,14 @@ import {
   Copy,
   Eye,
   Download,
-
+  Plus,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Library as LibraryIcon,
 } from "lucide-react";
+import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { getSignedImageUrl } from "@/lib/storage";
+import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
 import { supabase } from "@/integrations/supabase/client";
