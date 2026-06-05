@@ -581,7 +581,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <ImagePreview path={info.path} url={info.url} filename={info.filename} />
+            <ImagePreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -589,7 +589,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <VideoPreview path={info.path} url={info.url} filename={info.filename} />
+            <VideoPreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -597,7 +597,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} />
+            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -610,6 +610,7 @@ function MessageContent({ message }: { message: Message }) {
               filename={info.filename}
               mime={info.mime}
               size={info.size}
+              bucket={info.bucket}
             />
             {caption}
           </div>
@@ -618,7 +619,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <StickerPreview path={info.path} filename={info.filename} />
+            <StickerPreview path={info.path} filename={info.filename} bucket={info.bucket} />
           </div>
         );
     }
