@@ -898,8 +898,7 @@ function MediaSendPanel({
                     onClick={() => {
                       console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
                       setMenuOpen(false);
-                      setActiveReply(q);
-                      setReplyText(q.content);
+                      onInsertText(q.content);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
                     title={q.category ?? undefined}
@@ -908,6 +907,7 @@ function MediaSendPanel({
                     <span className="truncate">{q.name}</span>
                   </button>
                 ))}
+
               </div>
             )}
           </div>
