@@ -193,9 +193,42 @@ Deno.serve(async (req) => {
     const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
     const sentAt = new Date().toISOString();
 
-    // Send images first (if any), then the text message
+    // Send images first (if any), then the text message.
+    // The product-images bucket is private — convert any URL pointing to it
+    // (path or legacy public URL) into a fresh signed URL so Meta can fetch.
+    const signedImageUrls: string[] = [];
+    for (const raw of imageUrls) {
+      let path: string | null = null;
+      const pubMarker = "/object/public/product-images/";
+      const signMarker = "/object/sign/product-images/";
+      if (raw.includes(pubMarker)) {
+        path = raw.split(pubMarker)[1] ?? null;
+      } else if (raw.includes(signMarker)) {
+        // already signed — re-sign to guarantee TTL covers Meta fetch
+        const rest = raw.split(signMarker)[1] ?? "";
+        path = rest.split("?")[0] || null;
+      }
+      if (!path) {
+        // Not a bucket URL (external CDN, etc.) — pass through unchanged.
+        signedImageUrls.push(raw);
+        continue;
+      }
+      const { data: signed, error: signErr } = await sb.storage
+        .from("product-images")
+        .createSignedUrl(decodeURIComponent(path), 60 * 60); // 1h
+      if (signErr || !signed?.signedUrl) {
+        console.error("WHATSAPP_IMAGE_SIGN_ERROR", { path, err: signErr?.message });
+        return json(
+          { ok: false, error: `Não foi possível preparar a imagem para envio: ${signErr?.message ?? "sign failed"}` },
+          400,
+        );
+      }
+      signedImageUrls.push(signed.signedUrl);
+    }
+
     let lastImageExternalId: string | null = null;
-    for (const imgUrl of imageUrls) {
+    for (const imgUrl of signedImageUrls) {
+
       console.log("WHATSAPP_IMAGE_SEND_START", { imgUrl, to: recipient });
       // Validate URL is publicly reachable before asking Meta to fetch it
       try {
