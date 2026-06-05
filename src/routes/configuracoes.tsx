@@ -17,7 +17,16 @@ import {
   Copy,
   Loader2,
   AlertTriangle,
+  Bell,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  getNotificationPrefs,
+  setNotificationPrefs,
+  subscribeNotificationPrefs,
+  getBrowserPermission,
+  requestBrowserPermission,
+} from "@/lib/notification-prefs";
 import {
   getSettings,
   subscribeSettings,
