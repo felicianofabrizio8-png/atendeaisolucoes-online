@@ -1314,6 +1314,45 @@ export type Database = {
           },
         ]
       }
+      quick_replies: {
+        Row: {
+          active: boolean
+          category: string | null
+          company_id: string
+          content: string
+          created_at: string
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string | null
+          company_id: string
+          content: string
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string | null
+          company_id?: string
+          content?: string
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       quotes: {
         Row: {
           brindes: Json
