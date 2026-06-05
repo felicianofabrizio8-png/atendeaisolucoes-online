@@ -710,6 +710,44 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
             .eq("external_id", externalId)
             .maybeSingle();
           if (!dup?.id) {
+            // 3a) reply context (WhatsApp "responder a mensagem")
+            // Meta envia m.context = { from, id } quando o usuário responde
+            // a uma mensagem. Buscamos a mensagem original para enriquecer
+            // o metadata com um preview clicável.
+            let replyTo: Record<string, unknown> | null = null;
+            const ctxId = m?.context?.id ? String(m.context.id) : null;
+            if (ctxId) {
+              try {
+                const { data: orig } = await sb
+                  .from("messages")
+                  .select("id, role, text, source_subtype, source_metadata")
+                  .eq("integration_id", integrationId)
+                  .eq("external_id", ctxId)
+                  .maybeSingle();
+                if (orig) {
+                  const om = (orig.source_metadata ?? {}) as Record<string, unknown>;
+                  const kind = (orig.source_subtype as string | null) ?? "text";
+                  const preview = buildReplyPreview(kind, orig.text ?? "", om);
+                  replyTo = {
+                    message_id: orig.id,
+                    external_id: ctxId,
+                    role: orig.role,
+                    type: kind,
+                    preview,
+                    media_path: (om.media_path as string | undefined) ?? null,
+                    media_mime: (om.media_mime as string | undefined) ?? null,
+                  };
+                } else {
+                  replyTo = { external_id: ctxId, message_id: null, type: "unknown", preview: null };
+                }
+              } catch (e) {
+                console.error("META_WEBHOOK_REPLY_LOOKUP_FAIL", e instanceof Error ? e.message : String(e));
+              }
+            }
+
+            const baseMeta: Record<string, unknown> = { wa_id: waId, raw: m };
+            if (replyTo) baseMeta.reply_to = replyTo;
+
             const { data: inserted } = await sb.from("messages").insert({
               company_id: companyId,
               conversation_id: conversationId,
@@ -720,7 +758,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
               integration_id: integrationId,
               source: "whatsapp",
               source_subtype: m?.type ?? "text",
-              source_metadata: { wa_id: waId, raw: m },
+              source_metadata: baseMeta,
             }).select("id").single();
 
             // 3b) media download (best-effort, must not break webhook)
