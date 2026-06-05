@@ -235,22 +235,128 @@ export async function getLeadTemperatureSummary(
   companyId: string,
 ): Promise<{ hot: number; warm: number; cold: number }> {
   try {
-    const { data } = await supabaseAdmin
+    // 1) Leads ativos da empresa
+    const { data: leads } = await supabaseAdmin
       .from("leads")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("lead_temperature_cached" as any)
+      .select("id, status, lead_temperature_cached")
       .eq("company_id", companyId)
       .not("status", "in", "(fechado,perdido)");
-    let hot = 0,
-      warm = 0,
-      cold = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const r of (data ?? []) as any[]) {
-      const t = r.lead_temperature_cached;
+    const leadRows = (leads ?? []) as Array<{
+      id: string;
+      status: string;
+      lead_temperature_cached: string | null;
+    }>;
+    if (!leadRows.length) return { hot: 0, warm: 0, cold: 0 };
+
+    const leadIds = leadRows.map((l) => l.id);
+    const now = Date.now();
+    const since30 = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+    const nowIso = new Date(now).toISOString();
+
+    // 2) Sinais em lote (conversas, quotes, visitas)
+    const [convsRes, quotesRes, visitsRes] = await Promise.all([
+      supabaseAdmin
+        .from("conversations")
+        .select("id, lead_id")
+        .eq("company_id", companyId)
+        .in("lead_id", leadIds),
+      supabaseAdmin
+        .from("quotes")
+        .select("lead_id")
+        .eq("company_id", companyId)
+        .in("lead_id", leadIds),
+      supabaseAdmin
+        .from("visits")
+        .select("lead_id, scheduled_at, status")
+        .eq("company_id", companyId)
+        .in("lead_id", leadIds),
+    ]);
+
+    const convs = (convsRes.data ?? []) as Array<{ id: string; lead_id: string }>;
+    const convToLead = new Map<string, string>();
+    for (const c of convs) convToLead.set(c.id, c.lead_id);
+
+    // Última mensagem do cliente por lead (últimos 30 dias)
+    const lastClientByLead = new Map<string, number>();
+    if (convs.length) {
+      const { data: msgs } = await supabaseAdmin
+        .from("messages")
+        .select("conversation_id, at, role")
+        .eq("company_id", companyId)
+        .eq("role", "lead")
+        .in(
+          "conversation_id",
+          convs.map((c) => c.id),
+        )
+        .gte("at", since30);
+      for (const m of msgs ?? []) {
+        const leadId = convToLead.get(m.conversation_id as string);
+        if (!leadId) continue;
+        const t = new Date(m.at as string).getTime();
+        const cur = lastClientByLead.get(leadId) ?? 0;
+        if (t > cur) lastClientByLead.set(leadId, t);
+      }
+    }
+
+    const hasQuote = new Set<string>();
+    for (const q of quotesRes.data ?? [])
+      if (q.lead_id) hasQuote.add(q.lead_id as string);
+
+    const hasUpcomingVisit = new Set<string>();
+    for (const v of visitsRes.data ?? []) {
+      if (!v.lead_id) continue;
+      const when = v.scheduled_at
+        ? new Date(v.scheduled_at as string).getTime()
+        : 0;
+      if (when >= now && v.status !== "cancelada")
+        hasUpcomingVisit.add(v.lead_id as string);
+    }
+
+    let hot = 0;
+    let warm = 0;
+    let cold = 0;
+    const updates: Array<{ id: string; t: LeadTemperature }> = [];
+
+    for (const l of leadRows) {
+      const lastClient = lastClientByLead.get(l.id) ?? 0;
+      const ageDays = lastClient ? (now - lastClient) / 86_400_000 : Infinity;
+      let t: LeadTemperature;
+      // QUENTE: pediu orçamento, agendou visita, ou respondeu nos últimos 7 dias
+      if (
+        hasQuote.has(l.id) ||
+        hasUpcomingVisit.has(l.id) ||
+        (lastClient && ageDays <= 7)
+      ) {
+        t = "hot";
+      } else if (lastClient && ageDays <= 30) {
+        // MORNO: interagiu nos últimos 30 dias
+        t = "warm";
+      } else {
+        // FRIO: sem interação há mais de 30 dias
+        t = "cold";
+      }
       if (t === "hot") hot++;
       else if (t === "warm") warm++;
       else cold++;
+      if (l.lead_temperature_cached !== t) updates.push({ id: l.id, t });
     }
+
+    // Persiste o cache (best-effort)
+    if (updates.length) {
+      await Promise.all(
+        updates.map((u) =>
+          supabaseAdmin
+            .from("leads")
+            .update({
+              lead_temperature_cached: u.t,
+              last_score_at: nowIso,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            } as any)
+            .eq("id", u.id),
+        ),
+      ).catch(() => undefined);
+    }
+
     return { hot, warm, cold };
   } catch {
     return { hot: 0, warm: 0, cold: 0 };
