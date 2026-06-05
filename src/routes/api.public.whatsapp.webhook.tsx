@@ -184,9 +184,9 @@ async function logMediaError(args: {
         kind: args.kind,
         stage: args.stage,
         status: args.status ?? null,
-        meta_response: args.meta ?? null,
-      },
-    });
+        meta_response: (args.meta ?? null) as unknown,
+      } as never,
+    } as never);
   } catch (e) {
     console.error("[wa-webhook] error_log insert falhou", e);
   }
