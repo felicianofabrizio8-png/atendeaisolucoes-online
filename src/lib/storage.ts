@@ -115,6 +115,38 @@ export async function getSignedWaMediaUrl(path: string): Promise<string | null> 
 }
 
 /**
+ * Versão genérica: assina um path em qualquer bucket. Usado para mídia do
+ * agente (bucket `product-images`) e do lead (`whatsapp-media`) sem duplicar
+ * lógica. Mantém cache em memória por bucket+path.
+ */
+const genericMediaCache = new Map<string, CachedUrl>();
+export async function getSignedMediaUrl(
+  bucket: string,
+  path: string,
+): Promise<string | null> {
+  if (!path || !bucket) return null;
+  const clean = path.replace(/^\/+/, "");
+  const key = `${bucket}::${clean}`;
+  const now = Date.now();
+  const hit = genericMediaCache.get(key);
+  if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) return null;
+    genericMediaCache.set(key, {
+      url: data.signedUrl,
+      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
+    });
+    return data.signedUrl;
+  } catch (e) {
+    console.error("[getSignedMediaUrl] falhou", e);
+    return null;
+  }
+}
+
+/**
  * Versão síncrona: devolve a URL pública direta. Use para uploads onde
  * o bucket ainda é público; para migração futura para privado, use a versão
  * assíncrona acima.
