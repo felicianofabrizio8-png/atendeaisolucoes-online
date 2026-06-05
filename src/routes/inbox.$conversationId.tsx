@@ -257,6 +257,7 @@ function MessageBubble({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tplMeta = m.sourceMetadata as
     | { template_name?: string; category?: string }
@@ -266,6 +267,48 @@ function MessageBubble({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
+  const mediaInfo = getMediaInfo(m);
+  const hasText = !!m.text && m.text.trim().length > 0;
+
+  function startLongPress() {
+    if (!canManage || !isAgent || isDeleted || editing) return;
+    cancelLongPress();
+    longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
+  }
+  function cancelLongPress() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(m.text ?? "");
+      toast.success("Texto copiado");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  }
+
+  async function downloadMedia(url: string) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = url.split("/").pop()?.split("?")[0] ?? "midia";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // fallback: abrir em nova aba
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
 
   async function commitEdit() {
     const next = draft.trim();
