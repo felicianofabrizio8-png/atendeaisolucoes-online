@@ -64,6 +64,50 @@ async function validatePageAccessToken(
   }
 }
 
+// Valida que um token é USER/SYSTEM_USER long-lived com escopos suficientes
+// para a Marketing API. Se reprovar, o caller NÃO deve gravar em
+// integrations.access_token (essa coluna nunca pode conter PAGE token).
+const REQUIRED_USER_SCOPES = ["ads_management", "ads_read", "business_management"];
+async function validateUserToken(token: string): Promise<{
+  ok: boolean;
+  reason?: string;
+  type?: string;
+  scopes?: string[];
+  is_valid?: boolean;
+}> {
+  if (!token || !META_APP_ID || !META_APP_SECRET) {
+    return { ok: false, reason: "missing_token_or_app_credentials" };
+  }
+  try {
+    const appToken = `${META_APP_ID}|${META_APP_SECRET}`;
+    const r = await fetch(
+      `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(appToken)}`,
+    );
+    const body = (await r.json()) as {
+      data?: { type?: string; is_valid?: boolean; scopes?: string[] };
+      error?: { message?: string };
+    };
+    const d = body?.data;
+    if (!r.ok || !d) {
+      return { ok: false, reason: body?.error?.message ?? `debug_token_${r.status}` };
+    }
+    const type = d.type ?? "";
+    const scopes = Array.isArray(d.scopes) ? d.scopes : [];
+    const result = { type, scopes, is_valid: d.is_valid ?? false };
+    if (!d.is_valid) return { ok: false, reason: "token_invalid", ...result };
+    if (type !== "USER" && type !== "SYSTEM_USER") {
+      return { ok: false, reason: `token_type_is_${type || "unknown"}`, ...result };
+    }
+    const missing = REQUIRED_USER_SCOPES.filter((s) => !scopes.includes(s));
+    if (missing.length > 0) {
+      return { ok: false, reason: `missing_scopes:${missing.join(",")}`, ...result };
+    }
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, reason: `network_error:${String(e)}` };
+  }
+}
+
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
 // válido de subscribed_apps para páginas (Meta rejeita com erro 100).
 const PAGE_SUBSCRIBED_FIELDS = ["messages", "messaging_postbacks", "feed"].join(",");
