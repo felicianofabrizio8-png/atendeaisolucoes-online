@@ -216,6 +216,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
+      <NotificationBridge />
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
