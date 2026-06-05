@@ -2067,6 +2067,11 @@ function ConversationPage() {
               leadId={lead?.id ?? null}
               onSent={() => void refetchConversationMessages(conversationId)}
               onSendText={(t) => sendMessage(t)}
+              onInsertText={(t) => {
+                setInput((prev) => (prev ? `${prev}\n${t}` : t));
+                requestAnimationFrame(() => composerRef.current?.focus());
+              }}
+
             />
             <button
               onClick={() => sendMessage(input)}
