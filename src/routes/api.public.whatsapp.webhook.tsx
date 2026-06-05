@@ -165,30 +165,50 @@ function extOf(mime: string | undefined, filename: string | undefined): string {
 
 async function logMediaError(args: {
   companyId: string;
+  conversationId?: string | null;
   mediaId: string;
   messageId: string;
   kind: WaMediaKind;
   status?: number;
+  responseBody?: string | null;
+  errorMessage?: string | null;
   meta?: unknown;
   stage: string;
 }) {
+  const context = {
+    subsource: "whatsapp.webhook.media",
+    stage: args.stage,
+    kind: args.kind,
+    media_id: args.mediaId,
+    message_id: args.messageId,
+    conversation_id: args.conversationId ?? null,
+    company_id: args.companyId,
+    http_status: args.status ?? null,
+    response_body: args.responseBody ?? null,
+    error_message: args.errorMessage ?? null,
+    meta_response: (args.meta ?? null) as unknown,
+  };
   try {
-    await supabaseAdmin.from("error_log").insert({
-      source: "whatsapp.webhook.media",
+    const { error } = await supabaseAdmin.from("error_log").insert({
+      source: "whatsapp",
       company_id: args.companyId,
       severity: "error",
       message: `Falha ao baixar mídia ${args.kind} (${args.stage})`,
-      context: {
-        media_id: args.mediaId,
-        message_id: args.messageId,
-        kind: args.kind,
-        stage: args.stage,
-        status: args.status ?? null,
-        meta_response: (args.meta ?? null) as unknown,
-      } as never,
+      context: context as never,
     } as never);
+    if (error) {
+      console.error("[wa-webhook] error_log insert retornou erro", {
+        error_message: error.message,
+        error_details: (error as { details?: string }).details ?? null,
+        error_hint: (error as { hint?: string }).hint ?? null,
+        context,
+      });
+    }
   } catch (e) {
-    console.error("[wa-webhook] error_log insert falhou", e);
+    console.error("[wa-webhook] error_log insert lançou exceção", {
+      exception: e instanceof Error ? e.message : String(e),
+      context,
+    });
   }
 }
 
