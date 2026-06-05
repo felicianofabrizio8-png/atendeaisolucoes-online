@@ -61,22 +61,32 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
         } catch {
           return Response.json({ error: "JSON inválido" }, { status: 400 });
         }
-        if (!body?.product?.name) {
-          return Response.json({ error: "produto obrigatório" }, { status: 400 });
+        const productName = body.product?.name?.trim() || null;
+        const mediaUrl = body.media_url?.trim() || null;
+        const mediaType = body.media_type?.trim() || null;
+        if (!productName && !mediaUrl) {
+          return Response.json(
+            { error: "Informe um produto ou envie um criativo para gerar o anúncio." },
+            { status: 400 },
+          );
         }
 
         const objective = body.objective ?? "whatsapp";
         const goal = body.goal ?? "leads";
         const goalGuide = GOAL_GUIDE[goal];
         const productLine = [
-          `Nome: ${body.product.name}`,
-          body.product.category ? `Categoria: ${body.product.category}` : null,
-          body.product.description ? `Descrição: ${body.product.description}` : null,
-          body.product.price != null ? `Preço: R$ ${body.product.price}` : null,
-          body.product.promoPrice != null
+          productName ? `Nome: ${productName}` : "Nome: (não informado — deduzir a partir da imagem enviada)",
+          body.product?.category ? `Categoria: ${body.product.category}` : null,
+          body.product?.description ? `Descrição: ${body.product.description}` : null,
+          body.product?.price != null ? `Preço: R$ ${body.product.price}` : null,
+          body.product?.promoPrice != null
             ? `Preço promocional: R$ ${body.product.promoPrice}`
             : null,
           body.city ? `Cidade-alvo: ${body.city}` : null,
+          body.daily_budget != null ? `Orçamento diário: R$ ${body.daily_budget}` : null,
+          body.radius_km != null ? `Raio de alcance: ${body.radius_km} km` : null,
+          body.start_date ? `Início: ${body.start_date}` : null,
+          mediaUrl ? `Criativo enviado pelo lojista (${mediaType ?? "image"}): ${mediaUrl}` : null,
         ]
           .filter(Boolean)
           .join("\n");
@@ -86,6 +96,7 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
 OBJETIVO ESTRATÉGICO DA CAMPANHA: "${goal}".
 Diretriz: ${goalGuide}
 Adapte título, texto, CTA, legenda e sugestão de público ao objetivo acima.
+Quando uma imagem for fornecida, use-a como referência visual para deduzir produto/serviço, tom e benefícios destacados.
 
 REGRA CRÍTICA DO TÍTULO (headline):
 - Entre 25 e 40 caracteres. NUNCA passar de 40.
@@ -97,13 +108,21 @@ REGRA CRÍTICA DO TÍTULO (headline):
 
 Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e persuasivos, sem excesso de emojis.`;
 
-        const userPrompt = `Crie um anúncio para o canal "${objective}" com objetivo estratégico "${goal}" com base no produto:\n${productLine}\n\nDevolva via tool call.`;
+        const userText = `Crie um anúncio para o canal "${objective}" com objetivo estratégico "${goal}" com base no briefing:\n${productLine}\n\nDevolva via tool call.`;
+
+        const includeImage = !!mediaUrl && (mediaType ?? "image").startsWith("image");
+        const userContent: unknown = includeImage
+          ? [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: mediaUrl } },
+            ]
+          : userText;
 
         const payload = {
           model: "google/gemini-2.5-flash",
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
+            { role: "user", content: userContent },
           ],
           tools: [
             {
