@@ -121,6 +121,7 @@ export function AppShell() {
         const Icon = item.icon;
         const active =
           item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+        const dynamicBadge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : item.badge;
         return (
           <Link
             key={item.to}
@@ -133,9 +134,9 @@ export function AppShell() {
           >
             <Icon className="h-4 w-4" />
             <span className="flex-1">{item.label}</span>
-            {item.badge ? (
+            {dynamicBadge ? (
               <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
-                {item.badge}
+                {dynamicBadge > 99 ? "99+" : dynamicBadge}
               </span>
             ) : null}
           </Link>
