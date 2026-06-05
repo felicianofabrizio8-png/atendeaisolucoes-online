@@ -661,6 +661,7 @@ function MediaSendPanel({
   companyId,
   leadId,
   onSent,
+  onSendText,
 }: {
   conversationId: string;
   channel: string | undefined;
@@ -668,6 +669,7 @@ function MediaSendPanel({
   companyId: string | null;
   leadId?: string | null;
   onSent: () => void;
+  onSendText: (text: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -678,6 +680,24 @@ function MediaSendPanel({
   const vidInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const isWhats = channel === "whatsapp";
+
+  // Quick replies (respostas rápidas configuráveis)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [activeReply, setActiveReply] = useState<QuickReply | null>(null);
+  const [replyText, setReplyText] = useState("");
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    listQuickReplies(companyId, { activeOnly: true })
+      .then((rows) => {
+        if (!cancelled) setQuickReplies(rows);
+      })
+      .catch((e) => console.error("[quick_replies load]", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, menuOpen]);
 
   // Fecha menu ao clicar fora
   useEffect(() => {
