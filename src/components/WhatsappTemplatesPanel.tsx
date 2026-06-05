@@ -27,8 +27,9 @@ interface TemplateRow {
   meta_template_id: string | null;
 }
 
+const NONE_PURPOSE = "__none__";
 const PURPOSES: { value: string; label: string }[] = [
-  { value: "", label: "— sem propósito —" },
+  { value: NONE_PURPOSE, label: "— sem propósito —" },
   { value: "quote_no_reply", label: "Orçamento sem resposta" },
   { value: "lead_silent", label: "Cliente sumiu" },
   { value: "visit_no_return", label: "Visita sem retorno" },
