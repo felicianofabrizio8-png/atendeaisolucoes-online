@@ -47,7 +47,7 @@ import {
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
-import { getSignedImageUrl, getSignedWaMediaUrl } from "@/lib/storage";
+import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
