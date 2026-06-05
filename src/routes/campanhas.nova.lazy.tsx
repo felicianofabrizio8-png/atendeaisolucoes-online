@@ -248,8 +248,10 @@ function NewCampaignPage() {
   }
 
   async function generateWithAI() {
-    if (!form.product_id && !form.product.trim()) {
-      toast.error("Selecione um produto ou informe o nome.");
+    const hasProduct = !!form.product_id || !!form.product.trim();
+    const hasMedia = !!form.media_url;
+    if (!hasProduct && !hasMedia) {
+      toast.error("Selecione um produto cadastrado ou envie um criativo para gerar o anúncio com IA.");
       return;
     }
     setAiLoading(true);
@@ -266,7 +268,7 @@ function NewCampaignPage() {
         },
         body: JSON.stringify({
           product: {
-            name: p?.name ?? form.product,
+            name: p?.name ?? form.product ?? null,
             description: p?.description ?? form.primary_text ?? null,
             category: p?.category ?? null,
             price: p?.price ?? null,
@@ -275,6 +277,11 @@ function NewCampaignPage() {
           objective: form.objective,
           goal: form.goal,
           city: form.city || null,
+          media_url: form.media_url || null,
+          media_type: form.media_type || null,
+          daily_budget: form.daily_budget ?? null,
+          radius_km: form.radius_km ?? null,
+          start_date: form.start_date || null,
         }),
       });
       const j = await res.json();
