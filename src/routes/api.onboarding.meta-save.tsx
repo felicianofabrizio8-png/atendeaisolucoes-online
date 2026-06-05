@@ -459,8 +459,16 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
 
             // Só grava page_access_token se for válido. Caso contrário,
             // mantém o valor anterior (não sobrescreve com user token / lixo).
-            const pagePayload: Record<string, unknown> = {
+            const pagePayload = {
               company_id: auth.companyId,
+              integration_id: integrationId,
+              page_id: body.selected_page_id,
+              page_name: pageName,
+              ig_business_account_id: igId,
+              ig_username: igUsername,
+              token_expires_at: tokenExpiresAt,
+              active: true,
+              page_access_token: validPageToken ?? (pageExisting ? undefined : ""),
               integration_id: integrationId,
               page_id: body.selected_page_id,
               page_name: pageName,
