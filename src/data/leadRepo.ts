@@ -301,6 +301,26 @@ function subscribeRealtime(companyId: string) {
     .on(
       "postgres_changes",
       {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const row = payload.new as DbMessage & { company_id: string };
+        const idx = remoteMessages.findIndex((m) => m.id === row.id);
+        if (idx === -1) return;
+        remoteMessages = [
+          ...remoteMessages.slice(0, idx),
+          toMessage(row),
+          ...remoteMessages.slice(idx + 1),
+        ];
+        notify();
+      },
+    )
+    .on(
+      "postgres_changes",
+      {
         event: "INSERT",
         schema: "public",
         table: "leads",
@@ -389,22 +409,32 @@ export async function editMessage(messageId: string, newText: string) {
 }
 
 // Apaga uma mensagem do agente. scope:
-// - "me": só esconde localmente (deleted_for=me)
-// - "everyone": marca deleted_at + deleted_for=everyone (mantém histórico no DB)
+// - "me": só esconde localmente (deleted_for=me).
+// - "everyone": marca deleted_at + deleted_for=everyone + deleted_by (auditoria).
+//   Mantém histórico no DB; realtime propaga para todos os usuários conectados.
 export async function deleteMessage(
   messageId: string,
   scope: "me" | "everyone",
 ) {
   const deletedAt = new Date().toISOString();
+  let deletedBy: string | null = null;
   if (mode === "remote") {
+    const { data: userData } = await supabase.auth.getUser();
+    deletedBy = userData.user?.id ?? null;
     const { error } = await supabase
       .from("messages")
-      .update({ deleted_at: deletedAt, deleted_for: scope })
+      .update({ deleted_at: deletedAt, deleted_for: scope, deleted_by: deletedBy })
       .eq("id", messageId)
       .eq("role", "agent");
     if (error) throw error;
   }
-  console.warn("[inbox] mensagem apagada", { messageId, scope, deletedAt });
+  // Log de auditoria estruturado (MESSAGE_DELETED).
+  console.warn("MESSAGE_DELETED", {
+    message_id: messageId,
+    deleted_by: deletedBy,
+    deleted_at: deletedAt,
+    scope,
+  });
   remoteMessages = remoteMessages.map((m) =>
     m.id === messageId && m.role === "agent"
       ? { ...m, deletedAt, deletedFor: scope }

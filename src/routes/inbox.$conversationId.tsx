@@ -37,6 +37,10 @@ import {
   Pencil,
   Trash2,
   Check,
+  Copy,
+  Eye,
+  Download,
+
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
@@ -145,6 +149,46 @@ function ImagePreview({ url }: { url: string }) {
   );
 }
 
+type MediaKind = "image" | "video" | "audio" | "document";
+function getMediaInfo(m: Message): { url: string; kind: MediaKind } | null {
+  const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const url =
+    (meta?.media_url as string | undefined) ??
+    (meta?.mediaUrl as string | undefined) ??
+    (meta?.image_url as string | undefined);
+  const t = (meta?.type as string | undefined) ?? m.sourceSubtype;
+  if (url) {
+    const kind: MediaKind =
+      t === "image" || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)
+        ? "image"
+        : t === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(url)
+          ? "video"
+          : t === "audio" || /\.(mp3|ogg|m4a|wav)(\?|$)/i.test(url)
+            ? "audio"
+            : "document";
+    return { url, kind };
+  }
+  IMAGE_URL_RE.lastIndex = 0;
+  const match = IMAGE_URL_RE.exec(m.text ?? "");
+  if (match) return { url: match[1], kind: "image" };
+  return null;
+}
+
+function deletedLabelFor(kind: MediaKind | null): string {
+  switch (kind) {
+    case "image":
+      return "🗑️ Imagem removida";
+    case "video":
+      return "🗑️ Vídeo removido";
+    case "audio":
+      return "🗑️ Áudio removido";
+    case "document":
+      return "🗑️ Arquivo removido";
+    default:
+      return "🗑️ Mensagem removida";
+  }
+}
+
 function MessageContent({ message }: { message: Message }) {
   const meta = message.sourceMetadata as Record<string, unknown> | undefined;
   const mediaUrl =
@@ -213,6 +257,7 @@ function MessageBubble({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tplMeta = m.sourceMetadata as
     | { template_name?: string; category?: string }
@@ -222,6 +267,48 @@ function MessageBubble({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
+  const mediaInfo = getMediaInfo(m);
+  const hasText = !!m.text && m.text.trim().length > 0;
+
+  function startLongPress() {
+    if (!canManage || !isAgent || isDeleted || editing) return;
+    cancelLongPress();
+    longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
+  }
+  function cancelLongPress() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(m.text ?? "");
+      toast.success("Texto copiado");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  }
+
+  async function downloadMedia(url: string) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = url.split("/").pop()?.split("?")[0] ?? "midia";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // fallback: abrir em nova aba
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
 
   async function commitEdit() {
     const next = draft.trim();
@@ -268,7 +355,7 @@ function MessageBubble({
     >
       <div className="flex items-end gap-1">
         {isAgent && canManage && !isDeleted && !editing && (
-          <div className="relative opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <div className="relative md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -280,21 +367,59 @@ function MessageBubble({
             {menuOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-10"
+                  className="fixed inset-0 z-40"
                   onClick={() => setMenuOpen(false)}
                 />
-                <div className="absolute right-0 bottom-8 z-20 min-w-[170px] rounded-md border border-border bg-popover shadow-md p-1 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setDraft(m.text);
-                      setEditing(true);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Editar
-                  </button>
+                <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[200px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
+                  {mediaInfo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        window.open(mediaInfo.url, "_blank", "noopener,noreferrer");
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Visualizar
+                    </button>
+                  )}
+                  {mediaInfo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void downloadMedia(mediaInfo.url);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Baixar
+                    </button>
+                  )}
+                  {!mediaInfo && hasText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setDraft(m.text);
+                        setEditing(true);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar mensagem
+                    </button>
+                  )}
+                  {hasText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void copyText();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copiar texto
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -303,7 +428,8 @@ function MessageBubble({
                     }}
                     className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Apagar para mim
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {mediaInfo ? "Ocultar para mim" : "Apagar para mim"}
                   </button>
                   {!externalId && (
                     <button
@@ -314,7 +440,8 @@ function MessageBubble({
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
                     >
-                      <Trash2 className="h-3.5 w-3.5" /> Apagar da conversa
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {mediaInfo ? "Excluir mídia" : "Excluir mensagem"}
                     </button>
                   )}
                 </div>
@@ -324,8 +451,18 @@ function MessageBubble({
         )}
 
         <div
+          onTouchStart={startLongPress}
+          onTouchEnd={cancelLongPress}
+          onTouchMove={cancelLongPress}
+          onTouchCancel={cancelLongPress}
+          onContextMenu={(e) => {
+            if (canManage && isAgent && !isDeleted && !editing) {
+              e.preventDefault();
+              setMenuOpen(true);
+            }
+          }}
           className={cn(
-            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
+            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words select-none md:select-text transition-transform active:scale-[0.99]",
             isAgent
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-card border border-border rounded-bl-sm",
@@ -333,7 +470,7 @@ function MessageBubble({
           )}
         >
           {isDeleted ? (
-            <span>Mensagem apagada</span>
+            <span>{deletedLabelFor(mediaInfo?.kind ?? null)}</span>
           ) : editing ? (
             <div className="flex flex-col gap-2 min-w-[220px]">
               <textarea
