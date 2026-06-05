@@ -886,6 +886,7 @@ function MediaSendPanel({
                     key={q.id}
                     type="button"
                     onClick={() => {
+                      console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
                       setMenuOpen(false);
                       setActiveReply(q);
                       setReplyText(q.content);
