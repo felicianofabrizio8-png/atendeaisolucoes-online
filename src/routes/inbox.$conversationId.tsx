@@ -46,6 +46,7 @@ import {
   Library as LibraryIcon,
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
