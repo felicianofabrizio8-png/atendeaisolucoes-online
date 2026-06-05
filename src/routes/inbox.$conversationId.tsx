@@ -37,6 +37,10 @@ import {
   Pencil,
   Trash2,
   Check,
+  Copy,
+  Eye,
+  Download,
+
 } from "lucide-react";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
