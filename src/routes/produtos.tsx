@@ -26,6 +26,7 @@ import {
   ArrowRight,
   Loader2,
   Camera,
+  Search,
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -46,22 +47,43 @@ function useProducts(): Product[] {
   );
 }
 
+function normalizeSearch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function productMatches(product: Product, rawQuery: string): boolean {
+  if (!rawQuery.trim()) return true;
+  const q = normalizeSearch(rawQuery);
+  const haystack = normalizeSearch(
+    [product.name, product.category, product.description, product.notes, String(product.price)].join(" "),
+  );
+  return haystack.includes(q);
+}
+
 function ProductsPage() {
   const navigate = useNavigate();
   const products = useProducts();
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    return products.filter((p) => productMatches(p, query));
+  }, [products, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<ProductCategory, Product[]>();
-    for (const p of products) {
+    for (const p of filtered) {
       const arr = map.get(p.category) ?? [];
       arr.push(p);
       map.set(p.category, arr);
     }
     return [...map.entries()];
-  }, [products]);
+  }, [filtered]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -70,7 +92,9 @@ function ProductsPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold">Catálogo de produtos</h1>
           <p className="text-[11px] text-muted-foreground">
-            {products.length} produtos • Tabela ativa: Maio 2026
+            {query.trim()
+              ? `${filtered.length} resultado${filtered.length === 1 ? "" : "s"} encontrado${filtered.length === 1 ? "" : "s"}`
+              : `${products.length} produtos • Tabela ativa: Maio 2026`}
           </p>
         </div>
         <button
@@ -81,13 +105,43 @@ function ProductsPage() {
         </button>
       </header>
 
-      <div className="p-4 md:p-6 space-y-8 max-w-5xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-5xl">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nome, categoria, medidas, litragem..."
+            className="w-full h-10 pl-9 pr-9 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Limpar busca"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         {products.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm font-semibold">Nenhum produto cadastrado</p>
             <p className="text-xs text-muted-foreground mt-1">
               Clique em "Novo produto" para começar.
+            </p>
+          </div>
+        )}
+
+        {query.trim() && filtered.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border p-8 text-center">
+            <Search className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm font-semibold">Não encontramos produtos para sua pesquisa.</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Tente outro termo como "SPA", "6x3" ou "aquecedor".
             </p>
           </div>
         )}
@@ -167,7 +221,7 @@ function ProductsPage() {
           </section>
         ))}
 
-        {products.length > 0 && (
+        {!query.trim() && products.length > 0 && (
           <div className="pt-2">
             <Link to="/orcamentos" search={{}} className="text-xs text-primary hover:underline">
               → Criar orçamento com estes produtos
