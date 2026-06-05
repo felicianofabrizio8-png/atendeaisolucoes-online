@@ -467,6 +467,9 @@ function messageForAi(m: Message): { role: Message["role"]; text: string } {
   if (!reply) return { role: m.role, text: m.text };
   const ctx = (reply.preview ?? "[mensagem anterior]").replace(/\s+/g, " ").slice(0, 200);
   return { role: m.role, text: `[em resposta a: ${ctx}] ${m.text}` };
+}
+
+
 
 function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const kind = (reply.type ?? "text").toLowerCase();
