@@ -517,6 +517,7 @@ function MessageContent({ message }: { message: Message }) {
       case "image":
         return (
           <div className="space-y-1">
+            {replyNode}
             <ImagePreview path={info.path} url={info.url} filename={info.filename} />
             {caption}
           </div>
@@ -524,6 +525,7 @@ function MessageContent({ message }: { message: Message }) {
       case "video":
         return (
           <div className="space-y-1">
+            {replyNode}
             <VideoPreview path={info.path} url={info.url} filename={info.filename} />
             {caption}
           </div>
@@ -531,6 +533,7 @@ function MessageContent({ message }: { message: Message }) {
       case "audio":
         return (
           <div className="space-y-1">
+            {replyNode}
             <AudioPreview path={info.path} mime={info.mime} filename={info.filename} />
             {caption}
           </div>
@@ -538,6 +541,7 @@ function MessageContent({ message }: { message: Message }) {
       case "document":
         return (
           <div className="space-y-1">
+            {replyNode}
             <DocumentPreview
               path={info.path}
               filename={info.filename}
@@ -550,6 +554,7 @@ function MessageContent({ message }: { message: Message }) {
       case "sticker":
         return (
           <div className="space-y-1">
+            {replyNode}
             <StickerPreview path={info.path} filename={info.filename} />
           </div>
         );
@@ -559,7 +564,12 @@ function MessageContent({ message }: { message: Message }) {
   const text = message.text ?? "";
   IMAGE_URL_RE.lastIndex = 0;
   if (!IMAGE_URL_RE.test(text)) {
-    return <>{text}</>;
+    return (
+      <>
+        {replyNode}
+        {text}
+      </>
+    );
   }
   IMAGE_URL_RE.lastIndex = 0;
   const parts: Array<{ type: "text" | "image"; value: string }> = [];
@@ -577,6 +587,7 @@ function MessageContent({ message }: { message: Message }) {
   }
   return (
     <div className="space-y-1">
+      {replyNode}
       {parts.map((p, i) =>
         p.type === "image" ? (
           <ImagePreview key={i} url={p.value} />
