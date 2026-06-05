@@ -691,7 +691,17 @@ function MediaSendPanel({
     let cancelled = false;
     listQuickReplies(companyId, { activeOnly: true })
       .then((rows) => {
-        if (!cancelled) setQuickReplies(rows);
+        if (cancelled) return;
+        setQuickReplies(rows);
+        if (rows.length === 0) {
+          console.log("QUICK_REPLIES_EMPTY", { company_id: companyId });
+        } else {
+          console.log("QUICK_REPLIES_LOADED", {
+            company_id: companyId,
+            count: rows.length,
+            ids: rows.map((r) => r.id),
+          });
+        }
       })
       .catch((e) => console.error("[quick_replies load]", e));
     return () => {
