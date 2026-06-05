@@ -239,17 +239,17 @@ async function downloadAndStoreMedia(args: {
     });
   } catch (e) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "graph_metadata_fetch",
-      meta: { error: e instanceof Error ? e.message : String(e) },
+      errorMessage: e instanceof Error ? e.message : String(e),
     });
     return null;
   }
   if (!metaRes.ok) {
     const body = await metaRes.text().catch(() => "");
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "graph_metadata", status: metaRes.status, meta: body.slice(0, 1000),
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "graph_metadata", status: metaRes.status, responseBody: body.slice(0, 1000),
     });
     return null;
   }
@@ -260,7 +260,7 @@ async function downloadAndStoreMedia(args: {
   const mime = metaJson.mime_type ?? args.fallbackMime ?? "application/octet-stream";
   if (!tempUrl) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "graph_metadata_no_url", meta: metaJson,
     });
     return null;
@@ -272,17 +272,17 @@ async function downloadAndStoreMedia(args: {
     binRes = await fetch(tempUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
   } catch (e) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
       stage: "binary_fetch",
-      meta: { error: e instanceof Error ? e.message : String(e) },
+      errorMessage: e instanceof Error ? e.message : String(e),
     });
     return null;
   }
   if (!binRes.ok) {
     const body = await binRes.text().catch(() => "");
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "binary_download", status: binRes.status, meta: body.slice(0, 500),
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "binary_download", status: binRes.status, responseBody: body.slice(0, 500),
     });
     return null;
   }
@@ -297,8 +297,8 @@ async function downloadAndStoreMedia(args: {
     .upload(path, buf, { contentType: mime, upsert: true });
   if (upErr) {
     await logMediaError({
-      companyId, mediaId, messageId: messageWaId, kind,
-      stage: "storage_upload", meta: { error: upErr.message },
+      companyId, conversationId, mediaId, messageId: messageWaId, kind,
+      stage: "storage_upload", errorMessage: upErr.message,
     });
     return null;
   }
