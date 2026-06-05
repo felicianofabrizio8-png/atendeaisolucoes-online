@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
@@ -120,11 +120,12 @@ function useSettings() {
 }
 
 function useRepoVersion() {
-  return useSyncExternalStore(
-    subscribeRepo,
-    () => 0,
-    () => 0,
-  );
+  const [, forceRepoRender] = useState(0);
+  useEffect(() => {
+    return subscribeRepo(() => {
+      forceRepoRender((v) => v + 1);
+    });
+  }, []);
 }
 
 function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
