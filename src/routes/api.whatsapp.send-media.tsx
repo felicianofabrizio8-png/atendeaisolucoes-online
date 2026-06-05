@@ -166,9 +166,16 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
 
         // Valida acessibilidade. Alguns provedores aceitam GET assinado, mas
         // respondem mal a HEAD; por isso tentamos HEAD e depois GET parcial.
+        // Aproveitamos para capturar mime e size para persistência local.
+        let detectedMime: string | null = null;
+        let detectedSize: number | null = null;
         try {
           const h = await fetch(publicLink, { method: "HEAD" });
-          if (!h.ok) {
+          if (h.ok) {
+            detectedMime = h.headers.get("content-type");
+            const len = h.headers.get("content-length");
+            detectedSize = len ? Number(len) : null;
+          } else {
             const g = await fetch(publicLink, { method: "GET", headers: { Range: "bytes=0-0" } });
             if (!g.ok && g.status !== 206) {
               return Response.json(
@@ -176,6 +183,10 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
                 { status: 400 },
               );
             }
+            detectedMime = g.headers.get("content-type");
+            const cr = g.headers.get("content-range");
+            const totalMatch = cr ? /\/(\d+)$/.exec(cr) : null;
+            detectedSize = totalMatch ? Number(totalMatch[1]) : null;
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erro de rede";
