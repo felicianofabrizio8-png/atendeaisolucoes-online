@@ -387,6 +387,7 @@ type MediaInfo = {
   mime?: string | null;
   filename?: string | null;
   size?: number | null;
+  bucket?: string | null;
 };
 
 function getMediaInfo(m: Message): MediaInfo | null {
@@ -400,6 +401,7 @@ function getMediaInfo(m: Message): MediaInfo | null {
   const mime = (meta?.media_mime as string | undefined) ?? null;
   const filename = (meta?.media_filename as string | undefined) ?? null;
   const size = (meta?.media_size as number | undefined) ?? null;
+  const bucket = (meta?.media_bucket as string | undefined) ?? null;
   const t =
     (meta?.media_kind as string | undefined) ??
     (meta?.type as string | undefined) ??
@@ -422,12 +424,12 @@ function getMediaInfo(m: Message): MediaInfo | null {
 
   if (path || url) {
     const kind = kindFor();
-    if (kind) return { path, url, kind, mime, filename, size };
+    if (kind) return { path, url, kind, mime, filename, size, bucket };
   }
 
   IMAGE_URL_RE.lastIndex = 0;
   const match = IMAGE_URL_RE.exec(m.text ?? "");
-  if (match) return { url: match[1], kind: "image", mime, filename, size };
+  if (match) return { url: match[1], kind: "image", mime, filename, size, bucket };
   return null;
 }
 
