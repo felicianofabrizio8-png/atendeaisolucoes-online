@@ -4,8 +4,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 interface RequestBody {
-  product: {
-    name: string;
+  product?: {
+    name?: string | null;
     description?: string | null;
     category?: string | null;
     price?: number | null;
@@ -14,6 +14,11 @@ interface RequestBody {
   objective?: "whatsapp" | "instagram" | "messenger";
   goal?: "awareness" | "traffic" | "engagement" | "leads" | "sales" | "reactivation";
   city?: string | null;
+  media_url?: string | null;
+  media_type?: string | null;
+  daily_budget?: number | null;
+  radius_km?: number | null;
+  start_date?: string | null;
 }
 
 const GOAL_GUIDE: Record<NonNullable<RequestBody["goal"]>, string> = {
