@@ -420,7 +420,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
     const { data: integration } = await sb
       .from("integrations")
-      .select("id, company_id")
+      .select("id, company_id, access_token")
       .eq("channel", "whatsapp")
       .eq("external_account_id", phoneNumberId)
       .eq("active", true)
