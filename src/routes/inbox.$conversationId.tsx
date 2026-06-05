@@ -1222,6 +1222,7 @@ function ConversationPage() {
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const pendingTextSendsRef = useRef<Set<string>>(new Set());
 
   // Auto-resize do textarea conforme o conteúdo (cap em max-h via CSS).
   useEffect(() => {
@@ -1398,6 +1399,10 @@ function ConversationPage() {
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const sendKey = `${conversationId}\n${trimmed}`;
+    if (pendingTextSendsRef.current.has(sendKey)) return;
+    pendingTextSendsRef.current.add(sendKey);
+    const finishSend = () => pendingTextSendsRef.current.delete(sendKey);
     const msg: Message = {
       id: `local-${Date.now()}`,
       conversationId,
@@ -1431,6 +1436,7 @@ function ConversationPage() {
                 setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
                 await refetchConversationMessages(conversationId);
               }
+              finishSend();
               return;
             }
             // Falhou: remove a bolha otimista e mostra o erro real da Meta
@@ -1445,6 +1451,7 @@ function ConversationPage() {
             setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
+            finishSend();
             return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
@@ -1477,6 +1484,7 @@ function ConversationPage() {
                 setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
                 await refetchConversationMessages(conversationId);
               }
+              finishSend();
               return;
             }
             const details = await readFunctionError(error, data);
@@ -1497,6 +1505,7 @@ function ConversationPage() {
                   ? "Messenger"
                   : "Meta";
             toast.error(`Falha ao enviar ${label}`, { description: details.message });
+            finishSend();
             return;
           }
         }
@@ -1507,11 +1516,13 @@ function ConversationPage() {
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
         });
+        finishSend();
         return;
       }
     }
 
     void appendMessage(msg, profile?.company_id);
+    finishSend();
   };
 
   const markAiSent = async (logId: string, sentText: string, originalText: string) => {
