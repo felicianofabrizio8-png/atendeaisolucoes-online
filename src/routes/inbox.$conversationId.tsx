@@ -908,12 +908,17 @@ function MediaSendPanel({
                   Cancelar
                 </button>
                 <button
-                  onClick={send}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void send();
+                  }}
                   disabled={sending}
-                  className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                  className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Enviar
+                  {sending ? "Enviando..." : "Enviar"}
                 </button>
               </div>
             </div>
