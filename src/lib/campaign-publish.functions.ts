@@ -752,10 +752,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return ld;
     }
 
-    function buildCreativePayload(mode: CreativeMode) {
+    function buildCreativePayload(mode: CreativeMode, pictureUrl: string | null) {
       const oss: Record<string, unknown> = {
         page_id: pageId,
-        link_data: buildLinkData(mode),
+        link_data: buildLinkData(mode, pictureUrl),
       };
       if (channel === "instagram" && igActorId) {
         oss.instagram_actor_id = igActorId;
@@ -769,7 +769,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
     async function tryCreateCreative(mode: CreativeMode) {
-      const payload = buildCreativePayload(mode);
+      const pictureUrl = mode === "picture" ? await getPictureUrlForMeta() : null;
+      const payload = buildCreativePayload(mode, pictureUrl);
       const linkData = (payload.object_story_spec as { link_data: Record<string, unknown> }).link_data;
       console.log("[publishCampaign] create_creative attempt", {
         mode,
