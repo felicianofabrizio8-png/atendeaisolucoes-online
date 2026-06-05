@@ -42,19 +42,24 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 async function graphFetch<T>(
   url: string,
   init: RequestInit,
-): Promise<{ ok: true; data: T } | { ok: false; status: number; body: GraphErrorBody; message: string }> {
+): Promise<
+  | { ok: true; data: T; status: number; rawText: string; responseHeaders: Record<string, string> }
+  | { ok: false; status: number; body: GraphErrorBody; message: string; rawText: string; responseHeaders: Record<string, string> }
+> {
   try {
     const res = await fetch(url, init);
     const text = await res.text();
+    const responseHeaders: Record<string, string> = {};
+    res.headers.forEach((v, k) => { responseHeaders[k] = v; });
     const body = text ? (JSON.parse(text) as T & GraphErrorBody) : ({} as T & GraphErrorBody);
     if (!res.ok) {
       const msg = (body as GraphErrorBody).error?.message ?? `HTTP ${res.status}`;
-      return { ok: false, status: res.status, body, message: msg };
+      return { ok: false, status: res.status, body, message: msg, rawText: text, responseHeaders };
     }
-    return { ok: true, data: body };
+    return { ok: true, data: body, status: res.status, rawText: text, responseHeaders };
   } catch (e) {
     const message = e instanceof Error ? e.message : "network_error";
-    return { ok: false, status: 0, body: {}, message };
+    return { ok: false, status: 0, body: {}, message, rawText: "", responseHeaders: {} };
   }
 }
 
@@ -795,15 +800,66 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return { res, payload };
     }
 
-    function resBody(r: { ok: boolean; body?: unknown }) {
-      return r.ok ? null : (r as { body: unknown }).body;
+    // Captura completa de cada tentativa: payload integral enviado para
+    // /act_xxx/adcreatives + resposta integral (status, body, headers, raw text).
+    // Usado para diagnosticar erros como code=100/subcode=1487390 onde a Meta
+    // não diz qual campo do creative está inválido.
+    type CreativeAttempt = {
+      mode: CreativeMode;
+      endpoint: string;
+      request_payload: unknown;
+      object_story_spec: unknown;
+      link_data: unknown;
+      call_to_action: unknown;
+      page_id: string;
+      instagram_actor_id: string | null;
+      whatsapp_number: string | null;
+      destination_type: string | null;
+      promoted_object: unknown;
+      response_status: number;
+      response_body: unknown;
+      response_headers: Record<string, string>;
+      response_raw: string;
+      ok: boolean;
+    };
+    const attempts: CreativeAttempt[] = [];
+
+    function recordAttempt(
+      mode: CreativeMode,
+      payload: { name: string; object_story_spec: Record<string, unknown> },
+      res:
+        | { ok: true; data: { id: string }; status: number; rawText: string; responseHeaders: Record<string, string> }
+        | { ok: false; status: number; body: GraphErrorBody; message: string; rawText: string; responseHeaders: Record<string, string> },
+    ) {
+      const oss = payload.object_story_spec as Record<string, unknown>;
+      const ld = (oss.link_data ?? null) as Record<string, unknown> | null;
+      const entry: CreativeAttempt = {
+        mode,
+        endpoint: `${GRAPH}/${actId}/adcreatives`,
+        request_payload: payload,
+        object_story_spec: oss,
+        link_data: ld,
+        call_to_action: ld?.call_to_action ?? null,
+        page_id: pageId,
+        instagram_actor_id: igActorId || null,
+        whatsapp_number: waPhone || null,
+        destination_type: (payload as { destination_type?: string }).destination_type ?? null,
+        promoted_object: (payload as { promoted_object?: unknown }).promoted_object ?? null,
+        response_status: res.status,
+        response_body: res.ok ? res.data : res.body,
+        response_headers: res.responseHeaders,
+        response_raw: res.rawText,
+        ok: res.ok,
+      };
+      attempts.push(entry);
+      console.log("[publishCampaign] create_creative attempt result", entry);
+      return entry;
     }
 
     let creativeId: string;
-    const attempts: Array<{ mode: CreativeMode; payload: unknown; response: unknown }> = [];
 
     const advanced = await tryCreateCreative("advanced");
-    attempts.push({ mode: "advanced", payload: advanced.payload, response: resBody(advanced.res) });
+    recordAttempt("advanced", advanced.payload, advanced.res);
 
     if (advanced.res.ok) {
       creativeId = advanced.res.data.id;
@@ -813,7 +869,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         status: advanced.res.status, message: advanced.res.message,
       });
       const simple = await tryCreateCreative("simple");
-      attempts.push({ mode: "simple", payload: simple.payload, response: resBody(simple.res) });
+      recordAttempt("simple", simple.payload, simple.res);
 
       if (simple.res.ok) {
         creativeId = simple.res.data.id;
@@ -822,9 +878,6 @@ export const publishCampaign = createServerFn({ method: "POST" })
         console.warn("[publishCampaign] simple fail — preparando fallback picture URL", {
           status: simple.res.status, message: simple.res.message,
         });
-        // Pré-check: garante que a URL que será enviada à Meta é realmente
-        // pública e devolve um content-type de imagem. Sem isso, a Meta
-        // responde "Não foi possível baixar sua imagem".
         const picUrl = await getPictureUrlForMeta();
         if (!picUrl) {
           return fail("create_creative", "Mídia indisponível para fallback (URL ausente).", null, { attempts });
@@ -840,7 +893,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           );
         }
         const pic = await tryCreateCreative("picture");
-        attempts.push({ mode: "picture", payload: pic.payload, response: resBody(pic.res) });
+        recordAttempt("picture", pic.payload, pic.res);
 
         if (!pic.res.ok) {
           console.error("[publishCampaign] all creative modes failed", { attempts, mediaCheck });
@@ -850,7 +903,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
             pic.res.body,
             {
               attempts,
+              last_attempt: attempts[attempts.length - 1],
               page_id: pageId,
+              instagram_actor_id: igActorId || null,
+              whatsapp_number: waPhone || null,
               image_hash: imageHash ?? null,
               wa_link: waLink,
               channel,
@@ -868,7 +924,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
           simple.res.body,
           {
             attempts,
+            last_attempt: attempts[attempts.length - 1],
             page_id: pageId,
+            instagram_actor_id: igActorId || null,
+            whatsapp_number: waPhone || null,
             image_hash: imageHash ?? null,
             wa_link: waLink,
             channel,
@@ -877,6 +936,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         );
       }
     }
+
 
 
     // Step E: cria ad.
