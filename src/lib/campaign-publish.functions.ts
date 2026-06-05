@@ -495,7 +495,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       if (signErr || !signed?.signedUrl) {
         console.warn("[publishCampaign] createSignedUrl failed", { signErr });
       } else {
-        pictureUrlForMeta = signed.signedUrl;
+        // (signed URL será regenerado dentro de getPictureUrlForMeta se o fallback "picture" for usado)
         mediaCheck = await probePublicUrl(signed.signedUrl, "signed");
         const safeUrl = signed.signedUrl.split("?")[0] + "?token=***";
         console.log("[publishCampaign] image_access_check", {
