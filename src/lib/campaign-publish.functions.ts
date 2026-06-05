@@ -819,14 +819,31 @@ export const publishCampaign = createServerFn({ method: "POST" })
         creativeId = simple.res.data.id;
         console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple" });
       } else if (camp.media_url) {
-        console.warn("[publishCampaign] simple fail — tentando picture URL", {
+        console.warn("[publishCampaign] simple fail — preparando fallback picture URL", {
           status: simple.res.status, message: simple.res.message,
         });
+        // Pré-check: garante que a URL que será enviada à Meta é realmente
+        // pública e devolve um content-type de imagem. Sem isso, a Meta
+        // responde "Não foi possível baixar sua imagem".
+        const picUrl = await getPictureUrlForMeta();
+        if (!picUrl) {
+          return fail("create_creative", "Mídia indisponível para fallback (URL ausente).", null, { attempts });
+        }
+        mediaCheck = await probePublicUrl(picUrl, picUrl === camp.media_url ? "public" : "signed");
+        console.log("[publishCampaign] picture pre-check", mediaCheck);
+        if (!mediaCheck.ok) {
+          return fail(
+            "create_creative",
+            `A imagem do criativo não está acessível externamente (HTTP ${mediaCheck.status ?? "—"}, ${mediaCheck.contentType ?? "sem content-type"}). A Meta não conseguiria baixá-la. Reenvie a imagem na campanha.`,
+            null,
+            { attempts, page_id: pageId, image_hash: imageHash ?? null, channel },
+          );
+        }
         const pic = await tryCreateCreative("picture");
         attempts.push({ mode: "picture", payload: pic.payload, response: resBody(pic.res) });
 
         if (!pic.res.ok) {
-          console.error("[publishCampaign] all creative modes failed", { attempts });
+          console.error("[publishCampaign] all creative modes failed", { attempts, mediaCheck });
           return fail(
             "create_creative",
             formatGraphError(pic.res.body, pic.res.message),
