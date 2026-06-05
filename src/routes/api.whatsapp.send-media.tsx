@@ -241,6 +241,19 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
         }
 
         const messageText = caption || `[${kind === "video" ? "vídeo" : "imagem"}]`;
+        // Persistência aditiva: além de media_url/type (legados), gravamos
+        // media_path/kind/mime/filename/size + media_bucket para que o
+        // renderer e o reply preview consigam reconstruir a mídia após reload.
+        const isStoragePath = resolvedPath !== null && !/^https?:\/\//i.test(storedRef);
+        const filename = isStoragePath
+          ? (storedRef.split("/").pop() ?? null)
+          : (() => {
+              try {
+                return new URL(storedRef).pathname.split("/").pop() ?? null;
+              } catch {
+                return null;
+              }
+            })();
         const { data: inserted, error: insertErr } = await supabaseAdmin
           .from("messages")
           .insert({
@@ -253,13 +266,25 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
             integration_id: integration.id,
             source_subtype: kind,
             source_metadata: {
+              // legados (não remover — mensagens antigas dependem disso):
               media_url: storedRef,
               type: kind,
               caption: caption || null,
+              // novos (aditivos):
+              media_path: isStoragePath ? storedRef : null,
+              media_kind: kind,
+              media_mime: detectedMime,
+              media_filename: filename,
+              media_size: detectedSize,
+              media_bucket: isStoragePath ? BUCKET : null,
             },
           })
           .select("id, conversation_id, role, text, at")
           .single();
+        if (insertErr) {
+          console.error("[send-media] insert error", insertErr);
+          return Response.json({ error: "Falha ao salvar mensagem" }, { status: 500 });
+        }
         if (insertErr) {
           console.error("[send-media] insert error", insertErr);
           return Response.json({ error: "Falha ao salvar mensagem" }, { status: 500 });
