@@ -539,6 +539,13 @@ interface WhatsAppContact {
   profile?: { name?: string };
 }
 
+interface WhatsAppMediaPart {
+  id: string;
+  mime_type?: string;
+  caption?: string;
+  filename?: string;
+}
+
 interface WhatsAppMessage {
   id: string;
   from: string;
@@ -550,4 +557,9 @@ interface WhatsAppMessage {
     button_reply?: { id: string; title: string };
     list_reply?: { id: string; title: string };
   };
+  image?: WhatsAppMediaPart;
+  audio?: WhatsAppMediaPart;
+  video?: WhatsAppMediaPart;
+  document?: WhatsAppMediaPart;
+  sticker?: WhatsAppMediaPart;
 }
