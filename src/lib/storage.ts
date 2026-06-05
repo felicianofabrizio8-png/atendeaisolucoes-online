@@ -80,6 +80,40 @@ export async function getSignedImageUrl(stored: string): Promise<string> {
   }
 }
 
+// ============================================================================
+// Mídias recebidas via WhatsApp (bucket privado whatsapp-media)
+// ============================================================================
+
+const WA_MEDIA_BUCKET = "whatsapp-media";
+const waMediaCache = new Map<string, CachedUrl>();
+
+/**
+ * Gera signed URL para um arquivo no bucket privado `whatsapp-media`.
+ * O path deve começar pelo company_id (a policy do bucket filtra por isso).
+ * TTL curto + cache em memória.
+ */
+export async function getSignedWaMediaUrl(path: string): Promise<string | null> {
+  if (!path) return null;
+  const clean = path.replace(/^\/+/, "");
+  const now = Date.now();
+  const hit = waMediaCache.get(clean);
+  if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
+  try {
+    const { data, error } = await supabase.storage
+      .from(WA_MEDIA_BUCKET)
+      .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) return null;
+    waMediaCache.set(clean, {
+      url: data.signedUrl,
+      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
+    });
+    return data.signedUrl;
+  } catch (e) {
+    console.error("[getSignedWaMediaUrl] falhou", e);
+    return null;
+  }
+}
+
 /**
  * Versão síncrona: devolve a URL pública direta. Use para uploads onde
  * o bucket ainda é público; para migração futura para privado, use a versão
