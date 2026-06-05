@@ -949,5 +949,6 @@ export const publishCampaign = createServerFn({ method: "POST" })
     return {
       ok: true as const,
       ids: { campaign: metaCampaignId, adset: metaAdsetId, creative: creativeId, ad: metaAdId },
+      mediaCheck,
     };
   });
