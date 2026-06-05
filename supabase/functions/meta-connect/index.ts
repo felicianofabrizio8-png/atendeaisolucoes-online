@@ -474,6 +474,30 @@ Deno.serve(async (req) => {
     // A Marketing API (campaigns/adsets/adcreatives/ads) rejeita PAGE tokens
     // mesmo com ads_management no app. O PAGE token vai apenas em meta_pages.
     // Preserva qualquer ad_account_id já vinculado anteriormente.
+
+    // GUARD: valida via /debug_token que longUserToken é USER/SYSTEM_USER com
+    // scopes suficientes ANTES de gravar. Sem isso poderíamos persistir um
+    // PAGE token aqui (foi exatamente a causa raiz do bug Sol 602).
+    const userCheck = await validateUserToken(longUserToken);
+    console.log("META_USER_TOKEN_CHECK", {
+      page_id: page.id,
+      ok: userCheck.ok,
+      type: userCheck.type ?? null,
+      reason: userCheck.reason ?? null,
+    });
+    if (!userCheck.ok) {
+      return json(
+        {
+          ok: false,
+          error:
+            "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+          token_type: userCheck.type ?? null,
+          reason: userCheck.reason,
+        },
+        400,
+      );
+    }
+
     const { data: existingInteg } = await sb
       .from("integrations")
       .select("account_metadata")
