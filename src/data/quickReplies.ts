@@ -1,4 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+
+type QuickReplyUpdate = Database["public"]["Tables"]["quick_replies"]["Update"];
 
 export type QuickReply = {
   id: string;
@@ -72,7 +75,7 @@ export async function updateQuickReply(
   id: string,
   patch: Partial<QuickReplyInput>,
 ): Promise<QuickReply> {
-  const row: Record<string, unknown> = {};
+  const row: QuickReplyUpdate = {};
   if (patch.name !== undefined) row.name = patch.name.trim();
   if (patch.icon !== undefined) row.icon = patch.icon?.trim() || null;
   if (patch.category !== undefined) row.category = patch.category?.trim() || null;
