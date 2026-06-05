@@ -126,12 +126,201 @@ function verifySignature(body: string, header: string, secret: string): boolean 
 }
 
 // ---------- processamento ----------
+const WA_MEDIA_BUCKET = "whatsapp-media";
+const GRAPH_VERSION = "v20.0";
+
+type WaMediaKind = "image" | "audio" | "video" | "document" | "sticker";
+
+function extOf(mime: string | undefined, filename: string | undefined): string {
+  if (filename && filename.includes(".")) {
+    const e = filename.split(".").pop();
+    if (e && e.length <= 6) return e.toLowerCase();
+  }
+  if (!mime) return "bin";
+  const m = mime.split(";")[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/wav": "wav",
+    "audio/webm": "webm",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "text/plain": "txt",
+  };
+  if (map[m]) return map[m];
+  const sub = m.split("/")[1];
+  return sub ? sub.replace(/[^a-z0-9]/g, "").slice(0, 6) || "bin" : "bin";
+}
+
+async function logMediaError(args: {
+  companyId: string;
+  mediaId: string;
+  messageId: string;
+  kind: WaMediaKind;
+  status?: number;
+  meta?: unknown;
+  stage: string;
+}) {
+  try {
+    await supabaseAdmin.from("error_log").insert({
+      source: "whatsapp.webhook.media",
+      company_id: args.companyId,
+      severity: "error",
+      message: `Falha ao baixar mídia ${args.kind} (${args.stage})`,
+      context: {
+        media_id: args.mediaId,
+        message_id: args.messageId,
+        kind: args.kind,
+        stage: args.stage,
+        status: args.status ?? null,
+        meta_response: args.meta ?? null,
+      },
+    });
+  } catch (e) {
+    console.error("[wa-webhook] error_log insert falhou", e);
+  }
+}
+
+async function downloadAndStoreMedia(args: {
+  accessToken: string;
+  companyId: string;
+  conversationId: string;
+  messageWaId: string;
+  mediaId: string;
+  kind: WaMediaKind;
+  fallbackMime?: string;
+  filename?: string;
+}): Promise<{
+  media_path: string;
+  media_mime: string;
+  media_filename: string | null;
+  media_size: number | null;
+  media_kind: WaMediaKind;
+  media_downloaded_at: string;
+} | null> {
+  const { accessToken, companyId, conversationId, messageWaId, mediaId, kind } = args;
+
+  // 1) Resolve URL temporária da Meta
+  let metaRes: Response;
+  try {
+    metaRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch (e) {
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "graph_metadata_fetch",
+      meta: { error: e instanceof Error ? e.message : String(e) },
+    });
+    return null;
+  }
+  if (!metaRes.ok) {
+    const body = await metaRes.text().catch(() => "");
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "graph_metadata", status: metaRes.status, meta: body.slice(0, 1000),
+    });
+    return null;
+  }
+  const metaJson = (await metaRes.json().catch(() => ({}))) as {
+    url?: string; mime_type?: string; file_size?: number;
+  };
+  const tempUrl = metaJson.url;
+  const mime = metaJson.mime_type ?? args.fallbackMime ?? "application/octet-stream";
+  if (!tempUrl) {
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "graph_metadata_no_url", meta: metaJson,
+    });
+    return null;
+  }
+
+  // 2) Baixa binário (também exige Bearer)
+  let binRes: Response;
+  try {
+    binRes = await fetch(tempUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  } catch (e) {
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "binary_fetch",
+      meta: { error: e instanceof Error ? e.message : String(e) },
+    });
+    return null;
+  }
+  if (!binRes.ok) {
+    const body = await binRes.text().catch(() => "");
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "binary_download", status: binRes.status, meta: body.slice(0, 500),
+    });
+    return null;
+  }
+  const buf = new Uint8Array(await binRes.arrayBuffer());
+
+  // 3) Upload no bucket privado
+  const ext = extOf(mime, args.filename);
+  const safeMid = messageWaId.replace(/[^a-zA-Z0-9_-]/g, "").slice(-40) || mediaId;
+  const path = `${companyId}/${conversationId}/${safeMid}.${ext}`;
+  const { error: upErr } = await supabaseAdmin.storage
+    .from(WA_MEDIA_BUCKET)
+    .upload(path, buf, { contentType: mime, upsert: true });
+  if (upErr) {
+    await logMediaError({
+      companyId, mediaId, messageId: messageWaId, kind,
+      stage: "storage_upload", meta: { error: upErr.message },
+    });
+    return null;
+  }
+
+  return {
+    media_path: path,
+    media_mime: mime,
+    media_filename: args.filename ?? null,
+    media_size: metaJson.file_size ?? buf.byteLength,
+    media_kind: kind,
+    media_downloaded_at: new Date().toISOString(),
+  };
+}
+
+function detectMediaPart(m: WhatsAppMessage): {
+  kind: WaMediaKind; mediaId: string; mime?: string; filename?: string;
+} | null {
+  if (m.type === "image" && m.image?.id)
+    return { kind: "image", mediaId: m.image.id, mime: m.image.mime_type };
+  if (m.type === "audio" && m.audio?.id)
+    return { kind: "audio", mediaId: m.audio.id, mime: m.audio.mime_type };
+  if (m.type === "video" && m.video?.id)
+    return { kind: "video", mediaId: m.video.id, mime: m.video.mime_type };
+  if (m.type === "document" && m.document?.id)
+    return {
+      kind: "document",
+      mediaId: m.document.id,
+      mime: m.document.mime_type,
+      filename: m.document.filename,
+    };
+  if (m.type === "sticker" && m.sticker?.id)
+    return { kind: "sticker", mediaId: m.sticker.id, mime: m.sticker.mime_type };
+  return null;
+}
+
 async function processMessages(args: {
   integrationId: string;
   companyId: string;
+  accessToken: string | null;
   value: WhatsAppValue;
 }) {
-  const { integrationId, companyId, value } = args;
+  const { integrationId, companyId, accessToken, value } = args;
   const messages = value.messages ?? [];
   const contactsById = new Map<string, WhatsAppContact>();
   for (const c of value.contacts ?? []) contactsById.set(c.wa_id, c);
@@ -158,7 +347,33 @@ async function processMessages(args: {
       lastMessageAt: at,
     });
 
-    // 3) message (idempotente via external_id)
+    // 3) Mídia (image/audio/video/document/sticker): baixa da Cloud API
+    //    e grava no bucket privado. Falha de download não bloqueia a mensagem.
+    const mediaPart = detectMediaPart(m);
+    let mediaMeta: Record<string, unknown> | null = null;
+    if (mediaPart && accessToken) {
+      const stored = await downloadAndStoreMedia({
+        accessToken,
+        companyId,
+        conversationId,
+        messageWaId: m.id,
+        mediaId: mediaPart.mediaId,
+        kind: mediaPart.kind,
+        fallbackMime: mediaPart.mime,
+        filename: mediaPart.filename,
+      });
+      if (stored) mediaMeta = stored as unknown as Record<string, unknown>;
+    } else if (mediaPart && !accessToken) {
+      await logMediaError({
+        companyId,
+        mediaId: mediaPart.mediaId,
+        messageId: m.id,
+        kind: mediaPart.kind,
+        stage: "no_access_token",
+      });
+    }
+
+    // 4) message (idempotente via external_id)
     await supabaseAdmin
       .from("messages")
       .upsert(
@@ -170,11 +385,17 @@ async function processMessages(args: {
           at,
           external_id: m.id,
           integration_id: integrationId,
+          source_subtype: mediaPart?.kind ?? null,
+          source_metadata: {
+            raw: m,
+            wa_id: waId,
+            ...(mediaMeta ?? {}),
+          },
         },
         { onConflict: "integration_id,external_id", ignoreDuplicates: true },
       );
 
-    // 4) atualiza conversa
+    // 5) atualiza conversa
     await supabaseAdmin
       .from("conversations")
       .update({
@@ -198,10 +419,12 @@ function extractText(m: WhatsAppMessage): string {
     if (i?.button_reply?.title) return i.button_reply.title;
     if (i?.list_reply?.title) return i.list_reply.title;
   }
-  if (m.type === "image") return "[imagem]";
+  if (m.type === "image") return m.image?.caption ?? "[imagem]";
   if (m.type === "audio") return "[áudio]";
-  if (m.type === "video") return "[vídeo]";
-  if (m.type === "document") return "[documento]";
+  if (m.type === "video") return m.video?.caption ?? "[vídeo]";
+  if (m.type === "document")
+    return m.document?.caption ?? (m.document?.filename ? `📎 ${m.document.filename}` : "[documento]");
+  if (m.type === "sticker") return "[sticker]";
   if (m.type === "location") return "[localização]";
   return `[${m.type ?? "mensagem"}]`;
 }
