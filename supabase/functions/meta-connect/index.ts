@@ -24,6 +24,46 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Sanitiza page_access_token: detecta concatenação dupla (bug histórico que
+// salvou o mesmo token duas vezes no mesmo campo) e devolve só a primeira
+// metade. Rejeita tokens que não começam com "EAA".
+function sanitizePageAccessToken(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = String(raw).replace(/\s+/g, "");
+  if (!t.startsWith("EAA")) return null;
+  const secondEaa = t.indexOf("EAA", 3);
+  if (secondEaa > 0) {
+    const first = t.slice(0, secondEaa);
+    const second = t.slice(secondEaa);
+    if (Math.abs(first.length - second.length) <= 2 && first.length >= 100) {
+      return first;
+    }
+    return null;
+  }
+  return t;
+}
+
+async function validatePageAccessToken(
+  raw: string | null | undefined,
+  expectedPageId?: string | null,
+): Promise<{ ok: boolean; token: string | null; reason?: string; pageId?: string }> {
+  const token = sanitizePageAccessToken(raw);
+  if (!token) return { ok: false, token: null, reason: "invalid_format_or_concatenated" };
+  try {
+    const r = await fetch(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(token)}`);
+    const body = (await r.json()) as { id?: string; name?: string; error?: { message?: string } };
+    if (!r.ok || !body.id) {
+      return { ok: false, token: null, reason: body.error?.message ?? `graph_me_${r.status}` };
+    }
+    if (expectedPageId && body.id !== expectedPageId) {
+      return { ok: false, token: null, reason: `token_belongs_to_${body.id}`, pageId: body.id };
+    }
+    return { ok: true, token, pageId: body.id };
+  } catch (e) {
+    return { ok: false, token: null, reason: `network_error:${(e as Error).message}` };
+  }
+}
+
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
 // válido de subscribed_apps para páginas (Meta rejeita com erro 100).
 const PAGE_SUBSCRIBED_FIELDS = ["messages", "messaging_postbacks", "feed"].join(",");
