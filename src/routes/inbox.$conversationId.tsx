@@ -442,8 +442,70 @@ function deletedLabelFor(kind: MediaKind | null): string {
   }
 }
 
+type ReplyToMeta = {
+  message_id?: string | null;
+  external_id?: string | null;
+  type?: string | null;
+  preview?: string | null;
+  media_path?: string | null;
+  media_mime?: string | null;
+  role?: string | null;
+};
+
+function getReplyTo(m: Message): ReplyToMeta | null {
+  const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const r = meta?.reply_to as ReplyToMeta | undefined;
+  if (!r || (typeof r !== "object")) return null;
+  if (!r.preview && !r.message_id && !r.external_id) return null;
+  return r;
+}
+
+function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
+  const kind = (reply.type ?? "text").toLowerCase();
+  const thumb = useResolvedMediaSrc({ path: reply.media_path ?? undefined });
+  const isImage = kind === "image" || kind === "sticker";
+  const isAudio = kind === "audio";
+  const label =
+    reply.preview ??
+    (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
+
+  function scrollToOriginal() {
+    if (!reply.message_id) return;
+    const el = document.getElementById(`msg-${reply.message_id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/60", "transition");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={scrollToOriginal}
+      className="flex items-stretch gap-2 mb-1.5 w-full text-left rounded-md bg-background/40 border-l-2 border-primary/70 px-2 py-1.5 hover:bg-background/60 transition"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-semibold text-primary/90 uppercase tracking-wide">
+          {reply.role === "agent" ? "Você" : "Cliente"}
+        </div>
+        <div className="text-xs truncate opacity-90">{label}</div>
+      </div>
+      {isImage && thumb ? (
+        <img
+          src={thumb}
+          alt=""
+          className="h-10 w-10 rounded object-cover shrink-0"
+        />
+      ) : null}
+    </button>
+  );
+}
+
 function MessageContent({ message }: { message: Message }) {
   const info = getMediaInfo(message);
+  const reply = getReplyTo(message);
+  const replyNode = reply ? <ReplyPreview reply={reply} /> : null;
 
   if (info) {
     const trimmed = (message.text ?? "").trim();
