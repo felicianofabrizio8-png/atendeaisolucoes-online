@@ -77,6 +77,8 @@ interface AISuggestion {
 
 type MetaSendPayload = {
   ok?: boolean;
+  id?: string;
+  at?: string;
   error?: string;
   metaError?: {
     message?: string;
@@ -87,6 +89,11 @@ type MetaSendPayload = {
   } | null;
   status?: number;
   dbError?: unknown;
+};
+
+type SendTextResult = Pick<MetaSendPayload, "id" | "at"> & {
+  externalId?: string | null;
+  messageId?: string | null;
 };
 
 async function readFunctionError(
@@ -1161,12 +1168,9 @@ function ConversationPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const [, rerenderRepo] = useState(0);
   // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
-  useSyncExternalStore(
-    subscribeRepo,
-    () => 0,
-    () => 0,
-  );
+  useEffect(() => subscribeRepo(() => rerenderRepo((v) => v + 1)), []);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const repoMessages = conversation ? getMessagesFor(conversationId) : [];
@@ -1178,7 +1182,19 @@ function ConversationPage() {
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const messages = useMemo<Message[]>(() => {
     const ids = new Set(repoMessages.map((m) => m.id));
-    const extras = localMessages.filter((m) => !ids.has(m.id));
+    const confirmedTextKeys = new Set(
+      repoMessages
+        .filter((m) => m.role === "agent")
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+    );
+    const extras = localMessages.filter(
+      (m) =>
+        !ids.has(m.id) &&
+        !(
+          m.role === "agent" &&
+          confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`)
+        ),
+    );
     return [...repoMessages, ...extras].sort(
       (a, b) => +new Date(a.at) - +new Date(b.at),
     );
@@ -1188,12 +1204,22 @@ function ConversationPage() {
   useEffect(() => {
     if (localMessages.length === 0) return;
     const ids = new Set(repoMessages.map((m) => m.id));
-    if (localMessages.some((m) => ids.has(m.id))) {
-      setLocalMessages((prev) => prev.filter((m) => !ids.has(m.id)));
+    const confirmedTextKeys = new Set(
+      repoMessages
+        .filter((m) => m.role === "agent")
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+    );
+    const shouldRemove = (m: Message) =>
+      ids.has(m.id) ||
+      (m.role === "agent" &&
+        confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`));
+    if (localMessages.some(shouldRemove)) {
+      setLocalMessages((prev) => prev.filter((m) => !shouldRemove(m)));
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const pendingTextSendsRef = useRef<Set<string>>(new Set());
 
   // Auto-resize do textarea conforme o conteúdo (cap em max-h via CSS).
   useEffect(() => {
@@ -1370,6 +1396,10 @@ function ConversationPage() {
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const sendKey = `${conversationId}\n${trimmed}`;
+    if (pendingTextSendsRef.current.has(sendKey)) return;
+    pendingTextSendsRef.current.add(sendKey);
+    const finishSend = () => pendingTextSendsRef.current.delete(sendKey);
     const msg: Message = {
       id: `local-${Date.now()}`,
       conversationId,
@@ -1397,7 +1427,15 @@ function ConversationPage() {
               },
               body: JSON.stringify({ conversationId, text: trimmed }),
             });
-            if (res.ok) return;
+            if (res.ok) {
+              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              finishSend();
+              return;
+            }
             // Falhou: remove a bolha otimista e mostra o erro real da Meta
             let errMsg = `HTTP ${res.status}`;
             try {
@@ -1410,6 +1448,7 @@ function ConversationPage() {
             setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
             setSendError(errMsg);
             toast.error("Falha ao enviar WhatsApp", { description: errMsg });
+            finishSend();
             return;
           } else {
             // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
@@ -1436,7 +1475,15 @@ function ConversationPage() {
               },
             });
             const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
-            if (ok) return;
+            if (ok) {
+              const saved = data as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              finishSend();
+              return;
+            }
             const details = await readFunctionError(error, data);
             console.error("[chat send] Meta falhou", {
               origin,
@@ -1455,6 +1502,7 @@ function ConversationPage() {
                   ? "Messenger"
                   : "Meta";
             toast.error(`Falha ao enviar ${label}`, { description: details.message });
+            finishSend();
             return;
           }
         }
@@ -1465,11 +1513,13 @@ function ConversationPage() {
         toast.error("Falha ao enviar mensagem", {
           description: e instanceof Error ? e.message : "Erro de rede",
         });
+        finishSend();
         return;
       }
     }
 
     void appendMessage(msg, profile?.company_id);
+    finishSend();
   };
 
   const markAiSent = async (logId: string, sentText: string, originalText: string) => {
