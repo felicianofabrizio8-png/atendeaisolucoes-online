@@ -456,6 +456,21 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: integErr.message }, 500);
     }
 
+    // Valida o page_access_token antes de gravar (evita salvar tokens
+    // concatenados ou que pertencem a outra página).
+    const pageTokenCheck = await validatePageAccessToken(pageToken, page.id);
+    if (!pageTokenCheck.ok || !pageTokenCheck.token) {
+      console.log("META_PAGE_TOKEN_REJECTED", {
+        page_id: page.id,
+        reason: pageTokenCheck.reason,
+      });
+      return json(
+        { ok: false, error: `page_access_token inválido: ${pageTokenCheck.reason}` },
+        400,
+      );
+    }
+    const safePageToken = pageTokenCheck.token;
+
     const { error: pageErr } = await sb.from("meta_pages").upsert(
       {
         company_id: companyId,
@@ -464,7 +479,7 @@ Deno.serve(async (req) => {
         page_name: pageName,
         ig_business_account_id: igId,
         ig_username: igUsername,
-        page_access_token: pageToken,
+        page_access_token: safePageToken,
         token_expires_at: userTokenExpiresAt,
         active: true,
         last_error: null,
