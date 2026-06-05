@@ -495,7 +495,7 @@ Deno.serve(async (req) => {
 
     // Assina a página aos eventos do webhook usando o page access token.
     // Se a Meta rejeitar, a integração permanece salva e exibimos apenas aviso.
-    const webhookResult = await subscribePage(page.id, pageToken);
+    const webhookResult = await subscribePage(page.id, safePageToken);
     console.log("META_WEBHOOK_SUBSCRIBED", {
       page_id: page.id,
       ok: webhookResult.ok,
