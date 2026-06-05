@@ -291,11 +291,27 @@ function subscribeRealtime(companyId: string) {
         filter: `company_id=eq.${companyId}`,
       },
       (payload) => {
-        const row = payload.new as DbMessage & { company_id: string };
+        const row = payload.new as DbMessage & {
+          company_id: string;
+          external_id?: string | null;
+        };
         // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
         if (remoteMessages.some((m) => m.id === row.id)) return;
         remoteMessages = [...remoteMessages, toMessage(row)];
         notify();
+        // Emitter de novas mensagens (apenas role=lead). Observador puro,
+        // não altera nenhuma lógica acima. Consumido por NotificationBridge.
+        if (row.role === "lead") {
+          emitNewLeadMessage({
+            messageId: row.id,
+            externalId: row.external_id ?? null,
+            conversationId: row.conversation_id,
+            text: row.text,
+            subtype: row.source_subtype ?? null,
+            metadata: row.source_metadata ?? null,
+            at: row.at,
+          });
+        }
       },
     )
     .on(
