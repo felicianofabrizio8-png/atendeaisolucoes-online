@@ -166,9 +166,16 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
 
         // Valida acessibilidade. Alguns provedores aceitam GET assinado, mas
         // respondem mal a HEAD; por isso tentamos HEAD e depois GET parcial.
+        // Aproveitamos para capturar mime e size para persistência local.
+        let detectedMime: string | null = null;
+        let detectedSize: number | null = null;
         try {
           const h = await fetch(publicLink, { method: "HEAD" });
-          if (!h.ok) {
+          if (h.ok) {
+            detectedMime = h.headers.get("content-type");
+            const len = h.headers.get("content-length");
+            detectedSize = len ? Number(len) : null;
+          } else {
             const g = await fetch(publicLink, { method: "GET", headers: { Range: "bytes=0-0" } });
             if (!g.ok && g.status !== 206) {
               return Response.json(
@@ -176,6 +183,10 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
                 { status: 400 },
               );
             }
+            detectedMime = g.headers.get("content-type");
+            const cr = g.headers.get("content-range");
+            const totalMatch = cr ? /\/(\d+)$/.exec(cr) : null;
+            detectedSize = totalMatch ? Number(totalMatch[1]) : null;
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erro de rede";
@@ -230,6 +241,19 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
         }
 
         const messageText = caption || `[${kind === "video" ? "vídeo" : "imagem"}]`;
+        // Persistência aditiva: além de media_url/type (legados), gravamos
+        // media_path/kind/mime/filename/size + media_bucket para que o
+        // renderer e o reply preview consigam reconstruir a mídia após reload.
+        const isStoragePath = resolvedPath !== null && !/^https?:\/\//i.test(storedRef);
+        const filename = isStoragePath
+          ? (storedRef.split("/").pop() ?? null)
+          : (() => {
+              try {
+                return new URL(storedRef).pathname.split("/").pop() ?? null;
+              } catch {
+                return null;
+              }
+            })();
         const { data: inserted, error: insertErr } = await supabaseAdmin
           .from("messages")
           .insert({
@@ -242,13 +266,25 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
             integration_id: integration.id,
             source_subtype: kind,
             source_metadata: {
+              // legados (não remover — mensagens antigas dependem disso):
               media_url: storedRef,
               type: kind,
               caption: caption || null,
+              // novos (aditivos):
+              media_path: isStoragePath ? storedRef : null,
+              media_kind: kind,
+              media_mime: detectedMime,
+              media_filename: filename,
+              media_size: detectedSize,
+              media_bucket: isStoragePath ? BUCKET : null,
             },
           })
           .select("id, conversation_id, role, text, at")
           .single();
+        if (insertErr) {
+          console.error("[send-media] insert error", insertErr);
+          return Response.json({ error: "Falha ao salvar mensagem" }, { status: 500 });
+        }
         if (insertErr) {
           console.error("[send-media] insert error", insertErr);
           return Response.json({ error: "Falha ao salvar mensagem" }, { status: 500 });

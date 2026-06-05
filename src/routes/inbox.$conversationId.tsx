@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
   getConversationById,
@@ -47,7 +47,7 @@ import {
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
-import { getSignedImageUrl, getSignedWaMediaUrl } from "@/lib/storage";
+import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
 import { getSettings, subscribeSettings } from "@/data/settings";
@@ -55,6 +55,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QualificationPanel } from "@/components/QualificationBadges";
 import { AITimeline } from "@/components/AITimeline";
+
+// Contexto leve com as mensagens da conversa atual.
+// Usado pelo ReplyPreview para localizar a mensagem original e reconstruir
+// a miniatura quando o reply_to (vindo do webhook) não traz media_path —
+// caso típico de respostas a imagens enviadas pelo próprio agente.
+const MessagesContext = createContext<Message[]>([]);
 
 export const Route = createFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
@@ -150,14 +156,20 @@ type MediaKind = "image" | "video" | "audio" | "document" | "sticker";
 function useResolvedMediaSrc(opts: {
   path?: string | null;
   url?: string | null;
+  bucket?: string | null;
 }): string | null {
-  const { path, url } = opts;
+  const { path, url, bucket } = opts;
   const [resolved, setResolved] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     async function run() {
       if (path) {
-        const r = await getSignedWaMediaUrl(path);
+        // Quando um bucket explícito é informado (mídia do agente em
+        // `product-images`, por exemplo), assinamos contra esse bucket.
+        // Default mantém o comportamento atual (whatsapp-media).
+        const r = bucket
+          ? await getSignedMediaUrl(bucket, path)
+          : await getSignedWaMediaUrl(path);
         if (!cancelled) setResolved(r);
         return;
       }
@@ -176,7 +188,7 @@ function useResolvedMediaSrc(opts: {
     return () => {
       cancelled = true;
     };
-  }, [path, url]);
+  }, [path, url, bucket]);
   return resolved;
 }
 
@@ -212,14 +224,16 @@ function ImagePreview({
   path,
   url,
   filename,
+  bucket,
 }: {
   path?: string | null;
   url?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
   const [error, setError] = useState(false);
   const [lightbox, setLightbox] = useState(false);
-  const display = useResolvedMediaSrc({ path, url });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   if (error) {
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
@@ -276,12 +290,14 @@ function VideoPreview({
   path,
   url,
   filename,
+  bucket,
 }: {
   path?: string | null;
   url?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path, url });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   if (!display) {
     return <div className="h-40 w-64 rounded-md bg-muted animate-pulse" />;
   }
@@ -302,12 +318,14 @@ function AudioPreview({
   path,
   mime,
   filename,
+  bucket,
 }: {
   path?: string | null;
   mime?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   if (!display) {
     return <div className="h-12 w-64 rounded-md bg-muted animate-pulse" />;
   }
@@ -326,13 +344,15 @@ function DocumentPreview({
   filename,
   mime,
   size,
+  bucket,
 }: {
   path?: string | null;
   filename?: string | null;
   mime?: string | null;
   size?: number | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   const sizeLabel =
     typeof size === "number" && size > 0
       ? size > 1024 * 1024
@@ -356,11 +376,13 @@ function DocumentPreview({
 function StickerPreview({
   path,
   filename,
+  bucket,
 }: {
   path?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   if (!display) {
     return <div className="h-24 w-24 rounded-md bg-muted animate-pulse" />;
   }
@@ -381,6 +403,7 @@ type MediaInfo = {
   mime?: string | null;
   filename?: string | null;
   size?: number | null;
+  bucket?: string | null;
 };
 
 function getMediaInfo(m: Message): MediaInfo | null {
@@ -394,6 +417,7 @@ function getMediaInfo(m: Message): MediaInfo | null {
   const mime = (meta?.media_mime as string | undefined) ?? null;
   const filename = (meta?.media_filename as string | undefined) ?? null;
   const size = (meta?.media_size as number | undefined) ?? null;
+  const bucket = (meta?.media_bucket as string | undefined) ?? null;
   const t =
     (meta?.media_kind as string | undefined) ??
     (meta?.type as string | undefined) ??
@@ -416,12 +440,12 @@ function getMediaInfo(m: Message): MediaInfo | null {
 
   if (path || url) {
     const kind = kindFor();
-    if (kind) return { path, url, kind, mime, filename, size };
+    if (kind) return { path, url, kind, mime, filename, size, bucket };
   }
 
   IMAGE_URL_RE.lastIndex = 0;
   const match = IMAGE_URL_RE.exec(m.text ?? "");
-  if (match) return { url: match[1], kind: "image", mime, filename, size };
+  if (match) return { url: match[1], kind: "image", mime, filename, size, bucket };
   return null;
 }
 
@@ -473,7 +497,35 @@ function messageForAi(m: Message): { role: Message["role"]; text: string } {
 
 function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const kind = (reply.type ?? "text").toLowerCase();
-  const thumb = useResolvedMediaSrc({ path: reply.media_path ?? undefined });
+  const allMessages = useContext(MessagesContext);
+
+  // Resolve a mensagem original (por id local ou external_id) para extrair
+  // media_path/bucket quando o reply_to não traz — necessário p/ thumb de
+  // resposta a imagens enviadas pelo agente (bucket product-images).
+  const original = useMemo(() => {
+    if (!allMessages.length) return null;
+    if (reply.message_id) {
+      const byId = allMessages.find((m) => m.id === reply.message_id);
+      if (byId) return byId;
+    }
+    if (reply.external_id) {
+      const byExt = allMessages.find(
+        (m) =>
+          (m.sourceMetadata as Record<string, unknown> | undefined)?.external_id ===
+            reply.external_id ||
+          // alguns repos guardam external_id em coluna dedicada, exposta como any
+          (m as unknown as { external_id?: string }).external_id === reply.external_id,
+      );
+      if (byExt) return byExt;
+    }
+    return null;
+  }, [allMessages, reply.message_id, reply.external_id]);
+
+  const fallbackInfo = original ? getMediaInfo(original) : null;
+  const path = reply.media_path ?? fallbackInfo?.path ?? null;
+  const bucket = fallbackInfo?.bucket ?? null;
+
+  const thumb = useResolvedMediaSrc({ path, bucket });
   const isImage = kind === "image" || kind === "sticker";
   const isAudio = kind === "audio";
   const label =
@@ -529,7 +581,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <ImagePreview path={info.path} url={info.url} filename={info.filename} />
+            <ImagePreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -537,7 +589,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <VideoPreview path={info.path} url={info.url} filename={info.filename} />
+            <VideoPreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -545,7 +597,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} />
+            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} bucket={info.bucket} />
             {caption}
           </div>
         );
@@ -558,6 +610,7 @@ function MessageContent({ message }: { message: Message }) {
               filename={info.filename}
               mime={info.mime}
               size={info.size}
+              bucket={info.bucket}
             />
             {caption}
           </div>
@@ -566,7 +619,7 @@ function MessageContent({ message }: { message: Message }) {
         return (
           <div className="space-y-1">
             {replyNode}
-            <StickerPreview path={info.path} filename={info.filename} />
+            <StickerPreview path={info.path} filename={info.filename} bucket={info.bucket} />
           </div>
         );
     }
@@ -2176,26 +2229,28 @@ function ConversationPage() {
         )}
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
-          {messages.map((m) => {
-            if (m.role === "system") {
+          <MessagesContext.Provider value={messages}>
+            {messages.map((m) => {
+              if (m.role === "system") {
+                return (
+                  <div key={m.id} className="flex justify-center">
+                    <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                      {m.text}
+                    </span>
+                  </div>
+                );
+              }
+              // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
+              if (m.deletedAt && m.deletedFor === "me") return null;
               return (
-                <div key={m.id} className="flex justify-center">
-                  <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                    {m.text}
-                  </span>
-                </div>
+                <MessageBubble
+                  key={m.id}
+                  m={m}
+                  canManage={!closedInfo}
+                />
               );
-            }
-            // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
-            if (m.deletedAt && m.deletedFor === "me") return null;
-            return (
-              <MessageBubble
-                key={m.id}
-                m={m}
-                canManage={!closedInfo}
-              />
-            );
-          })}
+            })}
+          </MessagesContext.Provider>
         </div>
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
