@@ -629,6 +629,28 @@ Deno.serve(async (req) => {
     ? new Date(Date.now() + longLived.expires_in * 1000).toISOString()
     : null;
 
+  // GUARD: valida o USER token uma vez antes do loop. Se reprovar, NÃO grava
+  // nada em integrations.access_token (evita persistir PAGE token por engano).
+  const loopUserCheck = await validateUserToken(longUserToken);
+  console.log("META_USER_TOKEN_CHECK_LOOP", {
+    ok: loopUserCheck.ok,
+    type: loopUserCheck.type ?? null,
+    reason: loopUserCheck.reason ?? null,
+  });
+  if (!loopUserCheck.ok) {
+    return json(
+      {
+        ok: false,
+        error:
+          "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+        token_type: loopUserCheck.type ?? null,
+        reason: loopUserCheck.reason,
+      },
+      400,
+    );
+  }
+
+
   const results: Array<{
     page_id: string;
     ok: boolean;
