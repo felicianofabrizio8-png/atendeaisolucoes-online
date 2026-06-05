@@ -459,44 +459,43 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
 
             // Só grava page_access_token se for válido. Caso contrário,
             // mantém o valor anterior (não sobrescreve com user token / lixo).
-            const pagePayload = {
-              company_id: auth.companyId,
-              integration_id: integrationId,
-              page_id: body.selected_page_id,
-              page_name: pageName,
-              ig_business_account_id: igId,
-              ig_username: igUsername,
-              token_expires_at: tokenExpiresAt,
-              active: true,
-              page_access_token: validPageToken ?? (pageExisting ? undefined : ""),
-              integration_id: integrationId,
-              page_id: body.selected_page_id,
-              page_name: pageName,
-              ig_business_account_id: igId,
-              ig_username: igUsername,
-              token_expires_at: tokenExpiresAt,
-              active: true,
-              last_error: !validPageToken
-                ? `Page token inválido: ${tokenCheck.reason}`
-                : pageSubscribed === false
-                  ? "Webhook Page não confirmado"
-                  : null,
-            };
-            if (validPageToken) {
-              pagePayload.page_access_token = validPageToken;
-            } else if (!pageExisting) {
-              // Insert sem token: o not-null da coluna requer string; usamos
-              // string vazia em vez de propagar token inválido.
-              pagePayload.page_access_token = "";
-            }
+            const last_error = !validPageToken
+              ? `Page token inválido: ${tokenCheck.reason}`
+              : pageSubscribed === false
+                ? "Webhook Page não confirmado"
+                : null;
+
             if (pageExisting?.id) {
+              // Update: só inclui page_access_token se for válido (preserva o anterior).
+              const updatePayload: Record<string, unknown> = {
+                integration_id: integrationId,
+                page_name: pageName,
+                ig_business_account_id: igId,
+                ig_username: igUsername,
+                token_expires_at: tokenExpiresAt,
+                active: true,
+                last_error,
+              };
+              if (validPageToken) updatePayload.page_access_token = validPageToken;
               await supabaseAdmin
                 .from("meta_pages")
-                .update(pagePayload)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .update(updatePayload as any)
                 .eq("id", pageExisting.id)
                 .eq("company_id", auth.companyId);
             } else {
-              await supabaseAdmin.from("meta_pages").insert(pagePayload);
+              await supabaseAdmin.from("meta_pages").insert({
+                company_id: auth.companyId,
+                integration_id: integrationId,
+                page_id: body.selected_page_id,
+                page_name: pageName,
+                ig_business_account_id: igId,
+                ig_username: igUsername,
+                page_access_token: validPageToken ?? "",
+                token_expires_at: tokenExpiresAt,
+                active: true,
+                last_error,
+              });
             }
           } catch (e) {
             console.warn("META_ONBOARDING_SAVE_ERROR", { stage: "meta_pages_optional", e });
