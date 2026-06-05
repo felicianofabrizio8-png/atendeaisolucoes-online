@@ -98,6 +98,24 @@ function ConfigPage() {
           <span className="text-xs text-muted-foreground">→</span>
         </Link>
 
+        <Link
+          to="/configuracoes/respostas-rapidas"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 hover:bg-accent/40 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-md bg-primary/10 grid place-items-center">
+              <MessageCircle className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">Respostas Rápidas</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Mensagens prontas no botão ➕ do Inbox (itens inclusos, brindes, pagamento…)
+              </p>
+            </div>
+          </div>
+          <span className="text-xs text-muted-foreground">→</span>
+        </Link>
+
         <section className="rounded-lg border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="h-4 w-4 text-primary" />

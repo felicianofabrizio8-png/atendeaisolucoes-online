@@ -29,6 +29,7 @@ import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
+import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
@@ -174,6 +175,12 @@ const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
   path: '/configuracoes/usuarios',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfiguracoesRespostasRapidasRoute =
+  ConfiguracoesRespostasRapidasRouteImport.update({
+    id: '/configuracoes_/respostas-rapidas',
+    path: '/configuracoes/respostas-rapidas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
   path: '/auth/meta/callback',
@@ -351,6 +358,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -404,6 +412,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -459,6 +468,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
@@ -515,6 +525,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -568,6 +579,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -622,6 +634,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
@@ -677,6 +690,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
+  ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
@@ -862,6 +876,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/usuarios'
       fullPath: '/configuracoes/usuarios'
       preLoaderRoute: typeof ConfiguracoesUsuariosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes_/respostas-rapidas': {
+      id: '/configuracoes_/respostas-rapidas'
+      path: '/configuracoes/respostas-rapidas'
+      fullPath: '/configuracoes/respostas-rapidas'
+      preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/meta/callback': {
@@ -1111,6 +1132,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
+  ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   CampanhasIdLazyRoute: CampanhasIdLazyRoute,
