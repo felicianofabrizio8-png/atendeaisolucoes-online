@@ -588,6 +588,17 @@ Deno.serve(async (req) => {
         .select("id")
         .maybeSingle();
 
+      const loopTokenCheck = await validatePageAccessToken(pageToken, p.id);
+      if (!loopTokenCheck.ok || !loopTokenCheck.token) {
+        results.push({
+          page_id: p.id,
+          ok: false,
+          error: `page_access_token inválido: ${loopTokenCheck.reason}`,
+        });
+        continue;
+      }
+      const safeLoopPageToken = loopTokenCheck.token;
+
       await sb
         .from("meta_pages")
         .upsert(
@@ -598,7 +609,7 @@ Deno.serve(async (req) => {
             page_name: pageName,
             ig_business_account_id: ig,
             ig_username: igUsername,
-            page_access_token: pageToken,
+            page_access_token: safeLoopPageToken,
             token_expires_at: userTokenExpiresAt,
             active: true,
             last_error: null,
