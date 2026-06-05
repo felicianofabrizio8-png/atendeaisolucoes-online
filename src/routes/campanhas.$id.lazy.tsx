@@ -170,6 +170,8 @@ function CampaignDetailPage() {
     try {
       const r = await publishFn({ data: { campaignId: c.id } });
       window.clearInterval(tick);
+      const mc = (r as { mediaCheck?: typeof mediaCheck }).mediaCheck ?? null;
+      setMediaCheck(mc);
       if (r.ok) {
         toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
         const fresh = await getCampaign(c.id);
