@@ -200,6 +200,66 @@ export const publishCampaign = createServerFn({ method: "POST" })
     const accessToken = integ.access_token;
     const actId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
 
+    // 3.1) Pré-check de tipo do token: Marketing API exige USER ou SYSTEM_USER.
+    // PAGE tokens são silenciosamente rejeitados pelo Graph com erros genéricos
+    // (#100 / 1487390) em /act_*/adcreatives. Aborta cedo com mensagem clara.
+    try {
+      const tokEnc = encodeURIComponent(accessToken);
+      const dbgRes = await fetch(
+        `${GRAPH}/debug_token?input_token=${tokEnc}&access_token=${tokEnc}`,
+      );
+      const dbgJson = (await dbgRes.json().catch(() => null)) as
+        | { data?: { type?: string; is_valid?: boolean; scopes?: string[]; app_id?: string } }
+        | null;
+      const tokenType = dbgJson?.data?.type ?? null;
+      const tokenScopes = dbgJson?.data?.scopes ?? [];
+      const isValid = dbgJson?.data?.is_valid ?? false;
+      console.log("[publishCampaign] token_type_check", {
+        campaignId,
+        integration_id: integ.id,
+        token_type: tokenType,
+        is_valid: isValid,
+        has_ads_management: tokenScopes.includes("ads_management"),
+        has_ads_read: tokenScopes.includes("ads_read"),
+        has_business_management: tokenScopes.includes("business_management"),
+      });
+      if (!isValid) {
+        return {
+          ok: false as const,
+          error: "token_invalid",
+          message:
+            "O token Meta está inválido ou expirado. Reconecte a Meta Ads em Configurações.",
+        };
+      }
+      if (tokenType !== "USER" && tokenType !== "SYSTEM_USER") {
+        return {
+          ok: false as const,
+          error: "token_type_invalid",
+          message:
+            "Reconecte a Meta Ads. O token atual é de Página e não pode criar anúncios.",
+          token_type: tokenType,
+        };
+      }
+      const required = ["ads_management", "ads_read", "business_management"];
+      const missing = required.filter((s) => !tokenScopes.includes(s));
+      if (missing.length > 0) {
+        return {
+          ok: false as const,
+          error: "token_scopes_missing",
+          message: `Reconecte a Meta Ads concedendo as permissões: ${missing.join(", ")}.`,
+          missing_scopes: missing,
+        };
+      }
+    } catch (e) {
+      console.warn("[publishCampaign] token_type_check_exception", {
+        campaignId,
+        e: e instanceof Error ? e.message : String(e),
+      });
+      // Não bloqueia em caso de erro de rede — Graph dirá depois se for inválido.
+    }
+
+
+
     // 4) Marca status=publishing.
     await supabase
       .from("campaigns")
