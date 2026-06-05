@@ -207,6 +207,44 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
 
+    // Resultado do pré-check de acessibilidade da mídia enviada à Meta.
+    // Populado quando o pipeline cair no fallback "picture URL" (último recurso),
+    // ou quando algum probe explícito for executado. Exibido no painel.
+    type MediaCheck = {
+      url: string;
+      status: number | null;
+      contentType: string | null;
+      ok: boolean;
+      method: "HEAD" | "GET" | "none";
+      error?: string;
+      source: "public" | "signed";
+    };
+    let mediaCheck: MediaCheck | null = null;
+
+    // HEAD primeiro (mais barato). Se o storage não responder a HEAD, tenta GET
+    // de 1 byte via Range para validar status + content-type sem baixar o arquivo.
+    async function probePublicUrl(url: string, source: "public" | "signed"): Promise<MediaCheck> {
+      try {
+        const h = await fetch(url, { method: "HEAD" });
+        const ct = h.headers.get("content-type");
+        if (h.ok && ct && /^image\//i.test(ct)) {
+          return { url, status: h.status, contentType: ct, ok: true, method: "HEAD", source };
+        }
+        const g = await fetch(url, { method: "GET", headers: { Range: "bytes=0-1" } });
+        const ct2 = g.headers.get("content-type");
+        const okGet = (g.ok || g.status === 206) && !!ct2 && /^image\//i.test(ct2);
+        return {
+          url, status: g.status, contentType: ct2,
+          ok: okGet, method: "GET", source,
+          error: okGet ? undefined : `status=${g.status} content-type=${ct2 ?? "—"}`,
+        };
+      } catch (e) {
+        return {
+          url, status: null, contentType: null, ok: false, method: "HEAD", source,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
 
     async function fail(stage: string, message: string, raw?: unknown, extra?: Record<string, unknown>) {
       const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
@@ -222,6 +260,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         fbtrace_id: err.fbtrace_id ?? null,
         raw: raw ?? null,
         extra: extra ?? null,
+        mediaCheck,
       });
       await supabase
         .from("campaigns")
@@ -244,6 +283,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
             error_subcode: err.error_subcode ?? null,
             fbtrace_id: err.fbtrace_id ?? null,
             raw: raw ?? null,
+            media_check: mediaCheck,
             ...(extra ?? {}),
           } as never,
         });
@@ -255,6 +295,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         error_code: err.code ?? null,
         error_subcode: err.error_subcode ?? null,
         fbtrace_id: err.fbtrace_id ?? null,
+        mediaCheck,
       };
     }
 
@@ -672,16 +713,36 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
     type CreativeMode = "advanced" | "simple" | "picture";
 
-    function buildLinkData(mode: CreativeMode): Record<string, unknown> {
+    // Gera (sob demanda) uma URL acessível externamente para a Meta baixar a
+    // imagem no fallback "picture". Sempre prefere signed URL (1 dia) porque o
+    // bucket pode estar privado — a URL pública crua retornaria 400/404.
+    let pictureUrlForMeta: string | null = null;
+    async function getPictureUrlForMeta(): Promise<string | null> {
+      if (pictureUrlForMeta) return pictureUrlForMeta;
+      const raw = camp.media_url ?? "";
+      if (!raw) return null;
+      const parsed = parseSupabaseStoragePath(raw);
+      if (parsed) {
+        const { data: signed, error: signErr } = await adminClient.supabaseAdmin
+          .storage.from(parsed.bucket).createSignedUrl(parsed.path, 60 * 60 * 24);
+        if (!signErr && signed?.signedUrl) {
+          pictureUrlForMeta = signed.signedUrl;
+          return pictureUrlForMeta;
+        }
+        console.warn("[publishCampaign] createSignedUrl failed — usando URL crua", { signErr });
+      }
+      pictureUrlForMeta = raw;
+      return pictureUrlForMeta;
+    }
+
+    function buildLinkData(mode: CreativeMode, pictureUrl: string | null): Record<string, unknown> {
       const ld: Record<string, unknown> = {
         message: fallbackMessage,
         link: destLink,
         call_to_action: { type: ctaEnum, value: buildCtaValue() },
       };
-      // Modo "picture" usa URL pública (camp.media_url) em vez de image_hash —
-      // último recurso quando o hash é rejeitado pela Meta.
-      if (mode === "picture" && camp.media_url) {
-        ld.picture = camp.media_url;
+      if (mode === "picture" && pictureUrl) {
+        ld.picture = pictureUrl;
       } else {
         ld.image_hash = imageHash;
       }
@@ -691,10 +752,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return ld;
     }
 
-    function buildCreativePayload(mode: CreativeMode) {
+    function buildCreativePayload(mode: CreativeMode, pictureUrl: string | null) {
       const oss: Record<string, unknown> = {
         page_id: pageId,
-        link_data: buildLinkData(mode),
+        link_data: buildLinkData(mode, pictureUrl),
       };
       if (channel === "instagram" && igActorId) {
         oss.instagram_actor_id = igActorId;
@@ -708,7 +769,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
     async function tryCreateCreative(mode: CreativeMode) {
-      const payload = buildCreativePayload(mode);
+      const pictureUrl = mode === "picture" ? await getPictureUrlForMeta() : null;
+      const payload = buildCreativePayload(mode, pictureUrl);
       const linkData = (payload.object_story_spec as { link_data: Record<string, unknown> }).link_data;
       console.log("[publishCampaign] create_creative attempt", {
         mode,
@@ -757,14 +819,31 @@ export const publishCampaign = createServerFn({ method: "POST" })
         creativeId = simple.res.data.id;
         console.log("[publishCampaign] create_creative ok", { creativeId, mode: "simple" });
       } else if (camp.media_url) {
-        console.warn("[publishCampaign] simple fail — tentando picture URL", {
+        console.warn("[publishCampaign] simple fail — preparando fallback picture URL", {
           status: simple.res.status, message: simple.res.message,
         });
+        // Pré-check: garante que a URL que será enviada à Meta é realmente
+        // pública e devolve um content-type de imagem. Sem isso, a Meta
+        // responde "Não foi possível baixar sua imagem".
+        const picUrl = await getPictureUrlForMeta();
+        if (!picUrl) {
+          return fail("create_creative", "Mídia indisponível para fallback (URL ausente).", null, { attempts });
+        }
+        mediaCheck = await probePublicUrl(picUrl, picUrl === camp.media_url ? "public" : "signed");
+        console.log("[publishCampaign] picture pre-check", mediaCheck);
+        if (!mediaCheck.ok) {
+          return fail(
+            "create_creative",
+            `A imagem do criativo não está acessível externamente (HTTP ${mediaCheck.status ?? "—"}, ${mediaCheck.contentType ?? "sem content-type"}). A Meta não conseguiria baixá-la. Reenvie a imagem na campanha.`,
+            null,
+            { attempts, page_id: pageId, image_hash: imageHash ?? null, channel },
+          );
+        }
         const pic = await tryCreateCreative("picture");
         attempts.push({ mode: "picture", payload: pic.payload, response: resBody(pic.res) });
 
         if (!pic.res.ok) {
-          console.error("[publishCampaign] all creative modes failed", { attempts });
+          console.error("[publishCampaign] all creative modes failed", { attempts, mediaCheck });
           return fail(
             "create_creative",
             formatGraphError(pic.res.body, pic.res.message),
@@ -870,5 +949,6 @@ export const publishCampaign = createServerFn({ method: "POST" })
     return {
       ok: true as const,
       ids: { campaign: metaCampaignId, adset: metaAdsetId, creative: creativeId, ad: metaAdId },
+      mediaCheck,
     };
   });

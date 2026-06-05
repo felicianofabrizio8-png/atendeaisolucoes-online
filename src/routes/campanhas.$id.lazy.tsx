@@ -108,6 +108,15 @@ function CampaignDetailPage() {
   const [improveOpen, setImproveOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStage, setPublishStage] = useState<string>("");
+  const [mediaCheck, setMediaCheck] = useState<{
+    url: string;
+    status: number | null;
+    contentType: string | null;
+    ok: boolean;
+    method: string;
+    source: string;
+    error?: string;
+  } | null>(null);
   const publishFn = useServerFn(publishCampaign);
 
   useEffect(() => {
@@ -161,6 +170,8 @@ function CampaignDetailPage() {
     try {
       const r = await publishFn({ data: { campaignId: c.id } });
       window.clearInterval(tick);
+      const mc = (r as { mediaCheck?: typeof mediaCheck }).mediaCheck ?? null;
+      setMediaCheck(mc);
       if (r.ok) {
         toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
         const fresh = await getCampaign(c.id);
@@ -286,7 +297,44 @@ function CampaignDetailPage() {
             </div>
           </div>
         )}
+        {mediaCheck && (
+          <div
+            className={cn(
+              "rounded-lg border px-3 py-2 text-xs flex items-start gap-2",
+              mediaCheck.ok
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-destructive/40 bg-destructive/10 text-destructive",
+            )}
+          >
+            {mediaCheck.ok ? (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5 min-w-0">
+              <div className="font-medium">
+                Pré-check da imagem enviada à Meta · {mediaCheck.ok ? "OK" : "Falhou"}
+              </div>
+              <div className="opacity-80">
+                HTTP {mediaCheck.status ?? "—"} · {mediaCheck.contentType ?? "sem content-type"} ·
+                fonte: {mediaCheck.source} · método: {mediaCheck.method}
+              </div>
+              <a
+                href={mediaCheck.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono break-all underline opacity-80 hover:opacity-100"
+              >
+                {mediaCheck.url}
+              </a>
+              {mediaCheck.error && (
+                <div className="opacity-80">Erro: {mediaCheck.error}</div>
+              )}
+            </div>
+          </div>
+        )}
       </header>
+
 
 
       {!metaActive && <MetaPublishReadinessPanel campaign={c} />}
