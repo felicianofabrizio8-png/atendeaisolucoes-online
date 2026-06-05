@@ -1959,7 +1959,7 @@ function ConversationPage() {
         body: JSON.stringify({
           leadName: lead.name,
           product: lead.product,
-          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          messages: messages.map((m) => messageForAi(m)),
         }),
       });
       if (res.ok) {
