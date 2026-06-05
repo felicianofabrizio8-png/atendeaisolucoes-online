@@ -27,8 +27,9 @@ interface TemplateRow {
   meta_template_id: string | null;
 }
 
+const NONE_PURPOSE = "__none__";
 const PURPOSES: { value: string; label: string }[] = [
-  { value: "", label: "— sem propósito —" },
+  { value: NONE_PURPOSE, label: "— sem propósito —" },
   { value: "quote_no_reply", label: "Orçamento sem resposta" },
   { value: "lead_silent", label: "Cliente sumiu" },
   { value: "visit_no_return", label: "Visita sem retorno" },
@@ -197,8 +198,10 @@ export function WhatsappTemplatesPanel() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground w-20">Propósito:</span>
                         <Select
-                          value={t.purpose ?? ""}
-                          onValueChange={(v) => patch(t.id, { purpose: v === "" ? null : v })}
+                          value={t.purpose ?? NONE_PURPOSE}
+                          onValueChange={(v) =>
+                            patch(t.id, { purpose: v === NONE_PURPOSE ? null : v })
+                          }
                         >
                           <SelectTrigger className="h-8 w-full max-w-xs text-xs">
                             <SelectValue />
