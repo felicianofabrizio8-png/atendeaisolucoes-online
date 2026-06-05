@@ -719,11 +719,17 @@ function MediaSendPanel({
       toast.error("Envio de mídia disponível apenas para WhatsApp.");
       return;
     }
+    if (!companyId) {
+      toast.error("Perfil ainda carregando. Tente novamente em instantes.");
+      return;
+    }
     setSending(true);
+    const fileName = pending.file?.name ?? pending.fileName ?? null;
+    const fileType = pending.file?.type ?? pending.kind;
     try {
       let path = pending.path;
       // Upload se for arquivo local
-      if (!path && pending.file && companyId) {
+      if (!path && pending.file) {
         const ext = (pending.file.name.split(".").pop() ?? "bin").toLowerCase().slice(0, 6);
         const uploadPath = `${companyId}/inbox/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { error: upErr } = await supabase.storage
@@ -735,7 +741,7 @@ function MediaSendPanel({
           });
         if (upErr) {
           console.error("[media upload]", upErr);
-          throw new Error(upErr.message);
+          throw new Error(`Falha no upload: ${upErr.message}`);
         }
         path = uploadPath;
       }
@@ -743,7 +749,7 @@ function MediaSendPanel({
 
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
-      if (!token) throw new Error("Sessão expirada");
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
 
       const res = await fetch("/api/whatsapp/send-media", {
         method: "POST",
@@ -755,14 +761,25 @@ function MediaSendPanel({
           caption: caption.trim() || undefined,
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      const json = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
+      if (!res.ok) {
+        throw new Error(json?.error ?? `HTTP ${res.status}`);
+      }
       toast.success(`${pending.kind === "video" ? "Vídeo" : "Foto"} enviado(a)`);
       cancelPending();
       onSent();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao enviar";
+      console.error("MEDIA_SEND_ERROR", {
+        conversation_id: conversationId,
+        lead_id: leadId ?? null,
+        company_id: companyId,
+        file_name: fileName,
+        file_type: fileType,
+        error: msg,
+      });
       toast.error(msg);
+      // Mantém o modal aberto para o usuário tentar novamente
     } finally {
       setSending(false);
     }
