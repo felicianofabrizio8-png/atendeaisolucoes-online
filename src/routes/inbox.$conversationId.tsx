@@ -46,6 +46,7 @@ import {
   Library as LibraryIcon,
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
@@ -660,6 +661,7 @@ function MediaSendPanel({
   companyId,
   leadId,
   onSent,
+  onSendText,
 }: {
   conversationId: string;
   channel: string | undefined;
@@ -667,6 +669,7 @@ function MediaSendPanel({
   companyId: string | null;
   leadId?: string | null;
   onSent: () => void;
+  onSendText: (text: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -677,6 +680,24 @@ function MediaSendPanel({
   const vidInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const isWhats = channel === "whatsapp";
+
+  // Quick replies (respostas rápidas configuráveis)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [activeReply, setActiveReply] = useState<QuickReply | null>(null);
+  const [replyText, setReplyText] = useState("");
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    listQuickReplies(companyId, { activeOnly: true })
+      .then((rows) => {
+        if (!cancelled) setQuickReplies(rows);
+      })
+      .catch((e) => console.error("[quick_replies load]", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, menuOpen]);
 
   // Fecha menu ao clicar fora
   useEffect(() => {
@@ -845,9 +866,100 @@ function MediaSendPanel({
             >
               <LibraryIcon className="h-4 w-4 text-primary" /> Biblioteca de Produtos
             </button>
+            {quickReplies.length > 0 && (
+              <div className="border-t border-border max-h-64 overflow-y-auto">
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold bg-muted/40">
+                  Respostas rápidas
+                </div>
+                {quickReplies.map((q) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setActiveReply(q);
+                      setReplyText(q.content);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+                    title={q.category ?? undefined}
+                  >
+                    <span className="text-base w-5 text-center">{q.icon || "💬"}</span>
+                    <span className="truncate">{q.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Modal: editar/enviar resposta rápida */}
+      {activeReply && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setActiveReply(null)}
+        >
+          <div
+            className="bg-card rounded-lg border border-border max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="font-semibold text-sm flex items-center gap-2">
+                <span className="text-lg">{activeReply.icon || "💬"}</span>
+                {activeReply.name}
+              </div>
+              <button onClick={() => setActiveReply(null)} className="p-1 hover:bg-muted rounded">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={10}
+                className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
+              />
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Edite o texto antes de enviar se quiser.
+              </p>
+            </div>
+            <div className="p-4 border-t border-border flex items-center justify-end gap-2">
+              <button
+                onClick={() => setActiveReply(null)}
+                className="h-9 px-3 rounded-md text-sm hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard
+                    ?.writeText(replyText)
+                    .then(() => toast.success("Copiado"))
+                    .catch(() => toast.error("Falha ao copiar"));
+                }}
+                className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md text-sm border border-border hover:bg-muted"
+              >
+                <Copy className="h-4 w-4" /> Copiar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const t = replyText.trim();
+                  if (!t) {
+                    toast.error("Mensagem vazia");
+                    return;
+                  }
+                  onSendText(t);
+                  setActiveReply(null);
+                }}
+                className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+              >
+                <Send className="h-4 w-4" /> Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: preview + caption */}
       {pending && (
@@ -1877,6 +1989,7 @@ function ConversationPage() {
               companyId={profile?.company_id ?? null}
               leadId={lead?.id ?? null}
               onSent={() => void refetchConversationMessages(conversationId)}
+              onSendText={(t) => sendMessage(t)}
             />
             <button
               onClick={() => sendMessage(input)}
