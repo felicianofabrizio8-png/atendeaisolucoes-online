@@ -218,14 +218,16 @@ function ImagePreview({
   path,
   url,
   filename,
+  bucket,
 }: {
   path?: string | null;
   url?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
   const [error, setError] = useState(false);
   const [lightbox, setLightbox] = useState(false);
-  const display = useResolvedMediaSrc({ path, url });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   if (error) {
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
@@ -282,12 +284,14 @@ function VideoPreview({
   path,
   url,
   filename,
+  bucket,
 }: {
   path?: string | null;
   url?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path, url });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   if (!display) {
     return <div className="h-40 w-64 rounded-md bg-muted animate-pulse" />;
   }
@@ -308,12 +312,14 @@ function AudioPreview({
   path,
   mime,
   filename,
+  bucket,
 }: {
   path?: string | null;
   mime?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   if (!display) {
     return <div className="h-12 w-64 rounded-md bg-muted animate-pulse" />;
   }
@@ -332,13 +338,15 @@ function DocumentPreview({
   filename,
   mime,
   size,
+  bucket,
 }: {
   path?: string | null;
   filename?: string | null;
   mime?: string | null;
   size?: number | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   const sizeLabel =
     typeof size === "number" && size > 0
       ? size > 1024 * 1024
@@ -362,11 +370,13 @@ function DocumentPreview({
 function StickerPreview({
   path,
   filename,
+  bucket,
 }: {
   path?: string | null;
   filename?: string | null;
+  bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path });
+  const display = useResolvedMediaSrc({ path, bucket });
   if (!display) {
     return <div className="h-24 w-24 rounded-md bg-muted animate-pulse" />;
   }
