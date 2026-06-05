@@ -654,24 +654,24 @@ function MessageBubble({
                   onClick={() => setMenuOpen(false)}
                 />
                 <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[200px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
-                  {mediaInfo && (
+                  {mediaInfo?.url && (
                     <button
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        window.open(mediaInfo.url, "_blank", "noopener,noreferrer");
+                        window.open(mediaInfo.url!, "_blank", "noopener,noreferrer");
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                     >
                       <Eye className="h-3.5 w-3.5" /> Visualizar
                     </button>
                   )}
-                  {mediaInfo && (
+                  {mediaInfo?.url && (
                     <button
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        void downloadMedia(mediaInfo.url);
+                        void downloadMedia(mediaInfo.url!);
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                     >
