@@ -78,3 +78,74 @@ export async function validatePageAccessToken(
     };
   }
 }
+
+export interface UserTokenCheck {
+  ok: boolean;
+  reason?: string;
+  type?: string;
+  scopes?: string[];
+  isValid?: boolean;
+  appId?: string;
+  userId?: string;
+}
+
+const REQUIRED_USER_SCOPES = ["ads_management", "ads_read", "business_management"];
+
+/**
+ * Valida que um token é USER (ou SYSTEM_USER) long-lived com escopos
+ * obrigatórios para Marketing API. Usa /debug_token assinado com
+ * APP_ID|APP_SECRET. Deve ser chamada ANTES de gravar em
+ * integrations.access_token para impedir que um PAGE token seja persistido lá.
+ */
+export async function validateUserAccessToken(
+  token: string | null | undefined,
+  appId: string,
+  appSecret: string,
+): Promise<UserTokenCheck> {
+  if (!token || !appId || !appSecret) {
+    return { ok: false, reason: "missing_token_or_app_credentials" };
+  }
+  try {
+    const appToken = `${appId}|${appSecret}`;
+    const r = await fetch(
+      `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(appToken)}`,
+    );
+    const body = (await r.json()) as {
+      data?: {
+        type?: string;
+        is_valid?: boolean;
+        scopes?: string[];
+        app_id?: string;
+        user_id?: string;
+      };
+      error?: { message?: string };
+    };
+    const d = body?.data;
+    if (!r.ok || !d) {
+      return { ok: false, reason: body?.error?.message ?? `debug_token_${r.status}` };
+    }
+    const type = d.type ?? "";
+    const scopes = Array.isArray(d.scopes) ? d.scopes : [];
+    const base = {
+      type,
+      scopes,
+      isValid: d.is_valid ?? false,
+      appId: d.app_id,
+      userId: d.user_id,
+    };
+    if (!d.is_valid) return { ok: false, reason: "token_invalid", ...base };
+    if (type !== "USER" && type !== "SYSTEM_USER") {
+      return { ok: false, reason: `token_type_is_${type || "unknown"}`, ...base };
+    }
+    const missing = REQUIRED_USER_SCOPES.filter((s) => !scopes.includes(s));
+    if (missing.length > 0) {
+      return { ok: false, reason: `missing_scopes:${missing.join(",")}`, ...base };
+    }
+    return { ok: true, ...base };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: `network_error:${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
