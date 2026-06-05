@@ -207,6 +207,44 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
 
 
+    // Resultado do pré-check de acessibilidade da mídia enviada à Meta.
+    // Populado quando o pipeline cair no fallback "picture URL" (último recurso),
+    // ou quando algum probe explícito for executado. Exibido no painel.
+    type MediaCheck = {
+      url: string;
+      status: number | null;
+      contentType: string | null;
+      ok: boolean;
+      method: "HEAD" | "GET" | "none";
+      error?: string;
+      source: "public" | "signed";
+    };
+    let mediaCheck: MediaCheck | null = null;
+
+    // HEAD primeiro (mais barato). Se o storage não responder a HEAD, tenta GET
+    // de 1 byte via Range para validar status + content-type sem baixar o arquivo.
+    async function probePublicUrl(url: string, source: "public" | "signed"): Promise<MediaCheck> {
+      try {
+        const h = await fetch(url, { method: "HEAD" });
+        const ct = h.headers.get("content-type");
+        if (h.ok && ct && /^image\//i.test(ct)) {
+          return { url, status: h.status, contentType: ct, ok: true, method: "HEAD", source };
+        }
+        const g = await fetch(url, { method: "GET", headers: { Range: "bytes=0-1" } });
+        const ct2 = g.headers.get("content-type");
+        const okGet = (g.ok || g.status === 206) && !!ct2 && /^image\//i.test(ct2);
+        return {
+          url, status: g.status, contentType: ct2,
+          ok: okGet, method: "GET", source,
+          error: okGet ? undefined : `status=${g.status} content-type=${ct2 ?? "—"}`,
+        };
+      } catch (e) {
+        return {
+          url, status: null, contentType: null, ok: false, method: "HEAD", source,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
 
     async function fail(stage: string, message: string, raw?: unknown, extra?: Record<string, unknown>) {
       const rawBody = (raw && typeof raw === "object" ? raw : {}) as GraphErrorBody;
@@ -222,6 +260,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         fbtrace_id: err.fbtrace_id ?? null,
         raw: raw ?? null,
         extra: extra ?? null,
+        mediaCheck,
       });
       await supabase
         .from("campaigns")
@@ -244,6 +283,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
             error_subcode: err.error_subcode ?? null,
             fbtrace_id: err.fbtrace_id ?? null,
             raw: raw ?? null,
+            media_check: mediaCheck,
             ...(extra ?? {}),
           } as never,
         });
@@ -255,6 +295,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         error_code: err.code ?? null,
         error_subcode: err.error_subcode ?? null,
         fbtrace_id: err.fbtrace_id ?? null,
+        mediaCheck,
       };
     }
 
