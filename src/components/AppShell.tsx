@@ -49,6 +49,17 @@ export function AppShell() {
   const { user, profile, company, signOut } = useAuth();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  // Contador de não-lidas agregadas — usado no item "Caixa de atendimento".
+  useEffect(() => {
+    const recompute = () => {
+      const total = getConversations().reduce((s, c) => s + (c.unread || 0), 0);
+      setUnreadTotal(total);
+    };
+    recompute();
+    return subscribeRepo(recompute);
+  }, []);
 
   // Detecta modo demo do localStorage
   useEffect(() => {
