@@ -17,11 +17,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
-import { loadRemote, setRepoMode } from "@/data/leadRepo";
+import { loadRemote, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { NotificationBridge } from "@/components/NotificationBridge";
 
 type NavItem = {
   to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas";
@@ -48,6 +49,17 @@ export function AppShell() {
   const { user, profile, company, signOut } = useAuth();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  // Contador de não-lidas agregadas — usado no item "Caixa de atendimento".
+  useEffect(() => {
+    const recompute = () => {
+      const total = getConversations().reduce((s, c) => s + (c.unread || 0), 0);
+      setUnreadTotal(total);
+    };
+    recompute();
+    return subscribeRepo(recompute);
+  }, []);
 
   // Detecta modo demo do localStorage
   useEffect(() => {
@@ -109,6 +121,7 @@ export function AppShell() {
         const Icon = item.icon;
         const active =
           item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+        const dynamicBadge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : item.badge;
         return (
           <Link
             key={item.to}
@@ -121,9 +134,9 @@ export function AppShell() {
           >
             <Icon className="h-4 w-4" />
             <span className="flex-1">{item.label}</span>
-            {item.badge ? (
+            {dynamicBadge ? (
               <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
-                {item.badge}
+                {dynamicBadge > 99 ? "99+" : dynamicBadge}
               </span>
             ) : null}
           </Link>
@@ -203,6 +216,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
+      <NotificationBridge />
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">

@@ -44,6 +44,38 @@ function notify() {
   for (const l of listeners) l();
 }
 
+// ---------- emitter de novas mensagens de lead (observador) ----------
+export type NewLeadMessageEvent = {
+  messageId: string;
+  externalId: string | null;
+  conversationId: string;
+  text: string;
+  subtype: string | null;
+  metadata: Record<string, unknown> | null;
+  at: string;
+};
+
+const newLeadMessageListeners = new Set<(evt: NewLeadMessageEvent) => void>();
+
+function emitNewLeadMessage(evt: NewLeadMessageEvent) {
+  for (const l of newLeadMessageListeners) {
+    try {
+      l(evt);
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+export function subscribeNewLeadMessage(
+  cb: (evt: NewLeadMessageEvent) => void,
+): () => void {
+  newLeadMessageListeners.add(cb);
+  return () => {
+    newLeadMessageListeners.delete(cb);
+  };
+}
+
 export function subscribeRepo(cb: () => void): () => void {
   listeners.add(cb);
   // também escuta mutações do mock pra propagar quando em demo
@@ -291,11 +323,27 @@ function subscribeRealtime(companyId: string) {
         filter: `company_id=eq.${companyId}`,
       },
       (payload) => {
-        const row = payload.new as DbMessage & { company_id: string };
+        const row = payload.new as DbMessage & {
+          company_id: string;
+          external_id?: string | null;
+        };
         // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
         if (remoteMessages.some((m) => m.id === row.id)) return;
         remoteMessages = [...remoteMessages, toMessage(row)];
         notify();
+        // Emitter de novas mensagens (apenas role=lead). Observador puro,
+        // não altera nenhuma lógica acima. Consumido por NotificationBridge.
+        if (row.role === "lead") {
+          emitNewLeadMessage({
+            messageId: row.id,
+            externalId: row.external_id ?? null,
+            conversationId: row.conversation_id,
+            text: row.text,
+            subtype: row.source_subtype ?? null,
+            metadata: row.source_metadata ?? null,
+            at: row.at,
+          });
+        }
       },
     )
     .on(
