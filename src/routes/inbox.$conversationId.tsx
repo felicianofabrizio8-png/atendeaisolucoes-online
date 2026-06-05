@@ -1168,12 +1168,9 @@ function ConversationPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const [, rerenderRepo] = useState(0);
   // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
-  useSyncExternalStore(
-    subscribeRepo,
-    () => 0,
-    () => 0,
-  );
+  useEffect(() => subscribeRepo(() => rerenderRepo((v) => v + 1)), []);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const repoMessages = conversation ? getMessagesFor(conversationId) : [];
