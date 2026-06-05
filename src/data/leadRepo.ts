@@ -301,6 +301,26 @@ function subscribeRealtime(companyId: string) {
     .on(
       "postgres_changes",
       {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const row = payload.new as DbMessage & { company_id: string };
+        const idx = remoteMessages.findIndex((m) => m.id === row.id);
+        if (idx === -1) return;
+        remoteMessages = [
+          ...remoteMessages.slice(0, idx),
+          toMessage(row),
+          ...remoteMessages.slice(idx + 1),
+        ];
+        notify();
+      },
+    )
+    .on(
+      "postgres_changes",
+      {
         event: "INSERT",
         schema: "public",
         table: "leads",
