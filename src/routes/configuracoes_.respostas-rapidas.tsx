@@ -65,6 +65,14 @@ const EMPTY_FORM: FormState = {
   active: true,
 };
 
+function errorInfo(error: unknown) {
+  const maybe = error as { message?: unknown; details?: unknown };
+  return {
+    message: typeof maybe?.message === "string" ? maybe.message : "Falha na operação",
+    details: typeof maybe?.details === "string" ? maybe.details : maybe?.details ?? null,
+  };
+}
+
 function QuickRepliesPage() {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
@@ -108,7 +116,10 @@ function QuickRepliesPage() {
   };
 
   const save = async () => {
-    if (!companyId) return;
+    if (!companyId) {
+      toast.error("Empresa não carregada. Faça login novamente.");
+      return;
+    }
     if (!form.name.trim() || !form.content.trim()) {
       toast.error("Nome e conteúdo são obrigatórios");
       return;
@@ -120,44 +131,77 @@ function QuickRepliesPage() {
         icon: form.icon,
         category: form.category,
         content: form.content,
-        active: form.active,
+        active: form.id ? form.active : true,
       };
       if (form.id) {
-        await updateQuickReply(form.id, payload);
+        console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: form.id, company_id: companyId, name: form.name });
+        const saved = await updateQuickReply(companyId, form.id, payload);
+        console.log("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
       } else {
-        await createQuickReply(companyId, {
+        console.log("QUICK_REPLY_CREATE_ATTEMPT", { company_id: companyId, name: form.name });
+        const saved = await createQuickReply(companyId, {
           ...payload,
           sort_order: items.length,
         });
+        console.log("QUICK_REPLY_CREATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
       }
       setShowForm(false);
       setForm(EMPTY_FORM);
       await reload();
       toast.success("Salvo");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao salvar");
+      const info = errorInfo(e);
+      console.error(form.id ? "QUICK_REPLY_UPDATE_ERROR" : "QUICK_REPLY_CREATE_ERROR", {
+        id: form.id,
+        company_id: companyId,
+        name: form.name,
+        error: info.message,
+        details: info.details,
+      });
+      toast.error(info.message);
     } finally {
       setSaving(false);
     }
   };
 
   const toggleActive = async (q: QuickReply) => {
+    if (!companyId) return;
     try {
-      await updateQuickReply(q.id, { active: !q.active });
+      console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: q.id, company_id: companyId, active: !q.active });
+      const saved = await updateQuickReply(companyId, q.id, { active: !q.active });
+      console.log("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, active: saved.active });
       await reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha");
+      const info = errorInfo(e);
+      console.error("QUICK_REPLY_UPDATE_ERROR", {
+        id: q.id,
+        company_id: companyId,
+        error: info.message,
+        details: info.details,
+      });
+      toast.error(info.message);
     }
   };
 
   const remove = async (q: QuickReply) => {
+    if (!companyId) return;
     if (!confirm(`Excluir "${q.name}"?`)) return;
     try {
-      await deleteQuickReply(q.id);
+      console.log("QUICK_REPLY_DELETE_ATTEMPT", { id: q.id, company_id: companyId, name: q.name });
+      await deleteQuickReply(companyId, q.id);
+      console.log("QUICK_REPLY_DELETE_SUCCESS", { id: q.id, company_id: companyId, name: q.name });
       await reload();
       toast.success("Excluído");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha");
+      const info = errorInfo(e);
+      console.error("QUICK_REPLY_DELETE_ERROR", {
+        id: q.id,
+        company_id: companyId,
+        name: q.name,
+        error: info.message,
+        details: info.details,
+      });
+      toast.error(info.message);
     }
   };
 
@@ -167,6 +211,7 @@ function QuickRepliesPage() {
   );
 
   const onDragEnd = async (e: DragEndEvent) => {
+    if (!companyId) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldIdx = items.findIndex((i) => i.id === active.id);
@@ -175,9 +220,16 @@ function QuickRepliesPage() {
     const next = arrayMove(items, oldIdx, newIdx);
     setItems(next);
     try {
-      await reorderQuickReplies(next.map((i) => i.id));
+      await reorderQuickReplies(companyId, next.map((i) => i.id));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao reordenar");
+      const info = errorInfo(err);
+      console.error("QUICK_REPLY_UPDATE_ERROR", {
+        company_id: companyId,
+        action: "reorder",
+        error: info.message,
+        details: info.details,
+      });
+      toast.error(info.message);
       await reload();
     }
   };
