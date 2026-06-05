@@ -242,16 +242,30 @@ function MessageContent({ message }: { message: Message }) {
     (meta?.media_url as string | undefined) ??
     (meta?.mediaUrl as string | undefined) ??
     (meta?.image_url as string | undefined);
+  const mediaType = (meta?.type as string | undefined) ?? message.sourceSubtype ?? "";
+  const isVideoType =
+    mediaType === "video" || (mediaUrl ? /\.(mp4|webm|mov)(\?|$)/i.test(mediaUrl) : false);
   const isImageType =
-    message.sourceSubtype === "image" ||
-    (meta?.type as string | undefined) === "image";
+    mediaType === "image" ||
+    (mediaUrl ? /\.(jpe?g|png|webp|gif)(\?|$)/i.test(mediaUrl) : false);
+
+  if (mediaUrl && isVideoType) {
+    return (
+      <div className="space-y-1">
+        <VideoPreview url={mediaUrl} />
+        {message.text && !/^\[/.test(message.text.trim()) && (
+          <div>{message.text}</div>
+        )}
+      </div>
+    );
+  }
 
   if (mediaUrl && (isImageType || IMAGE_URL_RE.test(mediaUrl))) {
     IMAGE_URL_RE.lastIndex = 0;
     return (
       <div className="space-y-1">
         <ImagePreview url={mediaUrl} />
-        {message.text && !/^https?:\/\//.test(message.text.trim()) && (
+        {message.text && !/^https?:\/\//.test(message.text.trim()) && !/^\[/.test(message.text.trim()) && (
           <div>{message.text}</div>
         )}
       </div>
