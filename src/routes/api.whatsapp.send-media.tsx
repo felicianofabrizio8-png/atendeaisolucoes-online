@@ -124,17 +124,22 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           );
         }
 
-        // Resolve path → signed URL. Se vier mediaUrl externa, usa direto.
-        let resolvedPath = body.mediaPath
-          ? body.mediaPath.replace(/^\/+/, "")
-          : body.mediaUrl
-            ? pathFromUrl(body.mediaUrl)
-            : null;
+        // Resolve path/URL → signed URL. A biblioteca de produtos pode enviar
+        // uma URL pública/assinada antiga; nesses casos extraímos o path real.
+        const incomingRef = (body.mediaPath ?? body.mediaUrl ?? "").trim();
+        const isHttpRef = /^https?:\/\//i.test(incomingRef);
+        const resolvedPath = isHttpRef
+          ? pathFromUrl(incomingRef)
+          : incomingRef.replace(/^\/+/, "");
         let publicLink: string;
         let storedRef: string; // o que salvamos no source_metadata
         if (resolvedPath) {
-          // segurança multi-tenant: o path TEM que começar pelo company_id
-          if (!resolvedPath.startsWith(`${companyId}/`)) {
+          // Segurança multi-tenant: paths novos precisam começar por company_id.
+          // Paths legados da biblioteca, gravados na raiz do bucket antes do
+          // escopo por empresa, continuam válidos para não bloquear produtos já cadastrados.
+          const isCompanyScopedPath = resolvedPath.startsWith(`${companyId}/`);
+          const isLegacyRootPath = !resolvedPath.includes("/");
+          if (!isCompanyScopedPath && !isLegacyRootPath) {
             return Response.json(
               { error: "Mídia fora desta empresa" },
               { status: 403 },
@@ -152,19 +157,25 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           }
           publicLink = signed.signedUrl;
           storedRef = resolvedPath; // salvamos o path, signed URL é gerada na exibição
+        } else if (isHttpRef) {
+          publicLink = incomingRef;
+          storedRef = incomingRef;
         } else {
-          publicLink = body.mediaUrl!;
-          storedRef = body.mediaUrl!;
+          return Response.json({ error: "Referência de mídia inválida" }, { status: 400 });
         }
 
-        // HEAD validate
+        // Valida acessibilidade. Alguns provedores aceitam GET assinado, mas
+        // respondem mal a HEAD; por isso tentamos HEAD e depois GET parcial.
         try {
           const h = await fetch(publicLink, { method: "HEAD" });
           if (!h.ok) {
-            return Response.json(
-              { error: `Mídia inacessível (HTTP ${h.status}).` },
-              { status: 400 },
-            );
+            const g = await fetch(publicLink, { method: "GET", headers: { Range: "bytes=0-0" } });
+            if (!g.ok && g.status !== 206) {
+              return Response.json(
+                { error: `Mídia inacessível (HTTP ${h.status}/${g.status}).` },
+                { status: 400 },
+              );
+            }
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erro de rede";
