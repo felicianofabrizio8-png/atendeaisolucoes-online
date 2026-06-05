@@ -77,6 +77,8 @@ interface AISuggestion {
 
 type MetaSendPayload = {
   ok?: boolean;
+  id?: string;
+  at?: string;
   error?: string;
   metaError?: {
     message?: string;
@@ -87,6 +89,11 @@ type MetaSendPayload = {
   } | null;
   status?: number;
   dbError?: unknown;
+};
+
+type SendTextResult = Pick<MetaSendPayload, "id" | "at"> & {
+  externalId?: string | null;
+  messageId?: string | null;
 };
 
 async function readFunctionError(
