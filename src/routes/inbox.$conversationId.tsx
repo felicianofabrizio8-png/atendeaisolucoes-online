@@ -704,6 +704,7 @@ function MessageBubble({
 
   return (
     <div
+      id={`msg-${m.id}`}
       className={cn(
         "group flex flex-col max-w-[90%] md:max-w-[75%] relative",
         isAgent ? "ml-auto items-end" : "items-start",
