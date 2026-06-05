@@ -669,6 +669,7 @@ function MediaSendPanel({
   leadId,
   onSent,
   onSendText,
+  onInsertText,
 }: {
   conversationId: string;
   channel: string | undefined;
@@ -677,7 +678,9 @@ function MediaSendPanel({
   leadId?: string | null;
   onSent: () => void;
   onSendText: (text: string) => void;
+  onInsertText: (text: string) => void;
 }) {
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [pending, setPending] = useState<PendingMedia | null>(null);
