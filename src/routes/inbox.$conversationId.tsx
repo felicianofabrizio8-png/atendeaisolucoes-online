@@ -139,19 +139,60 @@ const IMAGE_URL_RE = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s]*)
 
 function ImagePreview({ url }: { url: string }) {
   const [error, setError] = useState(false);
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (url.startsWith("blob:") || url.startsWith("data:")) {
+      setResolved(url);
+      return;
+    }
+    void getSignedImageUrl(url).then((r) => {
+      if (!cancelled) setResolved(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
   if (error) {
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
+  const display = resolved ?? url;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+    <a href={display} target="_blank" rel="noopener noreferrer" className="block">
       <img
-        src={url}
+        src={display}
         alt="Imagem"
         onError={() => setError(true)}
         className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
         loading="lazy"
       />
     </a>
+  );
+}
+
+function VideoPreview({ url }: { url: string }) {
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (url.startsWith("blob:") || url.startsWith("data:")) {
+      setResolved(url);
+      return;
+    }
+    void getSignedImageUrl(url).then((r) => {
+      if (!cancelled) setResolved(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  const display = resolved ?? url;
+  return (
+    <video
+      src={display}
+      controls
+      className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
+      preload="metadata"
+    />
   );
 }
 
