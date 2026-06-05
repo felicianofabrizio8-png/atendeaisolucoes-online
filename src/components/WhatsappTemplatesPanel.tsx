@@ -198,8 +198,10 @@ export function WhatsappTemplatesPanel() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground w-20">Propósito:</span>
                         <Select
-                          value={t.purpose ?? ""}
-                          onValueChange={(v) => patch(t.id, { purpose: v === "" ? null : v })}
+                          value={t.purpose ?? NONE_PURPOSE}
+                          onValueChange={(v) =>
+                            patch(t.id, { purpose: v === NONE_PURPOSE ? null : v })
+                          }
                         >
                           <SelectTrigger className="h-8 w-full max-w-xs text-xs">
                             <SelectValue />
