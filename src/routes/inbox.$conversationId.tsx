@@ -1425,7 +1425,14 @@ function ConversationPage() {
               },
               body: JSON.stringify({ conversationId, text: trimmed }),
             });
-            if (res.ok) return;
+            if (res.ok) {
+              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              return;
+            }
             // Falhou: remove a bolha otimista e mostra o erro real da Meta
             let errMsg = `HTTP ${res.status}`;
             try {
@@ -1464,7 +1471,14 @@ function ConversationPage() {
               },
             });
             const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
-            if (ok) return;
+            if (ok) {
+              const saved = data as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              return;
+            }
             const details = await readFunctionError(error, data);
             console.error("[chat send] Meta falhou", {
               origin,
