@@ -1185,7 +1185,19 @@ function ConversationPage() {
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const messages = useMemo<Message[]>(() => {
     const ids = new Set(repoMessages.map((m) => m.id));
-    const extras = localMessages.filter((m) => !ids.has(m.id));
+    const confirmedTextKeys = new Set(
+      repoMessages
+        .filter((m) => m.role === "agent")
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+    );
+    const extras = localMessages.filter(
+      (m) =>
+        !ids.has(m.id) &&
+        !(
+          m.role === "agent" &&
+          confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`)
+        ),
+    );
     return [...repoMessages, ...extras].sort(
       (a, b) => +new Date(a.at) - +new Date(b.at),
     );
@@ -1195,8 +1207,17 @@ function ConversationPage() {
   useEffect(() => {
     if (localMessages.length === 0) return;
     const ids = new Set(repoMessages.map((m) => m.id));
-    if (localMessages.some((m) => ids.has(m.id))) {
-      setLocalMessages((prev) => prev.filter((m) => !ids.has(m.id)));
+    const confirmedTextKeys = new Set(
+      repoMessages
+        .filter((m) => m.role === "agent")
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+    );
+    const shouldRemove = (m: Message) =>
+      ids.has(m.id) ||
+      (m.role === "agent" &&
+        confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`));
+    if (localMessages.some(shouldRemove)) {
+      setLocalMessages((prev) => prev.filter((m) => !shouldRemove(m)));
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
