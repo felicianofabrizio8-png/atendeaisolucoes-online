@@ -1989,6 +1989,7 @@ function ConversationPage() {
               companyId={profile?.company_id ?? null}
               leadId={lead?.id ?? null}
               onSent={() => void refetchConversationMessages(conversationId)}
+              onSendText={(t) => sendMessage(t)}
             />
             <button
               onClick={() => sendMessage(input)}
