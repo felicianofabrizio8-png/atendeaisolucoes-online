@@ -164,14 +164,18 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           return Response.json({ error: "Referência de mídia inválida" }, { status: 400 });
         }
 
-        // HEAD validate
+        // Valida acessibilidade. Alguns provedores aceitam GET assinado, mas
+        // respondem mal a HEAD; por isso tentamos HEAD e depois GET parcial.
         try {
           const h = await fetch(publicLink, { method: "HEAD" });
           if (!h.ok) {
-            return Response.json(
-              { error: `Mídia inacessível (HTTP ${h.status}).` },
-              { status: 400 },
-            );
+            const g = await fetch(publicLink, { method: "GET", headers: { Range: "bytes=0-0" } });
+            if (!g.ok && g.status !== 206) {
+              return Response.json(
+                { error: `Mídia inacessível (HTTP ${h.status}/${g.status}).` },
+                { status: 400 },
+              );
+            }
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erro de rede";
