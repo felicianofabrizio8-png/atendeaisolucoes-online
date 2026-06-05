@@ -1875,7 +1875,7 @@ function ConversationPage() {
           tags: lead.tags,
           conversationId,
           leadId: lead.id,
-          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          messages: messages.map((m) => messageForAi(m)),
         }),
       });
       if (!res.ok) {
