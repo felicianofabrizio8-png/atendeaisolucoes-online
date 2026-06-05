@@ -145,6 +145,46 @@ function ImagePreview({ url }: { url: string }) {
   );
 }
 
+type MediaKind = "image" | "video" | "audio" | "document";
+function getMediaInfo(m: Message): { url: string; kind: MediaKind } | null {
+  const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const url =
+    (meta?.media_url as string | undefined) ??
+    (meta?.mediaUrl as string | undefined) ??
+    (meta?.image_url as string | undefined);
+  const t = (meta?.type as string | undefined) ?? m.sourceSubtype;
+  if (url) {
+    const kind: MediaKind =
+      t === "image" || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)
+        ? "image"
+        : t === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(url)
+          ? "video"
+          : t === "audio" || /\.(mp3|ogg|m4a|wav)(\?|$)/i.test(url)
+            ? "audio"
+            : "document";
+    return { url, kind };
+  }
+  IMAGE_URL_RE.lastIndex = 0;
+  const match = IMAGE_URL_RE.exec(m.text ?? "");
+  if (match) return { url: match[1], kind: "image" };
+  return null;
+}
+
+function deletedLabelFor(kind: MediaKind | null): string {
+  switch (kind) {
+    case "image":
+      return "🗑️ Imagem removida";
+    case "video":
+      return "🗑️ Vídeo removido";
+    case "audio":
+      return "🗑️ Áudio removido";
+    case "document":
+      return "🗑️ Arquivo removido";
+    default:
+      return "🗑️ Mensagem removida";
+  }
+}
+
 function MessageContent({ message }: { message: Message }) {
   const meta = message.sourceMetadata as Record<string, unknown> | undefined;
   const mediaUrl =
