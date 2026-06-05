@@ -82,7 +82,7 @@ export async function updateQuickReply(
   if (patch.content !== undefined) row.content = patch.content;
   if (patch.sort_order !== undefined) row.sort_order = patch.sort_order;
   if (patch.active !== undefined) row.active = patch.active;
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("quick_replies")
     .update(row)
     .eq("company_id", companyId)
