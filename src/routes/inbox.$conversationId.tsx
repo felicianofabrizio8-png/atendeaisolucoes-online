@@ -442,8 +442,81 @@ function deletedLabelFor(kind: MediaKind | null): string {
   }
 }
 
+type ReplyToMeta = {
+  message_id?: string | null;
+  external_id?: string | null;
+  type?: string | null;
+  preview?: string | null;
+  media_path?: string | null;
+  media_mime?: string | null;
+  role?: string | null;
+};
+
+function getReplyTo(m: Message): ReplyToMeta | null {
+  const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const r = meta?.reply_to as ReplyToMeta | undefined;
+  if (!r || (typeof r !== "object")) return null;
+  if (!r.preview && !r.message_id && !r.external_id) return null;
+  return r;
+}
+
+// Serializa uma mensagem incluindo o contexto da resposta (reply_to) para a IA
+// entender a qual mensagem o cliente está respondendo.
+function messageForAi(m: Message): { role: Message["role"]; text: string } {
+  const reply = getReplyTo(m);
+  if (!reply) return { role: m.role, text: m.text };
+  const ctx = (reply.preview ?? "[mensagem anterior]").replace(/\s+/g, " ").slice(0, 200);
+  return { role: m.role, text: `[em resposta a: ${ctx}] ${m.text}` };
+}
+
+
+
+function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
+  const kind = (reply.type ?? "text").toLowerCase();
+  const thumb = useResolvedMediaSrc({ path: reply.media_path ?? undefined });
+  const isImage = kind === "image" || kind === "sticker";
+  const isAudio = kind === "audio";
+  const label =
+    reply.preview ??
+    (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
+
+  function scrollToOriginal() {
+    if (!reply.message_id) return;
+    const el = document.getElementById(`msg-${reply.message_id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/60", "transition");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={scrollToOriginal}
+      className="flex items-stretch gap-2 mb-1.5 w-full text-left rounded-md bg-background/40 border-l-2 border-primary/70 px-2 py-1.5 hover:bg-background/60 transition"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-semibold text-primary/90 uppercase tracking-wide">
+          {reply.role === "agent" ? "Você" : "Cliente"}
+        </div>
+        <div className="text-xs truncate opacity-90">{label}</div>
+      </div>
+      {isImage && thumb ? (
+        <img
+          src={thumb}
+          alt=""
+          className="h-10 w-10 rounded object-cover shrink-0"
+        />
+      ) : null}
+    </button>
+  );
+}
+
 function MessageContent({ message }: { message: Message }) {
   const info = getMediaInfo(message);
+  const reply = getReplyTo(message);
+  const replyNode = reply ? <ReplyPreview reply={reply} /> : null;
 
   if (info) {
     const trimmed = (message.text ?? "").trim();
@@ -455,6 +528,7 @@ function MessageContent({ message }: { message: Message }) {
       case "image":
         return (
           <div className="space-y-1">
+            {replyNode}
             <ImagePreview path={info.path} url={info.url} filename={info.filename} />
             {caption}
           </div>
@@ -462,6 +536,7 @@ function MessageContent({ message }: { message: Message }) {
       case "video":
         return (
           <div className="space-y-1">
+            {replyNode}
             <VideoPreview path={info.path} url={info.url} filename={info.filename} />
             {caption}
           </div>
@@ -469,6 +544,7 @@ function MessageContent({ message }: { message: Message }) {
       case "audio":
         return (
           <div className="space-y-1">
+            {replyNode}
             <AudioPreview path={info.path} mime={info.mime} filename={info.filename} />
             {caption}
           </div>
@@ -476,6 +552,7 @@ function MessageContent({ message }: { message: Message }) {
       case "document":
         return (
           <div className="space-y-1">
+            {replyNode}
             <DocumentPreview
               path={info.path}
               filename={info.filename}
@@ -488,6 +565,7 @@ function MessageContent({ message }: { message: Message }) {
       case "sticker":
         return (
           <div className="space-y-1">
+            {replyNode}
             <StickerPreview path={info.path} filename={info.filename} />
           </div>
         );
@@ -497,7 +575,12 @@ function MessageContent({ message }: { message: Message }) {
   const text = message.text ?? "";
   IMAGE_URL_RE.lastIndex = 0;
   if (!IMAGE_URL_RE.test(text)) {
-    return <>{text}</>;
+    return (
+      <>
+        {replyNode}
+        {text}
+      </>
+    );
   }
   IMAGE_URL_RE.lastIndex = 0;
   const parts: Array<{ type: "text" | "image"; value: string }> = [];
@@ -515,6 +598,7 @@ function MessageContent({ message }: { message: Message }) {
   }
   return (
     <div className="space-y-1">
+      {replyNode}
       {parts.map((p, i) =>
         p.type === "image" ? (
           <ImagePreview key={i} url={p.value} />
@@ -631,6 +715,7 @@ function MessageBubble({
 
   return (
     <div
+      id={`msg-${m.id}`}
       className={cn(
         "group flex flex-col max-w-[90%] md:max-w-[75%] relative",
         isAgent ? "ml-auto items-end" : "items-start",
@@ -1801,7 +1886,7 @@ function ConversationPage() {
           tags: lead.tags,
           conversationId,
           leadId: lead.id,
-          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          messages: messages.map((m) => messageForAi(m)),
         }),
       });
       if (!res.ok) {
@@ -1885,7 +1970,7 @@ function ConversationPage() {
         body: JSON.stringify({
           leadName: lead.name,
           product: lead.product,
-          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          messages: messages.map((m) => messageForAi(m)),
         }),
       });
       if (res.ok) {
