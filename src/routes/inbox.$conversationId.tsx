@@ -1538,7 +1538,41 @@ function ConversationPage() {
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendErrorState, setSendErrorState] = useState<{
+    message: string;
+    conversationId: string;
+    at: number;
+  } | null>(null);
+  const sendError =
+    sendErrorState && sendErrorState.conversationId === conversationId
+      ? sendErrorState.message
+      : null;
+  const setSendError = useCallback(
+    (msg: string | null) => {
+      if (!msg) {
+        setSendErrorState(null);
+        return;
+      }
+      setSendErrorState({ message: msg, conversationId, at: Date.now() });
+    },
+    [conversationId],
+  );
+  // Limpa erro ao trocar de conversa e expira erro antigo (>15s) automaticamente.
+  useEffect(() => {
+    setSendErrorState((prev) =>
+      prev && prev.conversationId !== conversationId ? null : prev,
+    );
+  }, [conversationId]);
+  useEffect(() => {
+    if (!sendErrorState) return;
+    const remaining = 15000 - (Date.now() - sendErrorState.at);
+    if (remaining <= 0) {
+      setSendErrorState(null);
+      return;
+    }
+    const t = setTimeout(() => setSendErrorState(null), remaining);
+    return () => clearTimeout(t);
+  }, [sendErrorState]);
   const [aiState, setAiState] = useState<{ ai_status: string | null; ai_handling: boolean } | null>(null);
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
