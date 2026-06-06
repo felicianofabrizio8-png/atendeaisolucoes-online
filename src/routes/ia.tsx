@@ -547,7 +547,7 @@ function ConfiguracoesIA() {
                   <div className="text-sm text-muted-foreground whitespace-pre-wrap">{p.answer}</div>
                   <div className="flex gap-2 pt-1">
                     {p.status !== "approved" && (
-                      <Button size="sm" onClick={() => updateProposal(p.id, "approved")}>
+                      <Button size="sm" onClick={() => updateProposal(p.id, "approved")} className="min-h-11 md:min-h-8">
                         <Check className="h-3.5 w-3.5" /> Aprovar
                       </Button>
                     )}
@@ -556,11 +556,12 @@ function ConfiguracoesIA() {
                         size="sm"
                         variant="outline"
                         onClick={() => updateProposal(p.id, "rejected")}
+                        className="min-h-11 md:min-h-8"
                       >
                         <X className="h-3.5 w-3.5" /> Rejeitar
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => deleteProposal(p.id)}>
+                    <Button size="sm" variant="ghost" onClick={() => deleteProposal(p.id)} className="min-h-11 md:min-h-8 min-w-11 md:min-w-0">
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -739,7 +740,7 @@ function ConfiguracoesIA() {
                     />
                   </Field>
                   <div className="md:col-span-2 flex justify-end">
-                    <Button onClick={saveAutomation} disabled={savingAutomation}>
+                    <Button onClick={saveAutomation} disabled={savingAutomation} className="w-full md:w-auto min-h-11 md:min-h-9">
                       {savingAutomation && <Loader2 className="h-4 w-4 animate-spin" />}
                       Salvar automação
                     </Button>
