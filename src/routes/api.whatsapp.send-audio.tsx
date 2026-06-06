@@ -472,7 +472,15 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
-            { error: FRIENDLY_SEND_ERROR },
+            {
+              error: FRIENDLY_SEND_ERROR,
+              stage: "network",
+              detail: msg,
+              phone_number_id: integration.external_account_id,
+              to: recipient,
+              media_mime: baseMime,
+              media_size: file.size,
+            },
             { status: 502 },
           );
         }
