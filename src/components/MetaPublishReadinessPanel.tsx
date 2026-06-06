@@ -48,6 +48,44 @@ type MetaPage = {
   ig_username: string | null;
 };
 
+type MetaBusinessConfig = {
+  appId: string;
+  businessConfigId: string;
+  hasAppId: boolean;
+  hasBusinessConfigId: boolean;
+};
+
+type AvailablePage = {
+  id: string;
+  name: string;
+  access_token: string;
+  ig_business_account_id: string | null;
+  ig_username: string | null;
+};
+
+const GRAPH = "https://graph.facebook.com/v25.0";
+const META_REDIRECT_URI = "https://app.atendeaisolucoes.online/auth/meta/callback";
+const META_REQUIRED_SCOPES = [
+  "public_profile",
+  "email",
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_metadata",
+  "pages_manage_engagement",
+  "pages_manage_ads",
+  "pages_messaging",
+  "business_management",
+  "ads_management",
+  "ads_read",
+  "instagram_basic",
+].join(",");
+
+async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
+  const res = await fetch("/api/meta/config");
+  if (!res.ok) throw new Error("Falha ao carregar configuração Meta.");
+  return (await res.json()) as MetaBusinessConfig;
+}
+
 const ACCOUNT_STATUS_LABEL: Record<number, string> = {
   1: "Ativa", 2: "Desativada", 3: "Não solucionada", 7: "Pendente análise",
   9: "Em revisão", 101: "Encerrada", 201: "Pausada por admin", 202: "Pendência financeira",
@@ -77,6 +115,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [missingScopes, setMissingScopes] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [togglingBeta, setTogglingBeta] = useState(false);
   const [manualAd, setManualAd] = useState("");
   const autoSelectedRef = useRef(false);
@@ -137,7 +176,147 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     } finally { setLoadingAccounts(false); }
   }, [fetchAccounts, fetchPages]);
 
+  const completeReconnectWithCode = useCallback(async (code: string) => {
+    setReconnecting(true);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: exchangeData, error: exchangeError } = await supabase.functions.invoke("meta-connect", {
+        body: { mode: "exchange_code", code, redirectUri: META_REDIRECT_URI },
+      });
+      if (exchangeError) throw exchangeError;
+      const exchange = exchangeData as { access_token?: string; error?: string };
+      const userToken = exchange.access_token;
+      if (!userToken) throw new Error(exchange.error ?? "OAuth Meta não retornou token de usuário.");
+
+      const { data: debugData, error: debugError } = await supabase.functions.invoke("meta-connect", {
+        body: { mode: "debug_token", shortLivedToken: userToken },
+      });
+      if (debugError) throw debugError;
+      const debug = debugData as {
+        debug_token?: { type?: string; is_valid?: boolean; scopes?: string[] } | null;
+        me?: { id?: string; name?: string; error?: { message?: string } } | null;
+      };
+      const tokenType = debug.debug_token?.type ?? null;
+      const scopes = debug.debug_token?.scopes ?? [];
+      console.log("META_RECONNECT_VALIDATION", {
+        token_type: tokenType,
+        is_valid: debug.debug_token?.is_valid ?? null,
+        me: debug.me ?? null,
+        has_ads_read: scopes.includes("ads_read"),
+        has_ads_management: scopes.includes("ads_management"),
+      });
+      if (tokenType !== "USER" && tokenType !== "SYSTEM_USER") {
+        throw new Error("Reconexão incompleta: o Facebook retornou token de Página. Refaça a conexão concedendo acesso ao usuário/conta de anúncios.");
+      }
+
+      const tok = encodeURIComponent(userToken);
+      const adRes = await fetch(`${GRAPH}/me/adaccounts?fields=id,account_id,name,account_status,currency,timezone_name,business{id,name}&limit=200&access_token=${tok}`);
+      const adJson = (await adRes.json()) as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+      console.log("META_RECONNECT_ME_ADACCOUNTS", { status: adRes.status, ok: adRes.ok, payload: adJson });
+      if (!adRes.ok || adJson.error) throw new Error(adJson.error?.message ?? "GET /me/adaccounts falhou.");
+      const adAccounts = Array.isArray(adJson.data) ? adJson.data : [];
+      if (adAccounts.length === 0) throw new Error("Reconexão feita, mas /me/adaccounts não retornou contas de anúncios.");
+
+      const pagesRes = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${tok}`);
+      const pagesJson = (await pagesRes.json()) as { data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id?: string; username?: string } }>; error?: { message?: string } };
+      if (!pagesRes.ok || pagesJson.error) throw new Error(pagesJson.error?.message ?? "GET /me/accounts falhou.");
+      const pageList: AvailablePage[] = (pagesJson.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        access_token: p.access_token,
+        ig_business_account_id: p.instagram_business_account?.id ?? null,
+        ig_username: p.instagram_business_account?.username ?? null,
+      }));
+      const preferredPageId = readiness?.pageId || "";
+      const selectedPage = (preferredPageId ? pageList.find((p) => p.id === preferredPageId) : null) ?? (pageList.length === 1 ? pageList[0] : null);
+      if (!selectedPage) throw new Error("Selecione a página Meta em Configurações para concluir a reconexão.");
+
+      const { data: saveData, error: saveError } = await supabase.functions.invoke("meta-connect", {
+        body: { mode: "connect_page", shortLivedToken: userToken, page: selectedPage },
+      });
+      if (saveError) throw saveError;
+      const saveResult = saveData as { ok?: boolean; error?: string };
+      if (saveResult?.ok === false) throw new Error(saveResult.error ?? "Falha ao salvar token USER Meta.");
+
+      setAccounts(adAccounts.map((a) => ({
+        id: String(a.id ?? ""),
+        account_id: String((a.account_id as string | undefined) ?? String(a.id ?? "").replace(/^act_/, "")),
+        name: String(a.name ?? a.id ?? ""),
+        status: Number(a.account_status ?? 0),
+        currency: String(a.currency ?? ""),
+        timezone: String(a.timezone_name ?? ""),
+        business: ((a.business as { name?: string } | undefined)?.name) ?? null,
+        source: "me",
+      })));
+      setMissingScopes([]);
+      toast.success(`Meta reconectada com token ${tokenType}.`);
+      await refresh({ silent: true });
+      await loadAssets();
+    } catch (e) {
+      console.error("META_RECONNECT_FAILED", e);
+      toast.error(e instanceof Error ? e.message : "Falha ao reconectar Meta.");
+    } finally {
+      setReconnecting(false);
+    }
+  }, [loadAssets, readiness?.pageId, refresh]);
+
   useEffect(() => { void refresh({ silent: true }); }, [refresh]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pendingCode = window.sessionStorage.getItem("META_OAUTH_CODE");
+    if (pendingCode) {
+      window.sessionStorage.removeItem("META_OAUTH_CODE");
+      window.sessionStorage.removeItem("META_OAUTH_STATE_RX");
+      void completeReconnectWithCode(pendingCode);
+    }
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as { type?: string; code?: string; error?: string } | null;
+      if (!data || data.type !== "META_OAUTH_RESULT") return;
+      if (data.error) {
+        setReconnecting(false);
+        toast.error(data.error);
+        return;
+      }
+      if (data.code) void completeReconnectWithCode(data.code);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [completeReconnectWithCode]);
+
+  const startMetaReconnect = useCallback(async () => {
+    setReconnecting(true);
+    try {
+      const config = await getMetaBusinessConfig();
+      if (!config.hasAppId) throw new Error("Configuração Meta incompleta: App ID ausente.");
+      const state = crypto.randomUUID();
+      window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+      window.localStorage.removeItem("META_OAUTH_TOKEN");
+      window.sessionStorage.setItem("META_OAUTH_STATE", state);
+      const base =
+        `https://www.facebook.com/v21.0/dialog/oauth` +
+        `?client_id=${encodeURIComponent(config.appId)}` +
+        `&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&state=${encodeURIComponent(state)}` +
+        `&auth_type=reauthenticate`;
+      const oauthUrl = config.hasBusinessConfigId && config.businessConfigId
+        ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
+        : `${base}&scope=${encodeURIComponent(META_REQUIRED_SCOPES)}`;
+      console.log("META_RECONNECT_OAUTH_URL", { mode: config.hasBusinessConfigId ? "business_config" : "classic_scope" });
+      const width = 600;
+      const height = 720;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      const popup = window.open(oauthUrl, "meta-oauth", `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      if (!popup) window.open(oauthUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setReconnecting(false);
+      toast.error(e instanceof Error ? e.message : "Falha ao iniciar reconexão Meta.");
+    }
+  }, []);
 
   // Carrega assets automaticamente assim que tivermos integração Meta conectada.
   useEffect(() => {
@@ -299,12 +478,15 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <div className="flex-1 space-y-1.5">
                     <div>Permissões faltando no token: {missingScopes.join(", ")}.</div>
-                    <a
-                      href="/configuracoes#meta"
+                    <button
+                      type="button"
+                      onClick={startMetaReconnect}
+                      disabled={reconnecting}
                       className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
                     >
-                      <RefreshCw className="h-3 w-3" /> Reconectar Meta
-                    </a>
+                      {reconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Reconectar Meta
+                    </button>
                   </div>
                 </div>
               )}

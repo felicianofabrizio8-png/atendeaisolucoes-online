@@ -205,8 +205,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // (#100 / 1487390) em /act_*/adcreatives. Aborta cedo com mensagem clara.
     try {
       const tokEnc = encodeURIComponent(accessToken);
+      const appToken = process.env.META_APP_ID && process.env.META_APP_SECRET
+        ? `${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`
+        : accessToken;
       const dbgRes = await fetch(
-        `${GRAPH}/debug_token?input_token=${tokEnc}&access_token=${tokEnc}`,
+        `${GRAPH}/debug_token?input_token=${tokEnc}&access_token=${encodeURIComponent(appToken)}`,
       );
       const dbgJson = (await dbgRes.json().catch(() => null)) as
         | { data?: { type?: string; is_valid?: boolean; scopes?: string[]; app_id?: string } }
@@ -250,12 +253,47 @@ export const publishCampaign = createServerFn({ method: "POST" })
           missing_scopes: missing,
         };
       }
+
+      const [meRes, adAccountsRes] = await Promise.all([
+        fetch(`${GRAPH}/me?fields=id,name&access_token=${tokEnc}`),
+        fetch(`${GRAPH}/me/adaccounts?fields=id,account_id,name&limit=25&access_token=${tokEnc}`),
+      ]);
+      const meJson = (await meRes.json().catch(() => null)) as { id?: string; name?: string; error?: { message?: string } } | null;
+      const adAccountsJson = (await adAccountsRes.json().catch(() => null)) as { data?: unknown[]; error?: { message?: string } } | null;
+      const adAccountsCount = Array.isArray(adAccountsJson?.data) ? adAccountsJson.data.length : 0;
+      console.log("[publishCampaign] marketing_api_user_check", {
+        campaignId,
+        integration_id: integ.id,
+        me_status: meRes.status,
+        me: meJson ? { id: meJson.id ?? null, name: meJson.name ?? null, error: meJson.error ?? null } : null,
+        adaccounts_status: adAccountsRes.status,
+        adaccounts_count: adAccountsCount,
+        adaccounts_error: adAccountsJson?.error ?? null,
+      });
+      if (!meRes.ok || meJson?.error || !meJson?.id) {
+        return {
+          ok: false as const,
+          error: "token_me_failed",
+          message: "Reconecte a Meta Ads. O token atual não retornou um usuário válido em /me.",
+        };
+      }
+      if (!adAccountsRes.ok || adAccountsJson?.error || adAccountsCount === 0) {
+        return {
+          ok: false as const,
+          error: "token_adaccounts_failed",
+          message: "Reconecte a Meta Ads. O token USER atual não retornou contas em /me/adaccounts.",
+        };
+      }
     } catch (e) {
       console.warn("[publishCampaign] token_type_check_exception", {
         campaignId,
         e: e instanceof Error ? e.message : String(e),
       });
-      // Não bloqueia em caso de erro de rede — Graph dirá depois se for inválido.
+      return {
+        ok: false as const,
+        error: "token_validation_failed",
+        message: "Não foi possível validar o token Meta antes da publicação. Reconecte a Meta Ads e tente novamente.",
+      };
     }
 
 
