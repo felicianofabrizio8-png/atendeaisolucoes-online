@@ -130,6 +130,79 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const clearAccount = useServerFn(clearMetaAdAccount);
   const savePage = useServerFn(selectMetaPage);
   const toggleBeta = useServerFn(setMetaBetaFlag);
+  const diagnoseToken = useServerFn(diagnoseMetaToken);
+  const adoptToken = useServerFn(adoptMetaUserToken);
+
+  const [manualToken, setManualToken] = useState("");
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [adopting, setAdopting] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<
+    | null
+    | {
+        tokenSuffix: string;
+        debugToken: {
+          type: string | null;
+          is_valid: boolean;
+          app_id: string | null;
+          expires_at: number | null;
+          scopes: string[];
+          has_ads_read: boolean;
+          has_ads_management: boolean;
+          has_business_management: boolean;
+          has_pages_show_list: boolean;
+        };
+        me: { id: string; name: string } | null;
+        meError: string | null;
+        adAccounts: Array<{ id: string; account_id: string; name: string; status: number }>;
+        adAccountsError: string | null;
+      }
+  >(null);
+
+  async function runDiagnosis() {
+    if (!manualToken.trim()) return;
+    setDiagnosing(true);
+    setDiagnosis(null);
+    try {
+      const r = await diagnoseToken({ data: { token: manualToken.trim() } });
+      if (r.ok) {
+        setDiagnosis({
+          tokenSuffix: r.tokenSuffix,
+          debugToken: r.debugToken,
+          me: r.me,
+          meError: r.meError,
+          adAccounts: r.adAccounts,
+          adAccountsError: r.adAccountsError,
+        });
+      } else {
+        toast.error(("message" in r && r.message) || "Falha no diagnóstico.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro no diagnóstico.");
+    } finally {
+      setDiagnosing(false);
+    }
+  }
+
+  async function adoptDiagnosedToken() {
+    if (!manualToken.trim()) return;
+    setAdopting(true);
+    try {
+      const r = await adoptToken({ data: { token: manualToken.trim() } });
+      if (r.ok) {
+        toast.success(`Token ${r.type} salvo em ${r.updated} integração(ões).`);
+        setManualToken("");
+        setDiagnosis(null);
+        await refresh({ silent: true });
+        await loadAssets();
+      } else {
+        toast.error(("message" in r && r.message) || "Falha ao adotar token.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao adotar token.");
+    } finally {
+      setAdopting(false);
+    }
+  }
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     console.log("[MetaPanel] refresh readiness");
