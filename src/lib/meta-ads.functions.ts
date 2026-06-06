@@ -15,11 +15,13 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+// Escopos mínimos necessários para publicar campanhas Click-to-WhatsApp Ads
+// via Marketing API. pages_manage_ads / pages_read_engagement NÃO são exigidos
+// pela CTWA — eles são page-scoped e bloqueavam a UI sem necessidade.
 const REQUIRED_SCOPES = [
   "ads_management",
   "ads_read",
-  "pages_manage_ads",
-  "pages_read_engagement",
+  "business_management",
 ] as const;
 
 type Integ = {
