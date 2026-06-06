@@ -132,7 +132,10 @@ function CampaignDetailPage() {
   const publishFn = useServerFn(publishCampaign);
   const syncMetaFn = useServerFn(syncCampaignStatusFromMeta);
   const activateMetaFn = useServerFn(activateCampaignOnMeta);
+  const syncInsightsFn = useServerFn(syncCampaignInsightsFromMeta);
   const [activating, setActivating] = useState(false);
+  const [insights, setInsights] = useState<CampaignInsightsResult | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   async function performActivate() {
     if (!c) return;
