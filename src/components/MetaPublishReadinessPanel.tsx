@@ -125,6 +125,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const fetchAccounts = useServerFn(listMetaAdAccounts);
   const fetchPages = useServerFn(listMetaPages);
   const saveAccount = useServerFn(selectMetaAdAccount);
+  const clearAccount = useServerFn(clearMetaAdAccount);
   const savePage = useServerFn(selectMetaPage);
   const toggleBeta = useServerFn(setMetaBetaFlag);
 
