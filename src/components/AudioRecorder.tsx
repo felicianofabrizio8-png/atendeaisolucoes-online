@@ -270,17 +270,44 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        stage?: string;
+        detail?: string;
+        http_status?: number | string;
+        status?: number;
+        meta_error?: unknown;
+        meta_error_message?: string | null;
+        meta_error_code?: number | null;
+        meta_error_subcode?: number | null;
+        meta_error_type?: string | null;
+        fbtrace_id?: string | null;
+        meta_body?: string;
+        signed_url_status?: number | string;
+        signed_url_content_type?: string | null;
+        signed_url_content_length?: string | null;
+      };
       if (!res.ok) {
-        throw new Error(json.error ?? `Falha (HTTP ${res.status})`);
+        console.error("[AUDIO SEND ERROR]", { http_status: res.status, ...json });
+        const parts = [
+          `HTTP ${res.status}`,
+          json.stage ? `stage=${json.stage}` : null,
+          json.meta_error_message ? `meta=${json.meta_error_message}` : null,
+          json.meta_error_code != null ? `code=${json.meta_error_code}` : null,
+          json.meta_error_subcode != null ? `subcode=${json.meta_error_subcode}` : null,
+          json.fbtrace_id ? `fbtrace=${json.fbtrace_id}` : null,
+          json.detail && !json.meta_error_message ? json.detail : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(" · ") || (json.error ?? `Falha (HTTP ${res.status})`));
       }
       onSent?.();
       reset();
     } catch (e) {
-      const msg = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
+      const detail = e instanceof Error ? e.message : "erro desconhecido";
+      const msg = `Áudio não enviado pelo WhatsApp · ${detail}`;
       console.error("[audio] send error", e);
       setError(msg);
-      toast.error(msg);
+      toast.error(msg, { duration: 10000 });
       // Mantém o blob localmente para o atendente tentar de novo.
       setState("preview");
     }
