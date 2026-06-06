@@ -68,6 +68,9 @@ async function validatePageAccessToken(
 // para a Marketing API. Se reprovar, o caller NÃO deve gravar em
 // integrations.access_token (essa coluna nunca pode conter PAGE token).
 const REQUIRED_USER_SCOPES = ["ads_management", "ads_read", "business_management"];
+const INCOMPLETE_RECONNECT_ERROR =
+  "Reconexão incompleta: o Facebook retornou token de Página. Refaça a conexão concedendo acesso ao usuário/conta de anúncios.";
+
 async function validateUserToken(token: string): Promise<{
   ok: boolean;
   reason?: string;
@@ -106,6 +109,39 @@ async function validateUserToken(token: string): Promise<{
   } catch (e) {
     return { ok: false, reason: `network_error:${String(e)}` };
   }
+}
+
+async function logMetaTokenRejection(
+  sb: any,
+  companyId: string,
+  context: {
+    stage: string;
+    endpoint: string;
+    tokenCheck: { type?: string; scopes?: string[]; reason?: string };
+    target_column?: string;
+    page_id?: string | null;
+    integration_id?: string | null;
+  },
+) {
+  const scopes = Array.isArray(context.tokenCheck.scopes) ? context.tokenCheck.scopes : [];
+  await sb.from("error_log").insert({
+    source: "meta",
+    severity: "warning",
+    message: "meta_token_rejected: integrations.access_token aceita apenas USER/SYSTEM_USER",
+    company_id: companyId,
+    context: {
+      stage: context.stage,
+      endpoint: context.endpoint,
+      token_type: context.tokenCheck.type ?? null,
+      target_column: context.target_column ?? "integrations.access_token",
+      rejected_reason: context.tokenCheck.reason ?? null,
+      scopes,
+      has_ads_read: scopes.includes("ads_read"),
+      has_ads_management: scopes.includes("ads_management"),
+      page_id: context.page_id ?? null,
+      integration_id: context.integration_id ?? null,
+    },
+  });
 }
 
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
