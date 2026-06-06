@@ -2137,13 +2137,14 @@ function ConversationPage() {
     <div className="flex-1 flex min-w-0 min-h-0 h-full max-w-full overflow-hidden">
       {/* Conversation column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 max-w-full border-r border-border overflow-hidden">
-        <header className="h-12 md:h-14 px-3 md:px-4 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
+        <header className="h-14 md:h-14 px-2 md:px-4 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
 
           <button
             onClick={() => navigate({ to: "/inbox" })}
-            className="md:hidden p-1.5 rounded-md hover:bg-accent shrink-0"
+            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent shrink-0"
+            aria-label="Voltar"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
@@ -2169,14 +2170,24 @@ function ConversationPage() {
             </div>
           </div>
           {!closedInfo && (
-            <button
-              onClick={() => setCloseOpen(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-[var(--status-won)] text-white hover:opacity-90 text-xs font-semibold shrink-0"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" /> Fechar venda
-            </button>
+            <>
+              <button
+                onClick={() => setCloseOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-[var(--status-won)] text-white hover:opacity-90 text-xs font-semibold shrink-0"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Fechar venda
+              </button>
+              <button
+                onClick={() => setCloseOpen(true)}
+                className="sm:hidden h-11 w-11 inline-flex items-center justify-center rounded-md bg-[var(--status-won)] text-white shrink-0"
+                aria-label="Fechar venda"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+              </button>
+            </>
           )}
         </header>
+
 
         {/* AI status banners */}
         {aiState?.ai_status === "aguardando_humano" && (
