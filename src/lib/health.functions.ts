@@ -5,18 +5,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-type SupabaseLike = {
-  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }>;
-  from: (t: string) => unknown;
-};
-
 async function getCompanyAndAdmin(
   supabase: unknown,
   userId: string,
 ): Promise<{ companyId: string | null; isAdmin: boolean }> {
-  const s = supabase as SupabaseLike & {
+  const s = supabase as {
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null }>;
     from: (t: string) => {
-      select: (c: string) => { eq: (c: string, v: string) => { maybeSingle: () => Promise<{ data: { company_id: string } | null }> } };
+      select: (c: string) => {
+        eq: (c: string, v: string) => {
+          maybeSingle: () => Promise<{ data: { company_id: string } | null }>;
+        };
+      };
     };
   };
   const { data: prof } = await s.from("profiles").select("company_id").eq("id", userId).maybeSingle();
