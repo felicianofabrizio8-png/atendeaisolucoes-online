@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Square, Play, Pause, Trash2, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 // URL do worker do encoder Opus, processada pelo Vite para um asset estático.
 import encoderWorkerUrl from "opus-recorder/dist/encoderWorker.min.js?url";
 
@@ -276,8 +277,10 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       onSent?.();
       reset();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao enviar áudio";
+      const msg = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
+      console.error("[audio] send error", e);
       setError(msg);
+      toast.error(msg);
       // Mantém o blob localmente para o atendente tentar de novo.
       setState("preview");
     }
