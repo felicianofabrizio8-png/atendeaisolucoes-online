@@ -320,10 +320,13 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           }
           const err = apiJson.error ?? {};
           externalId = apiJson.messages?.[0]?.id ?? null;
-          console.log("[send-audio] meta response", {
+          console.log("[AUDIO META RESPONSE]", {
             status: apiRes.status,
+            http_status: apiRes.status,
             ok: apiRes.ok,
             body: apiText,
+            parsed_body: apiJson,
+            messages_0_id: externalId,
             error_message: err.message,
             error_code: err.code,
             error_subcode: err.error_subcode,
@@ -339,13 +342,17 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           });
           if (!([200, 201].includes(apiRes.status)) || !externalId) {
             const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
-            console.error("[send-audio] meta error", {
+            console.error("[AUDIO META RESPONSE]", {
+              accepted_as_sent: false,
               status: apiRes.status,
+              http_status: apiRes.status,
               message: err.message,
               code: err.code,
               error_subcode: err.error_subcode,
               fbtrace_id: err.fbtrace_id,
               body: apiText,
+              parsed_body: apiJson,
+              messages_0_id: externalId,
               payload,
               phone_number_id: integration.external_account_id,
               to: recipient,
