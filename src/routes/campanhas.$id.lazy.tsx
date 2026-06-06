@@ -69,6 +69,12 @@ const routeApi = getRouteApi("/campanhas/$id");
 
 // Display-only status superset: maps onto Campaign["status"] plus future Meta states.
 type DisplayStatus = CampaignStatus | "publishing" | "error" | "rejected";
+type MetaPanelStatus = {
+  label: string;
+  hint: string;
+  variant: "active" | "paused" | "review" | "issues" | "archived" | "unknown";
+  rows: Array<{ label: string; id: string | null; status: string; effective: string }>;
+};
 
 export const Route = createLazyFileRoute("/campanhas/$id")({
   component: CampaignDetailPage,
