@@ -85,16 +85,18 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
     }
 
     const adminClient = await import("@/integrations/supabase/client.server");
-    const { data: integ } = await adminClient.supabaseAdmin
+    const { data: integrations } = await adminClient.supabaseAdmin
       .from("integrations")
       .select("access_token, account_metadata")
       .eq("company_id", companyId)
       .in("channel", ["instagram", "facebook"])
-      .eq("active", true)
-      .maybeSingle();
-    const integration = integ as
-      | { access_token: string | null; account_metadata: Record<string, unknown> | null }
-      | null;
+      .eq("active", true);
+    const integration = ((integrations ?? []) as Array<{
+      access_token: string | null;
+      account_metadata: Record<string, unknown> | null;
+    }>).find((i) => Boolean(i.access_token && i.account_metadata?.ad_account_id)) ??
+      ((integrations ?? []) as Array<{ access_token: string | null; account_metadata: Record<string, unknown> | null }>).find((i) => Boolean(i.access_token)) ??
+      null;
     const token = integration?.access_token;
     if (!token) {
       return {
