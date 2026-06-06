@@ -297,35 +297,29 @@ function QuoteCard({ quote }: { quote: Quote }) {
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+      <div className="rounded-lg border border-border bg-card p-3 md:p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold truncate">{quote.productName}</div>
             <div className="text-[12px] font-medium truncate">
               {lead?.name ?? "— Cliente não selecionado —"}
             </div>
             <div className="text-[11px] text-muted-foreground truncate">
-              {contactLine} • criado há {timeAgo(quote.createdAt)}
+              {contactLine}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              há {timeAgo(quote.createdAt)}
             </div>
           </div>
-          <div className="flex items-start gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <div className="text-right">
-              <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
+              <div className="text-lg md:text-base font-bold leading-tight">{formatBRL(quote.finalValue)}</div>
               {quote.installments > 1 && (
                 <div className="text-[11px] text-muted-foreground">
-                  {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
+                  {quote.installments}x {formatBRL(quote.finalValue / quote.installments)}
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              aria-label="Excluir orçamento"
-              title="Excluir orçamento"
-              className="h-7 w-7 -mt-1 -mr-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
           </div>
         </div>
 
@@ -342,7 +336,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2">
           <button
             onClick={() => {
               if (!hasClient) {
@@ -356,26 +350,42 @@ function QuoteCard({ quote }: { quote: Quote }) {
               setWaOpen(true);
             }}
             disabled={!canWhatsApp}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-[#25D366] text-white px-3 py-1.5 hover:opacity-90 font-semibold disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-[#25D366] text-white px-3 min-h-11 md:min-h-0 md:py-1.5 hover:opacity-90 font-semibold disabled:opacity-40 w-full md:w-auto"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
             {quote.sent ? "Reenviar no WhatsApp" : "Enviar no WhatsApp"}
           </button>
-          <button
-            onClick={openConversation}
-            disabled={!hasClient}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
-          >
-            <MessageCircle className="h-3.5 w-3.5" /> Abrir conversa
-          </button>
-          <button
-            onClick={copyMessage}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
-          >
-            <Copy className="h-3.5 w-3.5" /> Copiar orçamento
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openConversation}
+              disabled={!hasClient}
+              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
+            >
+              <MessageCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="md:inline">Abrir conversa</span>
+            </button>
+            <button
+              onClick={copyMessage}
+              aria-label="Copiar orçamento"
+              title="Copiar orçamento"
+              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:px-3 md:py-1.5 hover:bg-accent font-semibold"
+            >
+              <Copy className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="hidden md:inline">Copiar orçamento</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Excluir orçamento"
+              title="Excluir orçamento"
+              className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7"
+            >
+              <Trash2 className="h-4 w-4 md:h-3.5 md:w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
+
 
       {waOpen && lead && (
         <SendWhatsAppModal
