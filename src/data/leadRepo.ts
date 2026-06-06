@@ -289,7 +289,7 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .eq("company_id", companyId),
       supabase
         .from("messages")
-        .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for")
+        .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at")
         .eq("company_id", companyId)
         .order("at", { ascending: true }),
     ]);
@@ -433,7 +433,7 @@ export async function refetchConversationMessages(conversationId: string) {
   if (mode !== "remote") return;
   const { data, error } = await supabase
     .from("messages")
-    .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for")
+    .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at")
     .eq("conversation_id", conversationId)
     .order("at", { ascending: true })
     .limit(200);
