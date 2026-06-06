@@ -2,6 +2,8 @@ import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
+import { syncCampaignStatusFromMeta } from "@/lib/campaign-meta-sync.functions";
+
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
 import {
