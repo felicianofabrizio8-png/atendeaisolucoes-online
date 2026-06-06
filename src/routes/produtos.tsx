@@ -322,10 +322,10 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch md:items-center justify-center md:p-4">
       <form
         onSubmit={handleSubmit}
-        className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-card border-0 md:border border-border md:rounded-lg shadow-lg w-full md:max-w-md max-h-[100dvh] md:max-h-[90vh] overflow-y-auto safe-top safe-bottom"
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-sm font-semibold">{isEdit ? "Editar produto" : "Novo produto"}</h2>
