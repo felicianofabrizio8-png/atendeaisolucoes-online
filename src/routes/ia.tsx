@@ -805,7 +805,7 @@ function ConfiguracoesIA() {
                             </span>
                           </div>
                           {e.payload && Object.keys(e.payload).length > 0 && (
-                            <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                            <pre className="mt-1 whitespace-pre-wrap break-all text-muted-foreground max-w-full overflow-hidden">
                               {JSON.stringify(e.payload, null, 0).slice(0, 240)}
                             </pre>
                           )}
