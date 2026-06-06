@@ -1425,13 +1425,27 @@ export const publishCampaign = createServerFn({ method: "POST" })
       },
     );
     if (!adRes.ok) {
-      console.error("[publishCampaign] create_ad fail", {
-        status: adRes.status, message: adRes.message, body: adRes.body,
+      console.error("[publishCampaign] create_ad fail — resposta bruta da Meta", {
+        endpoint: `${GRAPH}/${actId}/ads`,
+        request_payload: adPayload,
+        whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
+        page_id: pageId,
+        instagram_actor_id: igActorId || null,
+        creative_id: creativeId,
+        adset_id: metaAdsetId,
+        response_status: adRes.status,
+        response_message: adRes.message,
+        response_body: adRes.body,
+        response_raw: (adRes as { rawText?: string }).rawText ?? null,
       });
-      return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
+      return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body, {
+        endpoint: `${GRAPH}/${actId}/ads`,
+        request_payload: adPayload,
+        response_status: adRes.status,
+        response_body: adRes.body,
+        response_raw: (adRes as { rawText?: string }).rawText ?? null,
+      });
     }
-    const metaAdId = adRes.data.id;
-    console.log("[publishCampaign] create_ad ok", { metaAdId });
 
     // Step F: confirma que o ad existe na Meta antes de marcar como publicada.
     const verifyRes = await graphFetch<{ id: string; status?: string }>(
