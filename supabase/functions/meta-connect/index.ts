@@ -416,6 +416,27 @@ Deno.serve(async (req) => {
     }
     const me = (await meRes.json()) as { id: string; name?: string };
 
+    const basicUserCheck = await validateUserToken(shortToken);
+    if (!basicUserCheck.ok) {
+      await logMetaTokenRejection(sb, companyId, {
+        stage: "basic_guard",
+        endpoint: "meta-connect:basic",
+        tokenCheck: basicUserCheck,
+        page_id: me.id,
+      });
+      return json(
+        {
+          ok: false,
+          error: basicUserCheck.type === "PAGE"
+            ? INCOMPLETE_RECONNECT_ERROR
+            : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+          token_type: basicUserCheck.type ?? null,
+          reason: basicUserCheck.reason,
+        },
+        400,
+      );
+    }
+
     await sb.from("integrations").upsert(
       {
         company_id: companyId,
@@ -424,7 +445,7 @@ Deno.serve(async (req) => {
         external_account_id: `user:${me.id}`,
         access_token: shortToken,
         active: true,
-        account_metadata: { mode: "basic", fb_user_id: me.id },
+        account_metadata: { mode: "basic", fb_user_id: me.id, token_type: basicUserCheck.type ?? "USER", scopes: basicUserCheck.scopes ?? [] },
         last_error: null,
         last_synced_at: new Date().toISOString(),
       },
