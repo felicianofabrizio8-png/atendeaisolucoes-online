@@ -209,10 +209,34 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   async function adoptDiagnosedToken() {
     if (!manualToken.trim()) return;
     setAdopting(true);
+    setVerification(null);
     try {
+      const inputSuffix = `***${manualToken.trim().slice(-6)}`;
       const r = await adoptToken({ data: { token: manualToken.trim() } });
       if (r.ok) {
-        toast.success(`Token ${r.type} salvo em ${r.updated} integração(ões).`);
+        toast.success(`Token ${r.type} salvo em ${r.updated} integração(ões). Verificando...`);
+        // Verifica o que foi efetivamente persistido em integrations.access_token
+        const v = await verifyPersisted({ data: { expectedTokenSuffix: inputSuffix } });
+        if (v.ok) {
+          setVerification({
+            ok: true,
+            persistedTokenSuffix: v.persistedTokenSuffix,
+            debugToken: v.debugToken,
+            me: v.me,
+            meError: v.meError,
+            adAccounts: v.adAccounts,
+            adAccountsError: v.adAccountsError,
+          });
+          toast.success("Token persistido validado.");
+        } else {
+          setVerification({
+            ok: false,
+            error: ("error" in v && v.error) || "verify_failed",
+            message: ("message" in v && v.message) || "Falha ao verificar token persistido.",
+            persistedTokenSuffix: ("persistedTokenSuffix" in v ? v.persistedTokenSuffix : undefined),
+          });
+          toast.error(("message" in v && v.message) || "Falha ao verificar token persistido.");
+        }
         setManualToken("");
         setDiagnosis(null);
         await refresh({ silent: true });
