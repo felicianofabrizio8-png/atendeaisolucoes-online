@@ -1435,11 +1435,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
         .join(" | ");
       return fail(
         "activate_objects",
-        `Meta retornou status não-ativo após POST status=ACTIVE. ` +
-        `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
-          `adset=${adsetAct.status_after ?? "?"}/${adsetAct.effective_status_after ?? "?"}, ` +
-          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}. ` +
-          `Publicação só é concluída quando status e effective_status são ACTIVE nos três objetos.` +
+        `Meta não ativou a campanha: ` +
+          `campaign=${campAct.status_after ?? "?"}, ` +
+          `adset=${adsetAct.status_after ?? "?"}, ` +
+          `ad=${adAct.status_after ?? "?"}` +
+          ` (effective: campaign=${campAct.effective_status_after ?? "?"}, adset=${adsetAct.effective_status_after ?? "?"}, ad=${adAct.effective_status_after ?? "?"}).` +
           (activationErrors ? ` Meta: ${activationErrors}` : ""),
         { activationLog },
         { activationLog },
