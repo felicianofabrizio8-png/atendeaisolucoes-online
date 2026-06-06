@@ -222,12 +222,16 @@ async function downloadAndStoreMedia(args: {
   fallbackMime?: string;
   filename?: string;
 }): Promise<{
-  media_path: string;
-  media_mime: string;
-  media_filename: string | null;
-  media_size: number | null;
-  media_kind: WaMediaKind;
-  media_downloaded_at: string;
+  bytes: Uint8Array;
+  meta: {
+    media_path: string;
+    media_bucket: string;
+    media_mime: string;
+    media_filename: string | null;
+    media_size: number | null;
+    media_kind: WaMediaKind;
+    media_downloaded_at: string;
+  };
 } | null> {
   const { accessToken, companyId, conversationId, messageWaId, mediaId, kind } = args;
 
