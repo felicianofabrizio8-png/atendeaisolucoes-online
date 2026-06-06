@@ -370,10 +370,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           to: recipient,
           phone_number_id: integration.external_account_id,
           media_mime: baseMime,
+          detected_audio: detectedAudio,
           media_size: file.size,
           signed_url_status: signedUrlStatus,
           signed_url_content_type: signedUrlContentType,
           signed_url_content_length: signedUrlContentLength,
+          signed_url_detected_audio: signedUrlDetectedAudio,
         });
 
         let externalId: string | null = null;
@@ -410,10 +412,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
+            detected_audio: detectedAudio,
             media_size: file.size,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
           });
           if (!([200, 201].includes(apiRes.status)) || !externalId) {
             const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
@@ -449,10 +453,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 phone_number_id: integration.external_account_id,
                 payload,
                 media_mime: baseMime,
+                detected_audio: detectedAudio,
                 media_size: file.size,
                 signed_url_status: signedUrlStatus,
                 signed_url_content_type: signedUrlContentType,
                 signed_url_content_length: signedUrlContentLength,
+                signed_url_detected_audio: signedUrlDetectedAudio,
                 http_status: apiRes.status,
                 meta_error_message: err.message ?? null,
                 meta_error_code: err.code ?? null,
@@ -486,10 +492,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 phone_number_id: integration.external_account_id,
                 to: recipient,
                 media_mime: baseMime,
+                detected_audio: detectedAudio,
                 media_size: file.size,
                 signed_url_status: signedUrlStatus,
                 signed_url_content_type: signedUrlContentType,
                 signed_url_content_length: signedUrlContentLength,
+                signed_url_detected_audio: signedUrlDetectedAudio,
               },
               { status: 502 },
             );
