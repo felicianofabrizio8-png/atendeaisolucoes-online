@@ -1273,13 +1273,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     console.log("[publishCampaign] verify_ad ok", { metaAdId, verified: verifyRes.data });
 
+    const creationStatusLog = await Promise.all([
+      fetchObjectStatus("campaign", metaCampaignId),
+      fetchObjectStatus("adset", metaAdsetId),
+      fetchObjectStatus("ad", metaAdId),
+    ]);
+    await recordMetaStatusLog("after_creation", creationStatusLog, {
+      creative_id: creativeId,
+      page_id: pageId,
+      whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
+      whatsapp_number: channel === "whatsapp" ? waPhone : null,
+    });
+
     // Step G: ATIVAÇÃO FINAL — Meta cria tudo em PAUSED por padrão.
     // Sem este passo a campanha nunca entra em análise/entrega.
-    type StatusResp = { id: string; status?: string; effective_status?: string };
     const activationLog: Array<{
       object: "campaign" | "adset" | "ad";
       id: string;
       status_before: string;
+      effective_status_before?: string;
       activate_ok: boolean;
       activate_error?: string;
       status_after?: string;
@@ -1289,7 +1301,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     async function activateObject(
       object: "campaign" | "adset" | "ad",
       id: string,
-      statusBefore: string,
+      before: StatusSnapshot | undefined,
     ) {
       const form = new URLSearchParams();
       form.set("status", "ACTIVE");
@@ -1306,7 +1318,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const entry = {
         object,
         id,
-        status_before: statusBefore,
+        status_before: before?.status ?? "unknown",
+        effective_status_before: before?.effective_status,
         activate_ok: actRes.ok,
         activate_error: actRes.ok ? undefined : formatGraphError(actRes.body, actRes.message),
         status_after: getRes.ok ? getRes.data.status : undefined,
@@ -1317,9 +1330,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return entry;
     }
 
-    const campAct = await activateObject("campaign", metaCampaignId, "PAUSED");
-    const adsetAct = await activateObject("adset", metaAdsetId, "PAUSED");
-    const adAct = await activateObject("ad", metaAdId, "PAUSED");
+    const beforeByObject = Object.fromEntries(creationStatusLog.map((s) => [s.object, s])) as Partial<Record<MetaObjectKind, StatusSnapshot>>;
+    const campAct = await activateObject("campaign", metaCampaignId, beforeByObject.campaign);
+    const adsetAct = await activateObject("adset", metaAdsetId, beforeByObject.adset);
+    const adAct = await activateObject("ad", metaAdId, beforeByObject.ad);
+
+    await recordMetaStatusLog(
+      "after_activation",
+      activationLog.map((a) => ({
+        object: a.object,
+        id: a.id,
+        status: a.status_after,
+        effective_status: a.effective_status_after,
+        error: a.activate_error,
+      })),
+      {
+        creative_id: creativeId,
+        activationLog,
+      },
+    );
 
     const adOk =
       adAct.status_after === "ACTIVE" || adAct.status_after === "PENDING_REVIEW" ||
