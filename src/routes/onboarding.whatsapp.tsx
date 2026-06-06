@@ -376,6 +376,7 @@ function OnboardingWhatsApp() {
       const data = ev.data as {
         type?: string;
         code?: string;
+        state?: string;
         access_token?: string;
         error?: string;
         error_reason?: string;
@@ -384,20 +385,26 @@ function OnboardingWhatsApp() {
         raw?: Record<string, string>;
       } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
-      console.log("META_OAUTH_CALLBACK_RESPONSE", { payload: data });
+      console.log("META_OAUTH_CALLBACK_RESPONSE", { payload: { ...data, code: data.code ? "[redacted]" : undefined } });
       if (data.error) {
         console.error("META_OAUTH_POPUP_ERROR", {
           error: data.error,
           error_reason: data.error_reason,
           error_description: data.error_description,
           error_code: data.error_code,
-          raw: data.raw,
         });
         setConnecting(false);
         setErrorMsg(data.error);
         return;
       }
       if (data.code) {
+        const expected = window.sessionStorage.getItem("META_OAUTH_STATE");
+        window.sessionStorage.removeItem("META_OAUTH_STATE");
+        if (!expected || expected !== data.state) {
+          setConnecting(false);
+          setErrorMsg("Sessão OAuth inválida. Tente conectar novamente.");
+          return;
+        }
         void exchangeCodeForToken(data.code);
       } else if (data.access_token) {
         void discoverAssets(data.access_token).finally(() => setConnecting(false));

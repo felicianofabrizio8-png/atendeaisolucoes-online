@@ -11,7 +11,8 @@ const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const META_APP_SECRETS_EXTRA = Deno.env.get("META_APP_SECRETS") ?? ""; // comma-separated fallback secrets
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? Deno.env.get("VITE_META_APP_ID") ?? "";
-const META_SKIP_SIG = Deno.env.get("META_SKIP_SIG") === "1"; // emergency bypass
+// Bypass removed for security — HMAC signature is always enforced.
+const META_SKIP_SIG = false;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -890,12 +891,12 @@ Deno.serve(async (req) => {
       bodyLen: rawBodyBytes.byteLength,
       origin,
       candidates: sigResult.candidates,
-      skipping: META_SKIP_SIG,
+      skipping: false,
     });
     if (origin.object === "instagram") {
       await logInstagramAppDiagnostics(sb, origin.entryIds);
     }
-    if (!META_SKIP_SIG) return text("invalid signature", 401);
+    return text("invalid signature", 401);
   } else {
     console.log("META_WEBHOOK_SIG_OK", {
       secretsTried: sigResult.secretsTried,

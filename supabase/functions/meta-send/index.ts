@@ -15,19 +15,30 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-function json(b: unknown, s = 200) {
-  return new Response(JSON.stringify(b), {
-    status: s,
-    headers: { ...cors, "Content-Type": "application/json" },
-  });
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/([a-z0-9-]+\.)*lovable\.app$/i,
+  /^https:\/\/([a-z0-9-]+\.)*lovableproject\.com$/i,
+  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
+  /^http:\/\/localhost(:\d+)?$/i,
+];
+function corsFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  return {
+    "Access-Control-Allow-Origin": allowed ? origin : "null",
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 }
 
 Deno.serve(async (req) => {
+  const cors = corsFor(req);
+  const json = (b: unknown, s = 200) =>
+    new Response(JSON.stringify(b), {
+      status: s,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
 

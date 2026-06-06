@@ -11,12 +11,25 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
-};
-
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/([a-z0-9-]+\.)*lovable\.app$/i,
+  /^https:\/\/([a-z0-9-]+\.)*lovableproject\.com$/i,
+  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
+  /^http:\/\/localhost(:\d+)?$/i,
+];
+function corsFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  return {
+    "Access-Control-Allow-Origin": allowed ? origin : "null",
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+  };
+}
+// Placeholder kept for in-file helpers that don't return responses; real CORS
+// is applied per-request via the json() closure inside Deno.serve below.
+const cors: Record<string, string> = {};
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -239,6 +252,8 @@ async function subscribePage(pageId: string, pageToken: string) {
 }
 
 Deno.serve(async (req) => {
+  // Per-request CORS replaces wildcard at module scope.
+  Object.assign(cors, corsFor(req));
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
   const authHeader = req.headers.get("Authorization") ?? "";

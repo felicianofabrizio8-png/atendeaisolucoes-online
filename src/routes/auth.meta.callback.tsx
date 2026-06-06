@@ -27,9 +27,10 @@ function MetaCallback() {
 
     const isPopup = !!window.opener && window.opener !== window;
 
+    const redactedParams: Record<string, string> = { ...allParams };
+    if (redactedParams.code) redactedParams.code = "[redacted]";
     console.log("META_OAUTH_CALLBACK_RESPONSE", {
       status: 200,
-      url: window.location.href,
       pathname: url.pathname,
       is_popup: isPopup,
       has_code: Boolean(code),
@@ -38,7 +39,7 @@ function MetaCallback() {
       error_reason: errorReason,
       error_description: errorDesc,
       error_code: errorCode,
-      all_params: allParams,
+      all_params: redactedParams,
     });
 
     if (errorParam) {
