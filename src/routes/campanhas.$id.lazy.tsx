@@ -944,7 +944,7 @@ function buildTimeline(c: Campaign): TimelineEvent[] {
       at: c.updated_at,
       tone: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
     });
-    if (c.status === "active") {
+    if (c.meta_delivery_status === "active_on_meta") {
       events.push({
         source: "meta",
         icon: PlayCircle,
@@ -962,13 +962,25 @@ function buildTimeline(c: Campaign): TimelineEvent[] {
         tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
       });
     }
-    if (c.status === "paused") {
+    if (c.meta_delivery_status === "paused_on_meta" || c.status === "paused") {
       events.push({
         source: "meta",
         icon: PauseCircle,
         label: "Campanha pausada",
         at: c.updated_at,
         tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      });
+    }
+    if (c.meta_delivery_status === "review_on_meta" || c.meta_delivery_status === "issues_on_meta") {
+      events.push({
+        source: "meta",
+        icon: c.meta_delivery_status === "issues_on_meta" ? AlertTriangle : Clock,
+        label: c.meta_delivery_status === "issues_on_meta" ? "Meta retornou problema" : "Em revisão/processamento na Meta",
+        detail: c.meta_publish_error ?? undefined,
+        at: c.meta_last_sync_at ?? c.updated_at,
+        tone: c.meta_delivery_status === "issues_on_meta"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
       });
     }
     if (c.status === "ended") {
