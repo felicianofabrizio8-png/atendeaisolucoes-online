@@ -1446,6 +1446,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
         response_raw: (adRes as { rawText?: string }).rawText ?? null,
       });
     }
+    const metaAdId = adRes.data.id;
+    console.log("[publishCampaign] create_ad ok", { metaAdId });
 
     // Step F: confirma que o ad existe na Meta antes de marcar como publicada.
     const verifyRes = await graphFetch<{ id: string; status?: string }>(
