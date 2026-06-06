@@ -4,6 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
 import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
 import { activateCampaignOnMeta } from "@/lib/campaign-meta-activate.functions";
+import { syncCampaignInsightsFromMeta, type CampaignInsightsResult } from "@/lib/campaign-meta-insights.functions";
+import { RefreshCw } from "lucide-react";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
