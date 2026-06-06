@@ -395,21 +395,37 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     if (typeof window === "undefined") return;
     const pendingCode = window.sessionStorage.getItem("META_OAUTH_CODE");
     if (pendingCode) {
+      const expected = window.sessionStorage.getItem("META_OAUTH_STATE");
+      const received = window.sessionStorage.getItem("META_OAUTH_STATE_RX");
       window.sessionStorage.removeItem("META_OAUTH_CODE");
       window.sessionStorage.removeItem("META_OAUTH_STATE_RX");
-      void completeReconnectWithCode(pendingCode);
+      window.sessionStorage.removeItem("META_OAUTH_STATE");
+      if (!expected || expected !== received) {
+        toast.error("Sessão OAuth inválida. Tente conectar novamente.");
+      } else {
+        void completeReconnectWithCode(pendingCode);
+      }
     }
 
     const onMessage = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string; code?: string; error?: string } | null;
+      const data = ev.data as { type?: string; code?: string; state?: string; error?: string } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
       if (data.error) {
         setReconnecting(false);
         toast.error(data.error);
         return;
       }
-      if (data.code) void completeReconnectWithCode(data.code);
+      if (data.code) {
+        const expected = window.sessionStorage.getItem("META_OAUTH_STATE");
+        window.sessionStorage.removeItem("META_OAUTH_STATE");
+        if (!expected || expected !== data.state) {
+          setReconnecting(false);
+          toast.error("Sessão OAuth inválida. Tente conectar novamente.");
+          return;
+        }
+        void completeReconnectWithCode(data.code);
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
