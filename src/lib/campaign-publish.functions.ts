@@ -947,7 +947,23 @@ export const publishCampaign = createServerFn({ method: "POST" })
         "create_creative",
         "Número de WhatsApp da página não encontrado — vincule um WhatsApp Business no Gerenciador da Meta antes de publicar.",
         null,
-        { page_id: pageId, image_hash: imageHash },
+        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId || null, image_hash: imageHash },
+      );
+    }
+    if (channel === "whatsapp" && !waPhoneNumberId) {
+      return fail(
+        "create_creative",
+        "whatsapp_phone_number_id ausente — reconecte o WhatsApp Business antes de publicar anúncios Click to WhatsApp.",
+        null,
+        { page_id: pageId, whatsapp_number: waPhone, image_hash: imageHash },
+      );
+    }
+    if (channel === "whatsapp" && !waPhoneVerified) {
+      return fail(
+        "create_creative",
+        "Não foi possível validar o whatsapp_phone_number_id na Graph API antes de criar o anúncio.",
+        null,
+        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId, waba_id: waWabaId || null, image_hash: imageHash },
       );
     }
     if (channel === "instagram" && !igActorId) {
@@ -978,7 +994,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // fazem a Meta rejeitar com code=100 subcode=1487390 (erro genérico de creative).
     function buildCtaValue(): Record<string, unknown> {
       if (channel === "whatsapp") {
-        return { app_destination: "WHATSAPP", link: waLink };
+        return { app_destination: "WHATSAPP", link: waLink, whatsapp_phone_number_id: waPhoneNumberId };
       }
       if (channel === "messenger") {
         return { app_destination: "MESSENGER", link: messengerLink };
