@@ -328,7 +328,7 @@ function CampaignDetailPage() {
   }
 
   const status: DisplayStatus = c.status;
-  void c.leads_count; // (cpl agora vem de insights.metrics.cost_per_lead)
+  
   const metaActive = Boolean(c.meta_campaign_id);
   const metaStatus = getMetaPanelStatus(c, metaLiveStatus);
   // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
