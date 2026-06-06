@@ -449,8 +449,8 @@ function ConfiguracoesIA() {
               </Field>
             </CardContent>
           </Card>
-          <div className="flex justify-end">
-            <Button onClick={saveProfile} disabled={saving}>
+          <div className="flex justify-end sticky bottom-0 -mx-3 md:mx-0 px-3 md:px-0 py-2 md:py-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none safe-bottom border-t md:border-0 border-border">
+            <Button onClick={saveProfile} disabled={saving} className="w-full md:w-auto min-h-11 md:min-h-9">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar perfil
             </Button>
           </div>
@@ -491,7 +491,7 @@ function ConfiguracoesIA() {
             </CardContent>
           </Card>
           <div className="flex justify-end">
-            <Button onClick={saveProfile} disabled={saving}>
+            <Button onClick={saveProfile} disabled={saving} className="w-full md:w-auto min-h-11 md:min-h-9">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar FAQ
             </Button>
           </div>
