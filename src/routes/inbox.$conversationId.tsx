@@ -565,6 +565,51 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   );
 }
 
+function MediaAiNote({ message, kind }: { message: Message; kind: MediaKind }) {
+  const meta = message.sourceMetadata as Record<string, unknown> | undefined;
+  if (!meta) return null;
+  const transcription = (meta.transcription_text as string | undefined) ?? null;
+  const vision = (meta.vision_summary as string | undefined) ?? null;
+  const docSummary = (meta.document_summary as string | undefined) ?? null;
+  const extracted = (meta.extracted_text as string | undefined) ?? null;
+  const err = (meta.ai_media_error as string | undefined) ?? null;
+
+  const items: Array<{ label: string; value: string }> = [];
+  if (kind === "audio" && transcription)
+    items.push({ label: "Transcrição do áudio", value: transcription });
+  if (kind === "image" && vision)
+    items.push({ label: "IA identificou", value: vision });
+  if (kind === "document") {
+    if (extracted && extracted !== docSummary)
+      items.push({ label: "Texto extraído", value: extracted });
+    if (docSummary)
+      items.push({ label: "Resumo do documento", value: docSummary });
+  }
+
+  if (items.length === 0 && !err) return null;
+  return (
+    <div className="mt-1.5 space-y-1">
+      {items.map((it, i) => (
+        <div
+          key={i}
+          className="text-[11px] leading-snug rounded-md bg-muted/40 border border-border/60 px-2 py-1"
+        >
+          <span className="font-semibold opacity-80">{it.label}:</span>{" "}
+          <span className="opacity-90 whitespace-pre-wrap">{it.value}</span>
+        </div>
+      ))}
+      {err && (
+        <div
+          className="text-[10px] leading-snug rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-1"
+          title="Visível apenas para a equipe — a mídia continua disponível para resposta humana."
+        >
+          ⚠️ IA não conseguiu analisar a mídia: {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageContent({ message }: { message: Message }) {
   const info = getMediaInfo(message);
   const reply = getReplyTo(message);
@@ -575,6 +620,7 @@ function MessageContent({ message }: { message: Message }) {
     const showCaption =
       trimmed.length > 0 && !/^\[/.test(trimmed) && !/^https?:\/\//.test(trimmed);
     const caption = showCaption ? <div>{trimmed}</div> : null;
+    const aiNote = <MediaAiNote message={message} kind={info.kind} />;
 
     switch (info.kind) {
       case "image":
@@ -583,6 +629,7 @@ function MessageContent({ message }: { message: Message }) {
             {replyNode}
             <ImagePreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
             {caption}
+            {aiNote}
           </div>
         );
       case "video":
@@ -599,6 +646,7 @@ function MessageContent({ message }: { message: Message }) {
             {replyNode}
             <AudioPreview path={info.path} mime={info.mime} filename={info.filename} bucket={info.bucket} />
             {caption}
+            {aiNote}
           </div>
         );
       case "document":
@@ -613,6 +661,7 @@ function MessageContent({ message }: { message: Message }) {
               bucket={info.bucket}
             />
             {caption}
+            {aiNote}
           </div>
         );
       case "sticker":
