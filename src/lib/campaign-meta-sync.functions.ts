@@ -11,6 +11,7 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 
 type StatusResp = {
   id: string;
+  name?: string;
   status?: string;
   effective_status?: string;
 };
@@ -18,7 +19,7 @@ type StatusResp = {
 async function getStatus(id: string, token: string): Promise<StatusResp | { error: string }> {
   try {
     const r = await fetch(
-      `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(token)}`,
+      `${GRAPH}/${id}?fields=id,name,status,effective_status&access_token=${encodeURIComponent(token)}`,
     );
     const j = (await r.json()) as StatusResp & { error?: { message?: string } };
     if (j.error) return { error: j.error.message ?? "graph_error" };
@@ -34,7 +35,7 @@ export type CampaignMetaLiveStatus = {
   campaign: StatusResp | { error: string } | null;
   adset: StatusResp | { error: string } | null;
   ad: StatusResp | { error: string } | null;
-  delivery: "active_on_meta" | "paused_on_meta" | "archived_on_meta" | "unknown";
+  delivery: "active_on_meta" | "paused_on_meta" | "archived_on_meta" | "review_on_meta" | "issues_on_meta" | "unknown";
   error?: string;
 };
 
