@@ -1,14 +1,18 @@
-// AudioRecorder — botão de microfone do composer.
-// Fluxo mobile-first: 1) tocar mic, 2) gravar com timer + indicador,
-// 3) parar → preview (play + enviar/cancelar). Envia via /api/whatsapp/send-audio.
+// AudioRecorder — botão de microfone do composer (somente WhatsApp).
 //
-// Detecta o melhor mimeType suportado pelo navegador, na ordem que o WhatsApp
-// Cloud API aceita: audio/ogg;codecs=opus → audio/mp4 → audio/aac → audio/webm.
-// Não bloqueia o fluxo de texto; falhas de microfone mostram erro amigável.
+// Estratégia de formato: WhatsApp Cloud API só aceita áudio (voice note) nos
+// containers AAC, AMR, MPEG, MP4 e OGG/Opus. Chrome (desktop e Android) grava
+// nativamente apenas em WebM/Opus, que a Meta REJEITA — a mensagem volta como
+// anexo ou erro. Para evitar isso, sempre gravamos em OGG/Opus usando a
+// biblioteca opus-recorder (WebAssembly), exceto quando o navegador já oferece
+// MediaRecorder nativo em audio/mp4 (Safari/iOS), aí preferimos o caminho
+// nativo por economia de download.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Square, Play, Pause, Trash2, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+// URL do worker do encoder Opus, processada pelo Vite para um asset estático.
+import encoderWorkerUrl from "opus-recorder/dist/encoderWorker.min.js?url";
 
 interface Props {
   conversationId: string;
@@ -16,25 +20,28 @@ interface Props {
   onSent?: () => void;
 }
 
-const PREFERRED_MIMES = [
-  "audio/ogg;codecs=opus",
-  "audio/ogg",
-  "audio/mp4",
-  "audio/aac",
-  "audio/webm;codecs=opus",
-  "audio/webm",
-];
+type RecorderLike = {
+  start: () => Promise<void> | void;
+  stop: () => Promise<void> | void;
+  close?: () => void;
+  ondataavailable?: (data: ArrayBuffer | Uint8Array | Blob) => void;
+  onstop?: () => void;
+};
 
-function pickMimeType(): string | "" {
-  if (typeof MediaRecorder === "undefined") return "";
-  for (const m of PREFERRED_MIMES) {
+type NativeMime = "audio/mp4" | "audio/aac" | "audio/mpeg" | "audio/ogg";
+
+function pickNativeMime(): NativeMime | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  // Só consideramos formatos REALMENTE aceitos pelo WhatsApp como voz.
+  const candidates: NativeMime[] = ["audio/mp4", "audio/aac", "audio/mpeg", "audio/ogg"];
+  for (const m of candidates) {
     try {
       if (MediaRecorder.isTypeSupported(m)) return m;
     } catch {
       /* */
     }
   }
-  return "";
+  return null;
 }
 
 function fmtTime(secs: number): string {
@@ -44,6 +51,8 @@ function fmtTime(secs: number): string {
   return `${mm}:${ss}`;
 }
 
+const MAX_BYTES = 16 * 1024 * 1024;
+
 export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const [state, setState] = useState<"idle" | "recording" | "preview" | "sending">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -51,17 +60,21 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // Recorder pode ser nativo (MediaRecorder) ou opus-recorder.
+  const recorderRef = useRef<RecorderLike | MediaRecorder | null>(null);
+  const recorderKindRef = useRef<"native" | "opus" | null>(null);
+  const recorderMimeRef = useRef<string>("audio/ogg");
   const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const chunksRef = useRef<BlobPart[]>([]);
   const startedAtRef = useRef<number>(0);
   const tickRef = useRef<number | null>(null);
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
+  const nativeMime = useMemo(() => pickNativeMime(), []);
+
   useEffect(() => {
     return () => {
-      // Cleanup ao desmontar
       if (tickRef.current) window.clearInterval(tickRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -78,14 +91,31 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     if (tickRef.current) window.clearInterval(tickRef.current);
     tickRef.current = null;
     stopStream();
+    try {
+      const r = recorderRef.current as RecorderLike | null;
+      r?.close?.();
+    } catch {
+      /* */
+    }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setSeconds(0);
     setIsPlaying(false);
     blobRef.current = null;
     chunksRef.current = [];
-    mediaRecorderRef.current = null;
+    recorderRef.current = null;
+    recorderKindRef.current = null;
     setState("idle");
+  };
+
+  const finalize = (blob: Blob) => {
+    blobRef.current = blob;
+    const url = URL.createObjectURL(blob);
+    setPreviewUrl(url);
+    setState("preview");
+    stopStream();
+    if (tickRef.current) window.clearInterval(tickRef.current);
+    tickRef.current = null;
   };
 
   const startRecording = async () => {
@@ -94,6 +124,11 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       setError("Seu navegador não suporta gravação de áudio.");
       return;
     }
+    if (!window.isSecureContext) {
+      setError("Gravação exige HTTPS. Acesse pelo domínio publicado.");
+      return;
+    }
+
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -108,32 +143,64 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       }
       return;
     }
-
     streamRef.current = stream;
-    const mime = pickMimeType();
-    let recorder: MediaRecorder;
-    try {
-      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    } catch {
-      recorder = new MediaRecorder(stream);
-    }
-    mediaRecorderRef.current = recorder;
     chunksRef.current = [];
 
-    recorder.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
-    };
-    recorder.onstop = () => {
-      const type = recorder.mimeType || mime || "audio/webm";
-      const blob = new Blob(chunksRef.current, { type });
-      blobRef.current = blob;
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl(url);
-      setState("preview");
+    try {
+      if (nativeMime) {
+        // Caminho nativo: Safari/iOS produz mp4/aac aceito pela Meta.
+        const rec = new MediaRecorder(stream, { mimeType: nativeMime });
+        recorderRef.current = rec;
+        recorderKindRef.current = "native";
+        recorderMimeRef.current = nativeMime;
+        rec.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
+        };
+        rec.onstop = () => {
+          const blob = new Blob(chunksRef.current as Blob[], {
+            type: rec.mimeType || nativeMime,
+          });
+          finalize(blob);
+        };
+        rec.start();
+      } else {
+        // Caminho opus-recorder: produz OGG/Opus em qualquer navegador.
+        // Import dinâmico evita custo do WASM até o primeiro uso.
+        const mod = await import("opus-recorder");
+        const RecorderCtor = (mod as { default: new (opts: unknown) => RecorderLike }).default;
+        const rec = new RecorderCtor({
+          encoderPath: encoderWorkerUrl,
+          encoderApplication: 2048, // voice
+          encoderSampleRate: 16000,
+          encoderFrameSize: 20,
+          numberOfChannels: 1,
+          streamPages: true,
+          monitorGain: 0,
+          recordingGain: 1,
+        });
+        recorderRef.current = rec;
+        recorderKindRef.current = "opus";
+        recorderMimeRef.current = "audio/ogg";
+        rec.ondataavailable = (data) => {
+          if (data instanceof Blob) {
+            if (data.size > 0) chunksRef.current.push(data);
+          } else {
+            // ArrayBuffer | Uint8Array
+            chunksRef.current.push(data);
+          }
+        };
+        rec.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
+          finalize(blob);
+        };
+        await rec.start();
+      }
+    } catch (e) {
+      console.error("[audio] start error", e);
       stopStream();
-      if (tickRef.current) window.clearInterval(tickRef.current);
-      tickRef.current = null;
-    };
+      setError("Não foi possível iniciar a gravação.");
+      return;
+    }
 
     startedAtRef.current = Date.now();
     setSeconds(0);
@@ -141,33 +208,38 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     tickRef.current = window.setInterval(() => {
       setSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
     }, 250);
-    recorder.start();
   };
 
-  const stopRecording = () => {
-    const r = mediaRecorderRef.current;
-    if (r && r.state !== "inactive") {
-      try {
-        r.stop();
-      } catch {
-        /* */
+  const stopRecording = async () => {
+    const r = recorderRef.current;
+    const kind = recorderKindRef.current;
+    if (!r) return;
+    try {
+      if (kind === "native") {
+        const mr = r as MediaRecorder;
+        if (mr.state !== "inactive") mr.stop();
+      } else {
+        await (r as RecorderLike).stop();
       }
+    } catch (e) {
+      console.error("[audio] stop error", e);
     }
   };
 
   const togglePlay = () => {
     const el = audioElRef.current;
     if (!el) return;
-    if (isPlaying) {
-      el.pause();
-    } else {
-      el.play().catch(() => null);
-    }
+    if (isPlaying) el.pause();
+    else el.play().catch(() => null);
   };
 
   const sendAudio = async () => {
     const blob = blobRef.current;
     if (!blob) return;
+    if (blob.size > MAX_BYTES) {
+      setError("Áudio acima de 16MB. Grave um trecho menor.");
+      return;
+    }
     setState("sending");
     setError(null);
     try {
@@ -175,7 +247,14 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       const token = sess.session?.access_token ?? "";
       if (!token) throw new Error("Sessão expirada. Entre novamente.");
 
-      const ext = (blob.type.split(";")[0].split("/")[1] ?? "webm").replace("mpeg", "mp3");
+      const base = blob.type.split(";")[0] || "audio/ogg";
+      const extMap: Record<string, string> = {
+        "audio/ogg": "ogg",
+        "audio/mp4": "m4a",
+        "audio/aac": "aac",
+        "audio/mpeg": "mp3",
+      };
+      const ext = extMap[base] ?? "ogg";
       const fd = new FormData();
       fd.append("file", blob, `audio-${Date.now()}.${ext}`);
       fd.append("conversationId", conversationId);
