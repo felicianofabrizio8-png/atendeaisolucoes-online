@@ -437,19 +437,19 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
+        <div className="sticky bottom-0 bg-card flex items-center justify-end gap-2 p-3 md:p-4 border-t border-border safe-bottom">
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-semibold rounded-md border border-border bg-background px-3 py-1.5 hover:bg-accent"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
           >
             Cancelar
           </button>
           <button
             type="submit"
-            className="text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-primary text-primary-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90"
           >
-            {isEdit ? "Salvar alterações" : "Cadastrar produto"}
+            {isEdit ? "Salvar" : "Cadastrar"}
           </button>
         </div>
       </form>
