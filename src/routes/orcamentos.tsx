@@ -1222,7 +1222,7 @@ function QuoteFormModal({
                   value={clientSearch}
                   onChange={(e) => setClientSearch(e.target.value)}
                   placeholder="Buscar por nome, telefone ou @"
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 {leads.length === 0 ? (
                   <div className="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
@@ -1280,12 +1280,12 @@ function QuoteFormModal({
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Nome do cliente"
-                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 <select
                   value={newChannel}
                   onChange={(e) => setNewChannel(e.target.value as Channel)}
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="whatsapp">WhatsApp</option>
                   <option value="instagram">Instagram</option>
@@ -1296,7 +1296,7 @@ function QuoteFormModal({
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   placeholder="Telefone (ex: 5511999998888)"
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 {newChannel !== "whatsapp" && (
                   <input
@@ -1304,7 +1304,7 @@ function QuoteFormModal({
                     value={newHandle}
                     onChange={(e) => setNewHandle(e.target.value)}
                     placeholder="@usuário"
-                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                   />
                 )}
                 <p className="md:col-span-2 text-[11px] text-muted-foreground">
@@ -1324,7 +1324,7 @@ function QuoteFormModal({
                 setShowSuggestion(false);
               }}
               className={cn(
-                "w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring",
+                "w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring",
                 showSuggestion && "ring-2 ring-primary/40",
               )}
             >
@@ -1362,7 +1362,7 @@ function QuoteFormModal({
               inputMode="numeric"
               value={discountRaw}
               onChange={(e) => setDiscountRaw(e.target.value.replace(/[^\d]/g, ""))}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
               placeholder="0"
             />
           </Field>
@@ -1372,7 +1372,7 @@ function QuoteFormModal({
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -1387,7 +1387,7 @@ function QuoteFormModal({
             <select
               value={installments}
               onChange={(e) => setInstallments(Number(e.target.value))}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((n) => (
                 <option key={n} value={n}>
@@ -1403,7 +1403,7 @@ function QuoteFormModal({
               type="date"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
 
@@ -1494,7 +1494,7 @@ function QuoteFormModal({
               onChange={(e) => setObservacoes(e.target.value)}
               rows={3}
               placeholder="Ex: Entrega em até 7 dias. Garantia de 1 ano."
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring resize-y"
             />
           </div>
 
@@ -1787,7 +1787,7 @@ function ItemListField({
             }
           }}
           placeholder={placeholder}
-          className="flex-1 rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           type="button"
