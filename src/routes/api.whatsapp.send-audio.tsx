@@ -183,7 +183,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           .createSignedUrl(storagePath, 60 * 60);
         if (signErr || !signed?.signedUrl) {
           console.error("[send-audio] sign error", signErr);
-          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
             { error: `Falha ao preparar áudio: ${signErr?.message ?? "sign"}` },
             { status: 500 },
@@ -195,18 +195,34 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         let signedUrlContentType: string | null = null;
         let signedUrlContentLength: string | null = null;
         try {
-          const head = await fetch(signed.signedUrl, { method: "GET", headers: { Range: "bytes=0-0" } });
-          signedUrlStatus = head.status;
-          signedUrlContentType = head.headers.get("content-type");
-          signedUrlContentLength = head.headers.get("content-length");
-          if (!head.ok && head.status !== 206) {
-            throw new Error(`signed url HTTP ${head.status}`);
+          const preflight = await fetch(signed.signedUrl, { method: "GET" });
+          signedUrlStatus = preflight.status;
+          signedUrlContentType = preflight.headers.get("content-type");
+          signedUrlContentLength = preflight.headers.get("content-length");
+          const signedUrlLength = Number(signedUrlContentLength ?? 0);
+          if (preflight.status !== 200) {
+            throw new Error(`signed url HTTP ${preflight.status}`);
+          }
+          if (!Number.isFinite(signedUrlLength) || signedUrlLength <= 0) {
+            throw new Error("signed url sem content-length válido");
+          }
+          if (!isAllowedMimeHeader(signedUrlContentType)) {
+            throw new Error(`signed url content-type inválido: ${signedUrlContentType ?? "ausente"}`);
           }
           // descarta body
-          try { await head.body?.cancel(); } catch { /* */ }
+          try { await preflight.body?.cancel(); } catch { /* */ }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "signed url inacessível";
-          console.error("[send-audio] signed url preflight failed", { msg, signedUrlStatus });
+          console.error("[send-audio] signed url preflight failed", {
+            msg,
+            signed_url_status: signedUrlStatus,
+            signed_url_content_type: signedUrlContentType,
+            signed_url_content_length: signedUrlContentLength,
+            phone_number_id: integration.external_account_id,
+            to: recipient,
+            media_mime: baseMime,
+            media_size: file.size,
+          });
           await supabaseAdmin.from("error_log").insert({
             company_id: companyId,
             user_id: userId,
@@ -216,14 +232,17 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             context: {
               conversation_id: conversationId,
               lead_phone: recipient,
+              phone_number_id: integration.external_account_id,
               media_mime: baseMime,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
+              signed_url_content_type: signedUrlContentType,
+              signed_url_content_length: signedUrlContentLength,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
-            { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
+            { error: FRIENDLY_SEND_ERROR },
             { status: 502 },
           );
         }
