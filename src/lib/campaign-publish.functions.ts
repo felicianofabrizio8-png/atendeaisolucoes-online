@@ -803,6 +803,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
     let waVerifiedName = "";
     let waPhoneVerified = false;
     let waIntegrationId: string | null = null;
+    let waPhoneCheckError: { message: string; body: unknown; status: number } | null = null;
+    let waWabaListError: { message: string; body: unknown; status: number } | null = null;
     try {
       const { data: waInteg } = await adminClient.supabaseAdmin
         .from("integrations")
