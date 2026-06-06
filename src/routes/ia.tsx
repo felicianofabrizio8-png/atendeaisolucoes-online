@@ -124,6 +124,7 @@ function ConfiguracoesIA() {
   const [automation, setAutomation] = useState<AutomationSettings | null>(null);
   const [savingAutomation, setSavingAutomation] = useState(false);
   const [events, setEvents] = useState<FlowEvent[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("perfil");
 
   const loadAll = useCallback(async () => {
     if (!companyId) return;
