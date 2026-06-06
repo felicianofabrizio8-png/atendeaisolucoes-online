@@ -199,12 +199,31 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         let signedUrlStatus: number | string = "unknown";
         let signedUrlContentType: string | null = null;
         let signedUrlContentLength: string | null = null;
+        let signedUrlIsValid = false;
         try {
           const preflight = await fetch(signed.signedUrl, { method: "GET" });
           signedUrlStatus = preflight.status;
           signedUrlContentType = preflight.headers.get("content-type");
           signedUrlContentLength = preflight.headers.get("content-length");
           const signedUrlLength = Number(signedUrlContentLength ?? 0);
+          signedUrlIsValid =
+            preflight.status === 200 &&
+            Number.isFinite(signedUrlLength) &&
+            signedUrlLength > 0 &&
+            isAllowedMimeHeader(signedUrlContentType);
+          console.log("[AUDIO FILE TEST]", {
+            status: signedUrlStatus,
+            content_type: signedUrlContentType,
+            content_length: signedUrlContentLength,
+            valid: signedUrlIsValid,
+            expected: {
+              status: 200,
+              content_length_gt_zero: true,
+              allowed_content_types: Array.from(ALLOWED_MIMES),
+            },
+            media_mime: baseMime,
+            media_size: file.size,
+          });
           if (preflight.status !== 200) {
             throw new Error(`signed url HTTP ${preflight.status}`);
           }
@@ -218,7 +237,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           try { await preflight.body?.cancel(); } catch { /* */ }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "signed url inacessível";
-          console.error("[send-audio] signed url preflight failed", {
+          console.error("[AUDIO FILE TEST]", {
+            valid: false,
             msg,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
