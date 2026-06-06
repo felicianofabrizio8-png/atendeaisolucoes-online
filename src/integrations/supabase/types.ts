@@ -1145,6 +1145,10 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           deleted_for: string | null
+          delivery_error_code: string | null
+          delivery_error_details: Json | null
+          delivery_error_message: string | null
+          delivery_status: string | null
           edited_at: string | null
           external_id: string | null
           id: string
@@ -1153,6 +1157,7 @@ export type Database = {
           source: string | null
           source_metadata: Json
           source_subtype: string | null
+          status_updated_at: string | null
           text: string
         }
         Insert: {
@@ -1163,6 +1168,10 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           deleted_for?: string | null
+          delivery_error_code?: string | null
+          delivery_error_details?: Json | null
+          delivery_error_message?: string | null
+          delivery_status?: string | null
           edited_at?: string | null
           external_id?: string | null
           id?: string
@@ -1171,6 +1180,7 @@ export type Database = {
           source?: string | null
           source_metadata?: Json
           source_subtype?: string | null
+          status_updated_at?: string | null
           text: string
         }
         Update: {
@@ -1181,6 +1191,10 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           deleted_for?: string | null
+          delivery_error_code?: string | null
+          delivery_error_details?: Json | null
+          delivery_error_message?: string | null
+          delivery_status?: string | null
           edited_at?: string | null
           external_id?: string | null
           id?: string
@@ -1189,6 +1203,7 @@ export type Database = {
           source?: string | null
           source_metadata?: Json
           source_subtype?: string | null
+          status_updated_at?: string | null
           text?: string
         }
         Relationships: [
