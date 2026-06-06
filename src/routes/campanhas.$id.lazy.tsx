@@ -2,6 +2,8 @@ import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
+import { syncCampaignStatusFromMeta } from "@/lib/campaign-meta-sync.functions";
+
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
 import {
@@ -118,14 +120,29 @@ function CampaignDetailPage() {
     error?: string;
   } | null>(null);
   const publishFn = useServerFn(publishCampaign);
+  const syncMetaFn = useServerFn(syncCampaignStatusFromMeta);
 
   useEffect(() => {
     setLoading(true);
     getCampaign(id)
-      .then(setC)
+      .then(async (camp) => {
+        setC(camp);
+        // Sincroniza status real direto da Graph API se já houver IDs Meta —
+        // evita divergência com o Gerenciador.
+        if (camp?.meta_campaign_id) {
+          try {
+            await syncMetaFn({ data: { campaignId: id } });
+            const fresh = await getCampaign(id);
+            if (fresh) setC(fresh);
+          } catch (e) {
+            console.warn("[campaign-detail] meta sync failed", e);
+          }
+        }
+      })
       .catch(() => setC(null))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, syncMetaFn]);
+
 
   async function performDelete() {
     if (!c) return;

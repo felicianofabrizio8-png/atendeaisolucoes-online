@@ -1209,30 +1209,47 @@ export const publishCampaign = createServerFn({ method: "POST" })
     const allActive =
       campAct.status_after === "ACTIVE" && adsetAct.status_after === "ACTIVE" && adOk;
 
-    // 5) Sucesso — grava IDs e marca status conforme resultado da ativação.
+    // 5) Persiste IDs sempre (não perdê-los entre tentativas).
+    await supabase
+      .from("campaigns")
+      .update({
+        meta_campaign_id: metaCampaignId,
+        meta_adset_id: metaAdsetId,
+        meta_ad_id: metaAdId,
+        meta_last_sync_at: new Date().toISOString(),
+      } as never)
+      .eq("id", campaignId);
+
+    if (!allActive) {
+      // Algum objeto continua PAUSED — não marcar como publicada.
+      return fail(
+        "activate_objects",
+        `Meta retornou status não-ativo após POST status=ACTIVE. ` +
+          `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
+          `adset=${adsetAct.status_after ?? "?"}/${adsetAct.effective_status_after ?? "?"}, ` +
+          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.`,
+        { activationLog },
+        { activationLog },
+      );
+    }
+
     const { error: saveErr } = await supabase
       .from("campaigns")
       .update({
         status: "active",
-        meta_campaign_id: metaCampaignId,
-        meta_adset_id: metaAdsetId,
-        meta_ad_id: metaAdId,
         meta_sync_status: "active",
-        meta_last_sync_at: new Date().toISOString(),
-        meta_delivery_status: allActive ? "active_on_meta" : "paused_on_meta",
-        meta_publish_error: allActive
-          ? null
-          : "Falha ao ativar um ou mais objetos na Meta. Verifique no Gerenciador.",
+        meta_delivery_status: "active_on_meta",
+        meta_publish_error: null,
       } as never)
       .eq("id", campaignId);
     if (saveErr) {
-      console.error("[publishCampaign] save ids failed", { campaignId, error: saveErr });
+      console.error("[publishCampaign] save final status failed", { campaignId, error: saveErr });
     } else {
-      console.log("[publishCampaign] success — saved ids", {
-        campaignId, metaCampaignId, metaAdsetId, creativeId, metaAdId,
-        allActive, activationLog,
+      console.log("[publishCampaign] success — all ACTIVE", {
+        campaignId, metaCampaignId, metaAdsetId, creativeId, metaAdId, activationLog,
       });
     }
+
 
 
     return {
