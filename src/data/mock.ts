@@ -17,6 +17,11 @@ export interface Message {
   editedAt?: string;
   deletedAt?: string;
   deletedFor?: "me" | "everyone";
+  deliveryStatus?: "sent" | "delivered" | "read" | "failed" | null;
+  deliveryErrorCode?: string | null;
+  deliveryErrorMessage?: string | null;
+  deliveryErrorDetails?: Record<string, unknown> | null;
+  statusUpdatedAt?: string | null;
 }
 
 export interface NextAction {

@@ -999,9 +999,34 @@ function MessageBubble({
           {tplMeta?.template_name ? ` · ${tplMeta.template_name}` : ""}
         </span>
       )}
-      <span className="text-[10px] text-muted-foreground mt-1 px-1">
+      <span className="text-[10px] text-muted-foreground mt-1 px-1 inline-flex items-center gap-1">
         {timeAgo(m.at)}
         {m.editedAt && !isDeleted ? " · editada" : ""}
+        {isAgent && !isDeleted && m.deliveryStatus ? (
+          <span
+            className={cn(
+              "ml-1",
+              m.deliveryStatus === "failed"
+                ? "text-destructive"
+                : m.deliveryStatus === "read"
+                  ? "text-primary"
+                  : "text-muted-foreground",
+            )}
+            title={
+              m.deliveryStatus === "failed"
+                ? `Falhou${m.deliveryErrorCode ? ` (${m.deliveryErrorCode})` : ""}: ${m.deliveryErrorMessage ?? "erro desconhecido"}`
+                : m.deliveryStatus
+            }
+          >
+            {m.deliveryStatus === "sent"
+              ? "· enviado ✓"
+              : m.deliveryStatus === "delivered"
+                ? "· entregue ✓✓"
+                : m.deliveryStatus === "read"
+                  ? "· lido ✓✓"
+                  : `· falhou${m.deliveryErrorMessage ? `: ${m.deliveryErrorMessage}` : ""}`}
+          </span>
+        ) : null}
       </span>
 
       {confirmDelete && (

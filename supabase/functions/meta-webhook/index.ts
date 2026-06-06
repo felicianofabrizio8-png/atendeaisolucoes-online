@@ -835,6 +835,81 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
       }
     }
 
+    // ---- statuses[]: sent / delivered / read / failed ----
+    const statuses = Array.isArray((value as any).statuses) ? (value as any).statuses : [];
+    for (const st of statuses) {
+      try {
+        const externalId = st?.id ? String(st.id) : null;
+        if (!externalId) continue;
+        const status = String(st?.status ?? "").toLowerCase();
+        const tsRaw = st?.timestamp ? Number(st.timestamp) : NaN;
+        const statusAt = Number.isFinite(tsRaw)
+          ? new Date(tsRaw * 1000).toISOString()
+          : new Date().toISOString();
+        const errArr = Array.isArray(st?.errors) ? st.errors : [];
+        const err0 = errArr[0] ?? null;
+        const errCode = err0?.code != null ? String(err0.code) : null;
+        const errTitle = err0?.title ?? null;
+        const errMessage = err0?.message ?? errTitle ?? null;
+        const errDetails = err0?.error_data ?? err0 ?? null;
+
+        const { data: msg } = await sb
+          .from("messages")
+          .select("id, conversation_id, source_subtype, delivery_status")
+          .eq("integration_id", integrationId)
+          .eq("external_id", externalId)
+          .maybeSingle();
+
+        if (msg?.source_subtype === "audio") {
+          console.log("[WHATSAPP STATUS AUDIO]", {
+            external_id: externalId,
+            message_id: msg?.id ?? null,
+            conversation_id: msg?.conversation_id ?? null,
+            status,
+            status_at: statusAt,
+            recipient_id: st?.recipient_id ?? null,
+            conversation: st?.conversation ?? null,
+            pricing: st?.pricing ?? null,
+            error_code: errCode,
+            error_title: errTitle,
+            error_message: errMessage,
+            error_details: errDetails,
+            raw: st,
+          });
+        }
+
+        console.log("META_WEBHOOK_WA_STATUS", {
+          external_id: externalId,
+          status,
+          message_id: msg?.id ?? null,
+          subtype: msg?.source_subtype ?? null,
+          error_code: errCode,
+          error_message: errMessage,
+        });
+
+        if (!msg?.id) continue;
+
+        // ordem: sent < delivered < read < failed; nunca rebaixa
+        const rank: Record<string, number> = { sent: 1, delivered: 2, read: 3, failed: 4 };
+        const currentRank = rank[msg.delivery_status ?? ""] ?? 0;
+        const incomingRank = rank[status] ?? 0;
+        if (incomingRank === 0 || incomingRank < currentRank) continue;
+
+        await sb
+          .from("messages")
+          .update({
+            delivery_status: status,
+            delivery_error_code: errCode,
+            delivery_error_message: errMessage,
+            delivery_error_details: errDetails as any,
+            status_updated_at: statusAt,
+          })
+          .eq("id", msg.id);
+      } catch (e) {
+        console.error("META_WEBHOOK_WA_STATUS_ERROR", e instanceof Error ? e.message : String(e));
+      }
+    }
+
     await sb
       .from("integrations")
       .update({ last_synced_at: new Date().toISOString(), last_error: null })
