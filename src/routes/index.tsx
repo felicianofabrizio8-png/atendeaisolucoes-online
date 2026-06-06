@@ -303,40 +303,41 @@ function DashboardPage() {
     allConversations.find((c) => c.leadId === leadId)?.id;
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <header className="px-4 md:px-8 pt-6 pb-4 border-b border-border">
+    <div className="flex-1 overflow-y-auto overflow-x-hidden safe-bottom">
+      <header className="px-4 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4 border-b border-border">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
               Bom dia 👋
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-xs md:text-sm text-muted-foreground mt-1">
               Resumo do dia. Foque em quem está esperando.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Segmented
-              value={period}
-              onChange={setPeriod}
-              options={[
-                { value: "hoje", label: "Hoje" },
-                { value: "7d", label: "7 dias" },
-                { value: "30d", label: "30 dias" },
-              ]}
-            />
-            <Segmented
-              value={channel}
-              onChange={setChannel}
-              options={[
-                { value: "todos", label: "Todos" },
-                { value: "whatsapp", label: "WhatsApp" },
-                { value: "instagram", label: "Instagram" },
-                { value: "facebook", label: "Facebook" },
-              ]}
-            />
-          </div>
+        </div>
+        <div className="mt-3 -mx-4 md:mx-0 px-4 md:px-0 flex items-center gap-2 overflow-x-auto scrollbar-none md:flex-wrap">
+          <Segmented
+            value={period}
+            onChange={setPeriod}
+            options={[
+              { value: "hoje", label: "Hoje" },
+              { value: "7d", label: "7 dias" },
+              { value: "30d", label: "30 dias" },
+            ]}
+          />
+          <Segmented
+            value={channel}
+            onChange={setChannel}
+            options={[
+              { value: "todos", label: "Todos" },
+              { value: "whatsapp", label: "WhatsApp" },
+              { value: "instagram", label: "Instagram" },
+              { value: "facebook", label: "Facebook" },
+            ]}
+          />
         </div>
       </header>
+
 
       {/* KPIs */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 md:p-8">
