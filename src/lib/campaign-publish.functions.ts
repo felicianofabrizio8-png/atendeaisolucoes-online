@@ -402,6 +402,70 @@ export const publishCampaign = createServerFn({ method: "POST" })
       };
     }
 
+    type MetaObjectKind = "campaign" | "adset" | "ad";
+    type StatusResp = { id: string; status?: string; effective_status?: string };
+    type StatusSnapshot = {
+      object: MetaObjectKind;
+      id: string;
+      status?: string;
+      effective_status?: string;
+      error?: string;
+    };
+
+    async function fetchObjectStatus(object: MetaObjectKind, id: string): Promise<StatusSnapshot> {
+      const res = await graphFetch<StatusResp>(
+        `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
+        { method: "GET" },
+      );
+      if (!res.ok) {
+        return { object, id, error: formatGraphError(res.body, res.message) };
+      }
+      return {
+        object,
+        id,
+        status: res.data.status,
+        effective_status: res.data.effective_status,
+      };
+    }
+
+    async function recordMetaStatusLog(
+      phase: "after_creation" | "after_activation",
+      snapshots: StatusSnapshot[],
+      extra?: Record<string, unknown>,
+    ) {
+      console.log("[publishCampaign] meta_status_log", {
+        campaignId,
+        phase,
+        campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
+        adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
+        ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+        statuses: snapshots,
+        ...(extra ?? {}),
+      });
+      try {
+        await adminClient.supabaseAdmin.from("error_log").insert({
+          company_id: companyId,
+          user_id: userId,
+          source: "meta",
+          severity: "info",
+          message: `[publish:${phase}] ` + snapshots
+            .map((s) => `${s.object}=${s.status ?? "?"}/${s.effective_status ?? "?"}`)
+            .join(" "),
+          context: {
+            campaign_id: campaignId,
+            phase,
+            meta_campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
+            meta_adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
+            meta_ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+            statuses: snapshots,
+            ...(extra ?? {}),
+          } as never,
+        });
+      } catch (e) {
+        console.warn("[publishCampaign] meta_status_log insert failed", e);
+      }
+    }
+
 
     // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
     // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
