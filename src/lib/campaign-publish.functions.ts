@@ -402,6 +402,91 @@ export const publishCampaign = createServerFn({ method: "POST" })
       };
     }
 
+    type MetaObjectKind = "campaign" | "adset" | "ad";
+    type MetaStatusResp = { id: string; status?: string; effective_status?: string };
+    type StatusSnapshot = {
+      object: MetaObjectKind;
+      id: string;
+      status?: string;
+      effective_status?: string;
+      error?: string;
+    };
+
+    async function fetchObjectStatus(object: MetaObjectKind, id: string): Promise<StatusSnapshot> {
+      const res = await graphFetch<MetaStatusResp>(
+        `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
+        { method: "GET" },
+      );
+      if (!res.ok) {
+        return { object, id, error: formatGraphError(res.body, res.message) };
+      }
+      return {
+        object,
+        id,
+        status: res.data.status,
+        effective_status: res.data.effective_status,
+      };
+    }
+
+    async function recordMetaStatusLog(
+      phase: "after_creation" | "after_activation",
+      snapshots: StatusSnapshot[],
+      extra?: Record<string, unknown>,
+    ) {
+      console.log("[publishCampaign] meta_status_log", {
+        campaignId,
+        phase,
+        campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
+        adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
+        ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+        statuses: snapshots,
+        ...(extra ?? {}),
+      });
+      try {
+        await adminClient.supabaseAdmin.from("error_log").insert({
+          company_id: companyId,
+          user_id: userId,
+          source: "meta",
+          severity: "info",
+          message: `[publish:${phase}] ` + snapshots
+            .map((s) => `${s.object}=${s.status ?? "?"}/${s.effective_status ?? "?"}`)
+            .join(" "),
+          context: {
+            campaign_id: campaignId,
+            phase,
+            meta_campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
+            meta_adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
+            meta_ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+            statuses: snapshots,
+            ...(extra ?? {}),
+          } as never,
+        });
+      } catch (e) {
+        console.warn("[publishCampaign] meta_status_log insert failed", e);
+      }
+    }
+
+    const pageCheck = await graphFetch<{ id: string; name?: string }>(
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=id,name&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    console.log("[publishCampaign] page_id_check", {
+      ok: pageCheck.ok,
+      page_id: pageId,
+      page_name: pageCheck.ok ? pageCheck.data.name ?? null : null,
+      error: pageCheck.ok ? null : formatGraphError(pageCheck.body, pageCheck.message),
+    });
+    if (!pageCheck.ok || pageCheck.data.id !== pageId) {
+      return fail(
+        "preflight_page",
+        pageCheck.ok
+          ? `Página Meta divergente: esperado ${pageId}, recebido ${pageCheck.data.id}.`
+          : formatGraphError(pageCheck.body, pageCheck.message),
+        pageCheck.ok ? pageCheck.data : pageCheck.body,
+        { page_id: pageId },
+      );
+    }
+
 
     // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
     // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
@@ -694,19 +779,54 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Busca telefone WhatsApp da empresa (para o link wa.me do CTA).
+    // Busca telefone WhatsApp da empresa (para o link do CTA) e o phone_number_id
+    // conectado — usado para validar que o anúncio aponta para o WABA correto.
     let waPhone = "";
+    let waPhoneNumberId = "";
+    let waWabaId = "";
+    let waPhoneVerified = false;
     try {
       const { data: waInteg } = await adminClient.supabaseAdmin
         .from("integrations")
-        .select("account_metadata, external_account_id")
+        .select("account_metadata, external_account_id, access_token")
         .eq("company_id", companyId)
         .eq("channel", "whatsapp")
         .eq("active", true)
         .maybeSingle();
       const md = (waInteg?.account_metadata ?? {}) as Record<string, unknown>;
       waPhone = String(md["phone_number"] ?? md["display_phone_number"] ?? "").replace(/\D/g, "");
-      console.log("[publishCampaign] whatsapp phone lookup", { found: Boolean(waPhone), waPhone });
+      waPhoneNumberId = String(waInteg?.external_account_id ?? md["phone_number_id"] ?? "");
+      waWabaId = String(md["waba_id"] ?? "");
+      const waToken = String((waInteg as { access_token?: string | null } | null)?.access_token ?? "");
+      if (waPhoneNumberId && waToken) {
+        const phoneCheck = await graphFetch<{
+          id: string;
+          display_phone_number?: string;
+          verified_name?: string;
+          whatsapp_business_account?: { id?: string; name?: string };
+        }>(
+          `${GRAPH}/${encodeURIComponent(waPhoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account{id,name}&access_token=${encodeURIComponent(waToken)}`,
+          { method: "GET" },
+        );
+        waPhoneVerified = Boolean(
+          phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number,
+        );
+        console.log("[publishCampaign] whatsapp_phone_number_check", {
+          ok: phoneCheck.ok,
+          whatsapp_phone_number_id: waPhoneNumberId,
+          display_phone_number: phoneCheck.ok ? phoneCheck.data.display_phone_number ?? null : null,
+          verified_name: phoneCheck.ok ? phoneCheck.data.verified_name ?? null : null,
+          waba_id: phoneCheck.ok ? phoneCheck.data.whatsapp_business_account?.id ?? null : waWabaId || null,
+          error: phoneCheck.ok ? null : formatGraphError(phoneCheck.body, phoneCheck.message),
+        });
+      }
+      console.log("[publishCampaign] whatsapp phone lookup", {
+        found: Boolean(waPhone),
+        waPhone,
+        whatsapp_phone_number_id: waPhoneNumberId || null,
+        waba_id: waWabaId || null,
+        verified: waPhoneVerified,
+      });
     } catch (e) {
       console.warn("[publishCampaign] whatsapp phone lookup failed", e);
     }
@@ -755,6 +875,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
         campaign.objective === "whatsapp" ? "WHATSAPP"
         : campaign.objective === "messenger" ? "MESSENGER"
         : "INSTAGRAM_DIRECT";
+      const promotedObject: Record<string, unknown> = { page_id: pageId };
+      if (campaign.objective === "whatsapp" && waPhoneNumberId) {
+        promotedObject.whats_app_business_phone_number_id = waPhoneNumberId;
+        promotedObject.whatsapp_phone_number = waPhone;
+      }
       const adsetPayload = {
         name: `${campaign.name} — adset`,
         campaign_id: metaCampaignId,
@@ -765,7 +890,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         status: "PAUSED",
         targeting,
-        promoted_object: { page_id: pageId },
+        promoted_object: promotedObject,
       };
       console.log("[publishCampaign] adset targeting", targeting);
       console.log("[publishCampaign] create_adset payload", adsetPayload);
@@ -848,7 +973,23 @@ export const publishCampaign = createServerFn({ method: "POST" })
         "create_creative",
         "Número de WhatsApp da página não encontrado — vincule um WhatsApp Business no Gerenciador da Meta antes de publicar.",
         null,
-        { page_id: pageId, image_hash: imageHash },
+        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId || null, image_hash: imageHash },
+      );
+    }
+    if (channel === "whatsapp" && !waPhoneNumberId) {
+      return fail(
+        "create_creative",
+        "whatsapp_phone_number_id ausente — reconecte o WhatsApp Business antes de publicar anúncios Click to WhatsApp.",
+        null,
+        { page_id: pageId, whatsapp_number: waPhone, image_hash: imageHash },
+      );
+    }
+    if (channel === "whatsapp" && !waPhoneVerified) {
+      return fail(
+        "create_creative",
+        "Não foi possível validar o whatsapp_phone_number_id na Graph API antes de criar o anúncio.",
+        null,
+        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId, waba_id: waWabaId || null, image_hash: imageHash },
       );
     }
     if (channel === "instagram" && !igActorId) {
@@ -1109,6 +1250,30 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
+    const creativeCheck = await graphFetch<{
+      id: string;
+      object_story_spec?: { page_id?: string; link_data?: unknown };
+      effective_object_story_id?: string;
+    }>(
+      `${GRAPH}/${encodeURIComponent(creativeId)}?fields=id,object_story_spec,effective_object_story_id&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    console.log("[publishCampaign] creative_check", {
+      ok: creativeCheck.ok,
+      creative_id: creativeId,
+      page_id: creativeCheck.ok ? creativeCheck.data.object_story_spec?.page_id ?? null : null,
+      effective_object_story_id: creativeCheck.ok ? creativeCheck.data.effective_object_story_id ?? null : null,
+      error: creativeCheck.ok ? null : formatGraphError(creativeCheck.body, creativeCheck.message),
+    });
+    if (!creativeCheck.ok || creativeCheck.data.id !== creativeId) {
+      return fail(
+        "verify_creative",
+        creativeCheck.ok ? "Meta não confirmou o creative criado." : formatGraphError(creativeCheck.body, creativeCheck.message),
+        creativeCheck.ok ? creativeCheck.data : creativeCheck.body,
+        { creative_id: creativeId, page_id: pageId, whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null },
+      );
+    }
+
 
     // Step E: cria ad.
     const adPayload = {
@@ -1153,13 +1318,25 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     console.log("[publishCampaign] verify_ad ok", { metaAdId, verified: verifyRes.data });
 
+    const creationStatusLog = await Promise.all([
+      fetchObjectStatus("campaign", metaCampaignId),
+      fetchObjectStatus("adset", metaAdsetId),
+      fetchObjectStatus("ad", metaAdId),
+    ]);
+    await recordMetaStatusLog("after_creation", creationStatusLog, {
+      creative_id: creativeId,
+      page_id: pageId,
+      whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
+      whatsapp_number: channel === "whatsapp" ? waPhone : null,
+    });
+
     // Step G: ATIVAÇÃO FINAL — Meta cria tudo em PAUSED por padrão.
     // Sem este passo a campanha nunca entra em análise/entrega.
-    type StatusResp = { id: string; status?: string; effective_status?: string };
     const activationLog: Array<{
       object: "campaign" | "adset" | "ad";
       id: string;
       status_before: string;
+      effective_status_before?: string;
       activate_ok: boolean;
       activate_error?: string;
       status_after?: string;
@@ -1169,7 +1346,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     async function activateObject(
       object: "campaign" | "adset" | "ad",
       id: string,
-      statusBefore: string,
+      before: StatusSnapshot | undefined,
     ) {
       const form = new URLSearchParams();
       form.set("status", "ACTIVE");
@@ -1179,14 +1356,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
       });
-      const getRes = await graphFetch<StatusResp>(
+      const getRes = await graphFetch<MetaStatusResp>(
         `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
         { method: "GET" },
       );
       const entry = {
         object,
         id,
-        status_before: statusBefore,
+        status_before: before?.status ?? "unknown",
+        effective_status_before: before?.effective_status,
         activate_ok: actRes.ok,
         activate_error: actRes.ok ? undefined : formatGraphError(actRes.body, actRes.message),
         status_after: getRes.ok ? getRes.data.status : undefined,
@@ -1197,15 +1375,27 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return entry;
     }
 
-    const campAct = await activateObject("campaign", metaCampaignId, "PAUSED");
-    const adsetAct = await activateObject("adset", metaAdsetId, "PAUSED");
-    const adAct = await activateObject("ad", metaAdId, "PAUSED");
+    const beforeByObject = Object.fromEntries(creationStatusLog.map((s) => [s.object, s])) as Partial<Record<MetaObjectKind, StatusSnapshot>>;
+    const campAct = await activateObject("campaign", metaCampaignId, beforeByObject.campaign);
+    const adsetAct = await activateObject("adset", metaAdsetId, beforeByObject.adset);
+    const adAct = await activateObject("ad", metaAdId, beforeByObject.ad);
 
-    const adOk =
-      adAct.status_after === "ACTIVE" || adAct.status_after === "PENDING_REVIEW" ||
-      adAct.effective_status_after === "ACTIVE" ||
-      adAct.effective_status_after === "PENDING_REVIEW" ||
-      adAct.effective_status_after === "IN_PROCESS";
+    await recordMetaStatusLog(
+      "after_activation",
+      activationLog.map((a) => ({
+        object: a.object,
+        id: a.id,
+        status: a.status_after,
+        effective_status: a.effective_status_after,
+        error: a.activate_error,
+      })),
+      {
+        creative_id: creativeId,
+        activationLog,
+      },
+    );
+
+    const adOk = adAct.status_after === "ACTIVE";
     const allActive =
       campAct.status_after === "ACTIVE" && adsetAct.status_after === "ACTIVE" && adOk;
 
@@ -1222,12 +1412,17 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
     if (!allActive) {
       // Algum objeto continua PAUSED — não marcar como publicada.
+      const activationErrors = activationLog
+        .filter((a) => a.activate_error || a.status_after === "PAUSED")
+        .map((a) => `${a.object}: ${a.activate_error ?? `status=${a.status_after}/${a.effective_status_after ?? "?"}`}`)
+        .join(" | ");
       return fail(
         "activate_objects",
         `Meta retornou status não-ativo após POST status=ACTIVE. ` +
           `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
           `adset=${adsetAct.status_after ?? "?"}/${adsetAct.effective_status_after ?? "?"}, ` +
-          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.`,
+          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.` +
+          (activationErrors ? ` Meta: ${activationErrors}` : ""),
         { activationLog },
         { activationLog },
       );
