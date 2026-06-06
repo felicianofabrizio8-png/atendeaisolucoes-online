@@ -233,17 +233,18 @@ export function AppShell() {
 
       <main className="flex-1 min-w-0 min-h-0 h-full flex flex-col">
         {/* Topbar mobile */}
-        <div className="md:hidden h-12 px-3 border-b border-border flex items-center gap-2 bg-sidebar shrink-0">
+        <div className="md:hidden safe-top px-3 border-b border-border flex items-center gap-2 bg-sidebar shrink-0">
+          <div className="h-14 flex items-center gap-2 w-full">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <button
                 aria-label="Abrir menu"
-                className="h-9 w-9 inline-flex items-center justify-center rounded-md hover:bg-accent"
+                className="h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent active:bg-accent"
               >
                 <Menu className="h-5 w-5" />
               </button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0 flex flex-col bg-sidebar">
+            <SheetContent side="left" className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom">
               <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
               {Brand}
               {NavList}
@@ -259,7 +260,9 @@ export function AppShell() {
             <span className="text-sm font-semibold truncate">Atende Ai!</span>
           </div>
           <ThemeToggle />
+          </div>
         </div>
+
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto">
           <Outlet />
