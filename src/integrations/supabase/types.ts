@@ -248,6 +248,56 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_ai_analyses: {
+        Row: {
+          campaign_id: string
+          company_id: string
+          copy_ideas: Json
+          created_at: string
+          creative_ideas: Json
+          diagnosis: Json
+          id: string
+          metrics_snapshot: Json
+          model: string | null
+          recommendations: Json
+          summary: string | null
+        }
+        Insert: {
+          campaign_id: string
+          company_id: string
+          copy_ideas?: Json
+          created_at?: string
+          creative_ideas?: Json
+          diagnosis?: Json
+          id?: string
+          metrics_snapshot?: Json
+          model?: string | null
+          recommendations?: Json
+          summary?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          company_id?: string
+          copy_ideas?: Json
+          created_at?: string
+          creative_ideas?: Json
+          diagnosis?: Json
+          id?: string
+          metrics_snapshot?: Json
+          model?: string | null
+          recommendations?: Json
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_ai_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_creatives: {
         Row: {
           audience_suggestion: string | null
