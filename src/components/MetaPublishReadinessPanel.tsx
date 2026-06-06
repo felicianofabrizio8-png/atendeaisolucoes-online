@@ -340,6 +340,20 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     } finally { setSaving(false); }
   }
 
+  async function removeManualAdAccount() {
+    setSaving(true);
+    try {
+      const r = await clearAccount();
+      if (r.ok) {
+        toast.success(`ID manual removido (${r.cleared ?? 0} integração(ões)).`);
+        await refresh({ silent: true });
+        await loadAssets();
+      } else {
+        toast.error(("message" in r && r.message) || "Falha ao remover ID manual.");
+      }
+    } finally { setSaving(false); }
+  }
+
   async function persistPage(pageId: string) {
     setSaving(true);
     try {
