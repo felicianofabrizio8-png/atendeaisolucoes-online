@@ -201,7 +201,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               media_size: file.size,
               signed_url_status: signedUrlStatus,
             },
-          }).catch(() => null);
+          }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
           return Response.json(
             { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
@@ -293,7 +293,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 fbtrace_id: err.fbtrace_id ?? null,
                 meta_body: apiText.slice(0, 2000),
               },
-            }).catch(() => null);
+            }).then(() => null, () => null);
             await supabaseAdmin
               .from("integrations")
               .update({ last_error: msg })
@@ -325,7 +325,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               media_size: file.size,
               signed_url_status: signedUrlStatus,
             },
-          }).catch(() => null);
+          }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
           return Response.json(
             { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
