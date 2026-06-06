@@ -232,17 +232,19 @@ Gere:
         // Salva histórico (best-effort).
         const { data: saved, error: insErr } = await supabaseAdmin
           .from("campaign_ai_analyses")
-          .insert({
-            campaign_id: campaignId,
-            company_id: companyId,
-            summary: typeof parsed.summary === "string" ? parsed.summary : null,
-            diagnosis: parsed.diagnosis ?? {},
-            recommendations: parsed.recommendations ?? [],
-            creative_ideas: parsed.creative_ideas ?? [],
-            copy_ideas: parsed.copy_ideas ?? [],
-            metrics_snapshot: metricsSnapshot ?? {},
-            model: MODEL,
-          })
+          .insert([
+            {
+              campaign_id: campaignId,
+              company_id: companyId,
+              summary: typeof parsed.summary === "string" ? parsed.summary : null,
+              diagnosis: (parsed.diagnosis ?? {}) as never,
+              recommendations: (parsed.recommendations ?? []) as never,
+              creative_ideas: (parsed.creative_ideas ?? []) as never,
+              copy_ideas: (parsed.copy_ideas ?? []) as never,
+              metrics_snapshot: (metricsSnapshot ?? {}) as never,
+              model: MODEL,
+            },
+          ])
           .select("id, created_at")
           .maybeSingle();
         if (insErr) console.warn("[campaign-advisor] insert history failed", insErr);
