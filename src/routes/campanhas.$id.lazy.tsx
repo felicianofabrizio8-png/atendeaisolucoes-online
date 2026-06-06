@@ -140,7 +140,8 @@ function CampaignDetailPage() {
       if (r.ok) {
         toast.success("Os 3 objetos foram ativados na Meta.");
       } else {
-        toast.error(r.error || "message" in r && r.message ? (r as { message?: string }).message ?? "Falha ao ativar." : "Falha ao ativar na Meta.");
+        const msg = (r as { message?: string }).message ?? r.error ?? "Falha ao ativar na Meta.";
+        toast.error(msg);
       }
       try {
         const live = await syncMetaFn({ data: { campaignId: c.id } });
