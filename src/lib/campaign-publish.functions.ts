@@ -758,19 +758,54 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Busca telefone WhatsApp da empresa (para o link wa.me do CTA).
+    // Busca telefone WhatsApp da empresa (para o link do CTA) e o phone_number_id
+    // conectado — usado para validar que o anúncio aponta para o WABA correto.
     let waPhone = "";
+    let waPhoneNumberId = "";
+    let waWabaId = "";
+    let waPhoneVerified = false;
     try {
       const { data: waInteg } = await adminClient.supabaseAdmin
         .from("integrations")
-        .select("account_metadata, external_account_id")
+        .select("account_metadata, external_account_id, access_token")
         .eq("company_id", companyId)
         .eq("channel", "whatsapp")
         .eq("active", true)
         .maybeSingle();
       const md = (waInteg?.account_metadata ?? {}) as Record<string, unknown>;
       waPhone = String(md["phone_number"] ?? md["display_phone_number"] ?? "").replace(/\D/g, "");
-      console.log("[publishCampaign] whatsapp phone lookup", { found: Boolean(waPhone), waPhone });
+      waPhoneNumberId = String(waInteg?.external_account_id ?? md["phone_number_id"] ?? "");
+      waWabaId = String(md["waba_id"] ?? "");
+      const waToken = String((waInteg as { access_token?: string | null } | null)?.access_token ?? "");
+      if (waPhoneNumberId && waToken) {
+        const phoneCheck = await graphFetch<{
+          id: string;
+          display_phone_number?: string;
+          verified_name?: string;
+          whatsapp_business_account?: { id?: string; name?: string };
+        }>(
+          `${GRAPH}/${encodeURIComponent(waPhoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account{id,name}&access_token=${encodeURIComponent(waToken)}`,
+          { method: "GET" },
+        );
+        waPhoneVerified = Boolean(
+          phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number,
+        );
+        console.log("[publishCampaign] whatsapp_phone_number_check", {
+          ok: phoneCheck.ok,
+          whatsapp_phone_number_id: waPhoneNumberId,
+          display_phone_number: phoneCheck.ok ? phoneCheck.data.display_phone_number ?? null : null,
+          verified_name: phoneCheck.ok ? phoneCheck.data.verified_name ?? null : null,
+          waba_id: phoneCheck.ok ? phoneCheck.data.whatsapp_business_account?.id ?? null : waWabaId || null,
+          error: phoneCheck.ok ? null : formatGraphError(phoneCheck.body, phoneCheck.message),
+        });
+      }
+      console.log("[publishCampaign] whatsapp phone lookup", {
+        found: Boolean(waPhone),
+        waPhone,
+        whatsapp_phone_number_id: waPhoneNumberId || null,
+        waba_id: waWabaId || null,
+        verified: waPhoneVerified,
+      });
     } catch (e) {
       console.warn("[publishCampaign] whatsapp phone lookup failed", e);
     }
