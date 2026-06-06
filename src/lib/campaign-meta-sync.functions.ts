@@ -170,27 +170,31 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
       } as never)
       .eq("id", campaignId);
 
-    await adminClient.supabaseAdmin.from("error_log").insert({
-      company_id: companyId,
-      user_id: userId,
-      source: "meta",
-      severity: delivery === "active_on_meta" ? "info" : "warning",
-      message: `[sync:meta_status] campaign=${campR && !("error" in campR) ? `${campR.status ?? "?"}/${campR.effective_status ?? "?"}` : "error"} adset=${adsetR && !("error" in adsetR) ? `${adsetR.status ?? "?"}/${adsetR.effective_status ?? "?"}` : "error"} ad=${adR && !("error" in adR) ? `${adR.status ?? "?"}/${adR.effective_status ?? "?"}` : "error"}`,
-      context: {
-        campaign_id: campaignId,
-        phase: "sync_live_status",
-        meta_campaign_id: camp.meta_campaign_id,
-        campaign_status: campR && !("error" in campR) ? campR.status ?? null : null,
-        campaign_effective_status: campR && !("error" in campR) ? campR.effective_status ?? null : null,
-        meta_adset_id: camp.meta_adset_id,
-        adset_status: adsetR && !("error" in adsetR) ? adsetR.status ?? null : null,
-        adset_effective_status: adsetR && !("error" in adsetR) ? adsetR.effective_status ?? null : null,
-        meta_ad_id: camp.meta_ad_id,
-        ad_status: adR && !("error" in adR) ? adR.status ?? null : null,
-        ad_effective_status: adR && !("error" in adR) ? adR.effective_status ?? null : null,
-        delivery,
-      } as never,
-    });
+    try {
+      await adminClient.supabaseAdmin.from("error_log").insert({
+        company_id: companyId,
+        user_id: userId,
+        source: "meta",
+        severity: delivery === "active_on_meta" ? "info" : "warning",
+        message: `[sync:meta_status] campaign=${campR && !("error" in campR) ? `${campR.status ?? "?"}/${campR.effective_status ?? "?"}` : "error"} adset=${adsetR && !("error" in adsetR) ? `${adsetR.status ?? "?"}/${adsetR.effective_status ?? "?"}` : "error"} ad=${adR && !("error" in adR) ? `${adR.status ?? "?"}/${adR.effective_status ?? "?"}` : "error"}`,
+        context: {
+          campaign_id: campaignId,
+          phase: "sync_live_status",
+          meta_campaign_id: camp.meta_campaign_id,
+          campaign_status: campR && !("error" in campR) ? campR.status ?? null : null,
+          campaign_effective_status: campR && !("error" in campR) ? campR.effective_status ?? null : null,
+          meta_adset_id: camp.meta_adset_id,
+          adset_status: adsetR && !("error" in adsetR) ? adsetR.status ?? null : null,
+          adset_effective_status: adsetR && !("error" in adsetR) ? adsetR.effective_status ?? null : null,
+          meta_ad_id: camp.meta_ad_id,
+          ad_status: adR && !("error" in adR) ? adR.status ?? null : null,
+          ad_effective_status: adR && !("error" in adR) ? adR.effective_status ?? null : null,
+          delivery,
+        } as never,
+      });
+    } catch (e) {
+      console.warn("[syncCampaignStatusFromMeta] error_log insert failed", e);
+    }
 
     return {
       ok: true,
