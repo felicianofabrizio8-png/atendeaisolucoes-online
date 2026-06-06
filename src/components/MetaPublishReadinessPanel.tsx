@@ -403,11 +403,22 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const campaignValid = goalValid && Number(campaign.daily_budget ?? 0) > 0;
   const channelLabelMap = { whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram" } as const;
 
+  const selectedAdNorm = readiness.adAccountId.replace(/^act_/, "");
+  const adAccountFromGraph = Boolean(
+    readiness.adAccountId && accounts && accounts.some((a) => a.account_id === selectedAdNorm),
+  );
+  const isManualAdAccount = Boolean(
+    readiness.adAccountId && accounts !== null && !adAccountFromGraph,
+  );
+  const adAccountHint = readiness.adAccountId
+    ? `${readiness.adAccountId}${isManualAdAccount ? " (manual — não validado)" : ""}`
+    : "Escolha ou digite o ID abaixo.";
+
   // Checks comuns
   const baseChecks = [
     { ok: readiness.betaEnabled, label: "Beta Meta Ads liberado" },
     { ok: readiness.metaConnected, label: "Meta conectado", hint: readiness.metaConnected ? `${readiness.integrationCount} integração(ões)` : "Conecte a Meta." },
-    { ok: Boolean(readiness.adAccountId), label: "Conta de anúncios selecionada", hint: readiness.adAccountId || "Escolha ou digite o ID abaixo." },
+    { ok: adAccountFromGraph, label: "Conta de anúncios selecionada", hint: adAccountHint },
     { ok: Boolean(readiness.pageId), label: "Página Facebook selecionada", hint: readiness.pageId || "Escolha a página abaixo." },
   ];
 
