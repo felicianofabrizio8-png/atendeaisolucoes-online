@@ -1153,9 +1153,63 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
     console.log("[publishCampaign] verify_ad ok", { metaAdId, verified: verifyRes.data });
 
+    // Step G: ATIVAÇÃO FINAL — Meta cria tudo em PAUSED por padrão.
+    // Sem este passo a campanha nunca entra em análise/entrega.
+    type StatusResp = { id: string; status?: string; effective_status?: string };
+    const activationLog: Array<{
+      object: "campaign" | "adset" | "ad";
+      id: string;
+      status_before: string;
+      activate_ok: boolean;
+      activate_error?: string;
+      status_after?: string;
+      effective_status_after?: string;
+    }> = [];
 
-    // 5) Sucesso — grava IDs e marca ativa (Meta criou tudo em PAUSED por segurança;
-    // o usuário ativa pelo Gerenciador da Meta na primeira rodada do Beta).
+    async function activateObject(
+      object: "campaign" | "adset" | "ad",
+      id: string,
+      statusBefore: string,
+    ) {
+      const form = new URLSearchParams();
+      form.set("status", "ACTIVE");
+      form.set("access_token", accessToken);
+      const actRes = await graphFetch<{ success?: boolean }>(`${GRAPH}/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+      const getRes = await graphFetch<StatusResp>(
+        `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
+        { method: "GET" },
+      );
+      const entry = {
+        object,
+        id,
+        status_before: statusBefore,
+        activate_ok: actRes.ok,
+        activate_error: actRes.ok ? undefined : formatGraphError(actRes.body, actRes.message),
+        status_after: getRes.ok ? getRes.data.status : undefined,
+        effective_status_after: getRes.ok ? getRes.data.effective_status : undefined,
+      };
+      activationLog.push(entry);
+      console.log("[publishCampaign] activate", entry);
+      return entry;
+    }
+
+    const campAct = await activateObject("campaign", metaCampaignId, "PAUSED");
+    const adsetAct = await activateObject("adset", metaAdsetId, "PAUSED");
+    const adAct = await activateObject("ad", metaAdId, "PAUSED");
+
+    const adOk =
+      adAct.status_after === "ACTIVE" || adAct.status_after === "PENDING_REVIEW" ||
+      adAct.effective_status_after === "ACTIVE" ||
+      adAct.effective_status_after === "PENDING_REVIEW" ||
+      adAct.effective_status_after === "IN_PROCESS";
+    const allActive =
+      campAct.status_after === "ACTIVE" && adsetAct.status_after === "ACTIVE" && adOk;
+
+    // 5) Sucesso — grava IDs e marca status conforme resultado da ativação.
     const { error: saveErr } = await supabase
       .from("campaigns")
       .update({
@@ -1165,8 +1219,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
         meta_ad_id: metaAdId,
         meta_sync_status: "active",
         meta_last_sync_at: new Date().toISOString(),
-        meta_delivery_status: "paused_on_meta",
-        meta_publish_error: null,
+        meta_delivery_status: allActive ? "active_on_meta" : "paused_on_meta",
+        meta_publish_error: allActive
+          ? null
+          : "Falha ao ativar um ou mais objetos na Meta. Verifique no Gerenciador.",
       } as never)
       .eq("id", campaignId);
     if (saveErr) {
@@ -1174,8 +1230,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
     } else {
       console.log("[publishCampaign] success — saved ids", {
         campaignId, metaCampaignId, metaAdsetId, creativeId, metaAdId,
+        allActive, activationLog,
       });
     }
+
 
     return {
       ok: true as const,
