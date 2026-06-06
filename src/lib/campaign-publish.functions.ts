@@ -403,7 +403,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
     type MetaObjectKind = "campaign" | "adset" | "ad";
-    type StatusResp = { id: string; status?: string; effective_status?: string };
+    type MetaStatusResp = { id: string; status?: string; effective_status?: string };
     type StatusSnapshot = {
       object: MetaObjectKind;
       id: string;
@@ -413,7 +413,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     };
 
     async function fetchObjectStatus(object: MetaObjectKind, id: string): Promise<StatusSnapshot> {
-      const res = await graphFetch<StatusResp>(
+      const res = await graphFetch<MetaStatusResp>(
         `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
         { method: "GET" },
       );
