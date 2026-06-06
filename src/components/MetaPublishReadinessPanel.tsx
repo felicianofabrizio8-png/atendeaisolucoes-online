@@ -8,6 +8,7 @@ import {
   listMetaAdAccounts,
   listMetaPages,
   selectMetaAdAccount,
+  clearMetaAdAccount,
   selectMetaPage,
   setMetaBetaFlag,
 } from "@/lib/meta-ads.functions";
