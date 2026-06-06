@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
 import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
+import { activateCampaignOnMeta } from "@/lib/campaign-meta-activate.functions";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
@@ -128,6 +129,33 @@ function CampaignDetailPage() {
   } | null>(null);
   const publishFn = useServerFn(publishCampaign);
   const syncMetaFn = useServerFn(syncCampaignStatusFromMeta);
+  const activateMetaFn = useServerFn(activateCampaignOnMeta);
+  const [activating, setActivating] = useState(false);
+
+  async function performActivate() {
+    if (!c) return;
+    setActivating(true);
+    try {
+      const r = await activateMetaFn({ data: { campaignId: c.id } });
+      if (r.ok) {
+        toast.success("Os 3 objetos foram ativados na Meta.");
+      } else {
+        toast.error(r.error || "message" in r && r.message ? (r as { message?: string }).message ?? "Falha ao ativar." : "Falha ao ativar na Meta.");
+      }
+      try {
+        const live = await syncMetaFn({ data: { campaignId: c.id } });
+        setMetaLiveStatus(live);
+      } catch (e) {
+        console.warn("[campaign-detail] sync after activate failed", e);
+      }
+      const fresh = await getCampaign(c.id);
+      if (fresh) setC(fresh);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao ativar na Meta.");
+    } finally {
+      setActivating(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
