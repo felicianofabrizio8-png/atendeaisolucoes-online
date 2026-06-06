@@ -348,7 +348,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex.: Piscina de fibra 6x3"
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               autoFocus
             />
           </div>
@@ -360,7 +360,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as ProductCategory)}
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             >
               {PRODUCT_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -382,7 +382,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0,00"
-                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
             <div>
@@ -396,7 +396,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 value={promoPrice}
                 onChange={(e) => setPromoPrice(e.target.value)}
                 placeholder="0,00"
-                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
           </div>
@@ -410,7 +410,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Detalhes do produto…"
-              className="mt-1 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className="mt-1 w-full px-3 py-2 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
 
@@ -423,7 +423,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex.: Inclui escada inox"
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
