@@ -208,7 +208,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         has_ads_management: scopes.includes("ads_management"),
       });
       if (tokenType !== "USER" && tokenType !== "SYSTEM_USER") {
-        throw new Error("Reconexão incompleta: o Facebook retornou token de Página. Refaça a conexão concedendo acesso ao usuário/conta de anúncios.");
+        throw new Error("Reconexão inválida: token de Página salvo. Reconecte com token de usuário.");
       }
 
       const tok = encodeURIComponent(userToken);
