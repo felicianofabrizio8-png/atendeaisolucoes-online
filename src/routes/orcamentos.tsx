@@ -820,25 +820,25 @@ function SendWhatsAppModal({
           </BlockRow>
         </div>
 
-        <div className="p-4 border-t border-border flex flex-wrap items-center justify-end gap-2">
+        <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:flex-wrap items-stretch md:items-center md:justify-end gap-2 safe-bottom">
           <button
             onClick={onClose}
             disabled={busyAll}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+            className="text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-2 hover:bg-accent disabled:opacity-50"
           >
             Fechar
           </button>
           <button
             onClick={sendSelected}
             disabled={busyAll}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 min-h-11 md:min-h-0 md:py-2 hover:opacity-90 disabled:opacity-50"
           >
             {busyAll ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
             ) : (
-              <Send className="h-3.5 w-3.5" />
+              <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
             )}
-            {busyAll ? "Enviando…" : "Enviar selecionados em sequência"}
+            {busyAll ? "Enviando…" : "Enviar em sequência"}
           </button>
         </div>
       </div>
