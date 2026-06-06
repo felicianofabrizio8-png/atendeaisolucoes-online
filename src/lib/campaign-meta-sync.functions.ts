@@ -124,19 +124,29 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
       const cs = (campR as StatusResp).status;
       const as_ = (adsetR as StatusResp).status;
       const ads = (adR as StatusResp).status;
+      const ce = (campR as StatusResp).effective_status;
+      const ae = (adsetR as StatusResp).effective_status;
       const adEff = (adR as StatusResp).effective_status;
-      const archived = cs === "ARCHIVED" || as_ === "ARCHIVED" || ads === "ARCHIVED";
-      const adOk =
-        ads === "ACTIVE" || ads === "PENDING_REVIEW" ||
-        adEff === "ACTIVE" || adEff === "PENDING_REVIEW" || adEff === "IN_PROCESS";
+      const statuses = [cs, as_, ads, ce, ae, adEff].filter(Boolean);
+      const archived = statuses.includes("ARCHIVED");
+      const review = statuses.some((s) => s === "PENDING_REVIEW" || s === "IN_PROCESS");
+      const issues = statuses.some((s) => s === "WITH_ISSUES" || s === "DISAPPROVED" || s === "REJECTED");
       if (archived) {
         delivery = "archived_on_meta";
-      } else if (cs === "ACTIVE" && as_ === "ACTIVE" && adOk) {
+      } else if (issues) {
+        delivery = "issues_on_meta";
+        publishErr =
+          `Meta retornou problema de entrega: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
+      } else if (review) {
+        delivery = "review_on_meta";
+        publishErr =
+          `Meta ainda está revisando/processando: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
+      } else if (cs === "ACTIVE" && ce === "ACTIVE" && as_ === "ACTIVE" && ae === "ACTIVE" && ads === "ACTIVE" && adEff === "ACTIVE") {
         delivery = "active_on_meta";
       } else {
         delivery = "paused_on_meta";
         publishErr =
-          `Meta retornou status não-ativo: campaign=${cs}, adset=${as_}, ad=${ads}/${adEff ?? "?"}`;
+          `Meta retornou status não-ativo: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
       }
     }
 
