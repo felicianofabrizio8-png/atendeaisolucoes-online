@@ -124,12 +124,6 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         }
         const incomingMime = (file.type || "audio/ogg").toLowerCase();
         const baseMime = incomingMime.split(";")[0];
-        if (!ALLOWED_MIMES.has(incomingMime) && !ALLOWED_MIMES.has(baseMime)) {
-          return Response.json(
-            { error: `Formato de áudio não suportado: ${incomingMime}. Grave novamente em OGG/Opus.` },
-            { status: 415 },
-          );
-        }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const detectedAudio = detectAudioBytes(bytes);
         console.log("[AUDIO BYTE CHECK]", {
@@ -139,6 +133,18 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           starts_with: Array.from(bytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
           valid_declared_mime: mimeMatchesBytes(baseMime, detectedAudio),
         });
+        if (!ALLOWED_MIMES.has(incomingMime) && !ALLOWED_MIMES.has(baseMime)) {
+          return Response.json(
+            {
+              error: `Formato de áudio não suportado: ${incomingMime}. Grave novamente em OGG/Opus.`,
+              stage: "audio_format_validation",
+              declared_mime: baseMime,
+              detected_audio: detectedAudio,
+              media_size: file.size,
+            },
+            { status: 415 },
+          );
+        }
         if (!mimeMatchesBytes(baseMime, detectedAudio)) {
           return Response.json(
             {
