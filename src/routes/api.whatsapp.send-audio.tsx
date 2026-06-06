@@ -257,6 +257,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         };
         console.log("[send-audio] meta request", {
           apiUrl,
+          payload,
           to: recipient,
           phone_number_id: integration.external_account_id,
           media_mime: baseMime,
@@ -277,37 +278,48 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             body: JSON.stringify(payload),
           });
           const apiText = await apiRes.text();
-          let apiJson: {
-            messages?: Array<{ id: string }>;
-            error?: {
-              message?: string;
-              code?: number;
-              error_subcode?: number;
-              fbtrace_id?: string;
-              error_data?: unknown;
-              type?: string;
-            };
-          } = {};
+          let apiJson: MetaAudioResponse = {};
           try {
             apiJson = JSON.parse(apiText);
           } catch {
             /* */
           }
+          const err = apiJson.error ?? {};
+          externalId = apiJson.messages?.[0]?.id ?? null;
           console.log("[send-audio] meta response", {
             status: apiRes.status,
             ok: apiRes.ok,
-            body: apiText.slice(0, 2000),
+            body: apiText,
+            error_message: err.message,
+            error_code: err.code,
+            error_subcode: err.error_subcode,
+            fbtrace_id: err.fbtrace_id,
+            payload,
+            phone_number_id: integration.external_account_id,
+            to: recipient,
+            media_mime: baseMime,
+            media_size: file.size,
+            signed_url_status: signedUrlStatus,
+            signed_url_content_type: signedUrlContentType,
+            signed_url_content_length: signedUrlContentLength,
           });
-          if (!apiRes.ok) {
-            const err = apiJson.error ?? {};
-            const msg = err.message ?? `HTTP ${apiRes.status}`;
+          if (!([200, 201].includes(apiRes.status)) || !externalId) {
+            const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
             console.error("[send-audio] meta error", {
               status: apiRes.status,
               message: err.message,
               code: err.code,
               error_subcode: err.error_subcode,
               fbtrace_id: err.fbtrace_id,
-              body: apiText.slice(0, 2000),
+              body: apiText,
+              payload,
+              phone_number_id: integration.external_account_id,
+              to: recipient,
+              media_mime: baseMime,
+              media_size: file.size,
+              signed_url_status: signedUrlStatus,
+              signed_url_content_type: signedUrlContentType,
+              signed_url_content_length: signedUrlContentLength,
             });
             await supabaseAdmin.from("error_log").insert({
               company_id: companyId,
@@ -319,17 +331,20 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 conversation_id: conversationId,
                 lead_phone: recipient,
                 phone_number_id: integration.external_account_id,
+                payload,
                 media_mime: baseMime,
                 media_size: file.size,
                 signed_url_status: signedUrlStatus,
                 signed_url_content_type: signedUrlContentType,
                 signed_url_content_length: signedUrlContentLength,
                 http_status: apiRes.status,
+                meta_error_message: err.message ?? null,
                 meta_error_code: err.code ?? null,
                 meta_error_subcode: err.error_subcode ?? null,
                 meta_error_type: err.type ?? null,
                 fbtrace_id: err.fbtrace_id ?? null,
-                meta_body: apiText.slice(0, 2000),
+                meta_body: apiText,
+                meta_message_id: externalId,
               },
             }).then(() => null, () => null);
             await supabaseAdmin
@@ -339,17 +354,26 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
             return Response.json(
               {
-                error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente.",
+                error: FRIENDLY_SEND_ERROR,
                 metaError: err,
                 status: apiRes.status,
               },
               { status: 502 },
             );
           }
-          externalId = apiJson.messages?.[0]?.id ?? null;
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
-          console.error("[send-audio] network error", msg);
+          console.error("[send-audio] network error", {
+            message: msg,
+            payload,
+            phone_number_id: integration.external_account_id,
+            to: recipient,
+            media_mime: baseMime,
+            media_size: file.size,
+            signed_url_status: signedUrlStatus,
+            signed_url_content_type: signedUrlContentType,
+            signed_url_content_length: signedUrlContentLength,
+          });
           await supabaseAdmin.from("error_log").insert({
             company_id: companyId,
             user_id: userId,
@@ -359,14 +383,18 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             context: {
               conversation_id: conversationId,
               lead_phone: recipient,
+              phone_number_id: integration.external_account_id,
+              payload,
               media_mime: baseMime,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
+              signed_url_content_type: signedUrlContentType,
+              signed_url_content_length: signedUrlContentLength,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
-            { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
+            { error: FRIENDLY_SEND_ERROR },
             { status: 502 },
           );
         }
