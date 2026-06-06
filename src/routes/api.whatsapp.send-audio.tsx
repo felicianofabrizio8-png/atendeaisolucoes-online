@@ -251,6 +251,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         let signedUrlStatus: number | string = "unknown";
         let signedUrlContentType: string | null = null;
         let signedUrlContentLength: string | null = null;
+        let signedUrlDetectedAudio: DetectedAudio = "unknown";
         let signedUrlIsValid = false;
         try {
           const preflight = await fetch(signed.signedUrl, { method: "GET" });
@@ -258,20 +259,28 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           signedUrlContentType = preflight.headers.get("content-type");
           signedUrlContentLength = preflight.headers.get("content-length");
           const signedUrlLength = Number(signedUrlContentLength ?? 0);
+          const signedUrlBytes = new Uint8Array(await preflight.arrayBuffer());
+          signedUrlDetectedAudio = detectAudioBytes(signedUrlBytes);
           signedUrlIsValid =
             preflight.status === 200 &&
             Number.isFinite(signedUrlLength) &&
             signedUrlLength > 0 &&
-            isAllowedMimeHeader(signedUrlContentType);
+            isAllowedMimeHeader(signedUrlContentType) &&
+            mimeMatchesBytes(baseMime, signedUrlDetectedAudio);
           console.log("[AUDIO FILE TEST]", {
             status: signedUrlStatus,
             content_type: signedUrlContentType,
             content_length: signedUrlContentLength,
+            declared_mime: baseMime,
+            detected_audio: signedUrlDetectedAudio,
+            byte_length: signedUrlBytes.byteLength,
+            starts_with: Array.from(signedUrlBytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
             valid: signedUrlIsValid,
             expected: {
               status: 200,
               content_length_gt_zero: true,
-              allowed_content_types: Array.from(ALLOWED_MIMES),
+              allowed_content_types: ["audio/ogg", "audio/mp4"],
+              bytes_match_declared_mime: true,
             },
             media_mime: baseMime,
             media_size: file.size,
@@ -285,8 +294,9 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           if (!isAllowedMimeHeader(signedUrlContentType)) {
             throw new Error(`signed url content-type inválido: ${signedUrlContentType ?? "ausente"}`);
           }
-          // descarta body
-          try { await preflight.body?.cancel(); } catch { /* */ }
+          if (!mimeMatchesBytes(baseMime, signedUrlDetectedAudio)) {
+            throw new Error(`signed url bytes inválidos: MIME ${baseMime}, bytes ${signedUrlDetectedAudio}`);
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "signed url inacessível";
           console.error("[AUDIO FILE TEST]", {
@@ -295,6 +305,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
@@ -315,6 +326,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
@@ -327,6 +339,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
               media_mime: baseMime,
               media_size: file.size,
             },
