@@ -466,6 +466,27 @@ export const publishCampaign = createServerFn({ method: "POST" })
       }
     }
 
+    const pageCheck = await graphFetch<{ id: string; name?: string }>(
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=id,name&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    console.log("[publishCampaign] page_id_check", {
+      ok: pageCheck.ok,
+      page_id: pageId,
+      page_name: pageCheck.ok ? pageCheck.data.name ?? null : null,
+      error: pageCheck.ok ? null : formatGraphError(pageCheck.body, pageCheck.message),
+    });
+    if (!pageCheck.ok || pageCheck.data.id !== pageId) {
+      return fail(
+        "preflight_page",
+        pageCheck.ok
+          ? `Página Meta divergente: esperado ${pageId}, recebido ${pageCheck.data.id}.`
+          : formatGraphError(pageCheck.body, pageCheck.message),
+        pageCheck.ok ? pageCheck.data : pageCheck.body,
+        { page_id: pageId },
+      );
+    }
+
 
     // Step A: baixa a imagem do Supabase no backend e faz upload por BYTES
     // para /act_<id>/adimages. Isso evita o erro #3858258 (Meta crawler não
