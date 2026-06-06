@@ -2,8 +2,11 @@ import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from
 import { AppShell } from "@/components/AppShell";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import { installGlobalErrorHandlers } from "@/lib/audit";
 
 import appCss from "../styles.css?url";
+
 
 function NotFoundComponent() {
   return (
@@ -117,11 +120,17 @@ const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/call
 function AuthGate() {
   const { loading, user } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    installGlobalErrorHandlers();
+  }, []);
+
   const isPublicRoute = PUBLIC_ROUTES.some(
     (p) => location.pathname === p || location.pathname.startsWith(p + "/"),
   );
   const demo =
     typeof window !== "undefined" && window.localStorage.getItem("atendeai.demo") === "1";
+
 
   if (isPublicRoute) {
     return <Outlet />;
