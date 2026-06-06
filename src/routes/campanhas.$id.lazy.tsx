@@ -465,7 +465,15 @@ function CampaignDetailPage() {
       </header>
 
 
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="h-10">
+          <TabsTrigger value="overview" className="text-sm">Visão geral</TabsTrigger>
+          <TabsTrigger value="advisor" className="text-sm gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" /> Gestor IA
+          </TabsTrigger>
+        </TabsList>
 
+        <TabsContent value="overview" className="space-y-5 mt-4">
       {!metaActive && <MetaPublishReadinessPanel campaign={c} />}
 
       {/* Dados reais da campanha */}
