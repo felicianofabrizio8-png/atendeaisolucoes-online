@@ -131,11 +131,11 @@ function QuotesPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
-        <FileText className="h-4 w-4 text-primary" />
-        <div className="flex-1">
+      <header className="sticky top-0 z-20 bg-background h-14 px-4 md:px-6 border-b border-border flex items-center gap-3 safe-top">
+        <FileText className="h-4 w-4 text-primary shrink-0" />
+        <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold">Orçamentos</h1>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground truncate">
             {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
             {quotes.length === 1 ? "" : "s"}
           </p>
@@ -146,9 +146,11 @@ function QuotesPage() {
             setPrefillConvId(undefined);
             setOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold"
+          aria-label="Novo orçamento"
+          className="inline-flex items-center justify-center gap-1.5 h-11 w-11 md:h-9 md:w-auto md:px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold shrink-0"
         >
-          <Plus className="h-3.5 w-3.5" /> Novo orçamento
+          <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
+          <span className="hidden md:inline">Novo orçamento</span>
         </button>
       </header>
 
@@ -295,35 +297,29 @@ function QuoteCard({ quote }: { quote: Quote }) {
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+      <div className="rounded-lg border border-border bg-card p-3 md:p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold truncate">{quote.productName}</div>
             <div className="text-[12px] font-medium truncate">
               {lead?.name ?? "— Cliente não selecionado —"}
             </div>
             <div className="text-[11px] text-muted-foreground truncate">
-              {contactLine} • criado há {timeAgo(quote.createdAt)}
+              {contactLine}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              há {timeAgo(quote.createdAt)}
             </div>
           </div>
-          <div className="flex items-start gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <div className="text-right">
-              <div className="text-base font-bold">{formatBRL(quote.finalValue)}</div>
+              <div className="text-lg md:text-base font-bold leading-tight">{formatBRL(quote.finalValue)}</div>
               {quote.installments > 1 && (
                 <div className="text-[11px] text-muted-foreground">
-                  {quote.installments}x de {formatBRL(quote.finalValue / quote.installments)}
+                  {quote.installments}x {formatBRL(quote.finalValue / quote.installments)}
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              aria-label="Excluir orçamento"
-              title="Excluir orçamento"
-              className="h-7 w-7 -mt-1 -mr-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
           </div>
         </div>
 
@@ -340,7 +336,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2">
           <button
             onClick={() => {
               if (!hasClient) {
@@ -354,26 +350,42 @@ function QuoteCard({ quote }: { quote: Quote }) {
               setWaOpen(true);
             }}
             disabled={!canWhatsApp}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-[#25D366] text-white px-3 py-1.5 hover:opacity-90 font-semibold disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-[#25D366] text-white px-3 min-h-11 md:min-h-0 md:py-1.5 hover:opacity-90 font-semibold disabled:opacity-40 w-full md:w-auto"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
             {quote.sent ? "Reenviar no WhatsApp" : "Enviar no WhatsApp"}
           </button>
-          <button
-            onClick={openConversation}
-            disabled={!hasClient}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
-          >
-            <MessageCircle className="h-3.5 w-3.5" /> Abrir conversa
-          </button>
-          <button
-            onClick={copyMessage}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md bg-secondary px-3 py-1.5 hover:bg-accent font-semibold"
-          >
-            <Copy className="h-3.5 w-3.5" /> Copiar orçamento
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openConversation}
+              disabled={!hasClient}
+              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
+            >
+              <MessageCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="md:inline">Abrir conversa</span>
+            </button>
+            <button
+              onClick={copyMessage}
+              aria-label="Copiar orçamento"
+              title="Copiar orçamento"
+              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:px-3 md:py-1.5 hover:bg-accent font-semibold"
+            >
+              <Copy className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <span className="hidden md:inline">Copiar orçamento</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Excluir orçamento"
+              title="Excluir orçamento"
+              className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7"
+            >
+              <Trash2 className="h-4 w-4 md:h-3.5 md:w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
+
 
       {waOpen && lead && (
         <SendWhatsAppModal
@@ -709,14 +721,14 @@ function SendWhatsAppModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
+        className="w-full md:max-w-2xl md:rounded-lg border-0 md:border md:border-border bg-card shadow-xl md:my-4 min-h-screen md:min-h-0 md:max-h-[calc(100vh-2rem)] overflow-y-auto safe-top safe-bottom"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-border flex items-center gap-2">
+        <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
           <Send className="h-4 w-4 text-primary" />
           <div>
             <h2 className="text-sm font-semibold">Enviar pelo WhatsApp</h2>
@@ -808,25 +820,25 @@ function SendWhatsAppModal({
           </BlockRow>
         </div>
 
-        <div className="p-4 border-t border-border flex flex-wrap items-center justify-end gap-2">
+        <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:flex-wrap items-stretch md:items-center md:justify-end gap-2 safe-bottom">
           <button
             onClick={onClose}
             disabled={busyAll}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+            className="text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-2 hover:bg-accent disabled:opacity-50"
           >
             Fechar
           </button>
           <button
             onClick={sendSelected}
             disabled={busyAll}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 min-h-11 md:min-h-0 md:py-2 hover:opacity-90 disabled:opacity-50"
           >
             {busyAll ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
             ) : (
-              <Send className="h-3.5 w-3.5" />
+              <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
             )}
-            {busyAll ? "Enviando…" : "Enviar selecionados em sequência"}
+            {busyAll ? "Enviando…" : "Enviar em sequência"}
           </button>
         </div>
       </div>
@@ -1142,18 +1154,18 @@ function QuoteFormModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-4 overflow-y-auto"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 md:my-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
+        className="w-full md:max-w-2xl md:rounded-lg border-0 md:border md:border-border bg-card shadow-xl md:my-4 md:my-8 min-h-screen md:min-h-0 md:max-h-[calc(100vh-2rem)] overflow-y-auto safe-top safe-bottom"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-border flex items-center gap-2">
+        <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Novo orçamento</h2>
-          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
-            <X className="h-4 w-4" />
+          <button onClick={onCancel} aria-label="Fechar" className="ml-auto inline-flex items-center justify-center rounded-md hover:bg-accent min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7">
+            <X className="h-5 w-5 md:h-4 md:w-4" />
           </button>
         </div>
 
@@ -1210,7 +1222,7 @@ function QuoteFormModal({
                   value={clientSearch}
                   onChange={(e) => setClientSearch(e.target.value)}
                   placeholder="Buscar por nome, telefone ou @"
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 {leads.length === 0 ? (
                   <div className="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
@@ -1268,12 +1280,12 @@ function QuoteFormModal({
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Nome do cliente"
-                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 <select
                   value={newChannel}
                   onChange={(e) => setNewChannel(e.target.value as Channel)}
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="whatsapp">WhatsApp</option>
                   <option value="instagram">Instagram</option>
@@ -1284,7 +1296,7 @@ function QuoteFormModal({
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   placeholder="Telefone (ex: 5511999998888)"
-                  className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                 />
                 {newChannel !== "whatsapp" && (
                   <input
@@ -1292,7 +1304,7 @@ function QuoteFormModal({
                     value={newHandle}
                     onChange={(e) => setNewHandle(e.target.value)}
                     placeholder="@usuário"
-                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
                   />
                 )}
                 <p className="md:col-span-2 text-[11px] text-muted-foreground">
@@ -1312,7 +1324,7 @@ function QuoteFormModal({
                 setShowSuggestion(false);
               }}
               className={cn(
-                "w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring",
+                "w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring",
                 showSuggestion && "ring-2 ring-primary/40",
               )}
             >
@@ -1350,7 +1362,7 @@ function QuoteFormModal({
               inputMode="numeric"
               value={discountRaw}
               onChange={(e) => setDiscountRaw(e.target.value.replace(/[^\d]/g, ""))}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
               placeholder="0"
             />
           </Field>
@@ -1360,7 +1372,7 @@ function QuoteFormModal({
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -1375,7 +1387,7 @@ function QuoteFormModal({
             <select
               value={installments}
               onChange={(e) => setInstallments(Number(e.target.value))}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((n) => (
                 <option key={n} value={n}>
@@ -1391,7 +1403,7 @@ function QuoteFormModal({
               type="date"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
 
@@ -1482,7 +1494,7 @@ function QuoteFormModal({
               onChange={(e) => setObservacoes(e.target.value)}
               rows={3}
               placeholder="Ex: Entrega em até 7 dias. Garantia de 1 ano."
-              className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
+              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring resize-y"
             />
           </div>
 
@@ -1544,37 +1556,39 @@ function QuoteFormModal({
         </div>
 
 
-        <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
+        <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 md:flex-wrap safe-bottom">
           {!hasClient && (
-            <span className="text-[11px] text-destructive mr-auto">
+            <span className="text-[11px] text-destructive md:mr-auto text-center md:text-left">
               Selecione um cliente para enviar este orçamento.
             </span>
           )}
-          <button
-            onClick={onCancel}
-            disabled={submitting}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            disabled={!canSubmit}
-            onClick={submit}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
-          >
-            {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
-              <Send className="h-3.5 w-3.5" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )}
-            {submitting
-              ? "Salvando…"
-              : defaultConversationId && defaultLeadId && defaultLeadId === leadId
-                ? "Salvar e enviar na conversa"
-                : "Salvar orçamento"}
-          </button>
+          <div className="flex flex-col-reverse md:flex-row gap-2">
+            <button
+              onClick={onCancel}
+              disabled={submitting}
+              className="text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-2 hover:bg-accent disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={!canSubmit}
+              onClick={submit}
+              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs font-semibold rounded-md px-3 min-h-11 md:min-h-0 md:py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
+              ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
+                <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              ) : (
+                <Check className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              )}
+              {submitting
+                ? "Salvando…"
+                : defaultConversationId && defaultLeadId && defaultLeadId === leadId
+                  ? "Salvar e enviar"
+                  : "Salvar orçamento"}
+            </button>
+          </div>
         </div>
 
       </div>
@@ -1773,7 +1787,7 @@ function ItemListField({
             }
           }}
           placeholder={placeholder}
-          className="flex-1 rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           type="button"
