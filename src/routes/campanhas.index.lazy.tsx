@@ -51,7 +51,7 @@ function CampaignsPage() {
       .finally(() => setLoading(false));
   }, [profile?.company_id]);
 
-  const active = items.filter((c) => c.status === "active").length;
+  const active = items.filter((c) => c.meta_delivery_status === "active_on_meta").length;
   const invested = items.reduce((s, c) => s + Number(c.spent ?? 0), 0);
   const leads = items.reduce((s, c) => s + (c.leads_count ?? 0), 0);
   const cpl = leads > 0 ? invested / leads : 0;
@@ -137,7 +137,7 @@ function CampaignsPage() {
                     <span>{c.leads_count} leads</span>
                     <span>{formatBRL(c.spent)} gasto</span>
                   </div>
-                  <StatusPill status={c.status} />
+                  <StatusPill campaign={c} />
                 </Link>
               </li>
             ))}
@@ -148,7 +148,16 @@ function CampaignsPage() {
   );
 }
 
-function StatusPill({ status }: { status: Campaign["status"] }) {
+function getRealCampaignStatus(c: Campaign): { label: string; tone: string } {
+  if (c.meta_delivery_status === "active_on_meta") return { label: "ACTIVE", tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" };
+  if (c.meta_delivery_status === "paused_on_meta") return { label: "PAUSED", tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
+  if (c.meta_delivery_status === "archived_on_meta") return { label: "ARCHIVED", tone: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400" };
+  if (c.meta_delivery_status === "review_on_meta") return { label: "PENDING_REVIEW", tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
+  if (c.meta_delivery_status === "issues_on_meta") return { label: "WITH_ISSUES", tone: "bg-destructive/15 text-destructive" };
+  return { label: statusLabel(c.status), tone: localStatusTone(c.status) };
+}
+
+function localStatusTone(status: Campaign["status"]): string {
   const map: Record<Campaign["status"], string> = {
     draft: "bg-muted text-muted-foreground",
     scheduled: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
@@ -156,9 +165,14 @@ function StatusPill({ status }: { status: Campaign["status"] }) {
     paused: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
     ended: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
   };
+  return map[status];
+}
+
+function StatusPill({ campaign }: { campaign: Campaign }) {
+  const real = getRealCampaignStatus(campaign);
   return (
-    <span className={cn("text-[11px] font-medium px-2 py-1 rounded-full", map[status])}>
-      {statusLabel(status)}
+    <span className={cn("text-[11px] font-medium px-2 py-1 rounded-full", real.tone)}>
+      {real.label}
     </span>
   );
 }

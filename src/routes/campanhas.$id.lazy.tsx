@@ -2,7 +2,7 @@ import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
-import { syncCampaignStatusFromMeta } from "@/lib/campaign-meta-sync.functions";
+import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
@@ -69,6 +69,12 @@ const routeApi = getRouteApi("/campanhas/$id");
 
 // Display-only status superset: maps onto Campaign["status"] plus future Meta states.
 type DisplayStatus = CampaignStatus | "publishing" | "error" | "rejected";
+type MetaPanelStatus = {
+  label: string;
+  hint: string;
+  variant: "active" | "paused" | "review" | "issues" | "archived" | "unknown";
+  rows: Array<{ label: string; id: string | null; status: string; effective: string }>;
+};
 
 export const Route = createLazyFileRoute("/campanhas/$id")({
   component: CampaignDetailPage,
@@ -110,6 +116,7 @@ function CampaignDetailPage() {
   const [improveOpen, setImproveOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStage, setPublishStage] = useState<string>("");
+  const [metaLiveStatus, setMetaLiveStatus] = useState<CampaignMetaLiveStatus | null>(null);
   const [mediaCheck, setMediaCheck] = useState<{
     url: string;
     status: number | null;
@@ -124,6 +131,7 @@ function CampaignDetailPage() {
 
   useEffect(() => {
     setLoading(true);
+    setMetaLiveStatus(null);
     getCampaign(id)
       .then(async (camp) => {
         setC(camp);
@@ -131,7 +139,8 @@ function CampaignDetailPage() {
         // evita divergência com o Gerenciador.
         if (camp?.meta_campaign_id) {
           try {
-            await syncMetaFn({ data: { campaignId: id } });
+            const live = await syncMetaFn({ data: { campaignId: id } });
+            setMetaLiveStatus(live);
             const fresh = await getCampaign(id);
             if (fresh) setC(fresh);
           } catch (e) {
@@ -190,7 +199,13 @@ function CampaignDetailPage() {
       const mc = (r as { mediaCheck?: typeof mediaCheck }).mediaCheck ?? null;
       setMediaCheck(mc);
       if (r.ok) {
-        toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
+        toast.success("Campanha ativada na Meta com status real confirmado.");
+        try {
+          const live = await syncMetaFn({ data: { campaignId: c.id } });
+          setMetaLiveStatus(live);
+        } catch (e) {
+          console.warn("[campaign-detail] meta sync after publish failed", e);
+        }
         const fresh = await getCampaign(c.id);
         if (fresh) setC(fresh);
       } else {
@@ -235,6 +250,7 @@ function CampaignDetailPage() {
   const status: DisplayStatus = c.status;
   const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
   const metaActive = Boolean(c.meta_campaign_id);
+  const metaStatus = getMetaPanelStatus(c, metaLiveStatus);
   // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
   const needsAdRetry = Boolean(c.meta_campaign_id && c.meta_adset_id && !c.meta_ad_id);
 
@@ -300,7 +316,7 @@ function CampaignDetailPage() {
           </div>
 
         </div>
-        <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
+        <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} metaStatus={metaStatus} />
         {(needsAdRetry || c.meta_publish_error) && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -658,19 +674,52 @@ const STATUS_META: Record<DisplayStatus, {
   },
 };
 
-function StatusBanner({ status, updatedAt, metaId }: { status: DisplayStatus; updatedAt: string; metaId: string | null }) {
+function getMetaPanelStatus(c: Campaign, live: CampaignMetaLiveStatus | null): MetaPanelStatus | null {
+  if (!c.meta_campaign_id) return null;
+  const statusOf = (obj: CampaignMetaLiveStatus["campaign"]) =>
+    obj && !("error" in obj) ? { status: obj.status ?? "—", effective: obj.effective_status ?? "—" } : { status: "—", effective: "—" };
+  const campaign = statusOf(live?.campaign ?? null);
+  const adset = statusOf(live?.adset ?? null);
+  const ad = statusOf(live?.ad ?? null);
+  const delivery = live?.delivery ?? c.meta_delivery_status;
+  const rows = [
+    { label: "Campaign", id: c.meta_campaign_id, ...campaign },
+    { label: "AdSet", id: c.meta_adset_id, ...adset },
+    { label: "Ad", id: c.meta_ad_id, ...ad },
+  ];
+  if (delivery === "active_on_meta") return { label: "ACTIVE", hint: "Status real confirmado na Meta.", variant: "active", rows };
+  if (delivery === "review_on_meta") return { label: "PENDING_REVIEW / IN_PROCESS", hint: "A Meta ainda está revisando ou processando o anúncio.", variant: "review", rows };
+  if (delivery === "issues_on_meta") return { label: "WITH_ISSUES", hint: "A Meta retornou problema de entrega.", variant: "issues", rows };
+  if (delivery === "archived_on_meta") return { label: "ARCHIVED", hint: "A campanha está arquivada na Meta.", variant: "archived", rows };
+  if (delivery === "paused_on_meta") return { label: "PAUSED", hint: "A Meta informa que a entrega está desativada.", variant: "paused", rows };
+  return { label: "Status Meta pendente", hint: "Sincronizando status real da Meta.", variant: "unknown", rows };
+}
+
+function StatusBanner({ status, updatedAt, metaId, metaStatus }: { status: DisplayStatus; updatedAt: string; metaId: string | null; metaStatus: MetaPanelStatus | null }) {
   const m = STATUS_META[status] ?? STATUS_META.draft;
   const Icon = m.icon;
+  const metaTone = metaStatus?.variant === "active" ? STATUS_META.active
+    : metaStatus?.variant === "paused" || metaStatus?.variant === "review" ? STATUS_META.paused
+    : metaStatus?.variant === "issues" ? STATUS_META.rejected
+    : metaStatus?.variant === "archived" ? STATUS_META.ended
+    : null;
+  const visual = metaTone ?? m;
+  const VisualIcon = metaStatus?.variant === "active" ? PlayCircle
+    : metaStatus?.variant === "paused" ? PauseCircle
+    : metaStatus?.variant === "review" ? Clock
+    : metaStatus?.variant === "issues" ? AlertTriangle
+    : metaStatus?.variant === "archived" ? CheckCircle2
+    : Icon;
   return (
-    <div className={cn("rounded-xl border p-4 flex items-center gap-3 flex-wrap", m.ring)}>
-      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center shrink-0", m.badge)}>
-        <Icon className="h-5 w-5" />
+    <div className={cn("rounded-xl border p-4 flex items-center gap-3 flex-wrap", visual.ring)}>
+      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center shrink-0", visual.badge)}>
+        <VisualIcon className="h-5 w-5" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", m.badge)}>
-            <span className={cn("h-1.5 w-1.5 rounded-full", m.dot)} />
-            {statusLabel(status as CampaignStatus) ?? m.label}
+          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", visual.badge)}>
+            <span className={cn("h-1.5 w-1.5 rounded-full", visual.dot)} />
+            {metaStatus?.label ?? statusLabel(status as CampaignStatus) ?? m.label}
           </span>
           {metaId && (
             <span className="text-[11px] text-muted-foreground">
@@ -678,7 +727,18 @@ function StatusBanner({ status, updatedAt, metaId }: { status: DisplayStatus; up
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">{m.hint}</p>
+        <p className="text-xs text-muted-foreground mt-1">{metaStatus?.hint ?? m.hint}</p>
+        {metaStatus && (
+          <div className="mt-2 grid sm:grid-cols-3 gap-2">
+            {metaStatus.rows.map((row) => (
+              <div key={row.label} className="rounded-md border bg-background/60 px-2 py-1.5 text-[11px]">
+                <div className="font-medium">{row.label}</div>
+                <div className="font-mono text-muted-foreground truncate">{row.id ?? "—"}</div>
+                <div className="text-muted-foreground">{row.status} / {row.effective}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="text-xs text-muted-foreground whitespace-nowrap">
         Atualizada {relative(updatedAt)}
@@ -884,7 +944,7 @@ function buildTimeline(c: Campaign): TimelineEvent[] {
       at: c.updated_at,
       tone: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
     });
-    if (c.status === "active") {
+    if (c.meta_delivery_status === "active_on_meta") {
       events.push({
         source: "meta",
         icon: PlayCircle,
@@ -902,13 +962,25 @@ function buildTimeline(c: Campaign): TimelineEvent[] {
         tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
       });
     }
-    if (c.status === "paused") {
+    if (c.meta_delivery_status === "paused_on_meta" || c.status === "paused") {
       events.push({
         source: "meta",
         icon: PauseCircle,
         label: "Campanha pausada",
         at: c.updated_at,
         tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      });
+    }
+    if (c.meta_delivery_status === "review_on_meta" || c.meta_delivery_status === "issues_on_meta") {
+      events.push({
+        source: "meta",
+        icon: c.meta_delivery_status === "issues_on_meta" ? AlertTriangle : Clock,
+        label: c.meta_delivery_status === "issues_on_meta" ? "Meta retornou problema" : "Em revisão/processamento na Meta",
+        detail: c.meta_publish_error ?? undefined,
+        at: c.meta_last_sync_at ?? c.updated_at,
+        tone: c.meta_delivery_status === "issues_on_meta"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
       });
     }
     if (c.status === "ended") {

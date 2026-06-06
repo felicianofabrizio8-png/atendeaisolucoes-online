@@ -11,6 +11,7 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 
 type StatusResp = {
   id: string;
+  name?: string;
   status?: string;
   effective_status?: string;
 };
@@ -18,7 +19,7 @@ type StatusResp = {
 async function getStatus(id: string, token: string): Promise<StatusResp | { error: string }> {
   try {
     const r = await fetch(
-      `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(token)}`,
+      `${GRAPH}/${id}?fields=id,name,status,effective_status&access_token=${encodeURIComponent(token)}`,
     );
     const j = (await r.json()) as StatusResp & { error?: { message?: string } };
     if (j.error) return { error: j.error.message ?? "graph_error" };
@@ -34,7 +35,7 @@ export type CampaignMetaLiveStatus = {
   campaign: StatusResp | { error: string } | null;
   adset: StatusResp | { error: string } | null;
   ad: StatusResp | { error: string } | null;
-  delivery: "active_on_meta" | "paused_on_meta" | "archived_on_meta" | "unknown";
+  delivery: "active_on_meta" | "paused_on_meta" | "archived_on_meta" | "review_on_meta" | "issues_on_meta" | "unknown";
   error?: string;
 };
 
@@ -83,16 +84,19 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
       };
     }
 
-    const { data: integ } = await supabase
+    const adminClient = await import("@/integrations/supabase/client.server");
+    const { data: integrations } = await adminClient.supabaseAdmin
       .from("integrations")
       .select("access_token, account_metadata")
       .eq("company_id", companyId)
       .in("channel", ["instagram", "facebook"])
-      .eq("active", true)
-      .maybeSingle();
-    const integration = integ as
-      | { access_token: string | null; account_metadata: Record<string, unknown> | null }
-      | null;
+      .eq("active", true);
+    const integration = ((integrations ?? []) as Array<{
+      access_token: string | null;
+      account_metadata: Record<string, unknown> | null;
+    }>).find((i) => Boolean(i.access_token && i.account_metadata?.ad_account_id)) ??
+      ((integrations ?? []) as Array<{ access_token: string | null; account_metadata: Record<string, unknown> | null }>).find((i) => Boolean(i.access_token)) ??
+      null;
     const token = integration?.access_token;
     if (!token) {
       return {
@@ -123,31 +127,74 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
       const cs = (campR as StatusResp).status;
       const as_ = (adsetR as StatusResp).status;
       const ads = (adR as StatusResp).status;
+      const ce = (campR as StatusResp).effective_status;
+      const ae = (adsetR as StatusResp).effective_status;
       const adEff = (adR as StatusResp).effective_status;
-      const archived = cs === "ARCHIVED" || as_ === "ARCHIVED" || ads === "ARCHIVED";
-      const adOk =
-        ads === "ACTIVE" || ads === "PENDING_REVIEW" ||
-        adEff === "ACTIVE" || adEff === "PENDING_REVIEW" || adEff === "IN_PROCESS";
+      const statuses = [cs, as_, ads, ce, ae, adEff].filter(Boolean);
+      const archived = statuses.includes("ARCHIVED");
+      const review = statuses.some((s) => s === "PENDING_REVIEW" || s === "IN_PROCESS");
+      const issues = statuses.some((s) => s === "WITH_ISSUES" || s === "DISAPPROVED" || s === "REJECTED");
       if (archived) {
         delivery = "archived_on_meta";
-      } else if (cs === "ACTIVE" && as_ === "ACTIVE" && adOk) {
+      } else if (issues) {
+        delivery = "issues_on_meta";
+        publishErr =
+          `Meta retornou problema de entrega: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
+      } else if (review) {
+        delivery = "review_on_meta";
+        publishErr =
+          `Meta ainda está revisando/processando: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
+      } else if (cs === "ACTIVE" && ce === "ACTIVE" && as_ === "ACTIVE" && ae === "ACTIVE" && ads === "ACTIVE" && adEff === "ACTIVE") {
         delivery = "active_on_meta";
       } else {
         delivery = "paused_on_meta";
         publishErr =
-          `Meta retornou status não-ativo: campaign=${cs}, adset=${as_}, ad=${ads}/${adEff ?? "?"}`;
+          `Meta retornou status não-ativo: campaign=${cs}/${ce ?? "?"}, adset=${as_}/${ae ?? "?"}, ad=${ads}/${adEff ?? "?"}`;
       }
     }
 
     const syncedAt = new Date().toISOString();
+    const metaSyncStatus =
+      delivery === "active_on_meta" ? "active" :
+      delivery === "archived_on_meta" ? "archived" :
+      delivery === "issues_on_meta" ? "rejected" :
+      delivery === "paused_on_meta" ? "paused" :
+      "failed";
     await supabase
       .from("campaigns")
       .update({
+        meta_sync_status: metaSyncStatus,
         meta_delivery_status: delivery === "unknown" ? null : delivery,
         meta_last_sync_at: syncedAt,
         meta_publish_error: publishErr,
       } as never)
       .eq("id", campaignId);
+
+    try {
+      await adminClient.supabaseAdmin.from("error_log").insert({
+        company_id: companyId,
+        user_id: userId,
+        source: "meta",
+        severity: delivery === "active_on_meta" ? "info" : "warning",
+        message: `[sync:meta_status] campaign=${campR && !("error" in campR) ? `${campR.status ?? "?"}/${campR.effective_status ?? "?"}` : "error"} adset=${adsetR && !("error" in adsetR) ? `${adsetR.status ?? "?"}/${adsetR.effective_status ?? "?"}` : "error"} ad=${adR && !("error" in adR) ? `${adR.status ?? "?"}/${adR.effective_status ?? "?"}` : "error"}`,
+        context: {
+          campaign_id: campaignId,
+          phase: "sync_live_status",
+          meta_campaign_id: camp.meta_campaign_id,
+          campaign_status: campR && !("error" in campR) ? campR.status ?? null : null,
+          campaign_effective_status: campR && !("error" in campR) ? campR.effective_status ?? null : null,
+          meta_adset_id: camp.meta_adset_id,
+          adset_status: adsetR && !("error" in adsetR) ? adsetR.status ?? null : null,
+          adset_effective_status: adsetR && !("error" in adsetR) ? adsetR.effective_status ?? null : null,
+          meta_ad_id: camp.meta_ad_id,
+          ad_status: adR && !("error" in adR) ? adR.status ?? null : null,
+          ad_effective_status: adR && !("error" in adR) ? adR.effective_status ?? null : null,
+          delivery,
+        } as never,
+      });
+    } catch (e) {
+      console.warn("[syncCampaignStatusFromMeta] error_log insert failed", e);
+    }
 
     return {
       ok: true,

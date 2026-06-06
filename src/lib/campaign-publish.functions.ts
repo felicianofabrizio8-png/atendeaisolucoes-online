@@ -433,12 +433,21 @@ export const publishCampaign = createServerFn({ method: "POST" })
       snapshots: StatusSnapshot[],
       extra?: Record<string, unknown>,
     ) {
+      const campaignStatus = snapshots.find((s) => s.object === "campaign");
+      const adsetStatus = snapshots.find((s) => s.object === "adset");
+      const adStatus = snapshots.find((s) => s.object === "ad");
       console.log("[publishCampaign] meta_status_log", {
         campaignId,
         phase,
-        campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
-        adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
-        ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+        campaign_id: campaignStatus?.id ?? null,
+        campaign_status: campaignStatus?.status ?? null,
+        campaign_effective_status: campaignStatus?.effective_status ?? null,
+        adset_id: adsetStatus?.id ?? null,
+        adset_status: adsetStatus?.status ?? null,
+        adset_effective_status: adsetStatus?.effective_status ?? null,
+        ad_id: adStatus?.id ?? null,
+        ad_status: adStatus?.status ?? null,
+        ad_effective_status: adStatus?.effective_status ?? null,
         statuses: snapshots,
         ...(extra ?? {}),
       });
@@ -454,9 +463,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
           context: {
             campaign_id: campaignId,
             phase,
-            meta_campaign_id: snapshots.find((s) => s.object === "campaign")?.id ?? null,
-            meta_adset_id: snapshots.find((s) => s.object === "adset")?.id ?? null,
-            meta_ad_id: snapshots.find((s) => s.object === "ad")?.id ?? null,
+            meta_campaign_id: campaignStatus?.id ?? null,
+            campaign_status: campaignStatus?.status ?? null,
+            campaign_effective_status: campaignStatus?.effective_status ?? null,
+            meta_adset_id: adsetStatus?.id ?? null,
+            adset_status: adsetStatus?.status ?? null,
+            adset_effective_status: adsetStatus?.effective_status ?? null,
+            meta_ad_id: adStatus?.id ?? null,
+            ad_status: adStatus?.status ?? null,
+            ad_effective_status: adStatus?.effective_status ?? null,
             statuses: snapshots,
             ...(extra ?? {}),
           } as never,
@@ -1395,9 +1410,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
       },
     );
 
-    const adOk = adAct.status_after === "ACTIVE";
+    const adOk = adAct.status_after === "ACTIVE" && adAct.effective_status_after === "ACTIVE";
     const allActive =
-      campAct.status_after === "ACTIVE" && adsetAct.status_after === "ACTIVE" && adOk;
+      campAct.status_after === "ACTIVE" && campAct.effective_status_after === "ACTIVE" &&
+      adsetAct.status_after === "ACTIVE" && adsetAct.effective_status_after === "ACTIVE" &&
+      adOk;
 
     // 5) Persiste IDs sempre (não perdê-los entre tentativas).
     await supabase
@@ -1419,9 +1436,10 @@ export const publishCampaign = createServerFn({ method: "POST" })
       return fail(
         "activate_objects",
         `Meta retornou status não-ativo após POST status=ACTIVE. ` +
-          `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
+        `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
           `adset=${adsetAct.status_after ?? "?"}/${adsetAct.effective_status_after ?? "?"}, ` +
-          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.` +
+          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}. ` +
+          `Publicação só é concluída quando status e effective_status são ACTIVE nos três objetos.` +
           (activationErrors ? ` Meta: ${activationErrors}` : ""),
         { activationLog },
         { activationLog },
