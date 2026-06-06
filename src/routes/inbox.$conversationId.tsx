@@ -2470,14 +2470,14 @@ function ConversationPage() {
             <button
               onClick={generateAI}
               disabled={aiLoading || !!closedInfo}
-              className="h-9 px-2 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
+              className="h-11 md:h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
               title="Responder com IA"
               aria-label="Responder com IA"
             >
               {aiLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
               ) : (
-                <Sparkles className="h-3.5 w-3.5" />
+                <Sparkles className="h-4 w-4 md:h-3.5 md:w-3.5" />
               )}
               <span className="hidden md:inline">Responder com IA</span>
             </button>
@@ -2502,10 +2502,10 @@ function ConversationPage() {
                   ? "Venda fechada."
                   : isComment
                     ? "Resposta ao comentário…"
-                    : "Mensagem… (Enter envia · Shift+Enter quebra linha)"
+                    : "Mensagem…"
               }
               rows={1}
-              className="flex-1 min-w-0 resize-none rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 md:min-h-[3.5rem]"
+              className="flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
             />
             <MediaSendPanel
               conversationId={conversationId}
@@ -2524,15 +2524,16 @@ function ConversationPage() {
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || !!closedInfo}
-              className="h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+              className="h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
               aria-label={isComment ? "Responder comentário" : "Enviar"}
             >
-              <Send className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{isComment ? "Responder" : "Enviar"}</span>
+              <Send className="h-5 w-5 md:h-3.5 md:w-3.5" />
+              <span className="hidden md:inline">{isComment ? "Responder" : "Enviar"}</span>
             </button>
           </div>
         </div>
       </div>
+
 
       {/* Side panel */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
