@@ -25,6 +25,7 @@ const ALLOWED_MIMES = new Set([
   "audio/amr",
 ]);
 const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
+const GRAPH_VERSION = "v20.0";
 
 type MetaAudioResponse = {
   messages?: Array<{ id?: string }>;
@@ -52,6 +53,10 @@ function isAllowedMimeHeader(value: string | null): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase().split(";")[0].trim();
   return ALLOWED_MIMES.has(value.toLowerCase()) || ALLOWED_MIMES.has(normalized);
+}
+
+function safeTokenDebug(token: string): { present: boolean; length: number } {
+  return { present: token.length > 0, length: token.length };
 }
 
 export const Route = createFileRoute("/api/whatsapp/send-audio")({
@@ -194,12 +199,31 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         let signedUrlStatus: number | string = "unknown";
         let signedUrlContentType: string | null = null;
         let signedUrlContentLength: string | null = null;
+        let signedUrlIsValid = false;
         try {
           const preflight = await fetch(signed.signedUrl, { method: "GET" });
           signedUrlStatus = preflight.status;
           signedUrlContentType = preflight.headers.get("content-type");
           signedUrlContentLength = preflight.headers.get("content-length");
           const signedUrlLength = Number(signedUrlContentLength ?? 0);
+          signedUrlIsValid =
+            preflight.status === 200 &&
+            Number.isFinite(signedUrlLength) &&
+            signedUrlLength > 0 &&
+            isAllowedMimeHeader(signedUrlContentType);
+          console.log("[AUDIO FILE TEST]", {
+            status: signedUrlStatus,
+            content_type: signedUrlContentType,
+            content_length: signedUrlContentLength,
+            valid: signedUrlIsValid,
+            expected: {
+              status: 200,
+              content_length_gt_zero: true,
+              allowed_content_types: Array.from(ALLOWED_MIMES),
+            },
+            media_mime: baseMime,
+            media_size: file.size,
+          });
           if (preflight.status !== 200) {
             throw new Error(`signed url HTTP ${preflight.status}`);
           }
@@ -213,7 +237,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           try { await preflight.body?.cancel(); } catch { /* */ }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "signed url inacessível";
-          console.error("[send-audio] signed url preflight failed", {
+          console.error("[AUDIO FILE TEST]", {
+            valid: false,
             msg,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
@@ -247,7 +272,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           );
         }
 
-        const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
+        const apiUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${integration.external_account_id}/messages`;
         const sentAt = new Date().toISOString();
         const payload = {
           messaging_product: "whatsapp",
@@ -255,8 +280,17 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           type: "audio",
           audio: { link: signed.signedUrl },
         };
-        console.log("[send-audio] meta request", {
+        console.log("[AUDIO META REQUEST]", {
+          comparison_with_working_text_endpoint: {
+            same_integration_lookup: "lead.integration_id ou primeira integração whatsapp ativa da empresa",
+            same_access_token_source: "integrations.access_token",
+            access_token_debug: safeTokenDebug(integration.access_token),
+            same_phone_number_id_source: "integrations.external_account_id",
+            same_recipient_source: "lead.external_id ?? lead.phone normalizado para dígitos",
+            same_graph_endpoint_shape: `https://graph.facebook.com/${GRAPH_VERSION}/{phone_number_id}/messages`,
+          },
           apiUrl,
+          graph_version: GRAPH_VERSION,
           payload,
           to: recipient,
           phone_number_id: integration.external_account_id,
@@ -286,10 +320,13 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           }
           const err = apiJson.error ?? {};
           externalId = apiJson.messages?.[0]?.id ?? null;
-          console.log("[send-audio] meta response", {
+          console.log("[AUDIO META RESPONSE]", {
             status: apiRes.status,
+            http_status: apiRes.status,
             ok: apiRes.ok,
             body: apiText,
+            parsed_body: apiJson,
+            messages_0_id: externalId,
             error_message: err.message,
             error_code: err.code,
             error_subcode: err.error_subcode,
@@ -305,13 +342,17 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           });
           if (!([200, 201].includes(apiRes.status)) || !externalId) {
             const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
-            console.error("[send-audio] meta error", {
+            console.error("[AUDIO META RESPONSE]", {
+              accepted_as_sent: false,
               status: apiRes.status,
+              http_status: apiRes.status,
               message: err.message,
               code: err.code,
               error_subcode: err.error_subcode,
               fbtrace_id: err.fbtrace_id,
               body: apiText,
+              parsed_body: apiJson,
+              messages_0_id: externalId,
               payload,
               phone_number_id: integration.external_account_id,
               to: recipient,
@@ -363,8 +404,18 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
-          console.error("[send-audio] network error", {
+          console.error("[AUDIO META RESPONSE]", {
+            accepted_as_sent: false,
+            network_error: true,
             message: msg,
+            status: null,
+            http_status: null,
+            body: null,
+            messages_0_id: null,
+            error_message: msg,
+            error_code: null,
+            error_subcode: null,
+            fbtrace_id: null,
             payload,
             phone_number_id: integration.external_account_id,
             to: recipient,
