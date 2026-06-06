@@ -326,8 +326,13 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         token_type: tokenType,
         is_valid: debug.debug_token?.is_valid ?? null,
         me: debug.me ?? null,
+        requested_scopes: META_REQUIRED_SCOPES.split(","),
+        granted_scopes: scopes,
         has_ads_read: scopes.includes("ads_read"),
         has_ads_management: scopes.includes("ads_management"),
+        has_business_management: scopes.includes("business_management"),
+        has_pages_manage_ads: scopes.includes("pages_manage_ads"),
+        has_pages_read_engagement: scopes.includes("pages_read_engagement"),
       });
       if (tokenType !== "USER" && tokenType !== "SYSTEM_USER") {
         throw new Error("Reconexão inválida: token de Página salvo. Reconecte com token de usuário.");
@@ -818,6 +823,20 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
                       </span>
                     ))}
                   </div>
+
+                  <div>
+                    <strong>granted_scopes ({diagnosis.debugToken.scopes?.length ?? 0}):</strong>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(diagnosis.debugToken.scopes ?? []).map((s) => (
+                        <span key={s} className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">{s}</span>
+                      ))}
+                      {(!diagnosis.debugToken.scopes || diagnosis.debugToken.scopes.length === 0) && (
+                        <span className="text-red-600 dark:text-red-400">nenhum</span>
+                      )}
+                    </div>
+                  </div>
+
+
 
                   <div>
                     <strong>/me:</strong>{" "}
