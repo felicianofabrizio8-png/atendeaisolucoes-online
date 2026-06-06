@@ -14,6 +14,7 @@ import {
   LogOut,
   LogIn,
   Menu,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
@@ -25,7 +26,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas";
+  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas" | "/saude";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -40,8 +41,10 @@ const nav: NavItem[] = [
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
+  { to: "/saude", label: "Saúde do sistema", icon: Activity },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
+
 
 export function AppShell() {
   const location = useLocation();

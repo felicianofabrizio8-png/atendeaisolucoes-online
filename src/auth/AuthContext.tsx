@@ -111,6 +111,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    void import("@/lib/audit").then(({ recordAudit }) =>
+      recordAudit({ action: "login", entity: "auth", after: { email } }),
+    );
   }, []);
 
   const signUp = useCallback(
@@ -139,15 +142,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
       if (error) throw error;
+      void import("@/lib/audit").then(({ recordAudit }) =>
+        recordAudit({ action: "user_signup", entity: "auth", after: { email, companyName } }),
+      );
     },
     [],
   );
 
   const signOut = useCallback(async () => {
+    // Audit antes de invalidar a sessão para garantir company_id ainda válido.
+    void import("@/lib/audit").then(({ recordAudit }) =>
+      recordAudit({ action: "logout", entity: "auth" }),
+    );
     await supabase.auth.signOut();
     setProfile(null);
     setCompany(null);
   }, []);
+
 
   const refreshProfile = useCallback(async () => {
     if (user) await fetchProfile(user.id);
