@@ -1375,6 +1375,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       creative: { creative_id: creativeId },
       status: "ACTIVE",
     };
+    console.log("[publishCampaign] create_ad — IDs WhatsApp ativos", {
+      channel,
+      whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
+      business_account_id: channel === "whatsapp" ? waWabaId : null,
+      display_phone_number: channel === "whatsapp" ? (waDisplayPhone || waPhone) : null,
+      verified_name: channel === "whatsapp" ? waVerifiedName : null,
+      phone_verified: waPhoneVerified,
+      page_id: pageId,
+      creative_id: creativeId,
+    });
     console.log("[publishCampaign] create_ad", { payload: adPayload });
     const adRes = await graphFetch<{ id: string }>(
       `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
