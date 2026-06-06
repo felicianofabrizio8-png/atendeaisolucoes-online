@@ -999,7 +999,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
     // fazem a Meta rejeitar com code=100 subcode=1487390 (erro genérico de creative).
     function buildCtaValue(): Record<string, unknown> {
       if (channel === "whatsapp") {
-        return { app_destination: "WHATSAPP", link: waLink, whatsapp_phone_number_id: waPhoneNumberId };
+        return { app_destination: "WHATSAPP", link: waLink };
       }
       if (channel === "messenger") {
         return { app_destination: "MESSENGER", link: messengerLink };
@@ -1311,7 +1311,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
       });
-      const getRes = await graphFetch<StatusResp>(
+      const getRes = await graphFetch<MetaStatusResp>(
         `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
         { method: "GET" },
       );
@@ -1350,11 +1350,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       },
     );
 
-    const adOk =
-      adAct.status_after === "ACTIVE" || adAct.status_after === "PENDING_REVIEW" ||
-      adAct.effective_status_after === "ACTIVE" ||
-      adAct.effective_status_after === "PENDING_REVIEW" ||
-      adAct.effective_status_after === "IN_PROCESS";
+    const adOk = adAct.status_after === "ACTIVE";
     const allActive =
       campAct.status_after === "ACTIVE" && adsetAct.status_after === "ACTIVE" && adOk;
 
@@ -1371,12 +1367,17 @@ export const publishCampaign = createServerFn({ method: "POST" })
 
     if (!allActive) {
       // Algum objeto continua PAUSED — não marcar como publicada.
+      const activationErrors = activationLog
+        .filter((a) => a.activate_error || a.status_after === "PAUSED")
+        .map((a) => `${a.object}: ${a.activate_error ?? `status=${a.status_after}/${a.effective_status_after ?? "?"}`}`)
+        .join(" | ");
       return fail(
         "activate_objects",
         `Meta retornou status não-ativo após POST status=ACTIVE. ` +
           `campaign=${campAct.status_after ?? "?"}/${campAct.effective_status_after ?? "?"}, ` +
           `adset=${adsetAct.status_after ?? "?"}/${adsetAct.effective_status_after ?? "?"}, ` +
-          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.`,
+          `ad=${adAct.status_after ?? "?"}/${adAct.effective_status_after ?? "?"}.` +
+          (activationErrors ? ` Meta: ${activationErrors}` : ""),
         { activationLog },
         { activationLog },
       );
