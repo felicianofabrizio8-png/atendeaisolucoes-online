@@ -388,7 +388,15 @@ async function processMessages(args: {
     //    e grava no bucket privado. Falha de download não bloqueia a mensagem.
     const mediaPart = detectMediaPart(m);
     let mediaMeta: Record<string, unknown> | null = null;
+    let aiText: string | null = null;
     if (mediaPart && accessToken) {
+      console.log("[wa-webhook] media_recebida", {
+        company_id: companyId,
+        message_id: m.id,
+        kind: mediaPart.kind,
+        media_id: mediaPart.mediaId,
+        mime: mediaPart.mime ?? null,
+      });
       const stored = await downloadAndStoreMedia({
         accessToken,
         companyId,
@@ -399,7 +407,57 @@ async function processMessages(args: {
         fallbackMime: mediaPart.mime,
         filename: mediaPart.filename,
       });
-      if (stored) mediaMeta = stored as unknown as Record<string, unknown>;
+      if (stored) {
+        mediaMeta = { ...stored.meta };
+
+        // 3b) Enriquecimento IA (camada adicional — não bloqueia o webhook).
+        //     Áudio/imagem/documento passam por transcrição ou visão.
+        //     Qualquer erro vai para source_metadata.ai_media_error.
+        const enrichKind =
+          mediaPart.kind === "audio"
+            ? "audio"
+            : mediaPart.kind === "image"
+              ? "image"
+              : mediaPart.kind === "document"
+                ? "document"
+                : null;
+        if (enrichKind) {
+          try {
+            console.log("[wa-webhook] enriquecimento_ia_iniciado", {
+              company_id: companyId,
+              message_id: m.id,
+              kind: enrichKind,
+            });
+            const { enrichMediaWithAI } = await import("@/lib/wa-media-ai.server");
+            const enriched = await enrichMediaWithAI({
+              kind: enrichKind,
+              mime: stored.meta.media_mime,
+              bytes: stored.bytes,
+              filename: stored.meta.media_filename,
+            });
+            mediaMeta = { ...mediaMeta, ...enriched.metadata };
+            if (enriched.text && enriched.text.trim()) {
+              aiText = enriched.text;
+            }
+            console.log("[wa-webhook] enriquecimento_ia_concluido", {
+              company_id: companyId,
+              message_id: m.id,
+              kind: enrichKind,
+              has_text: !!enriched.text,
+              has_error: !!enriched.metadata.ai_media_error,
+            });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error("[wa-webhook] enriquecimento_ia_falhou", {
+              company_id: companyId,
+              message_id: m.id,
+              kind: enrichKind,
+              error: msg,
+            });
+            mediaMeta = { ...mediaMeta, ai_media_error: msg };
+          }
+        }
+      }
     } else if (mediaPart && !accessToken) {
       await logMediaError({
         companyId,
@@ -411,6 +469,12 @@ async function processMessages(args: {
       });
     }
 
+    // Texto final salvo em messages.text:
+    //  - mensagens de texto continuam exatamente iguais (text = extractText)
+    //  - mídias com transcrição/visão usam o texto enriquecido para que o
+    //    agente IA já receba o contexto pelo histórico sem mudanças no prompt.
+    const finalText = aiText ?? text;
+
     // 4) message (idempotente via external_id)
     await supabaseAdmin
       .from("messages")
@@ -419,7 +483,7 @@ async function processMessages(args: {
           company_id: companyId,
           conversation_id: conversationId,
           role: "lead",
-          text,
+          text: finalText,
           at,
           external_id: m.id,
           integration_id: integrationId,
@@ -427,6 +491,7 @@ async function processMessages(args: {
           source_metadata: {
             raw: m as unknown,
             wa_id: waId,
+            original_text: aiText ? text : undefined,
             ...(mediaMeta ?? {}),
           } as never,
         },
