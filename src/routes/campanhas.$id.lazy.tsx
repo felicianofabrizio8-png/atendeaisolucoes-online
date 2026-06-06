@@ -280,6 +280,12 @@ function CampaignDetailPage() {
         } catch (e) {
           console.warn("[campaign-detail] meta sync after publish failed", e);
         }
+        try {
+          const ins = await syncInsightsFn({ data: { campaignId: c.id } });
+          setInsights(ins);
+        } catch (e) {
+          console.warn("[campaign-detail] insights sync after publish failed", e);
+        }
         const fresh = await getCampaign(c.id);
         if (fresh) setC(fresh);
       } else {
