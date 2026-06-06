@@ -84,7 +84,8 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
       };
     }
 
-    const { data: integ } = await supabase
+    const adminClient = await import("@/integrations/supabase/client.server");
+    const { data: integ } = await adminClient.supabaseAdmin
       .from("integrations")
       .select("access_token, account_metadata")
       .eq("company_id", companyId)
@@ -151,14 +152,43 @@ export const syncCampaignStatusFromMeta = createServerFn({ method: "POST" })
     }
 
     const syncedAt = new Date().toISOString();
+    const metaSyncStatus =
+      delivery === "active_on_meta" ? "active" :
+      delivery === "archived_on_meta" ? "archived" :
+      delivery === "issues_on_meta" ? "rejected" :
+      delivery === "paused_on_meta" ? "paused" :
+      "failed";
     await supabase
       .from("campaigns")
       .update({
+        meta_sync_status: metaSyncStatus,
         meta_delivery_status: delivery === "unknown" ? null : delivery,
         meta_last_sync_at: syncedAt,
         meta_publish_error: publishErr,
       } as never)
       .eq("id", campaignId);
+
+    await adminClient.supabaseAdmin.from("error_log").insert({
+      company_id: companyId,
+      user_id: userId,
+      source: "meta",
+      severity: delivery === "active_on_meta" ? "info" : "warning",
+      message: `[sync:meta_status] campaign=${campR && !("error" in campR) ? `${campR.status ?? "?"}/${campR.effective_status ?? "?"}` : "error"} adset=${adsetR && !("error" in adsetR) ? `${adsetR.status ?? "?"}/${adsetR.effective_status ?? "?"}` : "error"} ad=${adR && !("error" in adR) ? `${adR.status ?? "?"}/${adR.effective_status ?? "?"}` : "error"}`,
+      context: {
+        campaign_id: campaignId,
+        phase: "sync_live_status",
+        meta_campaign_id: camp.meta_campaign_id,
+        campaign_status: campR && !("error" in campR) ? campR.status ?? null : null,
+        campaign_effective_status: campR && !("error" in campR) ? campR.effective_status ?? null : null,
+        meta_adset_id: camp.meta_adset_id,
+        adset_status: adsetR && !("error" in adsetR) ? adsetR.status ?? null : null,
+        adset_effective_status: adsetR && !("error" in adsetR) ? adsetR.effective_status ?? null : null,
+        meta_ad_id: camp.meta_ad_id,
+        ad_status: adR && !("error" in adR) ? adR.status ?? null : null,
+        ad_effective_status: adR && !("error" in adR) ? adR.effective_status ?? null : null,
+        delivery,
+      } as never,
+    });
 
     return {
       ok: true,
