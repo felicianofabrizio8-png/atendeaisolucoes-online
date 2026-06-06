@@ -331,7 +331,7 @@ export const clearMetaAdAccount = createServerFn({ method: "POST" })
       delete meta["ad_account_id"];
       const { error } = await supabaseAdmin
         .from("integrations")
-        .update({ account_metadata: meta })
+        .update({ account_metadata: meta as never })
         .eq("id", integ.id)
         .eq("company_id", companyId);
       if (!error) cleared += 1;
