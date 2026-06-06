@@ -163,28 +163,68 @@ function CampaignDetailPage() {
     }
   }
 
+  async function performSyncInsights(opts?: { silent?: boolean }) {
+    if (!c?.meta_campaign_id) return;
+    setInsightsLoading(true);
+    try {
+      const r = await syncInsightsFn({ data: { campaignId: c.id } });
+      setInsights(r);
+      if (r.ok && r.metrics) {
+        // Recarrega campaign para refletir leads_count/messages_count/spent atualizados
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+        if (!opts?.silent) toast.success("Métricas sincronizadas com a Meta.");
+      } else if (r.ok && !r.has_data && !opts?.silent) {
+        toast.info("Campanha ativa aguardando primeiras impressões.");
+      } else if (!r.ok && !opts?.silent) {
+        toast.error(r.error ?? "Falha ao sincronizar métricas.");
+      }
+    } catch (e) {
+      if (!opts?.silent) toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  }
+
   useEffect(() => {
     setLoading(true);
     setMetaLiveStatus(null);
+    setInsights(null);
     getCampaign(id)
       .then(async (camp) => {
         setC(camp);
-        // Sincroniza status real direto da Graph API se já houver IDs Meta —
-        // evita divergência com o Gerenciador.
         if (camp?.meta_campaign_id) {
           try {
             const live = await syncMetaFn({ data: { campaignId: id } });
             setMetaLiveStatus(live);
-            const fresh = await getCampaign(id);
-            if (fresh) setC(fresh);
           } catch (e) {
             console.warn("[campaign-detail] meta sync failed", e);
           }
+          try {
+            const ins = await syncInsightsFn({ data: { campaignId: id } });
+            setInsights(ins);
+          } catch (e) {
+            console.warn("[campaign-detail] insights sync failed", e);
+          }
+          const fresh = await getCampaign(id);
+          if (fresh) setC(fresh);
         }
       })
       .catch(() => setC(null))
       .finally(() => setLoading(false));
-  }, [id, syncMetaFn]);
+  }, [id, syncMetaFn, syncInsightsFn]);
+
+  // Auto-refresh a cada 15 minutos enquanto a tela estiver aberta
+  useEffect(() => {
+    if (!c?.meta_campaign_id) return;
+    const handle = window.setInterval(() => {
+      syncInsightsFn({ data: { campaignId: c.id } })
+        .then((r) => setInsights(r))
+        .catch((e) => console.warn("[campaign-detail] auto insights sync failed", e));
+    }, 15 * 60 * 1000);
+    return () => window.clearInterval(handle);
+  }, [c?.id, c?.meta_campaign_id, syncInsightsFn]);
+
 
 
   async function performDelete() {
