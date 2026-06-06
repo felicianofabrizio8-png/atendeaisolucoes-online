@@ -272,7 +272,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           );
         }
 
-        const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
+        const apiUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${integration.external_account_id}/messages`;
         const sentAt = new Date().toISOString();
         const payload = {
           messaging_product: "whatsapp",
@@ -280,8 +280,17 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           type: "audio",
           audio: { link: signed.signedUrl },
         };
-        console.log("[send-audio] meta request", {
+        console.log("[AUDIO META REQUEST]", {
+          comparison_with_working_text_endpoint: {
+            same_integration_lookup: "lead.integration_id ou primeira integração whatsapp ativa da empresa",
+            same_access_token_source: "integrations.access_token",
+            access_token_debug: safeTokenDebug(integration.access_token),
+            same_phone_number_id_source: "integrations.external_account_id",
+            same_recipient_source: "lead.external_id ?? lead.phone normalizado para dígitos",
+            same_graph_endpoint_shape: `https://graph.facebook.com/${GRAPH_VERSION}/{phone_number_id}/messages`,
+          },
           apiUrl,
+          graph_version: GRAPH_VERSION,
           payload,
           to: recipient,
           phone_number_id: integration.external_account_id,
