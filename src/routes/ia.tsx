@@ -341,31 +341,58 @@ function ConfiguracoesIA() {
 
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
 
+  const TAB_OPTIONS: { value: string; label: string }[] = [
+    { value: "perfil", label: "Perfil" },
+    { value: "faq", label: "FAQ" },
+    { value: "aprendizados", label: `Aprendizados${pendingCount ? ` (${pendingCount})` : ""}` },
+    { value: "uso", label: "Uso & Logs" },
+    { value: "analytics", label: "Analytics" },
+    { value: "followup", label: "Follow-up" },
+    { value: "templates", label: "Templates" },
+    { value: "automacao", label: "Automação" },
+  ];
+
   return (
-    <div className="p-3 md:p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-3 md:p-6 max-w-5xl mx-auto space-y-4 w-full max-w-full min-w-0 overflow-x-hidden">
       <header className="sticky top-0 z-20 -mx-3 md:mx-0 px-3 md:px-0 py-2 md:py-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none border-b md:border-0 border-border safe-top flex items-center gap-2">
         <Sparkles className="h-5 w-5 text-primary shrink-0" />
         <h1 className="text-base md:text-xl font-semibold truncate">IA de Atendimento</h1>
       </header>
 
-      <Tabs defaultValue="perfil" className="space-y-4">
-        <TabsList className="w-full md:w-auto h-auto md:h-9 flex md:inline-flex overflow-x-auto scrollbar-none justify-start md:justify-center gap-1 p-1 rounded-lg">
-          <TabsTrigger value="perfil" className="min-h-11 md:min-h-0 shrink-0">Perfil</TabsTrigger>
-          <TabsTrigger value="faq" className="min-h-11 md:min-h-0 shrink-0">FAQ</TabsTrigger>
-          <TabsTrigger value="aprendizados" className="min-h-11 md:min-h-0 shrink-0">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 w-full min-w-0">
+        {/* Mobile: select dropdown for tabs (no horizontal scroll) */}
+        <div className="md:hidden">
+          <Select value={activeTab} onValueChange={setActiveTab}>
+            <SelectTrigger className="w-full h-11 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TAB_OPTIONS.map((t) => (
+                <SelectItem key={t.value} value={t.value} className="text-base">
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {/* Desktop: full tabs list */}
+        <TabsList className="hidden md:inline-flex h-9 justify-center gap-1 p-1 rounded-lg">
+          <TabsTrigger value="perfil" className="shrink-0">Perfil</TabsTrigger>
+          <TabsTrigger value="faq" className="shrink-0">FAQ</TabsTrigger>
+          <TabsTrigger value="aprendizados" className="shrink-0">
             Aprendizados{pendingCount ? ` (${pendingCount})` : ""}
           </TabsTrigger>
-          <TabsTrigger value="uso" className="min-h-11 md:min-h-0 shrink-0">Uso & Logs</TabsTrigger>
-          <TabsTrigger value="analytics" className="min-h-11 md:min-h-0 shrink-0">
+          <TabsTrigger value="uso" className="shrink-0">Uso & Logs</TabsTrigger>
+          <TabsTrigger value="analytics" className="shrink-0">
             <BarChart3 className="h-3.5 w-3.5 mr-1" /> Analytics
           </TabsTrigger>
-          <TabsTrigger value="followup" className="min-h-11 md:min-h-0 shrink-0">
+          <TabsTrigger value="followup" className="shrink-0">
             <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
           </TabsTrigger>
-          <TabsTrigger value="templates" className="min-h-11 md:min-h-0 shrink-0">
+          <TabsTrigger value="templates" className="shrink-0">
             <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates
           </TabsTrigger>
-          <TabsTrigger value="automacao" className="min-h-11 md:min-h-0 shrink-0">
+          <TabsTrigger value="automacao" className="shrink-0">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
         </TabsList>
