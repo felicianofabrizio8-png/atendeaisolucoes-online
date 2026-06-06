@@ -16,6 +16,7 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
+import { AudioRecorder } from "@/components/AudioRecorder";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -2521,6 +2522,13 @@ function ConversationPage() {
               }}
 
             />
+            {lead?.channel === "whatsapp" && (
+              <AudioRecorder
+                conversationId={conversationId}
+                disabled={!!closedInfo}
+                onSent={() => void refetchConversationMessages(conversationId)}
+              />
+            )}
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || !!closedInfo}
@@ -2532,6 +2540,7 @@ function ConversationPage() {
             </button>
           </div>
         </div>
+
       </div>
 
 
