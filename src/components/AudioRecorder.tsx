@@ -300,8 +300,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       const extMap: Record<string, string> = {
         "audio/ogg": "ogg",
         "audio/mp4": "m4a",
-        "audio/aac": "aac",
-        "audio/mpeg": "mp3",
       };
       const ext = extMap[base] ?? "ogg";
       const fd = new FormData();
