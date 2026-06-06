@@ -429,6 +429,32 @@ function DashboardPage() {
         />
       </section>
 
+      {/* Alertas acionáveis */}
+      {(noResponseNow > 0 || waitingQuote.length > 0 || alertReady > 0) && (
+        <section className="px-4 md:px-8 pb-4 md:pb-6">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+            {noResponseNow > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 min-h-11 md:min-h-0 md:py-1.5 text-xs shrink-0">
+                <Flame className="h-3.5 w-3.5 text-[var(--status-urgent)]" />
+                <span className="text-foreground font-medium">{noResponseNow} aguardando resposta</span>
+              </span>
+            )}
+            {waitingQuote.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 min-h-11 md:min-h-0 md:py-1.5 text-xs shrink-0">
+                <AlertTriangle className="h-3.5 w-3.5 text-[var(--status-warm)]" />
+                <span className="text-foreground font-medium">{waitingQuote.length} orçamentos pendentes</span>
+              </span>
+            )}
+            {alertReady > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 min-h-11 md:min-h-0 md:py-1.5 text-xs shrink-0">
+                <DollarSign className="h-3.5 w-3.5 text-[var(--status-won-foreground)]" />
+                <span className="text-foreground font-medium">{alertReady} próximos do fechamento</span>
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Comercial IA */}
       {(() => {
         const inPeriod = (iso: string | null | undefined) =>
