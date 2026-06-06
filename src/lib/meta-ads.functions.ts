@@ -478,7 +478,87 @@ export const adoptMetaUserToken = createServerFn({ method: "POST" })
     }
 
     console.log("[meta-ads] adoptMetaUserToken saved", { companyId, token_suffix: masked, type, scopes_count: scopes.length, updated });
-    return { ok: true as const, type, scopesCount: scopes.length, updated };
+    return { ok: true as const, type, scopesCount: scopes.length, updated, inputTokenSuffix: masked };
+  });
+
+// ----------------- VERIFY PERSISTED USER TOKEN -----------------
+export const verifyPersistedMetaUserToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ expectedTokenSuffix: z.string().min(3).max(16).optional() }).parse(input ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+    const isAdmin = await hasAdminRole(supabase, userId);
+    if (!isAdmin) return { ok: false as const, error: "not_admin" };
+
+    const integrations = await loadActiveMetaIntegrations(companyId);
+    const primary = pickPrimaryIntegration(integrations);
+    if (!primary || !primary.access_token) {
+      return { ok: false as const, error: "no_integration", message: "Nenhuma integração Meta ativa." };
+    }
+    const token = primary.access_token;
+    const masked = `***${token.slice(-6)}`;
+
+    if (data.expectedTokenSuffix) {
+      const expTail = data.expectedTokenSuffix.slice(-6);
+      if (!token.endsWith(expTail)) {
+        console.error("[meta-ads] verifyPersistedMetaUserToken mismatch", {
+          companyId, persisted_suffix: masked, expected_suffix: data.expectedTokenSuffix,
+        });
+        return {
+          ok: false as const,
+          error: "token_mismatch",
+          message: "Falha ao persistir USER token.",
+          persistedTokenSuffix: masked,
+        };
+      }
+    }
+
+    const enc = encodeURIComponent(token);
+    const [dbg, me, adacc] = await Promise.all([
+      fetchJSON(`${GRAPH}/debug_token?input_token=${enc}&access_token=${enc}`),
+      fetchJSON(`${GRAPH}/me?fields=id,name&access_token=${enc}`),
+      fetchJSON(`${GRAPH}/me/adaccounts?fields=id,account_id,name,account_status&limit=200&access_token=${enc}`),
+    ]);
+
+    const debugData = ((dbg.body as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+    const type = (debugData.type as string | undefined) ?? null;
+    const scopes = (debugData.scopes as string[] | undefined) ?? [];
+    const isValid = Boolean(debugData.is_valid);
+
+    const meBody = me.body as { id?: string; name?: string; error?: { message?: string } };
+    const adBody = adacc.body as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+    const accounts = (adBody.data ?? []).map((a) => ({
+      id: String(a.id ?? ""),
+      account_id: String((a.account_id as string | undefined) ?? String(a.id ?? "").replace(/^act_/, "")),
+      name: String(a.name ?? a.id ?? ""),
+      status: Number(a.account_status ?? 0),
+    }));
+
+    console.log("[meta-ads] verifyPersistedMetaUserToken", {
+      companyId, persisted_suffix: masked, type, is_valid: isValid,
+      me_id: meBody.id ?? null, accounts: accounts.length,
+    });
+
+    return {
+      ok: true as const,
+      persistedTokenSuffix: masked,
+      debugToken: {
+        type,
+        is_valid: isValid,
+        scopes,
+        has_ads_read: scopes.includes("ads_read"),
+        has_ads_management: scopes.includes("ads_management"),
+        has_business_management: scopes.includes("business_management"),
+      },
+      me: meBody.id ? { id: meBody.id, name: meBody.name ?? "" } : null,
+      meError: meBody.error?.message ?? null,
+      adAccounts: accounts,
+      adAccountsError: adBody.error?.message ?? null,
+    };
   });
 
 // ----------------- SELECT PAGE -----------------

@@ -13,6 +13,7 @@ import {
   setMetaBetaFlag,
   diagnoseMetaToken,
   adoptMetaUserToken,
+  verifyPersistedMetaUserToken,
 } from "@/lib/meta-ads.functions";
 import type { Campaign } from "@/lib/campaigns";
 import { Check, X, Loader2, RefreshCw, ChevronDown, ChevronUp, ShieldCheck, AlertTriangle } from "lucide-react";
@@ -132,10 +133,32 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const toggleBeta = useServerFn(setMetaBetaFlag);
   const diagnoseToken = useServerFn(diagnoseMetaToken);
   const adoptToken = useServerFn(adoptMetaUserToken);
+  const verifyPersisted = useServerFn(verifyPersistedMetaUserToken);
 
   const [manualToken, setManualToken] = useState("");
   const [diagnosing, setDiagnosing] = useState(false);
   const [adopting, setAdopting] = useState(false);
+  const [verification, setVerification] = useState<
+    | null
+    | {
+        ok: boolean;
+        error?: string;
+        message?: string;
+        persistedTokenSuffix?: string;
+        debugToken?: {
+          type: string | null;
+          is_valid: boolean;
+          scopes: string[];
+          has_ads_read: boolean;
+          has_ads_management: boolean;
+          has_business_management: boolean;
+        };
+        me?: { id: string; name: string } | null;
+        meError?: string | null;
+        adAccounts?: Array<{ id: string; account_id: string; name: string; status: number }>;
+        adAccountsError?: string | null;
+      }
+  >(null);
   const [diagnosis, setDiagnosis] = useState<
     | null
     | {
@@ -186,10 +209,34 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   async function adoptDiagnosedToken() {
     if (!manualToken.trim()) return;
     setAdopting(true);
+    setVerification(null);
     try {
+      const inputSuffix = `***${manualToken.trim().slice(-6)}`;
       const r = await adoptToken({ data: { token: manualToken.trim() } });
       if (r.ok) {
-        toast.success(`Token ${r.type} salvo em ${r.updated} integração(ões).`);
+        toast.success(`Token ${r.type} salvo em ${r.updated} integração(ões). Verificando...`);
+        // Verifica o que foi efetivamente persistido em integrations.access_token
+        const v = await verifyPersisted({ data: { expectedTokenSuffix: inputSuffix } });
+        if (v.ok) {
+          setVerification({
+            ok: true,
+            persistedTokenSuffix: v.persistedTokenSuffix,
+            debugToken: v.debugToken,
+            me: v.me,
+            meError: v.meError,
+            adAccounts: v.adAccounts,
+            adAccountsError: v.adAccountsError,
+          });
+          toast.success("Token persistido validado.");
+        } else {
+          setVerification({
+            ok: false,
+            error: ("error" in v && v.error) || "verify_failed",
+            message: ("message" in v && v.message) || "Falha ao verificar token persistido.",
+            persistedTokenSuffix: ("persistedTokenSuffix" in v ? v.persistedTokenSuffix : undefined),
+          });
+          toast.error(("message" in v && v.message) || "Falha ao verificar token persistido.");
+        }
         setManualToken("");
         setDiagnosis(null);
         await refresh({ silent: true });
@@ -829,6 +876,65 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
               )}
             </div>
           )}
+
+          {/* Verificação do token persistido em integrations.access_token */}
+          {verification && (
+            <div className={cn(
+              "rounded-lg border p-3 space-y-2 text-xs",
+              verification.ok
+                ? "border-emerald-500/40 bg-emerald-500/5"
+                : "border-red-500/40 bg-red-500/5",
+            )}>
+              <div className="font-medium">
+                {verification.ok
+                  ? "Verificação do token persistido"
+                  : "Erro de verificação"}
+                {verification.persistedTokenSuffix && (
+                  <span className="ml-2 font-mono text-muted-foreground">
+                    {verification.persistedTokenSuffix}
+                  </span>
+                )}
+              </div>
+              {!verification.ok && (
+                <div className="text-red-700 dark:text-red-300">
+                  {verification.message || "Falha ao persistir USER token."}
+                </div>
+              )}
+              {verification.ok && verification.debugToken && (
+                <>
+                  <div>
+                    token_type: <strong>{verification.debugToken.type ?? "?"}</strong> · is_valid: <strong>{String(verification.debugToken.is_valid)}</strong>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {verification.debugToken.scopes.map((s) => (
+                      <span key={s} className="px-1.5 py-0.5 rounded bg-muted text-[10px]">{s}</span>
+                    ))}
+                  </div>
+                  <div>
+                    GET /me: {verification.me
+                      ? <strong>{verification.me.name} ({verification.me.id})</strong>
+                      : <span className="text-red-700 dark:text-red-300">{verification.meError ?? "sem retorno"}</span>}
+                  </div>
+                  <div>
+                    GET /me/adaccounts: <strong>{verification.adAccounts?.length ?? 0}</strong> conta(s)
+                    {verification.adAccountsError && (
+                      <span className="ml-1 text-red-700 dark:text-red-300">— {verification.adAccountsError}</span>
+                    )}
+                  </div>
+                  {verification.adAccounts && verification.adAccounts.length > 0 && (
+                    <ul className="space-y-0.5 max-h-32 overflow-auto">
+                      {verification.adAccounts.map((a) => (
+                        <li key={a.id} className="font-mono text-[11px]">
+                          act_{a.account_id} — {a.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
 
 
 
