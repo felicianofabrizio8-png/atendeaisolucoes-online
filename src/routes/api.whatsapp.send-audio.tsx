@@ -436,10 +436,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               to: recipient,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             });
             await supabaseAdmin.from("error_log").insert({
               company_id: companyId,
@@ -520,10 +522,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
+            detected_audio: detectedAudio,
             media_size: file.size,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
           });
           await supabaseAdmin.from("error_log").insert({
             company_id: companyId,
@@ -537,10 +541,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               payload,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
@@ -552,7 +558,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               to: recipient,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
+              signed_url_status: signedUrlStatus,
+              signed_url_content_type: signedUrlContentType,
+              signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
             { status: 502 },
           );
