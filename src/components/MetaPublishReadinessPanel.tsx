@@ -825,6 +825,17 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
                   </div>
 
                   <div>
+                    <strong>granted_scopes ({diagnosis.debugToken.scopes?.length ?? 0}):</strong>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(diagnosis.debugToken.scopes ?? []).map((s) => (
+                        <span key={s} className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">{s}</span>
+                      ))}
+                      {(!diagnosis.debugToken.scopes || diagnosis.debugToken.scopes.length === 0) && (
+                        <span className="text-red-600 dark:text-red-400">nenhum</span>
+                      )}
+                    </div>
+
+                  <div>
                     <strong>/me:</strong>{" "}
                     {diagnosis.me
                       ? <code>{diagnosis.me.name} ({diagnosis.me.id})</code>
