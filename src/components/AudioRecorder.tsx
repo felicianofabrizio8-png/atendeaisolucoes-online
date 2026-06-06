@@ -167,7 +167,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         // Caminho opus-recorder: produz OGG/Opus em qualquer navegador.
         // Import dinâmico evita custo do WASM até o primeiro uso.
         const mod = await import("opus-recorder");
-        const RecorderCtor = (mod as { default: new (opts: unknown) => RecorderLike }).default;
+        const RecorderCtor = mod.default;
         const rec = new RecorderCtor({
           encoderPath: encoderWorkerUrl,
           encoderApplication: 2048, // voice
