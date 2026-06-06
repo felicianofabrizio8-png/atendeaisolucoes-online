@@ -1097,11 +1097,22 @@ export const publishCampaign = createServerFn({ method: "POST" })
       );
     }
     if (channel === "whatsapp" && !waPhoneVerified) {
+      const rawMetaError =
+        waPhoneCheckError?.message ||
+        waWabaListError?.message ||
+        "sem resposta da Graph API";
       return fail(
         "create_creative",
-        "Não foi possível validar o whatsapp_phone_number_id na Graph API antes de criar o anúncio.",
-        null,
-        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId, waba_id: waWabaId || null, image_hash: imageHash },
+        `Meta rejeitou o whatsapp_phone_number_id (${waPhoneNumberId}). Erro original da Graph API: ${rawMetaError}. Verifique no Meta Business Suite → Configurações → WhatsApp → Contas conectadas se o número está vinculado à Página correta.`,
+        waPhoneCheckError?.body ?? waWabaListError?.body ?? null,
+        {
+          page_id: pageId,
+          whatsapp_phone_number_id: waPhoneNumberId,
+          waba_id: waWabaId || null,
+          image_hash: imageHash,
+          phone_check_error: waPhoneCheckError,
+          waba_list_error: waWabaListError,
+        },
       );
     }
     if (channel === "instagram" && !igActorId) {
