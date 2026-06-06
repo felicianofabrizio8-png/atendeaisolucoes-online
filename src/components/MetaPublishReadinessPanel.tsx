@@ -505,6 +505,40 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
             <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
               <div className="text-xs font-medium">Conta de anúncios</div>
 
+              {isManualAdAccount && (
+                <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 rounded p-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div>
+                      <span className="inline-block mr-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-[10px] font-semibold uppercase tracking-wide">
+                        Manual
+                      </span>
+                      ID <code>{readiness.adAccountId}</code> salvo manualmente. Não foi retornado pela Graph API e não comprova permissão válida — publicação bloqueada até reconectar.
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={removeManualAdAccount}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
+                      >
+                        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                        Remover ID manual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={startMetaReconnect}
+                        disabled={reconnecting}
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
+                      >
+                        {reconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        Reconectar Meta
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {missingScopes.length > 0 && (
                 <div className="flex items-start gap-2 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded p-2">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
