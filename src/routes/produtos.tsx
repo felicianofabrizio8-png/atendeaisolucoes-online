@@ -86,39 +86,47 @@ function ProductsPage() {
   }, [filtered]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
-        <Package className="h-4 w-4 text-primary" />
+    <div className="flex-1 overflow-y-auto safe-bottom">
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 h-14 px-3 md:px-6 border-b border-border flex items-center gap-2 md:gap-3">
+        <Package className="h-4 w-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold">Catálogo de produtos</h1>
-          <p className="text-[11px] text-muted-foreground">
+          <h1 className="text-sm font-semibold truncate">Catálogo de produtos</h1>
+          <p className="text-[11px] text-muted-foreground truncate">
             {query.trim()
-              ? `${filtered.length} resultado${filtered.length === 1 ? "" : "s"} encontrado${filtered.length === 1 ? "" : "s"}`
-              : `${products.length} produtos • Tabela ativa: Maio 2026`}
+              ? `${filtered.length} resultado${filtered.length === 1 ? "" : "s"}`
+              : `${products.length} produtos`}
           </p>
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+          aria-label="Novo produto"
+          className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
         >
           <Plus className="h-3.5 w-3.5" /> Novo produto
         </button>
+        <button
+          onClick={() => setCreating(true)}
+          aria-label="Novo produto"
+          className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
       </header>
 
-      <div className="p-4 md:p-6 space-y-6 max-w-5xl">
+      <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nome, categoria, medidas, litragem..."
-            className="w-full h-10 pl-9 pr-9 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Buscar por nome, categoria…"
+            className="w-full h-11 md:h-10 pl-9 pr-10 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {query && (
             <button
               onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
               aria-label="Limpar busca"
             >
               <X className="h-4 w-4" />
@@ -131,7 +139,7 @@ function ProductsPage() {
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm font-semibold">Nenhum produto cadastrado</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Clique em "Novo produto" para começar.
+              Toque em "+" para começar.
             </p>
           </div>
         )}
@@ -148,71 +156,81 @@ function ProductsPage() {
 
         {grouped.map(([category, items]) => (
           <section key={category}>
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
               {category}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 md:gap-3">
               {items.map((p) => {
                 const hasPromo = p.promoPrice && p.promoPrice < p.price;
+                const cover = p.images?.[0];
                 return (
                   <div
                     key={p.id}
-                    className="rounded-lg border border-border bg-card p-4 flex flex-col gap-1.5"
+                    className="rounded-lg border border-border bg-card p-3 md:p-4 flex gap-3 md:flex-col md:gap-1.5"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold">{p.name}</div>
-                        {p.description && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        {hasPromo ? (
-                          <>
-                            <div className="text-xs text-muted-foreground line-through">
-                              {formatBRL(p.price)}
-                            </div>
-                            <div className="text-sm font-bold text-[var(--status-won)]">
-                              {formatBRL(p.promoPrice!)}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-sm font-bold">{formatBRL(p.price)}</div>
-                        )}
-                      </div>
-                    </div>
-                    {p.notes && (
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Tag className="h-3 w-3" /> {p.notes}
+                    {cover && (
+                      <div className="md:hidden h-20 w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border">
+                        <SmartImage src={cover} alt={p.name} aspectRatio="1/1" wrapperClassName="w-full h-full" />
                       </div>
                     )}
-                    <div className="pt-1.5 mt-auto flex items-center gap-1.5 flex-wrap">
-                      <button
-                        onClick={() =>
-                          navigate({
-                            to: "/orcamentos",
-                            search: {
-                              new: "1",
-                              suggestedProductId: p.id,
-                            },
-                          })
-                        }
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2.5 py-1.5 hover:opacity-90"
-                      >
-                        <FileText className="h-3 w-3" /> Criar orçamento
-                      </button>
-                      <button
-                        onClick={() => setEditing(p)}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md border border-border bg-background px-2.5 py-1.5 hover:bg-accent"
-                      >
-                        <Pencil className="h-3 w-3" /> Editar
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(p)}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md border border-border bg-background px-2.5 py-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
-                      >
-                        <Trash2 className="h-3 w-3" /> Excluir
-                      </button>
+                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">{p.name}</div>
+                          {p.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          {hasPromo ? (
+                            <>
+                              <div className="text-[11px] text-muted-foreground line-through">
+                                {formatBRL(p.price)}
+                              </div>
+                              <div className="text-sm font-bold text-[var(--status-won)]">
+                                {formatBRL(p.promoPrice!)}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-sm font-bold">{formatBRL(p.price)}</div>
+                          )}
+                        </div>
+                      </div>
+                      {p.notes && (
+                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Tag className="h-3 w-3 shrink-0" /> <span className="truncate">{p.notes}</span>
+                        </div>
+                      )}
+                      <div className="pt-1.5 mt-auto flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() =>
+                            navigate({
+                              to: "/orcamentos",
+                              search: { new: "1", suggestedProductId: p.id },
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 min-h-9 md:min-h-0 md:py-1.5 hover:opacity-90"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          <span>Orçar</span>
+                        </button>
+                        <button
+                          onClick={() => setEditing(p)}
+                          aria-label="Editar"
+                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-accent"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span className="hidden md:inline">Editar</span>
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(p)}
+                          aria-label="Excluir"
+                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="hidden md:inline">Excluir</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -304,10 +322,10 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch md:items-center justify-center md:p-4">
       <form
         onSubmit={handleSubmit}
-        className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-card border-0 md:border border-border md:rounded-lg shadow-lg w-full md:max-w-md max-h-[100dvh] md:max-h-[90vh] overflow-y-auto safe-top safe-bottom"
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-sm font-semibold">{isEdit ? "Editar produto" : "Novo produto"}</h2>
@@ -330,7 +348,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex.: Piscina de fibra 6x3"
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               autoFocus
             />
           </div>
@@ -342,7 +360,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as ProductCategory)}
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             >
               {PRODUCT_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -364,7 +382,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0,00"
-                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
             <div>
@@ -378,7 +396,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 value={promoPrice}
                 onChange={(e) => setPromoPrice(e.target.value)}
                 placeholder="0,00"
-                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
           </div>
@@ -392,7 +410,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Detalhes do produto…"
-              className="mt-1 w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className="mt-1 w-full px-3 py-2 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
 
@@ -405,7 +423,7 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex.: Inclui escada inox"
-              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
@@ -419,19 +437,19 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
+        <div className="sticky bottom-0 bg-card flex items-center justify-end gap-2 p-3 md:p-4 border-t border-border safe-bottom">
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-semibold rounded-md border border-border bg-background px-3 py-1.5 hover:bg-accent"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
           >
             Cancelar
           </button>
           <button
             type="submit"
-            className="text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-primary text-primary-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90"
           >
-            {isEdit ? "Salvar alterações" : "Cadastrar produto"}
+            {isEdit ? "Salvar" : "Cadastrar"}
           </button>
         </div>
       </form>
@@ -457,18 +475,18 @@ function ConfirmDeleteModal({
             "{product.name}" será removido do catálogo. Essa ação não pode ser desfeita.
           </p>
         </div>
-        <div className="flex items-center justify-end gap-2 p-4">
+        <div className="flex items-center justify-end gap-2 p-3 md:p-4">
           <button
             onClick={onClose}
-            className="text-xs font-semibold rounded-md border border-border bg-background px-3 py-1.5 hover:bg-accent"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
           >
             Cancelar
           </button>
           <button
             onClick={onConfirm}
-            className="text-xs font-semibold rounded-md bg-destructive text-destructive-foreground px-3 py-1.5 hover:opacity-90 inline-flex items-center gap-1.5"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-destructive text-destructive-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90 inline-flex items-center justify-center gap-1.5"
           >
-            <Trash2 className="h-3 w-3" /> Excluir
+            <Trash2 className="h-3.5 w-3.5" /> Excluir
           </button>
         </div>
       </div>
