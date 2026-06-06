@@ -262,6 +262,62 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
 
   useEffect(() => { void refresh({ silent: true }); }, [refresh]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pendingCode = window.sessionStorage.getItem("META_OAUTH_CODE");
+    if (pendingCode) {
+      window.sessionStorage.removeItem("META_OAUTH_CODE");
+      window.sessionStorage.removeItem("META_OAUTH_STATE_RX");
+      void completeReconnectWithCode(pendingCode);
+    }
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as { type?: string; code?: string; error?: string } | null;
+      if (!data || data.type !== "META_OAUTH_RESULT") return;
+      if (data.error) {
+        setReconnecting(false);
+        toast.error(data.error);
+        return;
+      }
+      if (data.code) void completeReconnectWithCode(data.code);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [completeReconnectWithCode]);
+
+  const startMetaReconnect = useCallback(async () => {
+    setReconnecting(true);
+    try {
+      const config = await getMetaBusinessConfig();
+      if (!config.hasAppId) throw new Error("Configuração Meta incompleta: App ID ausente.");
+      const state = crypto.randomUUID();
+      window.sessionStorage.removeItem("META_OAUTH_TOKEN");
+      window.localStorage.removeItem("META_OAUTH_TOKEN");
+      window.sessionStorage.setItem("META_OAUTH_STATE", state);
+      const base =
+        `https://www.facebook.com/v21.0/dialog/oauth` +
+        `?client_id=${encodeURIComponent(config.appId)}` +
+        `&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&state=${encodeURIComponent(state)}` +
+        `&auth_type=reauthenticate`;
+      const oauthUrl = config.hasBusinessConfigId && config.businessConfigId
+        ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
+        : `${base}&scope=${encodeURIComponent(META_REQUIRED_SCOPES)}`;
+      console.log("META_RECONNECT_OAUTH_URL", { mode: config.hasBusinessConfigId ? "business_config" : "classic_scope" });
+      const width = 600;
+      const height = 720;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      const popup = window.open(oauthUrl, "meta-oauth", `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      if (!popup) window.open(oauthUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setReconnecting(false);
+      toast.error(e instanceof Error ? e.message : "Falha ao iniciar reconexão Meta.");
+    }
+  }, []);
+
   // Carrega assets automaticamente assim que tivermos integração Meta conectada.
   useEffect(() => {
     if (readiness?.metaConnected && accounts === null && !loadingAccounts) {
@@ -422,12 +478,15 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <div className="flex-1 space-y-1.5">
                     <div>Permissões faltando no token: {missingScopes.join(", ")}.</div>
-                    <a
-                      href="/configuracoes#meta"
+                    <button
+                      type="button"
+                      onClick={startMetaReconnect}
+                      disabled={reconnecting}
                       className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
                     >
-                      <RefreshCw className="h-3 w-3" /> Reconectar Meta
-                    </a>
+                      {reconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Reconectar Meta
+                    </button>
                   </div>
                 </div>
               )}
