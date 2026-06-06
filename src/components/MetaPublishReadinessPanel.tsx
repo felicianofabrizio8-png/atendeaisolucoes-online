@@ -687,6 +687,151 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
             </div>
           )}
 
+          {/* Diagnóstico seguro de token Meta manual (admin) */}
+          {readiness.isAdmin && (
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium">Diagnóstico de token Meta (manual)</div>
+                <span className="text-[10px] text-muted-foreground">não salva sem confirmação</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Cole um token gerado em <code>developers.facebook.com</code> (Graph API Explorer) para validar tipo e
+                permissões. O token completo não é exibido nem registrado em logs.
+              </p>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="EAAB... (cole o token aqui)"
+                  value={manualToken}
+                  onChange={(e) => setManualToken(e.target.value)}
+                  className="flex-1 h-8 px-2 rounded border bg-background text-xs font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={diagnosing || manualToken.trim().length < 20}
+                  onClick={runDiagnosis}
+                  className="inline-flex items-center gap-1 h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-60"
+                >
+                  {diagnosing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Diagnosticar
+                </button>
+              </div>
+
+              {diagnosis && (
+                <div className="space-y-2 rounded-md border bg-background p-2 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>
+                      <strong>Token:</strong> <code>{diagnosis.tokenSuffix}</code>
+                    </span>
+                    <span>
+                      <strong>Type:</strong>{" "}
+                      <code
+                        className={cn(
+                          diagnosis.debugToken.type === "USER" || diagnosis.debugToken.type === "SYSTEM_USER"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-600 dark:text-red-400",
+                        )}
+                      >
+                        {diagnosis.debugToken.type ?? "?"}
+                      </code>
+                    </span>
+                    <span>
+                      <strong>is_valid:</strong>{" "}
+                      <code>{diagnosis.debugToken.is_valid ? "true" : "false"}</code>
+                    </span>
+                    <span>
+                      <strong>app_id:</strong> <code>{diagnosis.debugToken.app_id ?? "?"}</code>
+                    </span>
+                    {diagnosis.debugToken.expires_at ? (
+                      <span>
+                        <strong>expira:</strong>{" "}
+                        <code>{new Date(diagnosis.debugToken.expires_at * 1000).toLocaleString("pt-BR")}</code>
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      ["ads_read", diagnosis.debugToken.has_ads_read],
+                      ["ads_management", diagnosis.debugToken.has_ads_management],
+                      ["business_management", diagnosis.debugToken.has_business_management],
+                      ["pages_show_list", diagnosis.debugToken.has_pages_show_list],
+                    ].map(([name, ok]) => (
+                      <span
+                        key={String(name)}
+                        className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+                          ok
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                            : "bg-red-500/15 text-red-700 dark:text-red-300",
+                        )}
+                      >
+                        {ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />} {String(name)}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div>
+                    <strong>/me:</strong>{" "}
+                    {diagnosis.me
+                      ? <code>{diagnosis.me.name} ({diagnosis.me.id})</code>
+                      : <span className="text-red-600 dark:text-red-400">{diagnosis.meError ?? "—"}</span>}
+                  </div>
+
+                  <div>
+                    <strong>/me/adaccounts:</strong>{" "}
+                    {diagnosis.adAccounts.length > 0 ? (
+                      <span>
+                        {diagnosis.adAccounts.length} conta(s) ·{" "}
+                        <code>{diagnosis.adAccounts.map((a) => `act_${a.account_id}`).join(", ")}</code>
+                      </span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400">{diagnosis.adAccountsError ?? "vazio"}</span>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const isUser =
+                      diagnosis.debugToken.type === "USER" || diagnosis.debugToken.type === "SYSTEM_USER";
+                    const hasTarget = diagnosis.adAccounts.some(
+                      (a) => a.account_id === "504693369540667" || `act_${a.account_id}` === "act_504693369540667",
+                    );
+                    if (!isUser) {
+                      return (
+                        <div className="text-red-700 dark:text-red-300">
+                          Token rejeitado: não é USER/SYSTEM_USER. Não pode ser salvo.
+                        </div>
+                      );
+                    }
+                    if (!hasTarget) {
+                      return (
+                        <div className="text-amber-700 dark:text-amber-300">
+                          Token USER válido, mas a conta <code>act_504693369540667</code> não aparece em /me/adaccounts.
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          disabled={adopting}
+                          onClick={adoptDiagnosedToken}
+                          className="inline-flex items-center gap-1 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          {adopting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Usar este token para Meta Ads
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+
+
+
           {/* Picker de página */}
           {readiness.metaConnected && pages && pages.length > 0 && (
             <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
