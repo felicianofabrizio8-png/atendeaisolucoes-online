@@ -449,7 +449,6 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   void channelLabelMap;
   const passed = checks.filter((c) => c.ok).length;
   const ready = checks.every((c) => c.ok);
-  const selectedAdNorm = readiness.adAccountId.replace(/^act_/, "");
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
