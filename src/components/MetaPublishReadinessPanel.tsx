@@ -133,10 +133,32 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const toggleBeta = useServerFn(setMetaBetaFlag);
   const diagnoseToken = useServerFn(diagnoseMetaToken);
   const adoptToken = useServerFn(adoptMetaUserToken);
+  const verifyPersisted = useServerFn(verifyPersistedMetaUserToken);
 
   const [manualToken, setManualToken] = useState("");
   const [diagnosing, setDiagnosing] = useState(false);
   const [adopting, setAdopting] = useState(false);
+  const [verification, setVerification] = useState<
+    | null
+    | {
+        ok: boolean;
+        error?: string;
+        message?: string;
+        persistedTokenSuffix?: string;
+        debugToken?: {
+          type: string | null;
+          is_valid: boolean;
+          scopes: string[];
+          has_ads_read: boolean;
+          has_ads_management: boolean;
+          has_business_management: boolean;
+        };
+        me?: { id: string; name: string } | null;
+        meError?: string | null;
+        adAccounts?: Array<{ id: string; account_id: string; name: string; status: number }>;
+        adAccountsError?: string | null;
+      }
+  >(null);
   const [diagnosis, setDiagnosis] = useState<
     | null
     | {
