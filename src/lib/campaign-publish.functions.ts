@@ -857,14 +857,22 @@ export const publishCampaign = createServerFn({ method: "POST" })
         const phoneCheck = await checkPhoneId(waPhoneNumberId);
         console.log("[publishCampaign] whatsapp_phone_number_check", {
           ok: phoneCheck.ok,
+          status: phoneCheck.ok ? 200 : phoneCheck.status,
           whatsapp_phone_number_id: waPhoneNumberId,
           display_phone_number: phoneCheck.ok ? phoneCheck.data.display_phone_number ?? null : null,
           verified_name: phoneCheck.ok ? phoneCheck.data.verified_name ?? null : null,
           waba_id: phoneCheck.ok ? phoneCheck.data.whatsapp_business_account?.id ?? null : waWabaId || null,
           error: phoneCheck.ok ? null : formatGraphError(phoneCheck.body, phoneCheck.message),
+          raw_body: phoneCheck.ok ? null : phoneCheck.body,
         });
         if (phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number) {
           applyPhoneInfo(phoneCheck.data);
+        } else if (!phoneCheck.ok) {
+          waPhoneCheckError = {
+            message: formatGraphError(phoneCheck.body, phoneCheck.message),
+            body: phoneCheck.body,
+            status: phoneCheck.status,
+          };
         }
       }
 
