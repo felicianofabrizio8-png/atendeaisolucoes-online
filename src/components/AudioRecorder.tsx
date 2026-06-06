@@ -184,9 +184,13 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         rec.ondataavailable = (data) => {
           if (data instanceof Blob) {
             if (data.size > 0) chunksRef.current.push(data);
-          } else {
-            // ArrayBuffer | Uint8Array
+          } else if (data instanceof ArrayBuffer) {
             chunksRef.current.push(data);
+          } else {
+            // Uint8Array — copia para um ArrayBuffer puro para satisfazer BlobPart.
+            const copy = new Uint8Array(data.byteLength);
+            copy.set(data);
+            chunksRef.current.push(copy.buffer);
           }
         };
         rec.onstop = () => {
