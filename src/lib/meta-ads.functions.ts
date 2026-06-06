@@ -310,6 +310,36 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
     return { ok: true as const, adAccountId: normalized };
   });
 
+// ----------------- CLEAR MANUAL AD ACCOUNT -----------------
+export const clearMetaAdAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+    const isAdmin = await hasAdminRole(supabase, userId);
+    if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin pode alterar." };
+
+    const integrations = await loadActiveMetaIntegrations(companyId);
+    if (integrations.length === 0) return { ok: true as const, cleared: 0 };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    let cleared = 0;
+    for (const integ of integrations) {
+      const meta = { ...(integ.account_metadata ?? {}) } as Record<string, unknown>;
+      if (!("ad_account_id" in meta)) continue;
+      delete meta["ad_account_id"];
+      const { error } = await supabaseAdmin
+        .from("integrations")
+        .update({ account_metadata: meta as never })
+        .eq("id", integ.id)
+        .eq("company_id", companyId);
+      if (!error) cleared += 1;
+    }
+    console.log("[meta-ads] clearMetaAdAccount", { companyId, cleared });
+    return { ok: true as const, cleared };
+  });
+
 // ----------------- SELECT PAGE -----------------
 export const selectMetaPage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -8,6 +8,7 @@ import {
   listMetaAdAccounts,
   listMetaPages,
   selectMetaAdAccount,
+  clearMetaAdAccount,
   selectMetaPage,
   setMetaBetaFlag,
 } from "@/lib/meta-ads.functions";
@@ -124,6 +125,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const fetchAccounts = useServerFn(listMetaAdAccounts);
   const fetchPages = useServerFn(listMetaPages);
   const saveAccount = useServerFn(selectMetaAdAccount);
+  const clearAccount = useServerFn(clearMetaAdAccount);
   const savePage = useServerFn(selectMetaPage);
   const toggleBeta = useServerFn(setMetaBetaFlag);
 
@@ -206,7 +208,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         has_ads_management: scopes.includes("ads_management"),
       });
       if (tokenType !== "USER" && tokenType !== "SYSTEM_USER") {
-        throw new Error("Reconexão incompleta: o Facebook retornou token de Página. Refaça a conexão concedendo acesso ao usuário/conta de anúncios.");
+        throw new Error("Reconexão inválida: token de Página salvo. Reconecte com token de usuário.");
       }
 
       const tok = encodeURIComponent(userToken);
@@ -338,6 +340,20 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     } finally { setSaving(false); }
   }
 
+  async function removeManualAdAccount() {
+    setSaving(true);
+    try {
+      const r = await clearAccount();
+      if (r.ok) {
+        toast.success(`ID manual removido (${r.cleared ?? 0} integração(ões)).`);
+        await refresh({ silent: true });
+        await loadAssets();
+      } else {
+        toast.error(("message" in r && r.message) || "Falha ao remover ID manual.");
+      }
+    } finally { setSaving(false); }
+  }
+
   async function persistPage(pageId: string) {
     setSaving(true);
     try {
@@ -387,11 +403,22 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   const campaignValid = goalValid && Number(campaign.daily_budget ?? 0) > 0;
   const channelLabelMap = { whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram" } as const;
 
+  const selectedAdNorm = readiness.adAccountId.replace(/^act_/, "");
+  const adAccountFromGraph = Boolean(
+    readiness.adAccountId && accounts && accounts.some((a) => a.account_id === selectedAdNorm),
+  );
+  const isManualAdAccount = Boolean(
+    readiness.adAccountId && accounts !== null && !adAccountFromGraph,
+  );
+  const adAccountHint = readiness.adAccountId
+    ? `${readiness.adAccountId}${isManualAdAccount ? " (manual — não validado)" : ""}`
+    : "Escolha ou digite o ID abaixo.";
+
   // Checks comuns
   const baseChecks = [
     { ok: readiness.betaEnabled, label: "Beta Meta Ads liberado" },
     { ok: readiness.metaConnected, label: "Meta conectado", hint: readiness.metaConnected ? `${readiness.integrationCount} integração(ões)` : "Conecte a Meta." },
-    { ok: Boolean(readiness.adAccountId), label: "Conta de anúncios selecionada", hint: readiness.adAccountId || "Escolha ou digite o ID abaixo." },
+    { ok: adAccountFromGraph, label: "Conta de anúncios selecionada", hint: adAccountHint },
     { ok: Boolean(readiness.pageId), label: "Página Facebook selecionada", hint: readiness.pageId || "Escolha a página abaixo." },
   ];
 
@@ -422,7 +449,6 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
   void channelLabelMap;
   const passed = checks.filter((c) => c.ok).length;
   const ready = checks.every((c) => c.ok);
-  const selectedAdNorm = readiness.adAccountId.replace(/^act_/, "");
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -460,6 +486,12 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
               {loadingAccounts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Recarregar assets Meta
             </button>
+            <button onClick={startMetaReconnect}
+              disabled={reconnecting}
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-60">
+              {reconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Reconectar Meta
+            </button>
             <button onClick={() => { void refresh(); }}
               disabled={loading}
               className="inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground disabled:opacity-60">
@@ -472,6 +504,40 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
           {readiness.metaConnected && (
             <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
               <div className="text-xs font-medium">Conta de anúncios</div>
+
+              {isManualAdAccount && (
+                <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 rounded p-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div>
+                      <span className="inline-block mr-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-[10px] font-semibold uppercase tracking-wide">
+                        Manual
+                      </span>
+                      ID <code>{readiness.adAccountId}</code> salvo manualmente. Não foi retornado pela Graph API e não comprova permissão válida — publicação bloqueada até reconectar.
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={removeManualAdAccount}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
+                      >
+                        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                        Remover ID manual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={startMetaReconnect}
+                        disabled={reconnecting}
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium"
+                      >
+                        {reconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        Reconectar Meta
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {missingScopes.length > 0 && (
                 <div className="flex items-start gap-2 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded p-2">
