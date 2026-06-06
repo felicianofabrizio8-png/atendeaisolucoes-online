@@ -1250,6 +1250,30 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
+    const creativeCheck = await graphFetch<{
+      id: string;
+      object_story_spec?: { page_id?: string; link_data?: unknown };
+      effective_object_story_id?: string;
+    }>(
+      `${GRAPH}/${encodeURIComponent(creativeId)}?fields=id,object_story_spec,effective_object_story_id&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "GET" },
+    );
+    console.log("[publishCampaign] creative_check", {
+      ok: creativeCheck.ok,
+      creative_id: creativeId,
+      page_id: creativeCheck.ok ? creativeCheck.data.object_story_spec?.page_id ?? null : null,
+      effective_object_story_id: creativeCheck.ok ? creativeCheck.data.effective_object_story_id ?? null : null,
+      error: creativeCheck.ok ? null : formatGraphError(creativeCheck.body, creativeCheck.message),
+    });
+    if (!creativeCheck.ok || creativeCheck.data.id !== creativeId) {
+      return fail(
+        "verify_creative",
+        creativeCheck.ok ? "Meta não confirmou o creative criado." : formatGraphError(creativeCheck.body, creativeCheck.message),
+        creativeCheck.ok ? creativeCheck.data : creativeCheck.body,
+        { creative_id: creativeId, page_id: pageId, whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null },
+      );
+    }
+
 
     // Step E: cria ad.
     const adPayload = {
