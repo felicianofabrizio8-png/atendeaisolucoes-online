@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
 import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
+import { activateCampaignOnMeta } from "@/lib/campaign-meta-activate.functions";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
@@ -128,6 +129,34 @@ function CampaignDetailPage() {
   } | null>(null);
   const publishFn = useServerFn(publishCampaign);
   const syncMetaFn = useServerFn(syncCampaignStatusFromMeta);
+  const activateMetaFn = useServerFn(activateCampaignOnMeta);
+  const [activating, setActivating] = useState(false);
+
+  async function performActivate() {
+    if (!c) return;
+    setActivating(true);
+    try {
+      const r = await activateMetaFn({ data: { campaignId: c.id } });
+      if (r.ok) {
+        toast.success("Os 3 objetos foram ativados na Meta.");
+      } else {
+        const msg = (r as { message?: string }).message ?? r.error ?? "Falha ao ativar na Meta.";
+        toast.error(msg);
+      }
+      try {
+        const live = await syncMetaFn({ data: { campaignId: c.id } });
+        setMetaLiveStatus(live);
+      } catch (e) {
+        console.warn("[campaign-detail] sync after activate failed", e);
+      }
+      const fresh = await getCampaign(c.id);
+      if (fresh) setC(fresh);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao ativar na Meta.");
+    } finally {
+      setActivating(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -253,6 +282,8 @@ function CampaignDetailPage() {
   const metaStatus = getMetaPanelStatus(c, metaLiveStatus);
   // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
   const needsAdRetry = Boolean(c.meta_campaign_id && c.meta_adset_id && !c.meta_ad_id);
+  const hasAllMetaIds = Boolean(c.meta_campaign_id && c.meta_adset_id && c.meta_ad_id);
+  const canActivateOnMeta = hasAllMetaIds && c.meta_delivery_status !== "active_on_meta";
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-5">
@@ -306,9 +337,23 @@ function CampaignDetailPage() {
                 )}
               </button>
             )}
+            {canActivateOnMeta && (
+              <button
+                onClick={performActivate}
+                disabled={activating || publishing}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-600/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Faz POST status=ACTIVE nos 3 objetos (campaign, adset, ad) usando os IDs já salvos."
+              >
+                {activating ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Ativando…</>
+                ) : (
+                  <><PlayCircle className="h-4 w-4" /> Ativar na Meta</>
+                )}
+              </button>
+            )}
             <button
               onClick={() => setConfirmOpen(true)}
-              disabled={publishing}
+              disabled={publishing || activating}
               className="inline-flex items-center gap-1 h-9 px-3 rounded-md border text-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" /> Excluir
