@@ -16,6 +16,7 @@ import {
   subscribeRepo,
 } from "@/data/leadRepo";
 import { listQuotes, subscribeQuotes, type Quote } from "@/data/quotes";
+import { listIntegrations } from "@/data/integrationRepo";
 import { ChannelBadge } from "@/components/Badges";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
@@ -82,6 +83,13 @@ const ACTIVE_STATUSES: Lead["status"][] = [
   "quente",
 ];
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return { text: "Bom dia", emoji: "👋" };
+  if (hour >= 12 && hour < 18) return { text: "Boa tarde", emoji: "☀️" };
+  return { text: "Boa noite", emoji: "🌙" };
+}
+
 function DashboardPage() {
   useSyncExternalStore(subscribeRepo, () => 0, () => 0);
   useSyncExternalStore(subscribeQuotes, () => 0, () => 0);
@@ -99,6 +107,25 @@ function DashboardPage() {
     const id = setInterval(() => setTick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  const [waConnected, setWaConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const integrations = await listIntegrations(companyId);
+        const wa = integrations.find((i) => i.channel === "whatsapp");
+        if (!cancelled) setWaConnected(wa?.active ?? false);
+      } catch {
+        if (!cancelled) setWaConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -269,6 +296,11 @@ function DashboardPage() {
     })
     .slice(0, 4);
 
+  // --- Dados para alertas acionáveis ---
+  const alertReady = allConversations.filter(
+    (c) => (channel === "todos" || c.channel === channel) && c.leadReadyToClose,
+  ).length;
+
   // --- Gráfico de leads por dia (últimos 14 dias) ---
   const chartData = useMemo(() => {
     const days = 14;
@@ -303,17 +335,37 @@ function DashboardPage() {
     allConversations.find((c) => c.leadId === leadId)?.id;
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden safe-bottom">
-      <header className="px-4 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4 border-b border-border">
+    <div className="flex-1 overflow-y-auto overflow-x-hidden safe-bottom min-w-0">
+      <header className="px-4 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4 border-b border-border overflow-x-hidden">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
-              Bom dia 👋
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight break-words">
+              {(() => {
+                const g = getGreeting();
+                const name = profile?.display_name;
+                return `${g.text}${name ? `, ${name}` : ""} ${g.emoji}`;
+              })()}
             </h1>
             <p className="text-xs md:text-sm text-muted-foreground mt-1">
               Resumo do dia. Foque em quem está esperando.
             </p>
           </div>
+          {waConnected !== null && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+              <span
+                className={cn(
+                  "inline-block h-3 w-3 rounded-full",
+                  waConnected ? "bg-emerald-500" : "bg-red-500",
+                )}
+              />
+              <span className="hidden md:inline">
+                WhatsApp {waConnected ? "conectado" : "desconectado"}
+              </span>
+              <span className="md:hidden">
+                {waConnected ? "Conectado" : "Desconectado"}
+              </span>
+            </div>
+          )}
         </div>
         <div className="mt-3 -mx-4 md:mx-0 px-4 md:px-0 flex items-center gap-2 overflow-x-auto scrollbar-none md:flex-wrap">
           <Segmented
@@ -429,7 +481,7 @@ function DashboardPage() {
         const recoveredValue = recovered.reduce((s, l) => s + (l.closedValue ?? 0), 0);
 
         return (
-          <section className="px-4 md:px-8 pb-6">
+          <section className="px-4 md:px-8 pb-6 pt-2 md:pt-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm">🤖</span>
               <h2 className="text-sm font-semibold uppercase tracking-wide">Comercial IA</h2>
@@ -452,7 +504,7 @@ function DashboardPage() {
 
 
       {/* 3 blocos */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-4 md:px-8 pb-6">
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-4 md:px-8 pb-6 pt-2 md:pt-4">
         {/* Atenção agora */}
         <Block
           title="Atenção agora"
@@ -703,7 +755,7 @@ function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "px-3 min-h-[36px] md:min-h-0 md:py-1 rounded-[5px] transition-colors text-xs",
+            "px-3 min-h-11 md:min-h-0 md:py-1 rounded-[5px] transition-colors text-xs",
             value === o.value
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -744,8 +796,8 @@ function KpiCard({
       <div className={`h-8 w-8 rounded-md ${s.bg} ${s.text} flex items-center justify-center`}>
         <Icon className="h-4 w-4" />
       </div>
-      <div className="mt-3 text-2xl font-semibold tabular-nums">{value}</div>
-      <div className="text-xs text-foreground/80 mt-0.5">{label}</div>
+      <div className="mt-3 text-lg md:text-2xl font-semibold tabular-nums break-words">{value}</div>
+      <div className="text-xs text-foreground/80 mt-0.5 break-words">{label}</div>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
         {sub}
       </div>
@@ -763,7 +815,7 @@ function Block({
   empty?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card flex flex-col">
+    <div className="rounded-lg border border-border bg-card flex flex-col max-w-full">
       <div className="px-4 py-3 border-b border-border">
         <h2 className="text-sm font-semibold">{title}</h2>
       </div>
@@ -914,7 +966,7 @@ function Stat({
       >
         <Icon className="h-3.5 w-3.5" />
       </div>
-      <div className="flex-1 text-xs">{label}</div>
+      <div className="flex-1 text-xs break-words">{label}</div>
       <div className="text-sm font-semibold tabular-nums">{value}</div>
     </div>
   );
