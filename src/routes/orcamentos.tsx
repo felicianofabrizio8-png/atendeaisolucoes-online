@@ -131,11 +131,11 @@ function QuotesPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="h-14 px-4 md:px-6 border-b border-border flex items-center gap-3">
-        <FileText className="h-4 w-4 text-primary" />
-        <div className="flex-1">
+      <header className="sticky top-0 z-20 bg-background h-14 px-4 md:px-6 border-b border-border flex items-center gap-3 safe-top">
+        <FileText className="h-4 w-4 text-primary shrink-0" />
+        <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold">Orçamentos</h1>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground truncate">
             {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
             {quotes.length === 1 ? "" : "s"}
           </p>
@@ -146,9 +146,11 @@ function QuotesPage() {
             setPrefillConvId(undefined);
             setOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold"
+          aria-label="Novo orçamento"
+          className="inline-flex items-center justify-center gap-1.5 h-11 w-11 md:h-9 md:w-auto md:px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold shrink-0"
         >
-          <Plus className="h-3.5 w-3.5" /> Novo orçamento
+          <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
+          <span className="hidden md:inline">Novo orçamento</span>
         </button>
       </header>
 
