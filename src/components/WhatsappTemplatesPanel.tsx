@@ -176,7 +176,7 @@ export function WhatsappTemplatesPanel() {
                     className="rounded-lg border border-border p-3 bg-card space-y-2"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-medium">{t.name}</span>
+                      <span className="font-mono text-sm font-medium break-all min-w-0">{t.name}</span>
                       <span
                         className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border ${categoryBadge(t.category)}`}
                       >
