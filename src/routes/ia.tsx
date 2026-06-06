@@ -635,7 +635,7 @@ function ConfiguracoesIA() {
               )}
               {logs.map((l) => (
                 <div key={l.id} className="rounded-md border border-border p-2 text-sm bg-card">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>{new Date(l.created_at).toLocaleString("pt-BR")}</span>
                     {l.classification && (
                       <span className="rounded bg-secondary px-1.5 py-0.5">{l.classification}</span>
