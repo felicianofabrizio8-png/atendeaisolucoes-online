@@ -803,6 +803,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
     let waVerifiedName = "";
     let waPhoneVerified = false;
     let waIntegrationId: string | null = null;
+    let waPhoneCheckError: { message: string; body: unknown; status: number } | null = null;
+    let waWabaListError: { message: string; body: unknown; status: number } | null = null;
     try {
       const { data: waInteg } = await adminClient.supabaseAdmin
         .from("integrations")
@@ -855,14 +857,22 @@ export const publishCampaign = createServerFn({ method: "POST" })
         const phoneCheck = await checkPhoneId(waPhoneNumberId);
         console.log("[publishCampaign] whatsapp_phone_number_check", {
           ok: phoneCheck.ok,
+          status: phoneCheck.ok ? 200 : phoneCheck.status,
           whatsapp_phone_number_id: waPhoneNumberId,
           display_phone_number: phoneCheck.ok ? phoneCheck.data.display_phone_number ?? null : null,
           verified_name: phoneCheck.ok ? phoneCheck.data.verified_name ?? null : null,
           waba_id: phoneCheck.ok ? phoneCheck.data.whatsapp_business_account?.id ?? null : waWabaId || null,
           error: phoneCheck.ok ? null : formatGraphError(phoneCheck.body, phoneCheck.message),
+          raw_body: phoneCheck.ok ? null : phoneCheck.body,
         });
         if (phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number) {
           applyPhoneInfo(phoneCheck.data);
+        } else if (!phoneCheck.ok) {
+          waPhoneCheckError = {
+            message: formatGraphError(phoneCheck.body, phoneCheck.message),
+            body: phoneCheck.body,
+            status: phoneCheck.status,
+          };
         }
       }
 
@@ -879,10 +889,19 @@ export const publishCampaign = createServerFn({ method: "POST" })
         );
         console.log("[publishCampaign] whatsapp WABA phone_numbers", {
           ok: list.ok,
+          status: list.ok ? 200 : list.status,
           count: list.ok ? list.data.data?.length ?? 0 : 0,
           numbers: list.ok ? list.data.data ?? [] : null,
           error: list.ok ? null : formatGraphError(list.body, list.message),
+          raw_body: list.ok ? null : list.body,
         });
+        if (!list.ok) {
+          waWabaListError = {
+            message: formatGraphError(list.body, list.message),
+            body: list.body,
+            status: list.status,
+          };
+        }
         const active = list.ok ? (list.data.data ?? []).find((p) => p?.id && p?.display_phone_number) : null;
         if (active) {
           const oldPid = waPhoneNumberId;
@@ -1078,11 +1097,22 @@ export const publishCampaign = createServerFn({ method: "POST" })
       );
     }
     if (channel === "whatsapp" && !waPhoneVerified) {
+      const rawMetaError =
+        waPhoneCheckError?.message ||
+        waWabaListError?.message ||
+        "sem resposta da Graph API";
       return fail(
         "create_creative",
-        "Não foi possível validar o whatsapp_phone_number_id na Graph API antes de criar o anúncio.",
-        null,
-        { page_id: pageId, whatsapp_phone_number_id: waPhoneNumberId, waba_id: waWabaId || null, image_hash: imageHash },
+        `Meta rejeitou o whatsapp_phone_number_id (${waPhoneNumberId}). Erro original da Graph API: ${rawMetaError}. Verifique no Meta Business Suite → Configurações → WhatsApp → Contas conectadas se o número está vinculado à Página correta.`,
+        waPhoneCheckError?.body ?? waWabaListError?.body ?? null,
+        {
+          page_id: pageId,
+          whatsapp_phone_number_id: waPhoneNumberId,
+          waba_id: waWabaId || null,
+          image_hash: imageHash,
+          phone_check_error: waPhoneCheckError,
+          waba_list_error: waWabaListError,
+        },
       );
     }
     if (channel === "instagram" && !igActorId) {
@@ -1395,10 +1425,26 @@ export const publishCampaign = createServerFn({ method: "POST" })
       },
     );
     if (!adRes.ok) {
-      console.error("[publishCampaign] create_ad fail", {
-        status: adRes.status, message: adRes.message, body: adRes.body,
+      console.error("[publishCampaign] create_ad fail — resposta bruta da Meta", {
+        endpoint: `${GRAPH}/${actId}/ads`,
+        request_payload: adPayload,
+        whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
+        page_id: pageId,
+        instagram_actor_id: igActorId || null,
+        creative_id: creativeId,
+        adset_id: metaAdsetId,
+        response_status: adRes.status,
+        response_message: adRes.message,
+        response_body: adRes.body,
+        response_raw: (adRes as { rawText?: string }).rawText ?? null,
       });
-      return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body);
+      return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body, {
+        endpoint: `${GRAPH}/${actId}/ads`,
+        request_payload: adPayload,
+        response_status: adRes.status,
+        response_body: adRes.body,
+        response_raw: (adRes as { rawText?: string }).rawText ?? null,
+      });
     }
     const metaAdId = adRes.data.id;
     console.log("[publishCampaign] create_ad ok", { metaAdId });
