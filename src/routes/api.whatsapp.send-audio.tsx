@@ -404,8 +404,18 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
-          console.error("[send-audio] network error", {
+          console.error("[AUDIO META RESPONSE]", {
+            accepted_as_sent: false,
+            network_error: true,
             message: msg,
+            status: null,
+            http_status: null,
+            body: null,
+            messages_0_id: null,
+            error_message: msg,
+            error_code: null,
+            error_subcode: null,
+            fbtrace_id: null,
             payload,
             phone_number_id: integration.external_account_id,
             to: recipient,
