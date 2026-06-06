@@ -13,6 +13,9 @@ import { isWithin24hWindow } from "@/lib/wa-templates.server";
 
 const BUCKET = "whatsapp-media";
 const MAX_BYTES = 16 * 1024 * 1024; // WhatsApp Cloud API: audio até 16MB
+// WhatsApp Cloud API só aceita estes containers para áudio/voz.
+// audio/webm é REJEITADO pela Meta (vira anexo no melhor caso) — bloqueamos
+// antes mesmo de subir o arquivo, o cliente já grava em ogg/opus ou mp4/aac.
 const ALLOWED_MIMES = new Set([
   "audio/ogg",
   "audio/ogg;codecs=opus",
@@ -20,8 +23,6 @@ const ALLOWED_MIMES = new Set([
   "audio/aac",
   "audio/mpeg",
   "audio/amr",
-  "audio/webm",
-  "audio/webm;codecs=opus",
 ]);
 
 function extFromMime(mime: string): string {
@@ -31,7 +32,6 @@ function extFromMime(mime: string): string {
   if (m.startsWith("audio/aac")) return "aac";
   if (m.startsWith("audio/mpeg")) return "mp3";
   if (m.startsWith("audio/amr")) return "amr";
-  if (m.startsWith("audio/webm")) return "webm";
   return "bin";
 }
 
