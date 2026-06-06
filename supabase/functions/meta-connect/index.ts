@@ -68,6 +68,9 @@ async function validatePageAccessToken(
 // para a Marketing API. Se reprovar, o caller NÃO deve gravar em
 // integrations.access_token (essa coluna nunca pode conter PAGE token).
 const REQUIRED_USER_SCOPES = ["ads_management", "ads_read", "business_management"];
+const INCOMPLETE_RECONNECT_ERROR =
+  "Reconexão incompleta: o Facebook retornou token de Página. Refaça a conexão concedendo acesso ao usuário/conta de anúncios.";
+
 async function validateUserToken(token: string): Promise<{
   ok: boolean;
   reason?: string;
@@ -106,6 +109,39 @@ async function validateUserToken(token: string): Promise<{
   } catch (e) {
     return { ok: false, reason: `network_error:${String(e)}` };
   }
+}
+
+async function logMetaTokenRejection(
+  sb: any,
+  companyId: string,
+  context: {
+    stage: string;
+    endpoint: string;
+    tokenCheck: { type?: string; scopes?: string[]; reason?: string };
+    target_column?: string;
+    page_id?: string | null;
+    integration_id?: string | null;
+  },
+) {
+  const scopes = Array.isArray(context.tokenCheck.scopes) ? context.tokenCheck.scopes : [];
+  await sb.from("error_log").insert({
+    source: "meta",
+    severity: "warning",
+    message: "meta_token_rejected: integrations.access_token aceita apenas USER/SYSTEM_USER",
+    company_id: companyId,
+    context: {
+      stage: context.stage,
+      endpoint: context.endpoint,
+      token_type: context.tokenCheck.type ?? null,
+      target_column: context.target_column ?? "integrations.access_token",
+      rejected_reason: context.tokenCheck.reason ?? null,
+      scopes,
+      has_ads_read: scopes.includes("ads_read"),
+      has_ads_management: scopes.includes("ads_management"),
+      page_id: context.page_id ?? null,
+      integration_id: context.integration_id ?? null,
+    },
+  });
 }
 
 // "feed" cobre posts + comentários no Facebook. "comments" NÃO é um campo
@@ -380,6 +416,27 @@ Deno.serve(async (req) => {
     }
     const me = (await meRes.json()) as { id: string; name?: string };
 
+    const basicUserCheck = await validateUserToken(shortToken);
+    if (!basicUserCheck.ok) {
+      await logMetaTokenRejection(sb, companyId, {
+        stage: "basic_guard",
+        endpoint: "meta-connect:basic",
+        tokenCheck: basicUserCheck,
+        page_id: me.id,
+      });
+      return json(
+        {
+          ok: false,
+          error: basicUserCheck.type === "PAGE"
+            ? INCOMPLETE_RECONNECT_ERROR
+            : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+          token_type: basicUserCheck.type ?? null,
+          reason: basicUserCheck.reason,
+        },
+        400,
+      );
+    }
+
     await sb.from("integrations").upsert(
       {
         company_id: companyId,
@@ -388,7 +445,7 @@ Deno.serve(async (req) => {
         external_account_id: `user:${me.id}`,
         access_token: shortToken,
         active: true,
-        account_metadata: { mode: "basic", fb_user_id: me.id },
+        account_metadata: { mode: "basic", fb_user_id: me.id, token_type: basicUserCheck.type ?? "USER", scopes: basicUserCheck.scopes ?? [] },
         last_error: null,
         last_synced_at: new Date().toISOString(),
       },
@@ -486,11 +543,18 @@ Deno.serve(async (req) => {
       reason: userCheck.reason ?? null,
     });
     if (!userCheck.ok) {
+      await logMetaTokenRejection(sb, companyId, {
+        stage: "connect_page_guard",
+        endpoint: "meta-connect:connect_page",
+        tokenCheck: userCheck,
+        page_id: page.id,
+      });
       return json(
         {
           ok: false,
-          error:
-            "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+          error: userCheck.type === "PAGE"
+            ? INCOMPLETE_RECONNECT_ERROR
+            : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
           token_type: userCheck.type ?? null,
           reason: userCheck.reason,
         },
@@ -523,7 +587,8 @@ Deno.serve(async (req) => {
             fb_page_id: page.id,
             ig_business_account_id: igId,
             ig_username: igUsername,
-            token_type: "USER",
+            token_type: userCheck.type ?? "USER",
+            granted_scopes: userCheck.scopes ?? [],
           },
           last_error: null,
           last_synced_at: new Date().toISOString(),
@@ -638,11 +703,17 @@ Deno.serve(async (req) => {
     reason: loopUserCheck.reason ?? null,
   });
   if (!loopUserCheck.ok) {
+    await logMetaTokenRejection(sb, companyId, {
+      stage: "pages_loop_guard",
+      endpoint: "meta-connect:pages",
+      tokenCheck: loopUserCheck,
+    });
     return json(
       {
         ok: false,
-        error:
-          "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+        error: loopUserCheck.type === "PAGE"
+          ? INCOMPLETE_RECONNECT_ERROR
+          : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
         token_type: loopUserCheck.type ?? null,
         reason: loopUserCheck.reason,
       },
@@ -699,7 +770,8 @@ Deno.serve(async (req) => {
               ...existingMeta,
               ig_business_account_id: ig,
               ig_username: igUsername,
-              token_type: "USER",
+              token_type: loopUserCheck.type ?? "USER",
+              granted_scopes: loopUserCheck.scopes ?? [],
             },
             last_error: null,
             last_synced_at: new Date().toISOString(),
