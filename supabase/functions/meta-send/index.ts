@@ -21,7 +21,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
   /^http:\/\/localhost(:\d+)?$/i,
 ];
-function corsHeaders(req: Request): Record<string, string> {
+function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
   return {
@@ -31,17 +31,16 @@ function corsHeaders(req: Request): Record<string, string> {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 }
-function json(b: unknown, s = 200, req?: Request) {
-  return new Response(JSON.stringify(b), {
-    status: s,
-    headers: { ...(req ? corsHeaders(req) : {}), "Content-Type": "application/json" },
-  });
-}
 
 Deno.serve(async (req) => {
-  const cors = corsHeaders(req);
+  const cors = corsFor(req);
+  const json = (b: unknown, s = 200) =>
+    new Response(JSON.stringify(b), {
+      status: s,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405, req);
+  if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
   const accessToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
