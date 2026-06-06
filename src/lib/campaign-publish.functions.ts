@@ -799,33 +799,60 @@ export const publishCampaign = createServerFn({ method: "POST" })
     let waPhone = "";
     let waPhoneNumberId = "";
     let waWabaId = "";
+    let waDisplayPhone = "";
+    let waVerifiedName = "";
     let waPhoneVerified = false;
+    let waIntegrationId: string | null = null;
     try {
       const { data: waInteg } = await adminClient.supabaseAdmin
         .from("integrations")
-        .select("account_metadata, external_account_id, access_token")
+        .select("id, account_metadata, external_account_id, access_token")
         .eq("company_id", companyId)
         .eq("channel", "whatsapp")
         .eq("active", true)
         .maybeSingle();
+      waIntegrationId = (waInteg as { id?: string } | null)?.id ?? null;
       const md = (waInteg?.account_metadata ?? {}) as Record<string, unknown>;
       waPhone = String(md["phone_number"] ?? md["display_phone_number"] ?? "").replace(/\D/g, "");
       waPhoneNumberId = String(waInteg?.external_account_id ?? md["phone_number_id"] ?? "");
       waWabaId = String(md["waba_id"] ?? "");
       const waToken = String((waInteg as { access_token?: string | null } | null)?.access_token ?? "");
-      if (waPhoneNumberId && waToken) {
-        const phoneCheck = await graphFetch<{
-          id: string;
-          display_phone_number?: string;
-          verified_name?: string;
-          whatsapp_business_account?: { id?: string; name?: string };
-        }>(
-          `${GRAPH}/${encodeURIComponent(waPhoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account{id,name}&access_token=${encodeURIComponent(waToken)}`,
+
+      console.log("[publishCampaign] whatsapp integration loaded (raw)", {
+        integration_id: waIntegrationId,
+        phone_number_id_saved: waPhoneNumberId || null,
+        waba_id_saved: waWabaId || null,
+        phone_saved: waPhone || null,
+        has_token: Boolean(waToken),
+      });
+
+      type PhoneInfo = {
+        id: string;
+        display_phone_number?: string;
+        verified_name?: string;
+        whatsapp_business_account?: { id?: string; name?: string };
+      };
+
+      async function checkPhoneId(pid: string) {
+        return graphFetch<PhoneInfo>(
+          `${GRAPH}/${encodeURIComponent(pid)}?fields=id,display_phone_number,verified_name,whatsapp_business_account{id,name}&access_token=${encodeURIComponent(waToken)}`,
           { method: "GET" },
         );
-        waPhoneVerified = Boolean(
-          phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number,
-        );
+      }
+
+      function applyPhoneInfo(info: PhoneInfo) {
+        waPhoneNumberId = info.id;
+        waDisplayPhone = info.display_phone_number ?? "";
+        waVerifiedName = info.verified_name ?? "";
+        if (info.whatsapp_business_account?.id) waWabaId = info.whatsapp_business_account.id;
+        if (info.display_phone_number) {
+          waPhone = info.display_phone_number.replace(/\D/g, "");
+        }
+        waPhoneVerified = true;
+      }
+
+      if (waPhoneNumberId && waToken) {
+        const phoneCheck = await checkPhoneId(waPhoneNumberId);
         console.log("[publishCampaign] whatsapp_phone_number_check", {
           ok: phoneCheck.ok,
           whatsapp_phone_number_id: waPhoneNumberId,
@@ -834,13 +861,64 @@ export const publishCampaign = createServerFn({ method: "POST" })
           waba_id: phoneCheck.ok ? phoneCheck.data.whatsapp_business_account?.id ?? null : waWabaId || null,
           error: phoneCheck.ok ? null : formatGraphError(phoneCheck.body, phoneCheck.message),
         });
+        if (phoneCheck.ok && phoneCheck.data.id === waPhoneNumberId && phoneCheck.data.display_phone_number) {
+          applyPhoneInfo(phoneCheck.data);
+        }
       }
-      console.log("[publishCampaign] whatsapp phone lookup", {
-        found: Boolean(waPhone),
-        waPhone,
-        whatsapp_phone_number_id: waPhoneNumberId || null,
-        waba_id: waWabaId || null,
+
+      // Fallback: o phone_number_id salvo está inválido/antigo. Buscar números
+      // ativos da WABA conectada e adotar o primeiro verificado.
+      if (!waPhoneVerified && waToken && waWabaId) {
+        console.warn("[publishCampaign] phone_number_id inválido — buscando ativos da WABA", {
+          waba_id: waWabaId,
+          stale_phone_number_id: waPhoneNumberId || null,
+        });
+        const list = await graphFetch<{ data?: PhoneInfo[] }>(
+          `${GRAPH}/${encodeURIComponent(waWabaId)}/phone_numbers?fields=id,display_phone_number,verified_name&access_token=${encodeURIComponent(waToken)}`,
+          { method: "GET" },
+        );
+        console.log("[publishCampaign] whatsapp WABA phone_numbers", {
+          ok: list.ok,
+          count: list.ok ? list.data.data?.length ?? 0 : 0,
+          numbers: list.ok ? list.data.data ?? [] : null,
+          error: list.ok ? null : formatGraphError(list.body, list.message),
+        });
+        const active = list.ok ? (list.data.data ?? []).find((p) => p?.id && p?.display_phone_number) : null;
+        if (active) {
+          const oldPid = waPhoneNumberId;
+          applyPhoneInfo(active);
+          // Atualiza o banco com o phone_number_id ativo
+          if (waIntegrationId && waPhoneNumberId !== oldPid) {
+            const newMd = {
+              ...md,
+              phone_number_id: waPhoneNumberId,
+              phone_number: waDisplayPhone || waPhone,
+              display_phone_number: waDisplayPhone,
+              waba_id: waWabaId,
+              verified_name: waVerifiedName,
+            };
+            await adminClient.supabaseAdmin
+              .from("integrations")
+              .update({
+                external_account_id: waPhoneNumberId,
+                account_metadata: newMd,
+              } as never)
+              .eq("id", waIntegrationId);
+            console.log("[publishCampaign] integrations updated with active phone_number_id", {
+              integration_id: waIntegrationId,
+              old_phone_number_id: oldPid || null,
+              new_phone_number_id: waPhoneNumberId,
+            });
+          }
+        }
+      }
+
+      console.log("[publishCampaign] whatsapp phone resolved", {
         verified: waPhoneVerified,
+        phone_number_id: waPhoneNumberId || null,
+        business_account_id: waWabaId || null,
+        display_phone_number: waDisplayPhone || waPhone || null,
+        verified_name: waVerifiedName || null,
       });
     } catch (e) {
       console.warn("[publishCampaign] whatsapp phone lookup failed", e);
