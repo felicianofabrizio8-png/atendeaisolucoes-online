@@ -74,9 +74,6 @@ function extFromMime(mime: string): string {
   const m = mime.toLowerCase();
   if (m.startsWith("audio/ogg")) return "ogg";
   if (m.startsWith("audio/mp4")) return "m4a";
-  if (m.startsWith("audio/aac")) return "aac";
-  if (m.startsWith("audio/mpeg")) return "mp3";
-  if (m.startsWith("audio/amr")) return "amr";
   return "bin";
 }
 
