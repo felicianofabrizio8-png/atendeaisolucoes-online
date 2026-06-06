@@ -194,28 +194,28 @@ export function WhatsappTemplatesPanel() {
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
                       {body}
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 pt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-20">Propósito:</span>
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 pt-1">
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                        <span className="text-xs text-muted-foreground md:w-20">Propósito:</span>
                         <Select
                           value={t.purpose ?? NONE_PURPOSE}
                           onValueChange={(v) =>
                             patch(t.id, { purpose: v === NONE_PURPOSE ? null : v })
                           }
                         >
-                          <SelectTrigger className="h-8 w-full max-w-xs text-xs">
+                          <SelectTrigger className="h-11 md:h-8 w-full md:max-w-xs text-base md:text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             {PURPOSES.map((p) => (
-                              <SelectItem key={p.value} value={p.value} className="text-xs">
+                              <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
                                 {p.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-h-11 md:min-h-0">
                         <span className="text-xs text-muted-foreground">Auto-usar:</span>
                         <Switch
                           checked={t.auto_use}
