@@ -25,6 +25,7 @@ const ALLOWED_MIMES = new Set([
   "audio/amr",
 ]);
 const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
+const GRAPH_VERSION = "v20.0";
 
 type MetaAudioResponse = {
   messages?: Array<{ id?: string }>;
@@ -52,6 +53,10 @@ function isAllowedMimeHeader(value: string | null): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase().split(";")[0].trim();
   return ALLOWED_MIMES.has(value.toLowerCase()) || ALLOWED_MIMES.has(normalized);
+}
+
+function safeTokenDebug(token: string): { present: boolean; length: number } {
+  return { present: token.length > 0, length: token.length };
 }
 
 export const Route = createFileRoute("/api/whatsapp/send-audio")({
