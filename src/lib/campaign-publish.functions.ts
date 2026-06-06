@@ -762,7 +762,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const campaignPayload = {
         name: campaign.name,
         objective: "OUTCOME_LEADS",
-        status: "PAUSED",
+        status: "ACTIVE",
         special_ad_categories: [] as string[],
         buying_type: "AUCTION",
         is_adset_budget_sharing_enabled: false,
@@ -903,7 +903,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         optimization_goal: "CONVERSATIONS",
         destination_type: channelDestination,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        status: "PAUSED",
+        status: "ACTIVE",
         targeting,
         promoted_object: promotedObject,
       };
@@ -1295,7 +1295,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       name: `${campaign.name} — ad`,
       adset_id: metaAdsetId,
       creative: { creative_id: creativeId },
-      status: "PAUSED",
+      status: "ACTIVE",
     };
     console.log("[publishCampaign] create_ad", { payload: adPayload });
     const adRes = await graphFetch<{ id: string }>(
