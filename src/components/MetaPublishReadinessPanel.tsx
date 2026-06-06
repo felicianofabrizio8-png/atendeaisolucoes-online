@@ -877,6 +877,65 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
             </div>
           )}
 
+          {/* Verificação do token persistido em integrations.access_token */}
+          {verification && (
+            <div className={cn(
+              "rounded-lg border p-3 space-y-2 text-xs",
+              verification.ok
+                ? "border-emerald-500/40 bg-emerald-500/5"
+                : "border-red-500/40 bg-red-500/5",
+            )}>
+              <div className="font-medium">
+                {verification.ok
+                  ? "Verificação do token persistido"
+                  : "Erro de verificação"}
+                {verification.persistedTokenSuffix && (
+                  <span className="ml-2 font-mono text-muted-foreground">
+                    {verification.persistedTokenSuffix}
+                  </span>
+                )}
+              </div>
+              {!verification.ok && (
+                <div className="text-red-700 dark:text-red-300">
+                  {verification.message || "Falha ao persistir USER token."}
+                </div>
+              )}
+              {verification.ok && verification.debugToken && (
+                <>
+                  <div>
+                    token_type: <strong>{verification.debugToken.type ?? "?"}</strong> · is_valid: <strong>{String(verification.debugToken.is_valid)}</strong>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {verification.debugToken.scopes.map((s) => (
+                      <span key={s} className="px-1.5 py-0.5 rounded bg-muted text-[10px]">{s}</span>
+                    ))}
+                  </div>
+                  <div>
+                    GET /me: {verification.me
+                      ? <strong>{verification.me.name} ({verification.me.id})</strong>
+                      : <span className="text-red-700 dark:text-red-300">{verification.meError ?? "sem retorno"}</span>}
+                  </div>
+                  <div>
+                    GET /me/adaccounts: <strong>{verification.adAccounts?.length ?? 0}</strong> conta(s)
+                    {verification.adAccountsError && (
+                      <span className="ml-1 text-red-700 dark:text-red-300">— {verification.adAccountsError}</span>
+                    )}
+                  </div>
+                  {verification.adAccounts && verification.adAccounts.length > 0 && (
+                    <ul className="space-y-0.5 max-h-32 overflow-auto">
+                      {verification.adAccounts.map((a) => (
+                        <li key={a.id} className="font-mono text-[11px]">
+                          act_{a.account_id} — {a.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+
 
 
           {/* Picker de página */}
