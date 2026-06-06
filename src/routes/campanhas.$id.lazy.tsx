@@ -674,19 +674,52 @@ const STATUS_META: Record<DisplayStatus, {
   },
 };
 
-function StatusBanner({ status, updatedAt, metaId }: { status: DisplayStatus; updatedAt: string; metaId: string | null }) {
+function getMetaPanelStatus(c: Campaign, live: CampaignMetaLiveStatus | null): MetaPanelStatus | null {
+  if (!c.meta_campaign_id) return null;
+  const statusOf = (obj: CampaignMetaLiveStatus["campaign"]) =>
+    obj && !("error" in obj) ? { status: obj.status ?? "—", effective: obj.effective_status ?? "—" } : { status: "—", effective: "—" };
+  const campaign = statusOf(live?.campaign ?? null);
+  const adset = statusOf(live?.adset ?? null);
+  const ad = statusOf(live?.ad ?? null);
+  const delivery = live?.delivery ?? c.meta_delivery_status;
+  const rows = [
+    { label: "Campaign", id: c.meta_campaign_id, ...campaign },
+    { label: "AdSet", id: c.meta_adset_id, ...adset },
+    { label: "Ad", id: c.meta_ad_id, ...ad },
+  ];
+  if (delivery === "active_on_meta") return { label: "ACTIVE", hint: "Status real confirmado na Meta.", variant: "active", rows };
+  if (delivery === "review_on_meta") return { label: "PENDING_REVIEW / IN_PROCESS", hint: "A Meta ainda está revisando ou processando o anúncio.", variant: "review", rows };
+  if (delivery === "issues_on_meta") return { label: "WITH_ISSUES", hint: "A Meta retornou problema de entrega.", variant: "issues", rows };
+  if (delivery === "archived_on_meta") return { label: "ARCHIVED", hint: "A campanha está arquivada na Meta.", variant: "archived", rows };
+  if (delivery === "paused_on_meta") return { label: "PAUSED", hint: "A Meta informa que a entrega está desativada.", variant: "paused", rows };
+  return { label: "Status Meta pendente", hint: "Sincronizando status real da Meta.", variant: "unknown", rows };
+}
+
+function StatusBanner({ status, updatedAt, metaId, metaStatus }: { status: DisplayStatus; updatedAt: string; metaId: string | null; metaStatus: MetaPanelStatus | null }) {
   const m = STATUS_META[status] ?? STATUS_META.draft;
   const Icon = m.icon;
+  const metaTone = metaStatus?.variant === "active" ? STATUS_META.active
+    : metaStatus?.variant === "paused" || metaStatus?.variant === "review" ? STATUS_META.paused
+    : metaStatus?.variant === "issues" ? STATUS_META.rejected
+    : metaStatus?.variant === "archived" ? STATUS_META.ended
+    : null;
+  const visual = metaTone ?? m;
+  const VisualIcon = metaStatus?.variant === "active" ? PlayCircle
+    : metaStatus?.variant === "paused" ? PauseCircle
+    : metaStatus?.variant === "review" ? Clock
+    : metaStatus?.variant === "issues" ? AlertTriangle
+    : metaStatus?.variant === "archived" ? CheckCircle2
+    : Icon;
   return (
-    <div className={cn("rounded-xl border p-4 flex items-center gap-3 flex-wrap", m.ring)}>
-      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center shrink-0", m.badge)}>
-        <Icon className="h-5 w-5" />
+    <div className={cn("rounded-xl border p-4 flex items-center gap-3 flex-wrap", visual.ring)}>
+      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center shrink-0", visual.badge)}>
+        <VisualIcon className="h-5 w-5" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", m.badge)}>
-            <span className={cn("h-1.5 w-1.5 rounded-full", m.dot)} />
-            {statusLabel(status as CampaignStatus) ?? m.label}
+          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", visual.badge)}>
+            <span className={cn("h-1.5 w-1.5 rounded-full", visual.dot)} />
+            {metaStatus?.label ?? statusLabel(status as CampaignStatus) ?? m.label}
           </span>
           {metaId && (
             <span className="text-[11px] text-muted-foreground">
@@ -694,7 +727,18 @@ function StatusBanner({ status, updatedAt, metaId }: { status: DisplayStatus; up
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">{m.hint}</p>
+        <p className="text-xs text-muted-foreground mt-1">{metaStatus?.hint ?? m.hint}</p>
+        {metaStatus && (
+          <div className="mt-2 grid sm:grid-cols-3 gap-2">
+            {metaStatus.rows.map((row) => (
+              <div key={row.label} className="rounded-md border bg-background/60 px-2 py-1.5 text-[11px]">
+                <div className="font-medium">{row.label}</div>
+                <div className="font-mono text-muted-foreground truncate">{row.id ?? "—"}</div>
+                <div className="text-muted-foreground">{row.status} / {row.effective}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="text-xs text-muted-foreground whitespace-nowrap">
         Atualizada {relative(updatedAt)}
