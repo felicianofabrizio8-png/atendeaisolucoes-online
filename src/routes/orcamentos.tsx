@@ -721,14 +721,14 @@ function SendWhatsAppModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
+        className="w-full md:max-w-2xl md:rounded-lg border-0 md:border md:border-border bg-card shadow-xl md:my-4 min-h-screen md:min-h-0 md:max-h-[calc(100vh-2rem)] overflow-y-auto safe-top safe-bottom"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-border flex items-center gap-2">
+        <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
           <Send className="h-4 w-4 text-primary" />
           <div>
             <h2 className="text-sm font-semibold">Enviar pelo WhatsApp</h2>
