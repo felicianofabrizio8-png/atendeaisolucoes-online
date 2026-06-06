@@ -13,6 +13,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhatsappRouteImport } from './routes/whatsapp'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SaudeRouteImport } from './routes/saude'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
@@ -75,6 +76,11 @@ const WhatsappRoute = WhatsappRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SaudeRoute = SaudeRouteImport.update({
+  id: '/saude',
+  path: '/saude',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -362,6 +368,7 @@ export interface FileRoutesByFullPath {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
@@ -417,6 +424,7 @@ export interface FileRoutesByTo {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
@@ -474,6 +482,7 @@ export interface FileRoutesById {
   '/produtos': typeof ProdutosRoute
   '/relatorios': typeof RelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
@@ -532,6 +541,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
     | '/configuracoes/respostas-rapidas'
@@ -587,6 +597,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
     | '/configuracoes/respostas-rapidas'
@@ -643,6 +654,7 @@ export interface FileRouteTypes {
     | '/produtos'
     | '/relatorios'
     | '/reset-password'
+    | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
     | '/configuracoes_/respostas-rapidas'
@@ -700,6 +712,7 @@ export interface RootRouteChildren {
   ProdutosRoute: typeof ProdutosRoute
   RelatoriosRoute: typeof RelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SaudeRoute: typeof SaudeRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
@@ -756,6 +769,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/saude': {
+      id: '/saude'
+      path: '/saude'
+      fullPath: '/saude'
+      preLoaderRoute: typeof SaudeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -1150,6 +1170,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProdutosRoute: ProdutosRoute,
   RelatoriosRoute: RelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SaudeRoute: SaudeRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
