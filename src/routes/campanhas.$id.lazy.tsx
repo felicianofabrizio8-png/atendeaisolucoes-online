@@ -2,7 +2,7 @@ import { createLazyFileRoute, Link, useNavigate, useRouter, getRouteApi } from "
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
-import { syncCampaignStatusFromMeta } from "@/lib/campaign-meta-sync.functions";
+import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
@@ -110,6 +110,7 @@ function CampaignDetailPage() {
   const [improveOpen, setImproveOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishStage, setPublishStage] = useState<string>("");
+  const [metaLiveStatus, setMetaLiveStatus] = useState<CampaignMetaLiveStatus | null>(null);
   const [mediaCheck, setMediaCheck] = useState<{
     url: string;
     status: number | null;
@@ -124,6 +125,7 @@ function CampaignDetailPage() {
 
   useEffect(() => {
     setLoading(true);
+    setMetaLiveStatus(null);
     getCampaign(id)
       .then(async (camp) => {
         setC(camp);
@@ -131,7 +133,8 @@ function CampaignDetailPage() {
         // evita divergência com o Gerenciador.
         if (camp?.meta_campaign_id) {
           try {
-            await syncMetaFn({ data: { campaignId: id } });
+            const live = await syncMetaFn({ data: { campaignId: id } });
+            setMetaLiveStatus(live);
             const fresh = await getCampaign(id);
             if (fresh) setC(fresh);
           } catch (e) {
@@ -190,7 +193,13 @@ function CampaignDetailPage() {
       const mc = (r as { mediaCheck?: typeof mediaCheck }).mediaCheck ?? null;
       setMediaCheck(mc);
       if (r.ok) {
-        toast.success("Campanha publicada na Meta (em PAUSED por segurança).");
+        toast.success("Campanha ativada na Meta com status real confirmado.");
+        try {
+          const live = await syncMetaFn({ data: { campaignId: c.id } });
+          setMetaLiveStatus(live);
+        } catch (e) {
+          console.warn("[campaign-detail] meta sync after publish failed", e);
+        }
         const fresh = await getCampaign(c.id);
         if (fresh) setC(fresh);
       } else {
@@ -235,6 +244,7 @@ function CampaignDetailPage() {
   const status: DisplayStatus = c.status;
   const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
   const metaActive = Boolean(c.meta_campaign_id);
+  const metaStatus = getMetaPanelStatus(c, metaLiveStatus);
   // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
   const needsAdRetry = Boolean(c.meta_campaign_id && c.meta_adset_id && !c.meta_ad_id);
 
@@ -300,7 +310,7 @@ function CampaignDetailPage() {
           </div>
 
         </div>
-        <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} />
+        <StatusBanner status={status} updatedAt={c.updated_at} metaId={c.meta_campaign_id} metaStatus={metaStatus} />
         {(needsAdRetry || c.meta_publish_error) && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
