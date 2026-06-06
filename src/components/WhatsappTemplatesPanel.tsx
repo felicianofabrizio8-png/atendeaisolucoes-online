@@ -134,23 +134,23 @@ export function WhatsappTemplatesPanel() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2">
-          <MessageSquareText className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <CardTitle>Templates WhatsApp (Cloud API)</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+        <CardHeader className="flex flex-row items-start md:items-center gap-2">
+          <MessageSquareText className="h-5 w-5 text-primary shrink-0 mt-1 md:mt-0" />
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base md:text-lg">Templates WhatsApp</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1 hidden md:block">
               Templates Utility aprovados pela Meta são usados automaticamente quando a
               janela de 24h está fechada. Marketing/Authentication nunca são usados
               automaticamente.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
+          <Button variant="outline" size="sm" onClick={sync} disabled={syncing} className="shrink-0 min-h-11 md:min-h-8 min-w-11 md:min-w-0 px-2 md:px-3">
             {syncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 md:mr-2 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-4 w-4 md:mr-2" />
             )}
-            Sincronizar com Meta
+            <span className="hidden md:inline">Sincronizar com Meta</span>
           </Button>
         </CardHeader>
         <CardContent>
@@ -194,28 +194,28 @@ export function WhatsappTemplatesPanel() {
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
                       {body}
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 pt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-20">Propósito:</span>
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 pt-1">
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                        <span className="text-xs text-muted-foreground md:w-20">Propósito:</span>
                         <Select
                           value={t.purpose ?? NONE_PURPOSE}
                           onValueChange={(v) =>
                             patch(t.id, { purpose: v === NONE_PURPOSE ? null : v })
                           }
                         >
-                          <SelectTrigger className="h-8 w-full max-w-xs text-xs">
+                          <SelectTrigger className="h-11 md:h-8 w-full md:max-w-xs text-base md:text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             {PURPOSES.map((p) => (
-                              <SelectItem key={p.value} value={p.value} className="text-xs">
+                              <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
                                 {p.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-h-11 md:min-h-0">
                         <span className="text-xs text-muted-foreground">Auto-usar:</span>
                         <Switch
                           checked={t.auto_use}

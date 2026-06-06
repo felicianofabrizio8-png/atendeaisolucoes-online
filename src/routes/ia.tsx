@@ -342,30 +342,30 @@ function ConfiguracoesIA() {
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
-      <header className="flex items-center gap-2">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <h1 className="text-xl font-semibold">IA de Atendimento</h1>
+    <div className="p-3 md:p-6 max-w-5xl mx-auto space-y-4">
+      <header className="sticky top-0 z-20 -mx-3 md:mx-0 px-3 md:px-0 py-2 md:py-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none border-b md:border-0 border-border safe-top flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-primary shrink-0" />
+        <h1 className="text-base md:text-xl font-semibold truncate">IA de Atendimento</h1>
       </header>
 
       <Tabs defaultValue="perfil" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="perfil">Perfil</TabsTrigger>
-          <TabsTrigger value="faq">FAQ</TabsTrigger>
-          <TabsTrigger value="aprendizados">
+        <TabsList className="w-full md:w-auto h-auto md:h-9 flex md:inline-flex overflow-x-auto scrollbar-none justify-start md:justify-center gap-1 p-1 rounded-lg">
+          <TabsTrigger value="perfil" className="min-h-11 md:min-h-0 shrink-0">Perfil</TabsTrigger>
+          <TabsTrigger value="faq" className="min-h-11 md:min-h-0 shrink-0">FAQ</TabsTrigger>
+          <TabsTrigger value="aprendizados" className="min-h-11 md:min-h-0 shrink-0">
             Aprendizados{pendingCount ? ` (${pendingCount})` : ""}
           </TabsTrigger>
-          <TabsTrigger value="uso">Uso & Logs</TabsTrigger>
-          <TabsTrigger value="analytics">
+          <TabsTrigger value="uso" className="min-h-11 md:min-h-0 shrink-0">Uso & Logs</TabsTrigger>
+          <TabsTrigger value="analytics" className="min-h-11 md:min-h-0 shrink-0">
             <BarChart3 className="h-3.5 w-3.5 mr-1" /> Analytics
           </TabsTrigger>
-          <TabsTrigger value="followup">
+          <TabsTrigger value="followup" className="min-h-11 md:min-h-0 shrink-0">
             <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
           </TabsTrigger>
-          <TabsTrigger value="templates">
-            <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates WhatsApp
+          <TabsTrigger value="templates" className="min-h-11 md:min-h-0 shrink-0">
+            <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates
           </TabsTrigger>
-          <TabsTrigger value="automacao">
+          <TabsTrigger value="automacao" className="min-h-11 md:min-h-0 shrink-0">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
         </TabsList>
@@ -449,8 +449,8 @@ function ConfiguracoesIA() {
               </Field>
             </CardContent>
           </Card>
-          <div className="flex justify-end">
-            <Button onClick={saveProfile} disabled={saving}>
+          <div className="flex justify-end sticky bottom-0 -mx-3 md:mx-0 px-3 md:px-0 py-2 md:py-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none safe-bottom border-t md:border-0 border-border">
+            <Button onClick={saveProfile} disabled={saving} className="w-full md:w-auto min-h-11 md:min-h-9">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar perfil
             </Button>
           </div>
@@ -470,9 +470,10 @@ function ConfiguracoesIA() {
                 <p className="text-sm text-muted-foreground">Nenhuma cadastrada.</p>
               )}
               {data.faq.map((f, i) => (
-                <div key={i} className="grid gap-2 md:grid-cols-[1fr_2fr_auto] items-start">
+                <div key={i} className="grid gap-2 md:grid-cols-[1fr_2fr_auto] items-start rounded-md border border-border md:border-0 p-2 md:p-0">
                   <Input
                     placeholder="Pergunta"
+                    className="min-h-11 md:min-h-9"
                     value={f.q}
                     onChange={(e) => updateFaq(i, "q", e.target.value)}
                   />
@@ -482,7 +483,7 @@ function ConfiguracoesIA() {
                     value={f.a}
                     onChange={(e) => updateFaq(i, "a", e.target.value)}
                   />
-                  <Button size="icon" variant="ghost" onClick={() => removeFaq(i)}>
+                  <Button size="icon" variant="ghost" className="h-11 w-11 md:h-9 md:w-9 self-end md:self-start" onClick={() => removeFaq(i)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -490,7 +491,7 @@ function ConfiguracoesIA() {
             </CardContent>
           </Card>
           <div className="flex justify-end">
-            <Button onClick={saveProfile} disabled={saving}>
+            <Button onClick={saveProfile} disabled={saving} className="w-full md:w-auto min-h-11 md:min-h-9">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar FAQ
             </Button>
           </div>
@@ -546,7 +547,7 @@ function ConfiguracoesIA() {
                   <div className="text-sm text-muted-foreground whitespace-pre-wrap">{p.answer}</div>
                   <div className="flex gap-2 pt-1">
                     {p.status !== "approved" && (
-                      <Button size="sm" onClick={() => updateProposal(p.id, "approved")}>
+                      <Button size="sm" onClick={() => updateProposal(p.id, "approved")} className="min-h-11 md:min-h-8">
                         <Check className="h-3.5 w-3.5" /> Aprovar
                       </Button>
                     )}
@@ -555,11 +556,12 @@ function ConfiguracoesIA() {
                         size="sm"
                         variant="outline"
                         onClick={() => updateProposal(p.id, "rejected")}
+                        className="min-h-11 md:min-h-8"
                       >
                         <X className="h-3.5 w-3.5" /> Rejeitar
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => deleteProposal(p.id)}>
+                    <Button size="sm" variant="ghost" onClick={() => deleteProposal(p.id)} className="min-h-11 md:min-h-8 min-w-11 md:min-w-0">
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -738,7 +740,7 @@ function ConfiguracoesIA() {
                     />
                   </Field>
                   <div className="md:col-span-2 flex justify-end">
-                    <Button onClick={saveAutomation} disabled={savingAutomation}>
+                    <Button onClick={saveAutomation} disabled={savingAutomation} className="w-full md:w-auto min-h-11 md:min-h-9">
                       {savingAutomation && <Loader2 className="h-4 w-4 animate-spin" />}
                       Salvar automação
                     </Button>
