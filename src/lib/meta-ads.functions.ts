@@ -340,6 +340,147 @@ export const clearMetaAdAccount = createServerFn({ method: "POST" })
     return { ok: true as const, cleared };
   });
 
+// ----------------- DIAGNOSE MANUAL TOKEN (no-save) -----------------
+// Recebe um token colado pelo admin e roda debug_token + /me + /me/adaccounts.
+// NÃO salva nada. NÃO retorna o token. Loga apenas suffix mascarado.
+export const diagnoseMetaToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ token: z.string().min(20).max(4096) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+    const isAdmin = await hasAdminRole(supabase, userId);
+    if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin." };
+
+    const token = data.token.trim();
+    const masked = `***${token.slice(-6)}`;
+    const enc = encodeURIComponent(token);
+
+    const [dbg, me, adacc] = await Promise.all([
+      fetchJSON(`${GRAPH}/debug_token?input_token=${enc}&access_token=${enc}`),
+      fetchJSON(`${GRAPH}/me?fields=id,name&access_token=${enc}`),
+      fetchJSON(`${GRAPH}/me/adaccounts?fields=id,account_id,name,account_status&limit=200&access_token=${enc}`),
+    ]);
+
+    const debugData = ((dbg.body as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+    const type = (debugData.type as string | undefined) ?? null;
+    const scopes = (debugData.scopes as string[] | undefined) ?? [];
+    const isValid = Boolean(debugData.is_valid);
+    const appId = (debugData.app_id as string | undefined) ?? null;
+    const expiresAt = (debugData.expires_at as number | undefined) ?? null;
+
+    const meBody = me.body as { id?: string; name?: string; error?: { message?: string } };
+    const adBody = adacc.body as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+
+    const accounts = (adBody.data ?? []).map((a) => ({
+      id: String(a.id ?? ""),
+      account_id: String((a.account_id as string | undefined) ?? String(a.id ?? "").replace(/^act_/, "")),
+      name: String(a.name ?? a.id ?? ""),
+      status: Number(a.account_status ?? 0),
+    }));
+
+    console.log("[meta-ads] diagnoseMetaToken", {
+      companyId, token_suffix: masked, type, is_valid: isValid,
+      has_ads_read: scopes.includes("ads_read"),
+      has_ads_management: scopes.includes("ads_management"),
+      has_business_management: scopes.includes("business_management"),
+      me_id: meBody.id ?? null, accounts: accounts.length,
+    });
+
+    return {
+      ok: true as const,
+      tokenSuffix: masked,
+      debugToken: {
+        type,
+        is_valid: isValid,
+        app_id: appId,
+        expires_at: expiresAt,
+        scopes,
+        has_ads_read: scopes.includes("ads_read"),
+        has_ads_management: scopes.includes("ads_management"),
+        has_business_management: scopes.includes("business_management"),
+        has_pages_show_list: scopes.includes("pages_show_list"),
+      },
+      me: meBody.id ? { id: meBody.id, name: meBody.name ?? "" } : null,
+      meError: meBody.error?.message ?? null,
+      adAccounts: accounts,
+      adAccountsError: adBody.error?.message ?? null,
+    };
+  });
+
+// ----------------- ADOPT MANUAL USER TOKEN -----------------
+// Salva token USER colado em integrations.access_token de todas integrações Meta.
+// NÃO altera meta_pages.page_access_token.
+// Recusa se token não for USER/SYSTEM_USER ou não passar nas validações.
+export const adoptMetaUserToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ token: z.string().min(20).max(4096) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await getCompanyId(supabase as never, userId);
+    if (!companyId) return { ok: false as const, error: "no_company" };
+    const isAdmin = await hasAdminRole(supabase, userId);
+    if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin." };
+
+    const token = data.token.trim();
+    const masked = `***${token.slice(-6)}`;
+    const enc = encodeURIComponent(token);
+
+    const [dbg, adacc] = await Promise.all([
+      fetchJSON(`${GRAPH}/debug_token?input_token=${enc}&access_token=${enc}`),
+      fetchJSON(`${GRAPH}/me/adaccounts?fields=id,account_id&limit=200&access_token=${enc}`),
+    ]);
+
+    const debugData = ((dbg.body as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+    const type = (debugData.type as string | undefined) ?? null;
+    const scopes = (debugData.scopes as string[] | undefined) ?? [];
+    const isValid = Boolean(debugData.is_valid);
+
+    if (!isValid || (type !== "USER" && type !== "SYSTEM_USER")) {
+      console.log("[meta-ads] adoptMetaUserToken rejected", { companyId, token_suffix: masked, type, is_valid: isValid });
+      return { ok: false as const, error: "invalid_token_type", message: `Token rejeitado: type=${type ?? "?"}.` };
+    }
+
+    const adBody = adacc.body as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+    const accounts = adBody.data ?? [];
+    if (accounts.length === 0) {
+      return { ok: false as const, error: "no_adaccounts", message: "Token USER não retorna /me/adaccounts." };
+    }
+
+    const integrations = await loadActiveMetaIntegrations(companyId);
+    if (integrations.length === 0) return { ok: false as const, error: "no_integration" };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    let updated = 0;
+    for (const integ of integrations) {
+      const meta = {
+        ...(integ.account_metadata ?? {}),
+        token_type: type,
+        granted_scopes: scopes,
+        token_adopted_at: new Date().toISOString(),
+        token_adopted_via: "manual_diagnostic",
+      };
+      const { error } = await supabaseAdmin
+        .from("integrations")
+        .update({ access_token: token, account_metadata: meta as never })
+        .eq("id", integ.id)
+        .eq("company_id", companyId);
+      if (error) {
+        console.error("[meta-ads] adoptMetaUserToken update error", { id: integ.id, error: error.message });
+      } else {
+        updated += 1;
+      }
+    }
+
+    console.log("[meta-ads] adoptMetaUserToken saved", { companyId, token_suffix: masked, type, scopes_count: scopes.length, updated });
+    return { ok: true as const, type, scopesCount: scopes.length, updated };
+  });
+
 // ----------------- SELECT PAGE -----------------
 export const selectMetaPage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
