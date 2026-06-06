@@ -219,6 +219,11 @@ type DbMessage = {
   edited_at?: string | null;
   deleted_at?: string | null;
   deleted_for?: string | null;
+  delivery_status?: string | null;
+  delivery_error_code?: string | null;
+  delivery_error_message?: string | null;
+  delivery_error_details?: Record<string, unknown> | null;
+  status_updated_at?: string | null;
 };
 
 function toMessage(r: DbMessage): Message {
@@ -233,6 +238,11 @@ function toMessage(r: DbMessage): Message {
     editedAt: r.edited_at ?? undefined,
     deletedAt: r.deleted_at ?? undefined,
     deletedFor: (r.deleted_for as "me" | "everyone" | null) ?? undefined,
+    deliveryStatus: (r.delivery_status as Message["deliveryStatus"]) ?? null,
+    deliveryErrorCode: r.delivery_error_code ?? null,
+    deliveryErrorMessage: r.delivery_error_message ?? null,
+    deliveryErrorDetails: r.delivery_error_details ?? null,
+    statusUpdatedAt: r.status_updated_at ?? null,
   };
 }
 
