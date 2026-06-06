@@ -543,11 +543,18 @@ Deno.serve(async (req) => {
       reason: userCheck.reason ?? null,
     });
     if (!userCheck.ok) {
+      await logMetaTokenRejection(sb, companyId, {
+        stage: "connect_page_guard",
+        endpoint: "meta-connect:connect_page",
+        tokenCheck: userCheck,
+        page_id: page.id,
+      });
       return json(
         {
           ok: false,
-          error:
-            "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+          error: userCheck.type === "PAGE"
+            ? INCOMPLETE_RECONNECT_ERROR
+            : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
           token_type: userCheck.type ?? null,
           reason: userCheck.reason,
         },
@@ -695,11 +702,17 @@ Deno.serve(async (req) => {
     reason: loopUserCheck.reason ?? null,
   });
   if (!loopUserCheck.ok) {
+    await logMetaTokenRejection(sb, companyId, {
+      stage: "pages_loop_guard",
+      endpoint: "meta-connect:pages",
+      tokenCheck: loopUserCheck,
+    });
     return json(
       {
         ok: false,
-        error:
-          "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
+        error: loopUserCheck.type === "PAGE"
+          ? INCOMPLETE_RECONNECT_ERROR
+          : "Token Meta inválido para Marketing API. Reconecte selecionando uma conta com permissões ads_management/ads_read/business_management.",
         token_type: loopUserCheck.type ?? null,
         reason: loopUserCheck.reason,
       },
