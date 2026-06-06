@@ -24,6 +24,19 @@ const ALLOWED_MIMES = new Set([
   "audio/mpeg",
   "audio/amr",
 ]);
+const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
+
+type MetaAudioResponse = {
+  messages?: Array<{ id?: string }>;
+  error?: {
+    message?: string;
+    code?: number;
+    error_subcode?: number;
+    fbtrace_id?: string;
+    error_data?: unknown;
+    type?: string;
+  };
+};
 
 function extFromMime(mime: string): string {
   const m = mime.toLowerCase();
@@ -33,6 +46,12 @@ function extFromMime(mime: string): string {
   if (m.startsWith("audio/mpeg")) return "mp3";
   if (m.startsWith("audio/amr")) return "amr";
   return "bin";
+}
+
+function isAllowedMimeHeader(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase().split(";")[0].trim();
+  return ALLOWED_MIMES.has(value.toLowerCase()) || ALLOWED_MIMES.has(normalized);
 }
 
 export const Route = createFileRoute("/api/whatsapp/send-audio")({
