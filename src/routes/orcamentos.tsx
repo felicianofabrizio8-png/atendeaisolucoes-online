@@ -1556,37 +1556,39 @@ function QuoteFormModal({
         </div>
 
 
-        <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
+        <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 md:flex-wrap safe-bottom">
           {!hasClient && (
-            <span className="text-[11px] text-destructive mr-auto">
+            <span className="text-[11px] text-destructive md:mr-auto text-center md:text-left">
               Selecione um cliente para enviar este orçamento.
             </span>
           )}
-          <button
-            onClick={onCancel}
-            disabled={submitting}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            disabled={!canSubmit}
-            onClick={submit}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
-          >
-            {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
-              <Send className="h-3.5 w-3.5" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )}
-            {submitting
-              ? "Salvando…"
-              : defaultConversationId && defaultLeadId && defaultLeadId === leadId
-                ? "Salvar e enviar na conversa"
-                : "Salvar orçamento"}
-          </button>
+          <div className="flex flex-col-reverse md:flex-row gap-2">
+            <button
+              onClick={onCancel}
+              disabled={submitting}
+              className="text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-2 hover:bg-accent disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={!canSubmit}
+              onClick={submit}
+              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs font-semibold rounded-md px-3 min-h-11 md:min-h-0 md:py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
+              ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
+                <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              ) : (
+                <Check className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              )}
+              {submitting
+                ? "Salvando…"
+                : defaultConversationId && defaultLeadId && defaultLeadId === leadId
+                  ? "Salvar e enviar"
+                  : "Salvar orçamento"}
+            </button>
+          </div>
         </div>
 
       </div>
