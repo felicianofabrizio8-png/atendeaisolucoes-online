@@ -303,13 +303,26 @@ async function downloadAndStoreMedia(args: {
     return null;
   }
 
+  console.log("[wa-webhook] media_salva_no_bucket", {
+    company_id: companyId,
+    conversation_id: conversationId,
+    kind,
+    mime,
+    size: buf.byteLength,
+    path,
+  });
+
   return {
-    media_path: path,
-    media_mime: mime,
-    media_filename: args.filename ?? null,
-    media_size: metaJson.file_size ?? buf.byteLength,
-    media_kind: kind,
-    media_downloaded_at: new Date().toISOString(),
+    bytes: buf,
+    meta: {
+      media_path: path,
+      media_bucket: WA_MEDIA_BUCKET,
+      media_mime: mime,
+      media_filename: args.filename ?? null,
+      media_size: metaJson.file_size ?? buf.byteLength,
+      media_kind: kind,
+      media_downloaded_at: new Date().toISOString(),
+    },
   };
 }
 
