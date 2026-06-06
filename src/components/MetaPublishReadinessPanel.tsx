@@ -13,6 +13,7 @@ import {
   setMetaBetaFlag,
   diagnoseMetaToken,
   adoptMetaUserToken,
+  verifyPersistedMetaUserToken,
 } from "@/lib/meta-ads.functions";
 import type { Campaign } from "@/lib/campaigns";
 import { Check, X, Loader2, RefreshCw, ChevronDown, ChevronUp, ShieldCheck, AlertTriangle } from "lucide-react";
