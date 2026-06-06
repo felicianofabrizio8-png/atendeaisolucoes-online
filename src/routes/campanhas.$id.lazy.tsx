@@ -683,6 +683,14 @@ function CampaignDetailPage() {
           emptyLabel="Aguardando integração com a Meta — eventos aparecerão aqui após a publicação."
         />
       </section>
+        </TabsContent>
+
+        <TabsContent value="advisor" className="mt-4">
+          <CampaignAIAdvisor campaignId={c.id} hasMetrics={Boolean(insights?.metrics)} />
+        </TabsContent>
+      </Tabs>
+
+
 
       {/* Excluir */}
       <AlertDialog open={confirmOpen} onOpenChange={(o) => !deleting && setConfirmOpen(o)}>
