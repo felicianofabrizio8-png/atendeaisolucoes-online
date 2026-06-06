@@ -44,6 +44,7 @@ import {
   BarChart3,
   Wand2,
   ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
