@@ -131,9 +131,31 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     setState("idle");
   };
 
-  const finalize = (blob: Blob) => {
-    blobRef.current = blob;
-    const url = URL.createObjectURL(blob);
+  const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const valid = expectedMime === "audio/ogg" ? hasOggOpusBytes(bytes) : hasMp4Bytes(bytes);
+    console.log("[AUDIO RECORDER FORMAT]", {
+      expected_mime: expectedMime,
+      blob_type: blob.type,
+      size: blob.size,
+      valid_bytes: valid,
+      recorder_kind: recorderKindRef.current,
+    });
+    if (!valid) {
+      stopStream();
+      if (tickRef.current) window.clearInterval(tickRef.current);
+      tickRef.current = null;
+      setState("idle");
+      setError(
+        expectedMime === "audio/ogg"
+          ? "Não foi possível gerar um áudio OGG/Opus válido. Grave novamente."
+          : "Não foi possível gerar um áudio MP4 válido neste navegador. Grave novamente.",
+      );
+      return;
+    }
+    const normalized = new Blob([bytes], { type: expectedMime });
+    blobRef.current = normalized;
+    const url = URL.createObjectURL(normalized);
     setPreviewUrl(url);
     setState("preview");
     stopStream();
@@ -183,7 +205,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           const blob = new Blob(chunksRef.current as Blob[], {
             type: rec.mimeType || nativeMime,
           });
-          finalize(blob);
+          void finalize(blob, "audio/mp4");
         };
         rec.start();
       } else {
@@ -218,7 +240,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         };
         rec.onstop = () => {
           const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
-          finalize(blob);
+          void finalize(blob, "audio/ogg");
         };
         await rec.start();
       }
