@@ -834,6 +834,9 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
                         <span className="text-red-600 dark:text-red-400">nenhum</span>
                       )}
                     </div>
+                  </div>
+
+
 
                   <div>
                     <strong>/me:</strong>{" "}
