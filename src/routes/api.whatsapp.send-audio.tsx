@@ -13,16 +13,12 @@ import { isWithin24hWindow } from "@/lib/wa-templates.server";
 
 const BUCKET = "whatsapp-media";
 const MAX_BYTES = 16 * 1024 * 1024; // WhatsApp Cloud API: audio até 16MB
-// WhatsApp Cloud API só aceita estes containers para áudio/voz.
-// audio/webm é REJEITADO pela Meta (vira anexo no melhor caso) — bloqueamos
-// antes mesmo de subir o arquivo, o cliente já grava em ogg/opus ou mp4/aac.
+// Neste fluxo aceitamos apenas OGG/Opus real (Chrome/Android/Desktop) ou MP4
+// real (Safari/iPhone). Não confiamos só no MIME declarado pelo navegador.
 const ALLOWED_MIMES = new Set([
   "audio/ogg",
   "audio/ogg;codecs=opus",
   "audio/mp4",
-  "audio/aac",
-  "audio/mpeg",
-  "audio/amr",
 ]);
 const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
 const GRAPH_VERSION = "v20.0";
@@ -39,13 +35,45 @@ type MetaAudioResponse = {
   };
 };
 
+type DetectedAudio = "ogg" | "mp4" | "mp3" | "unknown";
+
+function bytesIncludeAscii(bytes: Uint8Array, needle: string, scanLimit = bytes.length): boolean {
+  const max = Math.min(bytes.length, scanLimit);
+  outer: for (let i = 0; i <= max - needle.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] !== needle.charCodeAt(j)) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+function detectAudioBytes(bytes: Uint8Array): DetectedAudio {
+  if (bytes.length >= 36 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53 && bytesIncludeAscii(bytes, "OpusHead", 256)) {
+    return "ogg";
+  }
+  if (bytes.length >= 12 && bytesIncludeAscii(bytes, "ftyp", 64)) {
+    return "mp4";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return "mp3";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+    return "mp3";
+  }
+  return "unknown";
+}
+
+function mimeMatchesBytes(mime: string, detected: DetectedAudio): boolean {
+  if (mime === "audio/ogg") return detected === "ogg";
+  if (mime === "audio/mp4") return detected === "mp4";
+  return false;
+}
+
 function extFromMime(mime: string): string {
   const m = mime.toLowerCase();
   if (m.startsWith("audio/ogg")) return "ogg";
   if (m.startsWith("audio/mp4")) return "m4a";
-  if (m.startsWith("audio/aac")) return "aac";
-  if (m.startsWith("audio/mpeg")) return "mp3";
-  if (m.startsWith("audio/amr")) return "amr";
   return "bin";
 }
 
@@ -96,9 +124,37 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         }
         const incomingMime = (file.type || "audio/ogg").toLowerCase();
         const baseMime = incomingMime.split(";")[0];
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const detectedAudio = detectAudioBytes(bytes);
+        console.log("[AUDIO BYTE CHECK]", {
+          declared_mime: baseMime,
+          detected_audio: detectedAudio,
+          size: file.size,
+          starts_with: Array.from(bytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
+          valid_declared_mime: mimeMatchesBytes(baseMime, detectedAudio),
+        });
         if (!ALLOWED_MIMES.has(incomingMime) && !ALLOWED_MIMES.has(baseMime)) {
           return Response.json(
-            { error: `Formato de áudio não suportado: ${incomingMime}` },
+            {
+              error: `Formato de áudio não suportado: ${incomingMime}. Grave novamente em OGG/Opus.`,
+              stage: "audio_format_validation",
+              declared_mime: baseMime,
+              detected_audio: detectedAudio,
+              media_size: file.size,
+            },
+            { status: 415 },
+          );
+        }
+        if (!mimeMatchesBytes(baseMime, detectedAudio)) {
+          return Response.json(
+            {
+              error: FRIENDLY_SEND_ERROR,
+              stage: "audio_format_validation",
+              detail: `MIME declarado (${baseMime}) não bate com os bytes reais (${detectedAudio}). Grave novamente em OGG/Opus.`,
+              declared_mime: baseMime,
+              detected_audio: detectedAudio,
+              media_size: file.size,
+            },
             { status: 415 },
           );
         }
@@ -171,7 +227,6 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         const ts = Date.now();
         const rand = Math.random().toString(36).slice(2, 8);
         const storagePath = `${companyId}/agent/${ts}-${rand}.${ext}`;
-        const bytes = new Uint8Array(await file.arrayBuffer());
         const { error: uploadErr } = await supabaseAdmin.storage
           .from(BUCKET)
           .upload(storagePath, bytes, { contentType: baseMime, upsert: false });
@@ -199,6 +254,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         let signedUrlStatus: number | string = "unknown";
         let signedUrlContentType: string | null = null;
         let signedUrlContentLength: string | null = null;
+        let signedUrlDetectedAudio: DetectedAudio = "unknown";
         let signedUrlIsValid = false;
         try {
           const preflight = await fetch(signed.signedUrl, { method: "GET" });
@@ -206,20 +262,28 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           signedUrlContentType = preflight.headers.get("content-type");
           signedUrlContentLength = preflight.headers.get("content-length");
           const signedUrlLength = Number(signedUrlContentLength ?? 0);
+          const signedUrlBytes = new Uint8Array(await preflight.arrayBuffer());
+          signedUrlDetectedAudio = detectAudioBytes(signedUrlBytes);
           signedUrlIsValid =
             preflight.status === 200 &&
             Number.isFinite(signedUrlLength) &&
             signedUrlLength > 0 &&
-            isAllowedMimeHeader(signedUrlContentType);
+            isAllowedMimeHeader(signedUrlContentType) &&
+            mimeMatchesBytes(baseMime, signedUrlDetectedAudio);
           console.log("[AUDIO FILE TEST]", {
             status: signedUrlStatus,
             content_type: signedUrlContentType,
             content_length: signedUrlContentLength,
+            declared_mime: baseMime,
+            detected_audio: signedUrlDetectedAudio,
+            byte_length: signedUrlBytes.byteLength,
+            starts_with: Array.from(signedUrlBytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
             valid: signedUrlIsValid,
             expected: {
               status: 200,
               content_length_gt_zero: true,
-              allowed_content_types: Array.from(ALLOWED_MIMES),
+              allowed_content_types: ["audio/ogg", "audio/mp4"],
+              bytes_match_declared_mime: true,
             },
             media_mime: baseMime,
             media_size: file.size,
@@ -233,8 +297,9 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           if (!isAllowedMimeHeader(signedUrlContentType)) {
             throw new Error(`signed url content-type inválido: ${signedUrlContentType ?? "ausente"}`);
           }
-          // descarta body
-          try { await preflight.body?.cancel(); } catch { /* */ }
+          if (!mimeMatchesBytes(baseMime, signedUrlDetectedAudio)) {
+            throw new Error(`signed url bytes inválidos: MIME ${baseMime}, bytes ${signedUrlDetectedAudio}`);
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "signed url inacessível";
           console.error("[AUDIO FILE TEST]", {
@@ -243,6 +308,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
@@ -263,6 +329,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
@@ -275,6 +342,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
               media_mime: baseMime,
               media_size: file.size,
             },
@@ -305,10 +373,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           to: recipient,
           phone_number_id: integration.external_account_id,
           media_mime: baseMime,
+          detected_audio: detectedAudio,
           media_size: file.size,
           signed_url_status: signedUrlStatus,
           signed_url_content_type: signedUrlContentType,
           signed_url_content_length: signedUrlContentLength,
+          signed_url_detected_audio: signedUrlDetectedAudio,
         });
 
         let externalId: string | null = null;
@@ -345,10 +415,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
+            detected_audio: detectedAudio,
             media_size: file.size,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
           });
           if (!([200, 201].includes(apiRes.status)) || !externalId) {
             const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
@@ -367,10 +439,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               to: recipient,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             });
             await supabaseAdmin.from("error_log").insert({
               company_id: companyId,
@@ -384,10 +458,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 phone_number_id: integration.external_account_id,
                 payload,
                 media_mime: baseMime,
+                detected_audio: detectedAudio,
                 media_size: file.size,
                 signed_url_status: signedUrlStatus,
                 signed_url_content_type: signedUrlContentType,
                 signed_url_content_length: signedUrlContentLength,
+                signed_url_detected_audio: signedUrlDetectedAudio,
                 http_status: apiRes.status,
                 meta_error_message: err.message ?? null,
                 meta_error_code: err.code ?? null,
@@ -421,10 +497,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
                 phone_number_id: integration.external_account_id,
                 to: recipient,
                 media_mime: baseMime,
+                detected_audio: detectedAudio,
                 media_size: file.size,
                 signed_url_status: signedUrlStatus,
                 signed_url_content_type: signedUrlContentType,
                 signed_url_content_length: signedUrlContentLength,
+                signed_url_detected_audio: signedUrlDetectedAudio,
               },
               { status: 502 },
             );
@@ -447,10 +525,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
+            detected_audio: detectedAudio,
             media_size: file.size,
             signed_url_status: signedUrlStatus,
             signed_url_content_type: signedUrlContentType,
             signed_url_content_length: signedUrlContentLength,
+            signed_url_detected_audio: signedUrlDetectedAudio,
           });
           await supabaseAdmin.from("error_log").insert({
             company_id: companyId,
@@ -464,10 +544,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               payload,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
               signed_url_status: signedUrlStatus,
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
           }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
@@ -479,7 +561,12 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               phone_number_id: integration.external_account_id,
               to: recipient,
               media_mime: baseMime,
+              detected_audio: detectedAudio,
               media_size: file.size,
+              signed_url_status: signedUrlStatus,
+              signed_url_content_type: signedUrlContentType,
+              signed_url_content_length: signedUrlContentLength,
+              signed_url_detected_audio: signedUrlDetectedAudio,
             },
             { status: 502 },
           );

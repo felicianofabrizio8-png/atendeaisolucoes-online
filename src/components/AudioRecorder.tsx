@@ -1,12 +1,9 @@
 // AudioRecorder — botão de microfone do composer (somente WhatsApp).
 //
 // Estratégia de formato: WhatsApp Cloud API só aceita áudio (voice note) nos
-// containers AAC, AMR, MPEG, MP4 e OGG/Opus. Chrome (desktop e Android) grava
-// nativamente apenas em WebM/Opus, que a Meta REJEITA — a mensagem volta como
-// anexo ou erro. Para evitar isso, sempre gravamos em OGG/Opus usando a
-// biblioteca opus-recorder (WebAssembly), exceto quando o navegador já oferece
-// MediaRecorder nativo em audio/mp4 (Safari/iOS), aí preferimos o caminho
-// nativo por economia de download.
+// containers AAC, AMR, MPEG, MP4 e OGG/Opus. Chrome/Android/Desktop devem sair
+// sempre como OGG/Opus real via opus-recorder. Só Safari/iOS pode usar MP4
+// nativo, e mesmo assim validamos os bytes antes de enviar.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Square, Play, Pause, Trash2, Send, Loader2 } from "lucide-react";
@@ -29,18 +26,24 @@ type RecorderLike = {
   onstop?: () => void;
 };
 
-type NativeMime = "audio/mp4" | "audio/aac" | "audio/mpeg" | "audio/ogg";
+type NativeMime = "audio/mp4";
 
-function pickNativeMime(): NativeMime | null {
+function isSafariLike(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const vendor = navigator.vendor;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari = /Safari/.test(ua) && /Apple/.test(vendor) && !/CriOS|FxiOS|EdgiOS|Chrome|Chromium|Android/.test(ua);
+  return isIOS || isSafari;
+}
+
+function pickSafariNativeMime(): NativeMime | null {
   if (typeof MediaRecorder === "undefined") return null;
-  // Só consideramos formatos REALMENTE aceitos pelo WhatsApp como voz.
-  const candidates: NativeMime[] = ["audio/mp4", "audio/aac", "audio/mpeg", "audio/ogg"];
-  for (const m of candidates) {
-    try {
-      if (MediaRecorder.isTypeSupported(m)) return m;
-    } catch {
-      /* */
-    }
+  if (!isSafariLike()) return null;
+  try {
+    if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+  } catch {
+    /* */
   }
   return null;
 }
@@ -53,6 +56,25 @@ function fmtTime(secs: number): string {
 }
 
 const MAX_BYTES = 16 * 1024 * 1024;
+
+function bytesIncludeAscii(bytes: Uint8Array, needle: string, scanLimit = bytes.length): boolean {
+  const max = Math.min(bytes.length, scanLimit);
+  outer: for (let i = 0; i <= max - needle.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] !== needle.charCodeAt(j)) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+function hasOggOpusBytes(bytes: Uint8Array): boolean {
+  return bytes.length >= 36 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53 && bytesIncludeAscii(bytes, "OpusHead", 256);
+}
+
+function hasMp4Bytes(bytes: Uint8Array): boolean {
+  return bytes.length >= 12 && bytesIncludeAscii(bytes, "ftyp", 64);
+}
 
 export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const [state, setState] = useState<"idle" | "recording" | "preview" | "sending">("idle");
@@ -72,7 +94,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  const nativeMime = useMemo(() => pickNativeMime(), []);
+  const nativeMime = useMemo(() => pickSafariNativeMime(), []);
 
   useEffect(() => {
     return () => {
@@ -109,9 +131,31 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     setState("idle");
   };
 
-  const finalize = (blob: Blob) => {
-    blobRef.current = blob;
-    const url = URL.createObjectURL(blob);
+  const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const valid = expectedMime === "audio/ogg" ? hasOggOpusBytes(bytes) : hasMp4Bytes(bytes);
+    console.log("[AUDIO RECORDER FORMAT]", {
+      expected_mime: expectedMime,
+      blob_type: blob.type,
+      size: blob.size,
+      valid_bytes: valid,
+      recorder_kind: recorderKindRef.current,
+    });
+    if (!valid) {
+      stopStream();
+      if (tickRef.current) window.clearInterval(tickRef.current);
+      tickRef.current = null;
+      setState("idle");
+      setError(
+        expectedMime === "audio/ogg"
+          ? "Não foi possível gerar um áudio OGG/Opus válido. Grave novamente."
+          : "Não foi possível gerar um áudio MP4 válido neste navegador. Grave novamente.",
+      );
+      return;
+    }
+    const normalized = new Blob([bytes], { type: expectedMime });
+    blobRef.current = normalized;
+    const url = URL.createObjectURL(normalized);
     setPreviewUrl(url);
     setState("preview");
     stopStream();
@@ -149,7 +193,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
 
     try {
       if (nativeMime) {
-        // Caminho nativo: Safari/iOS produz mp4/aac aceito pela Meta.
+        // Caminho nativo restrito a Safari/iOS: só aceitamos MP4 se os bytes forem MP4 real.
         const rec = new MediaRecorder(stream, { mimeType: nativeMime });
         recorderRef.current = rec;
         recorderKindRef.current = "native";
@@ -161,11 +205,11 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           const blob = new Blob(chunksRef.current as Blob[], {
             type: rec.mimeType || nativeMime,
           });
-          finalize(blob);
+          void finalize(blob, "audio/mp4");
         };
         rec.start();
       } else {
-        // Caminho opus-recorder: produz OGG/Opus em qualquer navegador.
+        // Caminho opus-recorder: produz OGG/Opus real em Chrome/Android/Desktop.
         // Import dinâmico evita custo do WASM até o primeiro uso.
         const mod = await import("opus-recorder");
         const RecorderCtor = mod.default;
@@ -175,7 +219,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           encoderSampleRate: 16000,
           encoderFrameSize: 20,
           numberOfChannels: 1,
-          streamPages: true,
+          streamPages: false,
           monitorGain: 0,
           recordingGain: 1,
         });
@@ -196,7 +240,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         };
         rec.onstop = () => {
           const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
-          finalize(blob);
+          void finalize(blob, "audio/ogg");
         };
         await rec.start();
       }
@@ -256,8 +300,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       const extMap: Record<string, string> = {
         "audio/ogg": "ogg",
         "audio/mp4": "m4a",
-        "audio/aac": "aac",
-        "audio/mpeg": "mp3",
       };
       const ext = extMap[base] ?? "ogg";
       const fd = new FormData();
