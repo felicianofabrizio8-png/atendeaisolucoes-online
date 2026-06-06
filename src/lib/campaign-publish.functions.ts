@@ -889,10 +889,19 @@ export const publishCampaign = createServerFn({ method: "POST" })
         );
         console.log("[publishCampaign] whatsapp WABA phone_numbers", {
           ok: list.ok,
+          status: list.ok ? 200 : list.status,
           count: list.ok ? list.data.data?.length ?? 0 : 0,
           numbers: list.ok ? list.data.data ?? [] : null,
           error: list.ok ? null : formatGraphError(list.body, list.message),
+          raw_body: list.ok ? null : list.body,
         });
+        if (!list.ok) {
+          waWabaListError = {
+            message: formatGraphError(list.body, list.message),
+            body: list.body,
+            status: list.status,
+          };
+        }
         const active = list.ok ? (list.data.data ?? []).find((p) => p?.id && p?.display_phone_number) : null;
         if (active) {
           const oldPid = waPhoneNumberId;
