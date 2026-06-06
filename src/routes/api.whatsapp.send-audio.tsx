@@ -13,16 +13,12 @@ import { isWithin24hWindow } from "@/lib/wa-templates.server";
 
 const BUCKET = "whatsapp-media";
 const MAX_BYTES = 16 * 1024 * 1024; // WhatsApp Cloud API: audio até 16MB
-// WhatsApp Cloud API só aceita estes containers para áudio/voz.
-// audio/webm é REJEITADO pela Meta (vira anexo no melhor caso) — bloqueamos
-// antes mesmo de subir o arquivo, o cliente já grava em ogg/opus ou mp4/aac.
+// Neste fluxo aceitamos apenas OGG/Opus real (Chrome/Android/Desktop) ou MP4
+// real (Safari/iPhone). Não confiamos só no MIME declarado pelo navegador.
 const ALLOWED_MIMES = new Set([
   "audio/ogg",
   "audio/ogg;codecs=opus",
   "audio/mp4",
-  "audio/aac",
-  "audio/mpeg",
-  "audio/amr",
 ]);
 const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
 const GRAPH_VERSION = "v20.0";
@@ -38,6 +34,41 @@ type MetaAudioResponse = {
     type?: string;
   };
 };
+
+type DetectedAudio = "ogg" | "mp4" | "mp3" | "unknown";
+
+function bytesIncludeAscii(bytes: Uint8Array, needle: string, scanLimit = bytes.length): boolean {
+  const max = Math.min(bytes.length, scanLimit);
+  outer: for (let i = 0; i <= max - needle.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] !== needle.charCodeAt(j)) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+function detectAudioBytes(bytes: Uint8Array): DetectedAudio {
+  if (bytes.length >= 36 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53 && bytesIncludeAscii(bytes, "OpusHead", 256)) {
+    return "ogg";
+  }
+  if (bytes.length >= 12 && bytesIncludeAscii(bytes, "ftyp", 64)) {
+    return "mp4";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return "mp3";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+    return "mp3";
+  }
+  return "unknown";
+}
+
+function mimeMatchesBytes(mime: string, detected: DetectedAudio): boolean {
+  if (mime === "audio/ogg") return detected === "ogg";
+  if (mime === "audio/mp4") return detected === "mp4";
+  return false;
+}
 
 function extFromMime(mime: string): string {
   const m = mime.toLowerCase();
