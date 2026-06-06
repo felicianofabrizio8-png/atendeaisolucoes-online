@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { publishCampaign } from "@/lib/campaign-publish.functions";
 import { syncCampaignStatusFromMeta, type CampaignMetaLiveStatus } from "@/lib/campaign-meta-sync.functions";
 import { activateCampaignOnMeta } from "@/lib/campaign-meta-activate.functions";
+import { syncCampaignInsightsFromMeta, type CampaignInsightsResult } from "@/lib/campaign-meta-insights.functions";
 
 import { MetaPublishReadinessPanel } from "@/components/MetaPublishReadinessPanel";
 import { Loader2, Rocket } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   BarChart3,
   Wand2,
   ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -130,7 +132,10 @@ function CampaignDetailPage() {
   const publishFn = useServerFn(publishCampaign);
   const syncMetaFn = useServerFn(syncCampaignStatusFromMeta);
   const activateMetaFn = useServerFn(activateCampaignOnMeta);
+  const syncInsightsFn = useServerFn(syncCampaignInsightsFromMeta);
   const [activating, setActivating] = useState(false);
+  const [insights, setInsights] = useState<CampaignInsightsResult | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   async function performActivate() {
     if (!c) return;
@@ -158,28 +163,68 @@ function CampaignDetailPage() {
     }
   }
 
+  async function performSyncInsights(opts?: { silent?: boolean }) {
+    if (!c?.meta_campaign_id) return;
+    setInsightsLoading(true);
+    try {
+      const r = await syncInsightsFn({ data: { campaignId: c.id } });
+      setInsights(r);
+      if (r.ok && r.metrics) {
+        // Recarrega campaign para refletir leads_count/messages_count/spent atualizados
+        const fresh = await getCampaign(c.id);
+        if (fresh) setC(fresh);
+        if (!opts?.silent) toast.success("Métricas sincronizadas com a Meta.");
+      } else if (r.ok && !r.has_data && !opts?.silent) {
+        toast.info("Campanha ativa aguardando primeiras impressões.");
+      } else if (!r.ok && !opts?.silent) {
+        toast.error(r.error ?? "Falha ao sincronizar métricas.");
+      }
+    } catch (e) {
+      if (!opts?.silent) toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  }
+
   useEffect(() => {
     setLoading(true);
     setMetaLiveStatus(null);
+    setInsights(null);
     getCampaign(id)
       .then(async (camp) => {
         setC(camp);
-        // Sincroniza status real direto da Graph API se já houver IDs Meta —
-        // evita divergência com o Gerenciador.
         if (camp?.meta_campaign_id) {
           try {
             const live = await syncMetaFn({ data: { campaignId: id } });
             setMetaLiveStatus(live);
-            const fresh = await getCampaign(id);
-            if (fresh) setC(fresh);
           } catch (e) {
             console.warn("[campaign-detail] meta sync failed", e);
           }
+          try {
+            const ins = await syncInsightsFn({ data: { campaignId: id } });
+            setInsights(ins);
+          } catch (e) {
+            console.warn("[campaign-detail] insights sync failed", e);
+          }
+          const fresh = await getCampaign(id);
+          if (fresh) setC(fresh);
         }
       })
       .catch(() => setC(null))
       .finally(() => setLoading(false));
-  }, [id, syncMetaFn]);
+  }, [id, syncMetaFn, syncInsightsFn]);
+
+  // Auto-refresh a cada 15 minutos enquanto a tela estiver aberta
+  useEffect(() => {
+    if (!c?.meta_campaign_id) return;
+    const handle = window.setInterval(() => {
+      syncInsightsFn({ data: { campaignId: c.id } })
+        .then((r) => setInsights(r))
+        .catch((e) => console.warn("[campaign-detail] auto insights sync failed", e));
+    }, 15 * 60 * 1000);
+    return () => window.clearInterval(handle);
+  }, [c?.id, c?.meta_campaign_id, syncInsightsFn]);
+
 
 
   async function performDelete() {
@@ -235,6 +280,12 @@ function CampaignDetailPage() {
         } catch (e) {
           console.warn("[campaign-detail] meta sync after publish failed", e);
         }
+        try {
+          const ins = await syncInsightsFn({ data: { campaignId: c.id } });
+          setInsights(ins);
+        } catch (e) {
+          console.warn("[campaign-detail] insights sync after publish failed", e);
+        }
         const fresh = await getCampaign(c.id);
         if (fresh) setC(fresh);
       } else {
@@ -277,7 +328,7 @@ function CampaignDetailPage() {
   }
 
   const status: DisplayStatus = c.status;
-  const cpl = c.leads_count > 0 ? Number(c.spent) / c.leads_count : 0;
+  
   const metaActive = Boolean(c.meta_campaign_id);
   const metaStatus = getMetaPanelStatus(c, metaLiveStatus);
   // Anúncio incompleto: já criou campaign+adset na Meta, mas falta o ad.
@@ -446,6 +497,31 @@ function CampaignDetailPage() {
           </span>
         </div>
 
+        {metaActive && (
+          <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-muted-foreground">
+            <span>
+              Última sincronização:{" "}
+              {c.meta_last_sync_at
+                ? new Date(c.meta_last_sync_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </span>
+            <button
+              onClick={() => performSyncInsights()}
+              disabled={insightsLoading}
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md border text-xs hover:bg-muted disabled:opacity-60"
+            >
+              <RefreshCw className={cn("h-3 w-3", insightsLoading && "animate-spin")} />
+              Sincronizar agora
+            </button>
+          </div>
+        )}
+
         {!metaActive && (
           <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -453,24 +529,45 @@ function CampaignDetailPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <Kpi icon={Users} label="Leads" value={metaActive ? String(c.leads_count) : "—"} muted={!metaActive} />
-          <Kpi icon={MessageSquare} label="Mensagens" value={metaActive ? String(c.messages_count) : "—"} muted={!metaActive} />
-          <Kpi
-            icon={TrendingUp}
-            label="Custo / lead"
-            value={metaActive && c.leads_count > 0 ? formatBRL(cpl) : "—"}
-            muted={!metaActive}
-          />
-          <Kpi icon={DollarSign} label="Gasto real" value={metaActive ? formatBRL(c.spent) : "—"} muted={!metaActive} />
-          <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
-          <Kpi icon={Eye} label="Impressões" value="—" muted />
-          <Kpi icon={Users} label="Alcance" value="—" muted />
-          <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
-          <Kpi icon={BarChart3} label="CPC" value="—" muted />
-          <Kpi icon={BarChart3} label="CPM" value="—" muted />
-        </div>
+        {metaActive && insights && insights.ok && !insights.has_data && (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            Campanha ativa aguardando primeiras impressões.
+          </div>
+        )}
+
+        {(() => {
+          const m = insights?.metrics ?? null;
+          const has = metaActive && Boolean(m);
+          const fmtInt = (n: number) => new Intl.NumberFormat("pt-BR").format(Math.round(n));
+          const fmtPct = (n: number) => `${n.toFixed(2)}%`;
+          const placeholder = metaActive
+            ? insights && insights.ok && !insights.has_data
+              ? "Aguardando…"
+              : "—"
+            : "—";
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <Kpi icon={Users} label="Leads" value={has && m ? fmtInt(m.leads) : placeholder} muted={!has} />
+              <Kpi icon={MessageSquare} label="Mensagens" value={has && m ? fmtInt(m.messages) : placeholder} muted={!has} />
+              <Kpi
+                icon={TrendingUp}
+                label="Custo / lead"
+                value={has && m && m.leads > 0 ? formatBRL(m.cost_per_lead) : placeholder}
+                muted={!has || !m || m.leads === 0}
+              />
+              <Kpi icon={DollarSign} label="Gasto real" value={has && m ? formatBRL(m.spend) : placeholder} muted={!has} />
+              <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
+              <Kpi icon={Eye} label="Impressões" value={has && m ? fmtInt(m.impressions) : placeholder} muted={!has} />
+              <Kpi icon={Users} label="Alcance" value={has && m ? fmtInt(m.reach) : placeholder} muted={!has} />
+              <Kpi icon={MousePointerClick} label="CTR" value={has && m ? fmtPct(m.ctr) : placeholder} muted={!has} />
+              <Kpi icon={BarChart3} label="CPC" value={has && m ? formatBRL(m.cpc) : placeholder} muted={!has} />
+              <Kpi icon={BarChart3} label="CPM" value={has && m ? formatBRL(m.cpm) : placeholder} muted={!has} />
+            </div>
+          );
+        })()}
       </section>
+
 
       {/* Criativo + Detalhes */}
       <section className="grid lg:grid-cols-3 gap-4">
