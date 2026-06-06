@@ -854,6 +854,11 @@ export const publishCampaign = createServerFn({ method: "POST" })
         campaign.objective === "whatsapp" ? "WHATSAPP"
         : campaign.objective === "messenger" ? "MESSENGER"
         : "INSTAGRAM_DIRECT";
+      const promotedObject: Record<string, unknown> = { page_id: pageId };
+      if (campaign.objective === "whatsapp" && waPhoneNumberId) {
+        promotedObject.whats_app_business_phone_number_id = waPhoneNumberId;
+        promotedObject.whatsapp_phone_number = waPhone;
+      }
       const adsetPayload = {
         name: `${campaign.name} — adset`,
         campaign_id: metaCampaignId,
@@ -864,7 +869,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         status: "PAUSED",
         targeting,
-        promoted_object: { page_id: pageId },
+        promoted_object: promotedObject,
       };
       console.log("[publishCampaign] adset targeting", targeting);
       console.log("[publishCampaign] create_adset payload", adsetPayload);
