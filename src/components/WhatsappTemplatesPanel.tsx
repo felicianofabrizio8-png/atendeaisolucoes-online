@@ -134,23 +134,23 @@ export function WhatsappTemplatesPanel() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2">
-          <MessageSquareText className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <CardTitle>Templates WhatsApp (Cloud API)</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+        <CardHeader className="flex flex-row items-start md:items-center gap-2">
+          <MessageSquareText className="h-5 w-5 text-primary shrink-0 mt-1 md:mt-0" />
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base md:text-lg">Templates WhatsApp</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1 hidden md:block">
               Templates Utility aprovados pela Meta são usados automaticamente quando a
               janela de 24h está fechada. Marketing/Authentication nunca são usados
               automaticamente.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
+          <Button variant="outline" size="sm" onClick={sync} disabled={syncing} className="shrink-0 min-h-11 md:min-h-8 min-w-11 md:min-w-0 px-2 md:px-3">
             {syncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 md:mr-2 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-4 w-4 md:mr-2" />
             )}
-            Sincronizar com Meta
+            <span className="hidden md:inline">Sincronizar com Meta</span>
           </Button>
         </CardHeader>
         <CardContent>
