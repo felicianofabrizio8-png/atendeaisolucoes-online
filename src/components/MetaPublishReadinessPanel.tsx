@@ -486,6 +486,12 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
               {loadingAccounts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Recarregar assets Meta
             </button>
+            <button onClick={startMetaReconnect}
+              disabled={reconnecting}
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-60">
+              {reconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Reconectar Meta
+            </button>
             <button onClick={() => { void refresh(); }}
               disabled={loading}
               className="inline-flex items-center gap-1 h-8 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground disabled:opacity-60">
