@@ -470,9 +470,10 @@ function ConfiguracoesIA() {
                 <p className="text-sm text-muted-foreground">Nenhuma cadastrada.</p>
               )}
               {data.faq.map((f, i) => (
-                <div key={i} className="grid gap-2 md:grid-cols-[1fr_2fr_auto] items-start">
+                <div key={i} className="grid gap-2 md:grid-cols-[1fr_2fr_auto] items-start rounded-md border border-border md:border-0 p-2 md:p-0">
                   <Input
                     placeholder="Pergunta"
+                    className="min-h-11 md:min-h-9"
                     value={f.q}
                     onChange={(e) => updateFaq(i, "q", e.target.value)}
                   />
@@ -482,7 +483,7 @@ function ConfiguracoesIA() {
                     value={f.a}
                     onChange={(e) => updateFaq(i, "a", e.target.value)}
                   />
-                  <Button size="icon" variant="ghost" onClick={() => removeFaq(i)}>
+                  <Button size="icon" variant="ghost" className="h-11 w-11 md:h-9 md:w-9 self-end md:self-start" onClick={() => removeFaq(i)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
