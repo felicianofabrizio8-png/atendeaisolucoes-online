@@ -202,7 +202,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
             },
           }).then(() => null, () => null);
-          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
             { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
             { status: 502 },
@@ -298,7 +298,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               .from("integrations")
               .update({ last_error: msg })
               .eq("id", integration.id);
-            await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
+            await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
             return Response.json(
               {
                 error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente.",
@@ -326,7 +326,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_status: signedUrlStatus,
             },
           }).then(() => null, () => null);
-          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
           return Response.json(
             { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
             { status: 502 },
