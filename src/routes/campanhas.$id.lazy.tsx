@@ -497,6 +497,31 @@ function CampaignDetailPage() {
           </span>
         </div>
 
+        {metaActive && (
+          <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-muted-foreground">
+            <span>
+              Última sincronização:{" "}
+              {c.meta_last_sync_at
+                ? new Date(c.meta_last_sync_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </span>
+            <button
+              onClick={() => performSyncInsights()}
+              disabled={insightsLoading}
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md border text-xs hover:bg-muted disabled:opacity-60"
+            >
+              <RefreshCw className={cn("h-3 w-3", insightsLoading && "animate-spin")} />
+              Sincronizar agora
+            </button>
+          </div>
+        )}
+
         {!metaActive && (
           <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -504,24 +529,45 @@ function CampaignDetailPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <Kpi icon={Users} label="Leads" value={metaActive ? String(c.leads_count) : "—"} muted={!metaActive} />
-          <Kpi icon={MessageSquare} label="Mensagens" value={metaActive ? String(c.messages_count) : "—"} muted={!metaActive} />
-          <Kpi
-            icon={TrendingUp}
-            label="Custo / lead"
-            value={metaActive && c.leads_count > 0 ? formatBRL(cpl) : "—"}
-            muted={!metaActive}
-          />
-          <Kpi icon={DollarSign} label="Gasto real" value={metaActive ? formatBRL(c.spent) : "—"} muted={!metaActive} />
-          <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
-          <Kpi icon={Eye} label="Impressões" value="—" muted />
-          <Kpi icon={Users} label="Alcance" value="—" muted />
-          <Kpi icon={MousePointerClick} label="CTR" value="—" muted />
-          <Kpi icon={BarChart3} label="CPC" value="—" muted />
-          <Kpi icon={BarChart3} label="CPM" value="—" muted />
-        </div>
+        {metaActive && insights && insights.ok && !insights.has_data && (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            Campanha ativa aguardando primeiras impressões.
+          </div>
+        )}
+
+        {(() => {
+          const m = insights?.metrics ?? null;
+          const has = metaActive && Boolean(m);
+          const fmtInt = (n: number) => new Intl.NumberFormat("pt-BR").format(Math.round(n));
+          const fmtPct = (n: number) => `${n.toFixed(2)}%`;
+          const placeholder = metaActive
+            ? insights && insights.ok && !insights.has_data
+              ? "Aguardando…"
+              : "—"
+            : "—";
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <Kpi icon={Users} label="Leads" value={has && m ? fmtInt(m.leads) : placeholder} muted={!has} />
+              <Kpi icon={MessageSquare} label="Mensagens" value={has && m ? fmtInt(m.messages) : placeholder} muted={!has} />
+              <Kpi
+                icon={TrendingUp}
+                label="Custo / lead"
+                value={has && m && m.leads > 0 ? formatBRL(m.cost_per_lead) : placeholder}
+                muted={!has || !m || m.leads === 0}
+              />
+              <Kpi icon={DollarSign} label="Gasto real" value={has && m ? formatBRL(m.spend) : placeholder} muted={!has} />
+              <Kpi icon={DollarSign} label="Orçamento/dia" value={formatBRL(c.daily_budget)} />
+              <Kpi icon={Eye} label="Impressões" value={has && m ? fmtInt(m.impressions) : placeholder} muted={!has} />
+              <Kpi icon={Users} label="Alcance" value={has && m ? fmtInt(m.reach) : placeholder} muted={!has} />
+              <Kpi icon={MousePointerClick} label="CTR" value={has && m ? fmtPct(m.ctr) : placeholder} muted={!has} />
+              <Kpi icon={BarChart3} label="CPC" value={has && m ? formatBRL(m.cpc) : placeholder} muted={!has} />
+              <Kpi icon={BarChart3} label="CPM" value={has && m ? formatBRL(m.cpm) : placeholder} muted={!has} />
+            </div>
+          );
+        })()}
       </section>
+
 
       {/* Criativo + Detalhes */}
       <section className="grid lg:grid-cols-3 gap-4">
