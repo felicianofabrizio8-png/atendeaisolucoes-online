@@ -94,7 +94,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  const nativeMime = useMemo(() => pickNativeMime(), []);
+  const nativeMime = useMemo(() => pickSafariNativeMime(), []);
 
   useEffect(() => {
     return () => {
@@ -171,7 +171,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
 
     try {
       if (nativeMime) {
-        // Caminho nativo: Safari/iOS produz mp4/aac aceito pela Meta.
+        // Caminho nativo restrito a Safari/iOS: só aceitamos MP4 se os bytes forem MP4 real.
         const rec = new MediaRecorder(stream, { mimeType: nativeMime });
         recorderRef.current = rec;
         recorderKindRef.current = "native";
@@ -187,7 +187,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         };
         rec.start();
       } else {
-        // Caminho opus-recorder: produz OGG/Opus em qualquer navegador.
+        // Caminho opus-recorder: produz OGG/Opus real em Chrome/Android/Desktop.
         // Import dinâmico evita custo do WASM até o primeiro uso.
         const mod = await import("opus-recorder");
         const RecorderCtor = mod.default;
@@ -197,7 +197,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           encoderSampleRate: 16000,
           encoderFrameSize: 20,
           numberOfChannels: 1,
-          streamPages: true,
+          streamPages: false,
           monitorGain: 0,
           recordingGain: 1,
         });
