@@ -252,6 +252,8 @@ async function subscribePage(pageId: string, pageToken: string) {
 }
 
 Deno.serve(async (req) => {
+  // Per-request CORS replaces wildcard at module scope.
+  Object.assign(cors, corsFor(req));
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
   const authHeader = req.headers.get("Authorization") ?? "";
