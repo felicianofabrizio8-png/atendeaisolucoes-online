@@ -164,14 +164,69 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           .createSignedUrl(storagePath, 60 * 60);
         if (signErr || !signed?.signedUrl) {
           console.error("[send-audio] sign error", signErr);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
           return Response.json(
             { error: `Falha ao preparar áudio: ${signErr?.message ?? "sign"}` },
             { status: 500 },
           );
         }
 
+        // Pré-flight: confirma que a signed URL está publicamente acessível pela Meta.
+        let signedUrlStatus: number | string = "unknown";
+        let signedUrlContentType: string | null = null;
+        let signedUrlContentLength: string | null = null;
+        try {
+          const head = await fetch(signed.signedUrl, { method: "GET", headers: { Range: "bytes=0-0" } });
+          signedUrlStatus = head.status;
+          signedUrlContentType = head.headers.get("content-type");
+          signedUrlContentLength = head.headers.get("content-length");
+          if (!head.ok && head.status !== 206) {
+            throw new Error(`signed url HTTP ${head.status}`);
+          }
+          // descarta body
+          try { await head.body?.cancel(); } catch { /* */ }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "signed url inacessível";
+          console.error("[send-audio] signed url preflight failed", { msg, signedUrlStatus });
+          await supabaseAdmin.from("error_log").insert({
+            company_id: companyId,
+            user_id: userId,
+            source: "whatsapp.send-audio",
+            severity: "error",
+            message: `signed url preflight: ${msg}`,
+            context: {
+              conversation_id: conversationId,
+              lead_phone: recipient,
+              media_mime: baseMime,
+              media_size: file.size,
+              signed_url_status: signedUrlStatus,
+            },
+          }).then(() => null, () => null);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
+          return Response.json(
+            { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
+            { status: 502 },
+          );
+        }
+
         const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
         const sentAt = new Date().toISOString();
+        const payload = {
+          messaging_product: "whatsapp",
+          to: recipient,
+          type: "audio",
+          audio: { link: signed.signedUrl },
+        };
+        console.log("[send-audio] meta request", {
+          apiUrl,
+          to: recipient,
+          phone_number_id: integration.external_account_id,
+          media_mime: baseMime,
+          media_size: file.size,
+          signed_url_status: signedUrlStatus,
+          signed_url_content_type: signedUrlContentType,
+          signed_url_content_length: signedUrlContentLength,
+        });
 
         let externalId: string | null = null;
         try {
@@ -181,45 +236,101 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               Authorization: `Bearer ${integration.access_token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              messaging_product: "whatsapp",
-              to: recipient,
-              type: "audio",
-              audio: { link: signed.signedUrl },
-            }),
+            body: JSON.stringify(payload),
           });
           const apiText = await apiRes.text();
           let apiJson: {
             messages?: Array<{ id: string }>;
-            error?: { message?: string; code?: number };
+            error?: {
+              message?: string;
+              code?: number;
+              error_subcode?: number;
+              fbtrace_id?: string;
+              error_data?: unknown;
+              type?: string;
+            };
           } = {};
           try {
             apiJson = JSON.parse(apiText);
           } catch {
             /* */
           }
+          console.log("[send-audio] meta response", {
+            status: apiRes.status,
+            ok: apiRes.ok,
+            body: apiText.slice(0, 2000),
+          });
           if (!apiRes.ok) {
-            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
+            const err = apiJson.error ?? {};
+            const msg = err.message ?? `HTTP ${apiRes.status}`;
             console.error("[send-audio] meta error", {
               status: apiRes.status,
-              body: apiText.slice(0, 800),
+              message: err.message,
+              code: err.code,
+              error_subcode: err.error_subcode,
+              fbtrace_id: err.fbtrace_id,
+              body: apiText.slice(0, 2000),
             });
+            await supabaseAdmin.from("error_log").insert({
+              company_id: companyId,
+              user_id: userId,
+              source: "whatsapp.send-audio",
+              severity: "error",
+              message: `meta: ${msg}`,
+              context: {
+                conversation_id: conversationId,
+                lead_phone: recipient,
+                phone_number_id: integration.external_account_id,
+                media_mime: baseMime,
+                media_size: file.size,
+                signed_url_status: signedUrlStatus,
+                signed_url_content_type: signedUrlContentType,
+                signed_url_content_length: signedUrlContentLength,
+                http_status: apiRes.status,
+                meta_error_code: err.code ?? null,
+                meta_error_subcode: err.error_subcode ?? null,
+                meta_error_type: err.type ?? null,
+                fbtrace_id: err.fbtrace_id ?? null,
+                meta_body: apiText.slice(0, 2000),
+              },
+            }).then(() => null, () => null);
             await supabaseAdmin
               .from("integrations")
               .update({ last_error: msg })
               .eq("id", integration.id);
-            // Limpa o arquivo já enviado para não acumular áudios órfãos.
             await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
             return Response.json(
-              { error: `WhatsApp: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status },
+              {
+                error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente.",
+                metaError: err,
+                status: apiRes.status,
+              },
               { status: 502 },
             );
           }
           externalId = apiJson.messages?.[0]?.id ?? null;
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
+          console.error("[send-audio] network error", msg);
+          await supabaseAdmin.from("error_log").insert({
+            company_id: companyId,
+            user_id: userId,
+            source: "whatsapp.send-audio",
+            severity: "error",
+            message: `network: ${msg}`,
+            context: {
+              conversation_id: conversationId,
+              lead_phone: recipient,
+              media_mime: baseMime,
+              media_size: file.size,
+              signed_url_status: signedUrlStatus,
+            },
+          }).then(() => null, () => null);
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).catch(() => null);
-          return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
+          return Response.json(
+            { error: "Áudio não enviado pelo WhatsApp. Tente gravar novamente." },
+            { status: 502 },
+          );
         }
 
         const { data: inserted, error: insertErr } = await supabaseAdmin
