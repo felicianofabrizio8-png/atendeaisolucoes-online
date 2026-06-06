@@ -475,18 +475,18 @@ function ConfirmDeleteModal({
             "{product.name}" será removido do catálogo. Essa ação não pode ser desfeita.
           </p>
         </div>
-        <div className="flex items-center justify-end gap-2 p-4">
+        <div className="flex items-center justify-end gap-2 p-3 md:p-4">
           <button
             onClick={onClose}
-            className="text-xs font-semibold rounded-md border border-border bg-background px-3 py-1.5 hover:bg-accent"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
           >
             Cancelar
           </button>
           <button
             onClick={onConfirm}
-            className="text-xs font-semibold rounded-md bg-destructive text-destructive-foreground px-3 py-1.5 hover:opacity-90 inline-flex items-center gap-1.5"
+            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-destructive text-destructive-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90 inline-flex items-center justify-center gap-1.5"
           >
-            <Trash2 className="h-3 w-3" /> Excluir
+            <Trash2 className="h-3.5 w-3.5" /> Excluir
           </button>
         </div>
       </div>
