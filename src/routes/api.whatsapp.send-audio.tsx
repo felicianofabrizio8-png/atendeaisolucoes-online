@@ -129,7 +129,29 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         const baseMime = incomingMime.split(";")[0];
         if (!ALLOWED_MIMES.has(incomingMime) && !ALLOWED_MIMES.has(baseMime)) {
           return Response.json(
-            { error: `Formato de áudio não suportado: ${incomingMime}` },
+            { error: `Formato de áudio não suportado: ${incomingMime}. Grave novamente em OGG/Opus.` },
+            { status: 415 },
+          );
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const detectedAudio = detectAudioBytes(bytes);
+        console.log("[AUDIO BYTE CHECK]", {
+          declared_mime: baseMime,
+          detected_audio: detectedAudio,
+          size: file.size,
+          starts_with: Array.from(bytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
+          valid_declared_mime: mimeMatchesBytes(baseMime, detectedAudio),
+        });
+        if (!mimeMatchesBytes(baseMime, detectedAudio)) {
+          return Response.json(
+            {
+              error: FRIENDLY_SEND_ERROR,
+              stage: "audio_format_validation",
+              detail: `MIME declarado (${baseMime}) não bate com os bytes reais (${detectedAudio}). Grave novamente em OGG/Opus.`,
+              declared_mime: baseMime,
+              detected_audio: detectedAudio,
+              media_size: file.size,
+            },
             { status: 415 },
           );
         }
@@ -202,7 +224,6 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         const ts = Date.now();
         const rand = Math.random().toString(36).slice(2, 8);
         const storagePath = `${companyId}/agent/${ts}-${rand}.${ext}`;
-        const bytes = new Uint8Array(await file.arrayBuffer());
         const { error: uploadErr } = await supabaseAdmin.storage
           .from(BUCKET)
           .upload(storagePath, bytes, { contentType: baseMime, upsert: false });
