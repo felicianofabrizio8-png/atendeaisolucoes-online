@@ -349,7 +349,7 @@ function ConfiguracoesIA() {
       </header>
 
       <Tabs defaultValue="perfil" className="space-y-4">
-        <TabsList className="w-full md:w-auto h-auto md:h-9 flex md:inline-flex overflow-x-auto no-scrollbar justify-start md:justify-center gap-1 p-1 rounded-lg">
+        <TabsList className="w-full md:w-auto h-auto md:h-9 flex md:inline-flex overflow-x-auto scrollbar-none justify-start md:justify-center gap-1 p-1 rounded-lg">
           <TabsTrigger value="perfil" className="min-h-11 md:min-h-0 shrink-0">Perfil</TabsTrigger>
           <TabsTrigger value="faq" className="min-h-11 md:min-h-0 shrink-0">FAQ</TabsTrigger>
           <TabsTrigger value="aprendizados" className="min-h-11 md:min-h-0 shrink-0">
