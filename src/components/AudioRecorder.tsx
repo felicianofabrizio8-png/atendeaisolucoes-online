@@ -38,15 +38,11 @@ function isSafariLike(): boolean {
 }
 
 function pickSafariNativeMime(): NativeMime | null {
-  if (typeof MediaRecorder === "undefined") return null;
-  if (!isSafariLike()) return null;
-  try {
-    if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
-  } catch {
-    /* */
-  }
+  // Caminho MP4 nativo desabilitado: somente OGG/Opus é comprovadamente entregue
+  // pela Meta no fluxo atual. Mantemos a função por compatibilidade.
   return null;
 }
+
 
 function fmtTime(secs: number): string {
   const s = Math.max(0, Math.floor(secs));
