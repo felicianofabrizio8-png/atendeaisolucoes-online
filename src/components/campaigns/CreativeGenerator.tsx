@@ -122,6 +122,9 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   const [images, setImages] = useState<Record<string, VariantImage>>({});
   const [scoring, setScoring] = useState(false);
   const [scores, setScores] = useState<Record<VariantKey, ScoreResult | null>>({ emotion: null, offer: null, urgency: null });
+  // Confirmação de que o produto gerado corresponde ao original (por variante+formato)
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+
 
   const fileRef = useRef<HTMLInputElement>(null);
 
