@@ -1855,6 +1855,13 @@ function MediaSendPanel({
           onPick={selectFromLibrary}
         />
       )}
+
+      {multiSendProgress && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-card border border-border rounded-full shadow-lg px-4 py-2 text-sm flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          Enviando fotos {multiSendProgress.current}/{multiSendProgress.total}…
+        </div>
+      )}
     </>
   );
 }
