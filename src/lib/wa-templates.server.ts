@@ -583,3 +583,38 @@ async function logTemplateEvent(
     payload: payload as never,
   });
 }
+
+/**
+ * Log de erro + audit. Usado quando o envio via template falha por motivo
+ * de configuração (template ausente/rejeitado) ou erro da Meta. Best-effort:
+ * nunca lança — falha silenciosa para não bloquear o fluxo principal.
+ */
+async function logErrorAndAudit(
+  companyId: string,
+  leadId: string | null,
+  action: string,
+  context: Record<string, unknown>,
+) {
+  try {
+    await supabaseAdmin.from("error_log").insert({
+      company_id: companyId,
+      source: "wa_template",
+      severity: "warning",
+      message: action,
+      context: context as never,
+    });
+  } catch {
+    /* noop */
+  }
+  try {
+    await supabaseAdmin.from("audit_log").insert({
+      company_id: companyId,
+      action,
+      entity: "whatsapp_template",
+      entity_id: leadId,
+      after: context as never,
+    });
+  } catch {
+    /* noop */
+  }
+}
