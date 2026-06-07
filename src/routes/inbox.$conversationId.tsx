@@ -902,7 +902,14 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
         return (
           <div className="space-y-1">
             {replyNode}
-            <AudioPreview path={info.path} mime={info.mime} filename={info.filename} bucket={info.bucket} />
+            <WhatsAppAudio
+              path={info.path}
+              mime={info.mime}
+              filename={info.filename}
+              bucket={info.bucket}
+              isAgent={isAgent}
+              messageId={message.id}
+            />
             <AudioMimeDebug message={message} declaredMime={info.mime} />
             {caption}
             {aiNote}
