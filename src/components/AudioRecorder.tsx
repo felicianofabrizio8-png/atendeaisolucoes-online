@@ -134,12 +134,24 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const valid = expectedMime === "audio/ogg" ? hasOggOpusBytes(bytes) : hasMp4Bytes(bytes);
-    console.log("[AUDIO RECORDER FORMAT]", {
+    const firstBytesHex = Array.from(bytes.slice(0, 16))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+    console.log("[AUDIO MOBILE DEBUG]", {
+      stage: "recorder_finalize",
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      recorder_kind: recorderKindRef.current,
+      recorder_mime: recorderMimeRef.current,
+      mediaRecorder_mimeType:
+        recorderKindRef.current === "native"
+          ? (recorderRef.current as MediaRecorder | null)?.mimeType ?? null
+          : null,
       expected_mime: expectedMime,
       blob_type: blob.type,
       size: blob.size,
+      duration_seconds: seconds,
       valid_bytes: valid,
-      recorder_kind: recorderKindRef.current,
+      first_bytes_hex: firstBytesHex,
     });
     if (!valid) {
       stopStream();
@@ -302,10 +314,36 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         "audio/mp4": "m4a",
       };
       const ext = extMap[base] ?? "ogg";
+      const filename = `audio-${Date.now()}.${ext}`;
+
+      // Re-amostra primeiros bytes p/ diagnóstico no envio.
+      const sendBytes = new Uint8Array(await blob.arrayBuffer());
+      const firstBytesHex = Array.from(sendBytes.slice(0, 16))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(" ");
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+      console.log("[AUDIO MOBILE DEBUG]", {
+        stage: "send",
+        user_agent: ua,
+        recorder_kind: recorderKindRef.current,
+        recorder_mime: recorderMimeRef.current,
+        blob_type: blob.type,
+        filename,
+        extension: ext,
+        size: blob.size,
+        duration_seconds: seconds,
+        first_bytes_hex: firstBytesHex,
+      });
+
       const fd = new FormData();
-      fd.append("file", blob, `audio-${Date.now()}.${ext}`);
+      fd.append("file", blob, filename);
       fd.append("conversationId", conversationId);
       fd.append("duration", String(seconds));
+      fd.append("client_user_agent", ua);
+      fd.append("client_recorder_kind", recorderKindRef.current ?? "");
+      fd.append("client_recorder_mime", recorderMimeRef.current ?? "");
+      fd.append("client_blob_type", blob.type);
+      fd.append("client_first_bytes_hex", firstBytesHex);
 
       const res = await fetch("/api/whatsapp/send-audio", {
         method: "POST",
@@ -328,7 +366,17 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         signed_url_status?: number | string;
         signed_url_content_type?: string | null;
         signed_url_content_length?: string | null;
+        detected_audio?: string | null;
+        declared_mime?: string | null;
       };
+      console.log("[AUDIO MOBILE DEBUG]", {
+        stage: "send_response",
+        http_status: res.status,
+        detected_audio: json.detected_audio ?? null,
+        declared_mime: json.declared_mime ?? null,
+        signed_url_content_type: json.signed_url_content_type ?? null,
+        signed_url_content_length: json.signed_url_content_length ?? null,
+      });
       if (!res.ok) {
         console.error("[AUDIO SEND ERROR]", { http_status: res.status, ...json });
         const parts = [

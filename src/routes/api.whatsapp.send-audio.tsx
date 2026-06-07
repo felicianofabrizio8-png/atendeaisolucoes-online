@@ -113,6 +113,13 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         const conversationId = String(form.get("conversationId") ?? "");
         const durationRaw = form.get("duration");
         const duration = durationRaw ? Number(durationRaw) : null;
+        const clientDebug = {
+          user_agent: String(form.get("client_user_agent") ?? ""),
+          recorder_kind: String(form.get("client_recorder_kind") ?? ""),
+          recorder_mime: String(form.get("client_recorder_mime") ?? ""),
+          blob_type: String(form.get("client_blob_type") ?? ""),
+          first_bytes_hex: String(form.get("client_first_bytes_hex") ?? ""),
+        };
         if (!conversationId) {
           return Response.json({ error: "conversationId obrigatório" }, { status: 400 });
         }
@@ -132,6 +139,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           size: file.size,
           starts_with: Array.from(bytes.slice(0, 16)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
           valid_declared_mime: mimeMatchesBytes(baseMime, detectedAudio),
+          client_debug: clientDebug,
         });
         if (!ALLOWED_MIMES.has(incomingMime) && !ALLOWED_MIMES.has(baseMime)) {
           return Response.json(
@@ -594,6 +602,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               media_bucket: BUCKET,
               duration_seconds: duration && duration > 0 ? Math.round(duration) : null,
               voice: true,
+              detected_audio: detectedAudio,
+              client_debug: clientDebug,
             },
           })
           .select("id, conversation_id, role, text, at")
@@ -619,6 +629,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           externalId,
           at: sentAt,
           duration: duration ?? null,
+          declared_mime: baseMime,
+          detected_audio: detectedAudio,
         });
       },
     },
