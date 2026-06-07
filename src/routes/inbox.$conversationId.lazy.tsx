@@ -2946,49 +2946,52 @@ function ConversationPage() {
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
-            <Virtuoso
-              ref={virtuosoRef}
-              data={visibleMessages}
-              computeItemKey={(_idx, m) => m.id}
-              initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
-              followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
-              atBottomStateChange={setAtBottom}
-              atBottomThreshold={160}
-              startReached={loadOlder}
-              increaseViewportBy={{ top: 600, bottom: 200 }}
-              overscan={{ main: 600, reverse: 600 }}
-              className="h-full px-3 md:px-4"
-              components={{
-                Header: () =>
-                  !hasMoreOlder && visibleMessages.length > 0 ? (
-                    <div className="flex justify-center py-3">
-                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
-                        Início da conversa
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="h-2" />
-                  ),
-                Footer: () => <div className="h-3 md:h-4" />,
-              }}
-              itemContent={(_idx, m) => {
-                if (m.role === "system") {
+            <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
+              <Virtuoso
+                ref={virtuosoRef}
+                data={visibleMessages}
+                computeItemKey={(_idx, m) => m.id}
+                initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+                followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
+                atBottomStateChange={setAtBottom}
+                atBottomThreshold={160}
+                startReached={loadOlder}
+                increaseViewportBy={{ top: 600, bottom: 200 }}
+                overscan={{ main: 600, reverse: 600 }}
+                className="h-full px-3 md:px-4"
+                components={{
+                  Header: () =>
+                    !hasMoreOlder && visibleMessages.length > 0 ? (
+                      <div className="flex justify-center py-3">
+                        <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                          Início da conversa
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="h-2" />
+                    ),
+                  Footer: () => <div className="h-3 md:h-4" />,
+                }}
+                itemContent={(_idx, m) => {
+                  if (m.role === "system") {
+                    return (
+                      <div className="flex justify-center py-1.5">
+                        <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                          {m.text}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <div className="flex justify-center py-1.5">
-                      <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                        {m.text}
-                      </span>
+                    <div className="py-1.5">
+                      <MessageBubble m={m} canManage={!closedInfo} />
                     </div>
                   );
-                }
-                return (
-                  <div className="py-1.5">
-                    <MessageBubble m={m} canManage={!closedInfo} />
-                  </div>
-                );
-              }}
-            />
+                }}
+              />
+            </VirtuosoScrollContext.Provider>
           </MessagesContext.Provider>
+
         </div>
 
 
