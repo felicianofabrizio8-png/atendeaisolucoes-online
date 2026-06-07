@@ -2753,8 +2753,8 @@ function ConversationPage() {
 
         {/* Composer */}
         <div
-          className="border-t border-border p-2 md:p-3 shrink-0 bg-background"
-          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+          className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
         >
 
           <div className="flex items-end gap-1.5 md:gap-2">
