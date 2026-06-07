@@ -26,7 +26,7 @@ type RecorderLike = {
   onstop?: () => void;
 };
 
-type NativeMime = "audio/mp4";
+type NativeMime = "audio/mp4" | "audio/webm" | "audio/webm;codecs=opus" | "audio/ogg;codecs=opus";
 
 function isSafariLike(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -42,6 +42,22 @@ function pickSafariNativeMime(): NativeMime | null {
   try {
     if (MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")) return "audio/mp4";
     if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+  } catch {
+    /* */
+  }
+  return null;
+}
+
+// Android/Chrome: MediaRecorder nativo (WebM/Opus ou OGG/Opus) é muito mais
+// leve que rodar opus-recorder em tempo real — celulares fracos picotam quando
+// o encoder roda durante a gravação. Gravamos nativo, paramos, depois
+// decodificamos e reencodamos para OGG/Opus padronizado.
+function pickAndroidNativeMime(): NativeMime | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  try {
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+    if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) return "audio/ogg;codecs=opus";
+    if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
   } catch {
     /* */
   }
