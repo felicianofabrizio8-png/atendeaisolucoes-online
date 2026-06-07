@@ -1,5 +1,5 @@
 import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
@@ -975,7 +975,7 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
   );
 }
 
-function MessageBubble({
+function MessageBubbleImpl({
   m,
   canManage,
 }: {
@@ -1335,6 +1335,31 @@ function MessageBubble({
     </div>
   );
 }
+
+function messageBubbleEqual(
+  prev: { m: Message; canManage: boolean },
+  next: { m: Message; canManage: boolean },
+): boolean {
+  if (prev.canManage !== next.canManage) return false;
+  const a = prev.m;
+  const b = next.m;
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.text === b.text &&
+    a.role === b.role &&
+    a.at === b.at &&
+    a.sourceSubtype === b.sourceSubtype &&
+    a.editedAt === b.editedAt &&
+    a.deletedAt === b.deletedAt &&
+    a.deletedFor === b.deletedFor &&
+    a.deliveryStatus === b.deliveryStatus &&
+    a.statusUpdatedAt === b.statusUpdatedAt &&
+    a.sourceMetadata === b.sourceMetadata
+  );
+}
+
+const MessageBubble = memo(MessageBubbleImpl, messageBubbleEqual);
 
 // ============================================================================
 // MediaSendPanel — botão "+" do composer (foto / vídeo / biblioteca de produtos)
