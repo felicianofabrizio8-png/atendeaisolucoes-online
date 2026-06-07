@@ -122,6 +122,9 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   const [images, setImages] = useState<Record<string, VariantImage>>({});
   const [scoring, setScoring] = useState(false);
   const [scores, setScores] = useState<Record<VariantKey, ScoreResult | null>>({ emotion: null, offer: null, urgency: null });
+  // Confirmação de que o produto gerado corresponde ao original (por variante+formato)
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -227,6 +230,13 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   }, []);
 
   // ============ ANALYZE ============
+  const PRESERVE_KEYWORDS = ["piscina", "movel", "móvel", "moveis", "móveis", "veiculo", "veículo", "carro", "moto", "tecnico", "técnico", "maquina", "máquina", "equipamento", "eletro", "ferramenta"];
+  const shouldPreserveByCategory = (a: Analysis | null): boolean => {
+    if (!a) return false;
+    const hay = `${a.category ?? ""} ${a.main_object ?? ""} ${a.business_type ?? ""} ${(a.style_keywords ?? []).join(" ")}`.toLowerCase();
+    return PRESERVE_KEYWORDS.some((k) => hay.includes(k));
+  };
+
   const runAnalyze = async (img: string | null) => {
     if (!img) return;
     setAnalyzing(true);
@@ -238,10 +248,15 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Falha na análise");
       setAnalysis(data);
+      // Auto-ativa preservação para produtos técnicos/dimensionais
+      if (shouldPreserveByCategory(data)) {
+        setConfig((c) => ({ ...c, preserve_product: true }));
+      }
       setStep("configure");
     } catch (e: any) { toast.error(e.message ?? "Erro na análise"); }
     finally { setAnalyzing(false); }
   };
+
 
   // ============ GENERATE TEXTS ============
   const generateTexts = async () => {
@@ -271,13 +286,22 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     if (!prompt) return;
     const key = `${variant}-${format}`;
     setImages((p) => ({ ...p, [key]: { format, url: "", generating: true } }));
+    setConfirmed((p) => ({ ...p, [key]: false }));
     try {
       const res = await fetch("/api/ai/creative-generator", {
         method: "POST", headers: await authHeader(),
         body: JSON.stringify({ mode: "generate-image", image_url: sourceImage, prompt, format, preserve_product: config.preserve_product }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Falha");
+      if (!res.ok) {
+        if (data?.preserve_failed) {
+          toast.error(data.error, { duration: 6000 });
+        } else {
+          toast.error(data?.error ?? "Falha");
+        }
+        setImages((p) => { const n = { ...p }; delete n[key]; return n; });
+        return;
+      }
       const url = `data:image/png;base64,${data.b64_json}`;
       setImages((p) => ({ ...p, [key]: { format, url, generating: false } }));
     } catch (e: any) {
@@ -285,6 +309,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       setImages((p) => { const n = { ...p }; delete n[key]; return n; });
     }
   };
+
 
   // ============ SAVE ============
   const saveVariant = async (variant: VariantKey) => {
@@ -355,6 +380,10 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
     if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (config.preserve_product && !confirmed[key]) {
+      toast.error("Confirme que o produto gerado corresponde ao produto original antes de usar.");
+      return;
+    }
     const id = await saveVariant(variant);
     if (id && onUseInCampaign) onUseInCampaign(id, v, img.url);
   };
@@ -612,6 +641,35 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                           );
                         })()}
                       </div>
+
+                      {/* Comparação visual: original vs gerada */}
+                      {sourceImage && images[`${k}-${activeFormat}`]?.url && (
+                        <div className="rounded-lg border bg-card p-2 space-y-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Comparação: original × gerada</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground text-center">Original enviada</p>
+                              <img src={sourceImage} alt="original" className="w-full h-32 object-contain rounded border bg-muted/30" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground text-center">Gerada pela IA</p>
+                              <img src={images[`${k}-${activeFormat}`].url} alt="gerada" className="w-full h-32 object-contain rounded border bg-muted/30" />
+                            </div>
+                          </div>
+                          {config.preserve_product && (
+                            <label className="flex items-start gap-2 pt-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={!!confirmed[`${k}-${activeFormat}`]}
+                                onChange={(e) => setConfirmed((p) => ({ ...p, [`${k}-${activeFormat}`]: e.target.checked }))}
+                              />
+                              <span className="text-[11px] leading-snug">Confirmo que o produto gerado corresponde ao produto original.</span>
+                            </label>
+                          )}
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
                         {images[`${k}-${activeFormat}`]?.url && (
                           <>
@@ -626,6 +684,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                         )}
                       </div>
                     </div>
+
 
                     {/* Textos */}
                     <div className="space-y-2">
@@ -656,11 +715,19 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                         <button onClick={() => saveVariant(k)} className="text-xs h-8 px-2.5 rounded border inline-flex items-center gap-1 hover:bg-accent">
                           <Save className="h-3.5 w-3.5" /> Salvar
                         </button>
-                        {onUseInCampaign && (
-                          <button onClick={() => useNow(k)} className="text-xs h-8 px-2.5 rounded bg-primary text-primary-foreground inline-flex items-center gap-1 hover:bg-primary/90">
-                            <ArrowRight className="h-3.5 w-3.5" /> Usar neste anúncio
-                          </button>
-                        )}
+                        {onUseInCampaign && (() => {
+                          const needsConfirm = config.preserve_product && !confirmed[`${k}-${activeFormat}`];
+                          return (
+                            <button
+                              onClick={() => useNow(k)}
+                              disabled={needsConfirm}
+                              title={needsConfirm ? "Confirme que o produto gerado corresponde ao original" : ""}
+                              className="text-xs h-8 px-2.5 rounded bg-primary text-primary-foreground inline-flex items-center gap-1 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ArrowRight className="h-3.5 w-3.5" /> Usar neste anúncio
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

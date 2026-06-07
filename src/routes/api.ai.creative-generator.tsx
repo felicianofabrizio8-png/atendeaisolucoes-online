@@ -224,16 +224,51 @@ ${analysisLine}`;
         // ============ GENERATE-IMAGE ============
         if (body.mode === "generate-image") {
           const size = FORMAT_SIZE[body.format] ?? "1024x1024";
-          // Usamos modelo de geração simples (não streaming) para retornar base64.
-          const finalPrompt = body.preserve_product && body.image_url
-            ? `IMPORTANT: keep the exact product from the reference image unchanged — same shape, proportions, colors and identity. Do not invent new product details. Only improve the surrounding scene, lighting, background, and add tasteful advertising mood. ${body.prompt}`
-            : body.prompt;
+          const preserve = !!body.preserve_product && !!body.image_url;
 
-          // gpt-image-2 não aceita image input via /images/generations — usamos prompt textual.
-          // Quando preserve_product=true, instruímos fortemente no prompt.
+          // PRESERVAR PRODUTO: usa modelo de edição/multimodal Gemini com a imagem
+          // de referência. O modelo recebe a foto real e mantém o produto idêntico,
+          // alterando apenas fundo/iluminação/cenário.
+          if (preserve) {
+            const strictPrompt = `Use the uploaded product image as the EXACT product reference. Do NOT replace, redesign, simplify, restyle, recolor, or invent a different product. Preserve shape, proportions, materials, textures, colors, edges, curves, steps, dimensions and every identifying detail of the product unchanged. You may ONLY change the background, scenery, lighting, ambience and add tasteful advertising mood. The final image must clearly show the SAME product from the reference photo. Creative direction: ${body.prompt}`;
+            const payload = {
+              model: "google/gemini-3.1-flash-image-preview",
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: strictPrompt },
+                    { type: "image_url", image_url: { url: body.image_url! } },
+                  ],
+                },
+              ],
+              modalities: ["image", "text"],
+            };
+            const res = await fetch(GATEWAY_IMG, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+              const t = await res.text().catch(() => "");
+              console.error("img edit err", res.status, t);
+              return aiError(res.status);
+            }
+            const data = await res.json();
+            const b64 = data?.data?.[0]?.b64_json;
+            if (!b64) {
+              return Response.json({
+                error: "Não foi possível preservar o produto original com segurança. Tente outra imagem ou desative a preservação.",
+                preserve_failed: true,
+              }, { status: 422 });
+            }
+            return Response.json({ b64_json: b64, format: body.format, size, preserved: true });
+          }
+
+          // Modo livre (sem preservar): geração textual com gpt-image-2.
           const payload = {
             model: "openai/gpt-image-2",
-            prompt: finalPrompt,
+            prompt: body.prompt,
             size,
             quality: "low",
             n: 1,
@@ -251,8 +286,9 @@ ${analysisLine}`;
           const data = await res.json();
           const b64 = data?.data?.[0]?.b64_json;
           if (!b64) return Response.json({ error: "Imagem não gerada" }, { status: 502 });
-          return Response.json({ b64_json: b64, format: body.format, size });
+          return Response.json({ b64_json: b64, format: body.format, size, preserved: false });
         }
+
 
         // ============ SCORE ============
         if (body.mode === "score") {
