@@ -1382,6 +1382,8 @@ function MediaSendPanel({
   const imgInputRef = useRef<HTMLInputElement>(null);
   const vidInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const isWhats = channel === "whatsapp";
 
   // Quick replies (respostas rápidas configuráveis)
