@@ -100,6 +100,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const [dragY, setDragY] = useState(0);
   const [willCancel, setWillCancel] = useState(false);
   const [bars, setBars] = useState<number[]>(() => new Array(WAVEFORM_BARS).fill(0.05));
+  const [micPermission, setMicPermission] = useState<"unknown" | "granted" | "denied">("unknown");
 
   const recorderRef = useRef<RecorderLike | MediaRecorder | null>(null);
   const recorderKindRef = useRef<"native" | "opus" | null>(null);
@@ -122,6 +123,31 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // Consulta o estado da permissão do microfone no mount.
+  // Se já estiver concedida, pula a etapa de "primeiro toque = liberar mic"
+  // e permite gravar direto no primeiro press-and-hold.
+  useEffect(() => {
+    let cancelled = false;
+    const nav = navigator as Navigator & {
+      permissions?: { query: (q: { name: PermissionName }) => Promise<PermissionStatus> };
+    };
+    if (nav.permissions?.query) {
+      nav.permissions
+        .query({ name: "microphone" as PermissionName })
+        .then((status) => {
+          if (cancelled) return;
+          if (status.state === "granted") setMicPermission("granted");
+          else if (status.state === "denied") setMicPermission("denied");
+          status.onchange = () => {
+            if (status.state === "granted") setMicPermission("granted");
+            else if (status.state === "denied") setMicPermission("denied");
+          };
+        })
+        .catch(() => { /* */ });
+    }
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (tickRef.current) window.clearInterval(tickRef.current);
@@ -130,6 +156,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       try { audioCtxRef.current?.close(); } catch { /* */ }
     };
   }, []);
+
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
