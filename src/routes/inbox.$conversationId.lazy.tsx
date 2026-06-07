@@ -1,6 +1,8 @@
 import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
   getConversationById,
@@ -2214,6 +2216,14 @@ function ConversationPage() {
     );
   }, [repoMessages, localMessages]);
 
+  // Onda 2.4: pré-filtra mensagens "apagadas só para mim" antes de passar para
+  // o Virtuoso (a lista virtual não tolera itens null).
+  const visibleMessages = useMemo<Message[]>(
+    () => messages.filter((m) => !(m.deletedAt && m.deletedFor === "me")),
+    [messages],
+  );
+
+
   // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
   useEffect(() => {
     if (localMessages.length === 0) return;
@@ -2290,8 +2300,9 @@ function ConversationPage() {
   const [aiState, setAiState] = useState<{ ai_status: string | null; ai_handling: boolean } | null>(null);
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const initialScrollConversationRef = useRef<string | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [atBottom, setAtBottom] = useState(true);
+
 
   // Carrega ai_status da conversa + realtime + último motivo de handoff
   useEffect(() => {
@@ -2378,44 +2389,14 @@ function ConversationPage() {
     }
   }, [search.quote, conversationId, navigate]);
 
-  // Ao abrir/trocar de conversa, começa na mensagem mais recente.
-  useEffect(() => {
-    if (initialScrollConversationRef.current === conversationId) return;
-    const el = scrollRef.current;
-    if (!el || messages.length === 0) return;
-    const frame = window.requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      initialScrollConversationRef.current = conversationId;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [conversationId, messages.length]);
-
-  // Auto-scroll só quando o usuário já está perto do final — assim mensagens novas
-  // chegando via Realtime não interrompem quem está lendo o histórico.
-  const lastMessageId = messages[messages.length - 1]?.id;
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const nearBottom = distanceFromBottom < 160;
-    if (nearBottom) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
-  }, [lastMessageId, ai, pendingQuote]);
-
-  // Realtime do leadRepo cobre INSERT/UPDATE de mensagens.
-  // (Polling de 25s removido — Onda 1 de performance.)
-
   // Onda 2.2: ao abrir a conversa, garante que temos as últimas ~100 mensagens
-  // em memória (idempotente). loadRemote agora carrega apenas as 1000 mais
-  // recentes globalmente — esse fetch cobre conversas antigas reabertas.
+  // em memória (idempotente).
   useEffect(() => {
     if (!conversationId) return;
     void loadConversationRecent(conversationId, 100);
   }, [conversationId]);
 
-  // Onda 2.2: scroll-up carrega histórico antigo usando `at` como cursor.
-  // Preserva a posição do scroll para que o usuário não perca o contexto.
+  // Onda 2.4: paginação de histórico via Virtuoso (`startReached`).
   const olderLoadingRef = useRef(false);
   const [hasMoreOlder, setHasMoreOlder] = useState<boolean>(() =>
     hasMoreOlderMessages(conversationId),
@@ -2423,40 +2404,26 @@ function ConversationPage() {
   useEffect(() => {
     setHasMoreOlder(hasMoreOlderMessages(conversationId));
   }, [conversationId]);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      if (olderLoadingRef.current) return;
-      if (el.scrollTop > 80) return;
-      if (!hasMoreOlderMessages(conversationId)) {
-        setHasMoreOlder(false);
-        return;
-      }
-      const oldest = messages.find((m) => m.role !== "system");
-      if (!oldest) return;
-      olderLoadingRef.current = true;
-      const prevScrollHeight = el.scrollHeight;
-      const prevScrollTop = el.scrollTop;
-      void loadConversationOlder(conversationId, oldest.at, oldest.id, 50)
-        .then((res) => {
-          setHasMoreOlder(res.hasMore);
-          // Restaura posição: nova altura - altura antiga + topo antigo.
-          window.requestAnimationFrame(() => {
-            const node = scrollRef.current;
-            if (!node) return;
-            const delta = node.scrollHeight - prevScrollHeight;
-            if (delta > 0) node.scrollTop = prevScrollTop + delta;
-          });
-        })
-        .finally(() => {
-          olderLoadingRef.current = false;
-        });
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-    // `messages` muda quando o repo carrega novas; precisamos do oldest atual.
+
+  const loadOlder = useCallback(() => {
+    if (olderLoadingRef.current) return;
+    if (!hasMoreOlderMessages(conversationId)) {
+      setHasMoreOlder(false);
+      return;
+    }
+    const oldest = messages.find((m) => m.role !== "system");
+    if (!oldest) return;
+    olderLoadingRef.current = true;
+    void loadConversationOlder(conversationId, oldest.at, oldest.id, 50)
+      .then((res) => {
+        setHasMoreOlder(res.hasMore);
+      })
+      .finally(() => {
+        olderLoadingRef.current = false;
+      });
   }, [conversationId, messages]);
+
+
 
 
 
@@ -2948,38 +2915,53 @@ function ConversationPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
-          {!hasMoreOlder && messages.length > 0 && (
-            <div className="flex justify-center">
-              <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
-                Início da conversa
-              </span>
-            </div>
-          )}
+        <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
-
-            {messages.map((m) => {
-              if (m.role === "system") {
+            <Virtuoso
+              ref={virtuosoRef}
+              data={visibleMessages}
+              computeItemKey={(_idx, m) => m.id}
+              initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+              followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
+              atBottomStateChange={setAtBottom}
+              atBottomThreshold={160}
+              startReached={loadOlder}
+              increaseViewportBy={{ top: 600, bottom: 200 }}
+              overscan={{ main: 600, reverse: 600 }}
+              className="h-full px-3 md:px-4"
+              components={{
+                Header: () =>
+                  !hasMoreOlder && visibleMessages.length > 0 ? (
+                    <div className="flex justify-center py-3">
+                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                        Início da conversa
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="h-2" />
+                  ),
+                Footer: () => <div className="h-3 md:h-4" />,
+              }}
+              itemContent={(_idx, m) => {
+                if (m.role === "system") {
+                  return (
+                    <div className="flex justify-center py-1.5">
+                      <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                        {m.text}
+                      </span>
+                    </div>
+                  );
+                }
                 return (
-                  <div key={m.id} className="flex justify-center">
-                    <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                      {m.text}
-                    </span>
+                  <div className="py-1.5">
+                    <MessageBubble m={m} canManage={!closedInfo} />
                   </div>
                 );
-              }
-              // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
-              if (m.deletedAt && m.deletedFor === "me") return null;
-              return (
-                <MessageBubble
-                  key={m.id}
-                  m={m}
-                  canManage={!closedInfo}
-                />
-              );
-            })}
+              }}
+            />
           </MessagesContext.Provider>
         </div>
+
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
         {pendingQuote && !closedInfo && (
