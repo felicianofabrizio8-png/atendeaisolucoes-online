@@ -171,7 +171,7 @@ export const runFollowupNowForConversation = createServerFn({ method: "POST" })
           action,
           entity: "follow_up_manual",
           entity_id: conv.id,
-          after,
+          after: after as never,
         });
       } catch {
         /* noop */
