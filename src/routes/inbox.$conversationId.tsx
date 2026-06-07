@@ -50,7 +50,7 @@ import {
   Mic,
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
-import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
+import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
