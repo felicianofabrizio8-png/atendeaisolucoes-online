@@ -629,11 +629,54 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     try { btnRef.current?.releasePointerCapture(pointerId); } catch { /* */ }
   };
 
+  // Primeira interação: apenas pedir permissão do microfone, SEM iniciar gravação.
+  // Abre o prompt do navegador, libera o stream imediatamente e mostra um toast
+  // instruindo o usuário a pressionar de novo para gravar.
+  const requestMicPermission = async (): Promise<boolean> => {
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Seu navegador não suporta gravação de áudio.");
+      return false;
+    }
+    if (!window.isSecureContext) {
+      setError("Gravação exige HTTPS.");
+      return false;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Libera imediatamente — só queríamos disparar o prompt de permissão.
+      stream.getTracks().forEach((t) => t.stop());
+      setMicPermission("granted");
+      toast.success("Microfone liberado. Toque e segure para gravar.");
+      return true;
+    } catch (e) {
+      const name = (e as { name?: string })?.name;
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setMicPermission("denied");
+        setError("Permissão de microfone negada.");
+        toast.error("Permissão de microfone negada.");
+      } else if (name === "NotFoundError") {
+        setError("Nenhum microfone encontrado.");
+      } else {
+        setError("Não foi possível acessar o microfone.");
+      }
+      return false;
+    }
+  };
+
   const onPointerDown = async (e: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled || state !== "idle") return;
     e.preventDefault();
     e.stopPropagation();
     const pid = e.pointerId;
+
+    // Etapa 1: se ainda não temos permissão, apenas solicitar — NÃO gravar.
+    if (micPermission !== "granted") {
+      await requestMicPermission();
+      return;
+    }
+
+    // Etapa 2: permissão já concedida — iniciar gravação real.
     pointerIdRef.current = pid;
     pointerStartRef.current = { x: e.clientX, y: e.clientY };
     try { btnRef.current?.setPointerCapture(pid); } catch { /* */ }
@@ -644,6 +687,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       pointerStartRef.current = null;
     }
   };
+
 
   const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (state !== "recording") return;
