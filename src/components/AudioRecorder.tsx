@@ -26,7 +26,7 @@ type RecorderLike = {
   onstop?: () => void;
 };
 
-type NativeMime = "audio/mp4";
+type NativeMime = "audio/mp4" | "audio/webm" | "audio/webm;codecs=opus" | "audio/ogg;codecs=opus";
 
 function isSafariLike(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -42,6 +42,22 @@ function pickSafariNativeMime(): NativeMime | null {
   try {
     if (MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")) return "audio/mp4";
     if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+  } catch {
+    /* */
+  }
+  return null;
+}
+
+// Android/Chrome: MediaRecorder nativo (WebM/Opus ou OGG/Opus) é muito mais
+// leve que rodar opus-recorder em tempo real — celulares fracos picotam quando
+// o encoder roda durante a gravação. Gravamos nativo, paramos, depois
+// decodificamos e reencodamos para OGG/Opus padronizado.
+function pickAndroidNativeMime(): NativeMime | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  try {
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+    if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) return "audio/ogg;codecs=opus";
+    if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
   } catch {
     /* */
   }
@@ -135,11 +151,16 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     setState("idle");
   };
 
-  // Transcoda MP4/AAC (gravado no Safari/iOS) para OGG/Opus real no cliente.
-  // iOS preset: bitrate 64 kbps para baixar rápido no WhatsApp do cliente.
-  const transcodeMp4ToOgg = async (mp4Blob: Blob): Promise<{ blob: Blob; elapsedMs: number; bitrate: number }> => {
+  // Transcoda áudio gravado nativamente (MP4/AAC no iOS, WebM/Opus no Android)
+  // para OGG/Opus padronizado, fora do caminho de gravação.
+  // Fluxo: decodeAudioData → OfflineAudioContext (mono 48kHz) → opus-recorder.
+  const transcodeToOgg = async (
+    sourceBlob: Blob,
+    bitrate: number,
+    logTag: "[AUDIO IOS TRANSCODE]" | "[AUDIO ANDROID TRANSCODE]"
+  ): Promise<{ blob: Blob; elapsedMs: number; bitrate: number }> => {
     const t0 = Date.now();
-    const arr = await mp4Blob.arrayBuffer();
+    const arr = await sourceBlob.arrayBuffer();
     const AC: typeof AudioContext =
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ??
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -162,7 +183,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     }
 
     const targetRate = 48000;
-    const iosBitrate = 64000;
     const offline = new (
       (window as unknown as { OfflineAudioContext: typeof OfflineAudioContext }).OfflineAudioContext
     )(1, Math.ceil(decoded.duration * targetRate), targetRate);
@@ -183,7 +203,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       encoderApplication: 2048, // voice
       encoderSampleRate: targetRate,
       encoderFrameSize: 20,
-      encoderBitRate: iosBitrate,
+      encoderBitRate: bitrate,
       numberOfChannels: 1,
       streamPages: false,
       sourceNode: playSrc,
@@ -222,40 +242,48 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     const bytes = new Uint8Array(await oggBlob.arrayBuffer());
     const valid = hasOggOpusBytes(bytes);
     const elapsedMs = Date.now() - t0;
-    console.log("[AUDIO IOS TRANSCODE]", {
+    console.log(logTag, {
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-      input_mime: mp4Blob.type,
-      input_size: mp4Blob.size,
+      input_mime: sourceBlob.type,
+      input_size: sourceBlob.size,
       decoded_duration_sec: decoded.duration,
       decoded_sample_rate: decoded.sampleRate,
       decoded_channels: decoded.numberOfChannels,
       output_mime: "audio/ogg",
       output_size: oggBlob.size,
-      output_bitrate: iosBitrate,
+      output_bitrate: bitrate,
       output_valid_ogg_opus: valid,
       elapsed_ms: elapsedMs,
     });
     if (!valid) throw new Error("Transcodificação não produziu OGG/Opus válido");
-    return { blob: oggBlob, elapsedMs, bitrate: iosBitrate };
+    return { blob: oggBlob, elapsedMs, bitrate };
   };
 
-  const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
-    // iOS/Safari grava MP4 nativo; precisamos transcodar para OGG antes do envio.
+  const finalize = async (
+    blob: Blob,
+    source: "ogg_direct" | "ios_mp4" | "android_native"
+  ) => {
     let workBlob = blob;
-    let workExpected: "audio/ogg" = "audio/ogg";
-    if (expectedMime === "audio/mp4") {
+    let errorMessage = "Não foi possível gerar um áudio OGG/Opus válido. Grave novamente.";
+    if (source === "ios_mp4" || source === "android_native") {
+      const bitrate = source === "ios_mp4" ? 64000 : 96000;
+      const tag = source === "ios_mp4" ? "[AUDIO IOS TRANSCODE]" : "[AUDIO ANDROID TRANSCODE]";
+      errorMessage =
+        source === "ios_mp4"
+          ? "Não foi possível preparar o áudio neste iPhone. Tente atualizar o Safari ou envie uma mensagem de texto."
+          : "Não foi possível preparar o áudio neste Android. Tente novamente ou envie uma mensagem de texto.";
       try {
-        const out = await transcodeMp4ToOgg(blob);
+        const out = await transcodeToOgg(blob, bitrate, tag);
         workBlob = out.blob;
         transcodeMsRef.current = out.elapsedMs;
         bitrateRef.current = out.bitrate;
       } catch (err) {
-        console.error("[AUDIO IOS TRANSCODE] failed", err);
+        console.error(tag, "failed", err);
         stopStream();
         if (tickRef.current) window.clearInterval(tickRef.current);
         tickRef.current = null;
         setState("idle");
-        setError("Não foi possível preparar o áudio neste iPhone. Tente atualizar o Safari ou envie uma mensagem de texto.");
+        setError(errorMessage);
         return;
       }
     }
@@ -277,18 +305,18 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       original_size: blob.size,
       final_blob_type: workBlob.type,
       final_size: workBlob.size,
-      expected_mime: workExpected,
+      expected_mime: "audio/ogg",
       duration_seconds: seconds,
       valid_bytes: valid,
       first_bytes_hex: firstBytesHex,
-      transcoded_from_mp4: expectedMime === "audio/mp4",
+      source,
     });
     if (!valid) {
       stopStream();
       if (tickRef.current) window.clearInterval(tickRef.current);
       tickRef.current = null;
       setState("idle");
-      setError("Não foi possível gerar um áudio OGG/Opus válido. Grave novamente.");
+      setError(errorMessage);
       return;
     }
     const normalized = new Blob([bytes], { type: "audio/ogg" });
@@ -353,53 +381,72 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     const ua = uaEarly;
     const safari = safariEarly;
     const safariMime = safari ? pickSafariNativeMime() : null;
-    const useNative = Boolean(safariMime);
+    const androidMime = !safari ? pickAndroidNativeMime() : null;
+    // Estratégia: gravar sempre nativo quando possível (não picota em celular fraco)
+    // e transcodar para OGG/Opus padronizado depois do stop.
+    // Só caímos no opus-recorder direto se MediaRecorder não suportar Opus nativamente.
+    const recordMode: "ios_native" | "android_native" | "opus_streaming" = safariMime
+      ? "ios_native"
+      : androidMime
+        ? "android_native"
+        : "opus_streaming";
     const targetSampleRate = 48000;
-    // Presets por plataforma:
-    // - iOS: 64 kbps no OGG final (após transcode) para baixar rápido no WhatsApp.
-    // - Android/Desktop: 128 kbps direto no opus-recorder para voz clara.
-    const targetBitrate = useNative ? 64000 : 128000;
+    // Bitrate FINAL do OGG (após transcode no native; direto no opus_streaming).
+    // - iOS: 64 kbps → arquivo pequeno, baixa rápido no WhatsApp.
+    // - Android: 96 kbps → boa clareza de voz sem inflar muito o tamanho.
+    // - Fallback opus_streaming: 96 kbps.
+    const targetBitrate = recordMode === "ios_native" ? 64000 : 96000;
     platformRef.current = safari ? "ios_safari" : "android_or_desktop";
     bitrateRef.current = targetBitrate;
+    const recordingMime: NativeMime | "audio/ogg;codecs=opus" =
+      recordMode === "ios_native"
+        ? (safariMime as NativeMime)
+        : recordMode === "android_native"
+          ? (androidMime as NativeMime)
+          : "audio/ogg;codecs=opus";
 
     console.log("[AUDIO PLATFORM]", {
       user_agent: ua,
       platform: platformRef.current,
-      encoder: useNative ? "MediaRecorder(native)" : "opus-recorder",
-      chosen_format: useNative ? safariMime : "audio/ogg;codecs=opus",
+      record_mode: recordMode,
+      encoder: recordMode === "opus_streaming" ? "opus-recorder(streaming)" : "MediaRecorder(native) + opus-recorder(offline transcode)",
+      recording_mime: recordingMime,
+      final_format: "audio/ogg;codecs=opus",
       sample_rate: targetSampleRate,
-      bitrate: targetBitrate,
-      preset: useNative ? "ios_64kbps_fast_download" : "android_128kbps_clear_voice",
+      final_bitrate: targetBitrate,
+      preset:
+        recordMode === "ios_native"
+          ? "ios_64kbps_fast_download"
+          : recordMode === "android_native"
+            ? "android_native_record_then_transcode_96kbps"
+            : "fallback_opus_streaming_96kbps",
       mic_constraints: trackSettings,
-      reason: useNative
-        ? "iOS/Safari grava MP4/AAC nativo e transcoda para OGG/Opus 64 kbps antes do envio (carrega rápido no WhatsApp)."
-        : "Android/Desktop usa opus-recorder em 48kHz mono / 128kbps / voice para máxima clareza.",
-      native_mp4_supported:
-        typeof MediaRecorder !== "undefined" &&
-        (() => {
-          try {
-            return MediaRecorder.isTypeSupported("audio/mp4");
-          } catch {
-            return false;
-          }
-        })(),
+      reason:
+        recordMode === "ios_native"
+          ? "iOS/Safari grava MP4/AAC nativo e transcoda para OGG/Opus 64 kbps antes do envio."
+          : recordMode === "android_native"
+            ? "Android grava WebM/Opus nativo (sem picotar) e transcoda para OGG/Opus 96 kbps após o stop."
+            : "Navegador sem MediaRecorder Opus — fallback para opus-recorder em streaming.",
     });
 
     console.log("[AUDIO FORMAT SELECTED]", {
       user_agent: ua,
       final_upload_format: "audio/ogg;codecs=opus",
-      encoder: useNative ? "ios_native_mp4_then_transcode" : "opus_recorder_direct",
-      reason: useNative
-        ? "iOS/Safari grava MP4 e cliente converte para OGG/Opus antes de enviar à Meta."
-        : "Android/Desktop grava diretamente em OGG/Opus.",
+      record_mode: recordMode,
+      reason:
+        recordMode === "ios_native"
+          ? "iOS/Safari grava MP4 e cliente converte para OGG/Opus antes de enviar à Meta."
+          : recordMode === "android_native"
+            ? "Android grava WebM/Opus nativo e cliente converte para OGG/Opus antes de enviar à Meta."
+            : "Sem MediaRecorder Opus — encode direto em OGG/Opus via opus-recorder.",
     });
 
     try {
-      if (useNative && safariMime) {
-        // Safari/iOS: MediaRecorder nativo → MP4/AAC.
+      if (recordMode === "ios_native" && safariMime) {
+        // Safari/iOS: MediaRecorder nativo → MP4/AAC, transcoda no stop.
         const mr = new MediaRecorder(stream, {
           mimeType: safariMime,
-          audioBitsPerSecond: targetBitrate,
+          audioBitsPerSecond: 128000, // bitrate de gravação alto; o final é controlado no transcode.
         });
         recorderRef.current = mr;
         recorderKindRef.current = "native";
@@ -409,11 +456,29 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         };
         mr.onstop = () => {
           const blob = new Blob(chunksRef.current, { type: safariMime });
-          void finalize(blob, "audio/mp4");
+          void finalize(blob, "ios_mp4");
+        };
+        mr.start();
+      } else if (recordMode === "android_native" && androidMime) {
+        // Android/Chrome: MediaRecorder nativo (WebM/Opus) — não picota em celular fraco.
+        // Transcoda para OGG/Opus padronizado no stop.
+        const mr = new MediaRecorder(stream, {
+          mimeType: androidMime,
+          audioBitsPerSecond: 128000, // alto na gravação; final é definido no transcode.
+        });
+        recorderRef.current = mr;
+        recorderKindRef.current = "native";
+        recorderMimeRef.current = androidMime;
+        mr.ondataavailable = (ev: BlobEvent) => {
+          if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
+        };
+        mr.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: androidMime });
+          void finalize(blob, "android_native");
         };
         mr.start();
       } else {
-        // Android/Desktop: opus-recorder → OGG/Opus real (48kHz, 64kbps, voice).
+        // Fallback: opus-recorder direto em OGG/Opus.
         const mod = await import("opus-recorder");
         const RecorderCtor = mod.default;
         const rec = new RecorderCtor({
@@ -443,7 +508,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         };
         rec.onstop = () => {
           const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
-          void finalize(blob, "audio/ogg");
+          void finalize(blob, "ogg_direct");
         };
         await rec.start();
       }
