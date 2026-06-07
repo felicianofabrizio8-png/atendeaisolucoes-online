@@ -230,6 +230,13 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   }, []);
 
   // ============ ANALYZE ============
+  const PRESERVE_KEYWORDS = ["piscina", "movel", "móvel", "moveis", "móveis", "veiculo", "veículo", "carro", "moto", "tecnico", "técnico", "maquina", "máquina", "equipamento", "eletro", "ferramenta"];
+  const shouldPreserveByCategory = (a: Analysis | null): boolean => {
+    if (!a) return false;
+    const hay = `${a.category ?? ""} ${a.main_object ?? ""} ${a.business_type ?? ""} ${(a.style_keywords ?? []).join(" ")}`.toLowerCase();
+    return PRESERVE_KEYWORDS.some((k) => hay.includes(k));
+  };
+
   const runAnalyze = async (img: string | null) => {
     if (!img) return;
     setAnalyzing(true);
@@ -241,10 +248,15 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Falha na análise");
       setAnalysis(data);
+      // Auto-ativa preservação para produtos técnicos/dimensionais
+      if (shouldPreserveByCategory(data)) {
+        setConfig((c) => ({ ...c, preserve_product: true }));
+      }
       setStep("configure");
     } catch (e: any) { toast.error(e.message ?? "Erro na análise"); }
     finally { setAnalyzing(false); }
   };
+
 
   // ============ GENERATE TEXTS ============
   const generateTexts = async () => {
