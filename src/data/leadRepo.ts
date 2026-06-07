@@ -106,6 +106,9 @@ export function setRepoMode(next: Mode) {
     remoteConversations = [];
     remoteMessages = [];
     remoteLoaded = false;
+    olderHasMore.clear();
+    olderLoading.clear();
+    recentLoaded.clear();
     unsubscribeRealtime();
   }
   notify();
