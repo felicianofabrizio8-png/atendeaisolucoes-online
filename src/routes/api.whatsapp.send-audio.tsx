@@ -13,13 +13,13 @@ import { isWithin24hWindow } from "@/lib/wa-templates.server";
 
 const BUCKET = "whatsapp-media";
 const MAX_BYTES = 16 * 1024 * 1024; // WhatsApp Cloud API: audio até 16MB
-// Neste fluxo aceitamos apenas OGG/Opus real (Chrome/Android/Desktop) ou MP4
-// real (Safari/iPhone). Não confiamos só no MIME declarado pelo navegador.
+// Neste fluxo aceitamos apenas OGG/Opus real. MP4/AAC/WebM estão temporariamente
+// desabilitados — apenas OGG é comprovadamente entregue ao destinatário pela Meta.
 const ALLOWED_MIMES = new Set([
   "audio/ogg",
   "audio/ogg;codecs=opus",
-  "audio/mp4",
 ]);
+
 const FRIENDLY_SEND_ERROR = "Áudio não enviado pelo WhatsApp. Grave novamente ou envie uma mensagem de texto.";
 const GRAPH_VERSION = "v20.0";
 
