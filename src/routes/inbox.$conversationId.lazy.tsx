@@ -72,6 +72,14 @@ import { AITimeline } from "@/components/AITimeline";
 // caso típico de respostas a imagens enviadas pelo próprio agente.
 const MessagesContext = createContext<Message[]>([]);
 
+// Onda 2.4: dá ao ReplyPreview acesso à lista virtualizada para localizar a
+// mensagem original via scrollToIndex (caso esteja fora do viewport montado).
+const VirtuosoScrollContext = createContext<{
+  ref: React.RefObject<VirtuosoHandle | null>;
+  items: Message[];
+} | null>(null);
+
+
 export const Route = createLazyFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
 });
@@ -777,15 +785,36 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
     reply.preview ??
     (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
 
+  const virtuoso = useContext(VirtuosoScrollContext);
+
+  function highlight(el: HTMLElement) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary/60", "transition");
+    setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+  }
+
   function scrollToOriginal() {
     if (!reply.message_id) return;
     const el = document.getElementById(`msg-${reply.message_id}`);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-primary/60", "transition");
-      setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+      highlight(el);
+      return;
     }
+    // Mensagem está fora da janela virtualizada: pede ao Virtuoso para montá-la.
+    if (!virtuoso) return;
+    const idx = virtuoso.items.findIndex((m) => m.id === reply.message_id);
+    if (idx < 0) return;
+    virtuoso.ref.current?.scrollToIndex({ index: idx, align: "center", behavior: "smooth" });
+    // Aguarda o item entrar no DOM antes de aplicar o highlight.
+    const start = Date.now();
+    const tryHighlight = () => {
+      const node = document.getElementById(`msg-${reply.message_id}`);
+      if (node) highlight(node);
+      else if (Date.now() - start < 1200) requestAnimationFrame(tryHighlight);
+    };
+    requestAnimationFrame(tryHighlight);
   }
+
 
   return (
     <button
@@ -2917,49 +2946,52 @@ function ConversationPage() {
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
-            <Virtuoso
-              ref={virtuosoRef}
-              data={visibleMessages}
-              computeItemKey={(_idx, m) => m.id}
-              initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
-              followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
-              atBottomStateChange={setAtBottom}
-              atBottomThreshold={160}
-              startReached={loadOlder}
-              increaseViewportBy={{ top: 600, bottom: 200 }}
-              overscan={{ main: 600, reverse: 600 }}
-              className="h-full px-3 md:px-4"
-              components={{
-                Header: () =>
-                  !hasMoreOlder && visibleMessages.length > 0 ? (
-                    <div className="flex justify-center py-3">
-                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
-                        Início da conversa
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="h-2" />
-                  ),
-                Footer: () => <div className="h-3 md:h-4" />,
-              }}
-              itemContent={(_idx, m) => {
-                if (m.role === "system") {
+            <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
+              <Virtuoso
+                ref={virtuosoRef}
+                data={visibleMessages}
+                computeItemKey={(_idx, m) => m.id}
+                initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+                followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
+                atBottomStateChange={setAtBottom}
+                atBottomThreshold={160}
+                startReached={loadOlder}
+                increaseViewportBy={{ top: 600, bottom: 200 }}
+                overscan={{ main: 600, reverse: 600 }}
+                className="h-full px-3 md:px-4"
+                components={{
+                  Header: () =>
+                    !hasMoreOlder && visibleMessages.length > 0 ? (
+                      <div className="flex justify-center py-3">
+                        <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                          Início da conversa
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="h-2" />
+                    ),
+                  Footer: () => <div className="h-3 md:h-4" />,
+                }}
+                itemContent={(_idx, m) => {
+                  if (m.role === "system") {
+                    return (
+                      <div className="flex justify-center py-1.5">
+                        <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                          {m.text}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <div className="flex justify-center py-1.5">
-                      <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                        {m.text}
-                      </span>
+                    <div className="py-1.5">
+                      <MessageBubble m={m} canManage={!closedInfo} />
                     </div>
                   );
-                }
-                return (
-                  <div className="py-1.5">
-                    <MessageBubble m={m} canManage={!closedInfo} />
-                  </div>
-                );
-              }}
-            />
+                }}
+              />
+            </VirtuosoScrollContext.Provider>
           </MessagesContext.Provider>
+
         </div>
 
 
