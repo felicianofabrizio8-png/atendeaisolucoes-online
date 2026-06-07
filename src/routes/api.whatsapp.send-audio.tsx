@@ -65,10 +65,10 @@ function detectAudioBytes(bytes: Uint8Array): DetectedAudio {
 }
 
 function mimeMatchesBytes(mime: string, detected: DetectedAudio): boolean {
-  if (mime === "audio/ogg") return detected === "ogg";
-  if (mime === "audio/mp4") return detected === "mp4";
+  if (mime === "audio/ogg" || mime === "audio/ogg;codecs=opus") return detected === "ogg";
   return false;
 }
+
 
 function extFromMime(mime: string): string {
   const m = mime.toLowerCase();
