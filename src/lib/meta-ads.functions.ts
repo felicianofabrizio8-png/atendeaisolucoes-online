@@ -289,7 +289,7 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin pode alterar." };
 
     const integrations = await loadActiveMetaIntegrations(companyId);
@@ -323,7 +323,7 @@ export const clearMetaAdAccount = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin pode alterar." };
 
     const integrations = await loadActiveMetaIntegrations(companyId);
@@ -358,7 +358,7 @@ export const diagnoseMetaToken = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin." };
 
     const token = data.token.trim();
@@ -430,7 +430,7 @@ export const adoptMetaUserToken = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin", message: "Apenas admin." };
 
     const token = data.token.trim();
@@ -497,7 +497,7 @@ export const verifyPersistedMetaUserToken = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin" };
 
     const integrations = await loadActiveMetaIntegrations(companyId);
@@ -580,7 +580,7 @@ export const selectMetaPage = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin" };
 
     const integrations = await loadActiveMetaIntegrations(companyId);
@@ -617,7 +617,7 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
       (company as unknown as { meta_campaigns_beta?: boolean } | null)?.meta_campaigns_beta,
     );
 
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
 
     const integrations = await loadActiveMetaIntegrations(companyId);
     const integ = pickPrimaryIntegration(integrations);
@@ -663,7 +663,7 @@ export const setMetaBetaFlag = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
     if (!companyId) return { ok: false as const, error: "no_company" };
-    const isAdmin = await hasAdminRole(supabase, userId);
+    const isAdmin = await hasAdminRole(supabase, userId, companyId);
     if (!isAdmin) return { ok: false as const, error: "not_admin" };
 
     const { error } = await supabase
