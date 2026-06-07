@@ -106,6 +106,9 @@ export function setRepoMode(next: Mode) {
     remoteConversations = [];
     remoteMessages = [];
     remoteLoaded = false;
+    olderHasMore.clear();
+    olderLoading.clear();
+    recentLoaded.clear();
     unsubscribeRealtime();
   }
   notify();
@@ -328,6 +331,12 @@ function subscribeRealtime(companyId: string) {
     void supabase.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
+  // Troca de empresa: invalida paginação cacheada da empresa anterior.
+  if (realtimeCompanyId && realtimeCompanyId !== companyId) {
+    olderHasMore.clear();
+    olderLoading.clear();
+    recentLoaded.clear();
+  }
   realtimeCompanyId = companyId;
   realtimeChannel = supabase
     .channel(`inbox-${companyId}`)
@@ -494,11 +503,13 @@ export async function loadConversationRecent(
   if (data.length < limit) olderHasMore.set(conversationId, false);
 }
 
-// Scroll-up: busca mensagens anteriores a `beforeAt` para essa conversa.
-// Usa o índice (company_id, conversation_id, at DESC). Dedup por id.
+// Scroll-up: busca mensagens anteriores ao cursor composto (at, id) para
+// evitar pular mensagens com o mesmo timestamp. Usa o índice
+// (company_id, conversation_id, at DESC). Dedup por id.
 export async function loadConversationOlder(
   conversationId: string,
   beforeAt: string,
+  beforeId?: string,
   limit = 50,
 ): Promise<{ added: number; hasMore: boolean }> {
   if (mode !== "remote") return { added: 0, hasMore: false };
@@ -510,12 +521,20 @@ export async function loadConversationOlder(
   }
   olderLoading.add(conversationId);
   try {
-    const { data, error } = await supabase
+    // Cursor composto via PostgREST .or(): at < beforeAt OR (at = beforeAt AND id < beforeId)
+    // Ordem espelhada na cláusula ORDER BY (at DESC, id DESC) garante estabilidade.
+    let q = supabase
       .from("messages")
       .select(MSG_SELECT)
-      .eq("conversation_id", conversationId)
-      .lt("at", beforeAt)
+      .eq("conversation_id", conversationId);
+    if (beforeId) {
+      q = q.or(`at.lt.${beforeAt},and(at.eq.${beforeAt},id.lt.${beforeId})`);
+    } else {
+      q = q.lt("at", beforeAt);
+    }
+    const { data, error } = await q
       .order("at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(limit);
     if (error || !data) {
       return { added: 0, hasMore: hasMoreOlderMessages(conversationId) };
