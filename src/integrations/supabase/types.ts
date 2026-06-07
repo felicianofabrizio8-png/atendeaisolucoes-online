@@ -300,48 +300,95 @@ export type Database = {
       }
       campaign_creatives: {
         Row: {
+          ai_score: number | null
+          analysis: Json
           audience_suggestion: string | null
           campaign_id: string | null
           company_id: string
+          config: Json
           created_at: string
+          created_by: string | null
           cta: string | null
+          description: string | null
+          format: string | null
+          headline: string | null
           id: string
           image_url: string | null
+          parent_creative_id: string | null
+          preserve_product: boolean
           primary_text: string | null
           product_id: string | null
+          prompt: string | null
+          score_details: Json | null
           social_caption: string | null
+          source_image_url: string | null
           title: string
           updated_at: string
+          variant_label: string | null
         }
         Insert: {
+          ai_score?: number | null
+          analysis?: Json
           audience_suggestion?: string | null
           campaign_id?: string | null
           company_id: string
+          config?: Json
           created_at?: string
+          created_by?: string | null
           cta?: string | null
+          description?: string | null
+          format?: string | null
+          headline?: string | null
           id?: string
           image_url?: string | null
+          parent_creative_id?: string | null
+          preserve_product?: boolean
           primary_text?: string | null
           product_id?: string | null
+          prompt?: string | null
+          score_details?: Json | null
           social_caption?: string | null
+          source_image_url?: string | null
           title: string
           updated_at?: string
+          variant_label?: string | null
         }
         Update: {
+          ai_score?: number | null
+          analysis?: Json
           audience_suggestion?: string | null
           campaign_id?: string | null
           company_id?: string
+          config?: Json
           created_at?: string
+          created_by?: string | null
           cta?: string | null
+          description?: string | null
+          format?: string | null
+          headline?: string | null
           id?: string
           image_url?: string | null
+          parent_creative_id?: string | null
+          preserve_product?: boolean
           primary_text?: string | null
           product_id?: string | null
+          prompt?: string | null
+          score_details?: Json | null
           social_caption?: string | null
+          source_image_url?: string | null
           title?: string
           updated_at?: string
+          variant_label?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaign_creatives_parent_creative_id_fkey"
+            columns: ["parent_creative_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_creatives"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaign_metrics: {
         Row: {
