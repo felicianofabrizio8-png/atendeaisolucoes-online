@@ -380,6 +380,10 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
     if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (config.preserve_product && !confirmed[key]) {
+      toast.error("Confirme que o produto gerado corresponde ao produto original antes de usar.");
+      return;
+    }
     const id = await saveVariant(variant);
     if (id && onUseInCampaign) onUseInCampaign(id, v, img.url);
   };
