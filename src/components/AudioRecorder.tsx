@@ -733,7 +733,7 @@ export function AudioRecorder({ conversationId, disabled, onSent, onStateChange 
   const showProcessing = state === "processing" || state === "sending";
 
   return (
-    <div className="relative shrink-0">
+    <div className={`relative min-w-0 ${(showLockedBar || showProcessing) ? "flex-1" : "shrink-0"}`}>
       {/* Botão do microfone — único alvo de toque para iniciar a gravação.
           Permanece montado durante recording para manter o pointer capture. */}
       {(state === "idle" || state === "recording") && (
