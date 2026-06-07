@@ -245,7 +245,7 @@ export const listMetaPages = createServerFn({ method: "GET" })
     if (!companyId) return { ok: false as const, error: "no_company" };
 
     const { data } = await supabase
-      .from("meta_pages")
+      .from("meta_pages_safe" as never)
       .select("id, page_id, page_name, ig_business_account_id, ig_username, active, integration_id")
       .eq("company_id", companyId)
       .eq("active", true);
