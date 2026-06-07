@@ -975,7 +975,7 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
   );
 }
 
-function MessageBubble({
+function MessageBubbleImpl({
   m,
   canManage,
 }: {
