@@ -108,6 +108,9 @@ export function CampaignAIAdvisor({ campaignId, hasMetrics }: { campaignId: stri
 
   return (
     <div className="space-y-5">
+      {/* Painel premium (visual/analítico) — somente leitura, não altera fluxos */}
+      <CampaignAIPremiumInsights campaignId={campaignId} />
+
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
