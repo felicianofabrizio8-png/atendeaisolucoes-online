@@ -29,15 +29,34 @@ interface TemplateRow {
 }
 
 const NONE_PURPOSE = "__none__";
-const PURPOSES: { value: string; label: string }[] = [
-  { value: NONE_PURPOSE, label: "— sem propósito —" },
-  { value: "quote_no_reply", label: "Orçamento sem resposta" },
-  { value: "lead_silent", label: "Cliente sumiu" },
-  { value: "visit_no_return", label: "Visita sem retorno" },
-  { value: "hot_lead_idle", label: "Lead quente parado" },
-  { value: "returning_customer", label: "Cliente retornando" },
-  { value: "appointment_confirmation", label: "Confirmação de agendamento" },
-  { value: "conversation_resume", label: "Retomar conversa" },
+// Propósito → categoria esperada (informativa no select).
+const PURPOSE_CATEGORY: Record<string, "marketing" | "utility"> = {
+  quote_no_reply: "marketing",
+  lead_silent: "marketing",
+  hot_lead_idle: "marketing",
+  returning_customer: "marketing",
+  conversation_resume: "marketing",
+  quote_followup: "marketing",
+  reactivation: "marketing",
+  visit_no_return: "utility",
+  appointment_confirmation: "utility",
+  visit_confirmed: "utility",
+  visit_rescheduled: "utility",
+  installation_confirmed: "utility",
+};
+const PURPOSES: { value: string; label: string; group: "marketing" | "utility" }[] = [
+  // Marketing (follow-ups / reativação)
+  { value: "quote_no_reply", label: "Orçamento sem resposta", group: "marketing" },
+  { value: "lead_silent", label: "Cliente sumiu", group: "marketing" },
+  { value: "hot_lead_idle", label: "Lead quente parado", group: "marketing" },
+  { value: "returning_customer", label: "Reativação de cliente", group: "marketing" },
+  { value: "conversation_resume", label: "Retomar conversa", group: "marketing" },
+  // Utility (eventos operacionais)
+  { value: "visit_confirmed", label: "Visita confirmada", group: "utility" },
+  { value: "visit_rescheduled", label: "Visita reagendada", group: "utility" },
+  { value: "visit_no_return", label: "Visita sem retorno", group: "utility" },
+  { value: "appointment_confirmation", label: "Confirmação de agendamento", group: "utility" },
+  { value: "installation_confirmed", label: "Instalação confirmada", group: "utility" },
 ];
 
 function statusBadge(status: string) {
