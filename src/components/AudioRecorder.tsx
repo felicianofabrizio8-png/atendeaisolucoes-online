@@ -312,9 +312,21 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       return;
     }
 
+    const uaEarly = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const safariEarly = isSafariLike();
+    // Constraints recomendadas para voice notes — EC/NS/AGC ligados melhoram a clareza
+    // em ambientes reais (eco do alto-falante do celular, ruído de fundo, microfone fraco).
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 48000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "NotAllowedError" || name === "SecurityError") {
@@ -329,23 +341,39 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     streamRef.current = stream;
     chunksRef.current = [];
 
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const safari = isSafariLike();
+    // Log das constraints reais aplicadas pelo browser (útil pra debugar Android).
+    const trackSettings = (() => {
+      try {
+        return stream.getAudioTracks()[0]?.getSettings?.() ?? null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const ua = uaEarly;
+    const safari = safariEarly;
     const safariMime = safari ? pickSafariNativeMime() : null;
     const useNative = Boolean(safariMime);
     const targetSampleRate = 48000;
-    const targetBitrate = useNative ? 64000 : 96000;
+    // Presets por plataforma:
+    // - iOS: 64 kbps no OGG final (após transcode) para baixar rápido no WhatsApp.
+    // - Android/Desktop: 128 kbps direto no opus-recorder para voz clara.
+    const targetBitrate = useNative ? 64000 : 128000;
+    platformRef.current = safari ? "ios_safari" : "android_or_desktop";
+    bitrateRef.current = targetBitrate;
 
     console.log("[AUDIO PLATFORM]", {
       user_agent: ua,
-      platform: safari ? "ios_safari" : "android_or_desktop",
+      platform: platformRef.current,
       encoder: useNative ? "MediaRecorder(native)" : "opus-recorder",
       chosen_format: useNative ? safariMime : "audio/ogg;codecs=opus",
       sample_rate: targetSampleRate,
       bitrate: targetBitrate,
+      preset: useNative ? "ios_64kbps_fast_download" : "android_128kbps_clear_voice",
+      mic_constraints: trackSettings,
       reason: useNative
-        ? "Safari/iOS — grava MP4/AAC nativo e transcoda para OGG/Opus no cliente antes do envio."
-        : "Android/Desktop — usa opus-recorder produzindo OGG/Opus real em 48kHz mono / 96kbps.",
+        ? "iOS/Safari grava MP4/AAC nativo e transcoda para OGG/Opus 64 kbps antes do envio (carrega rápido no WhatsApp)."
+        : "Android/Desktop usa opus-recorder em 48kHz mono / 128kbps / voice para máxima clareza.",
       native_mp4_supported:
         typeof MediaRecorder !== "undefined" &&
         (() => {
