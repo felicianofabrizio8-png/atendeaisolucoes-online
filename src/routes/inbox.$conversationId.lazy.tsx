@@ -2098,6 +2098,8 @@ function ProductsLibraryModal({
                           alt={p.name}
                           aspectRatio="1/1"
                           wrapperClassName="w-full"
+                          thumbWidth={240}
+                          thumbQuality={70}
                         />
                         {isSel && (
                           <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">

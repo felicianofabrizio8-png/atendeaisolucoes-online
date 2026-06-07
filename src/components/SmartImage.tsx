@@ -51,6 +51,8 @@ export function SmartImage({
   aspectRatio,
   fallback,
   priority,
+  thumbWidth,
+  thumbQuality,
   onClick,
 }: SmartImageProps) {
   const [resolved, setResolved] = useState<string | null>(() => {
@@ -77,7 +79,9 @@ export function SmartImage({
     setResolved(null);
     (async () => {
       try {
-        const url = await getSignedImageUrl(src);
+        const url = thumbWidth
+          ? await getSignedImageThumbUrl(src, { width: thumbWidth, quality: thumbQuality })
+          : await getSignedImageUrl(src);
         if (!cancelled) setResolved(url);
       } catch {
         if (!cancelled) {
@@ -88,7 +92,7 @@ export function SmartImage({
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [src, thumbWidth, thumbQuality]);
 
   const handleError = async () => {
     if (!retriedRef.current && src && needsResolution(src)) {
