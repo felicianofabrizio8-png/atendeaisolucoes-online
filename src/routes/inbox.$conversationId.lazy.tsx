@@ -2907,38 +2907,53 @@ function ConversationPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
-          {!hasMoreOlder && messages.length > 0 && (
-            <div className="flex justify-center">
-              <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
-                Início da conversa
-              </span>
-            </div>
-          )}
+        <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
-
-            {messages.map((m) => {
-              if (m.role === "system") {
+            <Virtuoso
+              ref={virtuosoRef}
+              data={visibleMessages}
+              computeItemKey={(_idx, m) => m.id}
+              initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+              followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
+              atBottomStateChange={setAtBottom}
+              atBottomThreshold={160}
+              startReached={loadOlder}
+              increaseViewportBy={{ top: 600, bottom: 200 }}
+              overscan={{ main: 600, reverse: 600 }}
+              className="h-full px-3 md:px-4"
+              components={{
+                Header: () =>
+                  !hasMoreOlder && visibleMessages.length > 0 ? (
+                    <div className="flex justify-center py-3">
+                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                        Início da conversa
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="h-2" />
+                  ),
+                Footer: () => <div className="h-3 md:h-4" />,
+              }}
+              itemContent={(_idx, m) => {
+                if (m.role === "system") {
+                  return (
+                    <div className="flex justify-center py-1.5">
+                      <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                        {m.text}
+                      </span>
+                    </div>
+                  );
+                }
                 return (
-                  <div key={m.id} className="flex justify-center">
-                    <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
-                      {m.text}
-                    </span>
+                  <div className="py-1.5">
+                    <MessageBubble m={m} canManage={!closedInfo} />
                   </div>
                 );
-              }
-              // "Apagar para mim" esconde no UI; "Apagar da conversa" mostra placeholder.
-              if (m.deletedAt && m.deletedFor === "me") return null;
-              return (
-                <MessageBubble
-                  key={m.id}
-                  m={m}
-                  canManage={!closedInfo}
-                />
-              );
-            })}
+              }}
+            />
           </MessagesContext.Provider>
         </div>
+
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
         {pendingQuote && !closedInfo && (
