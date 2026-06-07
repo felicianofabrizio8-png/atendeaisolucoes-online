@@ -1,12 +1,65 @@
-import { createRouter, useRouter } from "@tanstack/react-router";
+import { createRouter, useRouter, useRouterState } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { routeTree } from "./routeTree.gen";
+import { logFrontendError } from "@/lib/frontend-error-log.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 function DefaultErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
+  const routerState = useRouterState();
+  const currentRoute =
+    routerState.location?.pathname ??
+    (typeof window !== "undefined" ? window.location.pathname : "(unknown)");
+
+  useEffect(() => {
+    const ts = new Date().toISOString();
+    // eslint-disable-next-line no-console
+    console.group(`%c[REACT ERROR] ${currentRoute}`, "color:#f87171;font-weight:bold");
+    // eslint-disable-next-line no-console
+    console.error("message:", error?.message);
+    // eslint-disable-next-line no-console
+    console.error("name:", error?.name);
+    // eslint-disable-next-line no-console
+    console.error("stack:", error?.stack);
+    // eslint-disable-next-line no-console
+    console.error("route:", currentRoute);
+    // eslint-disable-next-line no-console
+    console.error("timestamp:", ts);
+    // eslint-disable-next-line no-console
+    console.error("raw error object:", error);
+    if (currentRoute.startsWith("/saude")) {
+      // eslint-disable-next-line no-console
+      console.error("%c[HEALTH PAGE ERROR]", "color:#fbbf24;font-weight:bold", error);
+    }
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+
+    (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getUser();
+        const userId = sess?.user?.id ?? null;
+        // eslint-disable-next-line no-console
+        console.error("[REACT ERROR] userId:", userId, "email:", sess?.user?.email ?? null);
+        await logFrontendError({
+          data: {
+            route: currentRoute,
+            message: error?.message ?? "(no message)",
+            stack: error?.stack ?? null,
+            componentStack: null,
+            userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+            category: currentRoute.startsWith("/saude") ? "health_page_error" : "react_error",
+          },
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[REACT ERROR] failed to persist to error_log", e);
+      }
+    })();
+  }, [error, currentRoute]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
+      <div className="max-w-2xl text-center">
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -25,12 +78,20 @@ function DefaultErrorComponent({ error, reset }: { error: Error; reset: () => vo
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Something went wrong</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          An unexpected error occurred. Please try again.
+          Rota: <code className="text-xs">{currentRoute}</code>
         </p>
-        {import.meta.env.DEV && error.message && (
-          <pre className="mt-4 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive">
-            {error.message}
+        {error?.message && (
+          <pre className="mt-4 max-h-40 overflow-auto rounded-md bg-muted p-3 text-left font-mono text-xs text-destructive whitespace-pre-wrap">
+            {error.name}: {error.message}
           </pre>
+        )}
+        {error?.stack && (
+          <details className="mt-2 text-left">
+            <summary className="cursor-pointer text-xs text-muted-foreground">Stack trace</summary>
+            <pre className="mt-2 max-h-60 overflow-auto rounded-md bg-muted p-3 font-mono text-[10px] text-muted-foreground whitespace-pre-wrap">
+              {error.stack}
+            </pre>
+          </details>
         )}
         <div className="mt-6 flex items-center justify-center gap-3">
           <button

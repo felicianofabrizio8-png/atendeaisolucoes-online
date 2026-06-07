@@ -51,15 +51,47 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 
 function HealthPage() {
   const fetchHealth = useServerFn(getHealthSummary);
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["health-summary"],
-    queryFn: () => fetchHealth(),
+    queryFn: async () => {
+      try {
+        const r = await fetchHealth();
+        // eslint-disable-next-line no-console
+        console.log("[HEALTH PAGE] getHealthSummary ok. keys:", Object.keys(r ?? {}));
+        return r;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[HEALTH PAGE ERROR] getHealthSummary threw", e);
+        throw e;
+      }
+    },
     refetchInterval: 60_000,
   });
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[HEALTH PAGE ERROR] useQuery error state", error);
+  }
 
   if (isLoading) {
     return (
       <div className="p-6 text-sm text-muted-foreground">Carregando saúde do sistema…</div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card className="p-6">
+          <h2 className="text-base font-semibold text-destructive">Erro ao carregar Saúde</h2>
+          <pre className="mt-2 text-xs whitespace-pre-wrap break-all">
+            {(error as Error)?.name}: {(error as Error)?.message}
+          </pre>
+          <pre className="mt-2 text-[10px] whitespace-pre-wrap break-all text-muted-foreground max-h-60 overflow-auto">
+            {(error as Error)?.stack}
+          </pre>
+        </Card>
+      </div>
     );
   }
 
