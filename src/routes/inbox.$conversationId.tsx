@@ -1414,11 +1414,14 @@ function MediaSendPanel({
     };
   }, [companyId, menuOpen]);
 
-  // Fecha menu ao clicar fora
+  // Fecha menu ao clicar fora (considera portal — checa botão E painel)
   useEffect(() => {
     if (!menuOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      if (menuButtonRef.current?.contains(target)) return;
+      if (menuPanelRef.current?.contains(target)) return;
+      setMenuOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
