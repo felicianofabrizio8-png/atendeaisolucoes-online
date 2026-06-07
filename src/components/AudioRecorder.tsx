@@ -590,51 +590,58 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   };
 
   // ===== Pointer handlers =====
+  // Como o botão do mic desmonta ao iniciar a gravação, escutamos pointermove/up
+  // no window enquanto state === "recording".
+  const willCancelRef = useRef(false);
+  useEffect(() => { willCancelRef.current = willCancel; }, [willCancel]);
+
+  useEffect(() => {
+    if (state !== "recording") return;
+    const move = (e: PointerEvent) => {
+      if (pointerIdRef.current !== e.pointerId || !pointerStartRef.current) return;
+      const dx = e.clientX - pointerStartRef.current.x;
+      const dy = e.clientY - pointerStartRef.current.y;
+      setDragX(Math.min(0, dx));
+      setDragY(Math.min(0, dy));
+      setWillCancel(dx <= -CANCEL_THRESHOLD);
+      if (dy <= -LOCK_THRESHOLD && !lockedRef.current) {
+        lockedRef.current = true;
+        pointerIdRef.current = null;
+        pointerStartRef.current = null;
+        setDragX(0);
+        setDragY(0);
+        setState("locked");
+      }
+    };
+    const up = (e: PointerEvent) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      pointerIdRef.current = null;
+      pointerStartRef.current = null;
+      if (willCancelRef.current) { cancelRecording(); return; }
+      const dur = Date.now() - startedAtRef.current;
+      if (dur < 700) { cancelRecording(); return; }
+      stopAndSend();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   const onPointerDown = async (e: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled || state !== "idle") return;
     e.preventDefault();
     pointerIdRef.current = e.pointerId;
     pointerStartRef.current = { x: e.clientX, y: e.clientY };
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
     const ok = await startRecording();
     if (!ok) {
       pointerIdRef.current = null;
       pointerStartRef.current = null;
-    }
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (state !== "recording" || pointerIdRef.current !== e.pointerId || !pointerStartRef.current) return;
-    const dx = e.clientX - pointerStartRef.current.x;
-    const dy = e.clientY - pointerStartRef.current.y;
-    setDragX(Math.min(0, dx));
-    setDragY(Math.min(0, dy));
-    setWillCancel(dx <= -CANCEL_THRESHOLD);
-    if (dy <= -LOCK_THRESHOLD && !lockedRef.current) {
-      lockedRef.current = true;
-      setState("locked");
-      setDragX(0);
-      setDragY(0);
-      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* */ }
-      pointerIdRef.current = null;
-    }
-  };
-
-  const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (pointerIdRef.current !== e.pointerId) return;
-    pointerIdRef.current = null;
-    pointerStartRef.current = null;
-    if (state !== "recording") return;
-    if (willCancel) {
-      cancelRecording();
-    } else {
-      // Áudios muito curtos (< 700ms) são deslizes acidentais.
-      const dur = Date.now() - startedAtRef.current;
-      if (dur < 700) {
-        cancelRecording();
-        return;
-      }
-      stopAndSend();
     }
   };
 
