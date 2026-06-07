@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, RefreshCw, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
+import { WhatsappTemplateSuggestions } from "./WhatsappTemplateSuggestions";
 
 interface TemplateRow {
   id: string;
