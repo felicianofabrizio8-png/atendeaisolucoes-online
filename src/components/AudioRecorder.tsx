@@ -5,7 +5,7 @@
 // sempre como OGG/Opus real via opus-recorder. Só Safari/iOS pode usar MP4
 // nativo, e mesmo assim validamos os bytes antes de enviar.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mic, Square, Play, Pause, Trash2, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
