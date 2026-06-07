@@ -695,6 +695,14 @@ function CampaignDetailPage() {
         <TabsContent value="advisor" className="mt-4">
           <CampaignAIAdvisor campaignId={c.id} hasMetrics={Boolean(insights?.metrics)} />
         </TabsContent>
+
+        <TabsContent value="creatives" className="mt-4">
+          <CreativeGenerator
+            companyId={c.company_id}
+            campaignId={c.id}
+            onUseInCampaign={() => toast.success("Criativo vinculado a esta campanha")}
+          />
+        </TabsContent>
       </Tabs>
 
 
