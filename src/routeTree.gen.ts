@@ -23,6 +23,7 @@ import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as IaRouteImport } from './routes/ia'
+import { Route as CriativosRouteImport } from './routes/criativos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
@@ -128,6 +129,11 @@ const InboxRoute = InboxRouteImport.update({
 const IaRoute = IaRouteImport.update({
   id: '/ia',
   path: '/ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CriativosRoute = CriativosRouteImport.update({
+  id: '/criativos',
+  path: '/criativos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -373,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
@@ -432,6 +439,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -491,6 +499,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
@@ -552,6 +561,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/inbox'
     | '/login'
@@ -611,6 +621,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/login'
     | '/orcamentos'
@@ -669,6 +680,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/inbox'
     | '/login'
@@ -729,6 +741,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
+  CriativosRoute: typeof CriativosRoute
   IaRoute: typeof IaRoute
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -867,6 +880,13 @@ declare module '@tanstack/react-router' {
       path: '/ia'
       fullPath: '/ia'
       preLoaderRoute: typeof IaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/criativos': {
+      id: '/criativos'
+      path: '/criativos'
+      fullPath: '/criativos'
+      preLoaderRoute: typeof CriativosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -1203,6 +1223,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
+  CriativosRoute: CriativosRoute,
   IaRoute: IaRoute,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
