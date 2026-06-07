@@ -2292,8 +2292,9 @@ function ConversationPage() {
   const [aiState, setAiState] = useState<{ ai_status: string | null; ai_handling: boolean } | null>(null);
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const initialScrollConversationRef = useRef<string | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [atBottom, setAtBottom] = useState(true);
+
 
   // Carrega ai_status da conversa + realtime + último motivo de handoff
   useEffect(() => {
