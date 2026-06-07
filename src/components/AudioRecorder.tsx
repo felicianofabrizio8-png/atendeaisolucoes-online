@@ -151,11 +151,16 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     setState("idle");
   };
 
-  // Transcoda MP4/AAC (gravado no Safari/iOS) para OGG/Opus real no cliente.
-  // iOS preset: bitrate 64 kbps para baixar rápido no WhatsApp do cliente.
-  const transcodeMp4ToOgg = async (mp4Blob: Blob): Promise<{ blob: Blob; elapsedMs: number; bitrate: number }> => {
+  // Transcoda áudio gravado nativamente (MP4/AAC no iOS, WebM/Opus no Android)
+  // para OGG/Opus padronizado, fora do caminho de gravação.
+  // Fluxo: decodeAudioData → OfflineAudioContext (mono 48kHz) → opus-recorder.
+  const transcodeToOgg = async (
+    sourceBlob: Blob,
+    bitrate: number,
+    logTag: "[AUDIO IOS TRANSCODE]" | "[AUDIO ANDROID TRANSCODE]"
+  ): Promise<{ blob: Blob; elapsedMs: number; bitrate: number }> => {
     const t0 = Date.now();
-    const arr = await mp4Blob.arrayBuffer();
+    const arr = await sourceBlob.arrayBuffer();
     const AC: typeof AudioContext =
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ??
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -178,7 +183,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     }
 
     const targetRate = 48000;
-    const iosBitrate = 64000;
     const offline = new (
       (window as unknown as { OfflineAudioContext: typeof OfflineAudioContext }).OfflineAudioContext
     )(1, Math.ceil(decoded.duration * targetRate), targetRate);
@@ -199,7 +203,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       encoderApplication: 2048, // voice
       encoderSampleRate: targetRate,
       encoderFrameSize: 20,
-      encoderBitRate: iosBitrate,
+      encoderBitRate: bitrate,
       numberOfChannels: 1,
       streamPages: false,
       sourceNode: playSrc,
@@ -238,40 +242,48 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     const bytes = new Uint8Array(await oggBlob.arrayBuffer());
     const valid = hasOggOpusBytes(bytes);
     const elapsedMs = Date.now() - t0;
-    console.log("[AUDIO IOS TRANSCODE]", {
+    console.log(logTag, {
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-      input_mime: mp4Blob.type,
-      input_size: mp4Blob.size,
+      input_mime: sourceBlob.type,
+      input_size: sourceBlob.size,
       decoded_duration_sec: decoded.duration,
       decoded_sample_rate: decoded.sampleRate,
       decoded_channels: decoded.numberOfChannels,
       output_mime: "audio/ogg",
       output_size: oggBlob.size,
-      output_bitrate: iosBitrate,
+      output_bitrate: bitrate,
       output_valid_ogg_opus: valid,
       elapsed_ms: elapsedMs,
     });
     if (!valid) throw new Error("Transcodificação não produziu OGG/Opus válido");
-    return { blob: oggBlob, elapsedMs, bitrate: iosBitrate };
+    return { blob: oggBlob, elapsedMs, bitrate };
   };
 
-  const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
-    // iOS/Safari grava MP4 nativo; precisamos transcodar para OGG antes do envio.
+  const finalize = async (
+    blob: Blob,
+    source: "ogg_direct" | "ios_mp4" | "android_native"
+  ) => {
     let workBlob = blob;
-    let workExpected: "audio/ogg" = "audio/ogg";
-    if (expectedMime === "audio/mp4") {
+    let errorMessage = "Não foi possível gerar um áudio OGG/Opus válido. Grave novamente.";
+    if (source === "ios_mp4" || source === "android_native") {
+      const bitrate = source === "ios_mp4" ? 64000 : 96000;
+      const tag = source === "ios_mp4" ? "[AUDIO IOS TRANSCODE]" : "[AUDIO ANDROID TRANSCODE]";
+      errorMessage =
+        source === "ios_mp4"
+          ? "Não foi possível preparar o áudio neste iPhone. Tente atualizar o Safari ou envie uma mensagem de texto."
+          : "Não foi possível preparar o áudio neste Android. Tente novamente ou envie uma mensagem de texto.";
       try {
-        const out = await transcodeMp4ToOgg(blob);
+        const out = await transcodeToOgg(blob, bitrate, tag);
         workBlob = out.blob;
         transcodeMsRef.current = out.elapsedMs;
         bitrateRef.current = out.bitrate;
       } catch (err) {
-        console.error("[AUDIO IOS TRANSCODE] failed", err);
+        console.error(tag, "failed", err);
         stopStream();
         if (tickRef.current) window.clearInterval(tickRef.current);
         tickRef.current = null;
         setState("idle");
-        setError("Não foi possível preparar o áudio neste iPhone. Tente atualizar o Safari ou envie uma mensagem de texto.");
+        setError(errorMessage);
         return;
       }
     }
@@ -293,18 +305,18 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       original_size: blob.size,
       final_blob_type: workBlob.type,
       final_size: workBlob.size,
-      expected_mime: workExpected,
+      expected_mime: "audio/ogg",
       duration_seconds: seconds,
       valid_bytes: valid,
       first_bytes_hex: firstBytesHex,
-      transcoded_from_mp4: expectedMime === "audio/mp4",
+      source,
     });
     if (!valid) {
       stopStream();
       if (tickRef.current) window.clearInterval(tickRef.current);
       tickRef.current = null;
       setState("idle");
-      setError("Não foi possível gerar um áudio OGG/Opus válido. Grave novamente.");
+      setError(errorMessage);
       return;
     }
     const normalized = new Blob([bytes], { type: "audio/ogg" });
