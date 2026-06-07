@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/select";
 import { Loader2, RefreshCw, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
-import { WhatsappTemplateSuggestions } from "./WhatsappTemplateSuggestions";
 
 interface TemplateRow {
   id: string;
@@ -153,13 +152,11 @@ export function WhatsappTemplatesPanel() {
 
   return (
     <div className="space-y-4">
-      <WhatsappTemplateSuggestions />
-
       <Card>
         <CardHeader className="flex flex-row items-start md:items-center gap-2">
           <MessageSquareText className="h-5 w-5 text-primary shrink-0 mt-1 md:mt-0" />
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-base md:text-lg">Templates WhatsApp</CardTitle>
+            <CardTitle className="text-base md:text-lg">Templates sincronizados da Meta</CardTitle>
             <p className="text-xs text-muted-foreground mt-1 hidden md:block">
               Templates aprovados pela Meta são usados automaticamente fora da janela
               de 24h: Marketing para follow-ups e reativação, Utility para eventos
