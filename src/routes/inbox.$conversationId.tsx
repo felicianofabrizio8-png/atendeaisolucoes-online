@@ -868,7 +868,7 @@ function MediaAiNote({ message, kind }: { message: Message; kind: MediaKind }) {
   );
 }
 
-function MessageContent({ message }: { message: Message }) {
+function MessageContent({ message, isAgent = false }: { message: Message; isAgent?: boolean }) {
   const info = getMediaInfo(message);
   const reply = getReplyTo(message);
   const replyNode = reply ? <ReplyPreview reply={reply} /> : null;
