@@ -80,6 +80,46 @@ export async function getSignedImageUrl(stored: string): Promise<string> {
   }
 }
 
+// Thumbnails leves via Supabase Storage Image Transform (resize/quality no edge).
+// Cache separado por (path,width,quality). Uso opt-in pelo SmartImage.
+interface ThumbCachedUrl extends CachedUrl {}
+const thumbCache = new Map<string, ThumbCachedUrl>();
+
+export async function getSignedImageThumbUrl(
+  stored: string,
+  opts: { width?: number; quality?: number } = {},
+): Promise<string> {
+  if (!stored) return stored;
+  const path = extractStoragePath(stored);
+  if (!path) return stored;
+  const width = opts.width ?? 240;
+  const quality = opts.quality ?? 70;
+  const key = `${path}::w${width}q${quality}`;
+  const now = Date.now();
+  const hit = thumbCache.get(key);
+  if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, {
+        transform: { width, quality, resize: "cover" },
+      });
+    if (error || !data?.signedUrl) {
+      // Fallback: tenta URL pública (sem transform) — não quebra a UI
+      const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+      return pub.data.publicUrl;
+    }
+    thumbCache.set(key, {
+      url: data.signedUrl,
+      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
+    });
+    return data.signedUrl;
+  } catch (e) {
+    console.error("[getSignedImageThumbUrl] falhou, devolvendo original", e);
+    return getSignedImageUrl(stored);
+  }
+}
+
 // ============================================================================
 // Mídias recebidas via WhatsApp (bucket privado whatsapp-media)
 // ============================================================================

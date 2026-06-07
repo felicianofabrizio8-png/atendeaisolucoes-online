@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSignedImageUrl } from "@/lib/storage";
+import { getSignedImageUrl, getSignedImageThumbUrl } from "@/lib/storage";
 
 export interface SmartImageProps {
   src: string | null | undefined;
@@ -33,6 +33,10 @@ export interface SmartImageProps {
   fallback?: React.ReactNode;
   /** Se true, força carregamento imediato (sem lazy). */
   priority?: boolean;
+  /** Largura desejada para thumbnail (px). Quando setado, usa Image Transform do Storage. */
+  thumbWidth?: number;
+  /** Qualidade jpeg/webp (1-100). Default 70 quando thumbWidth é setado. */
+  thumbQuality?: number;
   onClick?: () => void;
 }
 
@@ -51,6 +55,8 @@ export function SmartImage({
   aspectRatio,
   fallback,
   priority,
+  thumbWidth,
+  thumbQuality,
   onClick,
 }: SmartImageProps) {
   const [resolved, setResolved] = useState<string | null>(() => {
@@ -77,7 +83,9 @@ export function SmartImage({
     setResolved(null);
     (async () => {
       try {
-        const url = await getSignedImageUrl(src);
+        const url = thumbWidth
+          ? await getSignedImageThumbUrl(src, { width: thumbWidth, quality: thumbQuality })
+          : await getSignedImageUrl(src);
         if (!cancelled) setResolved(url);
       } catch {
         if (!cancelled) {
@@ -88,7 +96,7 @@ export function SmartImage({
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [src, thumbWidth, thumbQuality]);
 
   const handleError = async () => {
     if (!retriedRef.current && src && needsResolution(src)) {

@@ -66,6 +66,9 @@ function HealthPage() {
       }
     },
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   if (error) {

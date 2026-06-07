@@ -177,7 +177,9 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
   path: '/$conversationId',
   getParentRoute: () => InboxRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/inbox.$conversationId.lazy').then((d) => d.Route),
+)
 const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
   id: '/configuracoes_/usuarios',
   path: '/configuracoes/usuarios',
