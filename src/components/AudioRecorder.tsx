@@ -93,8 +93,9 @@ function hasOggOpusBytes(bytes: Uint8Array): boolean {
 
 type UIState = "idle" | "recording" | "locked" | "processing" | "sending";
 
-export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
+export function AudioRecorder({ conversationId, disabled, onSent, onStateChange }: Props) {
   const [state, setState] = useState<UIState>("idle");
+  useEffect(() => { onStateChange?.(state); }, [state, onStateChange]);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragX, setDragX] = useState(0);
