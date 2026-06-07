@@ -245,7 +245,10 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     let workExpected: "audio/ogg" = "audio/ogg";
     if (expectedMime === "audio/mp4") {
       try {
-        workBlob = await transcodeMp4ToOgg(blob);
+        const out = await transcodeMp4ToOgg(blob);
+        workBlob = out.blob;
+        transcodeMsRef.current = out.elapsedMs;
+        bitrateRef.current = out.bitrate;
       } catch (err) {
         console.error("[AUDIO IOS TRANSCODE] failed", err);
         stopStream();
