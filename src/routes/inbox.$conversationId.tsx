@@ -1388,24 +1388,24 @@ function MediaSendPanel({
   const [activeReply, setActiveReply] = useState<QuickReply | null>(null);
   const [replyText, setReplyText] = useState("");
 
+  const [savingReply, setSavingReply] = useState(false);
+  const [multiSendProgress, setMultiSendProgress] = useState<{ current: number; total: number } | null>(null);
+
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    listQuickReplies(companyId, { activeOnly: true })
+    ensureDefaultQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
-        setQuickReplies(rows);
-        if (rows.length === 0) {
-          console.log("QUICK_REPLIES_EMPTY", { company_id: companyId });
-        } else {
-          console.log("QUICK_REPLIES_LOADED", {
-            company_id: companyId,
-            count: rows.length,
-            ids: rows.map((r) => r.id),
-          });
-        }
+        setQuickReplies(rows.filter((r) => r.active));
       })
-      .catch((e) => console.error("[quick_replies load]", e));
+      .catch((e) => {
+        console.error("[quick_replies load]", e);
+        // Fallback: tenta apenas listar sem semear
+        listQuickReplies(companyId, { activeOnly: true })
+          .then((rows) => !cancelled && setQuickReplies(rows))
+          .catch(() => {});
+      });
     return () => {
       cancelled = true;
     };
