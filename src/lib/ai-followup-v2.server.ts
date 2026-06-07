@@ -115,11 +115,19 @@ export function humanizeTemplate(
   rawTemplate: string,
   attemptNumber: number,
   seed: number,
+  vars: Record<string, string> = {},
 ): { text: string; variant: number } {
+  // Substituição final de placeholders ({{nome}}, {{produto}}, {{agente}}, ...).
+  // Executada também AO FINAL para cobrir placeholders introduzidos pelas
+  // variações de saudação/CTA (ex.: "E aí {{nome}}"), evitando vazar
+  // "{{nome}}" no WhatsApp.
+  const interpolate = (s: string): string =>
+    s.replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? "");
+
   try {
     // Variante 1 = template original; 2+ aplica mutação
     if (attemptNumber <= 1 && seed % 3 === 0) {
-      return { text: rawTemplate, variant: 0 };
+      return { text: interpolate(rawTemplate), variant: 0 };
     }
     let text = rawTemplate;
     // Substitui saudação inicial se começar com "Oi" / "Olá"
@@ -138,9 +146,9 @@ export function humanizeTemplate(
       const cta = pickSeeded(CTAS, seed, attemptNumber + 13);
       text = text.trim() + "\n\n" + cta;
     }
-    return { text, variant: (seed * 31 + attemptNumber) | 0 };
+    return { text: interpolate(text), variant: (seed * 31 + attemptNumber) | 0 };
   } catch {
-    return { text: rawTemplate, variant: 0 };
+    return { text: interpolate(rawTemplate), variant: 0 };
   }
 }
 
