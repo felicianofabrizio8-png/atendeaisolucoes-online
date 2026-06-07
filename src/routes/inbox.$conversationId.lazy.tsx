@@ -2438,7 +2438,7 @@ function ConversationPage() {
       olderLoadingRef.current = true;
       const prevScrollHeight = el.scrollHeight;
       const prevScrollTop = el.scrollTop;
-      void loadConversationOlder(conversationId, oldest.at, 50)
+      void loadConversationOlder(conversationId, oldest.at, oldest.id, 50)
         .then((res) => {
           setHasMoreOlder(res.hasMore);
           // Restaura posição: nova altura - altura antiga + topo antigo.
