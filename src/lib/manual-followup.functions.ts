@@ -27,7 +27,7 @@ export const runFollowupNowForConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => Input.parse(data))
   .handler(async ({ data, context }): Promise<ManualFollowupResult> => {
-    const { supabase, userId } = context as {
+    const { supabase, userId } = context as unknown as {
       supabase: {
         from: (t: string) => {
           select: (c: string) => {
