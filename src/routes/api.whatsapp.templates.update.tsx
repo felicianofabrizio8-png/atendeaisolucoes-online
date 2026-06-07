@@ -2,15 +2,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const PURPOSES = new Set([
-  "quote_no_reply",
-  "lead_silent",
-  "visit_no_return",
-  "hot_lead_idle",
-  "returning_customer",
-  "appointment_confirmation",
-  "conversation_resume",
-]);
+// Propósito → categoria esperada (marketing ou utility).
+// Marketing: follow-ups e reativação. Utility: eventos operacionais.
+const PURPOSE_CATEGORY: Record<string, "marketing" | "utility"> = {
+  // Legacy + canônicos de marketing
+  quote_no_reply: "marketing",
+  lead_silent: "marketing",
+  hot_lead_idle: "marketing",
+  returning_customer: "marketing",
+  conversation_resume: "marketing",
+  quote_followup: "marketing",
+  reactivation: "marketing",
+  // Operacionais (utility)
+  visit_no_return: "utility",
+  appointment_confirmation: "utility",
+  visit_confirmed: "utility",
+  visit_rescheduled: "utility",
+  installation_confirmed: "utility",
+};
+const PURPOSES = new Set(Object.keys(PURPOSE_CATEGORY));
 
 interface UpdateBody {
   id?: string;
