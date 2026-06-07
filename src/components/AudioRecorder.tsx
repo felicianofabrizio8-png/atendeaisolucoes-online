@@ -94,6 +94,9 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const tickRef = useRef<number | null>(null);
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const bitrateRef = useRef<number>(0);
+  const transcodeMsRef = useRef<number>(0);
+  const platformRef = useRef<"ios_safari" | "android_or_desktop">("android_or_desktop");
 
   
 
@@ -133,9 +136,8 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   };
 
   // Transcoda MP4/AAC (gravado no Safari/iOS) para OGG/Opus real no cliente.
-  // Usa AudioContext.decodeAudioData → OfflineAudioContext (48kHz mono) →
-  // opus-recorder com sourceNode, gerando .ogg válido (OggS + OpusHead).
-  const transcodeMp4ToOgg = async (mp4Blob: Blob): Promise<Blob> => {
+  // iOS preset: bitrate 64 kbps para baixar rápido no WhatsApp do cliente.
+  const transcodeMp4ToOgg = async (mp4Blob: Blob): Promise<{ blob: Blob; elapsedMs: number; bitrate: number }> => {
     const t0 = Date.now();
     const arr = await mp4Blob.arrayBuffer();
     const AC: typeof AudioContext =
@@ -146,7 +148,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     let decoded: AudioBuffer;
     try {
       decoded = await new Promise<AudioBuffer>((resolve, reject) => {
-        // Safari mais antigo só aceita callback-form.
         try {
           const p = decodeCtx.decodeAudioData(arr.slice(0), resolve, reject);
           if (p && typeof (p as Promise<AudioBuffer>).then === "function") {
@@ -161,17 +162,16 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     }
 
     const targetRate = 48000;
+    const iosBitrate = 64000;
     const offline = new (
       (window as unknown as { OfflineAudioContext: typeof OfflineAudioContext }).OfflineAudioContext
     )(1, Math.ceil(decoded.duration * targetRate), targetRate);
     const src = offline.createBufferSource();
     src.buffer = decoded;
-    // Down-mix para mono via gain split (BufferSource já mescla canais ao conectar em destino mono).
     src.connect(offline.destination);
     src.start(0);
     const monoBuffer = await offline.startRendering();
 
-    // opus-recorder a partir de sourceNode num AudioContext real.
     const mod = await import("opus-recorder");
     const RecorderCtor = mod.default;
     const playCtx = new AC({ sampleRate: targetRate });
@@ -183,7 +183,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       encoderApplication: 2048, // voice
       encoderSampleRate: targetRate,
       encoderFrameSize: 20,
-      encoderBitRate: 96000,
+      encoderBitRate: iosBitrate,
       numberOfChannels: 1,
       streamPages: false,
       sourceNode: playSrc,
@@ -205,7 +205,6 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
 
     const oggBlob = await new Promise<Blob>((resolve, reject) => {
       rec.onstop = () => resolve(new Blob(chunks, { type: "audio/ogg" }));
-      // Quando o buffer termina, paramos o recorder.
       playSrc.onended = () => {
         try { void rec.stop(); } catch (e) { reject(e); }
       };
@@ -222,6 +221,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
 
     const bytes = new Uint8Array(await oggBlob.arrayBuffer());
     const valid = hasOggOpusBytes(bytes);
+    const elapsedMs = Date.now() - t0;
     console.log("[AUDIO IOS TRANSCODE]", {
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
       input_mime: mp4Blob.type,
@@ -231,11 +231,12 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       decoded_channels: decoded.numberOfChannels,
       output_mime: "audio/ogg",
       output_size: oggBlob.size,
+      output_bitrate: iosBitrate,
       output_valid_ogg_opus: valid,
-      elapsed_ms: Date.now() - t0,
+      elapsed_ms: elapsedMs,
     });
     if (!valid) throw new Error("Transcodificação não produziu OGG/Opus válido");
-    return oggBlob;
+    return { blob: oggBlob, elapsedMs, bitrate: iosBitrate };
   };
 
   const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
@@ -244,7 +245,10 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     let workExpected: "audio/ogg" = "audio/ogg";
     if (expectedMime === "audio/mp4") {
       try {
-        workBlob = await transcodeMp4ToOgg(blob);
+        const out = await transcodeMp4ToOgg(blob);
+        workBlob = out.blob;
+        transcodeMsRef.current = out.elapsedMs;
+        bitrateRef.current = out.bitrate;
       } catch (err) {
         console.error("[AUDIO IOS TRANSCODE] failed", err);
         stopStream();
@@ -308,9 +312,21 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       return;
     }
 
+    const uaEarly = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const safariEarly = isSafariLike();
+    // Constraints recomendadas para voice notes — EC/NS/AGC ligados melhoram a clareza
+    // em ambientes reais (eco do alto-falante do celular, ruído de fundo, microfone fraco).
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 48000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "NotAllowedError" || name === "SecurityError") {
@@ -325,23 +341,39 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     streamRef.current = stream;
     chunksRef.current = [];
 
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const safari = isSafariLike();
+    // Log das constraints reais aplicadas pelo browser (útil pra debugar Android).
+    const trackSettings = (() => {
+      try {
+        return stream.getAudioTracks()[0]?.getSettings?.() ?? null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const ua = uaEarly;
+    const safari = safariEarly;
     const safariMime = safari ? pickSafariNativeMime() : null;
     const useNative = Boolean(safariMime);
     const targetSampleRate = 48000;
-    const targetBitrate = useNative ? 64000 : 96000;
+    // Presets por plataforma:
+    // - iOS: 64 kbps no OGG final (após transcode) para baixar rápido no WhatsApp.
+    // - Android/Desktop: 128 kbps direto no opus-recorder para voz clara.
+    const targetBitrate = useNative ? 64000 : 128000;
+    platformRef.current = safari ? "ios_safari" : "android_or_desktop";
+    bitrateRef.current = targetBitrate;
 
     console.log("[AUDIO PLATFORM]", {
       user_agent: ua,
-      platform: safari ? "ios_safari" : "android_or_desktop",
+      platform: platformRef.current,
       encoder: useNative ? "MediaRecorder(native)" : "opus-recorder",
       chosen_format: useNative ? safariMime : "audio/ogg;codecs=opus",
       sample_rate: targetSampleRate,
       bitrate: targetBitrate,
+      preset: useNative ? "ios_64kbps_fast_download" : "android_128kbps_clear_voice",
+      mic_constraints: trackSettings,
       reason: useNative
-        ? "Safari/iOS — grava MP4/AAC nativo e transcoda para OGG/Opus no cliente antes do envio."
-        : "Android/Desktop — usa opus-recorder produzindo OGG/Opus real em 48kHz mono / 96kbps.",
+        ? "iOS/Safari grava MP4/AAC nativo e transcoda para OGG/Opus 64 kbps antes do envio (carrega rápido no WhatsApp)."
+        : "Android/Desktop usa opus-recorder em 48kHz mono / 128kbps / voice para máxima clareza.",
       native_mp4_supported:
         typeof MediaRecorder !== "undefined" &&
         (() => {
@@ -506,11 +538,13 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       fd.append("client_blob_type", blob.type);
       fd.append("client_first_bytes_hex", firstBytesHex);
 
+      const uploadStart = Date.now();
       const res = await fetch("/api/whatsapp/send-audio", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
+      const uploadMs = Date.now() - uploadStart;
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         stage?: string;
@@ -530,6 +564,18 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         detected_audio?: string | null;
         declared_mime?: string | null;
       };
+      console.log("[AUDIO QUALITY METRICS]", {
+        platform: platformRef.current,
+        duration_seconds: seconds,
+        final_size_bytes: blob.size,
+        bitrate_bps: bitrateRef.current,
+        transcode_ms: transcodeMsRef.current,
+        upload_ms: uploadMs,
+        meta_http_status: res.status,
+        meta_detected_audio: json.detected_audio ?? null,
+        meta_signed_url_content_type: json.signed_url_content_type ?? null,
+        webhook_ok: res.ok,
+      });
       console.log("[AUDIO MOBILE DEBUG]", {
         stage: "send_response",
         http_status: res.status,
