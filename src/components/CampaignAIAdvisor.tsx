@@ -9,6 +9,7 @@ import { Loader2, Sparkles, Wand2, AlertTriangle, CheckCircle2, Copy, History, R
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { CampaignAIPremiumInsights } from "@/components/CampaignAIPremiumInsights";
 
 interface DiagnosisShape {
   health?: "boa" | "atencao" | "ruim" | "sem_dados";
