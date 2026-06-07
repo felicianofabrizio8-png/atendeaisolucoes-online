@@ -286,13 +286,22 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     if (!prompt) return;
     const key = `${variant}-${format}`;
     setImages((p) => ({ ...p, [key]: { format, url: "", generating: true } }));
+    setConfirmed((p) => ({ ...p, [key]: false }));
     try {
       const res = await fetch("/api/ai/creative-generator", {
         method: "POST", headers: await authHeader(),
         body: JSON.stringify({ mode: "generate-image", image_url: sourceImage, prompt, format, preserve_product: config.preserve_product }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Falha");
+      if (!res.ok) {
+        if (data?.preserve_failed) {
+          toast.error(data.error, { duration: 6000 });
+        } else {
+          toast.error(data?.error ?? "Falha");
+        }
+        setImages((p) => { const n = { ...p }; delete n[key]; return n; });
+        return;
+      }
       const url = `data:image/png;base64,${data.b64_json}`;
       setImages((p) => ({ ...p, [key]: { format, url, generating: false } }));
     } catch (e: any) {
@@ -300,6 +309,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       setImages((p) => { const n = { ...p }; delete n[key]; return n; });
     }
   };
+
 
   // ============ SAVE ============
   const saveVariant = async (variant: VariantKey) => {
