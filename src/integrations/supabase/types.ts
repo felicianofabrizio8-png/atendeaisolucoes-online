@@ -1832,6 +1832,23 @@ export type Database = {
         }
         Returns: boolean
       }
+      latest_messages_per_conversation: {
+        Args: { _company_id: string }
+        Returns: {
+          at: string
+          conversation_id: string
+          deleted_at: string
+          deleted_for: string
+          delivery_status: string
+          edited_at: string
+          id: string
+          role: Database["public"]["Enums"]["message_role"]
+          source_metadata: Json
+          source_subtype: string
+          status_updated_at: string
+          text: string
+        }[]
+      }
       log_audit: {
         Args: {
           _action: string
