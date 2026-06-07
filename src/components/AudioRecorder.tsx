@@ -806,7 +806,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           Só aparece depois que a gravação realmente começou. */}
       {showRecordingOverlay && (
         <div
-          className="pointer-events-none absolute bottom-full right-0 mb-2 flex items-center gap-2 bg-card border border-destructive/40 shadow-lg rounded-full px-3 h-10 min-w-[220px] max-w-[80vw]"
+          className="pointer-events-none absolute bottom-full right-0 mb-2 flex items-center gap-2 bg-card border border-destructive/40 shadow-lg rounded-full px-3 h-10 min-w-[240px] max-w-[80vw]"
           aria-live="polite"
         >
           <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -829,6 +829,17 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
               "‹ deslize p/ cancelar"
             )}
           </span>
+          {/* Botão X sempre clicável — escape caso a gravação fique "presa".
+              pointer-events-auto sobrescreve o pointer-events-none do overlay. */}
+          <button
+            type="button"
+            onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); }}
+            onClick={(ev) => { ev.stopPropagation(); cancelRecording(); }}
+            aria-label="Cancelar gravação"
+            className="pointer-events-auto ml-1 h-7 w-7 inline-flex items-center justify-center rounded-full bg-destructive/15 hover:bg-destructive/25 text-destructive shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
           <div
             className="absolute -top-8 right-3 flex flex-col items-center text-destructive/80"
             style={{ transform: `translateY(${Math.max(dragY, -40)}px)`, opacity: Math.min(1, Math.abs(dragY) / LOCK_THRESHOLD + 0.4) }}
@@ -837,6 +848,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           </div>
         </div>
       )}
+
 
       {error && (
         <div role="alert" className="absolute bottom-full right-0 mb-2 rounded-md bg-destructive/10 border border-destructive/40 text-destructive text-xs px-3 py-2 whitespace-nowrap">
