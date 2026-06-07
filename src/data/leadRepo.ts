@@ -296,18 +296,22 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .from("conversations")
         .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections")
         .eq("company_id", companyId),
-      supabase
-        .from("messages")
-        .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at")
-        .eq("company_id", companyId)
-        .order("at", { ascending: false })
-        .limit(1000),
+      // Onda 2.3: somente a última mensagem de cada conversa (preview do inbox).
+      // O histórico de cada conversa é carregado sob demanda em loadConversationRecent().
+      (supabase.rpc as unknown as (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: DbMessage[] | null; error: unknown }>)(
+        "latest_messages_per_conversation",
+        { _company_id: companyId },
+      ),
     ]);
     remoteLeads = (ls ?? []).map((r) => toLead(r as DbLead));
     remoteConversations = (cs ?? []).map((r) =>
       toConversation(r as DbConversation, slaMinutes),
     );
     remoteMessages = (ms ?? []).map((r) => toMessage(r as DbMessage));
+
     remoteLoaded = true;
     mode = "remote";
     notify();
