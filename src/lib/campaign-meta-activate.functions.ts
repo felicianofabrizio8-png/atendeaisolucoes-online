@@ -75,7 +75,7 @@ export const activateCampaignOnMeta = createServerFn({ method: "POST" })
     const sb = supabase as unknown as {
       rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null }>;
     };
-    const { data: isAdmin } = await sb.rpc("has_role", { _user_id: userId, _role: "admin" });
+    const { data: isAdmin } = await sb.rpc("has_role", { _user_id: userId, _company_id: companyId, _role: "admin" });
     if (!isAdmin) {
       return { ok: false as const, error: "not_admin", message: "Apenas administradores podem ativar campanhas." };
     }

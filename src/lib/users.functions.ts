@@ -38,6 +38,7 @@ async function assertAdmin(ctx: {
   if (!prof?.company_id) throw new Error("Usuário sem empresa.");
   const { data: isAdmin } = await s.rpc("has_role", {
     _user_id: ctx.userId,
+    _company_id: prof.company_id,
     _role: "admin",
   });
   if (!isAdmin) throw new Error("Apenas administradores podem executar esta ação.");

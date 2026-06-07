@@ -74,11 +74,15 @@ async function getCompanyId(
   return data?.company_id ?? null;
 }
 
-async function hasAdminRole(supabase: unknown, userId: string): Promise<boolean> {
+async function hasAdminRole(supabase: unknown, userId: string, companyId: string): Promise<boolean> {
   const sb = supabase as {
     rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null }>;
   };
-  const { data } = await sb.rpc("has_role", { _user_id: userId, _role: "admin" });
+  const { data } = await sb.rpc("has_role", {
+    _user_id: userId,
+    _company_id: companyId,
+    _role: "admin",
+  });
   return Boolean(data);
 }
 
