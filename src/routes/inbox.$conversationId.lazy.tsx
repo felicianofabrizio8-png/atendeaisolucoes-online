@@ -1,4 +1,7 @@
 import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
+import { Zap } from "lucide-react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -2332,6 +2335,48 @@ function ConversationPage() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [atBottom, setAtBottom] = useState(true);
 
+  // ---- Manual follow-up (admin only) ----
+  const { profile: authProfile } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!authProfile?.id || !authProfile.company_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc("has_role", {
+        _user_id: authProfile.id,
+        _company_id: authProfile.company_id,
+        _role: "admin",
+      });
+      if (!cancelled) setIsAdmin(Boolean(data));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authProfile?.id, authProfile?.company_id]);
+  const [manualRunning, setManualRunning] = useState(false);
+  const [manualResult, setManualResult] = useState<ManualFollowupResult | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const runManualFollowup = useServerFn(runFollowupNowForConversation);
+  const handleManualFollowup = useCallback(async () => {
+    if (manualRunning) return;
+    setManualRunning(true);
+    setManualError(null);
+    setManualResult(null);
+    try {
+      const res = await runManualFollowup({ data: { conversationId } });
+      setManualResult(res);
+      if (res.sendStatus === "sent") toast.success("Follow-up enviado");
+      else if (res.sendStatus === "failed") toast.error("Falha ao enviar follow-up");
+      else if (!res.eligible) toast.message("Follow-up bloqueado", { description: res.blockedReason });
+    } catch (e) {
+      setManualError(e instanceof Error ? e.message : String(e));
+      toast.error("Erro ao executar follow-up");
+    } finally {
+      setManualRunning(false);
+    }
+  }, [conversationId, manualRunning, runManualFollowup]);
+
+
 
   // Carrega ai_status da conversa + realtime + último motivo de handoff
   useEffect(() => {
@@ -2825,6 +2870,22 @@ function ConversationPage() {
               )}
             </div>
           </div>
+          {isAdmin && !closedInfo && (
+            <button
+              type="button"
+              onClick={handleManualFollowup}
+              disabled={manualRunning}
+              title="Executa o motor de follow-up agora, ignorando os tempos configurados"
+              className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold shrink-0 disabled:opacity-50"
+            >
+              {manualRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">Executar Follow-up Agora</span>
+            </button>
+          )}
           {!closedInfo && (
             <>
               <button
@@ -2843,6 +2904,101 @@ function ConversationPage() {
             </>
           )}
         </header>
+
+        {/* Manual follow-up result modal */}
+        {(manualResult || manualError) && (
+          <div
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={() => {
+              setManualResult(null);
+              setManualError(null);
+            }}
+          >
+            <div
+              className="bg-background border border-border rounded-lg shadow-xl max-w-md w-full p-5 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Execução manual de Follow-up</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualResult(null);
+                    setManualError(null);
+                  }}
+                  className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent"
+                  aria-label="Fechar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {manualError ? (
+                <div className="text-sm text-destructive">{manualError}</div>
+              ) : manualResult ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Elegibilidade:</span>
+                    {manualResult.eligible ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Elegível
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                        <XCircle className="h-3.5 w-3.5" /> Não elegível
+                      </span>
+                    )}
+                  </div>
+                  {manualResult.blockedReason && (
+                    <div>
+                      <span className="text-muted-foreground">Motivo do bloqueio: </span>
+                      <span className="font-medium">{manualResult.blockedReason}</span>
+                    </div>
+                  )}
+                  {manualResult.rule && (
+                    <div>
+                      <span className="text-muted-foreground">Regra: </span>
+                      <span className="font-mono text-xs">{manualResult.rule}</span>
+                    </div>
+                  )}
+                  {manualResult.generatedMessage && (
+                    <div>
+                      <div className="text-muted-foreground mb-1">Mensagem gerada:</div>
+                      <div className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap">
+                        {manualResult.generatedMessage}
+                      </div>
+                    </div>
+                  )}
+                  {manualResult.sendStatus && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Status WhatsApp:</span>
+                      {manualResult.sendStatus === "sent" && (
+                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Enviado
+                          {manualResult.via ? ` (${manualResult.via})` : ""}
+                        </span>
+                      )}
+                      {manualResult.sendStatus === "failed" && (
+                        <span className="inline-flex items-center gap-1 text-destructive font-semibold">
+                          <XCircle className="h-3.5 w-3.5" /> Falhou
+                        </span>
+                      )}
+                      {manualResult.sendStatus === "blocked" && (
+                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                          <XCircle className="h-3.5 w-3.5" /> Bloqueado
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {manualResult.sendError && (
+                    <div className="text-xs text-destructive">{manualResult.sendError}</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+
 
 
         {/* AI status banners */}
