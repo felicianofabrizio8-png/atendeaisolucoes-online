@@ -38,6 +38,12 @@ let realtimeChannel: RealtimeChannel | null = null;
 let realtimeCompanyId: string | null = null;
 let currentSlaMinutes = 30;
 
+// Paginação por conversa (Onda 2.2): histórico antigo via scroll-up.
+const olderHasMore = new Map<string, boolean>();
+const olderLoading = new Set<string>();
+const recentLoaded = new Set<string>();
+
+
 const listeners = new Set<() => void>();
 
 function notify() {
