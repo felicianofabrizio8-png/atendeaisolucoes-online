@@ -646,6 +646,7 @@ function MessageContent({ message }: { message: Message }) {
           <div className="space-y-1">
             {replyNode}
             <AudioPreview path={info.path} mime={info.mime} filename={info.filename} bucket={info.bucket} />
+            <AudioMimeDebug message={message} declaredMime={info.mime} />
             {caption}
             {aiNote}
           </div>
