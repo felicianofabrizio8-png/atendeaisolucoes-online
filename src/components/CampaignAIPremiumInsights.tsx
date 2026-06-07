@@ -82,10 +82,11 @@ function aggregate(rows: MetricRow[]) {
   const spent = rows.reduce((s, r) => s + (Number(r.spent) || 0), 0);
   const messages = rows.reduce((s, r) => s + (r.messages || 0), 0);
   const leads = rows.reduce((s, r) => s + (r.leads || 0), 0);
+  const reach = rows.reduce((s, r) => s + (r.reach || 0), 0);
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
   const cpc = clicks > 0 ? spent / clicks : 0;
   const cpm = impressions > 0 ? (spent / impressions) * 1000 : 0;
-  return { impressions, clicks, spent, messages, leads, ctr, cpc, cpm };
+  return { impressions, clicks, spent, messages, leads, reach, ctr, cpc, cpm };
 }
 
 // Score 0..100 — baseado em CTR, CPC, CPM, leads, mensagens e tempo ativo.
