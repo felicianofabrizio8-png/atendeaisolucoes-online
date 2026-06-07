@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSignedImageUrl } from "@/lib/storage";
+import { getSignedImageUrl, getSignedImageThumbUrl } from "@/lib/storage";
 
 export interface SmartImageProps {
   src: string | null | undefined;
@@ -33,6 +33,10 @@ export interface SmartImageProps {
   fallback?: React.ReactNode;
   /** Se true, força carregamento imediato (sem lazy). */
   priority?: boolean;
+  /** Largura desejada para thumbnail (px). Quando setado, usa Image Transform do Storage. */
+  thumbWidth?: number;
+  /** Qualidade jpeg/webp (1-100). Default 70 quando thumbWidth é setado. */
+  thumbQuality?: number;
   onClick?: () => void;
 }
 
