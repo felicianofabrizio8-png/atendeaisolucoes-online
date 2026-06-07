@@ -330,7 +330,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     const safariMime = safari ? pickSafariNativeMime() : null;
     const useNative = Boolean(safariMime);
     const targetSampleRate = 48000;
-    const targetBitrate = 64000;
+    const targetBitrate = useNative ? 64000 : 96000;
 
     console.log("[AUDIO PLATFORM]", {
       user_agent: ua,
@@ -340,8 +340,8 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       sample_rate: targetSampleRate,
       bitrate: targetBitrate,
       reason: useNative
-        ? "Safari/iOS — usa MediaRecorder nativo gerando MP4/AAC (Safari não produz OGG válido)."
-        : "Android/Desktop — usa opus-recorder produzindo OGG/Opus real em 48kHz / 64kbps.",
+        ? "Safari/iOS — grava MP4/AAC nativo e transcoda para OGG/Opus no cliente antes do envio."
+        : "Android/Desktop — usa opus-recorder produzindo OGG/Opus real em 48kHz mono / 96kbps.",
       native_mp4_supported:
         typeof MediaRecorder !== "undefined" &&
         (() => {
@@ -351,6 +351,15 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
             return false;
           }
         })(),
+    });
+
+    console.log("[AUDIO FORMAT SELECTED]", {
+      user_agent: ua,
+      final_upload_format: "audio/ogg;codecs=opus",
+      encoder: useNative ? "ios_native_mp4_then_transcode" : "opus_recorder_direct",
+      reason: useNative
+        ? "iOS/Safari grava MP4 e cliente converte para OGG/Opus antes de enviar à Meta."
+        : "Android/Desktop grava diretamente em OGG/Opus.",
     });
 
     try {
