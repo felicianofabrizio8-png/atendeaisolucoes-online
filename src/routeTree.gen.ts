@@ -28,7 +28,6 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
-import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
@@ -66,6 +65,9 @@ import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.pub
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 
 const CampanhasIndexLazyRouteImport = createFileRoute('/campanhas/')()
+const InboxConversationIdLazyRouteImport = createFileRoute(
+  '/inbox/$conversationId',
+)()
 const CampanhasNovaLazyRouteImport = createFileRoute('/campanhas/nova')()
 const CampanhasIdLazyRouteImport = createFileRoute('/campanhas/$id')()
 
@@ -156,6 +158,13 @@ const InboxIndexRoute = InboxIndexRouteImport.update({
   path: '/',
   getParentRoute: () => InboxRoute,
 } as any)
+const InboxConversationIdLazyRoute = InboxConversationIdLazyRouteImport.update({
+  id: '/$conversationId',
+  path: '/$conversationId',
+  getParentRoute: () => InboxRoute,
+} as any).lazy(() =>
+  import('./routes/inbox.$conversationId.lazy').then((d) => d.Route),
+)
 const CampanhasNovaLazyRoute = CampanhasNovaLazyRouteImport.update({
   id: '/campanhas/nova',
   path: '/campanhas/nova',
@@ -172,11 +181,6 @@ const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
   id: '/onboarding/whatsapp',
   path: '/onboarding/whatsapp',
   getParentRoute: () => rootRouteImport,
-} as any)
-const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
-  id: '/$conversationId',
-  path: '/$conversationId',
-  getParentRoute: () => InboxRoute,
 } as any)
 const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
   id: '/configuracoes_/usuarios',
@@ -379,10 +383,10 @@ export interface FileRoutesByFullPath {
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
-  '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
+  '/inbox/$conversationId': typeof InboxConversationIdLazyRoute
   '/inbox/': typeof InboxIndexRoute
   '/campanhas/': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
@@ -436,10 +440,10 @@ export interface FileRoutesByTo {
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
-  '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
+  '/inbox/$conversationId': typeof InboxConversationIdLazyRoute
   '/inbox': typeof InboxIndexRoute
   '/campanhas': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
@@ -495,10 +499,10 @@ export interface FileRoutesById {
   '/whatsapp': typeof WhatsappRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
-  '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
+  '/inbox/$conversationId': typeof InboxConversationIdLazyRoute
   '/inbox/': typeof InboxIndexRoute
   '/campanhas/': typeof CampanhasIndexLazyRoute
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
@@ -555,10 +559,10 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
-    | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
+    | '/inbox/$conversationId'
     | '/inbox/'
     | '/campanhas/'
     | '/api/ai/agent-takeover'
@@ -612,10 +616,10 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
-    | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
+    | '/inbox/$conversationId'
     | '/inbox'
     | '/campanhas'
     | '/api/ai/agent-takeover'
@@ -670,10 +674,10 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
-    | '/inbox/$conversationId'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
+    | '/inbox/$conversationId'
     | '/inbox/'
     | '/campanhas/'
     | '/api/ai/agent-takeover'
@@ -889,6 +893,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxIndexRouteImport
       parentRoute: typeof InboxRoute
     }
+    '/inbox/$conversationId': {
+      id: '/inbox/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/inbox/$conversationId'
+      preLoaderRoute: typeof InboxConversationIdLazyRouteImport
+      parentRoute: typeof InboxRoute
+    }
     '/campanhas/nova': {
       id: '/campanhas/nova'
       path: '/campanhas/nova'
@@ -909,13 +920,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/whatsapp'
       preLoaderRoute: typeof OnboardingWhatsappRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/inbox/$conversationId': {
-      id: '/inbox/$conversationId'
-      path: '/$conversationId'
-      fullPath: '/inbox/$conversationId'
-      preLoaderRoute: typeof InboxConversationIdRouteImport
-      parentRoute: typeof InboxRoute
     }
     '/configuracoes_/usuarios': {
       id: '/configuracoes_/usuarios'
@@ -1166,12 +1170,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface InboxRouteChildren {
-  InboxConversationIdRoute: typeof InboxConversationIdRoute
+  InboxConversationIdLazyRoute: typeof InboxConversationIdLazyRoute
   InboxIndexRoute: typeof InboxIndexRoute
 }
 
 const InboxRouteChildren: InboxRouteChildren = {
-  InboxConversationIdRoute: InboxConversationIdRoute,
+  InboxConversationIdLazyRoute: InboxConversationIdLazyRoute,
   InboxIndexRoute: InboxIndexRoute,
 }
 
@@ -1236,3 +1240,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

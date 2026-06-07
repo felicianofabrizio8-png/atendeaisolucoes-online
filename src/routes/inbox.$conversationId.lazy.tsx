@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
@@ -67,7 +67,7 @@ import { AITimeline } from "@/components/AITimeline";
 // caso típico de respostas a imagens enviadas pelo próprio agente.
 const MessagesContext = createContext<Message[]>([]);
 
-export const Route = createFileRoute("/inbox/$conversationId")({
+export const Route = createLazyFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
   validateSearch: (search: Record<string, unknown>): { quote?: string } => {
     if (typeof search.quote === "string") return { quote: search.quote };
@@ -3355,7 +3355,7 @@ function CloseSaleModal({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function MarkLostModal({
