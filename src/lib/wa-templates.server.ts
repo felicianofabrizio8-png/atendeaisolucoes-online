@@ -322,9 +322,18 @@ export async function sendWhatsappTemplate(params: {
     const error = e instanceof Error ? e.message : "falha de rede";
     await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
       template_name: template.name,
-      category: template.category,
+      template_category: template.category,
+      template_language: template.language,
+      purpose,
+      delivery_method: "template",
+      error,
+    });
+    await logErrorAndAudit(companyId, leadId, "template_network_error", {
+      template_name: template.name,
+      template_category: template.category,
       purpose,
       error,
+      conversation_id: conversationId,
     });
     return { ok: false, error: `network: ${error}` };
   }
@@ -345,14 +354,23 @@ export async function sendWhatsappTemplate(params: {
     console.error("[WA_TEMPLATE_HTTP]", res.status, raw.slice(0, 500));
     await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
       template_name: template.name,
-      category: template.category,
-      language: template.language,
+      template_category: template.category,
+      template_language: template.language,
       purpose,
+      delivery_method: "template",
       status: res.status,
       meta_error_code: metaError?.code ?? null,
       meta_error_subcode: metaError?.error_subcode ?? null,
       meta_error_type: metaError?.type ?? null,
       meta_error_message: metaError?.message ?? null,
+    });
+    await logErrorAndAudit(companyId, leadId, "template_send_error", {
+      template_name: template.name,
+      template_category: template.category,
+      purpose,
+      status: res.status,
+      meta_error_message: metaError?.message ?? null,
+      conversation_id: conversationId,
     });
     return {
       ok: false,
