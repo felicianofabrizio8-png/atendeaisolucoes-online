@@ -1,14 +1,24 @@
 // Gerador de Criativos com IA — wizard completo.
 // Fluxo: Upload → Análise → Configuração → Gerar variantes (texto+imagem) → Salvar/Usar.
 // Aditivo: não substitui o gerador existente em /campanhas/nova.
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Upload, Sparkles, Loader2, Wand2, ImageIcon, Eye, Save, ArrowRight,
-  Heart, Tag, Clock, Check, Award, RefreshCw, Download,
+  Heart, Tag, Clock, Check, Award, RefreshCw, Download, Package, Search, X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface ProductRow {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  price: number | null;
+  promo_price: number | null;
+  images: string[];
+}
 
 type Step = "upload" | "configure" | "results";
 type VariantKey = "emotion" | "offer" | "urgency";
