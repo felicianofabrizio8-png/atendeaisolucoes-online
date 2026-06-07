@@ -641,6 +641,35 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                           );
                         })()}
                       </div>
+
+                      {/* Comparação visual: original vs gerada */}
+                      {sourceImage && images[`${k}-${activeFormat}`]?.url && (
+                        <div className="rounded-lg border bg-card p-2 space-y-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Comparação: original × gerada</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground text-center">Original enviada</p>
+                              <img src={sourceImage} alt="original" className="w-full h-32 object-contain rounded border bg-muted/30" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground text-center">Gerada pela IA</p>
+                              <img src={images[`${k}-${activeFormat}`].url} alt="gerada" className="w-full h-32 object-contain rounded border bg-muted/30" />
+                            </div>
+                          </div>
+                          {config.preserve_product && (
+                            <label className="flex items-start gap-2 pt-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={!!confirmed[`${k}-${activeFormat}`]}
+                                onChange={(e) => setConfirmed((p) => ({ ...p, [`${k}-${activeFormat}`]: e.target.checked }))}
+                              />
+                              <span className="text-[11px] leading-snug">Confirmo que o produto gerado corresponde ao produto original.</span>
+                            </label>
+                          )}
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
                         {images[`${k}-${activeFormat}`]?.url && (
                           <>
@@ -655,6 +684,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                         )}
                       </div>
                     </div>
+
 
                     {/* Textos */}
                     <div className="space-y-2">
