@@ -1864,11 +1864,12 @@ function ProductsLibraryModal({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (path: string) => void;
+  onPick: (paths: string[]) => void;
 }) {
   const [, force] = useState(0);
   useEffect(() => subscribeProducts(() => force((n) => n + 1)), []);
   const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
   const all = listProducts();
   const filtered = useMemo<Product[]>(() => {
     const q = query.trim().toLowerCase();
@@ -1890,6 +1891,17 @@ function ProductsLibraryModal({
     return Array.from(map.entries());
   }, [filtered]);
 
+  const toggle = (img: string) => {
+    setSelected((prev) =>
+      prev.includes(img) ? prev.filter((p) => p !== img) : [...prev, img],
+    );
+  };
+  const clearSelection = () => setSelected([]);
+  const confirmSend = () => {
+    if (selected.length === 0) return;
+    onPick(selected);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
@@ -1899,7 +1911,7 @@ function ProductsLibraryModal({
         className="bg-card rounded-lg border border-border max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-border flex items-center justify-between gap-3">
+        <div className="p-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
           <div className="font-semibold text-sm flex items-center gap-2">
             <LibraryIcon className="h-4 w-4" /> Biblioteca de Produtos
           </div>
@@ -1908,13 +1920,16 @@ function ProductsLibraryModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar produto ou categoria…"
-            className="flex-1 max-w-xs rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="flex-1 min-w-[180px] max-w-xs rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <button onClick={onClose} className="p-1 hover:bg-muted rounded">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="overflow-y-auto p-4 space-y-6">
+        <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground">
+          Toque nas fotos para selecionar várias. Toque novamente para desmarcar.
+        </div>
+        <div className="overflow-y-auto p-4 space-y-6 flex-1">
           {byCategory.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-12">
               Nenhuma foto disponível. Adicione fotos aos seus produtos em /produtos.
@@ -1927,28 +1942,69 @@ function ProductsLibraryModal({
               </div>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
                 {items.flatMap((p) =>
-                  (p.images ?? []).map((img, i) => (
-                    <button
-                      key={`${p.id}-${i}`}
-                      onClick={() => onPick(img)}
-                      className="group relative rounded-md overflow-hidden border border-border hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
-                      title={p.name}
-                    >
-                      <SmartImage
-                        src={img}
-                        alt={p.name}
-                        aspectRatio="1/1"
-                        wrapperClassName="w-full"
-                      />
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                        <div className="text-[10px] text-white truncate">{p.name}</div>
-                      </div>
-                    </button>
-                  )),
+                  (p.images ?? []).map((img, i) => {
+                    const isSel = selected.includes(img);
+                    const selIndex = isSel ? selected.indexOf(img) + 1 : 0;
+                    return (
+                      <button
+                        key={`${p.id}-${i}`}
+                        type="button"
+                        onClick={() => toggle(img)}
+                        className={cn(
+                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition",
+                          isSel
+                            ? "border-primary ring-2 ring-primary"
+                            : "border-border hover:border-primary",
+                        )}
+                        title={p.name}
+                      >
+                        <SmartImage
+                          src={img}
+                          alt={p.name}
+                          aspectRatio="1/1"
+                          wrapperClassName="w-full"
+                        />
+                        {isSel && (
+                          <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
+                            {selIndex}
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                          <div className="text-[10px] text-white truncate">{p.name}</div>
+                        </div>
+                      </button>
+                    );
+                  }),
                 )}
               </div>
             </div>
           ))}
+        </div>
+        <div className="p-3 border-t border-border flex items-center justify-between gap-2 bg-card">
+          <div className="text-xs text-muted-foreground">
+            {selected.length === 0
+              ? "Nenhuma foto selecionada"
+              : `${selected.length} foto${selected.length > 1 ? "s" : ""} selecionada${selected.length > 1 ? "s" : ""}`}
+          </div>
+          <div className="flex items-center gap-2">
+            {selected.length > 0 && (
+              <button
+                onClick={clearSelection}
+                className="h-9 px-3 rounded-md text-sm hover:bg-muted"
+              >
+                Limpar
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={selected.length === 0}
+              onClick={confirmSend}
+              className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="h-4 w-4" />
+              {selected.length > 1 ? `Enviar ${selected.length} selecionadas` : "Enviar selecionada"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
