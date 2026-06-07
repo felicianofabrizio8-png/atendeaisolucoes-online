@@ -38,6 +38,7 @@ const nav: NavItem[] = [
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/campanhas", label: "Campanhas", icon: Megaphone },
+  { to: "/criativos", label: "Criativos IA", icon: Sparkles },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
