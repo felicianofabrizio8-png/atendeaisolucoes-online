@@ -2335,6 +2335,48 @@ function ConversationPage() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [atBottom, setAtBottom] = useState(true);
 
+  // ---- Manual follow-up (admin only) ----
+  const { profile: authProfile } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!authProfile?.id || !authProfile.company_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc("has_role", {
+        _user_id: authProfile.id,
+        _company_id: authProfile.company_id,
+        _role: "admin",
+      });
+      if (!cancelled) setIsAdmin(Boolean(data));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authProfile?.id, authProfile?.company_id]);
+  const [manualRunning, setManualRunning] = useState(false);
+  const [manualResult, setManualResult] = useState<ManualFollowupResult | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const runManualFollowup = useServerFn(runFollowupNowForConversation);
+  const handleManualFollowup = useCallback(async () => {
+    if (manualRunning) return;
+    setManualRunning(true);
+    setManualError(null);
+    setManualResult(null);
+    try {
+      const res = await runManualFollowup({ data: { conversationId } });
+      setManualResult(res);
+      if (res.sendStatus === "sent") toast.success("Follow-up enviado");
+      else if (res.sendStatus === "failed") toast.error("Falha ao enviar follow-up");
+      else if (!res.eligible) toast.message("Follow-up bloqueado", { description: res.blockedReason });
+    } catch (e) {
+      setManualError(e instanceof Error ? e.message : String(e));
+      toast.error("Erro ao executar follow-up");
+    } finally {
+      setManualRunning(false);
+    }
+  }, [conversationId, manualRunning, runManualFollowup]);
+
+
 
   // Carrega ai_status da conversa + realtime + último motivo de handoff
   useEffect(() => {
