@@ -2406,6 +2406,60 @@ function ConversationPage() {
   // Realtime do leadRepo cobre INSERT/UPDATE de mensagens.
   // (Polling de 25s removido — Onda 1 de performance.)
 
+  // Onda 2.2: ao abrir a conversa, garante que temos as últimas ~100 mensagens
+  // em memória (idempotente). loadRemote agora carrega apenas as 1000 mais
+  // recentes globalmente — esse fetch cobre conversas antigas reabertas.
+  useEffect(() => {
+    if (!conversationId) return;
+    void loadConversationRecent(conversationId, 100);
+  }, [conversationId]);
+
+  // Onda 2.2: scroll-up carrega histórico antigo usando `at` como cursor.
+  // Preserva a posição do scroll para que o usuário não perca o contexto.
+  const olderLoadingRef = useRef(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState<boolean>(() =>
+    hasMoreOlderMessages(conversationId),
+  );
+  useEffect(() => {
+    setHasMoreOlder(hasMoreOlderMessages(conversationId));
+  }, [conversationId]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (olderLoadingRef.current) return;
+      if (el.scrollTop > 80) return;
+      if (!hasMoreOlderMessages(conversationId)) {
+        setHasMoreOlder(false);
+        return;
+      }
+      const oldest = messages.find((m) => m.role !== "system");
+      if (!oldest) return;
+      olderLoadingRef.current = true;
+      const prevScrollHeight = el.scrollHeight;
+      const prevScrollTop = el.scrollTop;
+      void loadConversationOlder(conversationId, oldest.at, 50)
+        .then((res) => {
+          setHasMoreOlder(res.hasMore);
+          // Restaura posição: nova altura - altura antiga + topo antigo.
+          window.requestAnimationFrame(() => {
+            const node = scrollRef.current;
+            if (!node) return;
+            const delta = node.scrollHeight - prevScrollHeight;
+            if (delta > 0) node.scrollTop = prevScrollTop + delta;
+          });
+        })
+        .finally(() => {
+          olderLoadingRef.current = false;
+        });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+    // `messages` muda quando o repo carrega novas; precisamos do oldest atual.
+  }, [conversationId, messages]);
+
+
+
 
 
 
