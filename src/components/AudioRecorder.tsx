@@ -94,6 +94,9 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const tickRef = useRef<number | null>(null);
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const bitrateRef = useRef<number>(0);
+  const transcodeMsRef = useRef<number>(0);
+  const platformRef = useRef<"ios_safari" | "android_or_desktop">("android_or_desktop");
 
   
 
