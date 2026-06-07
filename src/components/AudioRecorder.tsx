@@ -744,8 +744,9 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           onPointerCancel={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           disabled={disabled}
-          aria-label="Pressione e segure para gravar áudio"
-          title="Pressione e segure para gravar"
+          aria-label={micPermission === "granted" ? "Pressione e segure para gravar áudio" : "Liberar microfone"}
+          title={micPermission === "granted" ? "Pressione e segure para gravar" : "Toque para liberar o microfone"}
+
           style={{ touchAction: "none" }}
           className={`h-11 w-11 md:h-9 md:w-9 inline-flex items-center justify-center rounded-full md:rounded-md select-none transition-colors ${
             showRecordingOverlay
