@@ -475,6 +475,9 @@ function CampaignDetailPage() {
           <TabsTrigger value="advisor" className="text-sm gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Gestor IA
           </TabsTrigger>
+          <TabsTrigger value="creatives" className="text-sm gap-1.5">
+            <Wand2 className="h-3.5 w-3.5" /> Criativos IA
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-5 mt-4">
