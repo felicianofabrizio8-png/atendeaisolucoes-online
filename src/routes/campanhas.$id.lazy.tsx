@@ -69,6 +69,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignAIAdvisor } from "@/components/CampaignAIAdvisor";
+import { CreativeGenerator } from "@/components/campaigns/CreativeGenerator";
 
 
 const routeApi = getRouteApi("/campanhas/$id");
@@ -474,6 +475,9 @@ function CampaignDetailPage() {
           <TabsTrigger value="advisor" className="text-sm gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Gestor IA
           </TabsTrigger>
+          <TabsTrigger value="creatives" className="text-sm gap-1.5">
+            <Wand2 className="h-3.5 w-3.5" /> Criativos IA
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-5 mt-4">
@@ -690,6 +694,14 @@ function CampaignDetailPage() {
 
         <TabsContent value="advisor" className="mt-4">
           <CampaignAIAdvisor campaignId={c.id} hasMetrics={Boolean(insights?.metrics)} />
+        </TabsContent>
+
+        <TabsContent value="creatives" className="mt-4">
+          <CreativeGenerator
+            companyId={c.company_id}
+            campaignId={c.id}
+            onUseInCampaign={() => toast.success("Criativo vinculado a esta campanha")}
+          />
         </TabsContent>
       </Tabs>
 
