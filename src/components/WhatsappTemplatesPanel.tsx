@@ -161,9 +161,9 @@ export function WhatsappTemplatesPanel() {
           <div className="flex-1 min-w-0">
             <CardTitle className="text-base md:text-lg">Templates WhatsApp</CardTitle>
             <p className="text-xs text-muted-foreground mt-1 hidden md:block">
-              Templates Utility aprovados pela Meta são usados automaticamente quando a
-              janela de 24h está fechada. Marketing/Authentication nunca são usados
-              automaticamente.
+              Templates aprovados pela Meta são usados automaticamente fora da janela
+              de 24h: Marketing para follow-ups e reativação, Utility para eventos
+              operacionais (visita / instalação).
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={sync} disabled={syncing} className="shrink-0 min-h-11 md:min-h-8 min-w-11 md:min-w-0 px-2 md:px-3">
