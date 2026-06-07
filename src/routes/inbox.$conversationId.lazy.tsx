@@ -2949,7 +2949,15 @@ function ConversationPage() {
         )}
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth p-3 md:p-4 pb-4 md:pb-6 space-y-3 overscroll-contain">
+          {!hasMoreOlder && messages.length > 0 && (
+            <div className="flex justify-center">
+              <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                Início da conversa
+              </span>
+            </div>
+          )}
           <MessagesContext.Provider value={messages}>
+
             {messages.map((m) => {
               if (m.role === "system") {
                 return (
