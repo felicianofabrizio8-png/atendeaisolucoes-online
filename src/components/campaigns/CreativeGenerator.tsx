@@ -125,6 +125,80 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
 
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ============ PRODUCT LIBRARY ============
+  const [sourceMode, setSourceMode] = useState<"upload" | "library">("upload");
+  const [products, setProducts] = useState<ProductRow[] | null>(null);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+
+  useEffect(() => {
+    if (sourceMode !== "library" || products !== null || !companyId) return;
+    setLoadingProducts(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id,name,category,description,price,promo_price,images")
+        .eq("company_id", companyId)
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error(error);
+        toast.error("Não foi possível carregar produtos.");
+        setProducts([]);
+      } else {
+        setProducts(
+          (data ?? []).map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            category: r.category,
+            description: r.description,
+            price: r.price != null ? Number(r.price) : null,
+            promo_price: r.promo_price != null ? Number(r.promo_price) : null,
+            images: Array.isArray(r.images) ? (r.images.filter((x: any) => typeof x === "string") as string[]) : [],
+          })),
+        );
+      }
+      setLoadingProducts(false);
+    })();
+  }, [sourceMode, products, companyId]);
+
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q),
+    );
+  }, [products, productSearch]);
+
+  const pickProductFromLibrary = async (p: ProductRow) => {
+    const url = p.images[0];
+    if (!url) {
+      toast.error("Esse produto não tem imagem cadastrada.");
+      return;
+    }
+    setSourceImage(url);
+    setSourcePath(url);
+    setConfig((c) => ({
+      ...c,
+      product_name: p.name,
+      product_description: [
+        p.category ? `Categoria: ${p.category}` : null,
+        p.price != null ? `Preço: R$ ${p.price.toFixed(2)}` : null,
+        p.promo_price != null ? `Promo: R$ ${p.promo_price.toFixed(2)}` : null,
+        p.description ?? null,
+      ]
+        .filter(Boolean)
+        .join(" • "),
+    }));
+    toast.success(`Produto "${p.name}" carregado.`);
+    void runAnalyze(url);
+  };
+
+
   // ============ UPLOAD ============
   const handleFile = async (file: File) => {
     if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem."); return; }
