@@ -23,6 +23,7 @@ interface Props {
   conversationId: string;
   disabled?: boolean;
   onSent?: () => void;
+  onStateChange?: (state: "idle" | "recording" | "locked" | "processing" | "sending") => void;
 }
 
 type RecorderLike = {
