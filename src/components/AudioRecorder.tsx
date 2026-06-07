@@ -538,11 +538,13 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       fd.append("client_blob_type", blob.type);
       fd.append("client_first_bytes_hex", firstBytesHex);
 
+      const uploadStart = Date.now();
       const res = await fetch("/api/whatsapp/send-audio", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
+      const uploadMs = Date.now() - uploadStart;
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         stage?: string;
@@ -562,6 +564,18 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
         detected_audio?: string | null;
         declared_mime?: string | null;
       };
+      console.log("[AUDIO QUALITY METRICS]", {
+        platform: platformRef.current,
+        duration_seconds: seconds,
+        final_size_bytes: blob.size,
+        bitrate_bps: bitrateRef.current,
+        transcode_ms: transcodeMsRef.current,
+        upload_ms: uploadMs,
+        meta_http_status: res.status,
+        meta_detected_audio: json.detected_audio ?? null,
+        meta_signed_url_content_type: json.signed_url_content_type ?? null,
+        webhook_ok: res.ok,
+      });
       console.log("[AUDIO MOBILE DEBUG]", {
         stage: "send_response",
         http_status: res.status,
