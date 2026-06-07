@@ -16,13 +16,45 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export type TemplateCategory = "utility" | "marketing" | "authentication";
 export type TemplatePurpose =
+  // Legacy purposes (mapeados para nomes canônicos abaixo)
   | "quote_no_reply"
   | "lead_silent"
   | "visit_no_return"
   | "hot_lead_idle"
   | "returning_customer"
   | "appointment_confirmation"
-  | "conversation_resume";
+  | "conversation_resume"
+  // Canonical purposes (mapeados 1:1 para um template aprovado)
+  | "quote_followup"          // Marketing: followup_orcamento
+  | "reactivation"            // Marketing: reativacao_cliente
+  | "visit_confirmed"         // Utility:   visita_confirmada
+  | "visit_rescheduled"       // Utility:   visita_reagendada
+  | "installation_confirmed"; // Utility:   instalacao_confirmada
+
+/**
+ * Mapeamento oficial de propósito → template aprovado na Cloud API.
+ * - Marketing: usado em follow-ups e reativação (sempre fora da janela 24h).
+ * - Utility:   usado em confirmações operacionais (visita / instalação).
+ */
+export const PURPOSE_TEMPLATE_MAP: Record<
+  TemplatePurpose,
+  { templateName: string; category: TemplateCategory }
+> = {
+  // Canônicos
+  quote_followup:           { templateName: "followup_orcamento",   category: "marketing" },
+  reactivation:             { templateName: "reativacao_cliente",   category: "marketing" },
+  visit_confirmed:          { templateName: "visita_confirmada",    category: "utility" },
+  visit_rescheduled:        { templateName: "visita_reagendada",    category: "utility" },
+  installation_confirmed:   { templateName: "instalacao_confirmada", category: "utility" },
+  // Legacy → caem nos canônicos
+  quote_no_reply:           { templateName: "followup_orcamento",   category: "marketing" },
+  lead_silent:              { templateName: "followup_orcamento",   category: "marketing" },
+  visit_no_return:          { templateName: "followup_orcamento",   category: "marketing" },
+  hot_lead_idle:            { templateName: "followup_orcamento",   category: "marketing" },
+  returning_customer:       { templateName: "reativacao_cliente",   category: "marketing" },
+  appointment_confirmation: { templateName: "visita_confirmada",    category: "utility" },
+  conversation_resume:      { templateName: "reativacao_cliente",   category: "marketing" },
+};
 
 export interface TemplateRow {
   id: string;
@@ -83,11 +115,43 @@ export async function isWithin24hWindow(
  *  - Nunca usa marketing/authentication em follow-up automático.
  *  - Exige status='approved' e auto_use=true.
  */
+/**
+ * Encontra o template aprovado que atende um propósito.
+ *
+ * Estratégia (em ordem):
+ *  1) Lookup direto pelo NOME canônico do template (Marketing ou Utility,
+ *     conforme `PURPOSE_TEMPLATE_MAP`) — exige status='approved'.
+ *  2) Fallback: lookup pelo campo legacy `purpose` (auto_use + approved),
+ *     respeitando a categoria esperada do mapa.
+ *
+ * Nunca devolve template em status diferente de "approved".
+ */
 export async function findApprovedTemplateForPurpose(
   companyId: string,
   purpose: TemplatePurpose,
   preferredLanguage = "pt_BR",
 ): Promise<TemplateRow | null> {
+  const mapped = PURPOSE_TEMPLATE_MAP[purpose];
+  const expectedCategory = mapped?.category ?? "utility";
+  const expectedName = mapped?.templateName ?? null;
+
+  // 1) Busca pelo nome canônico
+  if (expectedName) {
+    const { data } = await supabaseAdmin
+      .from("whatsapp_templates")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("name", expectedName)
+      .eq("status", "approved")
+      .eq("category", expectedCategory);
+    const rows = (data ?? []) as unknown as TemplateRow[];
+    if (rows.length > 0) {
+      const lang = rows.find((r) => r.language === preferredLanguage);
+      return lang ?? rows[0];
+    }
+  }
+
+  // 2) Fallback legacy: pelo campo purpose + auto_use
   const { data } = await supabaseAdmin
     .from("whatsapp_templates")
     .select("*")
@@ -95,7 +159,7 @@ export async function findApprovedTemplateForPurpose(
     .eq("purpose", purpose)
     .eq("auto_use", true)
     .eq("status", "approved")
-    .eq("category", "utility");
+    .eq("category", expectedCategory);
   const rows = (data ?? []) as unknown as TemplateRow[];
   if (rows.length === 0) return null;
   const lang = rows.find((r) => r.language === preferredLanguage);
@@ -184,18 +248,41 @@ export async function sendWhatsappTemplate(params: {
   }
 
   // 3) Template aprovado
+  const mapped = PURPOSE_TEMPLATE_MAP[purpose];
+  const expectedCategory = mapped?.category ?? "utility";
+  const expectedName = mapped?.templateName ?? null;
   const template = await findApprovedTemplateForPurpose(companyId, purpose);
   if (!template) {
+    const reason = expectedName
+      ? `Template "${expectedName}" (${expectedCategory}) não está aprovado na Cloud API para o propósito "${purpose}".`
+      : `Nenhum template aprovado para "${purpose}".`;
     await logTemplateEvent(companyId, conversationId, leadId, "template_missing", {
       purpose,
+      expected_template_name: expectedName,
+      expected_category: expectedCategory,
+      delivery_method: "template",
+    });
+    await logErrorAndAudit(companyId, leadId, "template_missing", {
+      purpose,
+      expected_template_name: expectedName,
+      expected_category: expectedCategory,
+      conversation_id: conversationId,
+    });
+    return { ok: false, error: reason };
+  }
+  // Garantia: a categoria do template precisa bater com a esperada para o propósito.
+  if (template.category !== expectedCategory) {
+    await logTemplateEvent(companyId, conversationId, leadId, "template_blocked", {
+      purpose,
+      template_name: template.name,
+      template_category: template.category,
+      expected_category: expectedCategory,
+      delivery_method: "template",
     });
     return {
       ok: false,
-      error: `Nenhum template Utility aprovado para "${purpose}". Solicite ação humana ou cadastre um template na Meta.`,
+      error: `Template "${template.name}" tem categoria ${template.category}, esperada ${expectedCategory} para o propósito "${purpose}".`,
     };
-  }
-  if (template.category !== "utility") {
-    return { ok: false, error: "Apenas templates Utility podem ser usados em follow-up automático." };
   }
 
   // 4) Render parâmetros e payload
@@ -235,9 +322,18 @@ export async function sendWhatsappTemplate(params: {
     const error = e instanceof Error ? e.message : "falha de rede";
     await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
       template_name: template.name,
-      category: template.category,
+      template_category: template.category,
+      template_language: template.language,
+      purpose,
+      delivery_method: "template",
+      error,
+    });
+    await logErrorAndAudit(companyId, leadId, "template_network_error", {
+      template_name: template.name,
+      template_category: template.category,
       purpose,
       error,
+      conversation_id: conversationId,
     });
     return { ok: false, error: `network: ${error}` };
   }
@@ -258,14 +354,23 @@ export async function sendWhatsappTemplate(params: {
     console.error("[WA_TEMPLATE_HTTP]", res.status, raw.slice(0, 500));
     await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
       template_name: template.name,
-      category: template.category,
-      language: template.language,
+      template_category: template.category,
+      template_language: template.language,
       purpose,
+      delivery_method: "template",
       status: res.status,
       meta_error_code: metaError?.code ?? null,
       meta_error_subcode: metaError?.error_subcode ?? null,
       meta_error_type: metaError?.type ?? null,
       meta_error_message: metaError?.message ?? null,
+    });
+    await logErrorAndAudit(companyId, leadId, "template_send_error", {
+      template_name: template.name,
+      template_category: template.category,
+      purpose,
+      status: res.status,
+      meta_error_message: metaError?.message ?? null,
+      conversation_id: conversationId,
     });
     return {
       ok: false,
@@ -312,13 +417,42 @@ export async function sendWhatsappTemplate(params: {
 
   await logTemplateEvent(companyId, conversationId, leadId, "template_sent", {
     template_name: template.name,
-    category: template.category,
-    language: template.language,
+    template_category: template.category,
+    template_language: template.language,
     purpose,
-    wamid: externalId,
+    delivery_method: "template",
+    whatsapp_message_id: externalId,
   });
 
   return { ok: true, externalId };
+}
+
+/**
+ * Atalho operacional para visitas/instalação (Utility) e follow-up/reativação
+ * (Marketing). Pode ser invocado por outras camadas (agenda, server fns)
+ * para enviar notificações por template aprovado de forma uniforme.
+ */
+export async function sendOperationalTemplate(params: {
+  companyId: string;
+  conversationId: string;
+  leadId: string;
+  kind:
+    | "visit_confirmed"
+    | "visit_rescheduled"
+    | "installation_confirmed"
+    | "quote_followup"
+    | "reactivation";
+  variables?: Record<string, string>;
+  source?: string;
+}) {
+  return sendWhatsappTemplate({
+    companyId: params.companyId,
+    conversationId: params.conversationId,
+    leadId: params.leadId,
+    purpose: params.kind,
+    variables: params.variables,
+    source: params.source ?? `op_template:${params.kind}`,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -448,4 +582,39 @@ async function logTemplateEvent(
     event_type: eventType,
     payload: payload as never,
   });
+}
+
+/**
+ * Log de erro + audit. Usado quando o envio via template falha por motivo
+ * de configuração (template ausente/rejeitado) ou erro da Meta. Best-effort:
+ * nunca lança — falha silenciosa para não bloquear o fluxo principal.
+ */
+async function logErrorAndAudit(
+  companyId: string,
+  leadId: string | null,
+  action: string,
+  context: Record<string, unknown>,
+) {
+  try {
+    await supabaseAdmin.from("error_log").insert({
+      company_id: companyId,
+      source: "wa_template",
+      severity: "warning",
+      message: action,
+      context: context as never,
+    });
+  } catch {
+    /* noop */
+  }
+  try {
+    await supabaseAdmin.from("audit_log").insert({
+      company_id: companyId,
+      action,
+      entity: "whatsapp_template",
+      entity_id: leadId,
+      after: context as never,
+    });
+  } catch {
+    /* noop */
+  }
 }
