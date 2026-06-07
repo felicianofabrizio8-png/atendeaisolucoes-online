@@ -1634,10 +1634,10 @@ function MediaSendPanel({
                 className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
               />
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Edite o texto antes de enviar se quiser.
+                Edite e clique em "Salvar como padrão" para que o texto fique salvo para a empresa em todos os atendimentos.
               </p>
             </div>
-            <div className="p-4 border-t border-border flex items-center justify-end gap-2">
+            <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
               <button
                 onClick={() => setActiveReply(null)}
                 className="h-9 px-3 rounded-md text-sm hover:bg-muted"
@@ -1657,11 +1657,51 @@ function MediaSendPanel({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                disabled={savingReply || !companyId || !activeReply}
+                onClick={async () => {
+                  if (!companyId || !activeReply) return;
+                  setSavingReply(true);
+                  try {
+                    const saved = await updateQuickReply(companyId, activeReply.id, {
+                      content: replyText,
+                    });
+                    setQuickReplies((prev) =>
+                      prev.map((r) => (r.id === saved.id ? (saved as QuickReply) : r)),
+                    );
+                    setActiveReply(saved as QuickReply);
+                    toast.success("Texto padrão atualizado para a empresa");
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : "Falha ao salvar";
+                    toast.error(msg);
+                  } finally {
+                    setSavingReply(false);
+                  }
+                }}
+                className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md text-sm border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                {savingReply ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Salvar como padrão
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
                   const t = replyText.trim();
                   if (!t) {
                     toast.error("Mensagem vazia");
                     return;
+                  }
+                  // Auto-salva se o texto foi alterado em relação ao salvo
+                  if (companyId && activeReply && replyText !== activeReply.content) {
+                    try {
+                      const saved = await updateQuickReply(companyId, activeReply.id, {
+                        content: replyText,
+                      });
+                      setQuickReplies((prev) =>
+                        prev.map((r) => (r.id === saved.id ? (saved as QuickReply) : r)),
+                      );
+                    } catch (e) {
+                      console.warn("[quick_reply auto-save]", e);
+                    }
                   }
                   onSendText(t);
                   setActiveReply(null);
