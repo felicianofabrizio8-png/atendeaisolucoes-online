@@ -16,13 +16,45 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export type TemplateCategory = "utility" | "marketing" | "authentication";
 export type TemplatePurpose =
+  // Legacy purposes (mapeados para nomes canônicos abaixo)
   | "quote_no_reply"
   | "lead_silent"
   | "visit_no_return"
   | "hot_lead_idle"
   | "returning_customer"
   | "appointment_confirmation"
-  | "conversation_resume";
+  | "conversation_resume"
+  // Canonical purposes (mapeados 1:1 para um template aprovado)
+  | "quote_followup"          // Marketing: followup_orcamento
+  | "reactivation"            // Marketing: reativacao_cliente
+  | "visit_confirmed"         // Utility:   visita_confirmada
+  | "visit_rescheduled"       // Utility:   visita_reagendada
+  | "installation_confirmed"; // Utility:   instalacao_confirmada
+
+/**
+ * Mapeamento oficial de propósito → template aprovado na Cloud API.
+ * - Marketing: usado em follow-ups e reativação (sempre fora da janela 24h).
+ * - Utility:   usado em confirmações operacionais (visita / instalação).
+ */
+export const PURPOSE_TEMPLATE_MAP: Record<
+  TemplatePurpose,
+  { templateName: string; category: TemplateCategory }
+> = {
+  // Canônicos
+  quote_followup:           { templateName: "followup_orcamento",   category: "marketing" },
+  reactivation:             { templateName: "reativacao_cliente",   category: "marketing" },
+  visit_confirmed:          { templateName: "visita_confirmada",    category: "utility" },
+  visit_rescheduled:        { templateName: "visita_reagendada",    category: "utility" },
+  installation_confirmed:   { templateName: "instalacao_confirmada", category: "utility" },
+  // Legacy → caem nos canônicos
+  quote_no_reply:           { templateName: "followup_orcamento",   category: "marketing" },
+  lead_silent:              { templateName: "followup_orcamento",   category: "marketing" },
+  visit_no_return:          { templateName: "followup_orcamento",   category: "marketing" },
+  hot_lead_idle:            { templateName: "followup_orcamento",   category: "marketing" },
+  returning_customer:       { templateName: "reativacao_cliente",   category: "marketing" },
+  appointment_confirmation: { templateName: "visita_confirmada",    category: "utility" },
+  conversation_resume:      { templateName: "reativacao_cliente",   category: "marketing" },
+};
 
 export interface TemplateRow {
   id: string;
