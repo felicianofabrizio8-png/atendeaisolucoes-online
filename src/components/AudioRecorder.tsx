@@ -134,12 +134,24 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const finalize = async (blob: Blob, expectedMime: "audio/ogg" | "audio/mp4") => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const valid = expectedMime === "audio/ogg" ? hasOggOpusBytes(bytes) : hasMp4Bytes(bytes);
-    console.log("[AUDIO RECORDER FORMAT]", {
+    const firstBytesHex = Array.from(bytes.slice(0, 16))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+    console.log("[AUDIO MOBILE DEBUG]", {
+      stage: "recorder_finalize",
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      recorder_kind: recorderKindRef.current,
+      recorder_mime: recorderMimeRef.current,
+      mediaRecorder_mimeType:
+        recorderKindRef.current === "native"
+          ? (recorderRef.current as MediaRecorder | null)?.mimeType ?? null
+          : null,
       expected_mime: expectedMime,
       blob_type: blob.type,
       size: blob.size,
+      duration_seconds: seconds,
       valid_bytes: valid,
-      recorder_kind: recorderKindRef.current,
+      first_bytes_hex: firstBytesHex,
     });
     if (!valid) {
       stopStream();
