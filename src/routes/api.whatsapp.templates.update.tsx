@@ -2,15 +2,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const PURPOSES = new Set([
-  "quote_no_reply",
-  "lead_silent",
-  "visit_no_return",
-  "hot_lead_idle",
-  "returning_customer",
-  "appointment_confirmation",
-  "conversation_resume",
-]);
+// Propósito → categoria esperada (marketing ou utility).
+// Marketing: follow-ups e reativação. Utility: eventos operacionais.
+const PURPOSE_CATEGORY: Record<string, "marketing" | "utility"> = {
+  // Legacy + canônicos de marketing
+  quote_no_reply: "marketing",
+  lead_silent: "marketing",
+  hot_lead_idle: "marketing",
+  returning_customer: "marketing",
+  conversation_resume: "marketing",
+  quote_followup: "marketing",
+  reactivation: "marketing",
+  // Operacionais (utility)
+  visit_no_return: "utility",
+  appointment_confirmation: "utility",
+  visit_confirmed: "utility",
+  visit_rescheduled: "utility",
+  installation_confirmed: "utility",
+};
+const PURPOSES = new Set(Object.keys(PURPOSE_CATEGORY));
 
 interface UpdateBody {
   id?: string;
@@ -55,13 +65,34 @@ export const Route = createFileRoute("/api/whatsapp/templates/update")({
         if (!tpl || tpl.company_id !== profile.company_id)
           return Response.json({ error: "template não encontrado" }, { status: 404 });
 
-        // Segurança: nunca permite auto_use em marketing/authentication ou status != approved
+        // Segurança:
+        //  - auto_use exige status='approved' E categoria utility OU marketing.
+        //  - Se propósito definido, sua categoria esperada precisa bater com a do template.
         let nextAutoUse = body.auto_use;
-        if (nextAutoUse === true && (tpl.category !== "utility" || tpl.status !== "approved")) {
-          return Response.json(
-            { error: "auto_use só é permitido em templates Utility aprovados" },
-            { status: 400 },
-          );
+        if (nextAutoUse === true) {
+          if (tpl.status !== "approved") {
+            return Response.json(
+              { error: "auto_use só é permitido em templates aprovados" },
+              { status: 400 },
+            );
+          }
+          if (tpl.category !== "utility" && tpl.category !== "marketing") {
+            return Response.json(
+              { error: "auto_use só é permitido em templates Utility ou Marketing" },
+              { status: 400 },
+            );
+          }
+        }
+        if (body.purpose && PURPOSE_CATEGORY[body.purpose]) {
+          const expected = PURPOSE_CATEGORY[body.purpose];
+          if (tpl.category !== expected) {
+            return Response.json(
+              {
+                error: `O propósito "${body.purpose}" exige categoria ${expected}, mas o template é ${tpl.category}.`,
+              },
+              { status: 400 },
+            );
+          }
         }
 
         const patch: { purpose?: string | null; auto_use?: boolean } = {};

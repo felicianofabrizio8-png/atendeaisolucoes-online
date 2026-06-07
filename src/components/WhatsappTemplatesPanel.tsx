@@ -29,15 +29,34 @@ interface TemplateRow {
 }
 
 const NONE_PURPOSE = "__none__";
-const PURPOSES: { value: string; label: string }[] = [
-  { value: NONE_PURPOSE, label: "— sem propósito —" },
-  { value: "quote_no_reply", label: "Orçamento sem resposta" },
-  { value: "lead_silent", label: "Cliente sumiu" },
-  { value: "visit_no_return", label: "Visita sem retorno" },
-  { value: "hot_lead_idle", label: "Lead quente parado" },
-  { value: "returning_customer", label: "Cliente retornando" },
-  { value: "appointment_confirmation", label: "Confirmação de agendamento" },
-  { value: "conversation_resume", label: "Retomar conversa" },
+// Propósito → categoria esperada (informativa no select).
+const PURPOSE_CATEGORY: Record<string, "marketing" | "utility"> = {
+  quote_no_reply: "marketing",
+  lead_silent: "marketing",
+  hot_lead_idle: "marketing",
+  returning_customer: "marketing",
+  conversation_resume: "marketing",
+  quote_followup: "marketing",
+  reactivation: "marketing",
+  visit_no_return: "utility",
+  appointment_confirmation: "utility",
+  visit_confirmed: "utility",
+  visit_rescheduled: "utility",
+  installation_confirmed: "utility",
+};
+const PURPOSES: { value: string; label: string; group: "marketing" | "utility" }[] = [
+  // Marketing (follow-ups / reativação)
+  { value: "quote_no_reply", label: "Orçamento sem resposta", group: "marketing" },
+  { value: "lead_silent", label: "Cliente sumiu", group: "marketing" },
+  { value: "hot_lead_idle", label: "Lead quente parado", group: "marketing" },
+  { value: "returning_customer", label: "Reativação de cliente", group: "marketing" },
+  { value: "conversation_resume", label: "Retomar conversa", group: "marketing" },
+  // Utility (eventos operacionais)
+  { value: "visit_confirmed", label: "Visita confirmada", group: "utility" },
+  { value: "visit_rescheduled", label: "Visita reagendada", group: "utility" },
+  { value: "visit_no_return", label: "Visita sem retorno", group: "utility" },
+  { value: "appointment_confirmation", label: "Confirmação de agendamento", group: "utility" },
+  { value: "installation_confirmed", label: "Instalação confirmada", group: "utility" },
 ];
 
 function statusBadge(status: string) {
@@ -142,9 +161,9 @@ export function WhatsappTemplatesPanel() {
           <div className="flex-1 min-w-0">
             <CardTitle className="text-base md:text-lg">Templates WhatsApp</CardTitle>
             <p className="text-xs text-muted-foreground mt-1 hidden md:block">
-              Templates Utility aprovados pela Meta são usados automaticamente quando a
-              janela de 24h está fechada. Marketing/Authentication nunca são usados
-              automaticamente.
+              Templates aprovados pela Meta são usados automaticamente fora da janela
+              de 24h: Marketing para follow-ups e reativação, Utility para eventos
+              operacionais (visita / instalação).
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={sync} disabled={syncing} className="shrink-0 min-h-11 md:min-h-8 min-w-11 md:min-w-0 px-2 md:px-3">
@@ -169,10 +188,20 @@ export function WhatsappTemplatesPanel() {
           ) : (
             <div className="space-y-3">
               {items.map((t) => {
-                const canAuto = t.category === "utility" && t.status === "approved";
+                const isApproved = t.status === "approved";
+                const isAutoCategory = t.category === "utility" || t.category === "marketing";
+                const canAuto = isApproved && isAutoCategory;
+                const autoBadgeLabel =
+                  t.category === "marketing" ? "Auto Marketing" : "Auto Utility";
+                const autoBadgeClass =
+                  t.category === "marketing"
+                    ? "bg-fuchsia-500/15 text-fuchsia-600 border-fuchsia-500/30"
+                    : "bg-primary/15 text-primary border-primary/30";
                 const body =
                   (t.components ?? []).find((c) => c.type?.toUpperCase() === "BODY")?.text ??
                   "(sem corpo)";
+                const marketingPurposes = PURPOSES.filter((p) => p.group === "marketing");
+                const utilityPurposes = PURPOSES.filter((p) => p.group === "utility");
                 return (
                   <div
                     key={t.id}
@@ -193,6 +222,13 @@ export function WhatsappTemplatesPanel() {
                       <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded border border-border">
                         {t.language}
                       </span>
+                      {t.auto_use && isAutoCategory && (
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border ${autoBadgeClass}`}
+                        >
+                          {autoBadgeLabel}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
                       {body}
@@ -210,7 +246,21 @@ export function WhatsappTemplatesPanel() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {PURPOSES.map((p) => (
+                            <SelectItem value={NONE_PURPOSE} className="text-sm md:text-xs">
+                              — sem propósito —
+                            </SelectItem>
+                            <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-fuchsia-600">
+                              Marketing
+                            </div>
+                            {marketingPurposes.map((p) => (
+                              <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
+                                {p.label}
+                              </SelectItem>
+                            ))}
+                            <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-primary">
+                              Utility
+                            </div>
+                            {utilityPurposes.map((p) => (
                               <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
                                 {p.label}
                               </SelectItem>
@@ -227,7 +277,14 @@ export function WhatsappTemplatesPanel() {
                         />
                         {!canAuto && (
                           <span className="text-[10px] text-muted-foreground">
-                            só Utility aprovado
+                            {!isApproved
+                              ? "precisa estar aprovado"
+                              : "categoria não suportada"}
+                          </span>
+                        )}
+                        {canAuto && t.purpose && PURPOSE_CATEGORY[t.purpose] !== t.category && (
+                          <span className="text-[10px] text-amber-600">
+                            propósito não bate com a categoria
                           </span>
                         )}
                       </div>
