@@ -1606,6 +1606,7 @@ function MediaSendPanel({
 
       <div className="relative" ref={menuRef}>
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           disabled={disabled}
@@ -1615,60 +1616,29 @@ function MediaSendPanel({
         >
           <Plus className="h-4 w-4" />
         </button>
-        {menuOpen && (
-          <div className="absolute bottom-full mb-2 right-0 w-52 rounded-md border border-border bg-popover shadow-lg z-30 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => pickFile("image")}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-            >
-              <ImageIcon className="h-4 w-4 text-primary" /> Foto
-            </button>
-            <button
-              type="button"
-              onClick={() => pickFile("video")}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-            >
-              <VideoIcon className="h-4 w-4 text-primary" /> Vídeo
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                setLibraryOpen(true);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left border-t border-border"
-            >
-              <LibraryIcon className="h-4 w-4 text-primary" /> Biblioteca de Produtos
-            </button>
-            {quickReplies.length > 0 && (
-              <div className="border-t border-border max-h-64 overflow-y-auto">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold bg-muted/40">
-                  Respostas rápidas
-                </div>
-                {quickReplies.map((q) => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    onClick={() => {
-                      console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
-                      setMenuOpen(false);
-                      setActiveReply(q);
-                      setReplyText(q.content);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-                    title={q.category ?? undefined}
-                  >
-                    <span className="text-base w-5 text-center">{q.icon || "💬"}</span>
-                    <span className="truncate">{q.name}</span>
-                  </button>
-                ))}
-
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {menuOpen && typeof document !== "undefined" && createPortal(
+        <PlusMenuPortal
+          anchorRef={menuButtonRef}
+          panelRef={menuPanelRef}
+          onClose={() => setMenuOpen(false)}
+          quickReplies={quickReplies}
+          onPickImage={() => pickFile("image")}
+          onPickVideo={() => pickFile("video")}
+          onOpenLibrary={() => {
+            setMenuOpen(false);
+            setLibraryOpen(true);
+          }}
+          onPickQuickReply={(q) => {
+            console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
+            setMenuOpen(false);
+            setActiveReply(q);
+            setReplyText(q.content);
+          }}
+        />,
+        document.body,
+      )}
 
       {/* Modal: editar/enviar resposta rápida */}
       {activeReply && (
