@@ -566,6 +566,21 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   );
 }
 
+function AudioMimeDebug({ message, declaredMime }: { message: Message; declaredMime?: string | null }) {
+  const meta = message.sourceMetadata as Record<string, unknown> | undefined;
+  const detected = (meta?.detected_audio as string | undefined) ?? null;
+  const clientDebug = (meta?.client_debug as Record<string, unknown> | undefined) ?? null;
+  if (!declaredMime && !detected && !clientDebug) return null;
+  return (
+    <div
+      className="text-[10px] leading-snug text-muted-foreground/80 font-mono"
+      title={clientDebug ? JSON.stringify(clientDebug, null, 2) : undefined}
+    >
+      mime: {declaredMime ?? "—"} · detectado: {detected ?? "—"}
+    </div>
+  );
+}
+
 function MediaAiNote({ message, kind }: { message: Message; kind: MediaKind }) {
   const meta = message.sourceMetadata as Record<string, unknown> | undefined;
   if (!meta) return null;
