@@ -318,27 +318,264 @@ function VideoPreview({
   );
 }
 
-function AudioPreview({
+// ============================================================================
+// WhatsApp-like audio bubble
+// ============================================================================
+const WA_AUDIO_PLAYED_KEY = "wa-audio-played-v1";
+
+function readPlayedSet(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(WA_AUDIO_PLAYED_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markPlayed(id: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const s = readPlayedSet();
+    if (s.has(id)) return;
+    s.add(id);
+    const arr = Array.from(s).slice(-500);
+    window.localStorage.setItem(WA_AUDIO_PLAYED_KEY, JSON.stringify(arr));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Gera barras deterministicas a partir do id (pseudo-waveform)
+function buildWaveform(seed: string, bars = 40): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const out: number[] = [];
+  for (let i = 0; i < bars; i++) {
+    h ^= h << 13;
+    h ^= h >>> 17;
+    h ^= h << 5;
+    const v = Math.abs(h % 100) / 100; // 0..1
+    out.push(0.25 + v * 0.75); // 0.25..1
+  }
+  return out;
+}
+
+function fmtTime(sec: number): string {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+const SPEEDS = [1, 1.5, 2] as const;
+
+function WhatsAppAudio({
   path,
   mime,
   filename,
   bucket,
+  isAgent,
+  messageId,
 }: {
   path?: string | null;
   mime?: string | null;
   filename?: string | null;
   bucket?: string | null;
+  isAgent: boolean;
+  messageId: string;
 }) {
   const display = useResolvedMediaSrc({ path, bucket });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
+  const [played, setPlayed] = useState<boolean>(() =>
+    isAgent ? false : readPlayedSet().has(messageId),
+  );
+
+  const waveform = useMemo(() => buildWaveform(messageId), [messageId]);
+  const progress = duration > 0 ? Math.min(1, current / duration) : 0;
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.playbackRate = speed;
+  }, [speed]);
+
+  const togglePlay = useCallback(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) {
+      void a.play().catch(() => {
+        /* ignore autoplay errors */
+      });
+    } else {
+      a.pause();
+    }
+  }, []);
+
+  const onSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+      const a = audioRef.current;
+      const bar = barRef.current;
+      if (!a || !bar || !duration) return;
+      const rect = bar.getBoundingClientRect();
+      const clientX =
+        "touches" in e ? e.touches[0]?.clientX ?? 0 : (e as React.MouseEvent).clientX;
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      a.currentTime = ratio * duration;
+      setCurrent(a.currentTime);
+    },
+    [duration],
+  );
+
+  const cycleSpeed = useCallback(() => {
+    setSpeed((s) => {
+      const i = SPEEDS.indexOf(s);
+      return SPEEDS[(i + 1) % SPEEDS.length];
+    });
+  }, []);
+
   if (!display) {
-    return <div className="h-12 w-64 rounded-md bg-muted animate-pulse" />;
+    return <div className="h-14 w-64 rounded-2xl bg-muted/60 animate-pulse" />;
   }
+
+  // Cores conforme bolha (enviado: primary; recebido: card)
+  const trackBg = isAgent ? "bg-primary-foreground/25" : "bg-foreground/15";
+  const trackFill = isAgent ? "bg-primary-foreground" : "bg-primary";
+  const subText = isAgent ? "text-primary-foreground/75" : "text-muted-foreground";
+  const iconBtn = isAgent
+    ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+    : "bg-primary text-primary-foreground hover:bg-primary/90";
+  const speedBtn = isAgent
+    ? "bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30"
+    : "bg-foreground/10 text-foreground hover:bg-foreground/15";
+  const playedDotClass = played
+    ? "bg-transparent"
+    : isAgent
+      ? "bg-primary-foreground"
+      : "bg-[var(--status-urgent,theme(colors.red.500))]";
+
   return (
-    <div className="space-y-1">
-      <audio src={display} controls preload="metadata" className="max-w-full md:w-[280px]">
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-2xl px-2.5 py-2 min-w-[240px] md:min-w-[280px] max-w-[320px] transition-shadow",
+        playing && "shadow-[0_0_0_2px_rgba(0,0,0,0.04)]",
+      )}
+    >
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={playing ? "Pausar" : "Reproduzir"}
+        className={cn(
+          "shrink-0 h-10 w-10 rounded-full inline-flex items-center justify-center transition-transform active:scale-95",
+          iconBtn,
+        )}
+      >
+        {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div
+          ref={barRef}
+          onClick={onSeek}
+          onTouchStart={onSeek}
+          className="relative h-7 cursor-pointer select-none"
+        >
+          {/* Waveform */}
+          <div className={cn("absolute inset-0 flex items-center gap-[2px]")}>
+            {waveform.map((v, i) => {
+              const active = i / waveform.length < progress;
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex-1 rounded-full transition-colors",
+                    active ? trackFill : trackBg,
+                    playing && active && "animate-pulse",
+                  )}
+                  style={{ height: `${Math.round(v * 100)}%` }}
+                />
+              );
+            })}
+          </div>
+          {/* Knob */}
+          {duration > 0 && (
+            <div
+              className={cn(
+                "absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full shadow",
+                trackFill,
+              )}
+              style={{ left: `calc(${progress * 100}% - 6px)` }}
+            />
+          )}
+        </div>
+
+        <div className={cn("flex items-center justify-between mt-1 text-[10px]", subText)}>
+          <span className="inline-flex items-center gap-1">
+            <Mic className="h-3 w-3" />
+            {fmtTime(playing || current > 0 ? current : duration)}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              onClick={cycleSpeed}
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                speedBtn,
+              )}
+              title="Velocidade"
+            >
+              {speed}x
+            </button>
+            {!isAgent && (
+              <span
+                className={cn("h-2 w-2 rounded-full", playedDotClass)}
+                title={played ? "Reproduzido" : "Não reproduzido"}
+              />
+            )}
+          </span>
+        </div>
+      </div>
+
+      <audio
+        ref={audioRef}
+        src={display}
+        preload="metadata"
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (isFinite(d)) setDuration(d);
+        }}
+        onDurationChange={(e) => {
+          const d = e.currentTarget.duration;
+          if (isFinite(d)) setDuration(d);
+        }}
+        onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+        onPlay={() => {
+          setPlaying(true);
+          if (!isAgent && !played) {
+            setPlayed(true);
+            markPlayed(messageId);
+          }
+        }}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrent(0);
+        }}
+      >
         {mime ? <source src={display} type={mime} /> : null}
       </audio>
-      <DownloadButton href={display} filename={filename ?? "audio"} />
+
+      <DownloadButton href={display} filename={filename ?? "audio"} compact />
     </div>
   );
 }
