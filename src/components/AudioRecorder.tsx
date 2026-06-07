@@ -38,8 +38,13 @@ function isSafariLike(): boolean {
 }
 
 function pickSafariNativeMime(): NativeMime | null {
-  // Caminho MP4 nativo desabilitado: somente OGG/Opus é comprovadamente entregue
-  // pela Meta no fluxo atual. Mantemos a função por compatibilidade.
+  if (typeof MediaRecorder === "undefined") return null;
+  try {
+    if (MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")) return "audio/mp4";
+    if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+  } catch {
+    /* */
+  }
   return null;
 }
 
