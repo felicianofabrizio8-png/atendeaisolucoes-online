@@ -47,17 +47,21 @@ export interface FollowupSettings {
   agentName: string;
 }
 
+// Mensagens padrão de continuidade de atendimento.
+// Linguagem neutra, compatível com a categoria Utility do WhatsApp Business
+// (sem termos promocionais como "oferta", "desconto", "promoção",
+// "condição especial", "oportunidade" ou "últimas unidades").
 const DEFAULT_TEMPLATES: Record<FollowupRule, string> = {
   quote_no_reply:
-    "Oi {{nome}} 😊 Passando para saber se conseguiu analisar o orçamento. Qualquer dúvida posso te ajudar.",
+    "Olá {{nome}}, tudo bem? Estamos entrando em contato para dar continuidade ao atendimento do seu orçamento. Caso ainda tenha alguma dúvida, responda esta mensagem que teremos prazer em ajudar.",
   lead_silent:
-    "Oi {{nome}}! Tudo bem? Continuo à disposição se quiser retomar a conversa.",
+    "Olá {{nome}}. Identificamos que sua solicitação permanece em aberto. Se desejar continuar o atendimento ou receber mais informações sobre o projeto solicitado, basta responder esta mensagem.",
   visit_no_return:
-    "Oi {{nome}}, espero que a visita tenha sido boa. Quer que eu te passe os próximos passos?",
+    "Olá {{nome}}, tudo bem? Estamos retomando o atendimento referente à visita realizada. Caso precise esclarecer dúvidas ou atualizar informações, responda esta mensagem para dar continuidade.",
   hot_lead_idle:
-    "Oi {{nome}}, separei tudo aqui para você. Posso te enviar a proposta agora?",
+    "Olá {{nome}}, tudo bem? Seu atendimento continua disponível em nosso sistema. Caso precise esclarecer dúvidas ou atualizar informações, responda esta mensagem para dar continuidade.",
   returning_customer:
-    "Que bom te ver por aqui de novo, {{nome}}! Como posso ajudar?",
+    "Olá {{nome}}, tudo bem? Estamos entrando em contato para dar continuidade ao atendimento iniciado anteriormente. Caso queira retomar, basta responder esta mensagem.",
 };
 
 export async function getFollowupSettings(
