@@ -785,15 +785,36 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
     reply.preview ??
     (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
 
+  const virtuoso = useContext(VirtuosoScrollContext);
+
+  function highlight(el: HTMLElement) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-primary/60", "transition");
+    setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+  }
+
   function scrollToOriginal() {
     if (!reply.message_id) return;
     const el = document.getElementById(`msg-${reply.message_id}`);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-primary/60", "transition");
-      setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
+      highlight(el);
+      return;
     }
+    // Mensagem está fora da janela virtualizada: pede ao Virtuoso para montá-la.
+    if (!virtuoso) return;
+    const idx = virtuoso.items.findIndex((m) => m.id === reply.message_id);
+    if (idx < 0) return;
+    virtuoso.ref.current?.scrollToIndex({ index: idx, align: "center", behavior: "smooth" });
+    // Aguarda o item entrar no DOM antes de aplicar o highlight.
+    const start = Date.now();
+    const tryHighlight = () => {
+      const node = document.getElementById(`msg-${reply.message_id}`);
+      if (node) highlight(node);
+      else if (Date.now() - start < 1200) requestAnimationFrame(tryHighlight);
+    };
+    requestAnimationFrame(tryHighlight);
   }
+
 
   return (
     <button
