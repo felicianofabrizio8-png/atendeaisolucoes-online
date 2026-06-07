@@ -412,10 +412,11 @@ async function buildMessage(
   const tpl = s.templates[c.rule] ?? DEFAULT_TEMPLATES[c.rule];
   const nome = firstName(lead?.name);
   const produto = lead?.product ?? "";
-  const base = renderTemplate(tpl, { nome, produto, agente: s.agentName });
+  const vars = { nome, produto, agente: s.agentName };
+  const base = renderTemplate(tpl, vars);
   if (humanize) {
     const seed = Math.floor(Date.now() / 60000) + c.leadId.charCodeAt(0);
-    return humanizeTemplate(base, attempt, seed);
+    return humanizeTemplate(base, attempt, seed, vars);
   }
   if (attempt > 1) {
     return {
