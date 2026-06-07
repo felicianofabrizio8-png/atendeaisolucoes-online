@@ -69,6 +69,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignAIAdvisor } from "@/components/CampaignAIAdvisor";
+import { CreativeGenerator } from "@/components/campaigns/CreativeGenerator";
 
 
 const routeApi = getRouteApi("/campanhas/$id");
