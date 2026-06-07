@@ -72,6 +72,14 @@ import { AITimeline } from "@/components/AITimeline";
 // caso típico de respostas a imagens enviadas pelo próprio agente.
 const MessagesContext = createContext<Message[]>([]);
 
+// Onda 2.4: dá ao ReplyPreview acesso à lista virtualizada para localizar a
+// mensagem original via scrollToIndex (caso esteja fora do viewport montado).
+const VirtuosoScrollContext = createContext<{
+  ref: React.RefObject<VirtuosoHandle | null>;
+  items: Message[];
+} | null>(null);
+
+
 export const Route = createLazyFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
 });
