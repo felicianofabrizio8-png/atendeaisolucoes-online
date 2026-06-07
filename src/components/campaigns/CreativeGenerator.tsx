@@ -1,14 +1,24 @@
 // Gerador de Criativos com IA — wizard completo.
 // Fluxo: Upload → Análise → Configuração → Gerar variantes (texto+imagem) → Salvar/Usar.
 // Aditivo: não substitui o gerador existente em /campanhas/nova.
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Upload, Sparkles, Loader2, Wand2, ImageIcon, Eye, Save, ArrowRight,
-  Heart, Tag, Clock, Check, Award, RefreshCw, Download,
+  Heart, Tag, Clock, Check, Award, RefreshCw, Download, Package, Search, X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface ProductRow {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  price: number | null;
+  promo_price: number | null;
+  images: string[];
+}
 
 type Step = "upload" | "configure" | "results";
 type VariantKey = "emotion" | "offer" | "urgency";
@@ -114,6 +124,80 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   const [scores, setScores] = useState<Record<VariantKey, ScoreResult | null>>({ emotion: null, offer: null, urgency: null });
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ============ PRODUCT LIBRARY ============
+  const [sourceMode, setSourceMode] = useState<"upload" | "library">("upload");
+  const [products, setProducts] = useState<ProductRow[] | null>(null);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+
+  useEffect(() => {
+    if (sourceMode !== "library" || products !== null || !companyId) return;
+    setLoadingProducts(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id,name,category,description,price,promo_price,images")
+        .eq("company_id", companyId)
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error(error);
+        toast.error("Não foi possível carregar produtos.");
+        setProducts([]);
+      } else {
+        setProducts(
+          (data ?? []).map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            category: r.category,
+            description: r.description,
+            price: r.price != null ? Number(r.price) : null,
+            promo_price: r.promo_price != null ? Number(r.promo_price) : null,
+            images: Array.isArray(r.images) ? (r.images.filter((x: any) => typeof x === "string") as string[]) : [],
+          })),
+        );
+      }
+      setLoadingProducts(false);
+    })();
+  }, [sourceMode, products, companyId]);
+
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q),
+    );
+  }, [products, productSearch]);
+
+  const pickProductFromLibrary = async (p: ProductRow) => {
+    const url = p.images[0];
+    if (!url) {
+      toast.error("Esse produto não tem imagem cadastrada.");
+      return;
+    }
+    setSourceImage(url);
+    setSourcePath(url);
+    setConfig((c) => ({
+      ...c,
+      product_name: p.name,
+      product_description: [
+        p.category ? `Categoria: ${p.category}` : null,
+        p.price != null ? `Preço: R$ ${p.price.toFixed(2)}` : null,
+        p.promo_price != null ? `Promo: R$ ${p.promo_price.toFixed(2)}` : null,
+        p.description ?? null,
+      ]
+        .filter(Boolean)
+        .join(" • "),
+    }));
+    toast.success(`Produto "${p.name}" carregado.`);
+    void runAnalyze(url);
+  };
+
 
   // ============ UPLOAD ============
   const handleFile = async (file: File) => {
@@ -294,30 +378,126 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
 
       {/* STEP UPLOAD */}
       {step === "upload" && (
-        <div className="rounded-xl border-2 border-dashed p-8 text-center bg-card">
+        <div className="space-y-3">
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+
           {sourceImage ? (
-            <div className="space-y-3">
+            <div className="rounded-xl border-2 border-dashed p-8 text-center bg-card space-y-3">
               <img src={sourceImage} alt="" className="mx-auto max-h-64 rounded-lg shadow" />
               {analyzing ? (
                 <p className="text-sm flex items-center justify-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Analisando imagem…</p>
               ) : (
-                <button onClick={() => fileRef.current?.click()} className="text-xs underline text-muted-foreground">Trocar imagem</button>
+                <div className="flex items-center justify-center gap-3 text-xs">
+                  <button onClick={() => fileRef.current?.click()} className="underline text-muted-foreground">Enviar outro arquivo</button>
+                  <span className="text-muted-foreground">•</span>
+                  <button onClick={() => { setSourceImage(null); setSourcePath(null); setSourceMode("library"); }} className="underline text-muted-foreground">Trocar pela biblioteca</button>
+                </div>
               )}
             </div>
           ) : (
             <>
-              <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm font-medium">Envie uma foto do produto</p>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">JPG ou PNG até 8 MB</p>
-              <button disabled={uploading} onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-60">
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Escolher arquivo
-              </button>
+              {/* Tabs: upload vs library */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setSourceMode("upload")}
+                  className={`flex items-center justify-center gap-2 h-10 rounded-md border text-sm ${sourceMode === "upload" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}
+                >
+                  <Upload className="h-4 w-4" /> Enviar arquivo
+                </button>
+                <button
+                  onClick={() => setSourceMode("library")}
+                  className={`flex items-center justify-center gap-2 h-10 rounded-md border text-sm ${sourceMode === "library" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}
+                >
+                  <Package className="h-4 w-4" /> Escolher da biblioteca
+                </button>
+              </div>
+
+              {sourceMode === "upload" && (
+                <div className="rounded-xl border-2 border-dashed p-8 text-center bg-card">
+                  <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm font-medium">Envie uma foto do produto</p>
+                  <p className="text-xs text-muted-foreground mt-1 mb-4">JPG ou PNG até 8 MB</p>
+                  <button disabled={uploading} onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-60">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Escolher arquivo
+                  </button>
+                </div>
+              )}
+
+              {sourceMode === "library" && (
+                <div className="rounded-xl border bg-card p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={productSearch}
+                        onChange={(e) => setProductSearch(e.target.value)}
+                        placeholder="Pesquisar produto..."
+                        className="w-full h-9 rounded-md border bg-background pl-8 pr-2 text-sm"
+                      />
+                    </div>
+                    {productSearch && (
+                      <button onClick={() => setProductSearch("")} className="h-9 w-9 inline-flex items-center justify-center rounded-md border hover:bg-accent">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingProducts ? (
+                    <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Carregando produtos…
+                    </p>
+                  ) : filteredProducts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      {products && products.length === 0
+                        ? "Nenhum produto cadastrado. Adicione produtos em /produtos."
+                        : "Nenhum produto encontrado para a pesquisa."}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[460px] overflow-y-auto pr-1">
+                      {filteredProducts.map((p) => {
+                        const hasImg = p.images.length > 0;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => pickProductFromLibrary(p)}
+                            disabled={!hasImg}
+                            className="group text-left rounded-lg border bg-background overflow-hidden hover:border-primary hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <div className="aspect-square bg-muted/40 flex items-center justify-center overflow-hidden">
+                              {hasImg ? (
+                                <img src={p.images[0]} alt={p.name} className="h-full w-full object-cover group-hover:scale-105 transition" />
+                              ) : (
+                                <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="p-2 space-y-0.5">
+                              <p className="text-xs font-medium line-clamp-1">{p.name}</p>
+                              {p.category && <p className="text-[10px] text-muted-foreground line-clamp-1">{p.category}</p>}
+                              {p.price != null && (
+                                <p className="text-xs font-semibold text-primary">
+                                  R$ {(p.promo_price ?? p.price).toFixed(2)}
+                                  {p.promo_price != null && (
+                                    <span className="ml-1 text-[10px] line-through text-muted-foreground font-normal">
+                                      R$ {p.price.toFixed(2)}
+                                    </span>
+                                  )}
+                                </p>
+                              )}
+                              {!hasImg && <p className="text-[10px] text-muted-foreground italic">sem imagem</p>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
       )}
+
 
       {/* STEP CONFIGURE */}
       {step === "configure" && (
