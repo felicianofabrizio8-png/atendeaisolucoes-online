@@ -125,3 +125,69 @@ export async function reorderQuickReplies(companyId: string, orderedIds: string[
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
 }
+
+// Textos padrão por empresa. Se não existir uma resposta rápida com esse nome,
+// será criada com o conteúdo padrão. Edições posteriores ficam salvas no banco.
+const DEFAULT_QUICK_REPLIES: QuickReplyInput[] = [
+  {
+    name: "Itens Inclusos",
+    icon: "💧",
+    category: "Orçamento",
+    sort_order: 10,
+    content: `Itens inclusos:
+💧Piscina (Branca ou Azul);
+💧Casa de máquina com tampa;
+💧Filtro de Areia completo;
+💧Motobomba;
+💧Dispositivos;
+💧Escavação;
+💧Mão de obra da instalação da piscina;
+💧Borda Anti Infiltração;
+💧10 anos de garantia (estrutura reforçada);
+💧Possui a proteção da barreira química;
+💧Fábrica com 30 anos de mercado;
+💧Atendemos as normas da ABNT 10339 de segurança.`,
+  },
+  {
+    name: "Brindes",
+    icon: "🎁",
+    category: "Orçamento",
+    sort_order: 11,
+    content: `BRINDES:
+💧Piscina preparada para aquecedor;
+💧Led colorido com controle remoto;
+💧Ponto para cascata;
+💧Kit limpeza completo (mangueira, ponteiras, adaptador, escova, peneira, aspirador e cabo telescópico);
+💧Estojo de testes para controle de pH e cloro.`,
+  },
+  {
+    name: "Por Conta do Cliente",
+    icon: "📋",
+    category: "Orçamento",
+    sort_order: 12,
+    content: `POR CONTA DO CLIENTE:
+•Remoção da terra que sobrar após a escavação;
+•Água da piscina;
+•Contra piso e piso de acabamento em volta da piscina, pedra borda, etc (a princípio pode ser só o contrapiso);
+•Ponto de energia até a casa de máquina;
+•Saída para água (pluvial);
+•Materiais necessários para instalação da piscina e casa de máquina.`,
+  },
+];
+
+export async function ensureDefaultQuickReplies(companyId: string): Promise<QuickReply[]> {
+  const existing = await listQuickReplies(companyId);
+  const byName = new Set(existing.map((r) => r.name.trim().toLowerCase()));
+  const missing = DEFAULT_QUICK_REPLIES.filter(
+    (d) => !byName.has(d.name.trim().toLowerCase()),
+  );
+  if (missing.length === 0) return existing;
+  for (const def of missing) {
+    try {
+      await createQuickReply(companyId, def);
+    } catch (e) {
+      console.warn("[ensureDefaultQuickReplies] falha ao criar", def.name, e);
+    }
+  }
+  return listQuickReplies(companyId);
+}

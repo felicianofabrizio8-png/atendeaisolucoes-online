@@ -50,7 +50,7 @@ import {
   Mic,
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
-import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
+import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";
@@ -1388,24 +1388,24 @@ function MediaSendPanel({
   const [activeReply, setActiveReply] = useState<QuickReply | null>(null);
   const [replyText, setReplyText] = useState("");
 
+  const [savingReply, setSavingReply] = useState(false);
+  const [multiSendProgress, setMultiSendProgress] = useState<{ current: number; total: number } | null>(null);
+
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    listQuickReplies(companyId, { activeOnly: true })
+    ensureDefaultQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
-        setQuickReplies(rows);
-        if (rows.length === 0) {
-          console.log("QUICK_REPLIES_EMPTY", { company_id: companyId });
-        } else {
-          console.log("QUICK_REPLIES_LOADED", {
-            company_id: companyId,
-            count: rows.length,
-            ids: rows.map((r) => r.id),
-          });
-        }
+        setQuickReplies(rows.filter((r) => r.active));
       })
-      .catch((e) => console.error("[quick_replies load]", e));
+      .catch((e) => {
+        console.error("[quick_replies load]", e);
+        // Fallback: tenta apenas listar sem semear
+        listQuickReplies(companyId, { activeOnly: true })
+          .then((rows) => !cancelled && setQuickReplies(rows))
+          .catch(() => {});
+      });
     return () => {
       cancelled = true;
     };
@@ -1518,10 +1518,67 @@ function MediaSendPanel({
     }
   };
 
-  const selectFromLibrary = (url: string) => {
+  const sendMediaPath = useCallback(
+    async (path: string, kind: "image" | "video", captionText?: string) => {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+      const res = await fetch("/api/whatsapp/send-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          conversationId,
+          mediaPath: path,
+          kind,
+          caption: captionText?.trim() || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+    },
+    [conversationId],
+  );
+
+  const sendLibraryBatch = useCallback(
+    async (paths: string[]) => {
+      if (paths.length === 0) return;
+      if (!isWhats) {
+        toast.error("Envio de mídia disponível apenas para WhatsApp.");
+        return;
+      }
+      setMultiSendProgress({ current: 0, total: paths.length });
+      let ok = 0;
+      for (let i = 0; i < paths.length; i++) {
+        try {
+          await sendMediaPath(paths[i], "image");
+          ok++;
+          onSent();
+        } catch (e) {
+          console.error("MULTI_MEDIA_SEND_ERROR", { path: paths[i], error: e });
+          toast.error(
+            `Falha ao enviar ${i + 1}/${paths.length}: ${
+              e instanceof Error ? e.message : "erro"
+            }`,
+          );
+        }
+        setMultiSendProgress({ current: i + 1, total: paths.length });
+      }
+      setMultiSendProgress(null);
+      if (ok > 0) toast.success(`${ok} foto(s) enviada(s)`);
+    },
+    [isWhats, onSent, sendMediaPath],
+  );
+
+  const selectFromLibrary = (paths: string[]) => {
     setLibraryOpen(false);
-    setPending({ kind: "image", path: url, previewUrl: url });
-    setCaption("");
+    if (paths.length === 0) return;
+    if (paths.length === 1) {
+      const url = paths[0];
+      setPending({ kind: "image", path: url, previewUrl: url });
+      setCaption("");
+      return;
+    }
+    void sendLibraryBatch(paths);
   };
 
   return (
@@ -1590,7 +1647,8 @@ function MediaSendPanel({
                     onClick={() => {
                       console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
                       setMenuOpen(false);
-                      onInsertText(q.content);
+                      setActiveReply(q);
+                      setReplyText(q.content);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
                     title={q.category ?? undefined}
@@ -1633,10 +1691,10 @@ function MediaSendPanel({
                 className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
               />
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Edite o texto antes de enviar se quiser.
+                Edite e clique em "Salvar como padrão" para que o texto fique salvo para a empresa em todos os atendimentos.
               </p>
             </div>
-            <div className="p-4 border-t border-border flex items-center justify-end gap-2">
+            <div className="p-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
               <button
                 onClick={() => setActiveReply(null)}
                 className="h-9 px-3 rounded-md text-sm hover:bg-muted"
@@ -1656,11 +1714,51 @@ function MediaSendPanel({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                disabled={savingReply || !companyId || !activeReply}
+                onClick={async () => {
+                  if (!companyId || !activeReply) return;
+                  setSavingReply(true);
+                  try {
+                    const saved = await updateQuickReply(companyId, activeReply.id, {
+                      content: replyText,
+                    });
+                    setQuickReplies((prev) =>
+                      prev.map((r) => (r.id === saved.id ? (saved as QuickReply) : r)),
+                    );
+                    setActiveReply(saved as QuickReply);
+                    toast.success("Texto padrão atualizado para a empresa");
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : "Falha ao salvar";
+                    toast.error(msg);
+                  } finally {
+                    setSavingReply(false);
+                  }
+                }}
+                className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md text-sm border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                {savingReply ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Salvar como padrão
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
                   const t = replyText.trim();
                   if (!t) {
                     toast.error("Mensagem vazia");
                     return;
+                  }
+                  // Auto-salva se o texto foi alterado em relação ao salvo
+                  if (companyId && activeReply && replyText !== activeReply.content) {
+                    try {
+                      const saved = await updateQuickReply(companyId, activeReply.id, {
+                        content: replyText,
+                      });
+                      setQuickReplies((prev) =>
+                        prev.map((r) => (r.id === saved.id ? (saved as QuickReply) : r)),
+                      );
+                    } catch (e) {
+                      console.warn("[quick_reply auto-save]", e);
+                    }
                   }
                   onSendText(t);
                   setActiveReply(null);
@@ -1757,6 +1855,13 @@ function MediaSendPanel({
           onPick={selectFromLibrary}
         />
       )}
+
+      {multiSendProgress && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-card border border-border rounded-full shadow-lg px-4 py-2 text-sm flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          Enviando fotos {multiSendProgress.current}/{multiSendProgress.total}…
+        </div>
+      )}
     </>
   );
 }
@@ -1766,11 +1871,12 @@ function ProductsLibraryModal({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (path: string) => void;
+  onPick: (paths: string[]) => void;
 }) {
   const [, force] = useState(0);
   useEffect(() => subscribeProducts(() => force((n) => n + 1)), []);
   const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
   const all = listProducts();
   const filtered = useMemo<Product[]>(() => {
     const q = query.trim().toLowerCase();
@@ -1792,6 +1898,17 @@ function ProductsLibraryModal({
     return Array.from(map.entries());
   }, [filtered]);
 
+  const toggle = (img: string) => {
+    setSelected((prev) =>
+      prev.includes(img) ? prev.filter((p) => p !== img) : [...prev, img],
+    );
+  };
+  const clearSelection = () => setSelected([]);
+  const confirmSend = () => {
+    if (selected.length === 0) return;
+    onPick(selected);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
@@ -1801,7 +1918,7 @@ function ProductsLibraryModal({
         className="bg-card rounded-lg border border-border max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-border flex items-center justify-between gap-3">
+        <div className="p-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
           <div className="font-semibold text-sm flex items-center gap-2">
             <LibraryIcon className="h-4 w-4" /> Biblioteca de Produtos
           </div>
@@ -1810,13 +1927,16 @@ function ProductsLibraryModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar produto ou categoria…"
-            className="flex-1 max-w-xs rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="flex-1 min-w-[180px] max-w-xs rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <button onClick={onClose} className="p-1 hover:bg-muted rounded">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="overflow-y-auto p-4 space-y-6">
+        <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground">
+          Toque nas fotos para selecionar várias. Toque novamente para desmarcar.
+        </div>
+        <div className="overflow-y-auto p-4 space-y-6 flex-1">
           {byCategory.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-12">
               Nenhuma foto disponível. Adicione fotos aos seus produtos em /produtos.
@@ -1829,28 +1949,69 @@ function ProductsLibraryModal({
               </div>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
                 {items.flatMap((p) =>
-                  (p.images ?? []).map((img, i) => (
-                    <button
-                      key={`${p.id}-${i}`}
-                      onClick={() => onPick(img)}
-                      className="group relative rounded-md overflow-hidden border border-border hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
-                      title={p.name}
-                    >
-                      <SmartImage
-                        src={img}
-                        alt={p.name}
-                        aspectRatio="1/1"
-                        wrapperClassName="w-full"
-                      />
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                        <div className="text-[10px] text-white truncate">{p.name}</div>
-                      </div>
-                    </button>
-                  )),
+                  (p.images ?? []).map((img, i) => {
+                    const isSel = selected.includes(img);
+                    const selIndex = isSel ? selected.indexOf(img) + 1 : 0;
+                    return (
+                      <button
+                        key={`${p.id}-${i}`}
+                        type="button"
+                        onClick={() => toggle(img)}
+                        className={cn(
+                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition",
+                          isSel
+                            ? "border-primary ring-2 ring-primary"
+                            : "border-border hover:border-primary",
+                        )}
+                        title={p.name}
+                      >
+                        <SmartImage
+                          src={img}
+                          alt={p.name}
+                          aspectRatio="1/1"
+                          wrapperClassName="w-full"
+                        />
+                        {isSel && (
+                          <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
+                            {selIndex}
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                          <div className="text-[10px] text-white truncate">{p.name}</div>
+                        </div>
+                      </button>
+                    );
+                  }),
                 )}
               </div>
             </div>
           ))}
+        </div>
+        <div className="p-3 border-t border-border flex items-center justify-between gap-2 bg-card">
+          <div className="text-xs text-muted-foreground">
+            {selected.length === 0
+              ? "Nenhuma foto selecionada"
+              : `${selected.length} foto${selected.length > 1 ? "s" : ""} selecionada${selected.length > 1 ? "s" : ""}`}
+          </div>
+          <div className="flex items-center gap-2">
+            {selected.length > 0 && (
+              <button
+                onClick={clearSelection}
+                className="h-9 px-3 rounded-md text-sm hover:bg-muted"
+              >
+                Limpar
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={selected.length === 0}
+              onClick={confirmSend}
+              className="h-9 px-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="h-4 w-4" />
+              {selected.length > 1 ? `Enviar ${selected.length} selecionadas` : "Enviar selecionada"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
