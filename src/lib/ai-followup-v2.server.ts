@@ -704,6 +704,7 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           v2.reactivationTemplate.replace(/\{\{nome\}\}/g, nome),
           1,
           seed,
+          { nome },
         );
         const send = await sendWhatsappText({
           companyId,
