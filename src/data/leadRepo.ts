@@ -454,6 +454,88 @@ export async function refetchConversationMessages(conversationId: string) {
   notify();
 }
 
+// ---------- paginação por conversa (Onda 2.2) ----------
+
+const MSG_SELECT =
+  "id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at";
+
+export function hasMoreOlderMessages(conversationId: string): boolean {
+  return olderHasMore.get(conversationId) ?? true;
+}
+
+// Ao abrir a conversa: garante que temos pelo menos `limit` mensagens recentes
+// dessa conversa em memória. Idempotente — só executa uma vez por conversa por sessão.
+export async function loadConversationRecent(
+  conversationId: string,
+  limit = 100,
+): Promise<void> {
+  if (mode !== "remote") return;
+  if (recentLoaded.has(conversationId)) return;
+  recentLoaded.add(conversationId);
+  const { data, error } = await supabase
+    .from("messages")
+    .select(MSG_SELECT)
+    .eq("conversation_id", conversationId)
+    .order("at", { ascending: false })
+    .limit(limit);
+  if (error || !data) {
+    recentLoaded.delete(conversationId);
+    return;
+  }
+  const existing = new Set(remoteMessages.map((m) => m.id));
+  const fresh = data
+    .map((r) => toMessage(r as DbMessage))
+    .filter((m) => !existing.has(m.id));
+  if (fresh.length > 0) {
+    remoteMessages = [...remoteMessages, ...fresh];
+    notify();
+  }
+  // Se voltou menos que o limite, não há mais histórico antigo.
+  if (data.length < limit) olderHasMore.set(conversationId, false);
+}
+
+// Scroll-up: busca mensagens anteriores a `beforeAt` para essa conversa.
+// Usa o índice (company_id, conversation_id, at DESC). Dedup por id.
+export async function loadConversationOlder(
+  conversationId: string,
+  beforeAt: string,
+  limit = 50,
+): Promise<{ added: number; hasMore: boolean }> {
+  if (mode !== "remote") return { added: 0, hasMore: false };
+  if (olderLoading.has(conversationId)) {
+    return { added: 0, hasMore: hasMoreOlderMessages(conversationId) };
+  }
+  if (olderHasMore.get(conversationId) === false) {
+    return { added: 0, hasMore: false };
+  }
+  olderLoading.add(conversationId);
+  try {
+    const { data, error } = await supabase
+      .from("messages")
+      .select(MSG_SELECT)
+      .eq("conversation_id", conversationId)
+      .lt("at", beforeAt)
+      .order("at", { ascending: false })
+      .limit(limit);
+    if (error || !data) {
+      return { added: 0, hasMore: hasMoreOlderMessages(conversationId) };
+    }
+    const existing = new Set(remoteMessages.map((m) => m.id));
+    const fresh = data
+      .map((r) => toMessage(r as DbMessage))
+      .filter((m) => !existing.has(m.id));
+    if (fresh.length > 0) {
+      remoteMessages = [...remoteMessages, ...fresh];
+      notify();
+    }
+    const hasMore = data.length === limit;
+    olderHasMore.set(conversationId, hasMore);
+    return { added: fresh.length, hasMore };
+  } finally {
+    olderLoading.delete(conversationId);
+  }
+}
+
 // Edita o texto de uma mensagem (somente role=agent). Registra edited_at.
 export async function editMessage(messageId: string, newText: string) {
   const editedAt = new Date().toISOString();
