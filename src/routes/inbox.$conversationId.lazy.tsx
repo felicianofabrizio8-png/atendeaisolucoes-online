@@ -13,6 +13,9 @@ import {
   subscribeRepo,
   editMessage,
   deleteMessage,
+  loadConversationRecent,
+  loadConversationOlder,
+  hasMoreOlderMessages,
 } from "@/data/leadRepo";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
