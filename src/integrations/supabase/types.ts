@@ -1812,6 +1812,51 @@ export type Database = {
           },
         ]
       }
+      meta_pages_safe: {
+        Row: {
+          active: boolean | null
+          company_id: string | null
+          created_at: string | null
+          id: string | null
+          ig_business_account_id: string | null
+          ig_username: string | null
+          integration_id: string | null
+          last_error: string | null
+          page_id: string | null
+          page_name: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ig_business_account_id?: string | null
+          ig_username?: string | null
+          integration_id?: string | null
+          last_error?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ig_business_account_id?: string | null
+          ig_username?: string | null
+          integration_id?: string | null
+          last_error?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       ai_agent_maintenance: { Args: never; Returns: undefined }
