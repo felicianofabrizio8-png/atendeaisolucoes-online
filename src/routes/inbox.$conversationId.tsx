@@ -1913,6 +1913,8 @@ function ConversationPage() {
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
+  const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
+  const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const pendingTextSendsRef = useRef<Set<string>>(new Set());
 
