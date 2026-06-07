@@ -23,6 +23,7 @@ import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as IaRouteImport } from './routes/ia'
+import { Route as CriativosRouteImport } from './routes/criativos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
@@ -53,6 +54,7 @@ import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
 import { Route as ApiAiFollowupStatusRouteImport } from './routes/api.ai.followup-status'
 import { Route as ApiAiFollowupReactivateRouteImport } from './routes/api.ai.followup-reactivate'
 import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
+import { Route as ApiAiCreativeGeneratorRouteImport } from './routes/api.ai.creative-generator'
 import { Route as ApiAiCampaignCreativeRouteImport } from './routes/api.ai.campaign-creative'
 import { Route as ApiAiCampaignAdvisorRouteImport } from './routes/api.ai.campaign-advisor'
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
@@ -127,6 +129,11 @@ const InboxRoute = InboxRouteImport.update({
 const IaRoute = IaRouteImport.update({
   id: '/ia',
   path: '/ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CriativosRoute = CriativosRouteImport.update({
+  id: '/criativos',
+  path: '/criativos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -301,6 +308,11 @@ const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
   path: '/api/ai/followup-config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiCreativeGeneratorRoute = ApiAiCreativeGeneratorRouteImport.update({
+  id: '/api/ai/creative-generator',
+  path: '/api/ai/creative-generator',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiCampaignCreativeRoute = ApiAiCampaignCreativeRouteImport.update({
   id: '/api/ai/campaign-creative',
   path: '/api/ai/campaign-creative',
@@ -367,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
@@ -392,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
+  '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -425,6 +439,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/login': typeof LoginRoute
   '/orcamentos': typeof OrcamentosRoute
@@ -449,6 +464,7 @@ export interface FileRoutesByTo {
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
+  '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -483,6 +499,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criativos': typeof CriativosRoute
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
@@ -508,6 +525,7 @@ export interface FileRoutesById {
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
+  '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
   '/api/ai/followup-config': typeof ApiAiFollowupConfigRoute
   '/api/ai/followup-reactivate': typeof ApiAiFollowupReactivateRoute
   '/api/ai/followup-status': typeof ApiAiFollowupStatusRoute
@@ -543,6 +561,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/inbox'
     | '/login'
@@ -568,6 +587,7 @@ export interface FileRouteTypes {
     | '/api/ai/analytics'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
+    | '/api/ai/creative-generator'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -601,6 +621,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/login'
     | '/orcamentos'
@@ -625,6 +646,7 @@ export interface FileRouteTypes {
     | '/api/ai/analytics'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
+    | '/api/ai/creative-generator'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -658,6 +680,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/configuracoes'
+    | '/criativos'
     | '/ia'
     | '/inbox'
     | '/login'
@@ -683,6 +706,7 @@ export interface FileRouteTypes {
     | '/api/ai/analytics'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
+    | '/api/ai/creative-generator'
     | '/api/ai/followup-config'
     | '/api/ai/followup-reactivate'
     | '/api/ai/followup-status'
@@ -717,6 +741,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
+  CriativosRoute: typeof CriativosRoute
   IaRoute: typeof IaRoute
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -740,6 +765,7 @@ export interface RootRouteChildren {
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
   ApiAiCampaignAdvisorRoute: typeof ApiAiCampaignAdvisorRoute
   ApiAiCampaignCreativeRoute: typeof ApiAiCampaignCreativeRoute
+  ApiAiCreativeGeneratorRoute: typeof ApiAiCreativeGeneratorRoute
   ApiAiFollowupConfigRoute: typeof ApiAiFollowupConfigRoute
   ApiAiFollowupReactivateRoute: typeof ApiAiFollowupReactivateRoute
   ApiAiFollowupStatusRoute: typeof ApiAiFollowupStatusRoute
@@ -854,6 +880,13 @@ declare module '@tanstack/react-router' {
       path: '/ia'
       fullPath: '/ia'
       preLoaderRoute: typeof IaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/criativos': {
+      id: '/criativos'
+      path: '/criativos'
+      fullPath: '/criativos'
+      preLoaderRoute: typeof CriativosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -1087,6 +1120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiFollowupConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/creative-generator': {
+      id: '/api/ai/creative-generator'
+      path: '/api/ai/creative-generator'
+      fullPath: '/api/ai/creative-generator'
+      preLoaderRoute: typeof ApiAiCreativeGeneratorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/campaign-creative': {
       id: '/api/ai/campaign-creative'
       path: '/api/ai/campaign-creative'
@@ -1183,6 +1223,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
+  CriativosRoute: CriativosRoute,
   IaRoute: IaRoute,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
@@ -1206,6 +1247,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
   ApiAiCampaignAdvisorRoute: ApiAiCampaignAdvisorRoute,
   ApiAiCampaignCreativeRoute: ApiAiCampaignCreativeRoute,
+  ApiAiCreativeGeneratorRoute: ApiAiCreativeGeneratorRoute,
   ApiAiFollowupConfigRoute: ApiAiFollowupConfigRoute,
   ApiAiFollowupReactivateRoute: ApiAiFollowupReactivateRoute,
   ApiAiFollowupStatusRoute: ApiAiFollowupStatusRoute,
@@ -1238,3 +1280,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
