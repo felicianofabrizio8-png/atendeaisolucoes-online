@@ -1253,7 +1253,7 @@ function MessageBubble({
               </div>
             </div>
           ) : (
-            <MessageContent message={m} />
+            <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
       </div>
