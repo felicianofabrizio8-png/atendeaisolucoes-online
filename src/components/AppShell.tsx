@@ -26,7 +26,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas" | "/saude";
+  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas" | "/saude" | "/criativos";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
