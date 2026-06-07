@@ -2216,6 +2216,14 @@ function ConversationPage() {
     );
   }, [repoMessages, localMessages]);
 
+  // Onda 2.4: pré-filtra mensagens "apagadas só para mim" antes de passar para
+  // o Virtuoso (a lista virtual não tolera itens null).
+  const visibleMessages = useMemo<Message[]>(
+    () => messages.filter((m) => !(m.deletedAt && m.deletedFor === "me")),
+    [messages],
+  );
+
+
   // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
   useEffect(() => {
     if (localMessages.length === 0) return;
