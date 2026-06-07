@@ -115,11 +115,43 @@ export async function isWithin24hWindow(
  *  - Nunca usa marketing/authentication em follow-up automático.
  *  - Exige status='approved' e auto_use=true.
  */
+/**
+ * Encontra o template aprovado que atende um propósito.
+ *
+ * Estratégia (em ordem):
+ *  1) Lookup direto pelo NOME canônico do template (Marketing ou Utility,
+ *     conforme `PURPOSE_TEMPLATE_MAP`) — exige status='approved'.
+ *  2) Fallback: lookup pelo campo legacy `purpose` (auto_use + approved),
+ *     respeitando a categoria esperada do mapa.
+ *
+ * Nunca devolve template em status diferente de "approved".
+ */
 export async function findApprovedTemplateForPurpose(
   companyId: string,
   purpose: TemplatePurpose,
   preferredLanguage = "pt_BR",
 ): Promise<TemplateRow | null> {
+  const mapped = PURPOSE_TEMPLATE_MAP[purpose];
+  const expectedCategory = mapped?.category ?? "utility";
+  const expectedName = mapped?.templateName ?? null;
+
+  // 1) Busca pelo nome canônico
+  if (expectedName) {
+    const { data } = await supabaseAdmin
+      .from("whatsapp_templates")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("name", expectedName)
+      .eq("status", "approved")
+      .eq("category", expectedCategory);
+    const rows = (data ?? []) as unknown as TemplateRow[];
+    if (rows.length > 0) {
+      const lang = rows.find((r) => r.language === preferredLanguage);
+      return lang ?? rows[0];
+    }
+  }
+
+  // 2) Fallback legacy: pelo campo purpose + auto_use
   const { data } = await supabaseAdmin
     .from("whatsapp_templates")
     .select("*")
@@ -127,7 +159,7 @@ export async function findApprovedTemplateForPurpose(
     .eq("purpose", purpose)
     .eq("auto_use", true)
     .eq("status", "approved")
-    .eq("category", "utility");
+    .eq("category", expectedCategory);
   const rows = (data ?? []) as unknown as TemplateRow[];
   if (rows.length === 0) return null;
   const lang = rows.find((r) => r.language === preferredLanguage);
