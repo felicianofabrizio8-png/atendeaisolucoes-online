@@ -417,13 +417,42 @@ export async function sendWhatsappTemplate(params: {
 
   await logTemplateEvent(companyId, conversationId, leadId, "template_sent", {
     template_name: template.name,
-    category: template.category,
-    language: template.language,
+    template_category: template.category,
+    template_language: template.language,
     purpose,
-    wamid: externalId,
+    delivery_method: "template",
+    whatsapp_message_id: externalId,
   });
 
   return { ok: true, externalId };
+}
+
+/**
+ * Atalho operacional para visitas/instalação (Utility) e follow-up/reativação
+ * (Marketing). Pode ser invocado por outras camadas (agenda, server fns)
+ * para enviar notificações por template aprovado de forma uniforme.
+ */
+export async function sendOperationalTemplate(params: {
+  companyId: string;
+  conversationId: string;
+  leadId: string;
+  kind:
+    | "visit_confirmed"
+    | "visit_rescheduled"
+    | "installation_confirmed"
+    | "quote_followup"
+    | "reactivation";
+  variables?: Record<string, string>;
+  source?: string;
+}) {
+  return sendWhatsappTemplate({
+    companyId: params.companyId,
+    conversationId: params.conversationId,
+    leadId: params.leadId,
+    purpose: params.kind,
+    variables: params.variables,
+    source: params.source ?? `op_template:${params.kind}`,
+  });
 }
 
 // ---------------------------------------------------------------------------
