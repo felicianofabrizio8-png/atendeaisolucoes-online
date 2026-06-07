@@ -602,6 +602,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               media_bucket: BUCKET,
               duration_seconds: duration && duration > 0 ? Math.round(duration) : null,
               voice: true,
+              detected_audio: detectedAudio,
+              client_debug: clientDebug,
             },
           })
           .select("id, conversation_id, role, text, at")
@@ -627,6 +629,8 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
           externalId,
           at: sentAt,
           duration: duration ?? null,
+          declared_mime: baseMime,
+          detected_audio: detectedAudio,
         });
       },
     },
