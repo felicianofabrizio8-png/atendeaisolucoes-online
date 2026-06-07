@@ -188,10 +188,20 @@ export function WhatsappTemplatesPanel() {
           ) : (
             <div className="space-y-3">
               {items.map((t) => {
-                const canAuto = t.category === "utility" && t.status === "approved";
+                const isApproved = t.status === "approved";
+                const isAutoCategory = t.category === "utility" || t.category === "marketing";
+                const canAuto = isApproved && isAutoCategory;
+                const autoBadgeLabel =
+                  t.category === "marketing" ? "Auto Marketing" : "Auto Utility";
+                const autoBadgeClass =
+                  t.category === "marketing"
+                    ? "bg-fuchsia-500/15 text-fuchsia-600 border-fuchsia-500/30"
+                    : "bg-primary/15 text-primary border-primary/30";
                 const body =
                   (t.components ?? []).find((c) => c.type?.toUpperCase() === "BODY")?.text ??
                   "(sem corpo)";
+                const marketingPurposes = PURPOSES.filter((p) => p.group === "marketing");
+                const utilityPurposes = PURPOSES.filter((p) => p.group === "utility");
                 return (
                   <div
                     key={t.id}
@@ -212,6 +222,13 @@ export function WhatsappTemplatesPanel() {
                       <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded border border-border">
                         {t.language}
                       </span>
+                      {t.auto_use && isAutoCategory && (
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border ${autoBadgeClass}`}
+                        >
+                          {autoBadgeLabel}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
                       {body}
@@ -229,7 +246,21 @@ export function WhatsappTemplatesPanel() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {PURPOSES.map((p) => (
+                            <SelectItem value={NONE_PURPOSE} className="text-sm md:text-xs">
+                              — sem propósito —
+                            </SelectItem>
+                            <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-fuchsia-600">
+                              Marketing
+                            </div>
+                            {marketingPurposes.map((p) => (
+                              <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
+                                {p.label}
+                              </SelectItem>
+                            ))}
+                            <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-primary">
+                              Utility
+                            </div>
+                            {utilityPurposes.map((p) => (
                               <SelectItem key={p.value} value={p.value} className="text-sm md:text-xs">
                                 {p.label}
                               </SelectItem>
@@ -246,7 +277,14 @@ export function WhatsappTemplatesPanel() {
                         />
                         {!canAuto && (
                           <span className="text-[10px] text-muted-foreground">
-                            só Utility aprovado
+                            {!isApproved
+                              ? "precisa estar aprovado"
+                              : "categoria não suportada"}
+                          </span>
+                        )}
+                        {canAuto && t.purpose && PURPOSE_CATEGORY[t.purpose] !== t.category && (
+                          <span className="text-[10px] text-amber-600">
+                            propósito não bate com a categoria
                           </span>
                         )}
                       </div>
