@@ -100,6 +100,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const [dragY, setDragY] = useState(0);
   const [willCancel, setWillCancel] = useState(false);
   const [bars, setBars] = useState<number[]>(() => new Array(WAVEFORM_BARS).fill(0.05));
+  const [micPermission, setMicPermission] = useState<"unknown" | "granted" | "denied">("unknown");
 
   const recorderRef = useRef<RecorderLike | MediaRecorder | null>(null);
   const recorderKindRef = useRef<"native" | "opus" | null>(null);
@@ -122,6 +123,31 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // Consulta o estado da permissão do microfone no mount.
+  // Se já estiver concedida, pula a etapa de "primeiro toque = liberar mic"
+  // e permite gravar direto no primeiro press-and-hold.
+  useEffect(() => {
+    let cancelled = false;
+    const nav = navigator as Navigator & {
+      permissions?: { query: (q: { name: PermissionName }) => Promise<PermissionStatus> };
+    };
+    if (nav.permissions?.query) {
+      nav.permissions
+        .query({ name: "microphone" as PermissionName })
+        .then((status) => {
+          if (cancelled) return;
+          if (status.state === "granted") setMicPermission("granted");
+          else if (status.state === "denied") setMicPermission("denied");
+          status.onchange = () => {
+            if (status.state === "granted") setMicPermission("granted");
+            else if (status.state === "denied") setMicPermission("denied");
+          };
+        })
+        .catch(() => { /* */ });
+    }
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (tickRef.current) window.clearInterval(tickRef.current);
@@ -130,6 +156,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       try { audioCtxRef.current?.close(); } catch { /* */ }
     };
   }, []);
+
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -602,11 +629,54 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     try { btnRef.current?.releasePointerCapture(pointerId); } catch { /* */ }
   };
 
+  // Primeira interação: apenas pedir permissão do microfone, SEM iniciar gravação.
+  // Abre o prompt do navegador, libera o stream imediatamente e mostra um toast
+  // instruindo o usuário a pressionar de novo para gravar.
+  const requestMicPermission = async (): Promise<boolean> => {
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Seu navegador não suporta gravação de áudio.");
+      return false;
+    }
+    if (!window.isSecureContext) {
+      setError("Gravação exige HTTPS.");
+      return false;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Libera imediatamente — só queríamos disparar o prompt de permissão.
+      stream.getTracks().forEach((t) => t.stop());
+      setMicPermission("granted");
+      toast.success("Microfone liberado. Toque e segure para gravar.");
+      return true;
+    } catch (e) {
+      const name = (e as { name?: string })?.name;
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setMicPermission("denied");
+        setError("Permissão de microfone negada.");
+        toast.error("Permissão de microfone negada.");
+      } else if (name === "NotFoundError") {
+        setError("Nenhum microfone encontrado.");
+      } else {
+        setError("Não foi possível acessar o microfone.");
+      }
+      return false;
+    }
+  };
+
   const onPointerDown = async (e: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled || state !== "idle") return;
     e.preventDefault();
     e.stopPropagation();
     const pid = e.pointerId;
+
+    // Etapa 1: se ainda não temos permissão, apenas solicitar — NÃO gravar.
+    if (micPermission !== "granted") {
+      await requestMicPermission();
+      return;
+    }
+
+    // Etapa 2: permissão já concedida — iniciar gravação real.
     pointerIdRef.current = pid;
     pointerStartRef.current = { x: e.clientX, y: e.clientY };
     try { btnRef.current?.setPointerCapture(pid); } catch { /* */ }
@@ -617,6 +687,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
       pointerStartRef.current = null;
     }
   };
+
 
   const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (state !== "recording") return;
@@ -673,8 +744,9 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           onPointerCancel={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           disabled={disabled}
-          aria-label="Pressione e segure para gravar áudio"
-          title="Pressione e segure para gravar"
+          aria-label={micPermission === "granted" ? "Pressione e segure para gravar áudio" : "Liberar microfone"}
+          title={micPermission === "granted" ? "Pressione e segure para gravar" : "Toque para liberar o microfone"}
+
           style={{ touchAction: "none" }}
           className={`h-11 w-11 md:h-9 md:w-9 inline-flex items-center justify-center rounded-full md:rounded-md select-none transition-colors ${
             showRecordingOverlay
@@ -735,7 +807,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           Só aparece depois que a gravação realmente começou. */}
       {showRecordingOverlay && (
         <div
-          className="pointer-events-none absolute bottom-full right-0 mb-2 flex items-center gap-2 bg-card border border-destructive/40 shadow-lg rounded-full px-3 h-10 min-w-[220px] max-w-[80vw]"
+          className="pointer-events-none absolute bottom-full right-0 mb-2 flex items-center gap-2 bg-card border border-destructive/40 shadow-lg rounded-full px-3 h-10 min-w-[240px] max-w-[80vw]"
           aria-live="polite"
         >
           <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -758,6 +830,17 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
               "‹ deslize p/ cancelar"
             )}
           </span>
+          {/* Botão X sempre clicável — escape caso a gravação fique "presa".
+              pointer-events-auto sobrescreve o pointer-events-none do overlay. */}
+          <button
+            type="button"
+            onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); }}
+            onClick={(ev) => { ev.stopPropagation(); cancelRecording(); }}
+            aria-label="Cancelar gravação"
+            className="pointer-events-auto ml-1 h-7 w-7 inline-flex items-center justify-center rounded-full bg-destructive/15 hover:bg-destructive/25 text-destructive shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
           <div
             className="absolute -top-8 right-3 flex flex-col items-center text-destructive/80"
             style={{ transform: `translateY(${Math.max(dragY, -40)}px)`, opacity: Math.min(1, Math.abs(dragY) / LOCK_THRESHOLD + 0.4) }}
@@ -766,6 +849,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
           </div>
         </div>
       )}
+
 
       {error && (
         <div role="alert" className="absolute bottom-full right-0 mb-2 rounded-md bg-destructive/10 border border-destructive/40 text-destructive text-xs px-3 py-2 whitespace-nowrap">
