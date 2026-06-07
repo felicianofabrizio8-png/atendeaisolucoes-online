@@ -575,10 +575,12 @@ function WhatsAppAudio({
         {mime ? <source src={display} type={mime} /> : null}
       </audio>
 
-      <DownloadButton href={display} filename={filename ?? "audio"} compact />
+      <DownloadButton href={display} filename={filename ?? "audio"} />
     </div>
   );
 }
+
+// Wrapper outer container for WhatsAppAudio so the download button stacks below
 
 function DocumentPreview({
   path,
