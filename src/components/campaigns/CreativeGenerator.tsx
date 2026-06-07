@@ -715,11 +715,19 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                         <button onClick={() => saveVariant(k)} className="text-xs h-8 px-2.5 rounded border inline-flex items-center gap-1 hover:bg-accent">
                           <Save className="h-3.5 w-3.5" /> Salvar
                         </button>
-                        {onUseInCampaign && (
-                          <button onClick={() => useNow(k)} className="text-xs h-8 px-2.5 rounded bg-primary text-primary-foreground inline-flex items-center gap-1 hover:bg-primary/90">
-                            <ArrowRight className="h-3.5 w-3.5" /> Usar neste anúncio
-                          </button>
-                        )}
+                        {onUseInCampaign && (() => {
+                          const needsConfirm = config.preserve_product && !confirmed[`${k}-${activeFormat}`];
+                          return (
+                            <button
+                              onClick={() => useNow(k)}
+                              disabled={needsConfirm}
+                              title={needsConfirm ? "Confirme que o produto gerado corresponde ao original" : ""}
+                              className="text-xs h-8 px-2.5 rounded bg-primary text-primary-foreground inline-flex items-center gap-1 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ArrowRight className="h-3.5 w-3.5" /> Usar neste anúncio
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
