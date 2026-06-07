@@ -297,7 +297,8 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
         .from("messages")
         .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at")
         .eq("company_id", companyId)
-        .order("at", { ascending: true }),
+        .order("at", { ascending: false })
+        .limit(1000),
     ]);
     remoteLeads = (ls ?? []).map((r) => toLead(r as DbLead));
     remoteConversations = (cs ?? []).map((r) =>
