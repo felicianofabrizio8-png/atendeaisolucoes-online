@@ -248,18 +248,41 @@ export async function sendWhatsappTemplate(params: {
   }
 
   // 3) Template aprovado
+  const mapped = PURPOSE_TEMPLATE_MAP[purpose];
+  const expectedCategory = mapped?.category ?? "utility";
+  const expectedName = mapped?.templateName ?? null;
   const template = await findApprovedTemplateForPurpose(companyId, purpose);
   if (!template) {
+    const reason = expectedName
+      ? `Template "${expectedName}" (${expectedCategory}) não está aprovado na Cloud API para o propósito "${purpose}".`
+      : `Nenhum template aprovado para "${purpose}".`;
     await logTemplateEvent(companyId, conversationId, leadId, "template_missing", {
       purpose,
+      expected_template_name: expectedName,
+      expected_category: expectedCategory,
+      delivery_method: "template",
+    });
+    await logErrorAndAudit(companyId, leadId, "template_missing", {
+      purpose,
+      expected_template_name: expectedName,
+      expected_category: expectedCategory,
+      conversation_id: conversationId,
+    });
+    return { ok: false, error: reason };
+  }
+  // Garantia: a categoria do template precisa bater com a esperada para o propósito.
+  if (template.category !== expectedCategory) {
+    await logTemplateEvent(companyId, conversationId, leadId, "template_blocked", {
+      purpose,
+      template_name: template.name,
+      template_category: template.category,
+      expected_category: expectedCategory,
+      delivery_method: "template",
     });
     return {
       ok: false,
-      error: `Nenhum template Utility aprovado para "${purpose}". Solicite ação humana ou cadastre um template na Meta.`,
+      error: `Template "${template.name}" tem categoria ${template.category}, esperada ${expectedCategory} para o propósito "${purpose}".`,
     };
-  }
-  if (template.category !== "utility") {
-    return { ok: false, error: "Apenas templates Utility podem ser usados em follow-up automático." };
   }
 
   // 4) Render parâmetros e payload
