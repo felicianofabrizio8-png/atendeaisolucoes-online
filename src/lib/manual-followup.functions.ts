@@ -143,12 +143,17 @@ export const runFollowupNowForConversation = createServerFn({ method: "POST" })
       .maybeSingle();
     const firstName = (lead?.name ?? "").trim().split(/\s+/)[0] || "tudo bem";
     const tpl = settings.templates[rule];
-    const baseText = tpl
-      .replace(/\{\{nome\}\}/g, firstName)
-      .replace(/\{\{produto\}\}/g, lead?.product ?? "")
-      .replace(/\{\{agente\}\}/g, settings.agentName);
+    const vars: Record<string, string> = {
+      nome: firstName,
+      produto: lead?.product ?? "",
+      agente: settings.agentName,
+    };
+    const baseText = tpl.replace(
+      /\{\{(\w+)\}\}/g,
+      (_, k: string) => vars[k] ?? "",
+    );
     const text = humanize
-      ? humanizeTemplate(baseText, attempt, Math.floor(Date.now() / 60000)).text
+      ? humanizeTemplate(baseText, attempt, Math.floor(Date.now() / 60000), vars).text
       : baseText;
 
     // 8) Detecta janela 24h
