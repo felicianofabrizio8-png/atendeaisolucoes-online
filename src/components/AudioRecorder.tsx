@@ -95,7 +95,7 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
   const blobRef = useRef<Blob | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  void useMemo; // mantém import; pickSafariNativeMime é chamado em startRecording.
+  
 
   useEffect(() => {
     return () => {
