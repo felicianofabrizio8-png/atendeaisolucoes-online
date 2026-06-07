@@ -69,10 +69,6 @@ const MessagesContext = createContext<Message[]>([]);
 
 export const Route = createLazyFileRoute("/inbox/$conversationId")({
   component: ConversationPage,
-  validateSearch: (search: Record<string, unknown>): { quote?: string } => {
-    if (typeof search.quote === "string") return { quote: search.quote };
-    return {};
-  },
 });
 
 interface AISuggestion {
