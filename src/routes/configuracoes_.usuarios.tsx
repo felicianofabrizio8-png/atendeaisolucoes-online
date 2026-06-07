@@ -106,8 +106,14 @@ function UsersPage() {
       return;
     }
     (async () => {
+      const { data: companyId } = await supabase.rpc("current_company_id");
+      if (!companyId) {
+        setIsAdmin(false);
+        return;
+      }
       const { data } = await supabase.rpc("has_role", {
         _user_id: user.id,
+        _company_id: companyId as string,
         _role: "admin",
       });
       setIsAdmin(Boolean(data));

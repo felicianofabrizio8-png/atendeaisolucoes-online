@@ -21,7 +21,12 @@ async function getCompanyAndAdmin(
   };
   const { data: prof } = await s.from("profiles").select("company_id").eq("id", userId).maybeSingle();
   const companyId = prof?.company_id ?? null;
-  const { data: isAdmin } = await s.rpc("has_role", { _user_id: userId, _role: "admin" });
+  if (!companyId) return { companyId: null, isAdmin: false };
+  const { data: isAdmin } = await s.rpc("has_role", {
+    _user_id: userId,
+    _company_id: companyId,
+    _role: "admin",
+  });
   return { companyId, isAdmin: Boolean(isAdmin) };
 }
 
