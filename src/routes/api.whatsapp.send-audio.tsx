@@ -67,7 +67,6 @@ function detectAudioBytes(bytes: Uint8Array): DetectedAudio {
 function mimeMatchesBytes(mime: string, detected: DetectedAudio): boolean {
   const base = mime.toLowerCase().split(";")[0].trim();
   if (base === "audio/ogg") return detected === "ogg";
-  if (base === "audio/mp4" || base === "audio/aac") return detected === "mp4";
   return false;
 }
 
