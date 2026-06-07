@@ -38,15 +38,11 @@ function isSafariLike(): boolean {
 }
 
 function pickSafariNativeMime(): NativeMime | null {
-  if (typeof MediaRecorder === "undefined") return null;
-  if (!isSafariLike()) return null;
-  try {
-    if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
-  } catch {
-    /* */
-  }
+  // Caminho MP4 nativo desabilitado: somente OGG/Opus é comprovadamente entregue
+  // pela Meta no fluxo atual. Mantemos a função por compatibilidade.
   return null;
 }
+
 
 function fmtTime(secs: number): string {
   const s = Math.max(0, Math.floor(secs));
@@ -203,65 +199,69 @@ export function AudioRecorder({ conversationId, disabled, onSent }: Props) {
     streamRef.current = stream;
     chunksRef.current = [];
 
-    try {
-      if (nativeMime) {
-        // Caminho nativo restrito a Safari/iOS: só aceitamos MP4 se os bytes forem MP4 real.
-        const rec = new MediaRecorder(stream, { mimeType: nativeMime });
-        recorderRef.current = rec;
-        recorderKindRef.current = "native";
-        recorderMimeRef.current = nativeMime;
-        rec.ondataavailable = (ev) => {
-          if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
-        };
-        rec.onstop = () => {
-          const blob = new Blob(chunksRef.current as Blob[], {
-            type: rec.mimeType || nativeMime,
-          });
-          void finalize(blob, "audio/mp4");
-        };
-        rec.start();
-      } else {
-        // Caminho opus-recorder: produz OGG/Opus real em Chrome/Android/Desktop.
-        // Import dinâmico evita custo do WASM até o primeiro uso.
-        const mod = await import("opus-recorder");
-        const RecorderCtor = mod.default;
-        const rec = new RecorderCtor({
-          encoderPath: encoderWorkerUrl,
-          encoderApplication: 2048, // voice
-          encoderSampleRate: 16000,
-          encoderFrameSize: 20,
-          numberOfChannels: 1,
-          streamPages: false,
-          monitorGain: 0,
-          recordingGain: 1,
-        });
-        recorderRef.current = rec;
-        recorderKindRef.current = "opus";
-        recorderMimeRef.current = "audio/ogg";
-        rec.ondataavailable = (data) => {
-          if (data instanceof Blob) {
-            if (data.size > 0) chunksRef.current.push(data);
-          } else if (data instanceof ArrayBuffer) {
-            chunksRef.current.push(data);
-          } else {
-            // Uint8Array — copia para um ArrayBuffer puro para satisfazer BlobPart.
-            const copy = new Uint8Array(data.byteLength);
-            copy.set(data);
-            chunksRef.current.push(copy.buffer);
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const safari = isSafariLike();
+    console.log("[AUDIO FORMAT SELECTED]", {
+      user_agent: ua,
+      chosen_format: "audio/ogg;codecs=opus",
+      recorder: "opus-recorder",
+      reason: safari
+        ? "Safari/iOS detectado — caminho MP4 nativo desabilitado, forçando OGG/Opus (único formato comprovadamente aceito pela Meta no fluxo atual)."
+        : "Browser não-Safari — usando opus-recorder para produzir OGG/Opus real.",
+      native_mp4_supported:
+        typeof MediaRecorder !== "undefined" &&
+        (() => {
+          try {
+            return MediaRecorder.isTypeSupported("audio/mp4");
+          } catch {
+            return false;
           }
-        };
-        rec.onstop = () => {
-          const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
-          void finalize(blob, "audio/ogg");
-        };
-        await rec.start();
-      }
+        })(),
+    });
+
+    try {
+      // Sempre opus-recorder: produz OGG/Opus real em todos os navegadores
+      // suportados (Chrome/Android/Desktop/Safari). Caminho MP4/AAC/WebM
+      // desabilitado intencionalmente — apenas OGG é aceito pelo WhatsApp
+      // de forma confiável neste momento.
+      const mod = await import("opus-recorder");
+      const RecorderCtor = mod.default;
+      const rec = new RecorderCtor({
+        encoderPath: encoderWorkerUrl,
+        encoderApplication: 2048, // voice
+        encoderSampleRate: 16000,
+        encoderFrameSize: 20,
+        numberOfChannels: 1,
+        streamPages: false,
+        monitorGain: 0,
+        recordingGain: 1,
+      });
+      recorderRef.current = rec;
+      recorderKindRef.current = "opus";
+      recorderMimeRef.current = "audio/ogg";
+      rec.ondataavailable = (data) => {
+        if (data instanceof Blob) {
+          if (data.size > 0) chunksRef.current.push(data);
+        } else if (data instanceof ArrayBuffer) {
+          chunksRef.current.push(data);
+        } else {
+          const copy = new Uint8Array(data.byteLength);
+          copy.set(data);
+          chunksRef.current.push(copy.buffer);
+        }
+      };
+      rec.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/ogg" });
+        void finalize(blob, "audio/ogg");
+      };
+      await rec.start();
     } catch (e) {
       console.error("[audio] start error", e);
       stopStream();
-      setError("Não foi possível iniciar a gravação.");
+      setError("Seu navegador não suporta gravação de áudio compatível com WhatsApp.");
       return;
     }
+
 
     startedAtRef.current = Date.now();
     setSeconds(0);
