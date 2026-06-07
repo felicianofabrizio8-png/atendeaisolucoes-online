@@ -45,6 +45,9 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   Library as LibraryIcon,
+  Play,
+  Pause,
+  Mic,
 } from "lucide-react";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, type QuickReply } from "@/data/quickReplies";
