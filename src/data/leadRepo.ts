@@ -331,6 +331,12 @@ function subscribeRealtime(companyId: string) {
     void supabase.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
+  // Troca de empresa: invalida paginação cacheada da empresa anterior.
+  if (realtimeCompanyId && realtimeCompanyId !== companyId) {
+    olderHasMore.clear();
+    olderLoading.clear();
+    recentLoaded.clear();
+  }
   realtimeCompanyId = companyId;
   realtimeChannel = supabase
     .channel(`inbox-${companyId}`)
