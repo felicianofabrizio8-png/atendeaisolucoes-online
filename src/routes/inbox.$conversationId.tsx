@@ -2377,16 +2377,10 @@ function ConversationPage() {
     }
   }, [lastMessageId, ai, pendingQuote]);
 
-  // Fallback: se o Realtime do leadRepo falhar por algum motivo, faz um refetch
-  // leve da conversa aberta a cada 25s. Para ao desmontar.
-  useEffect(() => {
-    if (!conversationId) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void refetchConversationMessages(conversationId);
-    }, 25_000);
-    return () => window.clearInterval(id);
-  }, [conversationId]);
+  // Realtime do leadRepo cobre INSERT/UPDATE de mensagens.
+  // (Polling de 25s removido — Onda 1 de performance.)
+
+
 
 
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
@@ -3104,7 +3098,7 @@ function ConversationPage() {
                 disabled={!!closedInfo}
                 companyId={profile?.company_id ?? null}
                 leadId={lead?.id ?? null}
-                onSent={() => void refetchConversationMessages(conversationId)}
+                onSent={() => { /* realtime entrega a nova mensagem */ }}
                 onSendText={(t) => sendMessage(t)}
                 onInsertText={(t) => {
                   setInput((prev) => (prev ? `${prev}\n${t}` : t));
@@ -3117,7 +3111,7 @@ function ConversationPage() {
               <AudioRecorder
                 conversationId={conversationId}
                 disabled={!!closedInfo}
-                onSent={() => void refetchConversationMessages(conversationId)}
+                onSent={() => { /* realtime entrega o áudio enviado */ }}
                 onStateChange={setAudioState}
               />
             )}
