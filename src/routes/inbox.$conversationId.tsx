@@ -1913,6 +1913,8 @@ function ConversationPage() {
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
+  const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
+  const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const pendingTextSendsRef = useRef<Set<string>>(new Set());
 
@@ -2753,81 +2755,90 @@ function ConversationPage() {
 
         {/* Composer */}
         <div
-          className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background"
+          className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
         >
 
-          <div className="flex items-end gap-1.5 md:gap-2">
-            <button
-              onClick={generateAI}
-              disabled={aiLoading || !!closedInfo}
-              className="h-11 md:h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
-              title="Responder com IA"
-              aria-label="Responder com IA"
-            >
-              {aiLoading ? (
-                <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              )}
-              <span className="hidden md:inline">Responder com IA</span>
-            </button>
-            <textarea
-              ref={composerRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={!!closedInfo}
-              spellCheck
-              autoCapitalize="sentences"
-              autoCorrect="on"
-              autoComplete="on"
-              enterKeyHint="send"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage(input);
+          <div className="flex items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
+            {!audioActive && (
+              <button
+                onClick={generateAI}
+                disabled={aiLoading || !!closedInfo}
+                className="h-11 md:h-9 px-2.5 md:px-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-semibold disabled:opacity-50 shrink-0"
+                title="Responder com IA"
+                aria-label="Responder com IA"
+              >
+                {aiLoading ? (
+                  <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 md:h-3.5 md:w-3.5" />
+                )}
+                <span className="hidden md:inline">Responder com IA</span>
+              </button>
+            )}
+            {!audioActive && (
+              <textarea
+                ref={composerRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={!!closedInfo}
+                spellCheck
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                autoComplete="on"
+                enterKeyHint="send"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(input);
+                  }
+                }}
+                placeholder={
+                  closedInfo
+                    ? "Venda fechada."
+                    : isComment
+                      ? "Resposta ao comentário…"
+                      : "Mensagem…"
                 }
-              }}
-              placeholder={
-                closedInfo
-                  ? "Venda fechada."
-                  : isComment
-                    ? "Resposta ao comentário…"
-                    : "Mensagem…"
-              }
-              rows={1}
-              className="flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
-            />
-            <MediaSendPanel
-              conversationId={conversationId}
-              channel={lead?.channel}
-              disabled={!!closedInfo}
-              companyId={profile?.company_id ?? null}
-              leadId={lead?.id ?? null}
-              onSent={() => void refetchConversationMessages(conversationId)}
-              onSendText={(t) => sendMessage(t)}
-              onInsertText={(t) => {
-                setInput((prev) => (prev ? `${prev}\n${t}` : t));
-                requestAnimationFrame(() => composerRef.current?.focus());
-              }}
+                rows={1}
+                className="flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
+              />
+            )}
+            {!audioActive && (
+              <MediaSendPanel
+                conversationId={conversationId}
+                channel={lead?.channel}
+                disabled={!!closedInfo}
+                companyId={profile?.company_id ?? null}
+                leadId={lead?.id ?? null}
+                onSent={() => void refetchConversationMessages(conversationId)}
+                onSendText={(t) => sendMessage(t)}
+                onInsertText={(t) => {
+                  setInput((prev) => (prev ? `${prev}\n${t}` : t));
+                  requestAnimationFrame(() => composerRef.current?.focus());
+                }}
 
-            />
+              />
+            )}
             {lead?.channel === "whatsapp" && (
               <AudioRecorder
                 conversationId={conversationId}
                 disabled={!!closedInfo}
                 onSent={() => void refetchConversationMessages(conversationId)}
+                onStateChange={setAudioState}
               />
             )}
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || !!closedInfo}
-              className="h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
-              aria-label={isComment ? "Responder comentário" : "Enviar"}
-            >
-              <Send className="h-5 w-5 md:h-3.5 md:w-3.5" />
-              <span className="hidden md:inline">{isComment ? "Responder" : "Enviar"}</span>
-            </button>
+            {!audioActive && (
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={!input.trim() || !!closedInfo}
+                className="h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+                aria-label={isComment ? "Responder comentário" : "Enviar"}
+              >
+                <Send className="h-5 w-5 md:h-3.5 md:w-3.5" />
+                <span className="hidden md:inline">{isComment ? "Responder" : "Enviar"}</span>
+              </button>
+            )}
           </div>
         </div>
 
