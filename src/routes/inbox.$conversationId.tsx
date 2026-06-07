@@ -1518,10 +1518,67 @@ function MediaSendPanel({
     }
   };
 
-  const selectFromLibrary = (url: string) => {
+  const sendMediaPath = useCallback(
+    async (path: string, kind: "image" | "video", captionText?: string) => {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+      const res = await fetch("/api/whatsapp/send-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          conversationId,
+          mediaPath: path,
+          kind,
+          caption: captionText?.trim() || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+    },
+    [conversationId],
+  );
+
+  const sendLibraryBatch = useCallback(
+    async (paths: string[]) => {
+      if (paths.length === 0) return;
+      if (!isWhats) {
+        toast.error("Envio de mídia disponível apenas para WhatsApp.");
+        return;
+      }
+      setMultiSendProgress({ current: 0, total: paths.length });
+      let ok = 0;
+      for (let i = 0; i < paths.length; i++) {
+        try {
+          await sendMediaPath(paths[i], "image");
+          ok++;
+          onSent();
+        } catch (e) {
+          console.error("MULTI_MEDIA_SEND_ERROR", { path: paths[i], error: e });
+          toast.error(
+            `Falha ao enviar ${i + 1}/${paths.length}: ${
+              e instanceof Error ? e.message : "erro"
+            }`,
+          );
+        }
+        setMultiSendProgress({ current: i + 1, total: paths.length });
+      }
+      setMultiSendProgress(null);
+      if (ok > 0) toast.success(`${ok} foto(s) enviada(s)`);
+    },
+    [isWhats, onSent, sendMediaPath],
+  );
+
+  const selectFromLibrary = (paths: string[]) => {
     setLibraryOpen(false);
-    setPending({ kind: "image", path: url, previewUrl: url });
-    setCaption("");
+    if (paths.length === 0) return;
+    if (paths.length === 1) {
+      const url = paths[0];
+      setPending({ kind: "image", path: url, previewUrl: url });
+      setCaption("");
+      return;
+    }
+    void sendLibraryBatch(paths);
   };
 
   return (
