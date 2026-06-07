@@ -134,6 +134,8 @@ export function WhatsappTemplatesPanel() {
 
   return (
     <div className="space-y-4">
+      <WhatsappTemplateSuggestions />
+
       <Card>
         <CardHeader className="flex flex-row items-start md:items-center gap-2">
           <MessageSquareText className="h-5 w-5 text-primary shrink-0 mt-1 md:mt-0" />
