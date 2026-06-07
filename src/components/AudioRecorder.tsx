@@ -763,22 +763,22 @@ export function AudioRecorder({ conversationId, disabled, onSent, onStateChange 
       {/* Estado "locked" — substitui o mic por uma barra compacta com cancelar/enviar.
           Não é um overlay full-screen; ocupa apenas o espaço do composer. */}
       {showLockedBar && (
-        <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/40 rounded-full md:rounded-md px-3 h-11 md:h-9 min-w-[200px]">
+        <div className="flex items-center gap-1.5 md:gap-2 bg-destructive/10 border border-destructive/40 rounded-full md:rounded-md px-2 md:px-3 h-11 md:h-9 w-full min-w-0 max-w-full overflow-hidden">
           <span className="relative flex h-2.5 w-2.5 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75 animate-ping" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
           </span>
-          <span className="text-sm font-mono tabular-nums text-destructive min-w-[3rem]">{fmtTime(seconds)}</span>
-          <div className="flex-1 flex items-center gap-[2px] h-5 overflow-hidden">
+          <span className="text-xs md:text-sm font-mono tabular-nums text-destructive shrink-0">{fmtTime(seconds)}</span>
+          <div className="flex-1 min-w-0 flex items-center gap-[2px] h-5 overflow-hidden">
             {bars.map((v, i) => (
-              <span key={i} className="w-[2px] rounded-full bg-destructive/70" style={{ height: `${Math.max(6, v * 100)}%` }} />
+              <span key={i} className="w-[2px] rounded-full bg-destructive/70 shrink-0" style={{ height: `${Math.max(6, v * 100)}%` }} />
             ))}
           </div>
           <button
             type="button"
             onClick={cancelRecording}
             aria-label="Cancelar"
-            className="h-8 w-8 inline-flex items-center justify-center rounded-full hover:bg-destructive/20"
+            className="h-8 w-8 inline-flex items-center justify-center rounded-full hover:bg-destructive/20 shrink-0"
           >
             <Trash2 className="h-4 w-4 text-destructive" />
           </button>
@@ -786,7 +786,7 @@ export function AudioRecorder({ conversationId, disabled, onSent, onStateChange 
             type="button"
             onClick={stopAndSend}
             aria-label="Parar e enviar"
-            className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+            className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground shrink-0"
           >
             <Send className="h-4 w-4" />
           </button>
@@ -795,12 +795,12 @@ export function AudioRecorder({ conversationId, disabled, onSent, onStateChange 
 
       {/* Processing / sending — pill compacto no lugar do mic */}
       {showProcessing && (
-        <div className="flex items-center gap-2 bg-muted rounded-full md:rounded-md px-3 h-11 md:h-9 min-w-[160px]">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 bg-muted rounded-full md:rounded-md px-3 h-11 md:h-9 w-full min-w-0 max-w-full overflow-hidden">
+          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+          <span className="text-xs md:text-sm text-muted-foreground truncate">
             {state === "processing" ? "Processando…" : "Enviando…"}
           </span>
-          <span className="ml-auto text-xs font-mono tabular-nums text-muted-foreground">{fmtTime(seconds)}</span>
+          <span className="ml-auto text-xs font-mono tabular-nums text-muted-foreground shrink-0">{fmtTime(seconds)}</span>
         </div>
       )}
 
