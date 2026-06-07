@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
   getConversationById,
@@ -1353,6 +1354,162 @@ type PendingMedia = {
   fileName?: string;
 };
 
+// ============================================================================
+// PlusMenuPortal — menu do "+" renderizado em portal (acima de tudo)
+// Desktop: popover ancorado acima do botão. Mobile: bottom sheet.
+// ============================================================================
+function PlusMenuPortal({
+  anchorRef,
+  panelRef,
+  onClose,
+  quickReplies,
+  onPickImage,
+  onPickVideo,
+  onOpenLibrary,
+  onPickQuickReply,
+}: {
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+  quickReplies: QuickReply[];
+  onPickImage: () => void;
+  onPickVideo: () => void;
+  onOpenLibrary: () => void;
+  onPickQuickReply: (q: QuickReply) => void;
+}) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false,
+  );
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Calcula posição do popover desktop ancorado acima do botão "+"
+  useEffect(() => {
+    if (isMobile) return;
+    const compute = () => {
+      const btn = anchorRef.current;
+      const panel = panelRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const panelW = panel?.offsetWidth ?? 224;
+      const panelH = panel?.offsetHeight ?? 320;
+      const margin = 8;
+      // Acima do botão por padrão; se não couber, abre embaixo
+      let top = rect.top - panelH - margin;
+      if (top < margin) top = rect.bottom + margin;
+      let left = rect.right - panelW;
+      if (left < margin) left = margin;
+      if (left + panelW > window.innerWidth - margin) {
+        left = window.innerWidth - panelW - margin;
+      }
+      setPos({ top, left });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [isMobile, anchorRef, panelRef, quickReplies.length]);
+
+  // Fecha com ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const items = (
+    <>
+      <button
+        type="button"
+        onClick={onPickImage}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left"
+      >
+        <ImageIcon className="h-5 w-5 text-primary" /> Foto
+      </button>
+      <button
+        type="button"
+        onClick={onPickVideo}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left"
+      >
+        <VideoIcon className="h-5 w-5 text-primary" /> Vídeo
+      </button>
+      <button
+        type="button"
+        onClick={onOpenLibrary}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left border-t border-border"
+      >
+        <LibraryIcon className="h-5 w-5 text-primary" /> Biblioteca de Produtos
+      </button>
+      {quickReplies.length > 0 && (
+        <div className="border-t border-border">
+          <div className="px-4 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold bg-muted/40">
+            Respostas rápidas
+          </div>
+          {quickReplies.map((q) => (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => onPickQuickReply(q)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left"
+              title={q.category ?? undefined}
+            >
+              <span className="text-lg w-6 text-center">{q.icon || "💬"}</span>
+              <span className="truncate">{q.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div
+        className="fixed inset-0 z-[9999] bg-black/40 flex items-end"
+        onClick={onClose}
+      >
+        <div
+          ref={panelRef}
+          className="w-full bg-popover rounded-t-2xl border-t border-border shadow-2xl max-h-[75vh] overflow-y-auto"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="h-1.5 w-10 rounded-full bg-muted-foreground/30" />
+          </div>
+          {items}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={panelRef}
+      className="fixed z-[9999] w-56 rounded-md border border-border bg-popover shadow-2xl overflow-hidden max-h-[70vh] overflow-y-auto"
+      style={{
+        top: pos?.top ?? -9999,
+        left: pos?.left ?? -9999,
+        visibility: pos ? "visible" : "hidden",
+      }}
+    >
+      {items}
+    </div>
+  );
+}
+
+
+
 function MediaSendPanel({
   conversationId,
   channel,
@@ -1381,6 +1538,8 @@ function MediaSendPanel({
   const imgInputRef = useRef<HTMLInputElement>(null);
   const vidInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const isWhats = channel === "whatsapp";
 
   // Quick replies (respostas rápidas configuráveis)
@@ -1411,11 +1570,14 @@ function MediaSendPanel({
     };
   }, [companyId, menuOpen]);
 
-  // Fecha menu ao clicar fora
+  // Fecha menu ao clicar fora (considera portal — checa botão E painel)
   useEffect(() => {
     if (!menuOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      if (menuButtonRef.current?.contains(target)) return;
+      if (menuPanelRef.current?.contains(target)) return;
+      setMenuOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -1600,6 +1762,7 @@ function MediaSendPanel({
 
       <div className="relative" ref={menuRef}>
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           disabled={disabled}
@@ -1609,60 +1772,29 @@ function MediaSendPanel({
         >
           <Plus className="h-4 w-4" />
         </button>
-        {menuOpen && (
-          <div className="absolute bottom-full mb-2 right-0 w-52 rounded-md border border-border bg-popover shadow-lg z-30 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => pickFile("image")}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-            >
-              <ImageIcon className="h-4 w-4 text-primary" /> Foto
-            </button>
-            <button
-              type="button"
-              onClick={() => pickFile("video")}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-            >
-              <VideoIcon className="h-4 w-4 text-primary" /> Vídeo
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                setLibraryOpen(true);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left border-t border-border"
-            >
-              <LibraryIcon className="h-4 w-4 text-primary" /> Biblioteca de Produtos
-            </button>
-            {quickReplies.length > 0 && (
-              <div className="border-t border-border max-h-64 overflow-y-auto">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold bg-muted/40">
-                  Respostas rápidas
-                </div>
-                {quickReplies.map((q) => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    onClick={() => {
-                      console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
-                      setMenuOpen(false);
-                      setActiveReply(q);
-                      setReplyText(q.content);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-                    title={q.category ?? undefined}
-                  >
-                    <span className="text-base w-5 text-center">{q.icon || "💬"}</span>
-                    <span className="truncate">{q.name}</span>
-                  </button>
-                ))}
-
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {menuOpen && typeof document !== "undefined" && createPortal(
+        <PlusMenuPortal
+          anchorRef={menuButtonRef}
+          panelRef={menuPanelRef}
+          onClose={() => setMenuOpen(false)}
+          quickReplies={quickReplies}
+          onPickImage={() => pickFile("image")}
+          onPickVideo={() => pickFile("video")}
+          onOpenLibrary={() => {
+            setMenuOpen(false);
+            setLibraryOpen(true);
+          }}
+          onPickQuickReply={(q) => {
+            console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
+            setMenuOpen(false);
+            setActiveReply(q);
+            setReplyText(q.content);
+          }}
+        />,
+        document.body,
+      )}
 
       {/* Modal: editar/enviar resposta rápida */}
       {activeReply && (
