@@ -210,6 +210,7 @@ function InboxPage() {
   const { profile } = useAuth();
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
+  const [oppCollapsed, setOppCollapsed] = useState(false);
 
   const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
