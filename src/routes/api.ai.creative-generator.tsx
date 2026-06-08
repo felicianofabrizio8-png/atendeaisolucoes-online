@@ -358,7 +358,7 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
                 },
               ],
               modalities: ["image", "text"],
-              temperature: 0.2,
+              temperature: preserveScene ? 0.1 : 0.2,
             };
             const res = await fetch(GATEWAY_CHAT, {
               method: "POST",
