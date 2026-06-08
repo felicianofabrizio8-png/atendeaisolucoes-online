@@ -1547,6 +1547,222 @@ function PlusMenuPortal({
 }
 
 
+// ============================================================================
+// QuickRepliesButton — botão dedicado "Respostas Rápidas" ao lado do "+".
+// Carrega itens cadastrados em Configurações > Respostas Rápidas.
+// Ao clicar em uma resposta, PREENCHE a caixa de mensagem (não envia).
+// ============================================================================
+function QuickRepliesButton({
+  companyId,
+  disabled,
+  onPick,
+}: {
+  companyId: string | null;
+  disabled: boolean;
+  onPick: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<QuickReply[]>([]);
+  const [query, setQuery] = useState("");
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false,
+  );
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    ensureDefaultQuickReplies(companyId)
+      .then((rows) => {
+        if (cancelled) return;
+        setItems(rows.filter((r) => r.active));
+      })
+      .catch(() => {
+        listQuickReplies(companyId, { activeOnly: true })
+          .then((rows) => !cancelled && setItems(rows))
+          .catch(() => {});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, open]);
+
+  useEffect(() => {
+    if (!open || isMobile) return;
+    const compute = () => {
+      const btn = btnRef.current;
+      const panel = panelRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const panelW = panel?.offsetWidth ?? 320;
+      const panelH = panel?.offsetHeight ?? 380;
+      const margin = 8;
+      let top = rect.top - panelH - margin;
+      if (top < margin) top = rect.bottom + margin;
+      let left = rect.right - panelW;
+      if (left < margin) left = margin;
+      if (left + panelW > window.innerWidth - margin) {
+        left = window.innerWidth - panelW - margin;
+      }
+      setPos({ top, left });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [open, isMobile, items.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const q = normalize(query.trim());
+  const filtered = q
+    ? items.filter(
+        (it) =>
+          normalize(it.name).includes(q) ||
+          normalize(it.category ?? "").includes(q) ||
+          normalize(it.content).includes(q),
+      )
+    : items;
+
+  const panel = (
+    <div
+      ref={panelRef}
+      className={
+        isMobile
+          ? "w-full bg-popover rounded-t-2xl border-t border-border shadow-2xl max-h-[75vh] flex flex-col"
+          : "fixed z-[9999] w-80 rounded-md border border-border bg-popover shadow-2xl overflow-hidden flex flex-col max-h-[70vh]"
+      }
+      style={
+        isMobile
+          ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }
+          : { top: pos?.top ?? -9999, left: pos?.left ?? -9999 }
+      }
+      onClick={(e) => e.stopPropagation()}
+    >
+      {isMobile && (
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="h-1.5 w-10 rounded-full bg-muted-foreground/30" />
+        </div>
+      )}
+      <div className="px-3 py-2 border-b border-border">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Respostas Rápidas
+          </div>
+          <Link
+            to="/configuracoes/respostas-rapidas"
+            className="text-[10px] text-primary hover:underline"
+            onClick={() => setOpen(false)}
+          >
+            Gerenciar
+          </Link>
+        </div>
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Pesquisar resposta…"
+          className="w-full rounded-md bg-input px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+      <div className="overflow-y-auto flex-1">
+        {filtered.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+            {items.length === 0
+              ? "Nenhuma resposta cadastrada. Cadastre em Configurações > Respostas Rápidas."
+              : "Nenhuma resposta encontrada."}
+          </div>
+        ) : (
+          filtered.map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => {
+                onPick(it.content);
+                setOpen(false);
+                setQuery("");
+              }}
+              className="w-full flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-accent text-left border-b border-border/40 last:border-b-0"
+              title={it.category ?? undefined}
+            >
+              <span className="text-lg w-6 text-center shrink-0">{it.icon || "💬"}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-medium truncate">{it.name}</span>
+                <span className="block text-[11px] text-muted-foreground line-clamp-2">
+                  {it.content}
+                </span>
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className="h-9 w-9 inline-flex items-center justify-center rounded-md bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 shrink-0"
+        title="Respostas Rápidas — mensagens internas cadastradas pela sua empresa. Ao clicar, o texto é preenchido na caixa de mensagem (não envia automaticamente)."
+        aria-label="Respostas Rápidas"
+      >
+        <Zap className="h-4 w-4" />
+      </button>
+      {open && typeof document !== "undefined" && createPortal(
+        isMobile ? (
+          <div
+            className="fixed inset-0 z-[9999] bg-black/40 flex items-end"
+            onClick={() => setOpen(false)}
+          >
+            {panel}
+          </div>
+        ) : (
+          panel
+        ),
+        document.body,
+      )}
+    </>
+  );
+}
+
+
+
+
+
 
 function MediaSendPanel({
   conversationId,
