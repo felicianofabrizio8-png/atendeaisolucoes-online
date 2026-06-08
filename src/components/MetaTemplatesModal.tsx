@@ -54,7 +54,11 @@ export function MetaTemplatesModal({ open, conversationId, onClose, onSent, sugg
           toast.error(json.error ?? "Falha ao carregar templates");
           return;
         }
-        setItems(json.templates ?? []);
+        setItems(
+          (json.templates ?? []).filter(
+            (t: MetaTemplate) => t.name?.toLowerCase() !== "hello_world",
+          ),
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
