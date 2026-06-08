@@ -343,6 +343,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
           prompt,
           format,
           preserve_product: config.preserve_product,
+          preserve_scene: config.preserve_scene,
           ad_overlay: {
             product_name: config.product_name,
             price: config.price,
