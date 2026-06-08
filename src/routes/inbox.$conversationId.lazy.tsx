@@ -2408,6 +2408,7 @@ function ConversationPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [, rerenderRepo] = useState(0);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
   useEffect(() => subscribeRepo(() => rerenderRepo((v) => v + 1)), []);
   const conversation = getConversationById(conversationId);
