@@ -68,6 +68,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QualificationPanel } from "@/components/QualificationBadges";
 import { AITimeline } from "@/components/AITimeline";
+import { WhatsappWindowAlert } from "@/components/WhatsappWindowAlert";
 
 // Contexto leve com as mensagens da conversa atual.
 // Usado pelo ReplyPreview para localizar a mensagem original e reconstruir
@@ -3296,6 +3297,16 @@ function ConversationPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* WhatsApp 24h window status (visual support only — não altera webhook/templates/follow-up) */}
+        {!closedInfo && (
+          <WhatsappWindowAlert
+            conversation={conversation}
+            lead={lead}
+            messages={messages}
+            onSendNow={() => composerRef.current?.focus()}
+          />
         )}
 
         {/* Composer */}

@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 import { QualificationInline } from "@/components/QualificationBadges";
 import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
+import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
+import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 
 const STATUS_FILTERS = [
   "todos",
@@ -43,6 +45,19 @@ const SOURCE_FILTERS = [
   "nao-respondidos",
 ] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
+
+const WINDOW_FILTERS = ["todos", "aberta", "fecha_hoje", "fecha_3h", "fechada"] as const;
+type WindowFilter = (typeof WINDOW_FILTERS)[number];
+
+function matchesWindow(info: WindowInfo, filter: WindowFilter, now: number): boolean {
+  switch (filter) {
+    case "todos": return true;
+    case "aberta": return info.state === "open" || info.state === "closing_soon";
+    case "fecha_hoje": return closesToday(info, now);
+    case "fecha_3h": return info.state === "closing_soon";
+    case "fechada": return info.state === "closed";
+  }
+}
 
 export type Origin =
   | "whatsapp"
@@ -108,6 +123,7 @@ const searchSchema = z.object({
   status: fallback(z.enum(STATUS_FILTERS), "todos").default("todos"),
   source: fallback(z.enum(SOURCE_FILTERS), "todos").default("todos"),
   lossReason: fallback(z.string(), "").default(""),
+  wpWindow: fallback(z.enum(WINDOW_FILTERS), "todos").default("todos"),
 });
 
 export const Route = createFileRoute("/inbox/")({
@@ -151,6 +167,7 @@ function buildSortedItems(
   statusFilter: StatusFilter,
   sourceFilter: SourceFilter,
   lossReasonFilter: string,
+  windowFilter: WindowFilter,
 ) {
   const now = Date.now();
   return [...getConversations()]
@@ -162,9 +179,10 @@ function buildSortedItems(
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
       const priority = computePriority(c, lead, slaMinutes, now);
-      return { conv: c, lead, last, origin, breached, ageMin, priority, score: priority.score };
+      const windowInfo = computeWindow(c, lead, msgs, now);
+      return { conv: c, lead, last, origin, breached, ageMin, priority, score: priority.score, windowInfo };
     })
-    .filter(({ lead, breached, origin, conv }) => {
+    .filter(({ lead, breached, origin, conv, windowInfo }) => {
       if (statusFilter === "quentes" && lead?.status !== "quente" && conv.leadTemperature !== "quente") return false;
       if (statusFilter === "prontos" && !conv.leadReadyToClose) return false;
       if (statusFilter === "aguardando_humano" && conv.aiStatus !== "aguardando_humano") return false;
@@ -178,6 +196,7 @@ function buildSortedItems(
         }
       }
       if (!matchesSource(origin, conv.awaitingReply, sourceFilter)) return false;
+      if (windowFilter !== "todos" && !matchesWindow(windowInfo, windowFilter, now)) return false;
       return true;
     })
     .sort((a, b) => b.score - a.score);
@@ -188,11 +207,29 @@ function InboxPage() {
   const settings = useSettings();
   useRepoVersion();
   const { profile } = useAuth();
-  const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter } = Route.useSearch();
+  const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
 
-  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter);
+  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
+
+  // Contadores globais (dashboard) da janela de 24h — base independente dos filtros ativos.
+  const windowCounts = useMemo(() => {
+    const counts = { open: 0, closing_today: 0, closing_3h: 0, closed: 0 };
+    const now = Date.now();
+    for (const c of getConversations()) {
+      const lead = getLeadById(c.leadId);
+      const channel = c.channel ?? lead?.channel;
+      if (channel !== "whatsapp") continue;
+      const info = computeWindow(c, lead, getMessagesFor(c.id), now);
+      if (info.state === "open" || info.state === "closing_soon") counts.open += 1;
+      if (closesToday(info, now)) counts.closing_today += 1;
+      if (info.state === "closing_soon") counts.closing_3h += 1;
+      if (info.state === "closed") counts.closed += 1;
+    }
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
@@ -288,6 +325,7 @@ function InboxPage() {
         source: sourceFilter,
         lossReason:
           next === "perdidos" || next === "todos" ? lossReasonFilter : "",
+        wpWindow: windowFilter,
       },
     });
   };
@@ -295,9 +333,23 @@ function InboxPage() {
   const setSource = (next: SourceFilter) => {
     navigate({
       to: "/inbox",
-      search: { status: statusFilter, source: next, lossReason: lossReasonFilter },
+      search: { status: statusFilter, source: next, lossReason: lossReasonFilter, wpWindow: windowFilter },
     });
   };
+
+  const setWindow = (next: WindowFilter) => {
+    navigate({
+      to: "/inbox",
+      search: { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: next },
+    });
+  };
+
+  const windowTabs: { key: WindowFilter; label: string; count: number; tone: string }[] = [
+    { key: "aberta", label: "🟢 Aberta", count: windowCounts.open, tone: "emerald" },
+    { key: "fecha_hoje", label: "📅 Fecha hoje", count: windowCounts.closing_today, tone: "amber" },
+    { key: "fecha_3h", label: "🟡 < 3h", count: windowCounts.closing_3h, tone: "amber" },
+    { key: "fechada", label: "🔴 Fechada", count: windowCounts.closed, tone: "red" },
+  ];
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
@@ -321,7 +373,7 @@ function InboxPage() {
   ];
 
   const hasAnyFilter =
-    statusFilter !== "todos" || sourceFilter !== "todos" || !!lossReasonFilter;
+    statusFilter !== "todos" || sourceFilter !== "todos" || !!lossReasonFilter || windowFilter !== "todos";
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -402,7 +454,7 @@ function InboxPage() {
               onChange={(e) =>
                 navigate({
                   to: "/inbox",
-                  search: { status: statusFilter, source: sourceFilter, lossReason: e.target.value },
+                  search: { status: statusFilter, source: sourceFilter, lossReason: e.target.value, wpWindow: windowFilter },
                 })
               }
               className={cn(
@@ -423,7 +475,7 @@ function InboxPage() {
                 onClick={() =>
                   navigate({
                     to: "/inbox",
-                    search: { status: statusFilter, source: sourceFilter, lossReason: "" },
+                    search: { status: statusFilter, source: sourceFilter, lossReason: "", wpWindow: windowFilter },
                   })
                 }
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-accent"
@@ -440,7 +492,7 @@ function InboxPage() {
             onClick={() =>
               navigate({
                 to: "/inbox",
-                search: { status: "todos", source: "todos", lossReason: "" },
+                search: { status: "todos", source: "todos", lossReason: "", wpWindow: "todos" },
               })
             }
             className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 self-start"
@@ -481,7 +533,62 @@ function InboxPage() {
             })}
           </div>
         </div>
+
+        {/* WhatsApp 24h window — dashboard + filtros */}
+        {(windowCounts.open + windowCounts.closed + windowCounts.closing_today + windowCounts.closing_3h) > 0 && (
+          <div className="-mx-3 md:mx-0 px-3 md:px-0 overflow-x-auto md:overflow-visible scrollbar-none">
+            <div className="inline-flex md:flex md:flex-wrap items-center gap-1.5 whitespace-nowrap">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">
+                Janela 24h:
+              </span>
+              {windowFilter !== "todos" && (
+                <button
+                  type="button"
+                  onClick={() => setWindow("todos")}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-[11px] font-medium border border-border bg-background text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" /> Limpar
+                </button>
+              )}
+              {windowTabs.map((tab) => {
+                const active = windowFilter === tab.key;
+                const toneActive =
+                  tab.tone === "emerald"
+                    ? "bg-emerald-500 border-emerald-500 text-white"
+                    : tab.tone === "amber"
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : "bg-[var(--status-urgent)] border-[var(--status-urgent)] text-white";
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setWindow(active ? "todos" : tab.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors shrink-0",
+                      active
+                        ? toneActive
+                        : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/40",
+                    )}
+                    title={tab.label}
+                  >
+                    {tab.label}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
+                        active ? "bg-white/25" : "bg-secondary",
+                        tab.count === 0 && "opacity-40",
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </header>
+
 
 
 
@@ -595,7 +702,7 @@ function ConversationCard({
   slaMinutes: number;
   onOpen: () => void;
 }) {
-  const { conv: c, last, origin, breached, ageMin, priority } = item;
+  const { conv: c, last, origin, breached, ageMin, priority, windowInfo } = item;
   const lead = getLeadById(c.leadId);
   if (!lead) return null;
   const alert = priority.alert;
@@ -631,6 +738,9 @@ function ConversationCard({
             </span>
             <OriginBadge origin={origin} />
             {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
+            {windowInfo.state !== "not_applicable" && windowInfo.state !== "never_opened" && (
+              <WhatsappWindowBadge info={windowInfo} live={false} />
+            )}
             {!(lead.status === "perdido" && lead.lossReason) && <StatusBadge status={lead.status} />}
             {lead.status === "perdido" && lead.lossReason && (
               <span
