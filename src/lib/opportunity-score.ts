@@ -4,7 +4,7 @@
 // para priorização visual na Central de Oportunidades do Inbox.
 
 import type { Conversation, Lead, Message } from "@/data/mock";
-import type { Quote } from "@/data/quotes";
+import { computeQuoteStatus, type Quote } from "@/data/quotes";
 import { computeWindow } from "@/lib/whatsapp-window";
 
 export type OpportunityTier = "quente" | "morno" | "frio";
