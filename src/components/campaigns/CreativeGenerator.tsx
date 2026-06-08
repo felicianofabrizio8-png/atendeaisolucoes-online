@@ -725,6 +725,13 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                 <p className="text-muted-foreground">Mantém forma, medidas, curvas, escadas, cores e identidade. Ideal para piscinas, móveis, veículos e produtos técnicos. A IA prioriza fortemente o produto enviado.</p>
               </div>
             </label>
+            <label className="flex items-start gap-2 p-3 rounded-md border bg-muted/30 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={config.preserve_scene} onChange={(e) => setConfig({ ...config, preserve_scene: e.target.checked })} />
+              <div className="text-xs">
+                <p className="font-medium">Preservar cenário original (residência, quintal, ambiente)</p>
+                <p className="text-muted-foreground">Mantém a casa, quintal, área externa, disposição dos elementos e perspectiva da foto. A IA só melhora iluminação, qualidade, água, vegetação e acabamentos — sem criar resort, praia, canyon ou cenários inexistentes.</p>
+              </div>
+            </label>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setStep("upload")} className="px-3 h-9 rounded-md border text-sm hover:bg-accent">Voltar</button>
               <button onClick={() => setShowSummary(true)} className="px-3 h-9 rounded-md border text-sm hover:bg-accent inline-flex items-center gap-1">
