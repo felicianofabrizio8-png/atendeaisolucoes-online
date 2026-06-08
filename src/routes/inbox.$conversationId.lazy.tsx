@@ -3299,6 +3299,16 @@ function ConversationPage() {
           </div>
         )}
 
+        {/* WhatsApp 24h window status (visual support only — não altera webhook/templates/follow-up) */}
+        {!closedInfo && (
+          <WhatsappWindowAlert
+            conversation={conversation}
+            lead={lead}
+            messages={messages}
+            onSendNow={() => composerRef.current?.focus()}
+          />
+        )}
+
         {/* Composer */}
         <div
           className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
