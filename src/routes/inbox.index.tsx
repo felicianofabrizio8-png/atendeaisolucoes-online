@@ -738,6 +738,9 @@ function ConversationCard({
             </span>
             <OriginBadge origin={origin} />
             {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
+            {windowInfo.state !== "not_applicable" && windowInfo.state !== "never_opened" && (
+              <WhatsappWindowBadge info={windowInfo} live={false} />
+            )}
             {!(lead.status === "perdido" && lead.lossReason) && <StatusBadge status={lead.status} />}
             {lead.status === "perdido" && lead.lossReason && (
               <span
