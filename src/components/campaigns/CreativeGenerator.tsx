@@ -769,6 +769,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
               {config.cta_text && <p><b>CTA:</b> {config.cta_text}</p>}
               <p><b>Elementos:</b> {SHOW_OPTIONS.filter((o) => config.show[o.v]).map((o) => o.l.replace("Mostrar ", "")).join(", ") || "—"}</p>
               {config.preserve_product && <p className="text-primary font-medium">✓ Preservação real do produto original ativada</p>}
+              {config.preserve_scene && <p className="text-primary font-medium">✓ Preservação do cenário original ativada</p>}
               {config.special_instructions && <p><b>Instruções:</b> {config.special_instructions}</p>}
             </div>
             <div className="flex gap-2 pt-2">
