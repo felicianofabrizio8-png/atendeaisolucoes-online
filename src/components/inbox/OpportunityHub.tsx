@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Flame, AlertTriangle, ChevronDown, ChevronUp, Sparkles, Loader2, X } from "lucide-react";
+import { Flame, AlertTriangle, ChevronDown, ChevronUp, Sparkles, Loader2, X, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -60,6 +60,37 @@ function applyFilter(items: OppItem[], filter: FilterKey): OppItem[] {
   }
 }
 
+function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function matchesSearch(item: OppItem, query: string): boolean {
+  if (!query.trim()) return true;
+  const q = normalize(query);
+  const lead = item.lead;
+  const lastText = item.last?.text ?? "";
+  const fields = [
+    normalize(lead.name),
+    normalize(lead.phone ?? ""),
+    normalize(lastText),
+    normalize(lead.product ?? ""),
+    ...(lead.tags ?? []).map(normalize),
+  ];
+  return fields.some((f) => f.includes(q));
+}
+
+function useDebounce<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 function formatAgo(iso: string, now: number): string {
   const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
   if (m < 60) return `${m} min atrás`;
@@ -73,6 +104,8 @@ export function OpportunityHub() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("todos");
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedQuery = useDebounce(searchQuery, 300);
 
   const now = Date.now();
   const all = useMemo(() => buildOpportunities(now), [now]);
@@ -95,7 +128,11 @@ export function OpportunityHub() {
     sem_retorno: all.filter((i) => i.awaitingTeam).length,
   }), [all]);
 
-  const filtered = applyFilter(all, filter).slice(0, 6);
+  const filteredByFilter = applyFilter(all, filter);
+  const filtered = useMemo(() => {
+    if (!debouncedQuery.trim()) return filteredByFilter;
+    return filteredByFilter.filter((it) => matchesSearch(it, debouncedQuery));
+  }, [filteredByFilter, debouncedQuery]);
 
   if (all.length === 0) return null;
 
@@ -106,6 +143,8 @@ export function OpportunityHub() {
     { key: "orcamento", label: "💰 Orçamento s/ resposta" },
     { key: "sem_retorno", label: "⏳ Sem retorno" },
   ];
+
+  const hasSearch = debouncedQuery.trim().length > 0;
 
   return (
     <section className="mx-3 md:mx-6 my-3 rounded-lg border border-border bg-card/40 overflow-hidden">
@@ -155,6 +194,45 @@ export function OpportunityHub() {
             </div>
           )}
 
+          {/* Search bar */}
+          <div className="flex flex-col md:flex-row md:items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 Pesquisar cliente, telefone ou mensagem..."
+                className="w-full h-9 rounded-md bg-input pl-9 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring border border-border"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  aria-label="Limpar pesquisa"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {hasSearch && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-muted-foreground">
+                  Resultados encontrados: {filtered.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1"
+                >
+                  <X className="h-3 w-3" />
+                  Limpar pesquisa
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-1.5">
             {FILTERS.map((f) => {
               const active = filter === f.key;
@@ -187,7 +265,7 @@ export function OpportunityHub() {
 
           {filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
-              Nenhuma oportunidade nesta categoria.
+              {hasSearch ? "Nenhum resultado encontrado para esta pesquisa." : "Nenhuma oportunidade nesta categoria."}
             </p>
           ) : (
             <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
