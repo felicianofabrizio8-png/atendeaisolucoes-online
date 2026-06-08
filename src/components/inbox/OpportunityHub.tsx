@@ -23,11 +23,12 @@ interface OppItem {
   awaitingTeam: boolean;
 }
 
-function buildOpportunities(now: number): OppItem[] {
+function buildOpportunities(now: number, includeAll = false): OppItem[] {
   const out: OppItem[] = [];
   for (const c of getConversations()) {
     const lead = getLeadById(c.leadId);
-    if (!lead || lead.status === "perdido" || lead.status === "fechado") continue;
+    if (!lead) continue;
+    if (!includeAll && (lead.status === "perdido" || lead.status === "fechado")) continue;
     const msgs = getMessagesFor(c.id);
     const quotes = quotesForLead(lead.id);
     const score = computeOpportunityScore({ conv: c, lead, messages: msgs, quotes, now });
@@ -60,26 +61,36 @@ function applyFilter(items: OppItem[], filter: FilterKey): OppItem[] {
   }
 }
 
-function normalize(str: string): string {
-  return str
+function normalize(str: unknown): string {
+  if (str == null) return "";
+  return String(str)
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function matchesSearch(item: OppItem, query: string): boolean {
-  if (!query.trim()) return true;
   const q = normalize(query);
+  if (!q) return true;
   const lead = item.lead;
-  const lastText = item.last?.text ?? "";
   const fields = [
     normalize(lead.name),
-    normalize(lead.phone ?? ""),
-    normalize(lastText),
-    normalize(lead.product ?? ""),
-    ...(lead.tags ?? []).map(normalize),
+    normalize(lead.handle),
+    normalize(lead.phone),
+    normalize(lead.product),
+    normalize(item.last?.text),
+    ...(lead.tags ?? []).map((t) => normalize(t)),
   ];
-  return fields.some((f) => f.includes(q));
+  if (fields.some((f) => f && f.includes(q))) return true;
+  // Telefone: comparar apenas dígitos quando a busca contém dígitos
+  const queryDigits = query.replace(/\D+/g, "");
+  if (queryDigits.length >= 3) {
+    const phoneDigits = (lead.phone ?? "").replace(/\D+/g, "");
+    if (phoneDigits.includes(queryDigits)) return true;
+  }
+  return false;
 }
 
 function useDebounce<T>(value: T, delay = 300): T {
@@ -109,6 +120,13 @@ export function OpportunityHub() {
 
   const now = Date.now();
   const all = useMemo(() => buildOpportunities(now), [now]);
+  const hasSearch = debouncedQuery.trim().length > 0;
+  // Quando há busca, incluímos também leads fechados/perdidos para localizar
+  // qualquer cliente pelo nome, telefone ou tag.
+  const searchPool = useMemo(
+    () => (hasSearch ? buildOpportunities(now, true) : all),
+    [hasSearch, now, all],
+  );
 
   const alerts = useMemo(() => {
     const hotAwaiting = all.filter((i) => i.score.tier === "quente" && i.awaitingTeam).length;
@@ -128,7 +146,7 @@ export function OpportunityHub() {
     sem_retorno: all.filter((i) => i.awaitingTeam).length,
   }), [all]);
 
-  const filteredByFilter = applyFilter(all, filter);
+  const filteredByFilter = hasSearch ? searchPool : applyFilter(all, filter);
   const filtered = useMemo(() => {
     if (!debouncedQuery.trim()) return filteredByFilter;
     return filteredByFilter.filter((it) => matchesSearch(it, debouncedQuery));
@@ -144,7 +162,6 @@ export function OpportunityHub() {
     { key: "sem_retorno", label: "⏳ Sem retorno" },
   ];
 
-  const hasSearch = debouncedQuery.trim().length > 0;
 
   return (
     <section className="mx-3 md:mx-6 my-3 rounded-lg border border-border bg-card/40 overflow-hidden">
