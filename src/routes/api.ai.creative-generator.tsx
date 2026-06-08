@@ -299,21 +299,46 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
             ? `\n\nAd composition requirements (must appear clearly in the final image, Meta Ads style, professional typography, high contrast, no fake text/logos): ${overlayLines.join(" ")}`
             : "";
 
-          // PRESERVAR PRODUTO
+          // PRESERVAR PRODUTO — MODO RIGOROSO
           if (preserve) {
-            const strictPrompt = `Use the uploaded product image as the EXACT product reference. Do NOT replace, redesign, simplify, restyle, recolor, or invent a different product. Preserve shape, proportions, materials, textures, colors, edges, curves, steps, dimensions and every identifying detail of the product unchanged. You may ONLY change the background, scenery, lighting, ambience and add tasteful advertising overlays. The final image must clearly show the SAME product from the reference photo as the protagonist. Creative direction: ${body.prompt}${overlayBlock}`;
+            const strictPrompt = [
+              "STRICT PRESERVATION MODE — HIGHEST PRIORITY.",
+              "The attached reference image IS the product. Treat it as a locked photographic asset. You are performing a SCENE EDIT, not a product redesign.",
+              "",
+              "ABSOLUTE RULES (must not be violated under any circumstance):",
+              "1) DO NOT replace, redesign, restyle, reimagine, simplify, stylize, illustrate or invent a different product.",
+              "2) DO NOT change shape, silhouette, contour, proportions, dimensions, measurements, scale, or aspect ratio of the product.",
+              "3) DO NOT change the number, position, geometry, spacing or design of stairs, steps, rungs, ladders, handles, rails, edges, corners, panels, seams, joints, screws, parts or accessories.",
+              "4) DO NOT change materials, finish, textures, patterns, colors, reflectivity, transparency, logos, labels or printed text on the product.",
+              "5) DO NOT add, remove, merge, split, rotate or reflect any structural element of the product.",
+              "6) DO NOT crop, occlude, hide, blur or partially cover the product. Show it fully visible as the clear PROTAGONIST.",
+              "7) Pixel-level fidelity to the reference is REQUIRED. If in doubt, copy the product from the reference unchanged.",
+              "",
+              "WHAT YOU MAY CHANGE (and only these):",
+              "- Background, environment, scenery, floor/wall/sky.",
+              "- Lighting direction, ambience, shadows cast BY the product.",
+              "- Camera framing distance ONLY to fit the same product without distorting it.",
+              "- Tasteful advertising overlays (typography, badges, CTA) outside the product silhouette.",
+              "",
+              "Creative freedom for the product itself: ZERO. Creative freedom for the surrounding ad scene: normal.",
+              "If you cannot reproduce the product with full fidelity, return the reference product unchanged on a neutral improved background — never invent a substitute.",
+              "",
+              `Scene/ad direction: ${body.prompt}${overlayBlock}`,
+            ].join("\n");
             const payload = {
               model: "google/gemini-2.5-flash-image-preview",
               messages: [
                 {
                   role: "user",
                   content: [
-                    { type: "text", text: strictPrompt },
+                    // Image first to bias the model toward the reference asset.
                     { type: "image_url", image_url: { url: body.image_url! } },
+                    { type: "text", text: strictPrompt },
                   ],
                 },
               ],
               modalities: ["image", "text"],
+              temperature: 0.2,
             };
             const res = await fetch(GATEWAY_CHAT, {
               method: "POST",
