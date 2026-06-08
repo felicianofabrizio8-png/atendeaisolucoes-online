@@ -1506,25 +1506,13 @@ function PlusMenuPortal({
       >
         <LibraryIcon className="h-5 w-5 text-primary" /> Biblioteca de Produtos
       </button>
-      {quickReplies.length > 0 && (
-        <div className="border-t border-border">
-          <div className="px-4 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold bg-muted/40">
-            Respostas rápidas
-          </div>
-          {quickReplies.map((q) => (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => onPickQuickReply(q)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left"
-              title={q.category ?? undefined}
-            >
-              <span className="text-lg w-6 text-center">{q.icon || "💬"}</span>
-              <span className="truncate">{q.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+    </>
+  );
+  {/* Respostas Rápidas movido para botão dedicado ao lado do "+" */}
+  void 0;
+  const _items_end = (
+    <></>
+
     </>
   );
 
