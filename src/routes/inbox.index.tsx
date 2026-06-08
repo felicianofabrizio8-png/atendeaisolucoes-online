@@ -396,13 +396,29 @@ function InboxPage() {
               {" · "}SLA {settings.slaMinutes}m
             </p>
           </div>
-          <div className={cn("relative w-72 hidden md:block", !oppCollapsed && "hidden")}>
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              placeholder="Buscar por nome, telefone, tag…"
-              className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
+          <div className="flex items-center gap-2">
+            <Link
+              to="/inbox/recovery"
+              className="h-9 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 inline-flex items-center gap-1.5 whitespace-nowrap"
+              title="Recuperar leads fora da janela 24h usando templates Meta"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Recuperação 24h</span>
+              {windowCounts.closed > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold">
+                  {windowCounts.closed}
+                </span>
+              )}
+            </Link>
+            <div className={cn("relative w-72 hidden md:block", !oppCollapsed && "hidden")}>
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                placeholder="Buscar por nome, telefone, tag…"
+                className="w-full h-9 rounded-md bg-input pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
           </div>
+
         </div>
 
         {/* Mobile search */}

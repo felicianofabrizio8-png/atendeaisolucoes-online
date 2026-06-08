@@ -20,11 +20,14 @@ interface Props {
   conversationId: string;
   onClose: () => void;
   onSent?: () => void;
+  /** Nome opcional de template a pré-selecionar ao abrir (recomendação). */
+  suggestedTemplateName?: string;
 }
 
 type StatusFilter = "approved" | "all";
 
-export function MetaTemplatesModal({ open, conversationId, onClose, onSent }: Props) {
+export function MetaTemplatesModal({ open, conversationId, onClose, onSent, suggestedTemplateName }: Props) {
+
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<MetaTemplate[]>([]);
   const [search, setSearch] = useState("");
@@ -69,6 +72,25 @@ export function MetaTemplatesModal({ open, conversationId, onClose, onSent }: Pr
       setStatusFilter("approved");
     }
   }, [open]);
+
+  // Pré-seleciona template sugerido quando lista carrega
+  useEffect(() => {
+    if (!open || !suggestedTemplateName || selected || items.length === 0) return;
+    const found = items.find(
+      (t) =>
+        t.name.toLowerCase() === suggestedTemplateName.toLowerCase() &&
+        t.status === "approved",
+    );
+    if (found) {
+      setSelected(found);
+      const init: Record<string, string> = {};
+      (found.variables ?? []).forEach((n) => {
+        init[n] = "";
+      });
+      setVars(init);
+    }
+  }, [open, suggestedTemplateName, items, selected]);
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
