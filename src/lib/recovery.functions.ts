@@ -34,16 +34,8 @@ export interface RecoveryDashboard {
   metrics: RecoveryMetrics;
 }
 
-// supabase client provided by requireSupabaseAuth — minimal typed surface
-interface SbResp<T> { data: T | null; error: unknown }
-interface SbClient {
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (col: string, val: unknown) => any;
-      in?: (col: string, vals: unknown[]) => any;
-    };
-  };
-}
+
+
 
 export const getRecoveryDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
