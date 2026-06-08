@@ -3496,8 +3496,15 @@ function ConversationPage() {
             lead={lead}
             messages={messages}
             onSendNow={() => composerRef.current?.focus()}
+            onOpenTemplates={() => setTemplatesModalOpen(true)}
           />
         )}
+        <MetaTemplatesModal
+          open={templatesModalOpen}
+          conversationId={conversationId}
+          onClose={() => setTemplatesModalOpen(false)}
+        />
+
 
         {/* Composer */}
         <div
