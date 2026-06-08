@@ -139,6 +139,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     goal: "leads", style: "premium", audience: "familias",
     audience_custom: "", product_name: "", product_description: "",
     preserve_product: false,
+    preserve_scene: false,
     // Dados do anúncio
     price: "", promo_price: "", installments: "",
     ad_headline: "", ad_subtitle: "", ad_description: "",
@@ -342,6 +343,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
           prompt,
           format,
           preserve_product: config.preserve_product,
+          preserve_scene: config.preserve_scene,
           ad_overlay: {
             product_name: config.product_name,
             price: config.price,
@@ -723,6 +725,13 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                 <p className="text-muted-foreground">Mantém forma, medidas, curvas, escadas, cores e identidade. Ideal para piscinas, móveis, veículos e produtos técnicos. A IA prioriza fortemente o produto enviado.</p>
               </div>
             </label>
+            <label className="flex items-start gap-2 p-3 rounded-md border bg-muted/30 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={config.preserve_scene} onChange={(e) => setConfig({ ...config, preserve_scene: e.target.checked })} />
+              <div className="text-xs">
+                <p className="font-medium">Preservar cenário original (residência, quintal, ambiente)</p>
+                <p className="text-muted-foreground">Mantém a casa, quintal, área externa, disposição dos elementos e perspectiva da foto. A IA só melhora iluminação, qualidade, água, vegetação e acabamentos — sem criar resort, praia, canyon ou cenários inexistentes.</p>
+              </div>
+            </label>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setStep("upload")} className="px-3 h-9 rounded-md border text-sm hover:bg-accent">Voltar</button>
               <button onClick={() => setShowSummary(true)} className="px-3 h-9 rounded-md border text-sm hover:bg-accent inline-flex items-center gap-1">
@@ -760,6 +769,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
               {config.cta_text && <p><b>CTA:</b> {config.cta_text}</p>}
               <p><b>Elementos:</b> {SHOW_OPTIONS.filter((o) => config.show[o.v]).map((o) => o.l.replace("Mostrar ", "")).join(", ") || "—"}</p>
               {config.preserve_product && <p className="text-primary font-medium">✓ Preservação real do produto original ativada</p>}
+              {config.preserve_scene && <p className="text-primary font-medium">✓ Preservação do cenário original ativada</p>}
               {config.special_instructions && <p><b>Instruções:</b> {config.special_instructions}</p>}
             </div>
             <div className="flex gap-2 pt-2">

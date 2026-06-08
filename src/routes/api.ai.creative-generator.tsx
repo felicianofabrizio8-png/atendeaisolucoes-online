@@ -53,6 +53,7 @@ interface GenerateImageReq {
   prompt: string;
   format: "feed_1080" | "story_1920" | "facebook_feed" | "whatsapp_status";
   preserve_product: boolean;
+  preserve_scene?: boolean;
   // novos (opcionais — reforço visual sobreposto ao prompt)
   ad_overlay?: {
     product_name?: string;
@@ -272,6 +273,9 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
         if (body.mode === "generate-image") {
           const size = FORMAT_SIZE[body.format] ?? "1024x1024";
           const preserve = !!body.preserve_product && !!body.image_url;
+          const preserveScene = !!body.preserve_scene && !!body.image_url;
+          const useEdit = preserve || preserveScene;
+
 
           // Reforço visual a partir dos dados do anúncio (opcional)
           const ov = body.ad_overlay ?? {};
@@ -299,31 +303,47 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
             ? `\n\nAd composition requirements (must appear clearly in the final image, Meta Ads style, professional typography, high contrast, no fake text/logos): ${overlayLines.join(" ")}`
             : "";
 
-          // PRESERVAR PRODUTO — MODO RIGOROSO
-          if (preserve) {
+          // PRESERVAR PRODUTO / CENÁRIO — MODO RIGOROSO
+          if (useEdit) {
+            const productRules = preserve ? [
+              "PRODUCT PRESERVATION — ABSOLUTE:",
+              "P1) DO NOT replace, redesign, restyle, reimagine, simplify, stylize, illustrate or invent a different product.",
+              "P2) DO NOT change shape, silhouette, contour, proportions, dimensions, measurements, scale, or aspect ratio of the product.",
+              "P3) DO NOT change the number, position, geometry, spacing or design of stairs, steps, rungs, ladders, handles, rails, edges, corners, panels, seams, joints, screws, parts or accessories.",
+              "P4) DO NOT change materials, finish, textures, patterns, colors, reflectivity, transparency, logos, labels or printed text on the product.",
+              "P5) DO NOT add, remove, merge, split, rotate or reflect any structural element of the product.",
+              "P6) DO NOT crop, occlude, hide, blur or partially cover the product. Show it fully visible as the clear PROTAGONIST.",
+              "P7) Pixel-level fidelity to the reference product is REQUIRED.",
+            ] : [];
+            const sceneRules = preserveScene ? [
+              "SCENE / ENVIRONMENT PRESERVATION — ABSOLUTE:",
+              "S1) DO NOT replace the environment. Keep the SAME residence, house, walls, roof, windows, doors, façade, backyard, garden, patio, deck, gourmet area, fences and surrounding buildings exactly as in the reference photo.",
+              "S2) DO NOT invent a resort, hotel, beach, ocean, canyon, mountains, cliffs, tropical paradise, infinity edge, luxury villa or any landscape that is NOT visible in the reference image.",
+              "S3) DO NOT change camera angle, perspective, framing, horizon line, focal length or distance. Keep the EXACT same point of view of the original photo.",
+              "S4) DO NOT change the position, layout, scale or arrangement of objects, furniture, plants, paths, walls or structures present in the reference.",
+              "S5) DO NOT remove existing elements of the residence or backyard. DO NOT add new buildings, structures or landmarks that are not in the reference.",
+              "S6) The output must look like a PROFESSIONAL RETOUCH of the reference photo — same place, same house, same yard — NOT a new scene generated from scratch.",
+              "",
+              "ALLOWED scene improvements (and ONLY these):",
+              "- Improve lighting, exposure, color balance, contrast, sharpness and overall photographic quality.",
+              "- Improve water clarity, reflections, surface and color of the pool (without changing its shape or position).",
+              "- Improve vegetation already present (greener grass, healthier plants) without adding new large trees, palms or landscape features.",
+              "- Improve finishing of existing materials (cleaner tiles, deck, walls) without changing their layout or design.",
+              "- Add tasteful advertising overlays (typography, badges, CTA) outside the main subject silhouette.",
+            ] : [];
             const strictPrompt = [
               "STRICT PRESERVATION MODE — HIGHEST PRIORITY.",
-              "The attached reference image IS the product. Treat it as a locked photographic asset. You are performing a SCENE EDIT, not a product redesign.",
+              "The attached reference image IS the ground truth. You are performing a PHOTO RETOUCH / SCENE EDIT, not a new image generation.",
+              "Treat the reference as a locked photographic asset. Output must be recognizable as the SAME photo — just professionally improved.",
               "",
-              "ABSOLUTE RULES (must not be violated under any circumstance):",
-              "1) DO NOT replace, redesign, restyle, reimagine, simplify, stylize, illustrate or invent a different product.",
-              "2) DO NOT change shape, silhouette, contour, proportions, dimensions, measurements, scale, or aspect ratio of the product.",
-              "3) DO NOT change the number, position, geometry, spacing or design of stairs, steps, rungs, ladders, handles, rails, edges, corners, panels, seams, joints, screws, parts or accessories.",
-              "4) DO NOT change materials, finish, textures, patterns, colors, reflectivity, transparency, logos, labels or printed text on the product.",
-              "5) DO NOT add, remove, merge, split, rotate or reflect any structural element of the product.",
-              "6) DO NOT crop, occlude, hide, blur or partially cover the product. Show it fully visible as the clear PROTAGONIST.",
-              "7) Pixel-level fidelity to the reference is REQUIRED. If in doubt, copy the product from the reference unchanged.",
+              ...productRules,
+              ...(productRules.length ? [""] : []),
+              ...sceneRules,
+              ...(sceneRules.length ? [""] : []),
+              "GLOBAL RULE: If you cannot improve safely while keeping fidelity, return the reference image essentially unchanged with only lighting/quality polish — NEVER invent substitutes, NEVER replace the location, NEVER replace the product.",
+              "Creative freedom: ZERO for product and scene structure. Normal only for lighting polish and ad overlays.",
               "",
-              "WHAT YOU MAY CHANGE (and only these):",
-              "- Background, environment, scenery, floor/wall/sky.",
-              "- Lighting direction, ambience, shadows cast BY the product.",
-              "- Camera framing distance ONLY to fit the same product without distorting it.",
-              "- Tasteful advertising overlays (typography, badges, CTA) outside the product silhouette.",
-              "",
-              "Creative freedom for the product itself: ZERO. Creative freedom for the surrounding ad scene: normal.",
-              "If you cannot reproduce the product with full fidelity, return the reference product unchanged on a neutral improved background — never invent a substitute.",
-              "",
-              `Scene/ad direction: ${body.prompt}${overlayBlock}`,
+              `Scene/ad direction (apply WITHOUT violating the rules above): ${body.prompt}${overlayBlock}`,
             ].join("\n");
             const payload = {
               model: "google/gemini-2.5-flash-image-preview",
@@ -338,7 +358,7 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
                 },
               ],
               modalities: ["image", "text"],
-              temperature: 0.2,
+              temperature: preserveScene ? 0.1 : 0.2,
             };
             const res = await fetch(GATEWAY_CHAT, {
               method: "POST",
