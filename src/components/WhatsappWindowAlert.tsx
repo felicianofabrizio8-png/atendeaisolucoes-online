@@ -101,14 +101,17 @@ export function WhatsappWindowAlert({
             Enviar template aprovado
           </button>
         )}
-        <Link
-          to="/configuracoes"
-          title="Templates Meta — abrir lista de modelos sincronizados da Meta (uso fora da janela de 24h)."
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--status-urgent)]/40 text-[var(--status-urgent)] h-7 px-2.5 text-[11px] font-semibold hover:bg-[var(--status-urgent)]/10"
-        >
-          <FileText className="h-3 w-3" />
-          Abrir modelos
-        </Link>
+        {onOpenTemplates && (
+          <button
+            type="button"
+            onClick={onOpenTemplates}
+            title="Templates Meta — abrir lista de modelos sincronizados da Meta (uso fora da janela de 24h)."
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--status-urgent)]/40 text-[var(--status-urgent)] h-7 px-2.5 text-[11px] font-semibold hover:bg-[var(--status-urgent)]/10"
+          >
+            <FileText className="h-3 w-3" />
+            Abrir modelos
+          </button>
+        )}
 
       </div>
     </div>
