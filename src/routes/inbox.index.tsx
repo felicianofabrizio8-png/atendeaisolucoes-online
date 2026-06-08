@@ -533,7 +533,62 @@ function InboxPage() {
             })}
           </div>
         </div>
+
+        {/* WhatsApp 24h window — dashboard + filtros */}
+        {(windowCounts.open + windowCounts.closed + windowCounts.closing_today + windowCounts.closing_3h) > 0 && (
+          <div className="-mx-3 md:mx-0 px-3 md:px-0 overflow-x-auto md:overflow-visible scrollbar-none">
+            <div className="inline-flex md:flex md:flex-wrap items-center gap-1.5 whitespace-nowrap">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">
+                Janela 24h:
+              </span>
+              {windowFilter !== "todos" && (
+                <button
+                  type="button"
+                  onClick={() => setWindow("todos")}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-[11px] font-medium border border-border bg-background text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" /> Limpar
+                </button>
+              )}
+              {windowTabs.map((tab) => {
+                const active = windowFilter === tab.key;
+                const toneActive =
+                  tab.tone === "emerald"
+                    ? "bg-emerald-500 border-emerald-500 text-white"
+                    : tab.tone === "amber"
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : "bg-[var(--status-urgent)] border-[var(--status-urgent)] text-white";
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setWindow(active ? "todos" : tab.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors shrink-0",
+                      active
+                        ? toneActive
+                        : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/40",
+                    )}
+                    title={tab.label}
+                  >
+                    {tab.label}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
+                        active ? "bg-white/25" : "bg-secondary",
+                        tab.count === 0 && "opacity-40",
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </header>
+
 
 
 
