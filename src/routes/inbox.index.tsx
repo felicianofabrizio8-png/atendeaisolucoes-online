@@ -475,7 +475,7 @@ function InboxPage() {
                 onClick={() =>
                   navigate({
                     to: "/inbox",
-                    search: { status: statusFilter, source: sourceFilter, lossReason: "" },
+                    search: { status: statusFilter, source: sourceFilter, lossReason: "", wpWindow: windowFilter },
                   })
                 }
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-accent"
