@@ -62,6 +62,7 @@ import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
 import { Route as ApiWhatsappTemplatesUpdateRouteImport } from './routes/api.whatsapp.templates.update'
 import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whatsapp.templates.sync'
+import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whatsapp.templates.send'
 import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
@@ -350,6 +351,12 @@ const ApiWhatsappTemplatesSyncRoute =
     path: '/api/whatsapp/templates/sync',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiWhatsappTemplatesSendRoute =
+  ApiWhatsappTemplatesSendRouteImport.update({
+    id: '/api/whatsapp/templates/send',
+    path: '/api/whatsapp/templates/send',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiWhatsappTemplatesListRoute =
   ApiWhatsappTemplatesListRouteImport.update({
     id: '/api/whatsapp/templates/list',
@@ -432,6 +439,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
   '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
   '/api/whatsapp/templates/update': typeof ApiWhatsappTemplatesUpdateRoute
 }
@@ -491,6 +499,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
   '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
   '/api/whatsapp/templates/update': typeof ApiWhatsappTemplatesUpdateRoute
 }
@@ -552,6 +561,7 @@ export interface FileRoutesById {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
+  '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
   '/api/whatsapp/templates/sync': typeof ApiWhatsappTemplatesSyncRoute
   '/api/whatsapp/templates/update': typeof ApiWhatsappTemplatesUpdateRoute
 }
@@ -614,6 +624,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/send'
     | '/api/whatsapp/templates/sync'
     | '/api/whatsapp/templates/update'
   fileRoutesByTo: FileRoutesByTo
@@ -673,6 +684,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/send'
     | '/api/whatsapp/templates/sync'
     | '/api/whatsapp/templates/update'
   id:
@@ -733,6 +745,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
+    | '/api/whatsapp/templates/send'
     | '/api/whatsapp/templates/sync'
     | '/api/whatsapp/templates/update'
   fileRoutesById: FileRoutesById
@@ -792,6 +805,7 @@ export interface RootRouteChildren {
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappTemplatesListRoute: typeof ApiWhatsappTemplatesListRoute
+  ApiWhatsappTemplatesSendRoute: typeof ApiWhatsappTemplatesSendRoute
   ApiWhatsappTemplatesSyncRoute: typeof ApiWhatsappTemplatesSyncRoute
   ApiWhatsappTemplatesUpdateRoute: typeof ApiWhatsappTemplatesUpdateRoute
 }
@@ -1176,6 +1190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappTemplatesSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/templates/send': {
+      id: '/api/whatsapp/templates/send'
+      path: '/api/whatsapp/templates/send'
+      fullPath: '/api/whatsapp/templates/send'
+      preLoaderRoute: typeof ApiWhatsappTemplatesSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/templates/list': {
       id: '/api/whatsapp/templates/list'
       path: '/api/whatsapp/templates/list'
@@ -1274,6 +1295,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappTemplatesListRoute: ApiWhatsappTemplatesListRoute,
+  ApiWhatsappTemplatesSendRoute: ApiWhatsappTemplatesSendRoute,
   ApiWhatsappTemplatesSyncRoute: ApiWhatsappTemplatesSyncRoute,
   ApiWhatsappTemplatesUpdateRoute: ApiWhatsappTemplatesUpdateRoute,
 }
