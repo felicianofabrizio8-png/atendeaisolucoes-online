@@ -69,6 +69,7 @@ import { toast } from "sonner";
 import { QualificationPanel } from "@/components/QualificationBadges";
 import { AITimeline } from "@/components/AITimeline";
 import { WhatsappWindowAlert } from "@/components/WhatsappWindowAlert";
+import { MetaTemplatesModal } from "@/components/MetaTemplatesModal";
 
 // Contexto leve com as mensagens da conversa atual.
 // Usado pelo ReplyPreview para localizar a mensagem original e reconstruir
@@ -2407,6 +2408,7 @@ function ConversationPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [, rerenderRepo] = useState(0);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
   useEffect(() => subscribeRepo(() => rerenderRepo((v) => v + 1)), []);
   const conversation = getConversationById(conversationId);
@@ -3495,8 +3497,15 @@ function ConversationPage() {
             lead={lead}
             messages={messages}
             onSendNow={() => composerRef.current?.focus()}
+            onOpenTemplates={() => setTemplatesModalOpen(true)}
           />
         )}
+        <MetaTemplatesModal
+          open={templatesModalOpen}
+          conversationId={conversationId}
+          onClose={() => setTemplatesModalOpen(false)}
+        />
+
 
         {/* Composer */}
         <div
