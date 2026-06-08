@@ -492,7 +492,7 @@ function InboxPage() {
             onClick={() =>
               navigate({
                 to: "/inbox",
-                search: { status: "todos", source: "todos", lossReason: "" },
+                search: { status: "todos", source: "todos", lossReason: "", wpWindow: "todos" },
               })
             }
             className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 self-start"
