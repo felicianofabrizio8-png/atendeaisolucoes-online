@@ -3565,6 +3565,17 @@ function ConversationPage() {
 
               />
             )}
+            {!audioActive && (
+              <QuickRepliesButton
+                companyId={profile?.company_id ?? null}
+                disabled={!!closedInfo}
+                onPick={(text) => {
+                  setInput((prev) => (prev && prev.trim() ? `${prev}\n${text}` : text));
+                  requestAnimationFrame(() => composerRef.current?.focus());
+                }}
+              />
+            )}
+
             {lead?.channel === "whatsapp" && (
               <AudioRecorder
                 conversationId={conversationId}
