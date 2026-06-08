@@ -621,24 +621,140 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                   value={config.audience_custom} onChange={(e) => setConfig({ ...config, audience_custom: e.target.value })} />
               )}
             </Field>
-            <Field label="Nome do produto (opcional)">
-              <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.product_name} onChange={(e) => setConfig({ ...config, product_name: e.target.value })} />
+            <Field label="Tipo de criativo">
+              <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.creative_type} onChange={(e) => setConfig({ ...config, creative_type: e.target.value })}>
+                {CREATIVE_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
+              </select>
             </Field>
+
+            {/* ===== DADOS DO ANÚNCIO ===== */}
+            <div className="rounded-lg border bg-card p-3 space-y-2">
+              <p className="text-xs font-semibold flex items-center gap-1"><Tag className="h-3.5 w-3.5" /> Dados do anúncio</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Nome do produto">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.product_name} onChange={(e) => setConfig({ ...config, product_name: e.target.value })} />
+                </Field>
+                <Field label="Cidade">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.city} onChange={(e) => setConfig({ ...config, city: e.target.value })} />
+                </Field>
+                <Field label="Preço atual">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" placeholder="R$ 0,00" value={config.price} onChange={(e) => setConfig({ ...config, price: e.target.value })} />
+                </Field>
+                <Field label="Preço promocional">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" placeholder="R$ 0,00" value={config.promo_price} onChange={(e) => setConfig({ ...config, promo_price: e.target.value })} />
+                </Field>
+                <Field label="Parcelamento">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" placeholder="12x R$ 0,00" value={config.installments} onChange={(e) => setConfig({ ...config, installments: e.target.value })} />
+                </Field>
+                <Field label="WhatsApp">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" placeholder="(00) 00000-0000" value={config.whatsapp} onChange={(e) => setConfig({ ...config, whatsapp: e.target.value })} />
+                </Field>
+              </div>
+              <Field label="Título principal">
+                <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.ad_headline} onChange={(e) => setConfig({ ...config, ad_headline: e.target.value })} />
+              </Field>
+              <Field label="Subtítulo">
+                <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.ad_subtitle} onChange={(e) => setConfig({ ...config, ad_subtitle: e.target.value })} />
+              </Field>
+              <Field label="Descrição">
+                <textarea className="w-full min-h-[60px] rounded-md border bg-background px-2 py-1.5 text-sm" value={config.ad_description} onChange={(e) => setConfig({ ...config, ad_description: e.target.value })} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="CTA">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" placeholder="Solicitar orçamento" value={config.cta_text} onChange={(e) => setConfig({ ...config, cta_text: e.target.value })} />
+                </Field>
+                <Field label="Observações para IA">
+                  <input className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={config.ai_notes} onChange={(e) => setConfig({ ...config, ai_notes: e.target.value })} />
+                </Field>
+              </div>
+            </div>
+
+            {/* ===== ELEMENTOS A EXIBIR ===== */}
+            <div className="rounded-lg border bg-card p-3 space-y-2">
+              <p className="text-xs font-semibold">Elementos que a IA deve exibir</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {SHOW_OPTIONS.map((opt) => (
+                  <label key={opt.v} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!config.show[opt.v]}
+                      onChange={(e) => setConfig({ ...config, show: { ...config.show, [opt.v]: e.target.checked } })}
+                    />
+                    {opt.l}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* ===== INSTRUÇÕES ESPECIAIS ===== */}
+            <Field label="Instruções especiais para IA">
+              <textarea
+                className="w-full min-h-[72px] rounded-md border bg-background px-2 py-1.5 text-sm"
+                placeholder="Ex.: manter exatamente o formato do produto, não alterar medidas, criar ambiente premium, aparência de Meta Ads..."
+                value={config.special_instructions}
+                onChange={(e) => setConfig({ ...config, special_instructions: e.target.value })}
+              />
+            </Field>
+
             <label className="flex items-start gap-2 p-3 rounded-md border bg-muted/30 cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={config.preserve_product} onChange={(e) => setConfig({ ...config, preserve_product: e.target.checked })} />
               <div className="text-xs">
-                <p className="font-medium">Preservar produto original</p>
-                <p className="text-muted-foreground">Mantém forma, proporções e identidade. Ideal para piscinas, móveis, veículos e produtos técnicos.</p>
+                <p className="font-medium">Preservar produto original (modo real)</p>
+                <p className="text-muted-foreground">Mantém forma, medidas, curvas, escadas, cores e identidade. Ideal para piscinas, móveis, veículos e produtos técnicos. A IA prioriza fortemente o produto enviado.</p>
               </div>
             </label>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setStep("upload")} className="px-3 h-9 rounded-md border text-sm hover:bg-accent">Voltar</button>
+              <button onClick={() => setShowSummary(true)} className="px-3 h-9 rounded-md border text-sm hover:bg-accent inline-flex items-center gap-1">
+                <Eye className="h-4 w-4" /> Pré-visualizar
+              </button>
               <button disabled={generatingTexts} onClick={generateTexts}
                 className="flex-1 inline-flex items-center justify-center gap-2 h-9 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-60">
                 {generatingTexts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Gerar 3 variantes
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resumo / Pré-visualização */}
+      {showSummary && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSummary(false)}>
+          <div className="bg-card rounded-xl border max-w-md w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2"><Eye className="h-4 w-4" /> Resumo do anúncio</h3>
+              <button onClick={() => setShowSummary(false)} className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="text-xs space-y-1.5">
+              <p><b>Produto:</b> {config.product_name || "(deduzir da imagem)"}</p>
+              <p><b>Preço:</b> {config.price || "—"}{config.promo_price ? `  •  Promo: ${config.promo_price}` : ""}{config.installments ? `  •  ${config.installments}` : ""}</p>
+              <p><b>Objetivo:</b> {GOALS.find((g) => g.v === config.goal)?.l}</p>
+              <p><b>Público:</b> {config.audience === "custom" ? (config.audience_custom || "personalizado") : (AUDIENCES.find((a) => a.v === config.audience)?.l ?? config.audience)}</p>
+              <p><b>Estilo:</b> {STYLES.find((s) => s.v === config.style)?.l}</p>
+              <p><b>Tipo de criativo:</b> {CREATIVE_TYPES.find((t) => t.v === config.creative_type)?.l}</p>
+              <p><b>Cidade:</b> {config.city || "—"}</p>
+              <p><b>WhatsApp:</b> {config.whatsapp || "—"}</p>
+              {config.ad_headline && <p><b>Título:</b> {config.ad_headline}</p>}
+              {config.ad_subtitle && <p><b>Subtítulo:</b> {config.ad_subtitle}</p>}
+              {config.cta_text && <p><b>CTA:</b> {config.cta_text}</p>}
+              <p><b>Elementos:</b> {SHOW_OPTIONS.filter((o) => config.show[o.v]).map((o) => o.l.replace("Mostrar ", "")).join(", ") || "—"}</p>
+              {config.preserve_product && <p className="text-primary font-medium">✓ Preservação real do produto original ativada</p>}
+              {config.special_instructions && <p><b>Instruções:</b> {config.special_instructions}</p>}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowSummary(false)} className="flex-1 h-9 rounded-md border text-sm hover:bg-accent">Editar</button>
+              <button
+                onClick={() => { setShowSummary(false); void generateTexts(); }}
+                disabled={generatingTexts}
+                className="flex-1 inline-flex items-center justify-center gap-2 h-9 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-60"
+              >
+                <Sparkles className="h-4 w-4" /> Confirmar e gerar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
           </div>
         </div>
       )}
