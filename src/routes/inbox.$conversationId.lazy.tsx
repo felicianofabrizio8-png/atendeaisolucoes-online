@@ -1472,7 +1472,7 @@ function PlusMenuPortal({
       window.removeEventListener("resize", compute);
       window.removeEventListener("scroll", compute, true);
     };
-  }, [isMobile, anchorRef, panelRef, quickReplies.length]);
+  }, [isMobile, anchorRef, panelRef]);
 
   // Fecha com ESC
   useEffect(() => {
