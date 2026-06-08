@@ -231,8 +231,10 @@ ${analysisLine}`;
           // alterando apenas fundo/iluminação/cenário.
           if (preserve) {
             const strictPrompt = `Use the uploaded product image as the EXACT product reference. Do NOT replace, redesign, simplify, restyle, recolor, or invent a different product. Preserve shape, proportions, materials, textures, colors, edges, curves, steps, dimensions and every identifying detail of the product unchanged. You may ONLY change the background, scenery, lighting, ambience and add tasteful advertising mood. The final image must clearly show the SAME product from the reference photo. Creative direction: ${body.prompt}`;
+            // Gemini image-preview models são chamados via chat/completions com modalities=["image","text"].
+            // A resposta vem em choices[0].message.images[0].image_url.url como data URL base64.
             const payload = {
-              model: "google/gemini-3.1-flash-image-preview",
+              model: "google/gemini-2.5-flash-image-preview",
               messages: [
                 {
                   role: "user",
@@ -244,7 +246,7 @@ ${analysisLine}`;
               ],
               modalities: ["image", "text"],
             };
-            const res = await fetch(GATEWAY_IMG, {
+            const res = await fetch(GATEWAY_CHAT, {
               method: "POST",
               headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
               body: JSON.stringify(payload),
@@ -255,8 +257,18 @@ ${analysisLine}`;
               return aiError(res.status);
             }
             const data = await res.json();
-            const b64 = data?.data?.[0]?.b64_json;
+            const msg = data?.choices?.[0]?.message;
+            const dataUrl: string | undefined =
+              msg?.images?.[0]?.image_url?.url ??
+              msg?.images?.[0]?.url ??
+              undefined;
+            let b64: string | undefined;
+            if (dataUrl) {
+              const m = /^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/.exec(dataUrl);
+              b64 = m ? m[1] : dataUrl;
+            }
             if (!b64) {
+              console.error("img edit no image in response", JSON.stringify(data).slice(0, 500));
               return Response.json({
                 error: "Não foi possível preservar o produto original com segurança. Tente outra imagem ou desative a preservação.",
                 preserve_failed: true,
