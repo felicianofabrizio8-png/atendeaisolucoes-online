@@ -1421,21 +1421,18 @@ function PlusMenuPortal({
   anchorRef,
   panelRef,
   onClose,
-  quickReplies,
   onPickImage,
   onPickVideo,
   onOpenLibrary,
-  onPickQuickReply,
 }: {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   panelRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  quickReplies: QuickReply[];
   onPickImage: () => void;
   onPickVideo: () => void;
   onOpenLibrary: () => void;
-  onPickQuickReply: (q: QuickReply) => void;
 }) {
+
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
