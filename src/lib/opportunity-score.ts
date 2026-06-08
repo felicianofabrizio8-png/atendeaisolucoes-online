@@ -81,9 +81,10 @@ export function computeOpportunityScore({
     m.role === "lead" && /(or[çc]amento|valor|pre[çc]o|quanto custa)/i.test(m.text),
   );
   if (hasQuote) {
-    const pendingQuote = quotes.some(
-      (q) => q.status === "enviado" || q.status === "visualizado" || q.status === "pendente",
-    );
+    const pendingQuote = quotes.some((q) => {
+      const s = computeQuoteStatus(q);
+      return s === "enviado" || s === "visualizado" || s === "pendente";
+    });
     score += pendingQuote ? 25 : 18;
     reasons.push(pendingQuote ? "orçamento aguardando resposta" : "orçamento já enviado");
   } else if (askedQuote) {
