@@ -93,6 +93,33 @@ const AUDIENCES = [
   { v: "casais", l: "Casais" }, { v: "familias", l: "Famílias" },
   { v: "empresarios", l: "Empresários" }, { v: "custom", l: "Personalizado" },
 ];
+const CREATIVE_TYPES = [
+  { v: "oferta", l: "Oferta" },
+  { v: "familia", l: "Família" },
+  { v: "luxo", l: "Luxo" },
+  { v: "urgencia", l: "Urgência" },
+  { v: "lancamento", l: "Lançamento" },
+  { v: "comparativo", l: "Comparativo" },
+  { v: "reserva", l: "Reserva Antecipada" },
+  { v: "queima_estoque", l: "Queima de Estoque" },
+  { v: "promocao_mes", l: "Promoção do Mês" },
+  { v: "reajuste_proximo", l: "Reajuste Próximo" },
+  { v: "conversao_whatsapp", l: "Conversão para WhatsApp" },
+];
+type AdShowKey =
+  | "price" | "discount" | "installments" | "whatsapp" | "urgency"
+  | "benefits" | "warranty" | "promo_badge" | "logo";
+const SHOW_OPTIONS: { v: AdShowKey; l: string }[] = [
+  { v: "price", l: "Mostrar preço" },
+  { v: "discount", l: "Mostrar desconto" },
+  { v: "installments", l: "Mostrar parcelamento" },
+  { v: "whatsapp", l: "Mostrar WhatsApp" },
+  { v: "urgency", l: "Mostrar urgência" },
+  { v: "benefits", l: "Mostrar benefícios" },
+  { v: "warranty", l: "Mostrar garantia" },
+  { v: "promo_badge", l: "Mostrar selo promocional" },
+  { v: "logo", l: "Mostrar logo da empresa" },
+];
 
 interface Props {
   companyId: string;
