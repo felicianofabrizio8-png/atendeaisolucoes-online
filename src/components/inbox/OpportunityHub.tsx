@@ -186,7 +186,7 @@ export function OpportunityHub({
         </div>
         <button
           type="button"
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => setCollapsed(!collapsed)}
           className="text-muted-foreground hover:text-foreground p-1 rounded"
           aria-label={collapsed ? "Expandir" : "Recolher"}
         >
