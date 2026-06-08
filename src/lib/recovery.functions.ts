@@ -48,12 +48,10 @@ interface SbClient {
 export const getRecoveryDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<RecoveryDashboard> => {
-    const { supabase, userId } = context as unknown as {
-      supabase: SbClient & {
-        from: (t: string) => any;
-      };
-      userId: string;
-    };
+    const ctxAny = context as unknown as { supabase: any; userId: string };
+    const supabase = ctxAny.supabase;
+    const userId = ctxAny.userId;
+
 
     const { data: prof } = await supabase
       .from("profiles")
