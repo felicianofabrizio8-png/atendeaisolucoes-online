@@ -162,7 +162,6 @@ export function OpportunityHub() {
     { key: "sem_retorno", label: "⏳ Sem retorno" },
   ];
 
-  const hasSearch = debouncedQuery.trim().length > 0;
 
   return (
     <section className="mx-3 md:mx-6 my-3 rounded-lg border border-border bg-card/40 overflow-hidden">
