@@ -595,7 +595,7 @@ function InboxPage() {
 
 
       <div className="flex-1 overflow-y-auto">
-        <OpportunityHub />
+        <OpportunityHub collapsed={oppCollapsed} onToggle={setOppCollapsed} />
         {showSeed && (
           <div className="mx-6 my-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
