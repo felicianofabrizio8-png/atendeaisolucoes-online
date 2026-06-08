@@ -22,6 +22,7 @@ import { QualificationInline } from "@/components/QualificationBadges";
 import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
+import { OpportunityHub } from "@/components/inbox/OpportunityHub";
 
 const STATUS_FILTERS = [
   "todos",
@@ -593,6 +594,7 @@ function InboxPage() {
 
 
       <div className="flex-1 overflow-y-auto">
+        <OpportunityHub />
         {showSeed && (
           <div className="mx-6 my-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
