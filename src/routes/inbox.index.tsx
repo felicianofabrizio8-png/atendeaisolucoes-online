@@ -46,6 +46,19 @@ const SOURCE_FILTERS = [
 ] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
 
+const WINDOW_FILTERS = ["todos", "aberta", "fecha_hoje", "fecha_3h", "fechada"] as const;
+type WindowFilter = (typeof WINDOW_FILTERS)[number];
+
+function matchesWindow(info: WindowInfo, filter: WindowFilter, now: number): boolean {
+  switch (filter) {
+    case "todos": return true;
+    case "aberta": return info.state === "open" || info.state === "closing_soon";
+    case "fecha_hoje": return closesToday(info, now);
+    case "fecha_3h": return info.state === "closing_soon";
+    case "fechada": return info.state === "closed";
+  }
+}
+
 export type Origin =
   | "whatsapp"
   | "instagram_direct"
