@@ -167,6 +167,7 @@ function buildSortedItems(
   statusFilter: StatusFilter,
   sourceFilter: SourceFilter,
   lossReasonFilter: string,
+  windowFilter: WindowFilter,
 ) {
   const now = Date.now();
   return [...getConversations()]
@@ -178,9 +179,10 @@ function buildSortedItems(
       const breached = isSlaBreached(c, slaMinutes);
       const ageMin = (now - new Date(c.lastMessageAt).getTime()) / 60_000;
       const priority = computePriority(c, lead, slaMinutes, now);
-      return { conv: c, lead, last, origin, breached, ageMin, priority, score: priority.score };
+      const windowInfo = computeWindow(c, lead, msgs, now);
+      return { conv: c, lead, last, origin, breached, ageMin, priority, score: priority.score, windowInfo };
     })
-    .filter(({ lead, breached, origin, conv }) => {
+    .filter(({ lead, breached, origin, conv, windowInfo }) => {
       if (statusFilter === "quentes" && lead?.status !== "quente" && conv.leadTemperature !== "quente") return false;
       if (statusFilter === "prontos" && !conv.leadReadyToClose) return false;
       if (statusFilter === "aguardando_humano" && conv.aiStatus !== "aguardando_humano") return false;
@@ -194,6 +196,7 @@ function buildSortedItems(
         }
       }
       if (!matchesSource(origin, conv.awaitingReply, sourceFilter)) return false;
+      if (windowFilter !== "todos" && !matchesWindow(windowInfo, windowFilter, now)) return false;
       return true;
     })
     .sort((a, b) => b.score - a.score);
@@ -204,11 +207,29 @@ function InboxPage() {
   const settings = useSettings();
   useRepoVersion();
   const { profile } = useAuth();
-  const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter } = Route.useSearch();
+  const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
 
-  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter);
+  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
+
+  // Contadores globais (dashboard) da janela de 24h — base independente dos filtros ativos.
+  const windowCounts = useMemo(() => {
+    const counts = { open: 0, closing_today: 0, closing_3h: 0, closed: 0 };
+    const now = Date.now();
+    for (const c of getConversations()) {
+      const lead = getLeadById(c.leadId);
+      const channel = c.channel ?? lead?.channel;
+      if (channel !== "whatsapp") continue;
+      const info = computeWindow(c, lead, getMessagesFor(c.id), now);
+      if (info.state === "open" || info.state === "closing_soon") counts.open += 1;
+      if (closesToday(info, now)) counts.closing_today += 1;
+      if (info.state === "closing_soon") counts.closing_3h += 1;
+      if (info.state === "closed") counts.closed += 1;
+    }
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
