@@ -3,6 +3,7 @@
 // Aditivo: não substitui o gerador existente em /campanhas/nova.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { extractStoragePath, getSignedImageUrl } from "@/lib/storage";
 import { toast } from "sonner";
 import {
   Upload, Sparkles, Loader2, Wand2, ImageIcon, Eye, Save, ArrowRight,
