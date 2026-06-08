@@ -1508,13 +1508,7 @@ function PlusMenuPortal({
       </button>
     </>
   );
-  {/* Respostas Rápidas movido para botão dedicado ao lado do "+" */}
-  void 0;
-  const _items_end = (
-    <></>
 
-    </>
-  );
 
   if (isMobile) {
     return (
