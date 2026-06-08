@@ -210,6 +210,7 @@ function InboxPage() {
   const { profile } = useAuth();
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
+  const [oppCollapsed, setOppCollapsed] = useState(false);
 
   const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
@@ -395,7 +396,7 @@ function InboxPage() {
               {" · "}SLA {settings.slaMinutes}m
             </p>
           </div>
-          <div className="relative w-72 hidden md:block">
+          <div className={cn("relative w-72 hidden md:block", !oppCollapsed && "hidden")}>
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               placeholder="Buscar por nome, telefone, tag…"
@@ -405,7 +406,7 @@ function InboxPage() {
         </div>
 
         {/* Mobile search */}
-        <div className="relative md:hidden">
+        <div className={cn("relative md:hidden", !oppCollapsed && "hidden")}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             placeholder="Buscar conversa…"
@@ -594,7 +595,7 @@ function InboxPage() {
 
 
       <div className="flex-1 overflow-y-auto">
-        <OpportunityHub />
+        <OpportunityHub collapsed={oppCollapsed} onToggle={setOppCollapsed} />
         {showSeed && (
           <div className="mx-6 my-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />

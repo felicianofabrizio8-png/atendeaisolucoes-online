@@ -111,9 +111,20 @@ function formatAgo(iso: string, now: number): string {
   return `${d} ${d === 1 ? "dia" : "dias"} atrás`;
 }
 
-export function OpportunityHub() {
+export function OpportunityHub({
+  collapsed: controlledCollapsed,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  onToggle?: (next: boolean) => void;
+} = {}) {
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = controlledCollapsed ?? internalCollapsed;
+  const setCollapsed = (next: boolean) => {
+    if (onToggle) onToggle(next);
+    else setInternalCollapsed(next);
+  };
   const [filter, setFilter] = useState<FilterKey>("todos");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedQuery = useDebounce(searchQuery, 300);
@@ -175,7 +186,7 @@ export function OpportunityHub() {
         </div>
         <button
           type="button"
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => setCollapsed(!collapsed)}
           className="text-muted-foreground hover:text-foreground p-1 rounded"
           aria-label={collapsed ? "Expandir" : "Recolher"}
         >
