@@ -139,7 +139,21 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     goal: "leads", style: "premium", audience: "familias",
     audience_custom: "", product_name: "", product_description: "",
     preserve_product: false,
+    // Dados do anúncio
+    price: "", promo_price: "", installments: "",
+    ad_headline: "", ad_subtitle: "", ad_description: "",
+    cta_text: "", whatsapp: "", city: "", ai_notes: "",
+    // Tipo de criativo
+    creative_type: "oferta",
+    // Instruções especiais
+    special_instructions: "",
+    // Checkboxes de elementos a exibir
+    show: {
+      price: true, discount: true, installments: true, whatsapp: true,
+      urgency: false, benefits: true, warranty: false, promo_badge: true, logo: false,
+    } as Record<AdShowKey, boolean>,
   });
+  const [showSummary, setShowSummary] = useState(false);
 
   const [generatingTexts, setGeneratingTexts] = useState(false);
   const [variants, setVariants] = useState<Variants | null>(null);
