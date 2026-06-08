@@ -123,6 +123,7 @@ const searchSchema = z.object({
   status: fallback(z.enum(STATUS_FILTERS), "todos").default("todos"),
   source: fallback(z.enum(SOURCE_FILTERS), "todos").default("todos"),
   lossReason: fallback(z.string(), "").default(""),
+  wpWindow: fallback(z.enum(WINDOW_FILTERS), "todos").default("todos"),
 });
 
 export const Route = createFileRoute("/inbox/")({
