@@ -273,6 +273,9 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
         if (body.mode === "generate-image") {
           const size = FORMAT_SIZE[body.format] ?? "1024x1024";
           const preserve = !!body.preserve_product && !!body.image_url;
+          const preserveScene = !!body.preserve_scene && !!body.image_url;
+          const useEdit = preserve || preserveScene;
+
 
           // Reforço visual a partir dos dados do anúncio (opcional)
           const ov = body.ad_overlay ?? {};
