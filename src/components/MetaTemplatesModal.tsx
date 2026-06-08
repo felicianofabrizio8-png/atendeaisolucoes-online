@@ -73,6 +73,25 @@ export function MetaTemplatesModal({ open, conversationId, onClose, onSent, sugg
     }
   }, [open]);
 
+  // Pré-seleciona template sugerido quando lista carrega
+  useEffect(() => {
+    if (!open || !suggestedTemplateName || selected || items.length === 0) return;
+    const found = items.find(
+      (t) =>
+        t.name.toLowerCase() === suggestedTemplateName.toLowerCase() &&
+        t.status === "approved",
+    );
+    if (found) {
+      setSelected(found);
+      const init: Record<string, string> = {};
+      (found.variables ?? []).forEach((n) => {
+        init[n] = "";
+      });
+      setVars(init);
+    }
+  }, [open, suggestedTemplateName, items, selected]);
+
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((t) => {
