@@ -139,6 +139,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     goal: "leads", style: "premium", audience: "familias",
     audience_custom: "", product_name: "", product_description: "",
     preserve_product: false,
+    preserve_scene: false,
     // Dados do anúncio
     price: "", promo_price: "", installments: "",
     ad_headline: "", ad_subtitle: "", ad_description: "",
