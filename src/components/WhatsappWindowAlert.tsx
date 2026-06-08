@@ -95,6 +95,7 @@ export function WhatsappWindowAlert({
           <button
             type="button"
             onClick={onOpenTemplates}
+            title="Templates Meta — mensagens oficiais aprovadas pela Meta. Use apenas quando a conversa estiver fora da janela de 24h."
             className="inline-flex items-center gap-1 rounded-md bg-[var(--status-urgent)] text-white h-7 px-2.5 text-[11px] font-semibold hover:opacity-90"
           >
             <Send className="h-3 w-3" />
@@ -103,11 +104,13 @@ export function WhatsappWindowAlert({
         )}
         <Link
           to="/configuracoes"
+          title="Templates Meta — abrir lista de modelos sincronizados da Meta (uso fora da janela de 24h)."
           className="inline-flex items-center gap-1 rounded-md border border-[var(--status-urgent)]/40 text-[var(--status-urgent)] h-7 px-2.5 text-[11px] font-semibold hover:bg-[var(--status-urgent)]/10"
         >
           <FileText className="h-3 w-3" />
           Abrir modelos
         </Link>
+
       </div>
     </div>
   );
