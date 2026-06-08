@@ -396,7 +396,7 @@ function InboxPage() {
               {" · "}SLA {settings.slaMinutes}m
             </p>
           </div>
-          <div className="relative w-72 hidden md:block">
+          <div className={cn("relative w-72 hidden md:block", !oppCollapsed && "hidden")}>
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               placeholder="Buscar por nome, telefone, tag…"
@@ -406,7 +406,7 @@ function InboxPage() {
         </div>
 
         {/* Mobile search */}
-        <div className="relative md:hidden">
+        <div className={cn("relative md:hidden", !oppCollapsed && "hidden")}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             placeholder="Buscar conversa…"
