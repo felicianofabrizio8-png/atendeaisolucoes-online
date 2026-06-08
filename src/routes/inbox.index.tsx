@@ -702,7 +702,7 @@ function ConversationCard({
   slaMinutes: number;
   onOpen: () => void;
 }) {
-  const { conv: c, last, origin, breached, ageMin, priority } = item;
+  const { conv: c, last, origin, breached, ageMin, priority, windowInfo } = item;
   const lead = getLeadById(c.leadId);
   if (!lead) return null;
   const alert = priority.alert;
