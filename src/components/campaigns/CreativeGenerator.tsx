@@ -336,7 +336,27 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     try {
       const res = await fetch("/api/ai/creative-generator", {
         method: "POST", headers: await authHeader(),
-        body: JSON.stringify({ mode: "generate-image", image_url: sourceImage, prompt, format, preserve_product: config.preserve_product }),
+        body: JSON.stringify({
+          mode: "generate-image",
+          image_url: sourceImage,
+          prompt,
+          format,
+          preserve_product: config.preserve_product,
+          ad_overlay: {
+            product_name: config.product_name,
+            price: config.price,
+            promo_price: config.promo_price,
+            installments: config.installments,
+            cta_text: config.cta_text,
+            whatsapp: config.whatsapp,
+            city: config.city,
+            ad_headline: config.ad_headline,
+            ad_subtitle: config.ad_subtitle,
+            creative_type: config.creative_type,
+            special_instructions: config.special_instructions,
+            show: config.show,
+          },
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
