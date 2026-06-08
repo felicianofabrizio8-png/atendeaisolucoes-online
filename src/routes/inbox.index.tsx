@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 import { QualificationInline } from "@/components/QualificationBadges";
 import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
+import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
+import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 
 const STATUS_FILTERS = [
   "todos",
