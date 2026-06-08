@@ -120,6 +120,13 @@ export function OpportunityHub() {
 
   const now = Date.now();
   const all = useMemo(() => buildOpportunities(now), [now]);
+  const hasSearch = debouncedQuery.trim().length > 0;
+  // Quando há busca, incluímos também leads fechados/perdidos para localizar
+  // qualquer cliente pelo nome, telefone ou tag.
+  const searchPool = useMemo(
+    () => (hasSearch ? buildOpportunities(now, true) : all),
+    [hasSearch, now, all],
+  );
 
   const alerts = useMemo(() => {
     const hotAwaiting = all.filter((i) => i.score.tier === "quente" && i.awaitingTeam).length;
@@ -139,7 +146,7 @@ export function OpportunityHub() {
     sem_retorno: all.filter((i) => i.awaitingTeam).length,
   }), [all]);
 
-  const filteredByFilter = applyFilter(all, filter);
+  const filteredByFilter = hasSearch ? searchPool : applyFilter(all, filter);
   const filtered = useMemo(() => {
     if (!debouncedQuery.trim()) return filteredByFilter;
     return filteredByFilter.filter((it) => matchesSearch(it, debouncedQuery));
