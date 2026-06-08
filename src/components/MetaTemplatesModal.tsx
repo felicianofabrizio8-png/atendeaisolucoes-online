@@ -20,11 +20,14 @@ interface Props {
   conversationId: string;
   onClose: () => void;
   onSent?: () => void;
+  /** Nome opcional de template a pré-selecionar ao abrir (recomendação). */
+  suggestedTemplateName?: string;
 }
 
 type StatusFilter = "approved" | "all";
 
-export function MetaTemplatesModal({ open, conversationId, onClose, onSent }: Props) {
+export function MetaTemplatesModal({ open, conversationId, onClose, onSent, suggestedTemplateName }: Props) {
+
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<MetaTemplate[]>([]);
   const [search, setSearch] = useState("");

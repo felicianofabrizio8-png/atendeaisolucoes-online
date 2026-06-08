@@ -29,6 +29,7 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
+import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
@@ -180,6 +181,11 @@ const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
   id: '/onboarding/whatsapp',
   path: '/onboarding/whatsapp',
   getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRecoveryRoute = InboxRecoveryRouteImport.update({
+  id: '/recovery',
+  path: '/recovery',
+  getParentRoute: () => InboxRoute,
 } as any)
 const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
   id: '/$conversationId',
@@ -402,6 +408,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -462,6 +469,7 @@ export interface FileRoutesByTo {
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -524,6 +532,7 @@ export interface FileRoutesById {
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
+  '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -587,6 +596,7 @@ export interface FileRouteTypes {
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
+    | '/inbox/recovery'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -647,6 +657,7 @@ export interface FileRouteTypes {
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
+    | '/inbox/recovery'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -708,6 +719,7 @@ export interface FileRouteTypes {
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
+    | '/inbox/recovery'
     | '/onboarding/whatsapp'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -958,6 +970,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/whatsapp'
       preLoaderRoute: typeof OnboardingWhatsappRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/inbox/recovery': {
+      id: '/inbox/recovery'
+      path: '/recovery'
+      fullPath: '/inbox/recovery'
+      preLoaderRoute: typeof InboxRecoveryRouteImport
+      parentRoute: typeof InboxRoute
     }
     '/inbox/$conversationId': {
       id: '/inbox/$conversationId'
@@ -1230,11 +1249,13 @@ declare module '@tanstack/react-router' {
 
 interface InboxRouteChildren {
   InboxConversationIdRoute: typeof InboxConversationIdRoute
+  InboxRecoveryRoute: typeof InboxRecoveryRoute
   InboxIndexRoute: typeof InboxIndexRoute
 }
 
 const InboxRouteChildren: InboxRouteChildren = {
   InboxConversationIdRoute: InboxConversationIdRoute,
+  InboxRecoveryRoute: InboxRecoveryRoute,
   InboxIndexRoute: InboxIndexRoute,
 }
 
