@@ -755,9 +755,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
           </div>
         </div>
       )}
-          </div>
-        </div>
-      )}
+
 
       {/* STEP RESULTS */}
       {step === "results" && variants && (
