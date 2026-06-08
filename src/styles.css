@@ -209,6 +209,27 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  /* Prevent any direct child from forcing horizontal scroll */
+  body { position: relative; }
+
+  /* Images and media never overflow */
+  img, video, canvas, svg { max-width: 100%; height: auto; }
+
+  /* Mobile: prevent iOS auto-zoom on focus and ensure comfortable touch targets */
+  @media (max-width: 640px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+    /* Comfortable minimum tap target for primary controls */
+    button, [role="button"], a.btn, .tap-44 {
+      min-height: 44px;
+    }
+    /* Allow wide tables to scroll inside their own container without breaking layout */
+    table { display: block; max-width: 100%; overflow-x: auto; }
   }
 
   /* Pulse for urgent items */
