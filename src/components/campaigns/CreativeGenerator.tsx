@@ -3,6 +3,7 @@
 // Aditivo: não substitui o gerador existente em /campanhas/nova.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { extractStoragePath, getSignedImageUrl } from "@/lib/storage";
 import { toast } from "sonner";
 import {
   Upload, Sparkles, Loader2, Wand2, ImageIcon, Eye, Save, ArrowRight,
@@ -178,13 +179,16 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
   }, [products, productSearch]);
 
   const pickProductFromLibrary = async (p: ProductRow) => {
-    const url = p.images[0];
-    if (!url) {
+    const raw = p.images[0];
+    if (!raw) {
       toast.error("Esse produto não tem imagem cadastrada.");
       return;
     }
-    setSourceImage(url);
-    setSourcePath(url);
+    // Normaliza para path interno do bucket (privado) e gera signed URL.
+    const path = extractStoragePath(raw) ?? raw;
+    const signed = await getSignedImageUrl(raw);
+    setSourceImage(signed);
+    setSourcePath(path);
     setConfig((c) => ({
       ...c,
       product_name: p.name,
@@ -198,8 +202,9 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
         .join(" • "),
     }));
     toast.success(`Produto "${p.name}" carregado.`);
-    void runAnalyze(url);
+    void runAnalyze(signed);
   };
+
 
 
   // ============ UPLOAD ============
