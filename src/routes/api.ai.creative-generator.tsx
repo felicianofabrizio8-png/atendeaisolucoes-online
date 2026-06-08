@@ -178,13 +178,31 @@ Gere TRÊS variantes de copy para o MESMO criativo, cada uma com foco distinto:
 - C) urgency: foco em escassez/sazonalidade/tempo limitado.
 
 Cada variante deve ter: headline (25-40 chars, sem emojis nem ponto final), primary_text (até 500), description (até 90), cta (Saiba mais | Enviar mensagem | Solicitar orçamento | Comprar agora | Agendar), image_prompt (descrição vívida em inglês para gerador de imagem; foco no produto, cenário, iluminação, mood).`;
+          const showList = cfg.show
+            ? Object.entries(cfg.show).filter(([, v]) => !!v).map(([k]) => k).join(", ")
+            : "";
           const userTxt = `Objetivo: ${cfg.goal}
 Estilo: ${cfg.style}
+Tipo de criativo: ${cfg.creative_type ?? "-"}
 Público: ${audience ?? "geral"}
 Produto: ${cfg.product_name ?? "(deduzir da imagem)"}
-Descrição: ${cfg.product_description ?? "-"}
-Preservar produto original na imagem: ${cfg.preserve_product ? "SIM (manter forma, proporções e identidade visual)" : "NÃO (liberdade criativa)"}
-${analysisLine}`;
+Descrição produto: ${cfg.product_description ?? "-"}
+Preço atual: ${cfg.price ?? "-"}
+Preço promocional: ${cfg.promo_price ?? "-"}
+Parcelamento: ${cfg.installments ?? "-"}
+Título principal sugerido: ${cfg.ad_headline ?? "-"}
+Subtítulo sugerido: ${cfg.ad_subtitle ?? "-"}
+Descrição do anúncio sugerida: ${cfg.ad_description ?? "-"}
+CTA preferido: ${cfg.cta_text ?? "-"}
+WhatsApp: ${cfg.whatsapp ?? "-"}
+Cidade: ${cfg.city ?? "-"}
+Observações do usuário para IA: ${cfg.ai_notes ?? "-"}
+Instruções especiais: ${cfg.special_instructions ?? "-"}
+Elementos a destacar no criativo: ${showList || "-"}
+Preservar produto original na imagem: ${cfg.preserve_product ? "SIM (manter forma, medidas, curvas, escadas, cores e identidade visual; o produto enviado é o PROTAGONISTA)" : "NÃO (liberdade criativa)"}
+${analysisLine}
+
+Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, respeite-os com pequenas melhorias. Para cada variante, o image_prompt (em inglês) deve descrever cena, iluminação, ambiente e indicar quais elementos visuais aparecem na composição (preço, selo de desconto, parcelamento, botão de WhatsApp, urgência, benefícios, garantia, logo) conforme a lista acima.`;
           const userContent: unknown = body.image_url
             ? [{ type: "text", text: userTxt }, { type: "image_url", image_url: { url: body.image_url } }]
             : userTxt;
