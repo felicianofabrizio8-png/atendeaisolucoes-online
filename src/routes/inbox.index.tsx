@@ -454,7 +454,7 @@ function InboxPage() {
               onChange={(e) =>
                 navigate({
                   to: "/inbox",
-                  search: { status: statusFilter, source: sourceFilter, lossReason: e.target.value },
+                  search: { status: statusFilter, source: sourceFilter, lossReason: e.target.value, wpWindow: windowFilter },
                 })
               }
               className={cn(
