@@ -325,6 +325,7 @@ function InboxPage() {
         source: sourceFilter,
         lossReason:
           next === "perdidos" || next === "todos" ? lossReasonFilter : "",
+        wpWindow: windowFilter,
       },
     });
   };
@@ -332,9 +333,23 @@ function InboxPage() {
   const setSource = (next: SourceFilter) => {
     navigate({
       to: "/inbox",
-      search: { status: statusFilter, source: next, lossReason: lossReasonFilter },
+      search: { status: statusFilter, source: next, lossReason: lossReasonFilter, wpWindow: windowFilter },
     });
   };
+
+  const setWindow = (next: WindowFilter) => {
+    navigate({
+      to: "/inbox",
+      search: { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: next },
+    });
+  };
+
+  const windowTabs: { key: WindowFilter; label: string; count: number; tone: string }[] = [
+    { key: "aberta", label: "🟢 Aberta", count: windowCounts.open, tone: "emerald" },
+    { key: "fecha_hoje", label: "📅 Fecha hoje", count: windowCounts.closing_today, tone: "amber" },
+    { key: "fecha_3h", label: "🟡 < 3h", count: windowCounts.closing_3h, tone: "amber" },
+    { key: "fechada", label: "🔴 Fechada", count: windowCounts.closed, tone: "red" },
+  ];
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
