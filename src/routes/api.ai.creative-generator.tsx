@@ -273,13 +273,35 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
           const size = FORMAT_SIZE[body.format] ?? "1024x1024";
           const preserve = !!body.preserve_product && !!body.image_url;
 
-          // PRESERVAR PRODUTO: usa modelo de edição/multimodal Gemini com a imagem
-          // de referência. O modelo recebe a foto real e mantém o produto idêntico,
-          // alterando apenas fundo/iluminação/cenário.
+          // Reforço visual a partir dos dados do anúncio (opcional)
+          const ov = body.ad_overlay ?? {};
+          const showList = ov.show
+            ? Object.entries(ov.show).filter(([, v]) => !!v).map(([k]) => k)
+            : [];
+          const overlayLines: string[] = [];
+          if (ov.product_name) overlayLines.push(`Product name: ${ov.product_name}.`);
+          if (ov.ad_headline) overlayLines.push(`Main headline overlay: "${ov.ad_headline}".`);
+          if (ov.ad_subtitle) overlayLines.push(`Subtitle overlay: "${ov.ad_subtitle}".`);
+          if (showList.includes("price") && ov.price) overlayLines.push(`Display price tag: ${ov.price}.`);
+          if (showList.includes("discount") && ov.promo_price) overlayLines.push(`Display promotional price: ${ov.promo_price} (with discount badge).`);
+          if (showList.includes("installments") && ov.installments) overlayLines.push(`Display installments: ${ov.installments}.`);
+          if (showList.includes("whatsapp") && ov.whatsapp) overlayLines.push(`Display WhatsApp button/number: ${ov.whatsapp}.`);
+          if (showList.includes("urgency")) overlayLines.push(`Add a tasteful urgency element (limited time / last units).`);
+          if (showList.includes("benefits")) overlayLines.push(`Show 2-3 short benefit bullets.`);
+          if (showList.includes("warranty")) overlayLines.push(`Show a small warranty/guarantee seal.`);
+          if (showList.includes("promo_badge")) overlayLines.push(`Add a clean promotional badge/seal.`);
+          if (showList.includes("logo")) overlayLines.push(`Reserve a small clean area for the company logo (placeholder).`);
+          if (ov.cta_text) overlayLines.push(`Visible CTA button: "${ov.cta_text}".`);
+          if (ov.city) overlayLines.push(`Hint at city/region: ${ov.city}.`);
+          if (ov.creative_type) overlayLines.push(`Creative type: ${ov.creative_type}.`);
+          if (ov.special_instructions) overlayLines.push(`Special instructions from user: ${ov.special_instructions}`);
+          const overlayBlock = overlayLines.length
+            ? `\n\nAd composition requirements (must appear clearly in the final image, Meta Ads style, professional typography, high contrast, no fake text/logos): ${overlayLines.join(" ")}`
+            : "";
+
+          // PRESERVAR PRODUTO
           if (preserve) {
-            const strictPrompt = `Use the uploaded product image as the EXACT product reference. Do NOT replace, redesign, simplify, restyle, recolor, or invent a different product. Preserve shape, proportions, materials, textures, colors, edges, curves, steps, dimensions and every identifying detail of the product unchanged. You may ONLY change the background, scenery, lighting, ambience and add tasteful advertising mood. The final image must clearly show the SAME product from the reference photo. Creative direction: ${body.prompt}`;
-            // Gemini image-preview models são chamados via chat/completions com modalities=["image","text"].
-            // A resposta vem em choices[0].message.images[0].image_url.url como data URL base64.
+            const strictPrompt = `Use the uploaded product image as the EXACT product reference. Do NOT replace, redesign, simplify, restyle, recolor, or invent a different product. Preserve shape, proportions, materials, textures, colors, edges, curves, steps, dimensions and every identifying detail of the product unchanged. You may ONLY change the background, scenery, lighting, ambience and add tasteful advertising overlays. The final image must clearly show the SAME product from the reference photo as the protagonist. Creative direction: ${body.prompt}${overlayBlock}`;
             const payload = {
               model: "google/gemini-2.5-flash-image-preview",
               messages: [
@@ -325,9 +347,10 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
           }
 
           // Modo livre (sem preservar): geração textual com gpt-image-2.
+          const freePrompt = `${body.prompt}${overlayBlock}`;
           const payload = {
             model: "openai/gpt-image-2",
-            prompt: body.prompt,
+            prompt: freePrompt,
             size,
             quality: "low",
             n: 1,
