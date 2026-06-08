@@ -53,6 +53,7 @@ interface GenerateImageReq {
   prompt: string;
   format: "feed_1080" | "story_1920" | "facebook_feed" | "whatsapp_status";
   preserve_product: boolean;
+  preserve_scene?: boolean;
   // novos (opcionais — reforço visual sobreposto ao prompt)
   ad_overlay?: {
     product_name?: string;
