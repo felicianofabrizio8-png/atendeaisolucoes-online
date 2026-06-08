@@ -68,6 +68,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QualificationPanel } from "@/components/QualificationBadges";
 import { AITimeline } from "@/components/AITimeline";
+import { WhatsappWindowAlert } from "@/components/WhatsappWindowAlert";
 
 // Contexto leve com as mensagens da conversa atual.
 // Usado pelo ReplyPreview para localizar a mensagem original e reconstruir
