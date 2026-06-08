@@ -1817,19 +1817,13 @@ function MediaSendPanel({
           anchorRef={menuButtonRef}
           panelRef={menuPanelRef}
           onClose={() => setMenuOpen(false)}
-          quickReplies={quickReplies}
           onPickImage={() => pickFile("image")}
           onPickVideo={() => pickFile("video")}
           onOpenLibrary={() => {
             setMenuOpen(false);
             setLibraryOpen(true);
           }}
-          onPickQuickReply={(q) => {
-            console.log("QUICK_REPLY_CLICKED", { id: q.id, name: q.name });
-            setMenuOpen(false);
-            setActiveReply(q);
-            setReplyText(q.content);
-          }}
+
         />,
         document.body,
       )}
