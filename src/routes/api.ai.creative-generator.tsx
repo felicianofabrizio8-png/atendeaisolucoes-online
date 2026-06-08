@@ -24,13 +24,27 @@ interface GenerateTextsReq {
   image_url?: string | null;
   analysis?: Record<string, unknown> | null;
   config: {
-    goal: string; // leads | whatsapp | sales | traffic | awareness
-    style: string; // premium | offer | luxury | family | urgency | modern | minimal
-    audience: string; // homens | mulheres | casais | familias | empresarios | custom
+    goal: string;
+    style: string;
+    audience: string;
     audience_custom?: string;
     product_name?: string;
     product_description?: string;
     preserve_product: boolean;
+    // novos
+    price?: string;
+    promo_price?: string;
+    installments?: string;
+    ad_headline?: string;
+    ad_subtitle?: string;
+    ad_description?: string;
+    cta_text?: string;
+    whatsapp?: string;
+    city?: string;
+    ai_notes?: string;
+    creative_type?: string;
+    special_instructions?: string;
+    show?: Record<string, boolean>;
   };
 }
 interface GenerateImageReq {
@@ -39,6 +53,21 @@ interface GenerateImageReq {
   prompt: string;
   format: "feed_1080" | "story_1920" | "facebook_feed" | "whatsapp_status";
   preserve_product: boolean;
+  // novos (opcionais — reforço visual sobreposto ao prompt)
+  ad_overlay?: {
+    product_name?: string;
+    price?: string;
+    promo_price?: string;
+    installments?: string;
+    cta_text?: string;
+    whatsapp?: string;
+    city?: string;
+    ad_headline?: string;
+    ad_subtitle?: string;
+    creative_type?: string;
+    special_instructions?: string;
+    show?: Record<string, boolean>;
+  };
 }
 interface ScoreReq {
   mode: "score";
