@@ -700,9 +700,37 @@ function CampaignDetailPage() {
           <CreativeGenerator
             companyId={c.company_id}
             campaignId={c.id}
-            onUseInCampaign={() => toast.success("Criativo vinculado a esta campanha")}
+            onUseInCampaign={async (creativeId) => {
+              try {
+                const { supabase } = await import("@/integrations/supabase/client");
+                const { data: cr, error: crErr } = await supabase
+                  .from("campaign_creatives")
+                  .select("headline,primary_text,description,cta,image_url")
+                  .eq("id", creativeId)
+                  .maybeSingle();
+                if (crErr || !cr) throw crErr ?? new Error("Criativo não encontrado");
+                const { error: upErr } = await supabase
+                  .from("campaigns")
+                  .update({
+                    headline: cr.headline ?? undefined,
+                    primary_text: cr.primary_text ?? undefined,
+                    cta: cr.cta ?? undefined,
+                    media_url: cr.image_url ?? undefined,
+                    media_type: "image",
+                  })
+                  .eq("id", c.id);
+                if (upErr) throw upErr;
+                const fresh = await getCampaign(c.id);
+                if (fresh) setC(fresh);
+                toast.success("Criativo aplicado a esta campanha");
+              } catch (e: any) {
+                console.error(e);
+                toast.error("Falha ao aplicar criativo na campanha");
+              }
+            }}
           />
         </TabsContent>
+
       </Tabs>
 
 
