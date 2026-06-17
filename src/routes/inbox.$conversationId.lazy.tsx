@@ -1542,6 +1542,13 @@ function PlusMenuPortal({
       >
         <LibraryIcon className="h-5 w-5 text-primary" /> Biblioteca de Produtos
       </button>
+      <button
+        type="button"
+        onClick={onPickLocation}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left border-t border-border"
+      >
+        <MapPin className="h-5 w-5 text-primary" /> Localização
+      </button>
     </>
   );
 
