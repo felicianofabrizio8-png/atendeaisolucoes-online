@@ -59,9 +59,11 @@ import {
   Mic,
   Forward,
   Smile,
+  MapPin,
 } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
@@ -1456,6 +1458,7 @@ function PlusMenuPortal({
   onPickImage,
   onPickVideo,
   onOpenLibrary,
+  onPickLocation,
 }: {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   panelRef: React.RefObject<HTMLDivElement | null>;
@@ -1463,6 +1466,7 @@ function PlusMenuPortal({
   onPickImage: () => void;
   onPickVideo: () => void;
   onOpenLibrary: () => void;
+  onPickLocation: () => void;
 }) {
 
   const [isMobile, setIsMobile] = useState(
@@ -1537,6 +1541,13 @@ function PlusMenuPortal({
         className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left border-t border-border"
       >
         <LibraryIcon className="h-5 w-5 text-primary" /> Biblioteca de Produtos
+      </button>
+      <button
+        type="button"
+        onClick={onPickLocation}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent text-left border-t border-border"
+      >
+        <MapPin className="h-5 w-5 text-primary" /> Localização
       </button>
     </>
   );
@@ -1818,6 +1829,7 @@ function MediaSendPanel({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const [pending, setPending] = useState<PendingMedia | null>(null);
   const [caption, setCaption] = useState("");
   const [sending, setSending] = useState(false);
@@ -2071,10 +2083,24 @@ function MediaSendPanel({
             setMenuOpen(false);
             setLibraryOpen(true);
           }}
+          onPickLocation={() => {
+            setMenuOpen(false);
+            setLocationOpen(true);
+          }}
+
 
         />,
         document.body,
       )}
+
+      <SendLocationDialog
+        open={locationOpen}
+        onOpenChange={setLocationOpen}
+        conversationId={conversationId}
+        companyId={companyId}
+        disabled={disabled || !isWhats}
+        onSent={onSent}
+      />
 
       {/* Modal: editar/enviar resposta rápida */}
       {activeReply && (
