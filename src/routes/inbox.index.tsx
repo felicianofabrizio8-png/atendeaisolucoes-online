@@ -365,6 +365,7 @@ function InboxPage() {
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
+    { key: "coach", label: "🤖 Coach IA", count: statusCounts.coach },
     { key: "quentes", label: "Leads quentes", count: statusCounts.quentes },
     { key: "prontos", label: "Prontos p/ fechar", count: statusCounts.prontos },
     { key: "aguardando_humano", label: "Aguardando humano", count: statusCounts.aguardando_humano },
