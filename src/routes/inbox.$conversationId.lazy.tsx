@@ -1458,6 +1458,7 @@ function PlusMenuPortal({
   onPickImage,
   onPickVideo,
   onOpenLibrary,
+  onPickLocation,
 }: {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   panelRef: React.RefObject<HTMLDivElement | null>;
@@ -1465,6 +1466,7 @@ function PlusMenuPortal({
   onPickImage: () => void;
   onPickVideo: () => void;
   onOpenLibrary: () => void;
+  onPickLocation: () => void;
 }) {
 
   const [isMobile, setIsMobile] = useState(
