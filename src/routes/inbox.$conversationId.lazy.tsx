@@ -59,9 +59,11 @@ import {
   Mic,
   Forward,
   Smile,
+  MapPin,
 } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
