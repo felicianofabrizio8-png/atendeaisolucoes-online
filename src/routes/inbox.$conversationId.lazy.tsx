@@ -57,7 +57,9 @@ import {
   Play,
   Pause,
   Mic,
+  Forward,
 } from "lucide-react";
+import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
