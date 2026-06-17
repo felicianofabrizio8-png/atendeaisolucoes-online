@@ -147,7 +147,16 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           );
         }
 
-        const { data: targetConv } = await supabaseAdmin
+        console.log("[forward-message] lookup", {
+          sourceMessageId,
+          targetLeadId,
+          targetPhone: targetLead.phone,
+          targetExternalId: targetLead.external_id,
+          companyId,
+        });
+
+        // 1) tenta por lead_id
+        let { data: targetConv } = await supabaseAdmin
           .from("conversations")
           .select("id, company_id, channel, lead_id")
           .eq("lead_id", targetLeadId)
@@ -156,6 +165,43 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .order("last_message_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        // 2) fallback: procura por outros leads da mesma empresa com mesmo
+        // telefone/wa_id e pega a conversa WhatsApp mais recente. Cobre o
+        // caso em que a conversa foi criada antes do lead destino existir
+        // (ex.: webhook criou um lead "irmão" pelo wa_id).
+        if (!targetConv) {
+          const phoneDigits = String(
+            targetLead.external_id ?? targetLead.phone ?? "",
+          ).replace(/\D/g, "");
+          if (phoneDigits.length >= 8) {
+            const { data: siblingLeads } = await supabaseAdmin
+              .from("leads")
+              .select("id")
+              .eq("company_id", companyId)
+              .or(`phone.eq.${phoneDigits},external_id.eq.${phoneDigits}`);
+            const siblingIds = (siblingLeads ?? []).map((l) => l.id);
+            if (siblingIds.length > 0) {
+              const { data: convByPhone } = await supabaseAdmin
+                .from("conversations")
+                .select("id, company_id, channel, lead_id")
+                .in("lead_id", siblingIds)
+                .eq("company_id", companyId)
+                .eq("channel", "whatsapp")
+                .order("last_message_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (convByPhone) targetConv = convByPhone;
+            }
+          }
+        }
+
+        console.log("[forward-message] conversation", {
+          found: !!targetConv,
+          conversationId: targetConv?.id ?? null,
+          lead_id: targetConv?.lead_id ?? null,
+        });
+
         if (!targetConv) {
           return Response.json(
             {
