@@ -3511,8 +3511,8 @@ function ConversationPage() {
                   );
                 }}
               />
-              />
               )}
+
             </VirtuosoScrollContext.Provider>
             </ReplyComposeContext.Provider>
           </MessagesContext.Provider>
