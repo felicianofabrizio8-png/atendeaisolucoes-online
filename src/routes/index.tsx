@@ -561,6 +561,71 @@ function DashboardPage() {
 
 
 
+      {/* Fechamentos prioritários */}
+      {priorityClosings.length > 0 ? (
+        <section className="px-4 md:px-8 pb-2 pt-2 md:pt-4">
+          <div className="rounded-lg border border-[var(--status-won)]/30 bg-[var(--status-won)]/5 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-7 w-7 rounded-md bg-[var(--status-won)]/15 text-[var(--status-won-foreground)] flex items-center justify-center">
+                <Flame className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-sm font-semibold">Fechamentos prioritários</h2>
+                <p className="text-[11px] text-muted-foreground">
+                  Os 5 leads mais quentes — foque seu próximo contato aqui
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold tabular-nums text-[var(--status-won-foreground)] bg-[var(--status-won)]/15 rounded-full px-2 py-0.5">
+                {priorityClosings.length}
+              </span>
+            </div>
+            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+              {priorityClosings.map((l) => {
+                const convId = findConvIdByLead(l.id);
+                const conv = allConversations.find((c) => c.leadId === l.id);
+                const ready = conv?.leadReadyToClose;
+                const inner = (
+                  <div className="rounded-md border border-border bg-card px-3 py-2 hover:bg-accent/40 transition-colors h-full">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full shrink-0",
+                          ready ? "bg-[var(--status-won)]" : "bg-[var(--status-hot)]",
+                        )}
+                      />
+                      <span className="text-xs font-medium truncate flex-1">
+                        {l.name}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {ready ? "Pronto para fechar" : "Lead quente"}
+                      {l.estimatedValue
+                        ? ` · ${formatBRL(l.estimatedValue)}`
+                        : ""}
+                    </div>
+                  </div>
+                );
+                return (
+                  <li key={l.id}>
+                    {convId ? (
+                      <Link
+                        to="/inbox/$conversationId"
+                        params={{ conversationId: convId }}
+                        className="block h-full"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      inner
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+
       {/* 3 blocos */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-4 md:px-8 pb-6 pt-2 md:pt-4">
         {/* Atenção agora */}
