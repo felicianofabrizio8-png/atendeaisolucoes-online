@@ -3388,6 +3388,7 @@ function ConversationPage() {
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
+            <ReplyComposeContext.Provider value={replyComposeValue}>
             <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
               <Virtuoso
                 ref={virtuosoRef}
@@ -3432,6 +3433,7 @@ function ConversationPage() {
                 }}
               />
             </VirtuosoScrollContext.Provider>
+            </ReplyComposeContext.Provider>
           </MessagesContext.Provider>
 
         </div>
