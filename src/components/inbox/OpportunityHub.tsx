@@ -245,43 +245,66 @@ export function OpportunityHub({
             </div>
           )}
 
-          {/* Search bar */}
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Pesquisar cliente, telefone ou mensagem..."
-                className="w-full h-9 rounded-md bg-input pl-9 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring border border-border"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-                  aria-label="Limpar pesquisa"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+          {/* Search bar — sticky on scroll */}
+          <div className="sticky top-0 z-10 -mx-3 px-3 py-2 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border space-y-2">
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Pesquisar cliente, telefone, produto ou mensagem..."
+                  className="w-full h-10 rounded-md bg-input pl-9 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring border border-border shadow-sm"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                    aria-label="Limpar pesquisa"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {hasSearch && (
+                <span className="text-[11px] text-muted-foreground shrink-0">
+                  {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
+                </span>
               )}
             </div>
-            {hasSearch && (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[11px] text-muted-foreground">
-                  Resultados encontrados: {filtered.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1"
-                >
-                  <X className="h-3 w-3" />
-                  Limpar pesquisa
-                </button>
-              </div>
-            )}
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {FILTERS.map((f) => {
+                const active = filter === f.key;
+                const count = (counts as Record<string, number>)[f.key];
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setFilter(f.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-background text-foreground/80 border-border hover:text-foreground hover:bg-accent",
+                    )}
+                  >
+                    {f.label}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
+                        active ? "bg-primary-foreground/20" : "bg-secondary",
+                        count === 0 && "opacity-40",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
