@@ -214,6 +214,11 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
 
         // ---- 6. Janela 24h do destinatário ----
         const win = await isWithin24hWindow(targetConv.id);
+        console.log("[forward-message] window24h", {
+          conversationId: targetConv.id,
+          inside: win.inside,
+          lastLeadAt: win.lastLeadAt,
+        });
         if (!win.inside) {
           return Response.json(
             {
