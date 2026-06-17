@@ -1331,7 +1331,7 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
-        {canManage && !isDeleted && !editing && messageExternalId && (
+        {!isDeleted && !editing && (hasText || mediaInfo) && (
           <button
             type="button"
             onClick={() => replyCtx.start(m)}
