@@ -23,9 +23,13 @@ import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 import { OpportunityHub } from "@/components/inbox/OpportunityHub";
+import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
+import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
+
 
 const STATUS_FILTERS = [
   "todos",
+  "coach",
   "quentes",
   "prontos",
   "aguardando_humano",
@@ -211,8 +215,13 @@ function InboxPage() {
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
   const [oppCollapsed, setOppCollapsed] = useState(false);
+  const { alertsByConv, totalConversations: coachCount } = useCoachAlerts();
 
-  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
+  const itemsRaw = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
+  const items =
+    statusFilter === "coach"
+      ? itemsRaw.filter((it) => alertsByConv.has(it.conv.id))
+      : itemsRaw;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   // Contadores globais (dashboard) da janela de 24h — base independente dos filtros ativos.
@@ -235,7 +244,7 @@ function InboxPage() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
-      todos: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
+      todos: 0, coach: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
       pre_ia: 0, objecao: 0, parados: 0, perdidos: 0,
     };
     for (const c of getConversations()) {
@@ -255,9 +264,10 @@ function InboxPage() {
       if (breached) counts.parados += 1;
       if (lead?.status === "perdido") counts.perdidos += 1;
     }
+    counts.coach = coachCount;
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.slaMinutes, lossReasonFilter, items]);
+  }, [settings.slaMinutes, lossReasonFilter, items, coachCount]);
 
   const sourceCounts = useMemo(() => {
     const counts: Record<SourceFilter, number> = {
@@ -355,6 +365,7 @@ function InboxPage() {
 
   const statusTabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "todos", label: "Todos", count: statusCounts.todos },
+    { key: "coach", label: "🤖 Coach IA", count: statusCounts.coach },
     { key: "quentes", label: "Leads quentes", count: statusCounts.quentes },
     { key: "prontos", label: "Prontos p/ fechar", count: statusCounts.prontos },
     { key: "aguardando_humano", label: "Aguardando humano", count: statusCounts.aguardando_humano },
@@ -642,6 +653,7 @@ function InboxPage() {
                     key={it.conv.id}
                     item={it}
                     slaMinutes={settings.slaMinutes}
+                    coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
                     onOpen={() =>
                       navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
                     }
@@ -680,6 +692,7 @@ function InboxPage() {
                           key={it.conv.id}
                           item={it}
                           slaMinutes={settings.slaMinutes}
+                          coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
                           onOpen={() =>
                             navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
                           }
@@ -716,10 +729,12 @@ function ConversationCard({
   item,
   slaMinutes,
   onOpen,
+  coachAlert,
 }: {
   item: CardItem;
   slaMinutes: number;
   onOpen: () => void;
+  coachAlert?: CoachAlertLite | null;
 }) {
   const { conv: c, last, origin, breached, ageMin, priority, windowInfo } = item;
   const lead = getLeadById(c.leadId);
@@ -778,6 +793,10 @@ function ConversationCard({
               </span>
             )}
           </div>
+
+          {coachAlert && <CoachInboxBadge alert={coachAlert} />}
+
+
 
           {alert && (
             <div
