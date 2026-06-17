@@ -1297,7 +1297,30 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
+        {!isAgent && !isDeleted && mediaInfo && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
+          <button
+            type="button"
+            onClick={() =>
+              setForwardTarget({
+                messageId: m.id,
+                kind: mediaInfo.kind as "image" | "video",
+                preview: { filename: mediaInfo.filename ?? null },
+              })
+            }
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+            aria-label="Encaminhar mídia"
+            title="Encaminhar"
+          >
+            <Forward className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
+      <ForwardMessageDialog
+        open={forwardTarget !== null}
+        target={forwardTarget}
+        currentConversationId={m.conversationId}
+        onClose={() => setForwardTarget(null)}
+      />
 
       {isTemplate && !isDeleted && (
         <span className="text-[10px] mt-1 px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
