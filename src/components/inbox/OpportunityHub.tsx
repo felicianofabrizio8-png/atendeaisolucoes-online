@@ -501,13 +501,27 @@ function OpportunityCard({
       </div>
 
       {/* Next action — destaque */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
-          Próxima ação:
-        </span>
-        <span className="text-[12px] font-semibold text-foreground truncate">
-          {nextAction}
-        </span>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+            Próxima ação:
+          </span>
+          <span className="text-[12px] font-semibold text-foreground truncate">
+            {nextAction}
+          </span>
+        </div>
+        {contextChip && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0",
+              contextChip.cls,
+            )}
+            title={contextChip.label}
+          >
+            <span aria-hidden="true">{contextChip.icon}</span>
+            <span className="hidden md:inline">{contextChip.label}</span>
+          </span>
+        )}
       </div>
 
       {/* Last message — 1 linha apenas */}
