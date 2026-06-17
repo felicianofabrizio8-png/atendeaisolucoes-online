@@ -164,7 +164,7 @@ export function CoachPanel({
     setTimeout(() => setCopied(false), 1500);
   }
 
-  function useSuggestion() {
+  function applySuggestion() {
     if (suggestion && onInsertSuggestion) onInsertSuggestion(suggestion.suggestion_text);
   }
 
@@ -315,7 +315,7 @@ export function CoachPanel({
             {onInsertSuggestion && (
               <button
                 type="button"
-                onClick={useSuggestion}
+                onClick={applySuggestion}
                 className="flex-1 inline-flex items-center justify-center gap-1 rounded bg-primary text-primary-foreground px-2 py-1 text-[11px] hover:opacity-90"
               >
                 Usar no campo
