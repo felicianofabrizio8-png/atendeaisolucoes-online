@@ -1055,38 +1055,15 @@ function MessageBubbleImpl({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
-  // externalId real (coluna messages.external_id, mapeada para camelCase em
-  // leadRepo). Usado pelo botão "Responder" para garantir que só permitimos
-  // citar mensagens que existam de fato no WhatsApp da Meta.
-  const messageExternalId =
-    ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
-    (externalId ?? null);
-  const canReply = !!messageExternalId && !isDeleted && !editing;
+  // Reply nativo só é usado quando há external_id no snapshot (lido no composer);
+  // sem ele, o composer prefixa a citação no texto e envia pelo fluxo normal.
   const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
-
   const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
 
-  console.log("Reply available", {
-    messageId: m.id,
-    external_id: messageExternalId,
-    canReply,
-    blockedBy: {
-      messageExternalId: !messageExternalId,
-      isAgent,
-      isDeleted,
-      isEditing: editing,
-    },
-  });
 
   function startLongPress() {
-    console.log("Reply available", {
-      event: "startLongPress",
-      messageId: m.id,
-      external_id: messageExternalId,
-      canReply,
-    });
     if (isDeleted || editing) return;
     cancelLongPress();
     longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
@@ -1192,7 +1169,7 @@ function MessageBubbleImpl({
               onClick={() => setMenuOpen(false)}
             />
             <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[220px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
-              {messageExternalId && (
+              {(hasText || mediaInfo) && (
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); replyCtx.start(m); }}
@@ -1283,12 +1260,6 @@ function MessageBubbleImpl({
           onTouchMove={cancelLongPress}
           onTouchCancel={cancelLongPress}
           onContextMenu={(e) => {
-            console.log("Reply available", {
-              event: "onContextMenu",
-              messageId: m.id,
-              external_id: messageExternalId,
-              canReply,
-            });
             if (!isDeleted && !editing) {
               e.preventDefault();
               setMenuOpen(true);
@@ -1353,7 +1324,7 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
-        {canManage && !isDeleted && !editing && messageExternalId && (
+        {!isDeleted && !editing && (hasText || mediaInfo) && (
           <button
             type="button"
             onClick={() => replyCtx.start(m)}
@@ -2868,8 +2839,38 @@ function ConversationPage() {
   };
 
   const sendMessage = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    const rawTrimmed = text.trim();
+    if (!rawTrimmed) return;
+
+    // Snapshot do "respondendo a" no momento do envio para evitar race condition
+    // caso o usuário troque a citação enquanto a requisição está em voo.
+    const replySnapshot = replyingTo;
+    const replyExternalId = replySnapshot
+      ? (((replySnapshot as unknown as { externalId?: string | null }).externalId ?? null) ||
+          ((replySnapshot.sourceMetadata as { external_id?: string } | undefined)?.external_id ?? null))
+      : null;
+
+    // Fallback: se a mensagem citada não tiver external_id (não existe no WhatsApp
+    // como mensagem citável), enviamos pelo fluxo normal prefixando o texto com
+    // uma citação simples. Não chamamos send-reply nesse caso.
+    const buildQuotedPreview = (m: Message): string => {
+      const t = (m.text ?? "").trim();
+      if (t) return t.length > 160 ? `${t.slice(0, 160)}…` : t;
+      const sub = (m.sourceSubtype ?? "").toLowerCase();
+      if (sub === "image") return "📷 Foto";
+      if (sub === "video") return "🎥 Vídeo";
+      if (sub === "audio") return "🎤 Áudio";
+      if (sub === "document") return "📎 Documento";
+      if (sub === "sticker") return "🌟 Sticker";
+      if (sub === "location") return "📍 Localização";
+      return "[mensagem]";
+    };
+
+    const trimmed =
+      replySnapshot && !replyExternalId
+        ? `Respondendo:\n\n"${buildQuotedPreview(replySnapshot)}"\n\n${rawTrimmed}`
+        : rawTrimmed;
+
     const sendKey = `${conversationId}\n${trimmed}`;
     if (pendingTextSendsRef.current.has(sendKey)) return;
     pendingTextSendsRef.current.add(sendKey);
@@ -2884,17 +2885,16 @@ function ConversationPage() {
     setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
     setSendError(null);
+    if (replySnapshot && !replyExternalId) setReplyingTo(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
-    // Snapshot do "respondendo a" no momento do envio para evitar race condition
-    // caso o usuário troque a citação enquanto a requisição está em voo.
-    const replySnapshot = replyingTo;
     if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
-          if (isWhatsApp && replySnapshot) {
+          if (isWhatsApp && replySnapshot && replyExternalId) {
+
             // Feature 3 — Reply V1: endpoint dedicado, NÃO altera send-message.
             const res = await fetch("/api/whatsapp/send-reply", {
               method: "POST",
