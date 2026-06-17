@@ -2549,6 +2549,10 @@ function ConversationPage() {
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
+  const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
+  const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const pendingTextSendsRef = useRef<Set<string>>(new Set());
   // Feature 3 — Reply V1: mensagem que o composer está citando (botão Responder).
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const replyComposeValue = useMemo(
@@ -2560,10 +2564,6 @@ function ConversationPage() {
     }),
     [],
   );
-  const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
-  const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  const pendingTextSendsRef = useRef<Set<string>>(new Set());
 
   // Auto-resize do textarea conforme o conteúdo (cap em max-h via CSS).
   useEffect(() => {
