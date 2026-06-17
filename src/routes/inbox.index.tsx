@@ -729,10 +729,12 @@ function ConversationCard({
   item,
   slaMinutes,
   onOpen,
+  coachAlert,
 }: {
   item: CardItem;
   slaMinutes: number;
   onOpen: () => void;
+  coachAlert?: CoachAlertLite | null;
 }) {
   const { conv: c, last, origin, breached, ageMin, priority, windowInfo } = item;
   const lead = getLeadById(c.leadId);
