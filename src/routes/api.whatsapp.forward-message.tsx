@@ -22,7 +22,33 @@ interface ForwardBody {
   note?: string;
 }
 
+interface ForwardDebugInfo {
+  requestId: string;
+  sourceMessageId?: string;
+  targetLeadId?: string;
+  targetLead?: Record<string, unknown>;
+  targetConversation?: Record<string, unknown> | null;
+  conversationLead?: Record<string, unknown> | null;
+  samePhoneLatestLeadMessage?: Record<string, unknown> | null;
+  window24h?: Record<string, unknown>;
+  media?: Record<string, unknown>;
+  signedUrl?: Record<string, unknown>;
+  integration?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+  insert?: Record<string, unknown>;
+}
+
 const WA_MEDIA_BUCKET = "whatsapp-media";
+
+function shortError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "erro desconhecido";
+  }
+}
 
 export const Route = createFileRoute("/api/whatsapp/forward-message")({
   server: {
