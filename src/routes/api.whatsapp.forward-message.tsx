@@ -172,16 +172,22 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .maybeSingle();
         if (!targetLead || targetLead.company_id !== companyId) {
           return Response.json(
-            { error: "lead destino não encontrado" },
+            { error: "lead destino não encontrado", debug },
             { status: 404 },
           );
         }
+        debug.targetLead = {
+          id: targetLead.id,
+          phone: targetLead.phone,
+          external_id: targetLead.external_id,
+          integration_id: targetLead.integration_id,
+        };
         const recipient = String(
           targetLead.external_id ?? targetLead.phone ?? "",
         ).replace(/\D/g, "");
         if (recipient.length < 8 || recipient.length > 15) {
           return Response.json(
-            { error: "lead destino sem telefone válido" },
+            { error: "lead destino sem telefone válido", debug },
             { status: 400 },
           );
         }
@@ -214,11 +220,14 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             targetLead.external_id ?? targetLead.phone ?? "",
           ).replace(/\D/g, "");
           if (phoneDigits.length >= 8) {
+            const phoneTail = phoneDigits.slice(-8);
             const { data: siblingLeads } = await supabaseAdmin
               .from("leads")
-              .select("id")
+              .select("id, phone, external_id")
               .eq("company_id", companyId)
-              .or(`phone.eq.${phoneDigits},external_id.eq.${phoneDigits}`);
+              .or(
+                `phone.eq.${phoneDigits},external_id.eq.${phoneDigits},phone.ilike.%${phoneTail}%,external_id.ilike.%${phoneTail}%`,
+              );
             const siblingIds = (siblingLeads ?? []).map((l) => l.id);
             if (siblingIds.length > 0) {
               const { data: convByPhone } = await supabaseAdmin
@@ -235,17 +244,54 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           }
         }
 
+        if (targetConv) {
+          const { data: convLead } = await supabaseAdmin
+            .from("leads")
+            .select("id, phone, external_id, integration_id")
+            .eq("id", targetConv.lead_id)
+            .maybeSingle();
+          debug.conversationLead = convLead ?? null;
+        }
+
+        const { data: latestLeadByPhone } = await supabaseAdmin
+          .from("messages")
+          .select("id, conversation_id, role, text, at, conversations!inner(id, company_id, channel, lead_id, leads(id, phone, external_id))")
+          .eq("role", "lead")
+          .eq("conversations.company_id", companyId)
+          .eq("conversations.channel", "whatsapp")
+          .or(`phone.eq.${recipient},external_id.eq.${recipient}`, {
+            foreignTable: "conversations.leads",
+          })
+          .order("at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        debug.samePhoneLatestLeadMessage = latestLeadByPhone
+          ? {
+              id: latestLeadByPhone.id,
+              conversation_id: latestLeadByPhone.conversation_id,
+              role: latestLeadByPhone.role,
+              text: latestLeadByPhone.text,
+              at: latestLeadByPhone.at,
+            }
+          : null;
+
         console.log("[forward-message] conversation", {
+          requestId: debug.requestId,
           found: !!targetConv,
           conversationId: targetConv?.id ?? null,
           lead_id: targetConv?.lead_id ?? null,
+          samePhoneLatestLeadMessage: debug.samePhoneLatestLeadMessage,
         });
+        debug.targetConversation = targetConv
+          ? { id: targetConv.id, lead_id: targetConv.lead_id, channel: targetConv.channel }
+          : null;
 
         if (!targetConv) {
           return Response.json(
             {
               error:
                 "lead destino não possui conversa WhatsApp aberta. Abra a conversa antes de encaminhar.",
+              debug,
             },
             { status: 400 },
           );
@@ -253,10 +299,21 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
 
         // ---- 6. Janela 24h do destinatário ----
         const win = await isWithin24hWindow(targetConv.id);
-        console.log("[forward-message] window24h", {
+        debug.window24h = {
           conversationId: targetConv.id,
           inside: win.inside,
           lastLeadAt: win.lastLeadAt,
+          samePhoneLatestLeadConversationId:
+            debug.samePhoneLatestLeadMessage?.conversation_id ?? null,
+          sameAsLatestLeadMessage:
+            debug.samePhoneLatestLeadMessage?.conversation_id === targetConv.id,
+        };
+        console.log("[forward-message] window24h", {
+          requestId: debug.requestId,
+          conversationId: targetConv.id,
+          inside: win.inside,
+          lastLeadAt: win.lastLeadAt,
+          samePhoneLatestLeadMessage: debug.samePhoneLatestLeadMessage,
         });
         if (!win.inside) {
           return Response.json(
@@ -265,6 +322,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
                 "Destinatário fora da janela de 24h. Encaminhe quando houver conversa ativa ou use um template.",
               requires_template: true,
               last_lead_at: win.lastLeadAt,
+              debug,
             },
             { status: 409 },
           );
