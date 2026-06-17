@@ -546,6 +546,158 @@ export type Database = {
         }
         Relationships: []
       }
+      coach_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          alert_type: string
+          company_id: string
+          conversation_id: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          payload: Json
+          resolved_at: string | null
+          resolved_by: string | null
+          risk_score: number | null
+          severity: string
+          status: string
+          updated_at: string
+          urgency_minutes: number | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_type: string
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          risk_score?: number | null
+          severity?: string
+          status?: string
+          updated_at?: string
+          urgency_minutes?: number | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_type?: string
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          risk_score?: number | null
+          severity?: string
+          status?: string
+          updated_at?: string
+          urgency_minutes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_alerts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_alerts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_alerts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_suggestions: {
+        Row: {
+          company_id: string
+          conversation_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          message_id: string | null
+          next_action: string | null
+          objection_type: string | null
+          reasoning: string | null
+          risk_score: number | null
+          situation: string | null
+          status: string
+          suggestion_text: string
+          urgency: string | null
+          used_at: string | null
+        }
+        Insert: {
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message_id?: string | null
+          next_action?: string | null
+          objection_type?: string | null
+          reasoning?: string | null
+          risk_score?: number | null
+          situation?: string | null
+          status?: string
+          suggestion_text: string
+          urgency?: string | null
+          used_at?: string | null
+        }
+        Update: {
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message_id?: string | null
+          next_action?: string | null
+          objection_type?: string | null
+          reasoning?: string | null
+          risk_score?: number | null
+          situation?: string | null
+          status?: string
+          suggestion_text?: string
+          urgency?: string | null
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_suggestions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_suggestions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_suggestions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           created_at: string

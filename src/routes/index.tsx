@@ -37,6 +37,7 @@ import {
   Clock,
   UserRound,
 } from "lucide-react";
+import { CoachAttentionList } from "@/components/coach/CoachAttentionList";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -460,6 +461,12 @@ function DashboardPage() {
           tone="primary"
         />
       </section>
+
+      {/* Coach IA — atenção do vendedor */}
+      <section className="px-4 md:px-8 pb-4">
+        <CoachAttentionList />
+      </section>
+
 
       {/* Alertas acionáveis */}
       {(noResponseNow > 0 || waitingQuote.length > 0 || alertReady > 0) && (
