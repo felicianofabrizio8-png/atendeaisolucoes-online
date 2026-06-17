@@ -568,6 +568,69 @@ async function downloadAndStoreMedia(
     return;
   }
 
+  // 3b) Audio transcription (OpenAI Whisper). Best-effort: any failure is
+  //     gravada em source_metadata.ai_media_error e NÃO quebra o webhook.
+  //     Não altera WhatsApp, envio, templates, IA Coach, IA de Atendimento,
+  //     banco ou UI — apenas enriquece messages.source_metadata + messages.text.
+  const aiExtras: Record<string, unknown> = {};
+  let transcribedText: string | null = null;
+  if (mediaKind === "audio") {
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    console.log("[meta-webhook] audio_transcricao_inicio", {
+      message_id: messageId, mime, size, has_key: !!openaiKey,
+    });
+    if (!openaiKey) {
+      aiExtras.ai_media_error = "OPENAI_API_KEY não configurada";
+    } else {
+      try {
+        const audioExt = mime.includes("ogg") ? "ogg"
+          : mime.includes("mpeg") ? "mp3"
+          : mime.includes("mp4") ? "m4a"
+          : mime.includes("wav") ? "wav"
+          : mime.includes("webm") ? "webm"
+          : mime.includes("aac") ? "aac"
+          : "ogg";
+        const form = new FormData();
+        form.append("file", new Blob([buf], { type: mime || "audio/ogg" }), `audio.${audioExt}`);
+        form.append("model", "whisper-1");
+        form.append("language", "pt");
+        form.append("response_format", "json");
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 25_000);
+        let trRes: Response;
+        try {
+          trRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${openaiKey}` },
+            body: form,
+            signal: ctrl.signal,
+          });
+        } finally { clearTimeout(t); }
+        if (!trRes.ok) {
+          const body = await trRes.text().catch(() => "");
+          throw new Error(`Whisper HTTP ${trRes.status}: ${body.slice(0, 200)}`);
+        }
+        const j = await trRes.json() as { text?: string };
+        const txt = (j.text ?? "").trim();
+        if (!txt) {
+          aiExtras.ai_media_error = "Transcrição vazia retornada pelo Whisper";
+        } else {
+          transcribedText = txt;
+          aiExtras.transcription_text = txt;
+          aiExtras.transcription_model = "whisper-1";
+          aiExtras.transcription_at = new Date().toISOString();
+          console.log("[meta-webhook] audio_transcricao_ok", {
+            message_id: messageId, chars: txt.length,
+          });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[meta-webhook] audio_transcricao_erro", { message_id: messageId, error: msg });
+        aiExtras.ai_media_error = msg.slice(0, 500);
+      }
+    }
+  }
+
   // 4) update message metadata
   const { data: current } = await sb.from("messages").select("source_metadata").eq("id", messageId).maybeSingle();
   const merged = {
@@ -578,8 +641,11 @@ async function downloadAndStoreMedia(
     media_filename: filename,
     media_size: sizeFromMeta ?? size,
     media_downloaded_at: new Date().toISOString(),
+    ...aiExtras,
   };
-  const { error: updErr } = await sb.from("messages").update({ source_metadata: merged }).eq("id", messageId);
+  const updatePayload: Record<string, unknown> = { source_metadata: merged };
+  if (transcribedText) updatePayload.text = transcribedText;
+  const { error: updErr } = await sb.from("messages").update(updatePayload).eq("id", messageId);
   if (updErr) {
     await logMedia(sb, "database_update", { ...baseCtx, error_message: updErr.message, media_path: path }, "error");
     return;
