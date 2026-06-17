@@ -3465,11 +3465,15 @@ function ConversationPage() {
           <MessagesContext.Provider value={messages}>
             <ReplyComposeContext.Provider value={replyComposeValue}>
             <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
+              {visibleMessages.length === 0 ? (
+                <div className="h-full" />
+              ) : (
               <Virtuoso
+                key={conversationId}
                 ref={virtuosoRef}
                 data={visibleMessages}
                 computeItemKey={(_idx, m) => m.id}
-                initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+                initialTopMostItemIndex={visibleMessages.length - 1}
                 followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
                 atBottomStateChange={setAtBottom}
                 atBottomThreshold={160}
