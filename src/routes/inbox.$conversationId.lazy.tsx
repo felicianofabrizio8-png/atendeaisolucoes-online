@@ -1829,6 +1829,7 @@ function MediaSendPanel({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const [pending, setPending] = useState<PendingMedia | null>(null);
   const [caption, setCaption] = useState("");
   const [sending, setSending] = useState(false);
