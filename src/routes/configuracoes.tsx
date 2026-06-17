@@ -18,6 +18,7 @@ import {
   Loader2,
   AlertTriangle,
   Bell,
+  MapPin,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
