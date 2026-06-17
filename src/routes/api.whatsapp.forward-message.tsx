@@ -412,6 +412,8 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           selectedIntegrationId: integration.id,
           requestedIntegrationId: integrationIdForSend,
           phoneNumberId: integration.external_account_id,
+          recipient,
+          recipientSource,
           source: targetConversationLeadIntegrationId
             ? "conversation_lead"
             : targetLead.integration_id
