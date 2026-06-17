@@ -103,12 +103,24 @@ function useDebounce<T>(value: T, delay = 300): T {
 }
 
 function formatAgo(iso: string, now: number): string {
-  const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
-  if (m < 60) return `${m} min atrás`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ${h === 1 ? "hora" : "horas"} atrás`;
-  const d = Math.round(h / 24);
-  return `${d} ${d === 1 ? "dia" : "dias"} atrás`;
+  const d = new Date(iso);
+  const nowD = new Date(now);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const sameDay =
+    d.getFullYear() === nowD.getFullYear() &&
+    d.getMonth() === nowD.getMonth() &&
+    d.getDate() === nowD.getDate();
+  if (sameDay) return `Hoje ${hh}:${mm}`;
+  const y = new Date(nowD);
+  y.setDate(nowD.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth() === y.getMonth() &&
+    d.getDate() === y.getDate();
+  if (isYesterday) return `Ontem ${hh}:${mm}`;
+  const days = Math.max(2, Math.round((now - d.getTime()) / 86_400_000));
+  return `${days} dias sem resposta`;
 }
 
 export function OpportunityHub({
@@ -434,6 +446,24 @@ function OpportunityCard({
 
   const tooltip = `Score: ${s}/100${score.reasons.length ? " · " + score.reasons.join(" · ") : ""}`;
 
+  // Chip de contexto — derivado de dados já existentes (sem nova lógica)
+  const lowerAction = (lead.nextAction?.label ?? "").toLowerCase();
+  const lowerText = (last?.text ?? "").toLowerCase();
+  const contextChip: { icon: string; label: string; cls: string } | null =
+    s >= 90
+      ? { icon: "🔥", label: "Pronto para fechar", cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30" }
+      : item.hasPendingQuote
+        ? { icon: "💰", label: "Orçamento enviado", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" }
+        : /visita|agendad/.test(lowerAction) || /visita|agendad/.test(lowerText)
+          ? { icon: "🏠", label: "Visita agendada", cls: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30" }
+          : /pagamento|pix|cart[ãa]o|parcel|boleto/.test(lowerAction) || /pagamento|pix|cart[ãa]o|parcel|boleto/.test(lowerText)
+            ? { icon: "💳", label: "Negociando pagamento", cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30" }
+            : /esposa|marido|fam[ií]lia|decid|conversar com|pensar/.test(lowerText)
+              ? { icon: "👨‍👩‍👧", label: "Aguardando decisão", cls: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30" }
+              : conv.awaitingReply
+                ? { icon: "📞", label: "Precisa retorno", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" }
+                : null;
+
   return (
     <li
       className={cn(
@@ -471,13 +501,27 @@ function OpportunityCard({
       </div>
 
       {/* Next action — destaque */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
-          Próxima ação:
-        </span>
-        <span className="text-[12px] font-semibold text-foreground truncate">
-          {nextAction}
-        </span>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+            Próxima ação:
+          </span>
+          <span className="text-[12px] font-semibold text-foreground truncate">
+            {nextAction}
+          </span>
+        </div>
+        {contextChip && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0",
+              contextChip.cls,
+            )}
+            title={contextChip.label}
+          >
+            <span aria-hidden="true">{contextChip.icon}</span>
+            <span className="hidden md:inline">{contextChip.label}</span>
+          </span>
+        )}
       </div>
 
       {/* Last message — 1 linha apenas */}
