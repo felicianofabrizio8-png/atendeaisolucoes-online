@@ -1122,7 +1122,7 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        "group flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative",
+        "group flex flex-col w-fit max-w-[min(85%,calc(100%-1rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
         isAgent ? "ml-auto items-end" : "items-start",
       )}
     >
@@ -3325,15 +3325,15 @@ function ConversationPage() {
                 itemContent={(_idx, m) => {
                   if (m.role === "system") {
                     return (
-                      <div className="flex justify-center py-1.5">
-                        <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1">
+                      <div className="flex justify-center py-1.5 min-w-0 max-w-full">
+                        <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-3 py-1 break-words [overflow-wrap:anywhere]">
                           {m.text}
                         </span>
                       </div>
                     );
                   }
                   return (
-                    <div className="py-1.5">
+                    <div className="py-1.5 min-w-0 max-w-full w-full overflow-hidden">
                       <MessageBubble m={m} canManage={!closedInfo} />
                     </div>
                   );
