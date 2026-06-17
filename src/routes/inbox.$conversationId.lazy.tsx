@@ -26,6 +26,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
 import { AudioRecorder } from "@/components/AudioRecorder";
+import { CoachPanel } from "@/components/coach/CoachPanel";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
