@@ -1061,14 +1061,10 @@ function MessageBubbleImpl({
   const messageExternalId =
     ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
     (externalId ?? null);
-  const canReply = !!messageExternalId && !isDeleted && !editing;
   const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
 
-  const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
-
-  void canReply;
 
   function startLongPress() {
     if (isDeleted || editing) return;
