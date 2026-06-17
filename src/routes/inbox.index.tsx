@@ -236,7 +236,7 @@ function InboxPage() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
-      todos: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
+      todos: 0, coach: 0, quentes: 0, prontos: 0, aguardando_humano: 0,
       pre_ia: 0, objecao: 0, parados: 0, perdidos: 0,
     };
     for (const c of getConversations()) {
