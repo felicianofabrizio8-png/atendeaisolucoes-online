@@ -103,12 +103,24 @@ function useDebounce<T>(value: T, delay = 300): T {
 }
 
 function formatAgo(iso: string, now: number): string {
-  const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
-  if (m < 60) return `${m} min atrás`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ${h === 1 ? "hora" : "horas"} atrás`;
-  const d = Math.round(h / 24);
-  return `${d} ${d === 1 ? "dia" : "dias"} atrás`;
+  const d = new Date(iso);
+  const nowD = new Date(now);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const sameDay =
+    d.getFullYear() === nowD.getFullYear() &&
+    d.getMonth() === nowD.getMonth() &&
+    d.getDate() === nowD.getDate();
+  if (sameDay) return `Hoje ${hh}:${mm}`;
+  const y = new Date(nowD);
+  y.setDate(nowD.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth() === y.getMonth() &&
+    d.getDate() === y.getDate();
+  if (isYesterday) return `Ontem ${hh}:${mm}`;
+  const days = Math.max(2, Math.round((now - d.getTime()) / 86_400_000));
+  return `${days} dias sem resposta`;
 }
 
 export function OpportunityHub({
