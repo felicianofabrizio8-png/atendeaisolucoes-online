@@ -215,8 +215,13 @@ function InboxPage() {
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
   const [oppCollapsed, setOppCollapsed] = useState(false);
+  const { alertsByConv, totalConversations: coachCount } = useCoachAlerts();
 
-  const items = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
+  const itemsRaw = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
+  const items =
+    statusFilter === "coach"
+      ? itemsRaw.filter((it) => alertsByConv.has(it.conv.id))
+      : itemsRaw;
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   // Contadores globais (dashboard) da janela de 24h — base independente dos filtros ativos.
