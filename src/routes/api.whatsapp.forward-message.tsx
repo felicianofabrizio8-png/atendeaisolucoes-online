@@ -191,6 +191,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             { status: 400 },
           );
         }
+        const targetPhoneTail = recipient.slice(-8);
 
         console.log("[forward-message] lookup", {
           sourceMessageId,
@@ -220,13 +221,12 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             targetLead.external_id ?? targetLead.phone ?? "",
           ).replace(/\D/g, "");
           if (phoneDigits.length >= 8) {
-            const phoneTail = phoneDigits.slice(-8);
             const { data: siblingLeads } = await supabaseAdmin
               .from("leads")
               .select("id, phone, external_id")
               .eq("company_id", companyId)
               .or(
-                `phone.eq.${phoneDigits},external_id.eq.${phoneDigits},phone.ilike.%${phoneTail}%,external_id.ilike.%${phoneTail}%`,
+                `phone.eq.${phoneDigits},external_id.eq.${phoneDigits},phone.ilike.%${targetPhoneTail}%,external_id.ilike.%${targetPhoneTail}%`,
               );
             const siblingIds = (siblingLeads ?? []).map((l) => l.id);
             if (siblingIds.length > 0) {
@@ -255,15 +255,28 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           targetConversationLeadIntegrationId = convLead?.integration_id ?? null;
         }
 
+        const { data: phoneMatchedLeads } = await supabaseAdmin
+          .from("leads")
+          .select("id, phone, external_id")
+          .eq("company_id", companyId)
+          .or(
+            `phone.eq.${recipient},external_id.eq.${recipient},phone.ilike.%${targetPhoneTail}%,external_id.ilike.%${targetPhoneTail}%`,
+          );
+        const phoneMatchedLeadIds = (phoneMatchedLeads ?? []).map((l) => l.id);
+        const { data: phoneMatchedConvs } = phoneMatchedLeadIds.length > 0
+          ? await supabaseAdmin
+              .from("conversations")
+              .select("id, lead_id")
+              .in("lead_id", phoneMatchedLeadIds)
+              .eq("company_id", companyId)
+              .eq("channel", "whatsapp")
+          : { data: [] };
+        const phoneMatchedConversationIds = (phoneMatchedConvs ?? []).map((c) => c.id);
         const { data: latestLeadByPhone } = await supabaseAdmin
           .from("messages")
-          .select("id, conversation_id, role, text, at, conversations!inner(id, company_id, channel, lead_id, leads(id, phone, external_id))")
+          .select("id, conversation_id, role, text, at")
           .eq("role", "lead")
-          .eq("conversations.company_id", companyId)
-          .eq("conversations.channel", "whatsapp")
-          .or(`phone.eq.${recipient},external_id.eq.${recipient}`, {
-            foreignTable: "conversations.leads",
-          })
+          .in("conversation_id", phoneMatchedConversationIds.length > 0 ? phoneMatchedConversationIds : ["00000000-0000-0000-0000-000000000000"])
           .order("at", { ascending: false })
           .limit(1)
           .maybeSingle();
