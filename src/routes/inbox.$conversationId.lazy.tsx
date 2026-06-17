@@ -3609,6 +3609,39 @@ function ConversationPage() {
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
         >
 
+          {replyingTo && (
+            <div className="mb-2 flex items-stretch gap-2 rounded-md border-l-4 border-primary bg-muted/60 px-2.5 py-2 max-w-full min-w-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-semibold text-primary uppercase tracking-wide">
+                  Respondendo a {replyingTo.role === "agent" ? "Você" : (lead?.name ?? "Cliente")}
+                </div>
+                <div className="text-xs text-foreground/90 truncate mt-0.5">
+                  {(() => {
+                    const t = (replyingTo.text ?? "").trim();
+                    if (t) return t.slice(0, 120);
+                    const sub = (replyingTo.sourceSubtype ?? "").toLowerCase();
+                    if (sub === "image") return "📷 Foto";
+                    if (sub === "video") return "🎥 Vídeo";
+                    if (sub === "audio") return "🎤 Áudio";
+                    if (sub === "document") return "📎 Documento";
+                    if (sub === "sticker") return "🌟 Sticker";
+                    if (sub === "location") return "📍 Localização";
+                    return "[mensagem]";
+                  })()}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="self-start h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground shrink-0"
+                aria-label="Cancelar resposta"
+                title="Cancelar resposta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
             {!audioActive && (
               <button
