@@ -1176,7 +1176,7 @@ function MessageBubbleImpl({
               onClick={() => setMenuOpen(false)}
             />
             <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[220px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
-              {messageExternalId && (
+              {(hasText || mediaInfo) && (
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); replyCtx.start(m); }}
