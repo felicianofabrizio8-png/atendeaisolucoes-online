@@ -566,6 +566,8 @@ function DashboardPage() {
         {/* Atenção agora */}
         <Block
           title="Atenção agora"
+          icon={AlertTriangle}
+          accent="urgent"
           empty={
             noResponseConvs.length === 0 &&
             overdueFollowUps.length === 0 &&
