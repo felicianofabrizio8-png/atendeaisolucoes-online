@@ -702,6 +702,8 @@ function DashboardPage() {
         {/* Próximas ações */}
         <Block
           title="Próximas ações"
+          icon={CalendarClock}
+          accent="warm"
           empty={
             upcomingVisits.length === 0 &&
             upcomingFollowUps.length === 0 &&
