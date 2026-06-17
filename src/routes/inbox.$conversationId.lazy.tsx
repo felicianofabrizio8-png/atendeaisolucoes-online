@@ -2850,11 +2850,50 @@ function ConversationPage() {
     setSendError(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
+    // Snapshot do "respondendo a" no momento do envio para evitar race condition
+    // caso o usuário troque a citação enquanto a requisição está em voo.
+    const replySnapshot = replyingTo;
     if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
+          if (isWhatsApp && replySnapshot) {
+            // Feature 3 — Reply V1: endpoint dedicado, NÃO altera send-message.
+            const res = await fetch("/api/whatsapp/send-reply", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                conversationId,
+                text: trimmed,
+                replyToMessageId: replySnapshot.id,
+              }),
+            });
+            if (res.ok) {
+              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              setReplyingTo(null);
+              finishSend();
+              return;
+            }
+            let errMsg = `HTTP ${res.status}`;
+            try {
+              const j = (await res.json()) as { error?: string };
+              if (j.error) errMsg = j.error;
+              console.error("[chat send-reply] falhou", j);
+            } catch { /* ignore */ }
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+            setSendError(errMsg);
+            toast.error("Falha ao responder no WhatsApp", { description: errMsg });
+            finishSend();
+            return;
+          }
           if (isWhatsApp) {
             // WhatsApp Cloud API — mesma rota usada pelo "Enviar teste"
             const res = await fetch("/api/whatsapp/send", {
