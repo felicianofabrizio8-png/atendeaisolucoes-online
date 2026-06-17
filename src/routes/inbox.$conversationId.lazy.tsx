@@ -3511,11 +3511,15 @@ function ConversationPage() {
                   );
                 }}
               />
+              />
+              )}
             </VirtuosoScrollContext.Provider>
             </ReplyComposeContext.Provider>
           </MessagesContext.Provider>
 
         </div>
+
+
 
 
         {/* Pending quote panel — appears above the composer when a quote was just created */}
