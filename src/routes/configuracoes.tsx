@@ -127,6 +127,8 @@ function ConfigPage() {
 
         <NotificationsCard />
 
+        <CompanyLocationCard />
+
 
 
         <section className="rounded-lg border border-border bg-card p-5">
