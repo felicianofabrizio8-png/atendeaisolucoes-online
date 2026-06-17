@@ -1163,90 +1163,99 @@ function MessageBubbleImpl({
             >
               <MoreVertical className="h-3.5 w-3.5" />
             </button>
-            {menuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMenuOpen(false)}
-                />
-                <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[200px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
-                  {mediaInfo?.url && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        window.open(mediaInfo.url!, "_blank", "noopener,noreferrer");
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                    >
-                      <Eye className="h-3.5 w-3.5" /> Visualizar
-                    </button>
-                  )}
-                  {mediaInfo?.url && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        void downloadMedia(mediaInfo.url!);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                    >
-                      <Download className="h-3.5 w-3.5" /> Baixar
-                    </button>
-                  )}
-                  {!mediaInfo && hasText && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setDraft(m.text);
-                        setEditing(true);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                    >
-                      <Pencil className="h-3.5 w-3.5" /> Editar mensagem
-                    </button>
-                  )}
-                  {hasText && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        void copyText();
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                    >
-                      <Copy className="h-3.5 w-3.5" /> Copiar texto
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setConfirmDelete("me");
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    {mediaInfo ? "Ocultar para mim" : "Apagar para mim"}
-                  </button>
-                  {!externalId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setConfirmDelete("everyone");
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      {mediaInfo ? "Excluir mídia" : "Excluir mensagem"}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
           </div>
+        )}
+
+        {menuOpen && !isDeleted && !editing && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setMenuOpen(false)}
+            />
+            <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[220px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
+              {messageExternalId && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); replyCtx.start(m); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Reply className="h-3.5 w-3.5" /> Responder
+                </button>
+              )}
+              {canForwardMedia && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setForwardTarget({
+                      messageId: m.id,
+                      kind: mediaInfo!.kind as "image" | "video",
+                      preview: { filename: mediaInfo!.filename ?? null },
+                    });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Forward className="h-3.5 w-3.5" /> Encaminhar
+                </button>
+              )}
+              {hasText && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); void copyText(); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copiar texto
+                </button>
+              )}
+              {isAgent && canManage && mediaInfo?.url && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); window.open(mediaInfo.url!, "_blank", "noopener,noreferrer"); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Visualizar
+                </button>
+              )}
+              {isAgent && canManage && mediaInfo?.url && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); void downloadMedia(mediaInfo.url!); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Download className="h-3.5 w-3.5" /> Baixar
+                </button>
+              )}
+              {isAgent && canManage && !mediaInfo && hasText && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setDraft(m.text); setEditing(true); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Editar mensagem
+                </button>
+              )}
+              {isAgent && canManage && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setConfirmDelete("me"); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {mediaInfo ? "Ocultar para mim" : "Apagar para mim"}
+                </button>
+              )}
+              {isAgent && canManage && !externalId && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setConfirmDelete("everyone"); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {mediaInfo ? "Excluir mídia" : "Excluir mensagem"}
+                </button>
+              )}
+            </div>
+          </>
         )}
 
         <div
@@ -1255,7 +1264,7 @@ function MessageBubbleImpl({
           onTouchMove={cancelLongPress}
           onTouchCancel={cancelLongPress}
           onContextMenu={(e) => {
-            if (canManage && isAgent && !isDeleted && !editing) {
+            if (!isDeleted && !editing) {
               e.preventDefault();
               setMenuOpen(true);
             }
