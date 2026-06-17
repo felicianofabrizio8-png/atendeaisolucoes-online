@@ -128,6 +128,14 @@ export function OpportunityHub({
   const [filter, setFilter] = useState<FilterKey>("todos");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedQuery = useDebounce(searchQuery, 300);
+  const [compact, setCompact] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("opp-hub-compact") === "1";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("opp-hub-compact", compact ? "1" : "0");
+  }, [compact]);
 
   const now = Date.now();
   const all = useMemo(() => buildOpportunities(now), [now]);
