@@ -179,7 +179,7 @@ ${transcript || "(sem mensagens)"}`;
             next_action: parsed.next_action,
             suggestion_text: parsed.suggestion_text,
             reasoning: parsed.reasoning,
-            objection_type: parsed.objection_type ?? null,
+            objection_type: parsed.objection_type && parsed.objection_type !== ("none" as never) ? parsed.objection_type : null,
             urgency: parsed.urgency,
             risk_score: parsed.risk_score,
             created_by: userId,
