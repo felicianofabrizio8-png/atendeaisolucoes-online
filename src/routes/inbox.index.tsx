@@ -264,6 +264,7 @@ function InboxPage() {
       if (breached) counts.parados += 1;
       if (lead?.status === "perdido") counts.perdidos += 1;
     }
+    counts.coach = coachCount;
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.slaMinutes, lossReasonFilter, items]);
