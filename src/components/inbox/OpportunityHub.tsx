@@ -188,18 +188,33 @@ export function OpportunityHub({
         <div className="flex items-center gap-2 min-w-0">
           <Flame className="h-4 w-4 text-amber-500 shrink-0" />
           <h2 className="text-sm font-semibold">Central de Oportunidades</h2>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-[10px] text-muted-foreground tabular-nums hidden sm:inline">
             · {all.length} conversas analisadas
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed(!collapsed)}
-          className="text-muted-foreground hover:text-foreground p-1 rounded"
-          aria-label={collapsed ? "Expandir" : "Recolher"}
-        >
-          {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCompact(!compact)}
+            className={cn(
+              "hidden sm:inline-flex items-center gap-1 text-[11px] font-medium border rounded-md px-2 py-1 transition-colors",
+              compact
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground border-border hover:text-foreground",
+            )}
+            title="Alternar modo compacto"
+          >
+            {compact ? "Modo confortável" : "Modo compacto"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-muted-foreground hover:text-foreground p-1 rounded"
+            aria-label={collapsed ? "Expandir" : "Recolher"}
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        </div>
       </header>
 
       {!collapsed && (
