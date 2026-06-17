@@ -1068,25 +1068,9 @@ function MessageBubbleImpl({
 
   const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
 
-  console.log("Reply available", {
-    messageId: m.id,
-    external_id: messageExternalId,
-    canReply,
-    blockedBy: {
-      messageExternalId: !messageExternalId,
-      isAgent,
-      isDeleted,
-      isEditing: editing,
-    },
-  });
+  void canReply;
 
   function startLongPress() {
-    console.log("Reply available", {
-      event: "startLongPress",
-      messageId: m.id,
-      external_id: messageExternalId,
-      canReply,
-    });
     if (isDeleted || editing) return;
     cancelLongPress();
     longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
