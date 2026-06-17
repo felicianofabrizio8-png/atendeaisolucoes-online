@@ -182,7 +182,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           external_id: targetLead.external_id,
           integration_id: targetLead.integration_id,
         };
-        const recipient = String(
+        let recipient = String(
           targetLead.external_id ?? targetLead.phone ?? "",
         ).replace(/\D/g, "");
         if (recipient.length < 8 || recipient.length > 15) {
@@ -191,13 +191,16 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             { status: 400 },
           );
         }
+        let recipientSource = "target_lead";
         const targetPhoneTail = recipient.slice(-8);
 
         console.log("[forward-message] lookup", {
+          requestId: debug.requestId,
           sourceMessageId,
           targetLeadId,
           targetPhone: targetLead.phone,
           targetExternalId: targetLead.external_id,
+          recipient,
           companyId,
         });
 
@@ -253,6 +256,11 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             .maybeSingle();
           debug.conversationLead = convLead ?? null;
           targetConversationLeadIntegrationId = convLead?.integration_id ?? null;
+          const convRecipient = String(convLead?.external_id ?? convLead?.phone ?? "").replace(/\D/g, "");
+          if (convRecipient.length >= 8 && convRecipient.length <= 15) {
+            recipient = convRecipient;
+            recipientSource = "conversation_lead";
+          }
         }
 
         const { data: phoneMatchedLeads } = await supabaseAdmin
@@ -340,6 +348,11 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
                 .maybeSingle();
               debug.conversationLead = convLead ?? null;
               targetConversationLeadIntegrationId = convLead?.integration_id ?? null;
+              const convRecipient = String(convLead?.external_id ?? convLead?.phone ?? "").replace(/\D/g, "");
+              if (convRecipient.length >= 8 && convRecipient.length <= 15) {
+                recipient = convRecipient;
+                recipientSource = "conversation_lead_after_phone_switch";
+              }
             }
           }
         }
