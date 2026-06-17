@@ -129,6 +129,7 @@ async function persistAlerts(
   const created: string[] = [];
   for (const d of detected) {
     const existingId = existingOpenByType.get(d.alert_type);
+    const payloadJson = d.payload as never;
     if (existingId) {
       await supabaseAdmin
         .from("coach_alerts")
@@ -136,8 +137,8 @@ async function persistAlerts(
           severity: d.severity,
           urgency_minutes: d.urgency_minutes ?? null,
           risk_score: d.risk_score,
-          payload: d.payload,
-        })
+          payload: payloadJson,
+        } as never)
         .eq("id", existingId);
     } else {
       const { data: ins } = await supabaseAdmin
@@ -150,8 +151,8 @@ async function persistAlerts(
           severity: d.severity,
           urgency_minutes: d.urgency_minutes ?? null,
           risk_score: d.risk_score,
-          payload: d.payload,
-        })
+          payload: payloadJson,
+        } as never)
         .select("id")
         .single();
       if (ins?.id) created.push(ins.id);
