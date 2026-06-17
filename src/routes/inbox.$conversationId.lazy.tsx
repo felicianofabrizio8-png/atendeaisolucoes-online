@@ -2626,11 +2626,16 @@ function ConversationPage() {
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const latestVisibleMessagesLengthRef = useRef(0);
   const hasInitialScrolledRef = useRef<{ conversationId: string | null; done: boolean }>({
     conversationId: null,
     done: false,
   });
   const [atBottom, setAtBottom] = useState(true);
+
+  useEffect(() => {
+    latestVisibleMessagesLengthRef.current = visibleMessages.length;
+  }, [visibleMessages.length]);
 
   useEffect(() => {
     hasInitialScrolledRef.current = { conversationId, done: false };
@@ -2646,8 +2651,10 @@ function ConversationPage() {
 
     const scrollToLastMessage = () => {
       if (hasInitialScrolledRef.current.conversationId !== conversationId) return;
+      const lastIndex = latestVisibleMessagesLengthRef.current - 1;
+      if (lastIndex < 0) return;
       virtuosoRef.current?.scrollToIndex({
-        index: visibleMessages.length - 1,
+        index: lastIndex,
         align: "end",
         behavior: "auto",
       });
