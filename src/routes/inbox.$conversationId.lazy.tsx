@@ -1031,6 +1031,7 @@ function MessageBubbleImpl({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [forwardTarget, setForwardTarget] = useState<ForwardMessageTarget | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tplMeta = m.sourceMetadata as
