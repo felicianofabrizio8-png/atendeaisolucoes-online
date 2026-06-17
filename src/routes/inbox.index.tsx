@@ -26,6 +26,7 @@ import { OpportunityHub } from "@/components/inbox/OpportunityHub";
 
 const STATUS_FILTERS = [
   "todos",
+  "coach",
   "quentes",
   "prontos",
   "aguardando_humano",
