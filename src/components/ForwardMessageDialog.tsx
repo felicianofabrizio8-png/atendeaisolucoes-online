@@ -163,13 +163,44 @@ export function ForwardMessageDialog({
       });
       const json = (await res.json().catch(() => ({}))) as ForwardErrorResponse;
       if (!res.ok) {
-        throw new Error(summarizeForwardError(res.status, json));
+        console.error("FORWARD_DEBUG", { status: res.status, body: json });
+        const mainMsg =
+          json.error ??
+          json.debug?.meta?.error?.message ??
+          json.metaError?.message ??
+          "erro desconhecido";
+        const detail = [
+          `HTTP ${res.status}`,
+          `msg: ${mainMsg}`,
+          `targetConv: ${json.debug?.targetConversation?.id ?? "—"}`,
+          `janela24h: ${
+            json.debug?.window24h?.inside === true
+              ? "true"
+              : json.debug?.window24h?.inside === false
+                ? "false"
+                : "—"
+          }`,
+          `signedUrl: HEAD ${json.debug?.signedUrl?.headStatus ?? "—"}${
+            json.debug?.signedUrl?.getRangeStatus
+              ? ` / GET ${json.debug.signedUrl.getRangeStatus}`
+              : ""
+          }`,
+          `Meta: ${json.debug?.meta?.status ?? "—"} ${
+            json.debug?.meta?.error?.message ??
+            json.debug?.meta?.rawBody ??
+            json.metaError?.message ??
+            "—"
+          }`,
+        ].join(" · ");
+        toast.error(`Erro ao encaminhar: ${mainMsg}`, { description: detail });
+        return;
       }
       toast.success("Mensagem encaminhada");
       onSuccess?.({ conversationId: json.conversationId ?? "" });
       onClose();
     } catch (e) {
-      toast.error("Falha ao encaminhar", {
+      console.error("FORWARD_DEBUG", e);
+      toast.error("Erro ao encaminhar", {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
