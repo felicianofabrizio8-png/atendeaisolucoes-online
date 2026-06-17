@@ -2626,7 +2626,49 @@ function ConversationPage() {
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const latestVisibleMessagesLengthRef = useRef(0);
+  const hasInitialScrolledRef = useRef<{ conversationId: string | null; done: boolean }>({
+    conversationId: null,
+    done: false,
+  });
   const [atBottom, setAtBottom] = useState(true);
+
+  useEffect(() => {
+    latestVisibleMessagesLengthRef.current = visibleMessages.length;
+  }, [visibleMessages.length]);
+
+  useEffect(() => {
+    hasInitialScrolledRef.current = { conversationId, done: false };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (visibleMessages.length === 0) return;
+    const scrollState = hasInitialScrolledRef.current;
+    if (scrollState.conversationId !== conversationId) {
+      hasInitialScrolledRef.current = { conversationId, done: false };
+    }
+    if (hasInitialScrolledRef.current.done) return;
+
+    const scrollToLastMessage = () => {
+      if (hasInitialScrolledRef.current.conversationId !== conversationId) return;
+      const lastIndex = latestVisibleMessagesLengthRef.current - 1;
+      if (lastIndex < 0) return;
+      virtuosoRef.current?.scrollToIndex({
+        index: lastIndex,
+        align: "end",
+        behavior: "auto",
+      });
+    };
+
+    hasInitialScrolledRef.current.done = true;
+    const frameId = requestAnimationFrame(scrollToLastMessage);
+    const timeoutId = window.setTimeout(scrollToLastMessage, 300);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [conversationId, visibleMessages.length]);
 
   // ---- Manual follow-up (admin only) ----
   const { profile: authProfile } = useAuth();
