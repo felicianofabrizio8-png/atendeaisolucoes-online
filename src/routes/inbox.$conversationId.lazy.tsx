@@ -1055,6 +1055,13 @@ function MessageBubbleImpl({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
+  // externalId real (coluna messages.external_id, mapeada para camelCase em
+  // leadRepo). Usado pelo botão "Responder" para garantir que só permitimos
+  // citar mensagens que existam de fato no WhatsApp da Meta.
+  const messageExternalId =
+    ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
+    (externalId ?? null);
+  const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
 
