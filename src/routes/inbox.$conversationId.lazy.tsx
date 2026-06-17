@@ -58,7 +58,10 @@ import {
   Pause,
   Mic,
   Forward,
+  Smile,
 } from "lucide-react";
+import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
@@ -3585,6 +3588,53 @@ function ConversationPage() {
                 rows={1}
                 className="flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
               />
+            )}
+            {!audioActive && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={!!closedInfo}
+                    className="h-11 w-11 md:h-9 md:w-9 inline-flex items-center justify-center rounded-full md:rounded-md bg-muted hover:bg-accent text-foreground disabled:opacity-40 shrink-0"
+                    aria-label="Inserir emoji"
+                    title="Inserir emoji"
+                  >
+                    <Smile className="h-5 w-5 md:h-4 md:w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  side="top"
+                  className="p-0 w-auto border-0 bg-transparent shadow-none"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <EmojiPicker
+                    theme={EmojiTheme.AUTO}
+                    emojiStyle={EmojiStyle.NATIVE}
+                    lazyLoadEmojis
+                    width={320}
+                    height={380}
+                    searchPlaceHolder="Buscar emoji…"
+                    onEmojiClick={(data) => {
+                      const el = composerRef.current;
+                      const emoji = data.emoji;
+                      if (el) {
+                        const start = el.selectionStart ?? input.length;
+                        const end = el.selectionEnd ?? input.length;
+                        const next = input.slice(0, start) + emoji + input.slice(end);
+                        setInput(next);
+                        requestAnimationFrame(() => {
+                          el.focus();
+                          const pos = start + emoji.length;
+                          try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+                        });
+                      } else {
+                        setInput((prev) => prev + emoji);
+                      }
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
             )}
             {!audioActive && (
               <MediaSendPanel
