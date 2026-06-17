@@ -60,6 +60,7 @@ import {
   Forward,
   Smile,
   MapPin,
+  Reply,
 } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -91,6 +92,13 @@ const VirtuosoScrollContext = createContext<{
   ref: React.RefObject<VirtuosoHandle | null>;
   items: Message[];
 } | null>(null);
+
+// Feature 3 — Reply: permite que a MessageBubble (filha) dispare o estado de
+// "respondendo a esta mensagem" no composer da ConversationPage (pai), sem
+// acoplar via props.
+const ReplyComposeContext = createContext<{ start: (m: Message) => void }>({
+  start: () => { /* no-op por padrão */ },
+});
 
 
 export const Route = createLazyFileRoute("/inbox/$conversationId")({
@@ -1047,6 +1055,13 @@ function MessageBubbleImpl({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
+  // externalId real (coluna messages.external_id, mapeada para camelCase em
+  // leadRepo). Usado pelo botão "Responder" para garantir que só permitimos
+  // citar mensagens que existam de fato no WhatsApp da Meta.
+  const messageExternalId =
+    ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
+    (externalId ?? null);
+  const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
 
@@ -1302,6 +1317,17 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
+        {canManage && !isDeleted && !editing && messageExternalId && (
+          <button
+            type="button"
+            onClick={() => replyCtx.start(m)}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+            aria-label="Responder mensagem"
+            title="Responder"
+          >
+            <Reply className="h-3.5 w-3.5" />
+          </button>
+        )}
         {!isAgent && !isDeleted && mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
           <button
             type="button"
@@ -2527,6 +2553,17 @@ function ConversationPage() {
   const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const pendingTextSendsRef = useRef<Set<string>>(new Set());
+  // Feature 3 — Reply V1: mensagem que o composer está citando (botão Responder).
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const replyComposeValue = useMemo(
+    () => ({
+      start: (m: Message) => {
+        setReplyingTo(m);
+        requestAnimationFrame(() => composerRef.current?.focus());
+      },
+    }),
+    [],
+  );
 
   // Auto-resize do textarea conforme o conteúdo (cap em max-h via CSS).
   useEffect(() => {
@@ -2813,11 +2850,50 @@ function ConversationPage() {
     setSendError(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
+    // Snapshot do "respondendo a" no momento do envio para evitar race condition
+    // caso o usuário troque a citação enquanto a requisição está em voo.
+    const replySnapshot = replyingTo;
     if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
+          if (isWhatsApp && replySnapshot) {
+            // Feature 3 — Reply V1: endpoint dedicado, NÃO altera send-message.
+            const res = await fetch("/api/whatsapp/send-reply", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                conversationId,
+                text: trimmed,
+                replyToMessageId: replySnapshot.id,
+              }),
+            });
+            if (res.ok) {
+              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
+              if (saved?.id) {
+                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+                await refetchConversationMessages(conversationId);
+              }
+              setReplyingTo(null);
+              finishSend();
+              return;
+            }
+            let errMsg = `HTTP ${res.status}`;
+            try {
+              const j = (await res.json()) as { error?: string };
+              if (j.error) errMsg = j.error;
+              console.error("[chat send-reply] falhou", j);
+            } catch { /* ignore */ }
+            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+            setSendError(errMsg);
+            toast.error("Falha ao responder no WhatsApp", { description: errMsg });
+            finishSend();
+            return;
+          }
           if (isWhatsApp) {
             // WhatsApp Cloud API — mesma rota usada pelo "Enviar teste"
             const res = await fetch("/api/whatsapp/send", {
@@ -3351,6 +3427,7 @@ function ConversationPage() {
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <MessagesContext.Provider value={messages}>
+            <ReplyComposeContext.Provider value={replyComposeValue}>
             <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
               <Virtuoso
                 ref={virtuosoRef}
@@ -3395,6 +3472,7 @@ function ConversationPage() {
                 }}
               />
             </VirtuosoScrollContext.Provider>
+            </ReplyComposeContext.Provider>
           </MessagesContext.Provider>
 
         </div>
@@ -3569,6 +3647,39 @@ function ConversationPage() {
           className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
         >
+
+          {replyingTo && (
+            <div className="mb-2 flex items-stretch gap-2 rounded-md border-l-4 border-primary bg-muted/60 px-2.5 py-2 max-w-full min-w-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-semibold text-primary uppercase tracking-wide">
+                  Respondendo a {replyingTo.role === "agent" ? "Você" : (lead?.name ?? "Cliente")}
+                </div>
+                <div className="text-xs text-foreground/90 truncate mt-0.5">
+                  {(() => {
+                    const t = (replyingTo.text ?? "").trim();
+                    if (t) return t.slice(0, 120);
+                    const sub = (replyingTo.sourceSubtype ?? "").toLowerCase();
+                    if (sub === "image") return "📷 Foto";
+                    if (sub === "video") return "🎥 Vídeo";
+                    if (sub === "audio") return "🎤 Áudio";
+                    if (sub === "document") return "📎 Documento";
+                    if (sub === "sticker") return "🌟 Sticker";
+                    if (sub === "location") return "📍 Localização";
+                    return "[mensagem]";
+                  })()}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="self-start h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground shrink-0"
+                aria-label="Cancelar resposta"
+                title="Cancelar resposta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           <div className="flex items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
             {!audioActive && (

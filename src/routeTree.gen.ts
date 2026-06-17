@@ -37,6 +37,7 @@ import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callbac
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
 import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
+import { Route as ApiWhatsappSendReplyRouteImport } from './routes/api.whatsapp.send-reply'
 import { Route as ApiWhatsappSendMediaRouteImport } from './routes/api.whatsapp.send-media'
 import { Route as ApiWhatsappSendLocationRouteImport } from './routes/api.whatsapp.send-location'
 import { Route as ApiWhatsappSendAudioRouteImport } from './routes/api.whatsapp.send-audio'
@@ -225,6 +226,11 @@ const ApiWhatsappTokenRefreshRoute = ApiWhatsappTokenRefreshRouteImport.update({
 const ApiWhatsappTestSendRoute = ApiWhatsappTestSendRouteImport.update({
   id: '/api/whatsapp/test-send',
   path: '/api/whatsapp/test-send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendReplyRoute = ApiWhatsappSendReplyRouteImport.update({
+  id: '/api/whatsapp/send-reply',
+  path: '/api/whatsapp/send-reply',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWhatsappSendMediaRoute = ApiWhatsappSendMediaRouteImport.update({
@@ -453,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
   '/api/whatsapp/send-location': typeof ApiWhatsappSendLocationRoute
   '/api/whatsapp/send-media': typeof ApiWhatsappSendMediaRoute
+  '/api/whatsapp/send-reply': typeof ApiWhatsappSendReplyRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
@@ -516,6 +523,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
   '/api/whatsapp/send-location': typeof ApiWhatsappSendLocationRoute
   '/api/whatsapp/send-media': typeof ApiWhatsappSendMediaRoute
+  '/api/whatsapp/send-reply': typeof ApiWhatsappSendReplyRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
@@ -581,6 +589,7 @@ export interface FileRoutesById {
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
   '/api/whatsapp/send-location': typeof ApiWhatsappSendLocationRoute
   '/api/whatsapp/send-media': typeof ApiWhatsappSendMediaRoute
+  '/api/whatsapp/send-reply': typeof ApiWhatsappSendReplyRoute
   '/api/whatsapp/test-send': typeof ApiWhatsappTestSendRoute
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
@@ -647,6 +656,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/send-audio'
     | '/api/whatsapp/send-location'
     | '/api/whatsapp/send-media'
+    | '/api/whatsapp/send-reply'
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
@@ -710,6 +720,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/send-audio'
     | '/api/whatsapp/send-location'
     | '/api/whatsapp/send-media'
+    | '/api/whatsapp/send-reply'
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
@@ -774,6 +785,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/send-audio'
     | '/api/whatsapp/send-location'
     | '/api/whatsapp/send-media'
+    | '/api/whatsapp/send-reply'
     | '/api/whatsapp/test-send'
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
@@ -836,6 +848,7 @@ export interface RootRouteChildren {
   ApiWhatsappSendAudioRoute: typeof ApiWhatsappSendAudioRoute
   ApiWhatsappSendLocationRoute: typeof ApiWhatsappSendLocationRoute
   ApiWhatsappSendMediaRoute: typeof ApiWhatsappSendMediaRoute
+  ApiWhatsappSendReplyRoute: typeof ApiWhatsappSendReplyRoute
   ApiWhatsappTestSendRoute: typeof ApiWhatsappTestSendRoute
   ApiWhatsappTokenRefreshRoute: typeof ApiWhatsappTokenRefreshRoute
   ApiWhatsappUnmappedRoute: typeof ApiWhatsappUnmappedRoute
@@ -1052,6 +1065,13 @@ declare module '@tanstack/react-router' {
       path: '/api/whatsapp/test-send'
       fullPath: '/api/whatsapp/test-send'
       preLoaderRoute: typeof ApiWhatsappTestSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send-reply': {
+      id: '/api/whatsapp/send-reply'
+      path: '/api/whatsapp/send-reply'
+      fullPath: '/api/whatsapp/send-reply'
+      preLoaderRoute: typeof ApiWhatsappSendReplyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/whatsapp/send-media': {
@@ -1351,6 +1371,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappSendAudioRoute: ApiWhatsappSendAudioRoute,
   ApiWhatsappSendLocationRoute: ApiWhatsappSendLocationRoute,
   ApiWhatsappSendMediaRoute: ApiWhatsappSendMediaRoute,
+  ApiWhatsappSendReplyRoute: ApiWhatsappSendReplyRoute,
   ApiWhatsappTestSendRoute: ApiWhatsappTestSendRoute,
   ApiWhatsappTokenRefreshRoute: ApiWhatsappTokenRefreshRoute,
   ApiWhatsappUnmappedRoute: ApiWhatsappUnmappedRoute,
@@ -1366,13 +1387,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
