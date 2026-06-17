@@ -267,7 +267,7 @@ function InboxPage() {
     counts.coach = coachCount;
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.slaMinutes, lossReasonFilter, items]);
+  }, [settings.slaMinutes, lossReasonFilter, items, coachCount]);
 
   const sourceCounts = useMemo(() => {
     const counts: Record<SourceFilter, number> = {
