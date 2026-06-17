@@ -244,6 +244,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           }
         }
 
+        let targetConversationLeadIntegrationId: string | null = null;
         if (targetConv) {
           const { data: convLead } = await supabaseAdmin
             .from("leads")
@@ -251,6 +252,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             .eq("id", targetConv.lead_id)
             .maybeSingle();
           debug.conversationLead = convLead ?? null;
+          targetConversationLeadIntegrationId = convLead?.integration_id ?? null;
         }
 
         const { data: latestLeadByPhone } = await supabaseAdmin
@@ -329,21 +331,34 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         }
 
         // ---- 7. Integração WhatsApp ----
+        const integrationIdForSend =
+          targetConversationLeadIntegrationId ?? targetLead.integration_id ?? null;
         const integrationQuery = supabaseAdmin
           .from("integrations")
           .select("id, access_token, external_account_id")
           .eq("company_id", companyId)
           .eq("channel", "whatsapp")
           .eq("active", true);
-        const { data: integration } = targetLead.integration_id
-          ? await integrationQuery.eq("id", targetLead.integration_id).maybeSingle()
+        const { data: integration } = integrationIdForSend
+          ? await integrationQuery.eq("id", integrationIdForSend).maybeSingle()
           : await integrationQuery.limit(1).maybeSingle();
         if (!integration?.access_token || !integration.external_account_id) {
           return Response.json(
-            { error: "WhatsApp não conectado para esta empresa" },
+            { error: "WhatsApp não conectado para esta empresa", debug },
             { status: 400 },
           );
         }
+        debug.integration = {
+          selectedIntegrationId: integration.id,
+          requestedIntegrationId: integrationIdForSend,
+          phoneNumberId: integration.external_account_id,
+          source: targetConversationLeadIntegrationId
+            ? "conversation_lead"
+            : targetLead.integration_id
+              ? "target_lead"
+              : "active_default",
+        };
+        console.log("[forward-message] integration", debug.integration);
 
         // ---- 8. Signed URL temporária para a Meta consumir ----
         const { data: signed, error: signErr } = await supabaseAdmin.storage
@@ -351,8 +366,9 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .createSignedUrl(mediaPath, 60 * 60);
         if (signErr || !signed?.signedUrl) {
           console.error("[forward-message] sign error", signErr);
+          debug.signedUrl = { ok: false, error: signErr?.message ?? "sign" };
           return Response.json(
-            { error: `Falha ao preparar mídia: ${signErr?.message ?? "sign"}` },
+            { error: `Falha ao preparar mídia: ${signErr?.message ?? "sign"}`, debug },
             { status: 500 },
           );
         }
