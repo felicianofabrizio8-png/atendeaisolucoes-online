@@ -1236,7 +1236,7 @@ function MessageBubbleImpl({
             }
           }}
           className={cn(
-            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words select-none md:select-text transition-transform active:scale-[0.99]",
+            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:select-text transition-transform active:scale-[0.99]",
             isAgent
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-card border border-border rounded-bl-sm",
