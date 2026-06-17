@@ -794,6 +794,10 @@ function ConversationCard({
             )}
           </div>
 
+          {coachAlert && <CoachInboxBadge alert={coachAlert} />}
+
+
+
           {alert && (
             <div
               className={cn(
