@@ -37,6 +37,7 @@ import {
   Clock,
   UserRound,
 } from "lucide-react";
+import { CoachAttentionList } from "@/components/coach/CoachAttentionList";
 
 export const Route = createFileRoute("/")({
   head: () => ({
