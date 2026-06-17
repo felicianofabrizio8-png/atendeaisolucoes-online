@@ -462,6 +462,12 @@ function DashboardPage() {
         />
       </section>
 
+      {/* Coach IA — atenção do vendedor */}
+      <section className="px-4 md:px-8 pb-4">
+        <CoachAttentionList />
+      </section>
+
+
       {/* Alertas acionáveis */}
       {(noResponseNow > 0 || waitingQuote.length > 0 || alertReady > 0) && (
         <section className="px-4 md:px-8 pb-4 md:pb-6">
