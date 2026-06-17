@@ -128,8 +128,8 @@ ${transcript || "(sem mensagens)"}`;
                       suggestion_text: { type: "string" },
                       reasoning: { type: "string" },
                       objection_type: {
-                        type: ["string", "null"],
-                        enum: ["price", "timing", "spouse", "researching", "discount", "other", null],
+                        type: "string",
+                        enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
                       },
                       urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
                       risk_score: { type: "integer", minimum: 0, maximum: 100 },
