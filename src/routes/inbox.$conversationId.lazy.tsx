@@ -2846,8 +2846,38 @@ function ConversationPage() {
   };
 
   const sendMessage = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    const rawTrimmed = text.trim();
+    if (!rawTrimmed) return;
+
+    // Snapshot do "respondendo a" no momento do envio para evitar race condition
+    // caso o usuário troque a citação enquanto a requisição está em voo.
+    const replySnapshot = replyingTo;
+    const replyExternalId = replySnapshot
+      ? (((replySnapshot as unknown as { externalId?: string | null }).externalId ?? null) ||
+          ((replySnapshot.sourceMetadata as { external_id?: string } | undefined)?.external_id ?? null))
+      : null;
+
+    // Fallback: se a mensagem citada não tiver external_id (não existe no WhatsApp
+    // como mensagem citável), enviamos pelo fluxo normal prefixando o texto com
+    // uma citação simples. Não chamamos send-reply nesse caso.
+    const buildQuotedPreview = (m: Message): string => {
+      const t = (m.text ?? "").trim();
+      if (t) return t.length > 160 ? `${t.slice(0, 160)}…` : t;
+      const sub = (m.sourceSubtype ?? "").toLowerCase();
+      if (sub === "image") return "📷 Foto";
+      if (sub === "video") return "🎥 Vídeo";
+      if (sub === "audio") return "🎤 Áudio";
+      if (sub === "document") return "📎 Documento";
+      if (sub === "sticker") return "🌟 Sticker";
+      if (sub === "location") return "📍 Localização";
+      return "[mensagem]";
+    };
+
+    const trimmed =
+      replySnapshot && !replyExternalId
+        ? `Respondendo:\n\n"${buildQuotedPreview(replySnapshot)}"\n\n${rawTrimmed}`
+        : rawTrimmed;
+
     const sendKey = `${conversationId}\n${trimmed}`;
     if (pendingTextSendsRef.current.has(sendKey)) return;
     pendingTextSendsRef.current.add(sendKey);
@@ -2864,15 +2894,13 @@ function ConversationPage() {
     setSendError(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
-    // Snapshot do "respondendo a" no momento do envio para evitar race condition
-    // caso o usuário troque a citação enquanto a requisição está em voo.
-    const replySnapshot = replyingTo;
     if (profile?.company_id) {
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         if (token) {
-          if (isWhatsApp && replySnapshot) {
+          if (isWhatsApp && replySnapshot && replyExternalId) {
+
             // Feature 3 — Reply V1: endpoint dedicado, NÃO altera send-message.
             const res = await fetch("/api/whatsapp/send-reply", {
               method: "POST",
