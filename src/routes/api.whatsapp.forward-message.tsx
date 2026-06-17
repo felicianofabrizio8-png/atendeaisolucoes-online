@@ -150,9 +150,38 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           mediaFilename,
           mediaSize,
         };
+        // Diagnóstico completo ANTES da validação de mídia disponível.
+        // (não altera nenhuma lógica — apenas logs)
+        console.log("[forward-message] source diagnostic", {
+          requestId: debug.requestId,
+          messageId: srcMsg.id,
+          role: srcMsg.role,
+          source_subtype: srcMsg.source_subtype,
+          media_kind: kind,
+          media_bucket: mediaBucket,
+          media_path: mediaPath,
+          media_mime: mediaMime,
+          media_filename: mediaFilename,
+          media_size: mediaSize,
+          source_metadata: srcMeta,
+        });
         if (!mediaPath || mediaBucket !== WA_MEDIA_BUCKET) {
           return Response.json(
-            { error: "mídia indisponível para encaminhamento", debug },
+            {
+              error: "mídia indisponível para encaminhamento",
+              debug: {
+                ...debug,
+                sourceMessage: {
+                  id: srcMsg.id,
+                  role: srcMsg.role,
+                  source_subtype: srcMsg.source_subtype,
+                  media_kind: kind,
+                  media_bucket: mediaBucket,
+                  media_path: mediaPath,
+                  source_metadata: srcMeta,
+                },
+              },
+            },
             { status: 400 },
           );
         }
