@@ -1061,13 +1061,32 @@ function MessageBubbleImpl({
   const messageExternalId =
     ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
     (externalId ?? null);
+  const canReply = !!messageExternalId && !isDeleted && !editing;
   const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
 
   const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
 
+  console.log("Reply available", {
+    messageId: m.id,
+    external_id: messageExternalId,
+    canReply,
+    blockedBy: {
+      messageExternalId: !messageExternalId,
+      isAgent,
+      isDeleted,
+      isEditing: editing,
+    },
+  });
+
   function startLongPress() {
+    console.log("Reply available", {
+      event: "startLongPress",
+      messageId: m.id,
+      external_id: messageExternalId,
+      canReply,
+    });
     if (isDeleted || editing) return;
     cancelLongPress();
     longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
@@ -1264,6 +1283,12 @@ function MessageBubbleImpl({
           onTouchMove={cancelLongPress}
           onTouchCancel={cancelLongPress}
           onContextMenu={(e) => {
+            console.log("Reply available", {
+              event: "onContextMenu",
+              messageId: m.id,
+              external_id: messageExternalId,
+              canReply,
+            });
             if (!isDeleted && !editing) {
               e.preventDefault();
               setMenuOpen(true);
