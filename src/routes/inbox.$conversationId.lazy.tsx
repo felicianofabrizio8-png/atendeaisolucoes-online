@@ -1321,11 +1321,11 @@ function MessageBubbleImpl({
           <button
             type="button"
             onClick={() => replyCtx.start(m)}
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur shadow-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-all md:opacity-60 md:group-hover:opacity-100 active:scale-95"
             aria-label="Responder mensagem"
-            title="Responder"
+            title="Responder mensagem"
           >
-            <Reply className="h-3.5 w-3.5" />
+            <Reply className="h-4 w-4" />
           </button>
         )}
         {!isAgent && !isDeleted && mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
