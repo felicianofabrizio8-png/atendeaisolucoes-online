@@ -1122,11 +1122,12 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        "group flex flex-col max-w-[90%] md:max-w-[75%] relative",
+        "group flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative",
         isAgent ? "ml-auto items-end" : "items-start",
       )}
     >
-      <div className="flex items-end gap-1">
+      <div className="flex items-end gap-1 min-w-0 max-w-full">
+
         {isAgent && canManage && !isDeleted && !editing && (
           <div className="relative md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
             <button
@@ -1235,7 +1236,7 @@ function MessageBubbleImpl({
             }
           }}
           className={cn(
-            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words select-none md:select-text transition-transform active:scale-[0.99]",
+            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:select-text transition-transform active:scale-[0.99]",
             isAgent
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-card border border-border rounded-bl-sm",
