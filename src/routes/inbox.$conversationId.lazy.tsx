@@ -1055,9 +1055,8 @@ function MessageBubbleImpl({
   const isDeleted = !!m.deletedAt;
   const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
     ?.external_id;
-  // externalId real (coluna messages.external_id). O Reply nativo só é usado
-  // quando existe; sem ele, o fallback no composer prefixa a citação no texto.
-  void ((m as unknown as { externalId?: string | null }).externalId ?? null);
+  // Reply nativo só é usado quando há external_id no snapshot (lido no composer);
+  // sem ele, o composer prefixa a citação no texto e envia pelo fluxo normal.
   const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
