@@ -150,9 +150,18 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             media_kind: mediaKindRaw || null,
             media_bucket: mediaBucket,
             media_path: mediaPath,
-            has_media_kind: Object.prototype.hasOwnProperty.call(srcMeta, "media_kind"),
-            has_media_bucket: Object.prototype.hasOwnProperty.call(srcMeta, "media_bucket"),
-            has_media_path: Object.prototype.hasOwnProperty.call(srcMeta, "media_path"),
+            has_media_kind: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_kind",
+            ),
+            has_media_bucket: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_bucket",
+            ),
+            has_media_path: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_path",
+            ),
           },
           media_kind: mediaKindRaw || null,
           media_bucket: mediaBucket,
