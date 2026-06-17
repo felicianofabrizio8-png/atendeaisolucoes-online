@@ -446,6 +446,24 @@ function OpportunityCard({
 
   const tooltip = `Score: ${s}/100${score.reasons.length ? " · " + score.reasons.join(" · ") : ""}`;
 
+  // Chip de contexto — derivado de dados já existentes (sem nova lógica)
+  const lowerAction = (lead.nextAction?.label ?? "").toLowerCase();
+  const lowerText = (last?.text ?? "").toLowerCase();
+  const contextChip: { icon: string; label: string; cls: string } | null =
+    s >= 90
+      ? { icon: "🔥", label: "Pronto para fechar", cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30" }
+      : item.hasPendingQuote
+        ? { icon: "💰", label: "Orçamento enviado", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" }
+        : /visita|agendad/.test(lowerAction) || /visita|agendad/.test(lowerText)
+          ? { icon: "🏠", label: "Visita agendada", cls: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30" }
+          : /pagamento|pix|cart[ãa]o|parcel|boleto/.test(lowerAction) || /pagamento|pix|cart[ãa]o|parcel|boleto/.test(lowerText)
+            ? { icon: "💳", label: "Negociando pagamento", cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30" }
+            : /esposa|marido|fam[ií]lia|decid|conversar com|pensar/.test(lowerText)
+              ? { icon: "👨‍👩‍👧", label: "Aguardando decisão", cls: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30" }
+              : conv.awaitingReply
+                ? { icon: "📞", label: "Precisa retorno", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" }
+                : null;
+
   return (
     <li
       className={cn(
