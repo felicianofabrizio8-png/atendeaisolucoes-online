@@ -1297,7 +1297,7 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
-        {!isAgent && !isDeleted && mediaInfo && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
+        {!isAgent && !isDeleted && mediaInfo && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && mediaInfo.bucket === "whatsapp-media" && (
           <button
             type="button"
             onClick={() =>
