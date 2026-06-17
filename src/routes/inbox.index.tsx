@@ -653,6 +653,7 @@ function InboxPage() {
                     key={it.conv.id}
                     item={it}
                     slaMinutes={settings.slaMinutes}
+                    coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
                     onOpen={() =>
                       navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
                     }
