@@ -79,9 +79,14 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         const sourceMessageId = (body.sourceMessageId ?? "").trim();
         const targetLeadId = (body.targetLeadId ?? "").trim();
         const note = (body.note ?? "").trim().slice(0, 1024);
+        const debug: ForwardDebugInfo = {
+          requestId: crypto.randomUUID(),
+          sourceMessageId,
+          targetLeadId,
+        };
         if (!sourceMessageId || !targetLeadId) {
           return Response.json(
-            { error: "sourceMessageId e targetLeadId obrigatórios" },
+            { error: "sourceMessageId e targetLeadId obrigatórios", debug },
             { status: 400 },
           );
         }
@@ -93,7 +98,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .eq("id", userId)
           .maybeSingle();
         if (!profile?.company_id) {
-          return Response.json({ error: "perfil sem empresa" }, { status: 403 });
+          return Response.json({ error: "perfil sem empresa", debug }, { status: 403 });
         }
         const companyId = profile.company_id;
 
@@ -105,13 +110,13 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .maybeSingle();
         if (!srcMsg || srcMsg.company_id !== companyId) {
           return Response.json(
-            { error: "mensagem de origem não encontrada" },
+            { error: "mensagem de origem não encontrada", debug },
             { status: 404 },
           );
         }
         if (srcMsg.role !== "lead") {
           return Response.json(
-            { error: "apenas mensagens recebidas podem ser encaminhadas" },
+            { error: "apenas mensagens recebidas podem ser encaminhadas", debug },
             { status: 400 },
           );
         }
@@ -132,21 +137,29 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
 
         if (mediaKindRaw !== "image" && mediaKindRaw !== "video") {
           return Response.json(
-            { error: "V1 suporta apenas imagem ou vídeo" },
+            { error: "V1 suporta apenas imagem ou vídeo", debug },
             { status: 400 },
           );
         }
         const kind: "image" | "video" = mediaKindRaw;
+        debug.media = {
+          mediaBucket,
+          mediaPathPrefix: mediaPath?.slice(0, 80) ?? null,
+          mediaKind: kind,
+          mediaMime,
+          mediaFilename,
+          mediaSize,
+        };
         if (!mediaPath || mediaBucket !== WA_MEDIA_BUCKET) {
           return Response.json(
-            { error: "mídia indisponível para encaminhamento" },
+            { error: "mídia indisponível para encaminhamento", debug },
             { status: 400 },
           );
         }
         // Segurança multi-tenant: paths em whatsapp-media começam por company_id.
         if (!mediaPath.startsWith(`${companyId}/`)) {
           return Response.json(
-            { error: "mídia fora desta empresa" },
+            { error: "mídia fora desta empresa", debug },
             { status: 403 },
           );
         }
