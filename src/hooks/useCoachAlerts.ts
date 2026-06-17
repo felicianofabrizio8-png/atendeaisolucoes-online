@@ -34,6 +34,7 @@ export function useCoachAlerts() {
       setAlerts([]);
       return;
     }
+    const cid = companyId;
     let cancelled = false;
 
     async function load() {
@@ -41,7 +42,7 @@ export function useCoachAlerts() {
       const { data } = await supabase
         .from("coach_alerts")
         .select("id, conversation_id, alert_type, severity, urgency_minutes, created_at")
-        .eq("company_id", companyId)
+        .eq("company_id", cid)
         .eq("status", "open");
       if (!cancelled) {
         setAlerts((data ?? []) as CoachAlertLite[]);
@@ -51,10 +52,10 @@ export function useCoachAlerts() {
     load();
 
     const channel = supabase
-      .channel(`coach_alerts_inbox_${companyId}`)
+      .channel(`coach_alerts_inbox_${cid}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "coach_alerts", filter: `company_id=eq.${companyId}` },
+        { event: "*", schema: "public", table: "coach_alerts", filter: `company_id=eq.${cid}` },
         () => {
           load();
         },
