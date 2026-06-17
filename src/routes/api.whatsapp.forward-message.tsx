@@ -124,7 +124,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         const srcMeta =
           (srcMsg.source_metadata as Record<string, unknown> | null) ?? {};
         const mediaPath = (srcMeta.media_path as string | undefined) ?? null;
-        const mediaBucket =
+        const storedMediaBucket =
           (srcMeta.media_bucket as string | undefined) ?? null;
         const mediaKindRaw =
           (srcMeta.media_kind as string | undefined) ??
@@ -148,7 +148,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           },
           source_metadata_locations: {
             media_kind: mediaKindRaw || null,
-            media_bucket: mediaBucket,
+            media_bucket: storedMediaBucket,
             media_path: mediaPath,
             has_media_kind: Object.prototype.hasOwnProperty.call(
               srcMeta,
@@ -164,7 +164,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             ),
           },
           media_kind: mediaKindRaw || null,
-          media_bucket: mediaBucket,
+          media_bucket: storedMediaBucket,
           media_path: mediaPath,
           source_metadata: srcMeta,
         };
@@ -176,8 +176,14 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           );
         }
         const kind: "image" | "video" = mediaKindRaw;
+        const mediaBucket =
+          storedMediaBucket ??
+          (mediaPath?.startsWith(`${companyId}/`) ? WA_MEDIA_BUCKET : null);
         debug.media = {
           mediaBucket,
+          storedMediaBucket,
+          mediaBucketFallbackApplied:
+            !storedMediaBucket && mediaBucket === WA_MEDIA_BUCKET,
           mediaPathPrefix: mediaPath?.slice(0, 80) ?? null,
           mediaKind: kind,
           mediaMime,
