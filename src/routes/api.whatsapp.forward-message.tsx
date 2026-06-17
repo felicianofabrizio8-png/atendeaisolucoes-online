@@ -229,7 +229,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
               .select("id, phone, external_id")
               .eq("company_id", companyId)
               .or(
-                `phone.eq.${phoneDigits},external_id.eq.${phoneDigits},phone.ilike.%${targetPhoneTail}%,external_id.ilike.%${targetPhoneTail}%`,
+                `phone.eq.${phoneDigits},external_id.eq.${phoneDigits},phone.ilike.*${targetPhoneTail}*,external_id.ilike.*${targetPhoneTail}*`,
               );
             const siblingIds = (siblingLeads ?? []).map((l) => l.id);
             if (siblingIds.length > 0) {
@@ -268,7 +268,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .select("id, phone, external_id")
           .eq("company_id", companyId)
           .or(
-            `phone.eq.${recipient},external_id.eq.${recipient},phone.ilike.%${targetPhoneTail}%,external_id.ilike.%${targetPhoneTail}%`,
+            `phone.eq.${recipient},external_id.eq.${recipient},phone.ilike.*${targetPhoneTail}*,external_id.ilike.*${targetPhoneTail}*`,
           );
         const phoneMatchedLeadIds = (phoneMatchedLeads ?? []).map((l) => l.id);
         const { data: phoneMatchedConvs } = phoneMatchedLeadIds.length > 0
