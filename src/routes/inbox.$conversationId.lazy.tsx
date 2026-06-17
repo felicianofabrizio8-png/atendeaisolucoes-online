@@ -1267,12 +1267,6 @@ function MessageBubbleImpl({
           onTouchMove={cancelLongPress}
           onTouchCancel={cancelLongPress}
           onContextMenu={(e) => {
-            console.log("Reply available", {
-              event: "onContextMenu",
-              messageId: m.id,
-              external_id: messageExternalId,
-              canReply,
-            });
             if (!isDeleted && !editing) {
               e.preventDefault();
               setMenuOpen(true);
