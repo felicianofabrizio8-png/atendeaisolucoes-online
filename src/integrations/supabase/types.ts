@@ -660,6 +660,7 @@ export type Database = {
           default_quote_gifts: string | null
           default_quote_included_items: string | null
           greeting_message: string | null
+          location: Json | null
           signature: string | null
           sla_minutes: number
           updated_at: string
@@ -705,6 +706,7 @@ export type Database = {
           default_quote_gifts?: string | null
           default_quote_included_items?: string | null
           greeting_message?: string | null
+          location?: Json | null
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -750,6 +752,7 @@ export type Database = {
           default_quote_gifts?: string | null
           default_quote_included_items?: string | null
           greeting_message?: string | null
+          location?: Json | null
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
