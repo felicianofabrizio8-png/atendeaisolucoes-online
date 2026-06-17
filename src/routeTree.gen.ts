@@ -41,6 +41,7 @@ import { Route as ApiWhatsappSendMediaRouteImport } from './routes/api.whatsapp.
 import { Route as ApiWhatsappSendAudioRouteImport } from './routes/api.whatsapp.send-audio'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
+import { Route as ApiWhatsappForwardMessageRouteImport } from './routes/api.whatsapp.forward-message'
 import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
@@ -245,6 +246,12 @@ const ApiWhatsappIntegrationRoute = ApiWhatsappIntegrationRouteImport.update({
   path: '/api/whatsapp/integration',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappForwardMessageRoute =
+  ApiWhatsappForwardMessageRouteImport.update({
+    id: '/api/whatsapp/forward-message',
+    path: '/api/whatsapp/forward-message',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
   id: '/api/whatsapp/debug',
   path: '/api/whatsapp/debug',
@@ -434,6 +441,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
+  '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
@@ -495,6 +503,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
+  '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
@@ -558,6 +567,7 @@ export interface FileRoutesById {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
+  '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
   '/api/whatsapp/send': typeof ApiWhatsappSendRoute
   '/api/whatsapp/send-audio': typeof ApiWhatsappSendAudioRoute
@@ -622,6 +632,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
+    | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/send-audio'
@@ -683,6 +694,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
+    | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/send-audio'
@@ -745,6 +757,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
     | '/api/whatsapp/debug'
+    | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
     | '/api/whatsapp/send'
     | '/api/whatsapp/send-audio'
@@ -805,6 +818,7 @@ export interface RootRouteChildren {
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
   ApiWhatsappDebugRoute: typeof ApiWhatsappDebugRoute
+  ApiWhatsappForwardMessageRoute: typeof ApiWhatsappForwardMessageRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
   ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
   ApiWhatsappSendAudioRoute: typeof ApiWhatsappSendAudioRoute
@@ -1053,6 +1067,13 @@ declare module '@tanstack/react-router' {
       path: '/api/whatsapp/integration'
       fullPath: '/api/whatsapp/integration'
       preLoaderRoute: typeof ApiWhatsappIntegrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/forward-message': {
+      id: '/api/whatsapp/forward-message'
+      path: '/api/whatsapp/forward-message'
+      fullPath: '/api/whatsapp/forward-message'
+      preLoaderRoute: typeof ApiWhatsappForwardMessageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/whatsapp/debug': {
@@ -1304,6 +1325,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
   ApiWhatsappDebugRoute: ApiWhatsappDebugRoute,
+  ApiWhatsappForwardMessageRoute: ApiWhatsappForwardMessageRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
   ApiWhatsappSendRoute: ApiWhatsappSendRoute,
   ApiWhatsappSendAudioRoute: ApiWhatsappSendAudioRoute,
