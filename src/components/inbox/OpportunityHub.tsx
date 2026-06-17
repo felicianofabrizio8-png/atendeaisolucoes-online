@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { getConversations, getLeadById, getMessagesFor } from "@/data/leadRepo";
 import { quotesForLead, computeQuoteStatus } from "@/data/quotes";
-import { computeOpportunityScore, TIER_META, type OpportunityScore } from "@/lib/opportunity-score";
+import { computeOpportunityScore, type OpportunityScore } from "@/lib/opportunity-score";
 import { computeWindow, closesToday } from "@/lib/whatsapp-window";
 import type { Conversation, Lead, Message } from "@/data/mock";
 
@@ -381,9 +381,44 @@ function OpportunityCard({
   onOpen: () => void;
 }) {
   const { lead, last, score, conv, messages } = item;
-  const tier = TIER_META[score.tier];
-  const nextAction = lead.nextAction?.label
+  const nextActionRaw = lead.nextAction?.label
     ?? (conv.awaitingReply ? "Retornar contato" : "Aguardar cliente");
+  // Apenas tradução visual (sem mexer na regra)
+  const NEXT_ACTION_LABELS: Record<string, string> = {
+    "Aguardar cliente": "Aguardando resposta",
+    "Retornar contato": "Precisa de retorno",
+    "Enviar orçamento": "Enviar orçamento",
+    "Fechar venda": "Pronto para fechamento",
+  };
+  const nextAction = NEXT_ACTION_LABELS[nextActionRaw] ?? nextActionRaw;
+
+  // Classificação visual por faixa de score (não altera o cálculo)
+  const s = score.score;
+  const temp =
+    s >= 90 ? "ready" : s >= 70 ? "hot" : s >= 40 ? "warm" : "cold";
+  const TEMP_META = {
+    ready: {
+      label: "Pronto para Fechar",
+      icon: "🔥",
+      cls: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/40",
+    },
+    hot: {
+      label: "Lead Quente",
+      icon: "🟢",
+      cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40",
+    },
+    warm: {
+      label: "Lead Morno",
+      icon: "🟡",
+      cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/40",
+    },
+    cold: {
+      label: "Lead Frio",
+      icon: "🔴",
+      cls: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40",
+    },
+  } as const;
+  const meta = TEMP_META[temp];
 
   // Visual priority accent (border-l) based on state
   const accent =
@@ -397,14 +432,7 @@ function OpportunityCard({
             ? "border-l-4 border-l-amber-400/70"
             : "border-l-4 border-l-transparent";
 
-  const statusLabel =
-    score.tier === "quente" ? "Quente" : score.tier === "morno" ? "Morno" : "Frio";
-  const statusCls =
-    score.tier === "quente"
-      ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30"
-      : score.tier === "morno"
-        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-        : "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30";
+  const tooltip = `Score: ${s}/100${score.reasons.length ? " · " + score.reasons.join(" · ") : ""}`;
 
   return (
     <li
@@ -415,39 +443,30 @@ function OpportunityCard({
       )}
       onClick={onOpen}
     >
-      {/* Header: name + score */}
+      {/* Header: name + temperature label */}
       <div className="flex items-start justify-between gap-2 min-w-0">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <h3
-              className={cn(
-                "font-semibold truncate text-foreground",
-                compact ? "text-sm" : "text-[15px] leading-tight",
-              )}
-            >
-              {lead.name}
-            </h3>
-            <span
-              className={cn(
-                "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border shrink-0",
-                statusCls,
-              )}
-            >
-              {statusLabel}
-            </span>
-          </div>
+          <h3
+            className={cn(
+              "font-semibold truncate text-foreground",
+              compact ? "text-sm" : "text-[15px] leading-tight",
+            )}
+          >
+            {lead.name}
+          </h3>
           {!compact && lead.product && (
             <p className="text-[11px] text-muted-foreground truncate mt-0.5">{lead.product}</p>
           )}
         </div>
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold shrink-0 tabular-nums",
-            tier.cls,
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide shrink-0",
+            meta.cls,
           )}
-          title={score.reasons.join(" · ") || tier.label}
+          title={tooltip}
         >
-          {score.score}
+          <span aria-hidden="true">{meta.icon}</span>
+          {meta.label}
         </span>
       </div>
 
