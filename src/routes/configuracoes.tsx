@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Bell,
   MapPin,
+  Crosshair,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -2312,6 +2313,41 @@ function CompanyLocationCard() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  const handleUseCurrentLocation = () => {
+    setGeoError(null);
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoError("Geolocalização não é suportada neste navegador.");
+      return;
+    }
+    setLocating(true);
+    // CRÍTICO: chamar getCurrentPosition SÍNCRONO no handler do clique
+    // para preservar o gesto do usuário (exigido pelos navegadores).
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: la, longitude: lo } = pos.coords;
+        setLatitude(la.toFixed(6));
+        setLongitude(lo.toFixed(6));
+        setSavedAt(null);
+        setLocating(false);
+      },
+      (err) => {
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? "Permissão de localização negada. Habilite no navegador e tente novamente."
+            : err.code === err.POSITION_UNAVAILABLE
+              ? "Não foi possível obter sua localização agora."
+              : err.code === err.TIMEOUT
+                ? "Tempo esgotado ao obter localização."
+                : "Falha ao obter localização.";
+        setGeoError(msg);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  };
 
   useEffect(() => {
     if (!companyId) return;
@@ -2417,6 +2453,23 @@ function CompanyLocationCard() {
               className="input"
             />
           </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleUseCurrentLocation}
+              disabled={locating}
+              className="h-9 px-3 inline-flex items-center gap-2 rounded-md border border-border hover:bg-accent disabled:opacity-40 text-xs font-medium"
+            >
+              {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+              Usar minha localização atual
+            </button>
+            {geoError && (
+              <span className="text-xs text-destructive inline-flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> {geoError}
+              </span>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-muted-foreground uppercase tracking-wide mb-1">
