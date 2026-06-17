@@ -60,6 +60,7 @@ import {
   Forward,
   Smile,
   MapPin,
+  Reply,
 } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -91,6 +92,13 @@ const VirtuosoScrollContext = createContext<{
   ref: React.RefObject<VirtuosoHandle | null>;
   items: Message[];
 } | null>(null);
+
+// Feature 3 — Reply: permite que a MessageBubble (filha) dispare o estado de
+// "respondendo a esta mensagem" no composer da ConversationPage (pai), sem
+// acoplar via props.
+const ReplyComposeContext = createContext<{ start: (m: Message) => void }>({
+  start: () => { /* no-op por padrão */ },
+});
 
 
 export const Route = createLazyFileRoute("/inbox/$conversationId")({
