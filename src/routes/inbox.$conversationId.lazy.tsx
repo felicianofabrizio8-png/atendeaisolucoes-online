@@ -2549,6 +2549,17 @@ function ConversationPage() {
     }
   }, [repoMessages, localMessages]);
   const [input, setInput] = useState("");
+  // Feature 3 — Reply V1: mensagem que o composer está citando (botão Responder).
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const replyComposeValue = useMemo(
+    () => ({
+      start: (m: Message) => {
+        setReplyingTo(m);
+        requestAnimationFrame(() => composerRef.current?.focus());
+      },
+    }),
+    [],
+  );
   const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
   const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
