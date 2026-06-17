@@ -23,6 +23,9 @@ import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 import { OpportunityHub } from "@/components/inbox/OpportunityHub";
+import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
+import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
+
 
 const STATUS_FILTERS = [
   "todos",
