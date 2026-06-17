@@ -372,10 +372,12 @@ function AlertChip({
 function OpportunityCard({
   item,
   now,
+  compact,
   onOpen,
 }: {
   item: OppItem;
   now: number;
+  compact?: boolean;
   onOpen: () => void;
 }) {
   const { lead, last, score, conv, messages } = item;
@@ -383,65 +385,104 @@ function OpportunityCard({
   const nextAction = lead.nextAction?.label
     ?? (conv.awaitingReply ? "Retornar contato" : "Aguardar cliente");
 
+  // Visual priority accent (border-l) based on state
+  const accent =
+    score.tier === "quente" && conv.awaitingReply
+      ? "border-l-4 border-l-[var(--status-urgent,theme(colors.red.500))]"
+      : item.closesToday
+        ? "border-l-4 border-l-amber-500"
+        : item.hasPendingQuote
+          ? "border-l-4 border-l-primary"
+          : conv.awaitingReply
+            ? "border-l-4 border-l-amber-400/70"
+            : "border-l-4 border-l-transparent";
+
+  const statusLabel =
+    score.tier === "quente" ? "Quente" : score.tier === "morno" ? "Morno" : "Frio";
+  const statusCls =
+    score.tier === "quente"
+      ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30"
+      : score.tier === "morno"
+        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+        : "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30";
+
   return (
-    <li className="rounded-md border border-border bg-background p-3 flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="text-sm font-semibold truncate hover:underline text-left"
-          >
-            {lead.name}
-          </button>
-          {lead.product && (
-            <p className="text-[11px] text-muted-foreground truncate">{lead.product}</p>
+    <li
+      className={cn(
+        "rounded-md border border-border bg-background flex flex-col gap-1.5 hover:bg-accent/40 transition-colors cursor-pointer",
+        accent,
+        compact ? "p-2" : "p-2.5",
+      )}
+      onClick={onOpen}
+    >
+      {/* Header: name + score */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3
+              className={cn(
+                "font-semibold truncate text-foreground",
+                compact ? "text-sm" : "text-[15px] leading-tight",
+              )}
+            >
+              {lead.name}
+            </h3>
+            <span
+              className={cn(
+                "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border shrink-0",
+                statusCls,
+              )}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          {!compact && lead.product && (
+            <p className="text-[11px] text-muted-foreground truncate mt-0.5">{lead.product}</p>
           )}
         </div>
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold shrink-0",
+            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold shrink-0 tabular-nums",
             tier.cls,
           )}
           title={score.reasons.join(" · ") || tier.label}
         >
-          {tier.emoji} {score.score}/100
+          {score.score}
         </span>
       </div>
 
-      <dl className="text-[11px] text-muted-foreground space-y-0.5">
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Última interação:</dt>
-          <dd>{formatAgo(conv.lastMessageAt, now)}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Status:</dt>
-          <dd className="capitalize">
-            {score.tier === "quente" ? "Lead quente"
-              : score.tier === "morno" ? "Lead morno"
-              : "Lead frio"}
-          </dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Próxima ação:</dt>
-          <dd className="truncate">{nextAction}</dd>
-        </div>
-        {last?.text && (
-          <p className="mt-1 line-clamp-2 italic">
-            "{last.text}"
-          </p>
-        )}
-      </dl>
+      {/* Next action — destaque */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+          Próxima ação:
+        </span>
+        <span className="text-[12px] font-semibold text-foreground truncate">
+          {nextAction}
+        </span>
+      </div>
 
-      <div className="flex items-center gap-1.5 pt-1 border-t border-border">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex-1 h-7 rounded-md bg-secondary text-[11px] font-semibold hover:bg-accent"
-        >
-          Abrir conversa
-        </button>
-        <SuggestButton conv={conv} lead={lead} messages={messages} />
+      {/* Last message — 1 linha apenas */}
+      {!compact && last?.text && (
+        <p className="text-[11px] text-muted-foreground truncate italic">
+          "{last.text}"
+        </p>
+      )}
+
+      {/* Footer: tempo + ações */}
+      <div className="flex items-center justify-between gap-2 pt-1 mt-0.5 border-t border-border/60">
+        <span className="text-[10px] text-muted-foreground tabular-nums truncate">
+          {formatAgo(conv.lastMessageAt, now)}
+        </span>
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <SuggestButton conv={conv} lead={lead} messages={messages} />
+          <button
+            type="button"
+            onClick={onOpen}
+            className="h-6 px-2 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold hover:opacity-90"
+          >
+            Abrir
+          </button>
+        </div>
       </div>
     </li>
   );
