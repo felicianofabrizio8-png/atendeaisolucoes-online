@@ -379,6 +379,12 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         let detectedSize: number | null = mediaSize;
         try {
           const h = await fetch(publicLink, { method: "HEAD" });
+          debug.signedUrl = {
+            headStatus: h.status,
+            headOk: h.ok,
+            contentType: h.headers.get("content-type"),
+            contentLength: h.headers.get("content-length"),
+          };
           if (h.ok) {
             detectedMime = h.headers.get("content-type") ?? detectedMime;
             const len = h.headers.get("content-length");
@@ -388,9 +394,16 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
               method: "GET",
               headers: { Range: "bytes=0-0" },
             });
+            debug.signedUrl = {
+              ...debug.signedUrl,
+              getRangeStatus: g.status,
+              getRangeOk: g.ok || g.status === 206,
+              getRangeContentType: g.headers.get("content-type"),
+            };
             if (!g.ok && g.status !== 206) {
+              console.error("[forward-message] signed url inaccessible", debug);
               return Response.json(
-                { error: `Mídia inacessível (HTTP ${h.status}/${g.status}).` },
+                { error: `Mídia inacessível (HTTP ${h.status}/${g.status}).`, debug },
                 { status: 400 },
               );
             }
@@ -398,11 +411,23 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erro de rede";
+          debug.signedUrl = { ...debug.signedUrl, error: msg };
+          console.error("[forward-message] signed url validation failed", debug);
           return Response.json(
-            { error: `Falha ao validar mídia: ${msg}` },
+            { error: `Falha ao validar mídia: ${msg}`, debug },
             { status: 400 },
           );
         }
+        debug.media = {
+          ...debug.media,
+          detectedMime,
+          detectedSize,
+        };
+        console.log("[forward-message] media ready", {
+          requestId: debug.requestId,
+          media: debug.media,
+          signedUrl: debug.signedUrl,
+        });
 
         // ---- 10. Envio para Graph API ----
         const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
@@ -436,9 +461,20 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           }
           if (!apiRes.ok) {
             const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-            console.error("[forward-message] meta error", {
+            debug.meta = {
               status: apiRes.status,
-              body: apiText.slice(0, 800),
+              ok: false,
+              error: apiJson.error ?? null,
+              rawBody: apiText.slice(0, 1200),
+              recipient,
+              type: kind,
+              phoneNumberId: integration.external_account_id,
+              mediaMime: detectedMime,
+              signedUrlStatus: debug.signedUrl,
+            };
+            console.error("[forward-message] meta error", {
+              requestId: debug.requestId,
+              debug,
             });
             await supabaseAdmin
               .from("integrations")
@@ -449,15 +485,27 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
                 error: `WhatsApp: ${msg}`,
                 metaError: apiJson.error ?? null,
                 status: apiRes.status,
+                debug,
               },
               { status: 502 },
             );
           }
           externalId = apiJson.messages?.[0]?.id ?? null;
+          debug.meta = {
+            status: apiRes.status,
+            ok: true,
+            externalId,
+            recipient,
+            type: kind,
+            phoneNumberId: integration.external_account_id,
+          };
+          console.log("[forward-message] meta success", debug.meta);
         } catch (e) {
           const msg = e instanceof Error ? e.message : "falha de rede";
+          debug.meta = { ok: false, networkError: msg };
+          console.error("[forward-message] meta network error", debug);
           return Response.json(
-            { error: `Falha ao enviar: ${msg}` },
+            { error: `Falha ao enviar: ${msg}`, debug },
             { status: 502 },
           );
         }
@@ -497,12 +545,14 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           .select("id, conversation_id, role, text, at")
           .single();
         if (insertErr) {
-          console.error("[forward-message] insert error", insertErr);
+          debug.insert = { ok: false, error: shortError(insertErr), targetConversationId: targetConv.id };
+          console.error("[forward-message] insert error", debug);
           return Response.json(
-            { error: "Falha ao salvar mensagem" },
+            { error: `Falha ao salvar mensagem: ${shortError(insertErr)}`, debug },
             { status: 500 },
           );
         }
+        debug.insert = { ok: true, messageId: inserted.id, targetConversationId: targetConv.id };
 
         await supabaseAdmin
           .from("conversations")
