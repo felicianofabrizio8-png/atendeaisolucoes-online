@@ -1065,8 +1065,10 @@ function MessageBubbleImpl({
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
 
+  const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
+
   function startLongPress() {
-    if (!canManage || !isAgent || isDeleted || editing) return;
+    if (isDeleted || editing) return;
     cancelLongPress();
     longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
   }
