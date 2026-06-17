@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { getConversations, getLeadById, getMessagesFor } from "@/data/leadRepo";
 import { quotesForLead, computeQuoteStatus } from "@/data/quotes";
-import { computeOpportunityScore, TIER_META, type OpportunityScore } from "@/lib/opportunity-score";
+import { computeOpportunityScore, type OpportunityScore } from "@/lib/opportunity-score";
 import { computeWindow, closesToday } from "@/lib/whatsapp-window";
 import type { Conversation, Lead, Message } from "@/data/mock";
 
