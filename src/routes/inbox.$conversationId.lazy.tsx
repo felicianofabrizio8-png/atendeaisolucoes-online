@@ -2082,6 +2082,11 @@ function MediaSendPanel({
             setMenuOpen(false);
             setLibraryOpen(true);
           }}
+          onPickLocation={() => {
+            setMenuOpen(false);
+            setLocationOpen(true);
+          }}
+
 
         />,
         document.body,
