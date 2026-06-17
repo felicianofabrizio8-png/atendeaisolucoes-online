@@ -277,11 +277,18 @@ function DashboardPage() {
         new Date(l.nextAction.dueAt).getTime() >= now &&
         !["fechado", "perdido"].includes(l.status),
     )
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      const tierRank = (s: Lead["status"]) =>
+        s === "quente" ? 0 : s === "morno" ? 1 : s === "aguardando" ? 2 : 3;
+      const t = tierRank(a.status) - tierRank(b.status);
+      if (t !== 0) return t;
+      const v = (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0);
+      if (v !== 0) return v;
+      return (
         new Date(a.nextAction!.dueAt).getTime() -
-        new Date(b.nextAction!.dueAt).getTime(),
-    )
+        new Date(b.nextAction!.dueAt).getTime()
+      );
+    })
     .slice(0, 4);
 
   // “clientes para retornar”: leads aguardando + sem msg agente nas últimas 24h
@@ -295,6 +302,31 @@ function DashboardPage() {
       return new Date(conv.lastMessageAt).getTime() < dayAgo;
     })
     .slice(0, 4);
+
+  // --- Fechamentos prioritários (top 5 leads mais quentes) ---
+  const priorityClosings = allLeads
+    .filter((l) => {
+      if (channel !== "todos" && l.channel !== channel) return false;
+      if (["fechado", "perdido"].includes(l.status)) return false;
+      const conv = allConversations.find((c) => c.leadId === l.id);
+      const ready = conv?.leadReadyToClose;
+      const hot = l.status === "quente" || conv?.leadTemperature === "quente";
+      return ready || hot;
+    })
+    .sort((a, b) => {
+      const aConv = allConversations.find((c) => c.leadId === a.id);
+      const bConv = allConversations.find((c) => c.leadId === b.id);
+      const aReady = aConv?.leadReadyToClose ? 1 : 0;
+      const bReady = bConv?.leadReadyToClose ? 1 : 0;
+      if (aReady !== bReady) return bReady - aReady;
+      const v = (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0);
+      if (v !== 0) return v;
+      return (
+        new Date(bConv?.lastMessageAt ?? b.createdAt).getTime() -
+        new Date(aConv?.lastMessageAt ?? a.createdAt).getTime()
+      );
+    })
+    .slice(0, 5);
 
   // --- Dados para alertas acionáveis ---
   const alertReady = allConversations.filter(
