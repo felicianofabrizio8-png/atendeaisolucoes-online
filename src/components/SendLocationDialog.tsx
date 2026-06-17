@@ -131,16 +131,23 @@ export function SendLocationDialog({
               Carregando localização da empresa…
             </div>
           ) : !isValid ? (
-            <div className="rounded-md border border-border bg-muted/40 p-4 text-sm space-y-2">
+            <div className="rounded-md border border-border bg-muted/40 p-4 text-sm space-y-3">
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <AlertTriangle className="h-4 w-4 text-[var(--status-warm)]" />
                 Localização não configurada
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Cadastre a localização da empresa em{" "}
-                <span className="font-semibold">Configurações &gt; Localização da empresa</span>{" "}
-                para enviar pelo chat.
+                Cadastre a localização da empresa uma única vez em Configurações.
+                Depois você poderá enviar pelo chat sempre que precisar.
               </p>
+              <a
+                href="/configuracoes#company-location"
+                onClick={() => onOpenChange(false)}
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-medium"
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                Configurar localização
+              </a>
             </div>
           ) : (
             <>

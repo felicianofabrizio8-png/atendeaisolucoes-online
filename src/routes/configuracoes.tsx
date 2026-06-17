@@ -2374,7 +2374,7 @@ function CompanyLocationCard() {
     : null;
 
   return (
-    <section className="rounded-lg border border-border bg-card p-5">
+    <section id="company-location" className="rounded-lg border border-border bg-card p-5 scroll-mt-20">
       <div className="flex items-center gap-2 mb-1">
         <MapPin className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Localização da empresa</h2>
