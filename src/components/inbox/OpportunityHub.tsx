@@ -128,6 +128,14 @@ export function OpportunityHub({
   const [filter, setFilter] = useState<FilterKey>("todos");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedQuery = useDebounce(searchQuery, 300);
+  const [compact, setCompact] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("opp-hub-compact") === "1";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("opp-hub-compact", compact ? "1" : "0");
+  }, [compact]);
 
   const now = Date.now();
   const all = useMemo(() => buildOpportunities(now), [now]);
@@ -180,18 +188,33 @@ export function OpportunityHub({
         <div className="flex items-center gap-2 min-w-0">
           <Flame className="h-4 w-4 text-amber-500 shrink-0" />
           <h2 className="text-sm font-semibold">Central de Oportunidades</h2>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-[10px] text-muted-foreground tabular-nums hidden sm:inline">
             · {all.length} conversas analisadas
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed(!collapsed)}
-          className="text-muted-foreground hover:text-foreground p-1 rounded"
-          aria-label={collapsed ? "Expandir" : "Recolher"}
-        >
-          {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCompact(!compact)}
+            className={cn(
+              "hidden sm:inline-flex items-center gap-1 text-[11px] font-medium border rounded-md px-2 py-1 transition-colors",
+              compact
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground border-border hover:text-foreground",
+            )}
+            title="Alternar modo compacto"
+          >
+            {compact ? "Modo confortável" : "Modo compacto"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-muted-foreground hover:text-foreground p-1 rounded"
+            aria-label={collapsed ? "Expandir" : "Recolher"}
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        </div>
       </header>
 
       {!collapsed && (
@@ -222,73 +245,66 @@ export function OpportunityHub({
             </div>
           )}
 
-          {/* Search bar */}
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Pesquisar cliente, telefone ou mensagem..."
-                className="w-full h-9 rounded-md bg-input pl-9 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring border border-border"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-                  aria-label="Limpar pesquisa"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+          {/* Search bar — sticky on scroll */}
+          <div className="sticky top-0 z-10 -mx-3 px-3 py-2 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/70 border-b border-border space-y-2">
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Pesquisar cliente, telefone, produto ou mensagem..."
+                  className="w-full h-10 rounded-md bg-input pl-9 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring border border-border shadow-sm"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                    aria-label="Limpar pesquisa"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {hasSearch && (
+                <span className="text-[11px] text-muted-foreground shrink-0">
+                  {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
+                </span>
               )}
             </div>
-            {hasSearch && (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[11px] text-muted-foreground">
-                  Resultados encontrados: {filtered.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1"
-                >
-                  <X className="h-3 w-3" />
-                  Limpar pesquisa
-                </button>
-              </div>
-            )}
-          </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {FILTERS.map((f) => {
-              const active = filter === f.key;
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilter(f.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
-                    active
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground border-border hover:text-foreground",
-                  )}
-                >
-                  {f.label}
-                  <span
+            <div className="flex flex-wrap items-center gap-1.5">
+              {FILTERS.map((f) => {
+                const active = filter === f.key;
+                const count = (counts as Record<string, number>)[f.key];
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setFilter(f.key)}
                     className={cn(
-                      "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
-                      active ? "bg-primary-foreground/20" : "bg-secondary",
-                      (counts as Record<string, number>)[f.key] === 0 && "opacity-40",
+                      "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-background text-foreground/80 border-border hover:text-foreground hover:bg-accent",
                     )}
                   >
-                    {(counts as Record<string, number>)[f.key]}
-                  </span>
-                </button>
-              );
-            })}
+                    {f.label}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
+                        active ? "bg-primary-foreground/20" : "bg-secondary",
+                        count === 0 && "opacity-40",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {filtered.length === 0 ? (
@@ -296,12 +312,20 @@ export function OpportunityHub({
               {hasSearch ? "Nenhum resultado encontrado para esta pesquisa." : "Nenhuma oportunidade nesta categoria."}
             </p>
           ) : (
-            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+            <ul
+              className={cn(
+                "grid gap-2",
+                compact
+                  ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
+                  : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+              )}
+            >
               {filtered.map((it) => (
                 <OpportunityCard
                   key={it.conv.id}
                   item={it}
                   now={now}
+                  compact={compact}
                   onOpen={() =>
                     navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
                   }
@@ -348,10 +372,12 @@ function AlertChip({
 function OpportunityCard({
   item,
   now,
+  compact,
   onOpen,
 }: {
   item: OppItem;
   now: number;
+  compact?: boolean;
   onOpen: () => void;
 }) {
   const { lead, last, score, conv, messages } = item;
@@ -359,65 +385,104 @@ function OpportunityCard({
   const nextAction = lead.nextAction?.label
     ?? (conv.awaitingReply ? "Retornar contato" : "Aguardar cliente");
 
+  // Visual priority accent (border-l) based on state
+  const accent =
+    score.tier === "quente" && conv.awaitingReply
+      ? "border-l-4 border-l-[var(--status-urgent,theme(colors.red.500))]"
+      : item.closesToday
+        ? "border-l-4 border-l-amber-500"
+        : item.hasPendingQuote
+          ? "border-l-4 border-l-primary"
+          : conv.awaitingReply
+            ? "border-l-4 border-l-amber-400/70"
+            : "border-l-4 border-l-transparent";
+
+  const statusLabel =
+    score.tier === "quente" ? "Quente" : score.tier === "morno" ? "Morno" : "Frio";
+  const statusCls =
+    score.tier === "quente"
+      ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30"
+      : score.tier === "morno"
+        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+        : "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30";
+
   return (
-    <li className="rounded-md border border-border bg-background p-3 flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="text-sm font-semibold truncate hover:underline text-left"
-          >
-            {lead.name}
-          </button>
-          {lead.product && (
-            <p className="text-[11px] text-muted-foreground truncate">{lead.product}</p>
+    <li
+      className={cn(
+        "rounded-md border border-border bg-background flex flex-col gap-1.5 hover:bg-accent/40 transition-colors cursor-pointer",
+        accent,
+        compact ? "p-2" : "p-2.5",
+      )}
+      onClick={onOpen}
+    >
+      {/* Header: name + score */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3
+              className={cn(
+                "font-semibold truncate text-foreground",
+                compact ? "text-sm" : "text-[15px] leading-tight",
+              )}
+            >
+              {lead.name}
+            </h3>
+            <span
+              className={cn(
+                "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border shrink-0",
+                statusCls,
+              )}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          {!compact && lead.product && (
+            <p className="text-[11px] text-muted-foreground truncate mt-0.5">{lead.product}</p>
           )}
         </div>
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold shrink-0",
+            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold shrink-0 tabular-nums",
             tier.cls,
           )}
           title={score.reasons.join(" · ") || tier.label}
         >
-          {tier.emoji} {score.score}/100
+          {score.score}
         </span>
       </div>
 
-      <dl className="text-[11px] text-muted-foreground space-y-0.5">
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Última interação:</dt>
-          <dd>{formatAgo(conv.lastMessageAt, now)}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Status:</dt>
-          <dd className="capitalize">
-            {score.tier === "quente" ? "Lead quente"
-              : score.tier === "morno" ? "Lead morno"
-              : "Lead frio"}
-          </dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="font-medium text-foreground/80">Próxima ação:</dt>
-          <dd className="truncate">{nextAction}</dd>
-        </div>
-        {last?.text && (
-          <p className="mt-1 line-clamp-2 italic">
-            "{last.text}"
-          </p>
-        )}
-      </dl>
+      {/* Next action — destaque */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+          Próxima ação:
+        </span>
+        <span className="text-[12px] font-semibold text-foreground truncate">
+          {nextAction}
+        </span>
+      </div>
 
-      <div className="flex items-center gap-1.5 pt-1 border-t border-border">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex-1 h-7 rounded-md bg-secondary text-[11px] font-semibold hover:bg-accent"
-        >
-          Abrir conversa
-        </button>
-        <SuggestButton conv={conv} lead={lead} messages={messages} />
+      {/* Last message — 1 linha apenas */}
+      {!compact && last?.text && (
+        <p className="text-[11px] text-muted-foreground truncate italic">
+          "{last.text}"
+        </p>
+      )}
+
+      {/* Footer: tempo + ações */}
+      <div className="flex items-center justify-between gap-2 pt-1 mt-0.5 border-t border-border/60">
+        <span className="text-[10px] text-muted-foreground tabular-nums truncate">
+          {formatAgo(conv.lastMessageAt, now)}
+        </span>
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <SuggestButton conv={conv} lead={lead} messages={messages} />
+          <button
+            type="button"
+            onClick={onOpen}
+            className="h-6 px-2 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold hover:opacity-90"
+          >
+            Abrir
+          </button>
+        </div>
       </div>
     </li>
   );
