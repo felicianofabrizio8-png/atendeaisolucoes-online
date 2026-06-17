@@ -2626,7 +2626,42 @@ function ConversationPage() {
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const hasInitialScrolledRef = useRef<{ conversationId: string | null; done: boolean }>({
+    conversationId: null,
+    done: false,
+  });
   const [atBottom, setAtBottom] = useState(true);
+
+  useEffect(() => {
+    hasInitialScrolledRef.current = { conversationId, done: false };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (visibleMessages.length === 0) return;
+    const scrollState = hasInitialScrolledRef.current;
+    if (scrollState.conversationId !== conversationId) {
+      hasInitialScrolledRef.current = { conversationId, done: false };
+    }
+    if (hasInitialScrolledRef.current.done) return;
+
+    const scrollToLastMessage = () => {
+      if (hasInitialScrolledRef.current.conversationId !== conversationId) return;
+      virtuosoRef.current?.scrollToIndex({
+        index: visibleMessages.length - 1,
+        align: "end",
+        behavior: "auto",
+      });
+    };
+
+    hasInitialScrolledRef.current.done = true;
+    const frameId = requestAnimationFrame(scrollToLastMessage);
+    const timeoutId = window.setTimeout(scrollToLastMessage, 300);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [conversationId, visibleMessages.length]);
 
   // ---- Manual follow-up (admin only) ----
   const { profile: authProfile } = useAuth();
