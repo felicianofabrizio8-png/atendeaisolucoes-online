@@ -1122,7 +1122,7 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        "group flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative",
+        "group flex flex-col w-fit max-w-[min(85%,calc(100%-1rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
         isAgent ? "ml-auto items-end" : "items-start",
       )}
     >
