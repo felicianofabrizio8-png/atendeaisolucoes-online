@@ -313,7 +313,41 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         }
 
         // ---- 6. Janela 24h do destinatário ----
-        const win = await isWithin24hWindow(targetConv.id);
+        let win = await isWithin24hWindow(targetConv.id);
+        const latestPhoneConvId = debug.samePhoneLatestLeadMessage?.conversation_id;
+        if (!win.inside && latestPhoneConvId && latestPhoneConvId !== targetConv.id) {
+          const latestPhoneWin = await isWithin24hWindow(String(latestPhoneConvId));
+          if (latestPhoneWin.inside) {
+            const phoneConv = phoneMatchedConvs?.find((c) => c.id === latestPhoneConvId);
+            if (phoneConv) {
+              console.log("[forward-message] switching conversation by latest lead phone reply", {
+                requestId: debug.requestId,
+                fromConversationId: targetConv.id,
+                toConversationId: latestPhoneConvId,
+                latestPhoneWin,
+              });
+              targetConv = {
+                id: phoneConv.id,
+                company_id: companyId,
+                channel: "whatsapp",
+                lead_id: phoneConv.lead_id,
+              };
+              win = latestPhoneWin;
+              const { data: convLead } = await supabaseAdmin
+                .from("leads")
+                .select("id, phone, external_id, integration_id")
+                .eq("id", targetConv.lead_id)
+                .maybeSingle();
+              debug.conversationLead = convLead ?? null;
+              targetConversationLeadIntegrationId = convLead?.integration_id ?? null;
+            }
+          }
+        }
+        debug.targetConversation = {
+          id: targetConv.id,
+          lead_id: targetConv.lead_id,
+          channel: targetConv.channel,
+        };
         debug.window24h = {
           conversationId: targetConv.id,
           inside: win.inside,
