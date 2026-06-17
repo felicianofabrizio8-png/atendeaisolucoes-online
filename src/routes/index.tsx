@@ -646,7 +646,7 @@ function DashboardPage() {
         </Block>
 
         {/* Movimento de hoje */}
-        <Block title="Movimento de hoje">
+        <Block title="Movimento de hoje" icon={MessageSquare} accent="primary">
           <Stat
             icon={ArrowDownLeft}
             label="Mensagens recebidas"
