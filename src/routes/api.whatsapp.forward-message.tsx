@@ -26,6 +26,7 @@ interface ForwardDebugInfo {
   requestId: string;
   sourceMessageId?: string;
   targetLeadId?: string;
+  sourceMessage?: Record<string, unknown>;
   targetLead?: Record<string, unknown>;
   targetConversation?: Record<string, unknown> | null;
   conversationLead?: Record<string, unknown> | null;
@@ -134,6 +135,39 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         const mediaFilename =
           (srcMeta.media_filename as string | undefined) ?? null;
         const mediaSize = (srcMeta.media_size as number | undefined) ?? null;
+        debug.sourceMessage = {
+          id: srcMsg.id,
+          role: srcMsg.role,
+          source_subtype: srcMsg.source_subtype,
+          main_columns: {
+            media_kind_column_exists: false,
+            media_bucket_column_exists: false,
+            media_path_column_exists: false,
+            reason:
+              "messages possui source_subtype e source_metadata; não possui colunas principais media_kind/media_bucket/media_path",
+          },
+          source_metadata_locations: {
+            media_kind: mediaKindRaw || null,
+            media_bucket: mediaBucket,
+            media_path: mediaPath,
+            has_media_kind: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_kind",
+            ),
+            has_media_bucket: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_bucket",
+            ),
+            has_media_path: Object.prototype.hasOwnProperty.call(
+              srcMeta,
+              "media_path",
+            ),
+          },
+          media_kind: mediaKindRaw || null,
+          media_bucket: mediaBucket,
+          media_path: mediaPath,
+          source_metadata: srcMeta,
+        };
 
         if (mediaKindRaw !== "image" && mediaKindRaw !== "video") {
           return Response.json(
@@ -164,23 +198,13 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
           media_filename: mediaFilename,
           media_size: mediaSize,
           source_metadata: srcMeta,
+          diagnostic: debug.sourceMessage,
         });
         if (!mediaPath || mediaBucket !== WA_MEDIA_BUCKET) {
           return Response.json(
             {
               error: "mídia indisponível para encaminhamento",
-              debug: {
-                ...debug,
-                sourceMessage: {
-                  id: srcMsg.id,
-                  role: srcMsg.role,
-                  source_subtype: srcMsg.source_subtype,
-                  media_kind: kind,
-                  media_bucket: mediaBucket,
-                  media_path: mediaPath,
-                  source_metadata: srcMeta,
-                },
-              },
+              debug,
             },
             { status: 400 },
           );
