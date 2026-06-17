@@ -307,47 +307,25 @@ export function OpportunityHub({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {FILTERS.map((f) => {
-              const active = filter === f.key;
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilter(f.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
-                    active
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground border-border hover:text-foreground",
-                  )}
-                >
-                  {f.label}
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 text-[10px] font-bold tabular-nums min-w-[16px] text-center",
-                      active ? "bg-primary-foreground/20" : "bg-secondary",
-                      (counts as Record<string, number>)[f.key] === 0 && "opacity-40",
-                    )}
-                  >
-                    {(counts as Record<string, number>)[f.key]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
           {filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
               {hasSearch ? "Nenhum resultado encontrado para esta pesquisa." : "Nenhuma oportunidade nesta categoria."}
             </p>
           ) : (
-            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+            <ul
+              className={cn(
+                "grid gap-2",
+                compact
+                  ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
+                  : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+              )}
+            >
               {filtered.map((it) => (
                 <OpportunityCard
                   key={it.conv.id}
                   item={it}
                   now={now}
+                  compact={compact}
                   onOpen={() =>
                     navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
                   }
