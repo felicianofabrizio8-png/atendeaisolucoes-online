@@ -37,6 +37,39 @@ interface ForwardMessageDialogProps {
   onSuccess?: (info: { conversationId: string }) => void;
 }
 
+interface ForwardErrorResponse {
+  error?: string;
+  status?: number;
+  metaError?: { message?: string; code?: number; error_subcode?: number; type?: string } | null;
+  debug?: {
+    requestId?: string;
+    targetConversation?: { id?: string | null } | null;
+    window24h?: { inside?: boolean; lastLeadAt?: string | null; conversationId?: string | null };
+    signedUrl?: { headStatus?: number; getRangeStatus?: number; error?: string };
+    meta?: { status?: number; rawBody?: string; error?: { message?: string } | null };
+  };
+  conversationId?: string;
+}
+
+function summarizeForwardError(status: number, json: ForwardErrorResponse): string {
+  const parts = [
+    `HTTP ${status}`,
+    json.error,
+    json.debug?.requestId ? `req ${json.debug.requestId}` : null,
+    json.debug?.targetConversation?.id ? `conv ${json.debug.targetConversation.id}` : null,
+    json.debug?.window24h
+      ? `24h ${json.debug.window24h.inside ? "sim" : "não"}${json.debug.window24h.lastLeadAt ? ` (${json.debug.window24h.lastLeadAt})` : ""}`
+      : null,
+    json.debug?.signedUrl
+      ? `mídia HEAD ${json.debug.signedUrl.headStatus ?? "?"}${json.debug.signedUrl.getRangeStatus ? ` GET ${json.debug.signedUrl.getRangeStatus}` : ""}`
+      : null,
+    json.debug?.meta?.status || json.metaError
+      ? `Meta ${json.debug?.meta?.status ?? json.status ?? "?"}: ${json.debug?.meta?.error?.message ?? json.metaError?.message ?? json.debug?.meta?.rawBody ?? "erro"}`
+      : null,
+  ];
+  return parts.filter(Boolean).join(" · ").slice(0, 480);
+}
+
 export function ForwardMessageDialog({
   open,
   target,
@@ -128,12 +161,9 @@ export function ForwardMessageDialog({
           note: note.trim() || undefined,
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        conversationId?: string;
-      };
+      const json = (await res.json().catch(() => ({}))) as ForwardErrorResponse;
       if (!res.ok) {
-        throw new Error(json.error ?? `HTTP ${res.status}`);
+        throw new Error(summarizeForwardError(res.status, json));
       }
       toast.success("Mensagem encaminhada");
       onSuccess?.({ conversationId: json.conversationId ?? "" });
