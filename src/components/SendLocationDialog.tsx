@@ -33,12 +33,13 @@ export function SendLocationDialog({
     if (!open || !companyId) return;
     let cancelled = false;
     setLoading(true);
-    supabase
-      .from("company_settings")
-      .select("location")
-      .eq("company_id", companyId)
-      .maybeSingle()
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("company_settings")
+          .select("location")
+          .eq("company_id", companyId)
+          .maybeSingle();
         if (cancelled) return;
         const raw = (data?.location ?? null) as Record<string, unknown> | null;
         if (!raw) {
@@ -53,13 +54,12 @@ export function SendLocationDialog({
             longitude: Number.isFinite(lng) ? lng : null,
           });
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setLoc(null);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, [open, companyId]);
 
