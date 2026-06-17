@@ -1310,6 +1310,25 @@ function MessageBubbleImpl({
             <MessageContent message={m} isAgent={isAgent} />
           )}
         </div>
+        {(() => {
+          const replyCtx = useContext(ReplyComposeContext);
+          const externalIdForReply =
+            ((m as unknown as { externalId?: string | null }).externalId ?? null) ||
+            ((m.sourceMetadata as { external_id?: string } | undefined)?.external_id ?? null);
+          if (!canManage || isDeleted || editing) return null;
+          if (!externalIdForReply) return null;
+          return (
+            <button
+              type="button"
+              onClick={() => replyCtx.start(m)}
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+              aria-label="Responder mensagem"
+              title="Responder"
+            >
+              <Reply className="h-3.5 w-3.5" />
+            </button>
+          );
+        })()}
         {!isAgent && !isDeleted && mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
           <button
             type="button"
