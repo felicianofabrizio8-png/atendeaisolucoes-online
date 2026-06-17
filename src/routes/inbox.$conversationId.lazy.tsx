@@ -2892,6 +2892,7 @@ function ConversationPage() {
     setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
     setSendError(null);
+    if (replySnapshot && !replyExternalId) setReplyingTo(null);
 
     const isWhatsApp = lead?.channel === "whatsapp";
     if (profile?.company_id) {
