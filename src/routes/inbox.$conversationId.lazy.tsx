@@ -3914,6 +3914,9 @@ function ConversationPage() {
       {/* Side panel */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
 
+        <CoachPanel conversationId={conversation.id} onInsertSuggestion={(t) => setInput(t)} />
+
+
         {/* Lead header */}
         <div className="p-4 border-b border-border">
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
