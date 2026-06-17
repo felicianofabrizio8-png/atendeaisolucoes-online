@@ -3301,7 +3301,7 @@ function ConversationPage() {
                 ref={virtuosoRef}
                 data={visibleMessages}
                 computeItemKey={(_idx, m) => m.id}
-                initialTopMostItemIndex="LAST"
+                initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
                 followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
                 atBottomStateChange={setAtBottom}
                 atBottomThreshold={160}
