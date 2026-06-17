@@ -867,26 +867,53 @@ function Block({
   title,
   children,
   empty,
+  icon: Icon,
+  accent,
 }: {
   title: string;
   children: React.ReactNode;
   empty?: boolean;
+  icon?: typeof AlertTriangle;
+  accent?: keyof typeof toneStyles;
 }) {
+  if (empty) {
+    return (
+      <div className="rounded-lg border border-border bg-card/50 px-4 py-3 flex items-center gap-3 max-w-full">
+        {Icon && (
+          <div
+            className={cn(
+              "h-7 w-7 rounded-md flex items-center justify-center shrink-0",
+              accent ? toneStyles[accent].bg : "bg-muted",
+              accent ? toneStyles[accent].text : "text-muted-foreground",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold truncate">{title}</h2>
+          <p className="text-[11px] text-muted-foreground">Sem itens no momento</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-border bg-card flex flex-col max-w-full">
-      <div className="px-4 py-3 border-b border-border">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        {Icon && (
+          <div
+            className={cn(
+              "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
+              accent ? toneStyles[accent].bg : "bg-muted",
+              accent ? toneStyles[accent].text : "text-muted-foreground",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </div>
+        )}
         <h2 className="text-sm font-semibold">{title}</h2>
       </div>
-      <div className="p-4 flex-1 space-y-4">
-        {empty ? (
-          <div className="text-xs text-muted-foreground text-center py-8 flex flex-col items-center gap-2">
-            <Inbox className="h-6 w-6 opacity-40" />
-            Nenhum dado encontrado ainda
-          </div>
-        ) : (
-          children
-        )}
-      </div>
+      <div className="p-4 flex-1 space-y-4">{children}</div>
     </div>
   );
 }
