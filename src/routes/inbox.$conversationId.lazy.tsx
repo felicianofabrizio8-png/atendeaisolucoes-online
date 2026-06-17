@@ -2093,6 +2093,15 @@ function MediaSendPanel({
         document.body,
       )}
 
+      <SendLocationDialog
+        open={locationOpen}
+        onOpenChange={setLocationOpen}
+        conversationId={conversationId}
+        companyId={companyId}
+        disabled={disabled || !isWhats}
+        onSent={onSent}
+      />
+
       {/* Modal: editar/enviar resposta rápida */}
       {activeReply && (
         <div
