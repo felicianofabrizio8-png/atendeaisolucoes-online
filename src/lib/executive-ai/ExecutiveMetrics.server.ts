@@ -62,8 +62,8 @@ export class ExecutiveMetrics {
   }
 
   private attendance(): AttendanceMetrics {
-    const { leads, messages, conversations } = this.dataset;
-    const newLeads = leads.length;
+    const { newLeadsData, closedSalesData, messages, conversations } = this.dataset;
+    const newLeads = newLeadsData.length;
 
     // conversas com >=1 mensagem agent
     const agentConvIds = new Set(
@@ -97,7 +97,7 @@ export class ExecutiveMetrics {
     const avgResponseMinutes =
       diffs.length > 0 ? diffs.reduce((s, n) => s + n, 0) / diffs.length : 0;
 
-    const closed = leads.filter((l) => l.status === "fechado").length;
+    const closed = closedSalesData.length;
     const conversionRate = newLeads > 0 ? (closed / newLeads) * 100 : 0;
 
     // Segmentação humano vs IA por conversa, usando conversations.auto_reply_count
@@ -142,14 +142,16 @@ export class ExecutiveMetrics {
   }
 
   private sales(): SalesMetrics {
-    const { leads, quotes } = this.dataset;
-    const closed = leads.filter((l) => l.status === "fechado");
-    const lost = leads.filter((l) => l.status === "perdido");
-    const estimatedSales = closed.reduce(
-      (s, l) => s + toNumber(l.closed_value ?? l.estimated_value),
-      0,
-    );
-    const averageTicket = closed.length > 0 ? estimatedSales / closed.length : 0;
+    const { closedSalesData, lostLeadsData, quotes } = this.dataset;
+    const closed = closedSalesData;
+    const lost = lostLeadsData;
+    const estimatedSales = closed.reduce((s, l) => s + toNumber(l.closed_value), 0);
+    const salesWithValidValue = closed.filter((l) => {
+      const value = Number(l.closed_value);
+      return l.closed_value !== null && l.closed_value !== undefined && Number.isFinite(value);
+    });
+    const averageTicket =
+      salesWithValidValue.length > 0 ? estimatedSales / salesWithValidValue.length : 0;
     return {
       quotesIssued: quotes.length,
       estimatedSales,
@@ -247,9 +249,9 @@ export class ExecutiveMetrics {
   }
 
   private lossReasons(): LossReasonBreakdown[] {
-    const { leads } = this.dataset;
+    const { lostLeadsData } = this.dataset;
     const map = new Map<string, { count: number; value: number }>();
-    for (const l of leads.filter((x) => x.status === "perdido")) {
+    for (const l of lostLeadsData) {
       const reason = l.loss_reason ?? "Não informado";
       const cur = map.get(reason) ?? { count: 0, value: 0 };
       cur.count += 1;
@@ -309,7 +311,7 @@ export class ExecutiveMetrics {
   private evolution(): EvolutionSeries {
     // "sales" aqui = leads efetivamente fechados (leads.status='fechado').
     // Orçamento emitido NÃO é venda confirmada.
-    const { leads, conversations } = this.dataset;
+    const { newLeadsData, closedSalesData, conversations } = this.dataset;
     const build = (kind: "daily" | "weekly" | "monthly"): EvolutionPoint[] => {
       const m = new Map<string, EvolutionPoint>();
       const bump = (
@@ -322,11 +324,9 @@ export class ExecutiveMetrics {
         (cur[field] as number) += 1;
         m.set(b, cur);
       };
-      for (const l of leads) bump(l.created_at, "leads");
+      for (const l of newLeadsData) bump(l.created_at, "leads");
       for (const c of conversations) bump(c.created_at ?? c.updated_at, "conversations");
-      for (const l of leads) {
-        if (l.status === "fechado") bump(l.closed_at ?? l.updated_at, "sales");
-      }
+      for (const l of closedSalesData) bump(l.closed_at, "sales");
       return [...m.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
     };
     return {
