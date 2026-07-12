@@ -1,10 +1,15 @@
 // ============================================================================
 // ExecutiveAnalyzer — Leitura pura dos dados existentes.
-// READ-ONLY: apenas SELECTs via supabaseAdmin. Não escreve, não altera nada.
+// READ-ONLY: apenas SELECTs, executados com o cliente Supabase AUTENTICADO
+// do usuário (RLS aplicada normalmente). NÃO usa service_role/supabaseAdmin.
 // ============================================================================
 
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import type { ExecutivePeriod, ExecutiveRange } from "./types";
+
+type ExecSupabase = SupabaseClient<Database>;
+
 
 export function resolveRange(period: ExecutivePeriod): ExecutiveRange {
   const to = new Date();
