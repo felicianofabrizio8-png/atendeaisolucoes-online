@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
 // ExecutiveMetrics — Cálculo puro de métricas a partir do dataset bruto.
 // READ-ONLY: recebe RawExecutiveDataset e produz ExecutiveMetricsBundle.
@@ -75,7 +76,7 @@ export class ExecutiveMetrics {
     const unansweredLeads = Math.max(0, newLeads - attendedLeads);
 
     // tempo médio de resposta (min): 1a msg lead -> 1a msg agent posterior
-    const byConv = new Map<string, Record<string, unknown>[]>();
+    const byConv = new Map<string, any[]>();
     for (const m of messages) {
       const arr = byConv.get(m.conversation_id) ?? [];
       arr.push(m);
@@ -189,10 +190,10 @@ export class ExecutiveMetrics {
         conversations: 0,
       };
       // Preferimos os agregados do campaign_metrics; fallback: leads_count na tabela campaigns
-      const leadsCount = m.leads || toNumber((c as Record<string, unknown>).leads_count);
-      const spend = m.spend || toNumber((c as Record<string, unknown>).spent);
+      const leadsCount = m.leads || toNumber((c as any).leads_count);
+      const spend = m.spend || toNumber((c as any).spent);
       const costPerLead = leadsCount > 0 ? spend / leadsCount : 0;
-      const conv = m.conversations || toNumber((c as Record<string, unknown>).messages_count);
+      const conv = m.conversations || toNumber((c as any).messages_count);
       const costPerConversation = conv > 0 ? spend / conv : 0;
       const ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
       // score simples: leads / (spend + 1)

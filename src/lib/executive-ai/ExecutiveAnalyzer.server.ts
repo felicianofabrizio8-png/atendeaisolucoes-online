@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
 // ExecutiveAnalyzer — Leitura pura dos dados existentes.
 // READ-ONLY: apenas SELECTs, executados com o cliente Supabase AUTENTICADO
@@ -35,19 +36,19 @@ export function resolveRange(period: ExecutivePeriod): ExecutiveRange {
 }
 
 export interface RawExecutiveDataset {
-  leads: Array<Record<string, unknown>>;
-  conversations: Array<Record<string, unknown>>;
-  messages: Array<Record<string, unknown>>;
-  followUps: Array<Record<string, unknown>>;
-  quotes: Array<Record<string, unknown>>;
-  products: Array<Record<string, unknown>>;
-  campaigns: Array<Record<string, unknown>>;
-  campaignMetrics: Array<Record<string, unknown>>;
-  campaignAnalyses: Array<Record<string, unknown>>;
-  coachAlerts: Array<Record<string, unknown>>;
-  aiFlowEvents: Array<Record<string, unknown>>;
-  auditLog: Array<Record<string, unknown>>;
-  companySettings: Record<string, unknown> | null;
+  leads: Array<Record<string, any>>;
+  conversations: Array<Record<string, any>>;
+  messages: Array<Record<string, any>>;
+  followUps: Array<Record<string, any>>;
+  quotes: Array<Record<string, any>>;
+  products: Array<Record<string, any>>;
+  campaigns: Array<Record<string, any>>;
+  campaignMetrics: Array<Record<string, any>>;
+  campaignAnalyses: Array<Record<string, any>>;
+  coachAlerts: Array<Record<string, any>>;
+  aiFlowEvents: Array<Record<string, any>>;
+  auditLog: Array<Record<string, any>>;
+  companySettings: Record<string, any> | null;
 }
 
 /**
@@ -61,7 +62,7 @@ export class ExecutiveAnalyzer {
     private readonly range: ExecutiveRange,
   ) {}
 
-  private async safe<T = unknown>(
+  private async safe<T = any>(
     fn: () => PromiseLike<{ data: T[] | null; error: unknown }>,
   ): Promise<T[]> {
     try {
@@ -191,7 +192,7 @@ export class ExecutiveAnalyzer {
       ),
     ]);
 
-    let companySettings: Record<string, unknown> | null = null;
+    let companySettings: Record<string, any> | null = null;
     try {
       const { data } = await db
         .from("company_settings")
