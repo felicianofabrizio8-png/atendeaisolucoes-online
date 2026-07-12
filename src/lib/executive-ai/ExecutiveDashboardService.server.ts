@@ -111,11 +111,14 @@ function buildDataQuality(
 
 export class ExecutiveDashboardService {
   static async build(
+    supabase: import("@supabase/supabase-js").SupabaseClient<
+      import("@/integrations/supabase/types").Database
+    >,
     companyId: string,
     period: ExecutivePeriod = "30d",
   ): Promise<ExecutiveDashboardBundle> {
     const range = resolveRange(period);
-    const analyzer = new ExecutiveAnalyzer(companyId, range);
+    const analyzer = new ExecutiveAnalyzer(supabase, companyId, range);
     const dataset = await analyzer.load();
     const metrics = new ExecutiveMetrics(dataset, range).compute();
     const insights = new ExecutiveInsights(metrics, dataset).build();
