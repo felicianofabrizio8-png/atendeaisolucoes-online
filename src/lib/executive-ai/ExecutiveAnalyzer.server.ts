@@ -57,11 +57,11 @@ export class ExecutiveAnalyzer {
   ) {}
 
   private async safe<T = any>(
-    fn: () => Promise<{ data: T[] | null; error: unknown }>,
+    fn: () => PromiseLike<{ data: T[] | null; error: unknown }>,
   ): Promise<T[]> {
     try {
       const { data } = await fn();
-      return data ?? [];
+      return (data ?? []) as T[];
     } catch {
       return [];
     }
