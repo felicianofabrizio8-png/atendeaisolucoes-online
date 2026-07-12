@@ -103,12 +103,39 @@ export class ExecutiveMetrics {
     const closed = leads.filter((l) => l.status === "fechado").length;
     const conversionRate = newLeads > 0 ? (closed / newLeads) * 100 : 0;
 
+    // Segmentação humano vs IA por conversa, usando conversations.auto_reply_count
+    // como proxy do nº de mensagens enviadas pela IA. Heurística documentada
+    // em dataQuality.estimatedMetrics.
+    const agentMsgsByConv = new Map<string, number>();
+    for (const m of messages) {
+      if (m.role !== "agent") continue;
+      agentMsgsByConv.set(m.conversation_id, (agentMsgsByConv.get(m.conversation_id) ?? 0) + 1);
+    }
+    const humanLeadIds = new Set<string>();
+    const aiLeadIds = new Set<string>();
+    const mixedLeadIds = new Set<string>();
+    for (const c of conversations) {
+      if (!c.lead_id) continue;
+      const agentCount = agentMsgsByConv.get(c.id) ?? 0;
+      if (agentCount === 0) continue;
+      const aiCount = toNumber(c.auto_reply_count);
+      if (aiCount <= 0) humanLeadIds.add(c.lead_id);
+      else if (aiCount >= agentCount) aiLeadIds.add(c.lead_id);
+      else mixedLeadIds.add(c.lead_id);
+    }
+    // Um lead atendido em mais de uma conversa: prioriza "human" > "mixed" > "ai"
+    for (const id of humanLeadIds) { aiLeadIds.delete(id); mixedLeadIds.delete(id); }
+    for (const id of mixedLeadIds) { aiLeadIds.delete(id); }
+
     return {
       newLeads,
       attendedLeads,
       unansweredLeads,
       avgResponseMinutes: Math.round(avgResponseMinutes * 10) / 10,
       conversionRate: Math.round(conversionRate * 10) / 10,
+      humanAttendedLeads: humanLeadIds.size,
+      aiAttendedLeads: aiLeadIds.size,
+      mixedAttendedLeads: mixedLeadIds.size,
     };
   }
 
