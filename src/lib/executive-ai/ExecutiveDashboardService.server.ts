@@ -4,7 +4,11 @@
 // acompanhado de um relatório de qualidade dos dados (dataQuality).
 // ============================================================================
 
-import { ExecutiveAnalyzer, resolveRange, type RawExecutiveDataset } from "./ExecutiveAnalyzer.server";
+import {
+  ExecutiveAnalyzer,
+  resolveRange,
+  type RawExecutiveDataset,
+} from "./ExecutiveAnalyzer.server";
 import { ExecutiveMetrics } from "./ExecutiveMetrics.server";
 import { ExecutiveInsights } from "./ExecutiveInsights.server";
 import type {
@@ -68,13 +72,11 @@ function buildDataQuality(
   if (dataset.messages.length > 0) {
     estimated.push({
       metric: "attendance.attendedLeads",
-      note:
-        "Considera qualquer mensagem com role='agent' (inclui respostas automáticas da IA). Não é possível distinguir humano vs IA sem flag por mensagem.",
+      note: "Considera qualquer mensagem com role='agent' (inclui respostas automáticas da IA). Não é possível distinguir humano vs IA sem flag por mensagem.",
     });
     estimated.push({
       metric: "attendance.avgResponseMinutes",
-      note:
-        "Calculado como diferença entre 1ª msg do lead e 1ª msg role='agent' posterior; inclui auto-respostas da IA.",
+      note: "Calculado como diferença entre 1ª msg do lead e 1ª msg role='agent' posterior; inclui auto-respostas da IA.",
     });
   }
   if (dataset.aiFlowEvents.length > 0) {

@@ -41,8 +41,7 @@ export class ExecutiveInsights {
         level: m.attendance.unansweredLeads > 10 ? "critical" : "warn",
         title: "Leads sem resposta",
         description: `${m.attendance.unansweredLeads} leads não receberam resposta no período.`,
-        recommendation:
-          "Ative o Modo Operador ou revise a distribuição de conversas na Caixa.",
+        recommendation: "Ative o Modo Operador ou revise a distribuição de conversas na Caixa.",
         metricRef: "attendance.unansweredLeads",
         confidence: "medium",
         evidence: {
@@ -113,8 +112,7 @@ export class ExecutiveInsights {
         level: "good",
         title: `Campanha em destaque: ${bestC.name}`,
         description: `${bestC.leads} leads · custo médio R$ ${bestC.costPerLead.toFixed(2)}.`,
-        recommendation:
-          "Considere aumentar o orçamento — avalie CAC vs ticket antes de escalar.",
+        recommendation: "Considere aumentar o orçamento — avalie CAC vs ticket antes de escalar.",
         confidence: bestC.leads >= 20 ? "high" : "medium",
         evidence: {
           metrics: ["campaigns.best[].leads", "campaigns.best[].spend"],

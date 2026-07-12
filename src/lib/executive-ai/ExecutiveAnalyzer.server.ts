@@ -10,7 +10,6 @@ import type { ExecutivePeriod, ExecutiveRange } from "./types";
 
 type ExecSupabase = SupabaseClient<Database>;
 
-
 export function resolveRange(period: ExecutivePeriod): ExecutiveRange {
   const to = new Date();
   const from = new Date();
