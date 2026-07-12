@@ -107,7 +107,7 @@ export class ExecutiveAnalyzer {
         db
           .from("conversations")
           .select(
-            "id, lead_id, ai_status, lead_temperature, lead_score, detected_objections, updated_at, created_at",
+            "id, lead_id, ai_status, ai_handling, auto_reply_count, lead_temperature, lead_score, detected_objections, updated_at, created_at",
           )
           .eq("company_id", companyId)
           .gte("updated_at", range.from)
