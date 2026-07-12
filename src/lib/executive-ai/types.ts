@@ -21,6 +21,10 @@ export interface AttendanceMetrics {
   unansweredLeads: number;
   avgResponseMinutes: number;
   conversionRate: number; // %
+  // Segmentação humano vs IA: null quando não puder ser inferida com segurança.
+  humanAttendedLeads: number | null;
+  aiAttendedLeads: number | null;
+  mixedAttendedLeads: number | null;
 }
 
 export interface SalesMetrics {
@@ -122,6 +126,13 @@ export type InsightCategory =
   | "commercial"
   | "operational";
 
+export type InsightConfidence = "high" | "medium" | "low";
+
+export interface InsightEvidence {
+  metrics: string[];
+  reason: string;
+}
+
 export interface ExecutiveInsight {
   id: string;
   category: InsightCategory;
@@ -130,6 +141,8 @@ export interface ExecutiveInsight {
   description: string;
   metricRef?: string;
   recommendation?: string;
+  confidence: InsightConfidence;
+  evidence: InsightEvidence;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,11 @@
 // ============================================================================
 // ExecutiveAgent — Ponto de entrada do agente executivo (CEO AI).
-// READ-ONLY: expõe uma API de alto nível para consultas estratégicas.
-// Não envia mensagens, não altera nenhuma tabela, não dispara IA de atendimento.
+// READ-ONLY. Recebe o cliente Supabase AUTENTICADO do usuário (RLS aplicada).
+// Não usa service_role, não envia mensagens, não altera nada.
 // ============================================================================
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { ExecutiveDashboardService } from "./ExecutiveDashboardService.server";
 import type {
   ExecutiveDashboardBundle,
@@ -12,23 +14,29 @@ import type {
   ExecutivePeriod,
 } from "./types";
 
+export interface ExecutiveAgentDeps {
+  supabase: SupabaseClient<Database>;
+  companyId: string;
+}
+
 export class ExecutiveAgent {
-  constructor(private readonly companyId: string) {}
+  private readonly supabase: SupabaseClient<Database>;
+  private readonly companyId: string;
 
-  /** Snapshot completo (métricas + insights) do período informado. */
-  async snapshot(period: ExecutivePeriod = "7d"): Promise<ExecutiveDashboardBundle> {
-    return ExecutiveDashboardService.build(this.companyId, period);
+  constructor(deps: ExecutiveAgentDeps) {
+    this.supabase = deps.supabase;
+    this.companyId = deps.companyId;
   }
 
-  /** Apenas as métricas quantitativas. */
-  async metrics(period: ExecutivePeriod = "7d"): Promise<ExecutiveMetricsBundle> {
-    const bundle = await this.snapshot(period);
-    return bundle.metrics;
+  async snapshot(period: ExecutivePeriod = "30d"): Promise<ExecutiveDashboardBundle> {
+    return ExecutiveDashboardService.build(this.supabase, this.companyId, period);
   }
 
-  /** Apenas os insights estratégicos gerados. */
-  async insights(period: ExecutivePeriod = "7d"): Promise<ExecutiveInsight[]> {
-    const bundle = await this.snapshot(period);
-    return bundle.insights;
+  async metrics(period: ExecutivePeriod = "30d"): Promise<ExecutiveMetricsBundle> {
+    return (await this.snapshot(period)).metrics;
+  }
+
+  async insights(period: ExecutivePeriod = "30d"): Promise<ExecutiveInsight[]> {
+    return (await this.snapshot(period)).insights;
   }
 }

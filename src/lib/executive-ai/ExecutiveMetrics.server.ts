@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
 // ExecutiveMetrics — Cálculo puro de métricas a partir do dataset bruto.
 // READ-ONLY: recebe RawExecutiveDataset e produz ExecutiveMetricsBundle.
@@ -69,9 +70,7 @@ export class ExecutiveMetrics {
       messages.filter((m) => m.role === "agent").map((m) => m.conversation_id),
     );
     const attendedLeadIds = new Set(
-      conversations
-        .filter((c) => agentConvIds.has(c.id) && c.lead_id)
-        .map((c) => c.lead_id),
+      conversations.filter((c) => agentConvIds.has(c.id) && c.lead_id).map((c) => c.lead_id),
     );
     const attendedLeads = attendedLeadIds.size;
     const unansweredLeads = Math.max(0, newLeads - attendedLeads);
@@ -91,9 +90,7 @@ export class ExecutiveMetrics {
         .sort((a, b) => a._t - b._t);
       const firstLead = sorted.find((m) => m.role === "lead");
       if (!firstLead) continue;
-      const firstAgent = sorted.find(
-        (m) => m.role === "agent" && m._t > firstLead._t,
-      );
+      const firstAgent = sorted.find((m) => m.role === "agent" && m._t > firstLead._t);
       if (!firstAgent) continue;
       diffs.push((firstAgent._t - firstLead._t) / 60_000);
     }
@@ -103,12 +100,44 @@ export class ExecutiveMetrics {
     const closed = leads.filter((l) => l.status === "fechado").length;
     const conversionRate = newLeads > 0 ? (closed / newLeads) * 100 : 0;
 
+    // Segmentação humano vs IA por conversa, usando conversations.auto_reply_count
+    // como proxy do nº de mensagens enviadas pela IA. Heurística documentada
+    // em dataQuality.estimatedMetrics.
+    const agentMsgsByConv = new Map<string, number>();
+    for (const m of messages) {
+      if (m.role !== "agent") continue;
+      agentMsgsByConv.set(m.conversation_id, (agentMsgsByConv.get(m.conversation_id) ?? 0) + 1);
+    }
+    const humanLeadIds = new Set<string>();
+    const aiLeadIds = new Set<string>();
+    const mixedLeadIds = new Set<string>();
+    for (const c of conversations) {
+      if (!c.lead_id) continue;
+      const agentCount = agentMsgsByConv.get(c.id) ?? 0;
+      if (agentCount === 0) continue;
+      const aiCount = toNumber(c.auto_reply_count);
+      if (aiCount <= 0) humanLeadIds.add(c.lead_id);
+      else if (aiCount >= agentCount) aiLeadIds.add(c.lead_id);
+      else mixedLeadIds.add(c.lead_id);
+    }
+    // Um lead atendido em mais de uma conversa: prioriza "human" > "mixed" > "ai"
+    for (const id of humanLeadIds) {
+      aiLeadIds.delete(id);
+      mixedLeadIds.delete(id);
+    }
+    for (const id of mixedLeadIds) {
+      aiLeadIds.delete(id);
+    }
+
     return {
       newLeads,
       attendedLeads,
       unansweredLeads,
       avgResponseMinutes: Math.round(avgResponseMinutes * 10) / 10,
       conversionRate: Math.round(conversionRate * 10) / 10,
+      humanAttendedLeads: humanLeadIds.size,
+      aiAttendedLeads: aiLeadIds.size,
+      mixedAttendedLeads: mixedLeadIds.size,
     };
   }
 
@@ -120,8 +149,7 @@ export class ExecutiveMetrics {
       (s, l) => s + toNumber(l.closed_value ?? l.estimated_value),
       0,
     );
-    const averageTicket =
-      closed.length > 0 ? estimatedSales / closed.length : 0;
+    const averageTicket = closed.length > 0 ? estimatedSales / closed.length : 0;
     return {
       quotesIssued: quotes.length,
       estimatedSales,
@@ -167,8 +195,7 @@ export class ExecutiveMetrics {
       const costPerLead = leadsCount > 0 ? spend / leadsCount : 0;
       const conv = m.conversations || toNumber((c as any).messages_count);
       const costPerConversation = conv > 0 ? spend / conv : 0;
-      const ctr =
-        m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
+      const ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
       // score simples: leads / (spend + 1)
       const score = leadsCount / (spend + 1);
       return {
@@ -186,24 +213,17 @@ export class ExecutiveMetrics {
     const withActivity = perf.filter((p) => p.spend > 0 || p.leads > 0);
     const sorted = [...withActivity].sort((a, b) => b.score - a.score);
     const best = sorted.slice(0, 5);
-    const worst = [...withActivity]
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 5);
+    const worst = [...withActivity].sort((a, b) => a.score - b.score).slice(0, 5);
 
     const totalSpend = withActivity.reduce((s, p) => s + p.spend, 0);
     const totalLeads = withActivity.reduce((s, p) => s + p.leads, 0);
-    const totalConvCost = withActivity.reduce(
-      (s, p) => s + p.costPerConversation,
-      0,
-    );
+    const totalConvCost = withActivity.reduce((s, p) => s + p.costPerConversation, 0);
     return {
       best,
       worst,
       avgCostPerLead: totalLeads > 0 ? Math.round((totalSpend / totalLeads) * 100) / 100 : 0,
       avgCostPerConversation:
-        withActivity.length > 0
-          ? Math.round((totalConvCost / withActivity.length) * 100) / 100
-          : 0,
+        withActivity.length > 0 ? Math.round((totalConvCost / withActivity.length) * 100) / 100 : 0,
     };
   }
 
@@ -272,15 +292,12 @@ export class ExecutiveMetrics {
 
   private aiUsage(): AIUsageMetrics {
     const { aiFlowEvents } = this.dataset;
-    const count = (t: string) =>
-      aiFlowEvents.filter((e) => e.event_type === t).length;
+    const count = (t: string) => aiFlowEvents.filter((e) => e.event_type === t).length;
     const autoReplies = count("auto_reply_sent");
     const handoffs = count("handoff_human") + count("safety_handoff");
     const qualifications =
       count("qualification_detected") +
-      aiFlowEvents.filter((e) =>
-        String(e.event_type).startsWith("detected_"),
-      ).length;
+      aiFlowEvents.filter((e) => String(e.event_type).startsWith("detected_")).length;
     return {
       autoReplies,
       handoffs,
