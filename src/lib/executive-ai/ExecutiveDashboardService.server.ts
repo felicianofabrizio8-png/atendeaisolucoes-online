@@ -34,7 +34,7 @@ const TABLES_QUERIED = [
   "company_settings",
 ] as const;
 
-function buildDataQuality(
+export function buildDataQuality(
   dataset: RawExecutiveDataset,
   period: ExecutivePeriod,
   range: ExecutiveRange,
