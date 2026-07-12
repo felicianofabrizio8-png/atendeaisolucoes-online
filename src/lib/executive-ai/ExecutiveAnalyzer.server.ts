@@ -57,6 +57,7 @@ export interface RawExecutiveDataset {
  */
 export class ExecutiveAnalyzer {
   constructor(
+    private readonly supabase: ExecSupabase,
     private readonly companyId: string,
     private readonly range: ExecutiveRange,
   ) {}
@@ -73,7 +74,10 @@ export class ExecutiveAnalyzer {
   }
 
   async load(): Promise<RawExecutiveDataset> {
-    const { companyId, range } = this;
+    const { companyId, range, supabase } = this;
+    // Alias local para reduzir o diff — TODAS as queries usam o cliente
+    // autenticado (RLS aplicada). NENHUM uso de service_role.
+    const db = supabase;
     const [
       leads,
       conversations,
