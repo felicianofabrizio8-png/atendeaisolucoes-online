@@ -83,7 +83,7 @@ export class ExecutiveInsights {
         confidence: "high",
         evidence: {
           metrics: ["sales.quotesIssued", "sales.closedCount"],
-          reason: "Contagem direta de quotes vs leads com status='fechado'.",
+          reason: "Contagem direta de quotes vs leads com status='fechado' e closed_at no período.",
         },
       });
     }
@@ -98,7 +98,7 @@ export class ExecutiveInsights {
         confidence: "high",
         evidence: {
           metrics: ["sales.closedCount", "attendance.newLeads"],
-          reason: "leads(status='fechado') / leads criados no período.",
+          reason: "leads(status='fechado' com closed_at no período) / leads criados no período.",
         },
       });
     }

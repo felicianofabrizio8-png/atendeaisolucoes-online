@@ -34,13 +34,17 @@ const TABLES_QUERIED = [
   "company_settings",
 ] as const;
 
-function buildDataQuality(
+export function buildDataQuality(
   dataset: RawExecutiveDataset,
   period: ExecutivePeriod,
   range: ExecutiveRange,
 ): DataQualityReport {
   const counts: Record<string, number> = {
-    leads: dataset.leads.length,
+    leads: dataset.newLeadsData.length,
+    closed_sales: dataset.closedSalesData.length,
+    lost_leads: dataset.lostLeadsData.length,
+    closed_sales_without_closed_at: dataset.closedSalesWithoutClosedAtData.length,
+    lost_leads_without_lost_at: dataset.lostLeadsWithoutLostAtData.length,
     conversations: dataset.conversations.length,
     messages: dataset.messages.length,
     follow_ups: dataset.followUps.length,
@@ -91,7 +95,22 @@ function buildDataQuality(
     );
   }
   if (dataset.leads.length >= 5000) {
-    warnings.push("Consulta de leads atingiu o limite de 5000 registros no período.");
+    warnings.push("Consulta de leads novos atingiu o limite de 5000 registros no período.");
+  }
+  if (dataset.closedSalesData.length >= 5000) {
+    warnings.push("Consulta de vendas fechadas atingiu o limite de 5000 registros no período.");
+  }
+  if (dataset.closedSalesWithoutClosedAtData.length > 0) {
+    warnings.push(
+      "Existe venda marcada como fechada sem closed_at. Ela não pode ser incluída com segurança em um período específico.",
+    );
+  }
+  if (dataset.lostLeadsWithoutLostAtData.length > 0) {
+    unavailable.push({
+      metric: "sales.lostCount / lossReasons para perdas sem lost_at",
+      reason:
+        "Existem leads marcados como perdidos sem lost_at; não há data confiável para atribuí-los a um período específico.",
+    });
   }
   if (dataset.messages.length >= 10000) {
     warnings.push("Consulta de messages atingiu o limite de 10000 registros no período.");

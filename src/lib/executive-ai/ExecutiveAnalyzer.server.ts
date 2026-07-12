@@ -36,6 +36,17 @@ export function resolveRange(period: ExecutivePeriod): ExecutiveRange {
 }
 
 export interface RawExecutiveDataset {
+  /** Leads criados dentro do período — base para métricas de aquisição/atendimento. */
+  newLeadsData: Array<Record<string, any>>;
+  /** Vendas fechadas dentro do período por leads.closed_at — base comercial. */
+  closedSalesData: Array<Record<string, any>>;
+  /** Leads perdidos dentro do período por leads.lost_at — base de perdas. */
+  lostLeadsData: Array<Record<string, any>>;
+  /** Leads fechados sem closed_at: históricos, mas sem data confiável para janelas. */
+  closedSalesWithoutClosedAtData: Array<Record<string, any>>;
+  /** Leads perdidos sem lost_at: históricos, mas sem data confiável para janelas. */
+  lostLeadsWithoutLostAtData: Array<Record<string, any>>;
+  /** Compatibilidade: equivale a newLeadsData. Não usar para vendas/perdas. */
   leads: Array<Record<string, any>>;
   conversations: Array<Record<string, any>>;
   messages: Array<Record<string, any>>;
@@ -79,7 +90,11 @@ export class ExecutiveAnalyzer {
     // autenticado (RLS aplicada). NENHUM uso de service_role.
     const db = supabase;
     const [
-      leads,
+      newLeadsData,
+      closedSalesData,
+      lostLeadsData,
+      closedSalesWithoutClosedAtData,
+      lostLeadsWithoutLostAtData,
       conversations,
       messages,
       followUps,
@@ -102,6 +117,48 @@ export class ExecutiveAnalyzer {
           .gte("created_at", range.from)
           .lte("created_at", range.to)
           .limit(5000),
+      ),
+      this.safe(() =>
+        db
+          .from("leads")
+          .select(
+            "id, status, source, channel, estimated_value, closed_value, closed_at, lost_at, loss_reason, created_at, updated_at, last_contact_at",
+          )
+          .eq("company_id", companyId)
+          .eq("status", "fechado")
+          .gte("closed_at", range.from)
+          .lte("closed_at", range.to)
+          .limit(5000),
+      ),
+      this.safe(() =>
+        db
+          .from("leads")
+          .select(
+            "id, status, source, channel, estimated_value, closed_value, closed_at, lost_at, loss_reason, created_at, updated_at, last_contact_at",
+          )
+          .eq("company_id", companyId)
+          .eq("status", "perdido")
+          .gte("lost_at", range.from)
+          .lte("lost_at", range.to)
+          .limit(5000),
+      ),
+      this.safe(() =>
+        db
+          .from("leads")
+          .select("id, status, closed_value, closed_at, created_at, updated_at")
+          .eq("company_id", companyId)
+          .eq("status", "fechado")
+          .is("closed_at", null)
+          .limit(1000),
+      ),
+      this.safe(() =>
+        db
+          .from("leads")
+          .select("id, status, lost_at, loss_reason, estimated_value, created_at, updated_at")
+          .eq("company_id", companyId)
+          .eq("status", "perdido")
+          .is("lost_at", null)
+          .limit(1000),
       ),
       this.safe(() =>
         db
@@ -205,7 +262,12 @@ export class ExecutiveAnalyzer {
     }
 
     return {
-      leads,
+      newLeadsData,
+      closedSalesData,
+      lostLeadsData,
+      closedSalesWithoutClosedAtData,
+      lostLeadsWithoutLostAtData,
+      leads: newLeadsData,
       conversations,
       messages,
       followUps,
