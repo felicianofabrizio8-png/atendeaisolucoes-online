@@ -50,9 +50,16 @@ function makeUserClient(token: string): SupabaseClient<Database> {
   });
 }
 
+const methodNotAllowed = () =>
+  json(405, { ok: false, error: "method_not_allowed" });
+
 export const Route = createFileRoute("/api/executive/snapshot")({
   server: {
     handlers: {
+      POST: methodNotAllowed,
+      PUT: methodNotAllowed,
+      PATCH: methodNotAllowed,
+      DELETE: methodNotAllowed,
       GET: async ({ request }: { request: Request }) => {
         try {
           if (request.method !== "GET") {
