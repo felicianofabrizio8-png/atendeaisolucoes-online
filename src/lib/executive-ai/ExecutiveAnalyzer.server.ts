@@ -1,7 +1,7 @@
 // ============================================================================
 // ExecutiveAnalyzer — Leitura pura dos dados existentes.
 // READ-ONLY: apenas SELECTs, executados com o cliente Supabase AUTENTICADO
-// do usuário (RLS aplicada normalmente). NÃO usa service_role/supabaseAdmin.
+// do usuário (RLS aplicada normalmente). NÃO usa service_role/db.
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -93,7 +93,7 @@ export class ExecutiveAnalyzer {
       auditLog,
     ] = await Promise.all([
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("leads")
           .select(
             "id, status, source, channel, estimated_value, closed_value, closed_at, lost_at, loss_reason, created_at, updated_at, last_contact_at",
@@ -104,7 +104,7 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("conversations")
           .select(
             "id, lead_id, ai_status, lead_temperature, lead_score, detected_objections, updated_at, created_at",
@@ -114,7 +114,7 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("messages")
           .select("id, conversation_id, role, at, created_at")
           .eq("company_id", companyId)
@@ -122,7 +122,7 @@ export class ExecutiveAnalyzer {
           .limit(10000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("follow_ups")
           .select("id, status, sent_at, responded_at, cancelled_at, created_at")
           .eq("company_id", companyId)
@@ -130,7 +130,7 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("quotes")
           .select("id, conversation_id, sent, total, created_at, sent_at")
           .eq("company_id", companyId)
@@ -138,21 +138,21 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("products")
           .select("id, name, price, active, created_at")
           .eq("company_id", companyId)
           .limit(1000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("campaigns")
           .select("id, name, status, objective, created_at, updated_at")
           .eq("company_id", companyId)
           .limit(500),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("campaign_metrics")
           .select("*")
           .eq("company_id", companyId)
@@ -160,7 +160,7 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("campaign_ai_analyses")
           .select("*")
           .eq("company_id", companyId)
@@ -168,14 +168,14 @@ export class ExecutiveAnalyzer {
           .limit(500),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("coach_alerts")
           .select("id, conversation_id, severity, status, alert_type, created_at")
           .eq("company_id", companyId)
           .limit(2000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("ai_flow_events")
           .select("id, event_type, conversation_id, lead_id, created_at")
           .eq("company_id", companyId)
@@ -183,7 +183,7 @@ export class ExecutiveAnalyzer {
           .limit(5000),
       ),
       this.safe(() =>
-        supabaseAdmin
+        db
           .from("audit_log")
           .select("id, action, entity, entity_id, created_at")
           .eq("company_id", companyId)
@@ -194,7 +194,7 @@ export class ExecutiveAnalyzer {
 
     let companySettings: Record<string, any> | null = null;
     try {
-      const { data } = await supabaseAdmin
+      const { data } = await db
         .from("company_settings")
         .select("*")
         .eq("company_id", companyId)
