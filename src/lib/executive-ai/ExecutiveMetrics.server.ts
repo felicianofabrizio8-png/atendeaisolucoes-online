@@ -290,7 +290,9 @@ export class ExecutiveMetrics {
   }
 
   private evolution(): EvolutionSeries {
-    const { leads, conversations, quotes } = this.dataset;
+    // "sales" aqui = leads efetivamente fechados (leads.status='fechado').
+    // Orçamento emitido NÃO é venda confirmada.
+    const { leads, conversations } = this.dataset;
     const build = (kind: "daily" | "weekly" | "monthly"): EvolutionPoint[] => {
       const m = new Map<string, EvolutionPoint>();
       const bump = (
@@ -305,7 +307,9 @@ export class ExecutiveMetrics {
       };
       for (const l of leads) bump(l.created_at, "leads");
       for (const c of conversations) bump(c.created_at ?? c.updated_at, "conversations");
-      for (const q of quotes) bump(q.sent_at ?? q.created_at, "sales");
+      for (const l of leads) {
+        if (l.status === "fechado") bump(l.closed_at ?? l.updated_at, "sales");
+      }
       return [...m.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
     };
     return {
