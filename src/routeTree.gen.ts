@@ -48,6 +48,7 @@ import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debu
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
+import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
 import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
 import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
@@ -286,6 +287,11 @@ const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
   path: '/api/meta/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
+  id: '/api/executive/snapshot',
+  path: '/api/executive/snapshot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCoachSuggestRoute = ApiCoachSuggestRouteImport.update({
   id: '/api/coach/suggest',
   path: '/api/coach/suggest',
@@ -463,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -529,6 +536,7 @@ export interface FileRoutesByTo {
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -597,6 +605,7 @@ export interface FileRoutesById {
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
@@ -666,6 +675,7 @@ export interface FileRouteTypes {
     | '/api/ai/test-now'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -732,6 +742,7 @@ export interface FileRouteTypes {
     | '/api/ai/test-now'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -799,6 +810,7 @@ export interface FileRouteTypes {
     | '/api/ai/test-now'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
@@ -864,6 +876,7 @@ export interface RootRouteChildren {
   ApiAiTestNowRoute: typeof ApiAiTestNowRoute
   ApiCoachAnalyzeRoute: typeof ApiCoachAnalyzeRoute
   ApiCoachSuggestRoute: typeof ApiCoachSuggestRoute
+  ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
@@ -1170,6 +1183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/executive/snapshot': {
+      id: '/api/executive/snapshot'
+      path: '/api/executive/snapshot'
+      fullPath: '/api/executive/snapshot'
+      preLoaderRoute: typeof ApiExecutiveSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/coach/suggest': {
       id: '/api/coach/suggest'
       path: '/api/coach/suggest'
@@ -1403,6 +1423,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiTestNowRoute: ApiAiTestNowRoute,
   ApiCoachAnalyzeRoute: ApiCoachAnalyzeRoute,
   ApiCoachSuggestRoute: ApiCoachSuggestRoute,
+  ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,

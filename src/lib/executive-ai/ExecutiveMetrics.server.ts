@@ -132,10 +132,11 @@ export class ExecutiveMetrics {
   }
 
   private campaigns(): CampaignMetricsBundle {
-    const { campaigns, campaignMetrics, leads } = this.dataset;
+    // Colunas reais em public.campaign_metrics: spent, leads, messages, impressions, clicks
+    const { campaigns, campaignMetrics } = this.dataset;
     const metricsByCampaign = new Map<string, Record<string, number>>();
     for (const m of campaignMetrics) {
-      const id = m.campaign_id ?? m.id;
+      const id = m.campaign_id;
       if (!id) continue;
       const cur = metricsByCampaign.get(id) ?? {
         spend: 0,
@@ -144,20 +145,12 @@ export class ExecutiveMetrics {
         clicks: 0,
         conversations: 0,
       };
-      cur.spend += toNumber(m.spend);
+      cur.spend += toNumber(m.spent);
       cur.leads += toNumber(m.leads);
       cur.impressions += toNumber(m.impressions);
       cur.clicks += toNumber(m.clicks);
-      cur.conversations += toNumber(m.conversations ?? m.messaging_conversations_started_7d);
+      cur.conversations += toNumber(m.messages);
       metricsByCampaign.set(id, cur);
-    }
-
-    // fallback: contar leads por campaign_id
-    const leadsPerCampaign = new Map<string, number>();
-    for (const l of leads) {
-      const cid = (l as any).campaign_id;
-      if (!cid) continue;
-      leadsPerCampaign.set(cid, (leadsPerCampaign.get(cid) ?? 0) + 1);
     }
 
     const perf: CampaignPerformance[] = campaigns.map((c) => {
@@ -168,10 +161,11 @@ export class ExecutiveMetrics {
         clicks: 0,
         conversations: 0,
       };
-      const leadsCount = m.leads || leadsPerCampaign.get(c.id) || 0;
-      const spend = m.spend;
+      // Preferimos os agregados do campaign_metrics; fallback: leads_count na tabela campaigns
+      const leadsCount = m.leads || toNumber((c as any).leads_count);
+      const spend = m.spend || toNumber((c as any).spent);
       const costPerLead = leadsCount > 0 ? spend / leadsCount : 0;
-      const conv = m.conversations || 0;
+      const conv = m.conversations || toNumber((c as any).messages_count);
       const costPerConversation = conv > 0 ? spend / conv : 0;
       const ctr =
         m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
@@ -296,7 +290,9 @@ export class ExecutiveMetrics {
   }
 
   private evolution(): EvolutionSeries {
-    const { leads, conversations, quotes } = this.dataset;
+    // "sales" aqui = leads efetivamente fechados (leads.status='fechado').
+    // Orçamento emitido NÃO é venda confirmada.
+    const { leads, conversations } = this.dataset;
     const build = (kind: "daily" | "weekly" | "monthly"): EvolutionPoint[] => {
       const m = new Map<string, EvolutionPoint>();
       const bump = (
@@ -311,7 +307,9 @@ export class ExecutiveMetrics {
       };
       for (const l of leads) bump(l.created_at, "leads");
       for (const c of conversations) bump(c.created_at ?? c.updated_at, "conversations");
-      for (const q of quotes) bump(q.sent_at ?? q.created_at, "sales");
+      for (const l of leads) {
+        if (l.status === "fechado") bump(l.closed_at ?? l.updated_at, "sales");
+      }
       return [...m.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
     };
     return {
