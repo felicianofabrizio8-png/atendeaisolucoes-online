@@ -133,11 +133,29 @@ export interface ExecutiveInsight {
 }
 
 // ---------------------------------------------------------------------------
+// Data quality diagnostics
+// ---------------------------------------------------------------------------
+export interface DataQualityReport {
+  tablesQueried: string[];
+  tablesEmpty: string[];
+  tableRowCounts: Record<string, number>;
+  unavailableMetrics: Array<{ metric: string; reason: string }>;
+  estimatedMetrics: Array<{ metric: string; note: string }>;
+  warnings: string[];
+  period: ExecutivePeriod;
+  range: ExecutiveRange;
+  timezone: string;
+  generatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard bundle
 // ---------------------------------------------------------------------------
 export interface ExecutiveDashboardBundle {
   range: ExecutiveRange;
+  period: ExecutivePeriod;
   metrics: ExecutiveMetricsBundle;
   insights: ExecutiveInsight[];
+  dataQuality: DataQualityReport;
   generatedAt: string;
 }
