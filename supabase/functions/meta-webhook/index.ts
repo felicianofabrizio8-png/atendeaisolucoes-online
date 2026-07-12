@@ -199,49 +199,93 @@ function getHeaderDiagnostics(req: Request) {
 async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
   for (const entryId of entryIds) {
     try {
-      const { data: page, error } = await sb
+      // Guarda contra caracteres estranhos no filtro .or() (o entryId vem do payload da Meta,
+      // mas defesa em profundidade: só aceita dígitos, que é o formato real de page_id / ig_business_account_id).
+      if (!/^\d+$/.test(entryId)) {
+        console.log("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_SKIPPED", { entryId, reason: "non_numeric_entry_id" });
+        continue;
+      }
+
+      // Multi-tenant: a mesma página/IG pode estar vinculada a mais de uma empresa.
+      // Não usamos .maybeSingle() (quebra com PGRST116) nem .limit(1) (poderia
+      // escolher empresa errada). Iteramos por todos os registros compatíveis
+      // — o diagnóstico é read-only.
+      const { data: pages, error } = await sb
         .from("meta_pages")
         .select("company_id, page_id, page_access_token, ig_business_account_id")
-        .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`)
-        .maybeSingle();
+        .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`);
 
       if (error) {
         console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_DB_ERROR", { entryId, error });
         continue;
       }
 
-      const igBusinessAccountId = page?.ig_business_account_id ? String(page.ig_business_account_id) : null;
-      const pageId = page?.page_id ? String(page.page_id) : null;
+      if (!pages || pages.length === 0) {
+        console.log("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC", {
+          entryId,
+          configuredMetaAppId: META_APP_ID || null,
+          matchedMetaPage: false,
+          matchedCompanies: 0,
+          note: "Nenhum registro em meta_pages combina com esse entryId.",
+        });
+        continue;
+      }
+
+      // Deduplica por (page_id, ig_business_account_id, token) para não consultar
+      // a Graph API várias vezes para o mesmo par apenas porque há N tenants.
+      const seenPair = new Set<string>();
       const subscribedApps: unknown[] = [];
       const graphErrors: unknown[] = [];
-      const token = page?.page_access_token ? String(page.page_access_token) : "";
-      const targets = Array.from(new Set([igBusinessAccountId, pageId].filter(Boolean))) as string[];
+      const perTenant: Array<{ companyId: string; pageId: string | null; igId: string | null }> = [];
 
-      for (const target of targets) {
-        try {
-          const r = await fetch(`${GRAPH}/${target}/subscribed_apps?access_token=${encodeURIComponent(token)}`);
-          const j = await r.json().catch(() => null);
-          if (r.ok && Array.isArray(j?.data)) {
-            subscribedApps.push(...j.data.map((app: any) => ({ id: app?.id ?? null, name: app?.name ?? null, category: app?.category ?? null, target })));
-          } else {
-            graphErrors.push({ target, status: r.status, body: j });
+      for (const page of pages) {
+        const pageId = page?.page_id ? String(page.page_id) : null;
+        const igId = page?.ig_business_account_id ? String(page.ig_business_account_id) : null;
+        const token = page?.page_access_token ? String(page.page_access_token) : "";
+        perTenant.push({ companyId: String(page.company_id), pageId, igId });
+
+        const targets = Array.from(new Set([igId, pageId].filter(Boolean))) as string[];
+        for (const target of targets) {
+          const key = `${target}::${token.slice(0, 12)}`;
+          if (seenPair.has(key)) continue;
+          seenPair.add(key);
+          try {
+            const r = await fetch(`${GRAPH}/${target}/subscribed_apps?access_token=${encodeURIComponent(token)}`);
+            const j = await r.json().catch(() => null);
+            if (r.ok && Array.isArray(j?.data)) {
+              subscribedApps.push(...j.data.map((app: any) => ({ id: app?.id ?? null, name: app?.name ?? null, category: app?.category ?? null, target })));
+            } else {
+              graphErrors.push({ target, status: r.status, body: j });
+            }
+          } catch (e) {
+            graphErrors.push({ target, error: e instanceof Error ? e.message : String(e) });
           }
-        } catch (e) {
-          graphErrors.push({ target, error: e instanceof Error ? e.message : String(e) });
         }
       }
+
+      // Compacta subscribedApps por id para reduzir ruído no log.
+      const byId = new Map<string, { id: string; name: string | null; category: string | null; targets: string[] }>();
+      for (const app of subscribedApps as Array<{ id: string | null; name: string | null; category: string | null; target: string }>) {
+        if (!app?.id) continue;
+        const cur = byId.get(app.id);
+        if (cur) {
+          if (!cur.targets.includes(app.target)) cur.targets.push(app.target);
+        } else {
+          byId.set(app.id, { id: app.id, name: app.name, category: app.category, targets: [app.target] });
+        }
+      }
+      const signingApps = Array.from(byId.values());
 
       console.log("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC", {
         entryId,
         configuredMetaAppId: META_APP_ID || null,
-        signingAppId: subscribedApps.length === 1 ? (subscribedApps[0] as any)?.id ?? null : null,
-        signingAppName: subscribedApps.length === 1 ? (subscribedApps[0] as any)?.name ?? null : null,
-        matchedMetaPage: !!page,
-        pageId,
-        igBusinessAccountId,
-        subscribedApps,
+        matchedMetaPage: true,
+        matchedCompanies: perTenant.length,
+        tenants: perTenant,
+        signingApps,
+        signingAppIds: signingApps.map((a) => a.id),
         graphErrors,
-        note: "Meta não envia app_id no payload do webhook; o app assinante é confirmado quando um App Secret produz o mesmo x-hub-signature-256.",
+        note: "Meta não envia app_id no payload do webhook; use signingApps[].id para atualizar META_APP_SECRETS com o secret correto.",
       });
     } catch (e) {
       console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_ERROR", { entryId, error: e instanceof Error ? e.message : String(e) });
