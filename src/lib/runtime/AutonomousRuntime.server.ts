@@ -70,21 +70,22 @@ export class AutonomousRuntime {
     this.adapters.register(new ExecutiveIntelligenceAdapter());
     this.adapters.register(new ExecutiveKnowledgeAdapter());
     this.adapters.register(new ExecutiveNarrativeAdapter());
+    // Etapa 8: Shared Intelligence Context. Construído antes do engine para
+    // que adapters possam publicar via ctx.runtime.context (Etapa 9).
+    this.context = new SharedIntelligenceContext();
     this.executionEngine = new RuntimeExecutionEngine({
       registry: this.registry,
       dispatcher: this._dispatcher,
       scheduler: this.scheduler,
       heartbeat: this.heartbeat,
       adapters: this.adapters,
+      context: this.context,
     });
     this.worker = new RuntimeWorker({
       workerId: `worker-${Math.random().toString(36).slice(2, 8)}`,
       queue: null,
       engine: this.executionEngine,
     });
-    // Etapa 8: Shared Intelligence Context (Knowledge Bus). Nenhum agente
-    // publica ou consome automaticamente — infraestrutura apenas.
-    this.context = new SharedIntelligenceContext();
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
