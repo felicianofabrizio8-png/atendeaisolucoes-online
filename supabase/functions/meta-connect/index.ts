@@ -675,6 +675,13 @@ Deno.serve(async (req) => {
     }
     console.log("META_TOKEN_SAVED", { page_id: page.id, integration_id: integ?.id });
 
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "page", has_ig: !!igId });
+    if (igId) {
+      await appendOnboardingEvent(sb, companyId, "instagram_connected", {});
+    } else {
+      await appendOnboardingEvent(sb, companyId, "facebook_connected", {});
+    }
+
     // Assina a página aos eventos do webhook usando o page access token.
     // Se a Meta rejeitar, a integração permanece salva e exibimos apenas aviso.
     const webhookResult = await subscribePage(page.id, safePageToken);
@@ -859,9 +866,14 @@ Deno.serve(async (req) => {
         webhook_subscribed: subResult.ok,
         webhook_warning: subResult.ok ? undefined : "Webhook não confirmado",
       });
+      await appendOnboardingEvent(sb, companyId, ig ? "instagram_connected" : "facebook_connected", {});
     } catch (e) {
       results.push({ page_id: p.id, ok: false, error: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  if (results.some((r) => r.ok)) {
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "bulk_pages", count: results.length });
   }
 
   return json({ ok: true, results });
