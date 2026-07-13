@@ -17,6 +17,7 @@ import {
   Activity,
   Crown,
   Rocket,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
