@@ -206,7 +206,7 @@ export abstract class ProducerConsumerAdapterBase extends IntelligenceAdapterBas
     // Skip do probe: apenas quando explicitamente habilitado E hit total.
     const fullHit =
       this.consumedTopics.length > 0 &&
-      bus.hits === this.consumedTopics.length &&
+      (bus.hits ?? 0) === this.consumedTopics.length &&
       !fallback;
 
     let result: ExecutionResult;
