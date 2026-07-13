@@ -17,16 +17,12 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
 
   let q = supabaseAdmin
     .from("conversations")
-    .select(
-      "id, company_id, channel, lead_id, updated_at, last_message_at, " +
-        "leads:leads!conversations_lead_id_fkey(status, source, closed_at, lost_at, estimated_value)"
-    )
+    .select("id, company_id, channel, lead_id, last_message_at")
     .eq("company_id", opts.companyId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(Math.min(opts.limit, 500));
 
   if (opts.channels?.length) {
-    // channel é enum USER-DEFINED; passa como string
     q = q.in("channel", opts.channels as never);
   }
   if (opts.olderThanDays) {
@@ -34,11 +30,47 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
     q = q.lt("last_message_at", cutoff);
   }
 
-  const { data: convs, error } = await q;
+  const { data: convsData, error } = await q;
   if (error) throw error;
-  if (!convs || convs.length === 0) return [];
+  const convs = (convsData ?? []) as Array<{
+    id: string;
+    company_id: string;
+    channel: string | null;
+    lead_id: string | null;
+    last_message_at: string | null;
+  }>;
+  if (convs.length === 0) return [];
 
-  const convIds = convs.map((c) => c.id as string);
+  const convIds = convs.map((c) => c.id);
+  const leadIds = [...new Set(convs.map((c) => c.lead_id).filter((v): v is string => Boolean(v)))];
+
+  const leadMap = new Map<
+    string,
+    { status: string | null; source: string | null; closed_at: string | null; lost_at: string | null; estimated_value: number | null }
+  >();
+  if (leadIds.length > 0) {
+    const { data: leadsData } = await supabaseAdmin
+      .from("leads")
+      .select("id, status, source, closed_at, lost_at, estimated_value")
+      .eq("company_id", opts.companyId)
+      .in("id", leadIds);
+    for (const l of (leadsData ?? []) as Array<{
+      id: string;
+      status: string | null;
+      source: string | null;
+      closed_at: string | null;
+      lost_at: string | null;
+      estimated_value: number | null;
+    }>) {
+      leadMap.set(l.id, {
+        status: l.status,
+        source: l.source,
+        closed_at: l.closed_at,
+        lost_at: l.lost_at,
+        estimated_value: l.estimated_value,
+      });
+    }
+  }
 
   const { data: msgs, error: mErr } = await supabaseAdmin
     .from("messages")
