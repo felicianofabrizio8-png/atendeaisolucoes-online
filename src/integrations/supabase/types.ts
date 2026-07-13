@@ -919,6 +919,178 @@ export type Database = {
           },
         ]
       }
+      conversation_analyzer_state: {
+        Row: {
+          analyzer_version: string
+          attempts: number
+          company_id: string
+          conversation_id: string
+          created_at: string
+          id: string
+          last_analyzed_at: string | null
+          last_content_hash: string | null
+          last_error_code: string | null
+          last_message_at: string | null
+          next_retry_at: string | null
+          processing_status: string
+          updated_at: string
+        }
+        Insert: {
+          analyzer_version: string
+          attempts?: number
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          last_analyzed_at?: string | null
+          last_content_hash?: string | null
+          last_error_code?: string | null
+          last_message_at?: string | null
+          next_retry_at?: string | null
+          processing_status?: string
+          updated_at?: string
+        }
+        Update: {
+          analyzer_version?: string
+          attempts?: number
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          last_analyzed_at?: string | null
+          last_content_hash?: string | null
+          last_error_code?: string | null
+          last_message_at?: string | null
+          next_retry_at?: string | null
+          processing_status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_analyzer_state_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_facts: {
+        Row: {
+          agent_message_count: number
+          analyzed_at: string
+          analyzer_version: string
+          buying_signals_json: Json
+          channel: string | null
+          company_id: string
+          confidence: number
+          content_hash: string
+          conversation_id: string
+          created_at: string
+          extraction_method: string
+          first_message_at: string | null
+          first_response_minutes: number | null
+          id: string
+          intents_json: Json
+          last_message_at: string | null
+          lead_message_count: number
+          lead_source: string | null
+          lifecycle_status: string | null
+          loss_detected: boolean
+          message_count: number
+          negative_signals_json: Json
+          negotiation_duration_minutes: number | null
+          objections_json: Json
+          primary_intent: string | null
+          products_json: Json
+          quality_warnings_json: Json
+          quote_detected: boolean
+          sale_detected: boolean
+          sentiment_label: string | null
+          sentiment_score: number | null
+          topics_json: Json
+          updated_at: string
+        }
+        Insert: {
+          agent_message_count?: number
+          analyzed_at?: string
+          analyzer_version: string
+          buying_signals_json?: Json
+          channel?: string | null
+          company_id: string
+          confidence?: number
+          content_hash: string
+          conversation_id: string
+          created_at?: string
+          extraction_method?: string
+          first_message_at?: string | null
+          first_response_minutes?: number | null
+          id?: string
+          intents_json?: Json
+          last_message_at?: string | null
+          lead_message_count?: number
+          lead_source?: string | null
+          lifecycle_status?: string | null
+          loss_detected?: boolean
+          message_count?: number
+          negative_signals_json?: Json
+          negotiation_duration_minutes?: number | null
+          objections_json?: Json
+          primary_intent?: string | null
+          products_json?: Json
+          quality_warnings_json?: Json
+          quote_detected?: boolean
+          sale_detected?: boolean
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          topics_json?: Json
+          updated_at?: string
+        }
+        Update: {
+          agent_message_count?: number
+          analyzed_at?: string
+          analyzer_version?: string
+          buying_signals_json?: Json
+          channel?: string | null
+          company_id?: string
+          confidence?: number
+          content_hash?: string
+          conversation_id?: string
+          created_at?: string
+          extraction_method?: string
+          first_message_at?: string | null
+          first_response_minutes?: number | null
+          id?: string
+          intents_json?: Json
+          last_message_at?: string | null
+          lead_message_count?: number
+          lead_source?: string | null
+          lifecycle_status?: string | null
+          loss_detected?: boolean
+          message_count?: number
+          negative_signals_json?: Json
+          negotiation_duration_minutes?: number | null
+          objections_json?: Json
+          primary_intent?: string | null
+          products_json?: Json
+          quality_warnings_json?: Json
+          quote_detected?: boolean
+          sale_detected?: boolean
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          topics_json?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_facts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           ai_handling: boolean
