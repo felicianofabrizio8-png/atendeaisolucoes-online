@@ -153,22 +153,36 @@ export const Route = createFileRoute("/api/runtime/execute")({
         const finalJob = await runtime.queue?.find(dispatched.jobId).catch(() => null);
 
         const nowMs = Date.now();
-        const latestEnvelope = (topic: string) => {
-          const env = runtime.context.bus.latest(tenantId, topic, agentId);
-          if (!env) return null;
-          return {
-            id: env.id,
-            topic: env.topic,
-            producerAgentId: env.producerAgentId,
-            version: env.version,
-            createdAt: env.createdAt,
-            expiresAt: env.expiresAt,
-            ageSeconds: Math.max(
-              0,
-              Math.floor((nowMs - new Date(env.createdAt).getTime()) / 1000),
-            ),
-          };
+        const AGENT_TOPIC: Record<string, string> = {
+          "system-health": "system-health",
+          "business-brain": "business-patterns",
+          "business-learning": "business-learning",
+          "scientific-knowledge": "scientific-observations",
+          "scientific-memory": "scientific-memory",
+          "professor": "professor-insights",
+          "executive-intelligence": "executive-summary",
+          "executive-knowledge": "executive-knowledge",
+          "executive-narrative": "executive-narrative",
         };
+        const topic = AGENT_TOPIC[agentId];
+        const env = topic
+          ? runtime.context.bus.latest(tenantId, topic as never, agentId)
+          : null;
+        const envelope = env
+          ? {
+              id: env.id,
+              topic: env.topic,
+              producerAgentId: env.agentId,
+              version: env.version,
+              createdAt: env.createdAt,
+              expiresAt: env.expiresAt,
+              ageSeconds: Math.max(
+                0,
+                Math.floor((nowMs - new Date(env.createdAt).getTime()) / 1000),
+              ),
+            }
+          : null;
+
 
         return Response.json({
           ok: processed.ok,
