@@ -1,4 +1,3 @@
-(async()=>{
 import { AutonomousRuntime } from "@/lib/runtime/AutonomousRuntime.server";
 import { createExecutionContext } from "@/lib/runtime/ExecutionContext.server";
 import { SystemHealthAdapter } from "@/lib/runtime/SystemHealthAdapter.server";
@@ -63,4 +62,3 @@ try {
   rt.context.publisher.publish({ topic:"system-health", agentId:"system-health", tenantId:"", metadata:{}} as any);
 } catch (e:any) { console.log("bus reject empty tenant:", e.message); }
 console.log("Producer connected:", sh.publisherSnapshot().connected, "errors:", sh.publisherSnapshot().publishErrors);
-})();
