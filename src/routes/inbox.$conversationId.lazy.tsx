@@ -2034,28 +2034,28 @@ function MediaSendPanel({
   );
 
   const sendLibraryBatch = useCallback(
-    async (paths: string[]) => {
-      if (paths.length === 0) return;
+    async (items: LibraryPick[]) => {
+      if (items.length === 0) return;
       if (!isWhats) {
         toast.error("Envio de mídia disponível apenas para WhatsApp.");
         return;
       }
-      setMultiSendProgress({ current: 0, total: paths.length });
+      setMultiSendProgress({ current: 0, total: items.length });
       let ok = 0;
-      for (let i = 0; i < paths.length; i++) {
+      for (let i = 0; i < items.length; i++) {
         try {
-          await sendMediaPath(paths[i], "image");
+          await sendMediaPath(items[i].path, "image", items[i].caption);
           ok++;
           onSent();
         } catch (e) {
-          console.error("MULTI_MEDIA_SEND_ERROR", { path: paths[i], error: e });
+          console.error("MULTI_MEDIA_SEND_ERROR", { path: items[i].path, error: e });
           toast.error(
-            `Falha ao enviar ${i + 1}/${paths.length}: ${
+            `Falha ao enviar ${i + 1}/${items.length}: ${
               e instanceof Error ? e.message : "erro"
             }`,
           );
         }
-        setMultiSendProgress({ current: i + 1, total: paths.length });
+        setMultiSendProgress({ current: i + 1, total: items.length });
       }
       setMultiSendProgress(null);
       if (ok > 0) toast.success(`${ok} foto(s) enviada(s)`);
@@ -2063,17 +2063,18 @@ function MediaSendPanel({
     [isWhats, onSent, sendMediaPath],
   );
 
-  const selectFromLibrary = (paths: string[]) => {
+  const selectFromLibrary = (items: LibraryPick[]) => {
     setLibraryOpen(false);
-    if (paths.length === 0) return;
-    if (paths.length === 1) {
-      const url = paths[0];
-      setPending({ kind: "image", path: url, previewUrl: url });
-      setCaption("");
+    if (items.length === 0) return;
+    if (items.length === 1) {
+      const { path, caption: cap } = items[0];
+      setPending({ kind: "image", path, previewUrl: path });
+      setCaption(cap ?? "");
       return;
     }
-    void sendLibraryBatch(paths);
+    void sendLibraryBatch(items);
   };
+
 
   return (
     <>
