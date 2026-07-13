@@ -30,6 +30,7 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
+import { Route as RuntimeValidacaoRouteImport } from './routes/runtime.validacao'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
@@ -214,6 +215,11 @@ const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
   path: '/campanhas/$id',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/campanhas.$id.lazy').then((d) => d.Route))
+const RuntimeValidacaoRoute = RuntimeValidacaoRouteImport.update({
+  id: '/runtime/validacao',
+  path: '/runtime/validacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
@@ -587,6 +593,7 @@ export interface FileRoutesByFullPath {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox/': typeof InboxIndexRoute
@@ -675,6 +682,7 @@ export interface FileRoutesByTo {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox': typeof InboxIndexRoute
@@ -765,6 +773,7 @@ export interface FileRoutesById {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
   '/inbox/': typeof InboxIndexRoute
@@ -856,6 +865,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
     | '/inbox/'
@@ -944,6 +954,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
     | '/inbox'
@@ -1033,6 +1044,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
     | '/inbox/'
@@ -1120,6 +1132,7 @@ export interface RootRouteChildren {
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
+  RuntimeValidacaoRoute: typeof RuntimeValidacaoRoute
   CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
   CampanhasNovaLazyRoute: typeof CampanhasNovaLazyRoute
   CampanhasIndexLazyRoute: typeof CampanhasIndexLazyRoute
@@ -1338,6 +1351,13 @@ declare module '@tanstack/react-router' {
       path: '/campanhas/$id'
       fullPath: '/campanhas/$id'
       preLoaderRoute: typeof CampanhasIdLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runtime/validacao': {
+      id: '/runtime/validacao'
+      path: '/runtime/validacao'
+      fullPath: '/runtime/validacao'
+      preLoaderRoute: typeof RuntimeValidacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding/whatsapp': {
@@ -1846,6 +1866,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSystemHealthRoute: ApiSystemHealthRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
+  RuntimeValidacaoRoute: RuntimeValidacaoRoute,
   CampanhasIdLazyRoute: CampanhasIdLazyRoute,
   CampanhasNovaLazyRoute: CampanhasNovaLazyRoute,
   CampanhasIndexLazyRoute: CampanhasIndexLazyRoute,
