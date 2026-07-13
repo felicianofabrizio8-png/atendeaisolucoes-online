@@ -17,6 +17,7 @@ import {
   Activity,
   Crown,
   Rocket,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
@@ -43,7 +44,8 @@ type NavItem = {
     | "/campanhas"
     | "/saude"
     | "/criativos"
-    | "/onboarding";
+    | "/onboarding"
+    | "/runtime/observability";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -63,6 +65,7 @@ const nav: NavItem[] = [
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
+  { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
