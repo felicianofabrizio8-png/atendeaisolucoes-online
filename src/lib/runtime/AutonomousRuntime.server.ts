@@ -48,13 +48,16 @@ export class AutonomousRuntime {
       queue: null,
     });
     this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
+    this.adapters = new AgentAdapterRegistry(this.registry);
+    // Etapa 6: substitui o Stub do system-health pelo adapter real.
+    this.adapters.register(new SystemHealthAdapter());
     this.executionEngine = new RuntimeExecutionEngine({
       registry: this.registry,
       dispatcher: this._dispatcher,
       scheduler: this.scheduler,
       heartbeat: this.heartbeat,
+      adapters: this.adapters,
     });
-    this.adapters = new AgentAdapterRegistry(this.registry);
     this.worker = new RuntimeWorker({
       workerId: `worker-${Math.random().toString(36).slice(2, 8)}`,
       queue: null,
