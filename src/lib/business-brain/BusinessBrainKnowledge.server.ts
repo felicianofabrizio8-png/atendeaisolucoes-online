@@ -34,6 +34,35 @@ function computeDirection(current: number, previous: number): TrendDirection {
   return diff > 0 ? "up" : "down";
 }
 
+/**
+ * Confidence do Knowledge = força da evidência × cobertura amostral.
+ *
+ *  - evidenceStrength = 1 - exp(-events / EVENT_SCALE)
+ *      Cresce suavemente com o número de OCORRÊNCIAS do próprio evento.
+ *      Eventos raros (1-2) recebem sempre confidence baixa, independentemente
+ *      do tamanho total da amostra.
+ *  - sampleFactor = min(1, sample / SAMPLE_TARGET)
+ *      Penaliza amostra pequena mesmo quando há eventos suficientes.
+ *
+ *  Referências de calibração (com sample >= SAMPLE_TARGET):
+ *    events=1   -> 0.10  (muito baixa)
+ *    events=2   -> 0.18
+ *    events=5   -> 0.39  (média)
+ *    events=10  -> 0.63
+ *    events=20  -> 0.86  (alta)
+ *    events=100 -> ~1.00 (muito alta)
+ */
+const EVENT_SCALE = 10;
+const SAMPLE_TARGET = 30;
+
+function knowledgeConfidence(events: number, sample: number): number {
+  if (events <= 0 || sample <= 0) return 0;
+  const evidenceStrength = 1 - Math.exp(-events / EVENT_SCALE);
+  const sampleFactor = Math.min(1, sample / SAMPLE_TARGET);
+  const raw = evidenceStrength * sampleFactor;
+  return Math.round(Math.min(1, raw) * 100) / 100;
+}
+
 export class BusinessBrainKnowledge {
   static buildKnowledge(
     metrics: BrainMetrics,
@@ -44,7 +73,7 @@ export class BusinessBrainKnowledge {
     const list: BusinessKnowledge[] = [];
     const total = metrics.totalConversationsAnalyzed;
 
-    // Knowledge não é gerado sem amostra mínima. Confiança segue a amostra.
+    // Knowledge não é gerado sem amostra mínima. Confiança segue a evidência.
     if (total >= 5) {
       const sold = metrics.byLifecycle.sold ?? 0;
       const rate = Math.round((sold / total) * 1000) / 10;
@@ -55,7 +84,7 @@ export class BusinessBrainKnowledge {
           category: "commercial",
           title: "Taxa de conversão agregada",
           summary: `Nas ${total} conversas analisadas no período ${period}, ${sold} resultaram em venda (${rate}%).`,
-          confidence: Math.min(1, total / 30),
+          confidence: knowledgeConfidence(sold, total),
           evidence: { metrics: ["conversion_rate", "total_conversations"], sample: total },
         },
         generatedAt,
@@ -71,7 +100,7 @@ export class BusinessBrainKnowledge {
             category: "operational",
             title: "Padrão de abandono observado",
             summary: `${ar}% das conversas terminam sem resposta útil do lead.`,
-            confidence: Math.min(1, abandoned / 15),
+            confidence: knowledgeConfidence(abandoned, total),
             evidence: { metrics: ["abandonment_rate"], sample: abandoned },
           },
           generatedAt,
@@ -87,7 +116,7 @@ export class BusinessBrainKnowledge {
             category: "commercial",
             title: "Objeção mais recorrente",
             summary: `A objeção "${top.key}" apareceu em ${top.percentage}% das conversas analisadas.`,
-            confidence: Math.min(1, top.count / 15),
+            confidence: knowledgeConfidence(top.count, total),
             evidence: { metrics: ["objection_frequency"], sample: top.count },
           },
           generatedAt,
@@ -103,7 +132,7 @@ export class BusinessBrainKnowledge {
             category: "product",
             title: "Produto mais citado",
             summary: `"${top.key}" é o produto mais mencionado (${top.percentage}% das conversas).`,
-            confidence: Math.min(1, top.count / 10),
+            confidence: knowledgeConfidence(top.count, total),
             evidence: { metrics: ["product_mentions"], sample: top.count },
           },
           generatedAt,
@@ -120,7 +149,7 @@ export class BusinessBrainKnowledge {
               category: "channel",
               title: "Canal com maior número de vendas",
               summary: `O canal "${best.channel}" concentra ${best.sold} vendas em ${best.conversations} conversas analisadas.`,
-              confidence: Math.min(1, best.conversations / 20),
+              confidence: knowledgeConfidence(best.sold, best.conversations),
               evidence: { metrics: ["channel_sales"], sample: best.conversations },
             },
             generatedAt,
@@ -136,7 +165,7 @@ export class BusinessBrainKnowledge {
             category: "timing",
             title: "Tempo médio até venda",
             summary: `Vendas fechadas exigem em média ${metrics.timing.avgNegotiationMinutesToSale} minutos de negociação.`,
-            confidence: Math.min(1, (metrics.byLifecycle.sold ?? 0) / 10),
+            confidence: knowledgeConfidence(metrics.byLifecycle.sold ?? 0, total),
             evidence: {
               metrics: ["avg_negotiation_minutes_to_sale"],
               sample: metrics.byLifecycle.sold ?? 0,

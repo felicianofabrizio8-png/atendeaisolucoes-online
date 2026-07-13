@@ -45,10 +45,23 @@ export interface BuildResult {
   pii_suspected: boolean;
 }
 
+// Subconjunto do TOPIC_DICT que representa produtos comercializáveis.
+// Não introduz heurística nova — reaproveita a detecção de tópicos existente,
+// separando produtos (bens) de serviços/temas operacionais (ex.: manutenção).
+const PRODUCT_TOPICS = new Set<string>([
+  "piscina_fibra",
+  "piscina_vinil",
+  "piscina_alvenaria",
+  "aquecimento",
+  "cobertura",
+]);
+
 export function buildFacts(raw: ConversationRaw): BuildResult {
   const contentHash = computeContentHash(raw);
   const { sanitized, pii_suspected } = sanitizeMessages(raw.messages);
   const det = analyzeDeterministic(raw, sanitized);
+
+  const products = det.topics.filter((t) => PRODUCT_TOPICS.has(t));
 
   const row: ConversationFactsRow = {
     company_id: raw.company_id,
@@ -63,7 +76,7 @@ export function buildFacts(raw: ConversationRaw): BuildResult {
     objections_json: det.objections,
     buying_signals_json: det.buying_signals,
     negative_signals_json: det.negative_signals,
-    products_json: [], // sem vínculo estruturado ainda
+    products_json: products,
     topics_json: det.topics,
     quality_warnings_json: pii_suspected
       ? [...det.quality_warnings, "pii_residual_suspected"]

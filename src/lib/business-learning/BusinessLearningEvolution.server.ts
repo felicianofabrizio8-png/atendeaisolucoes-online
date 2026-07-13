@@ -48,10 +48,16 @@ function makeEvolution(
   periodCompared: string,
   observedAt: string,
   confidence: number,
+  sample: number,
 ): BusinessEvolution {
   const delta = Math.round((current - previous) * 100) / 100;
   const deltaPercent =
     previous > 0 ? Math.round(((current - previous) / previous) * 1000) / 10 : null;
+  // Guard: sem amostra mínima nenhum direction é confiável.
+  const direction: EvolutionDirection =
+    sample < MIN_SAMPLE ? "insufficient_sample" : computeDirection(previous, current);
+  const guardedConfidence =
+    sample < MIN_SAMPLE ? 0 : Math.max(0, Math.min(1, confidence));
   return {
     id,
     metric,
@@ -59,8 +65,8 @@ function makeEvolution(
     currentValue: current,
     delta,
     deltaPercent,
-    direction: computeDirection(previous, current),
-    confidence: Math.max(0, Math.min(1, confidence)),
+    direction,
+    confidence: guardedConfidence,
     periodCompared,
     observedAt,
   };
@@ -95,6 +101,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.conversations + curr.conversations),
+          prev.conversations + curr.conversations,
         ),
       );
       evolutions.push(
@@ -106,6 +113,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.sold + curr.sold),
+          prev.sold + curr.sold,
         ),
       );
       evolutions.push(
@@ -117,6 +125,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.lost + curr.lost),
+          prev.lost + curr.lost,
         ),
       );
     }
@@ -136,6 +145,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.conversations + curr.conversations),
+          prev.conversations + curr.conversations,
         ),
       );
     }
@@ -200,6 +210,7 @@ export class BusinessLearningEvolution {
             cmp,
             now,
             confidenceFor(pr.sample),
+            pr.sample,
           ),
         );
       }
