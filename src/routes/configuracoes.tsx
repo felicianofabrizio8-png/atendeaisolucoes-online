@@ -50,6 +50,7 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { MetaDisconnectButton } from "@/components/MetaDisconnectButton";
 
 export const Route = createFileRoute("/configuracoes")({
   component: ConfigPage,
@@ -477,6 +478,7 @@ function IntegrationItem({
         >
           {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
         </button>
+        <MetaDisconnectButton integrationId={item.id} onDisconnected={onChanged} />
         <button
           onClick={remove}
           disabled={busy}
