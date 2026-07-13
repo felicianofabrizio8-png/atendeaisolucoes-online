@@ -31,6 +31,7 @@ import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as RuntimeValidacaoRouteImport } from './routes/runtime.validacao'
+import { Route as RuntimeObservabilityRouteImport } from './routes/runtime.observability'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
 import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
@@ -218,6 +219,11 @@ const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
 const RuntimeValidacaoRoute = RuntimeValidacaoRouteImport.update({
   id: '/runtime/validacao',
   path: '/runtime/validacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RuntimeObservabilityRoute = RuntimeObservabilityRouteImport.update({
+  id: '/runtime/observability',
+  path: '/runtime/observability',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
@@ -593,6 +599,7 @@ export interface FileRoutesByFullPath {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -682,6 +689,7 @@ export interface FileRoutesByTo {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -773,6 +781,7 @@ export interface FileRoutesById {
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
+  '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
   '/campanhas/$id': typeof CampanhasIdLazyRoute
   '/campanhas/nova': typeof CampanhasNovaLazyRoute
@@ -865,6 +874,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/observability'
     | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -954,6 +964,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/observability'
     | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -1044,6 +1055,7 @@ export interface FileRouteTypes {
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/onboarding/whatsapp'
+    | '/runtime/observability'
     | '/runtime/validacao'
     | '/campanhas/$id'
     | '/campanhas/nova'
@@ -1132,6 +1144,7 @@ export interface RootRouteChildren {
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
+  RuntimeObservabilityRoute: typeof RuntimeObservabilityRoute
   RuntimeValidacaoRoute: typeof RuntimeValidacaoRoute
   CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
   CampanhasNovaLazyRoute: typeof CampanhasNovaLazyRoute
@@ -1358,6 +1371,13 @@ declare module '@tanstack/react-router' {
       path: '/runtime/validacao'
       fullPath: '/runtime/validacao'
       preLoaderRoute: typeof RuntimeValidacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runtime/observability': {
+      id: '/runtime/observability'
+      path: '/runtime/observability'
+      fullPath: '/runtime/observability'
+      preLoaderRoute: typeof RuntimeObservabilityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding/whatsapp': {
@@ -1866,6 +1886,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSystemHealthRoute: ApiSystemHealthRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
+  RuntimeObservabilityRoute: RuntimeObservabilityRoute,
   RuntimeValidacaoRoute: RuntimeValidacaoRoute,
   CampanhasIdLazyRoute: CampanhasIdLazyRoute,
   CampanhasNovaLazyRoute: CampanhasNovaLazyRoute,
