@@ -31,6 +31,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
+  adminOnly?: boolean;
 };
 
 const nav: NavItem[] = [
