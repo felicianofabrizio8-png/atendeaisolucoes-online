@@ -6,6 +6,7 @@
 // ============================================================================
 
 import type { AgentRegistry } from "./AgentRegistry.server";
+import type { AgentAdapterRegistry } from "./AgentAdapterRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
 import type { ExecutionContext } from "./ExecutionContext.server";
 import type { ExecutionLocks, LockHandle } from "./ExecutionLocks.server";
@@ -43,6 +44,9 @@ export interface PipelineRunReport {
 interface PipelineDeps {
   registry: AgentRegistry;
   locks: ExecutionLocks;
+  adapters?: AgentAdapterRegistry | null;
+  /** Allowlist de agentes que podem executar REAL. Fora daqui = stub. */
+  realExecutionAllowlist?: ReadonlySet<string>;
 }
 
 export class ExecutionPipeline {
@@ -151,18 +155,74 @@ export class ExecutionPipeline {
       await runStage("ready", async () => ({ ok: true, reason: "ready" }));
     }
 
-    // execute — STUB nesta etapa
-    let result: ExecutionResult;
+    // execute — REAL somente para agentes na allowlist com adapter não-stub.
+    let result: ExecutionResult | null = null;
     if (ok) {
-      await runStage("execute", async () => ({ ok: true, reason: "execution_stub" }));
-      result = stubResult({
-        executionId: ctx.executionId,
-        jobId: ctx.job.id,
-        agentId: ctx.agentId,
-        tenantId: ctx.tenantId,
-        attempt: ctx.attempt,
-        reason: "execution_stub",
-      });
+      const allowlist = this.deps.realExecutionAllowlist;
+      const adapter = this.deps.adapters?.get(ctx.agentId) ?? null;
+      const isAllowed = allowlist ? allowlist.has(ctx.agentId) : false;
+      const adapterVersion = adapter?.version ?? "";
+      const isRealAdapter = Boolean(adapter) && !adapterVersion.startsWith("stub-");
+
+      if (isAllowed && adapter && isRealAdapter) {
+        let realResult: ExecutionResult | null = null;
+        let stageErr: string | null = null;
+        const av = await runStage("execute", async () => {
+          const validation = await adapter.validate(ctx);
+          if (!validation.ok) {
+            stageErr = validation.reason;
+            return validation;
+          }
+          const preparation = await adapter.prepare(ctx);
+          if (!preparation.ok) {
+            stageErr = preparation.reason;
+            return preparation;
+          }
+          try {
+            realResult = await adapter.execute(ctx);
+          } finally {
+            await adapter.cleanup(ctx).catch(() => undefined);
+          }
+          return {
+            ok: realResult.outcome === "success",
+            reason: realResult.reason,
+          };
+        });
+        if (realResult) {
+          result = realResult;
+          if (!av.ok) {
+            ok = false;
+            reason = av.reason;
+          } else {
+            reason = "execution_ok";
+          }
+        } else {
+          ok = false;
+          reason = stageErr ?? av.reason;
+          result = {
+            ...stubResult({
+              executionId: ctx.executionId,
+              jobId: ctx.job.id,
+              agentId: ctx.agentId,
+              tenantId: ctx.tenantId,
+              attempt: ctx.attempt,
+              reason,
+            }),
+            outcome: "blocked",
+            stub: false,
+          };
+        }
+      } else {
+        await runStage("execute", async () => ({ ok: true, reason: "execution_stub" }));
+        result = stubResult({
+          executionId: ctx.executionId,
+          jobId: ctx.job.id,
+          agentId: ctx.agentId,
+          tenantId: ctx.tenantId,
+          attempt: ctx.attempt,
+          reason: "execution_stub",
+        });
+      }
     } else {
       result = {
         ...stubResult({
@@ -176,6 +236,7 @@ export class ExecutionPipeline {
         outcome: "blocked",
       };
     }
+    const finalResult: ExecutionResult = result!;
 
     // release lock
     if (lock) {
@@ -187,9 +248,9 @@ export class ExecutionPipeline {
 
     // finish
     const totalDurationMs = RuntimeClock.now() - startedMs;
-    result.durationMs = totalDurationMs;
-    result.startedAt = new Date(startedMs).toISOString();
-    result.finishedAt = RuntimeClock.nowIso();
+    finalResult.durationMs = totalDurationMs;
+    finalResult.startedAt = new Date(startedMs).toISOString();
+    finalResult.finishedAt = RuntimeClock.nowIso();
     await runStage("finish", async () => ({ ok, reason }));
 
     const report: PipelineRunReport = {
@@ -200,7 +261,7 @@ export class ExecutionPipeline {
       ok,
       reason,
       stages,
-      result,
+      result: finalResult,
       totalDurationMs,
     };
     this.lastReport = report;

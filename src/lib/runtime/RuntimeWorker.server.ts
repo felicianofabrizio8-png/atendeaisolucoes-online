@@ -12,6 +12,9 @@ import { WorkerHeartbeat, type WorkerHeartbeatTick } from "./WorkerHeartbeat.ser
 import { WorkerMetrics, type WorkerMetricsSnapshot } from "./WorkerMetrics.server";
 import type { PipelineRunReport } from "./ExecutionPipeline.server";
 
+/** Etapa 6: worker só executa jobs de agentes na allowlist. */
+const WORKER_ALLOWLIST: ReadonlySet<string> = new Set(["system-health"]);
+
 export interface WorkerDeps {
   workerId: string;
   queue: RuntimeJobQueue | null;
@@ -86,6 +89,19 @@ export class RuntimeWorker {
       };
     }
 
+    // Etapa 6: apenas system-health é permitido. Outros permanecem em queue.
+    if (!WORKER_ALLOWLIST.has(job.agentId)) {
+      return {
+        workerId: this.workerId,
+        jobId,
+        found: true,
+        ok: false,
+        reason: `agent_not_enabled:${job.agentId}`,
+        report: null,
+        processingMs: RuntimeClock.now() - started,
+      };
+    }
+
     this.health.markStart(jobId);
     let report: PipelineRunReport;
     let err: string | null = null;
@@ -131,6 +147,21 @@ export class RuntimeWorker {
       processingMs,
       queueLatencyMs,
       executionLatencyMs: report.totalDurationMs,
+    });
+
+    // Registra a última execução real (allowlist-gated no engine).
+    this.engine.recordLastRealExecution({
+      agentId: report.agentId,
+      executionId: report.executionId,
+      jobId: report.jobId,
+      tenantId: report.tenantId,
+      workerId: this.workerId,
+      outcome: report.result.outcome,
+      reason: report.reason,
+      startedAt: report.result.startedAt,
+      finishedAt: report.result.finishedAt,
+      durationMs: report.result.durationMs,
+      error: report.result.error,
     });
     return {
       workerId: this.workerId,

@@ -17,6 +17,7 @@ import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
 import { RuntimeScheduler } from "./RuntimeScheduler.server";
 import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
+import { SystemHealthAdapter } from "./SystemHealthAdapter.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
@@ -47,13 +48,16 @@ export class AutonomousRuntime {
       queue: null,
     });
     this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
+    this.adapters = new AgentAdapterRegistry(this.registry);
+    // Etapa 6: substitui o Stub do system-health pelo adapter real.
+    this.adapters.register(new SystemHealthAdapter());
     this.executionEngine = new RuntimeExecutionEngine({
       registry: this.registry,
       dispatcher: this._dispatcher,
       scheduler: this.scheduler,
       heartbeat: this.heartbeat,
+      adapters: this.adapters,
     });
-    this.adapters = new AgentAdapterRegistry(this.registry);
     this.worker = new RuntimeWorker({
       workerId: `worker-${Math.random().toString(36).slice(2, 8)}`,
       queue: null,
@@ -137,6 +141,11 @@ export class AutonomousRuntime {
       adapters: this.adapters.snapshot(this.registry),
       worker: this.worker.snapshot(),
       workers: [this.worker.snapshot()],
+      systemHealth: {
+        allowlist: Array.from(this.executionEngine.allowlist),
+        lastExecution: this.executionEngine.lastRealExecution("system-health"),
+        adapterHealth: this.adapters.get("system-health")?.health() ?? null,
+      },
     };
   }
 
