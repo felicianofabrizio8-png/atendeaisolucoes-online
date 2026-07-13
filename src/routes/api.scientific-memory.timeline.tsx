@@ -60,8 +60,7 @@ export const Route = createFileRoute("/api/scientific-memory/timeline")({
             .select("company_id")
             .eq("id", u.user.id)
             .maybeSingle();
-          if (!profile?.company_id)
-            return json(403, { ok: false, error: "forbidden_no_company" });
+          if (!profile?.company_id) return json(403, { ok: false, error: "forbidden_no_company" });
 
           const { data: isAdmin } = await supabase.rpc("has_role", {
             _user_id: u.user.id,
@@ -74,8 +73,7 @@ export const Route = createFileRoute("/api/scientific-memory/timeline")({
           const parsed = QuerySchema.safeParse({
             period: url.searchParams.get("period") ?? undefined,
           });
-          if (!parsed.success)
-            return json(400, { ok: false, error: "invalid_params" });
+          if (!parsed.success) return json(400, { ok: false, error: "invalid_params" });
 
           const agent = new ScientificMemoryAgent({
             supabase,

@@ -17,8 +17,8 @@ export interface MemoryValidatedTheory {
   category: string;
   title: string;
   summary: string;
-  confidence: number;       // 0..1
-  scientificScore: number;  // 0..1
+  confidence: number; // 0..1
+  scientificScore: number; // 0..1
   validatedSince: string | null; // ISO
 }
 
@@ -56,14 +56,14 @@ export interface MemoryCorrelation {
   provenanceKey: string;
   category: string;
   title: string;
-  sources: string[];   // ex: ["business_brain:pattern","business_learning:hypothesis"]
+  sources: string[]; // ex: ["business_brain:pattern","business_learning:hypothesis"]
   layerCount: number;
   confidence: number;
 }
 
 /** Limitação estrutural detectada no ciclo atual. */
 export interface MemoryLimitation {
-  code: string;   // ex: "insufficient_history_days"
+  code: string; // ex: "insufficient_history_days"
   message: string;
 }
 
@@ -86,8 +86,8 @@ export interface ScientificMemoryRecord {
   companyId: string;
   generatedAt: string; // ISO
   period: ScientificMemoryPeriod;
-  knowledgeScore: number;   // 0..1
-  scientificScore: number;  // 0..1
+  knowledgeScore: number; // 0..1
+  scientificScore: number; // 0..1
   validatedTheories: MemoryValidatedTheory[];
   strengtheningHypotheses: MemoryStrengtheningHypothesis[];
   observedPatterns: MemoryObservedPattern[];
@@ -100,19 +100,16 @@ export interface ScientificMemoryRecord {
 }
 
 /** Payload de gravação (companyId injetado pelo repositório; id/createdAt pelo banco). */
-export type ScientificMemoryInsert = Omit<
-  ScientificMemoryRecord,
-  "id" | "createdAt" | "companyId"
->;
+export type ScientificMemoryInsert = Omit<ScientificMemoryRecord, "id" | "createdAt" | "companyId">;
 
 /** Evolução entre a memória atual e a imediatamente anterior. */
 export interface ScientificMemoryEvolution {
   hasPrevious: boolean;
   previousGeneratedAt: string | null;
-  knowledgeEvolution: number;   // delta knowledgeScore
-  scientificEvolution: number;  // delta scientificScore
-  businessEvolution: number;    // delta (# conclusões) + delta média de confiança
-  confidenceEvolution: number;  // delta avgConfidence
+  knowledgeEvolution: number; // delta knowledgeScore
+  scientificEvolution: number; // delta scientificScore
+  businessEvolution: number; // delta (# conclusões) + delta média de confiança
+  confidenceEvolution: number; // delta avgConfidence
   validatedTheoriesDelta: number;
   strengtheningHypothesesDelta: number;
   observedPatternsDelta: number;

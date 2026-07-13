@@ -154,15 +154,11 @@ export class ScientificMemoryRepository {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query = (this.supabase as any)
       .from("scientific_memory")
-      .select(
-        "id,generated_at,period,knowledge_score,scientific_score,quality,version",
-      )
+      .select("id,generated_at,period,knowledge_score,scientific_score,quality,version")
       .eq("company_id", this.companyId)
       .gte("generated_at", since);
     if (period) query = query.eq("period", period);
-    const { data, error } = await query
-      .order("generated_at", { ascending: false })
-      .limit(730);
+    const { data, error } = await query.order("generated_at", { ascending: false }).limit(730);
     if (error || !Array.isArray(data)) return [];
     return (data as Array<Record<string, unknown>>).map((r) => ({
       id: String(r.id),

@@ -41,15 +41,11 @@ function computeKnowledgeScore(science: ScientificKnowledgeSnapshot): number {
   return clamp01(sum / Math.max(3, vk.length));
 }
 
-function computeScientificScore(
-  science: ScientificKnowledgeSnapshot,
-): number {
+function computeScientificScore(science: ScientificKnowledgeSnapshot): number {
   const validatedConfidences = (science.validatedKnowledge ?? []).map((k) =>
     clamp01(k.confidence ?? 0),
   );
-  const strengthening = (science.hypotheses ?? []).filter(
-    (h) => h.status === "strengthening",
-  );
+  const strengthening = (science.hypotheses ?? []).filter((h) => h.status === "strengthening");
   const strengtheningConfidences = strengthening.map((h) => clamp01(h.confidence ?? 0));
   const validatedAvg = avg(validatedConfidences);
   const strengtheningAvg = avg(strengtheningConfidences);
@@ -57,9 +53,7 @@ function computeScientificScore(
   return clamp01(validatedAvg * 0.7 + strengtheningAvg * 0.3);
 }
 
-function buildValidatedTheories(
-  science: ScientificKnowledgeSnapshot,
-): MemoryValidatedTheory[] {
+function buildValidatedTheories(science: ScientificKnowledgeSnapshot): MemoryValidatedTheory[] {
   return (science.validatedKnowledge ?? []).map((k) => ({
     provenanceKey: k.provenanceKey,
     category: k.category,
@@ -97,9 +91,7 @@ function buildObservedPatterns(brain: BusinessBrainSnapshot): MemoryObservedPatt
   }));
 }
 
-function buildBusinessConclusions(
-  brain: BusinessBrainSnapshot,
-): MemoryBusinessConclusion[] {
+function buildBusinessConclusions(brain: BusinessBrainSnapshot): MemoryBusinessConclusion[] {
   return (brain.knowledge ?? []).map((k) => ({
     category: k.category,
     title: k.title,

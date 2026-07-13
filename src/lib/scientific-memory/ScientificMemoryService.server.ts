@@ -52,12 +52,9 @@ function computeEvolution(
     };
   }
   const confDelta =
-    clamp01(current.quality.avgConfidence) -
-    clamp01(previous.quality.avgConfidence);
+    clamp01(current.quality.avgConfidence) - clamp01(previous.quality.avgConfidence);
   const businessDelta =
-    (current.businessConclusions.length - previous.businessConclusions.length) *
-      0.5 +
-    confDelta;
+    (current.businessConclusions.length - previous.businessConclusions.length) * 0.5 + confDelta;
   return {
     hasPrevious: true,
     previousGeneratedAt: previous.generatedAt,
@@ -65,13 +62,10 @@ function computeEvolution(
     scientificEvolution: current.scientificScore - previous.scientificScore,
     businessEvolution: businessDelta,
     confidenceEvolution: confDelta,
-    validatedTheoriesDelta:
-      current.validatedTheories.length - previous.validatedTheories.length,
+    validatedTheoriesDelta: current.validatedTheories.length - previous.validatedTheories.length,
     strengtheningHypothesesDelta:
-      current.strengtheningHypotheses.length -
-      previous.strengtheningHypotheses.length,
-    observedPatternsDelta:
-      current.observedPatterns.length - previous.observedPatterns.length,
+      current.strengtheningHypotheses.length - previous.strengtheningHypotheses.length,
+    observedPatternsDelta: current.observedPatterns.length - previous.observedPatterns.length,
   };
 }
 
@@ -137,9 +131,7 @@ export class ScientificMemoryService {
     return { record, evolution: computeEvolution(record, previous) };
   }
 
-  async timeline(
-    period?: ScientificMemoryPeriod,
-  ): Promise<ScientificMemoryTimelineItem[]> {
+  async timeline(period?: ScientificMemoryPeriod): Promise<ScientificMemoryTimelineItem[]> {
     return this.repo.timeline(period);
   }
 }
