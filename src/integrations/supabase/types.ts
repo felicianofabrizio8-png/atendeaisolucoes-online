@@ -1938,6 +1938,213 @@ export type Database = {
           },
         ]
       }
+      scientific_hypothesis_registry: {
+        Row: {
+          category: string
+          company_id: string
+          confidence: number
+          contradiction_count: number
+          created_at: string
+          description: string | null
+          distinct_snapshot_days: number
+          first_observed_at: string
+          hypothesis_key: string
+          id: string
+          last_observed_at: string
+          last_observed_day: string
+          occurrence_count: number
+          provenance_key: string
+          scientific_score: number
+          source_fingerprint: string
+          status: string
+          supporting_evidence_json: Json
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          company_id: string
+          confidence: number
+          contradiction_count?: number
+          created_at?: string
+          description?: string | null
+          distinct_snapshot_days?: number
+          first_observed_at: string
+          hypothesis_key: string
+          id?: string
+          last_observed_at: string
+          last_observed_day: string
+          occurrence_count?: number
+          provenance_key: string
+          scientific_score?: number
+          source_fingerprint: string
+          status: string
+          supporting_evidence_json?: Json
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          company_id?: string
+          confidence?: number
+          contradiction_count?: number
+          created_at?: string
+          description?: string | null
+          distinct_snapshot_days?: number
+          first_observed_at?: string
+          hypothesis_key?: string
+          id?: string
+          last_observed_at?: string
+          last_observed_day?: string
+          occurrence_count?: number
+          provenance_key?: string
+          scientific_score?: number
+          source_fingerprint?: string
+          status?: string
+          supporting_evidence_json?: Json
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scientific_hypothesis_registry_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scientific_knowledge_registry: {
+        Row: {
+          category: string
+          company_id: string
+          confidence: number
+          contradiction_count: number
+          created_at: string
+          distinct_snapshot_days: number
+          evidence_summary_json: Json
+          id: string
+          knowledge_key: string
+          last_confirmed_at: string | null
+          last_confirmed_day: string | null
+          provenance_keys_json: Json
+          scientific_score: number
+          status: string
+          summary: string
+          title: string
+          updated_at: string
+          validated_since: string | null
+        }
+        Insert: {
+          category: string
+          company_id: string
+          confidence: number
+          contradiction_count?: number
+          created_at?: string
+          distinct_snapshot_days?: number
+          evidence_summary_json?: Json
+          id?: string
+          knowledge_key: string
+          last_confirmed_at?: string | null
+          last_confirmed_day?: string | null
+          provenance_keys_json?: Json
+          scientific_score?: number
+          status: string
+          summary: string
+          title: string
+          updated_at?: string
+          validated_since?: string | null
+        }
+        Update: {
+          category?: string
+          company_id?: string
+          confidence?: number
+          contradiction_count?: number
+          created_at?: string
+          distinct_snapshot_days?: number
+          evidence_summary_json?: Json
+          id?: string
+          knowledge_key?: string
+          last_confirmed_at?: string | null
+          last_confirmed_day?: string | null
+          provenance_keys_json?: Json
+          scientific_score?: number
+          status?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+          validated_since?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scientific_knowledge_registry_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scientific_knowledge_snapshots: {
+        Row: {
+          company_id: string
+          created_at: string
+          engine_version: string
+          evidence_json: Json
+          hypotheses_json: Json
+          id: string
+          observations_json: Json
+          period: string
+          quality_json: Json
+          snapshot_date: string
+          snapshot_generated_at: string
+          source_fingerprint: string
+          theories_json: Json
+          validated_knowledge_json: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          engine_version: string
+          evidence_json?: Json
+          hypotheses_json?: Json
+          id?: string
+          observations_json?: Json
+          period: string
+          quality_json?: Json
+          snapshot_date: string
+          snapshot_generated_at: string
+          source_fingerprint: string
+          theories_json?: Json
+          validated_knowledge_json?: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          engine_version?: string
+          evidence_json?: Json
+          hypotheses_json?: Json
+          id?: string
+          observations_json?: Json
+          period?: string
+          quality_json?: Json
+          snapshot_date?: string
+          snapshot_generated_at?: string
+          source_fingerprint?: string
+          theories_json?: Json
+          validated_knowledge_json?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scientific_knowledge_snapshots_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           company_id: string
@@ -2283,6 +2490,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_executive_knowledge: { Args: never; Returns: number }
+      cleanup_scientific_snapshots: { Args: never; Returns: number }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
       current_company_id: { Args: never; Returns: string }
       get_storage_usage_bytes: {
