@@ -2,6 +2,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { syncTemplatesFromMeta } from "@/lib/wa-templates.server";
+import { appendOnboardingEvent } from "@/lib/onboarding/appendEvent.server";
 
 export const Route = createFileRoute("/api/whatsapp/templates/sync")({
   server: {
@@ -23,6 +24,10 @@ export const Route = createFileRoute("/api/whatsapp/templates/sync")({
 
         const result = await syncTemplatesFromMeta(profile.company_id);
         if (!result.ok) return Response.json(result, { status: 400 });
+        await appendOnboardingEvent(profile.company_id, "templates_synced", {
+          count: result.count ?? 0,
+          approved: result.approved ?? 0,
+        });
         return Response.json(result);
       },
     },
