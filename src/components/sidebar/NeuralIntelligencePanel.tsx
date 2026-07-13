@@ -1,9 +1,10 @@
-// Central de Inteligência Viva — v3 Enterprise Premium (visual-only).
-// Consome apenas endpoints READ-ONLY existentes. Sem impactar módulos operacionais.
+// Central de Inteligência Viva — v4 Enterprise Premium (visual-only).
+// Consome APENAS endpoints READ-ONLY existentes. Sem alterar lógica, endpoints,
+// polling, RLS, banco, migrations, ou qualquer módulo operacional.
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Brain } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -14,19 +15,20 @@ type AgentState = "active" | "learning" | "consolidating" | "waiting" | "idle";
 interface AgentNode {
   id: string;
   label: string;
+  short: string;
+  tooltip: string;
   state: AgentState;
-  source: string;
 }
 
 const STATE_META: Record<
   AgentState,
-  { color: string; glow: string; label: string; hex: string }
+  { glow: string; label: string; hex: string }
 > = {
-  active:        { color: "bg-emerald-400", glow: "rgba(52,211,153,0.85)",  label: "Ativo",        hex: "rgb(52,211,153)" },
-  learning:      { color: "bg-sky-400",     glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)" },
-  consolidating: { color: "bg-violet-400",  glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)" },
-  waiting:       { color: "bg-amber-400",   glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)" },
-  idle:          { color: "bg-slate-500",   glow: "rgba(148,163,184,0.5)",  label: "Ocioso",       hex: "rgb(148,163,184)" },
+  active:        { glow: "rgba(52,211,153,0.85)",  label: "Ativo",        hex: "rgb(52,211,153)" },
+  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)" },
+  consolidating: { glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)" },
+  waiting:       { glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)" },
+  idle:          { glow: "rgba(148,163,184,0.5)",  label: "Ocioso",       hex: "rgb(148,163,184)" },
 };
 
 async function pingSnapshot(path: string): Promise<boolean> {
@@ -78,15 +80,11 @@ function formatRelative(ts: number | undefined) {
   return `há ${h}h`;
 }
 
+const BREATH = 3.8; // Professor breathing cycle (s)
+
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
   const { data, isLoading } = useIntelligenceStates(!!user);
-
-  const professorState: AgentState = useMemo(() => {
-    if (!user) return "waiting";
-    if (isLoading || !data) return "learning";
-    return data.science ? "consolidating" : "waiting";
-  }, [user, data, isLoading]);
 
   const resolve = (ok: boolean | undefined, activeState: AgentState = "active"): AgentState => {
     if (!user) return "waiting";
@@ -94,97 +92,195 @@ export function NeuralIntelligencePanel() {
     return ok ? activeState : "waiting";
   };
 
+  // Ordered following the real knowledge-evolution flow:
+  // Conversation → Brain → Learning → Scientific → Executive → Sales
   const agents: AgentNode[] = [
-    { id: "brain",        label: "Business Brain",     state: resolve(data?.brain, "active"),           source: "business-brain/snapshot" },
-    { id: "executive",    label: "Executive Brain",    state: resolve(data?.executive, "active"),       source: "executive/snapshot" },
-    { id: "conversation", label: "Conversation",       state: resolve(data?.brain, "learning"),         source: "business-brain/snapshot" },
-    { id: "sales",        label: "Sales Intelligence", state: resolve(data?.sales, "active"),           source: "executive/sales-intelligence" },
-    { id: "learning",     label: "Business Learning",  state: resolve(data?.learning, "consolidating"), source: "business-learning/snapshot" },
-    { id: "science",      label: "Scientific Engine",  state: resolve(data?.science, "consolidating"), source: "scientific-knowledge/snapshot" },
+    { id: "conversation", label: "Conversation Intelligence", short: "Conversation",  tooltip: "Analisa e estrutura conhecimento das conversas.", state: resolve(data?.brain, "learning") },
+    { id: "brain",        label: "Business Brain",            short: "Brain",         tooltip: "Consolida padrões de negócio.",                    state: resolve(data?.brain, "active") },
+    { id: "learning",     label: "Business Learning",         short: "Learning",      tooltip: "Aprende continuamente com a evolução da empresa.", state: resolve(data?.learning, "consolidating") },
+    { id: "science",      label: "Scientific Knowledge",      short: "Scientific",    tooltip: "Valida hipóteses utilizando evidências.",           state: resolve(data?.science, "consolidating") },
+    { id: "executive",    label: "Executive Knowledge",       short: "Executive",     tooltip: "Constrói inteligência estratégica.",                state: resolve(data?.executive, "active") },
+    { id: "sales",        label: "Sales Intelligence",        short: "Sales",         tooltip: "Prioriza oportunidades comerciais.",                state: resolve(data?.sales, "active") },
   ];
 
   const activeCount = agents.filter((a) => a.state !== "waiting" && a.state !== "idle").length;
+  const networkOnline = !!user && !isLoading && activeCount > 0;
+
+  const professorState: AgentState = useMemo(() => {
+    if (!user) return "waiting";
+    if (isLoading || !data) return "learning";
+    return data.science ? "consolidating" : "waiting";
+  }, [user, data, isLoading]);
 
   const feed = useMemo(() => {
     if (!user || !data) return [];
     const base = data.at ?? Date.now();
-    const items: { label: string; msg: string; ok: boolean; ts: number }[] = [];
-    if (data.science)   items.push({ label: "Scientific",  msg: "hipótese fortalecida",   ok: true, ts: base - 30_000 });
-    if (data.brain)     items.push({ label: "Brain",       msg: "padrão consolidado",     ok: true, ts: base - 60_000 });
-    if (data.executive) items.push({ label: "Executive",   msg: "insight atualizado",     ok: true, ts: base - 90_000 });
-    if (data.sales)     items.push({ label: "Sales",       msg: "prioridades recalc.",    ok: true, ts: base - 120_000 });
-    if (data.learning)  items.push({ label: "Learning",    msg: "evolução avaliada",      ok: true, ts: base - 150_000 });
+    const items: { label: string; msg: string; ts: number }[] = [];
+    if (data.science)   items.push({ label: "Scientific Engine",    msg: "Hipótese fortalecida",        ts: base - 30_000 });
+    if (data.brain)     items.push({ label: "Business Brain",       msg: "Novo padrão consolidado",     ts: base - 60_000 });
+    if (data.executive) items.push({ label: "Executive Brain",      msg: "Insight atualizado",          ts: base - 90_000 });
+    if (data.sales)     items.push({ label: "Sales Intelligence",   msg: "Prioridades recalculadas",    ts: base - 120_000 });
+    if (data.learning)  items.push({ label: "Business Learning",    msg: "Evolução avaliada",           ts: base - 150_000 });
     return items.slice(0, 4);
   }, [data, user]);
 
-  const networkOnline = !!user && !isLoading && activeCount > 0;
+  // Legend fade after mount
+  const [legendFocused, setLegendFocused] = useState(false);
 
   return (
-    <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_12%/0.7)] via-sidebar/40 to-sidebar/10 backdrop-blur-sm p-2.5 overflow-hidden relative">
-      {/* Subtle animated grid backdrop — very low opacity */}
+    <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
+      {/* Background grid — 2% opacity */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(125,211,252,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.5) 1px, transparent 1px)",
-          backgroundSize: "18px 18px",
+            "linear-gradient(rgba(125,211,252,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.6) 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
         }}
       />
+      {/* Floating background particles */}
+      <BackgroundParticles />
 
-      {/* Header — minimal */}
-      <div className="relative flex items-center justify-between gap-2 mb-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <motion.span
-            animate={{ opacity: [0.7, 1, 0.7] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-            className="text-[11px]"
-          >
-            🧠
-          </motion.span>
-          <span className="text-[10px] font-semibold tracking-wider uppercase text-sidebar-foreground/90">
+      {/* Header */}
+      <div className="relative flex items-start justify-between gap-2 mb-1.5">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold tracking-[0.14em] uppercase text-sidebar-foreground/95 leading-none">
             Inteligência Viva
-          </span>
+          </div>
+          <div className="text-[9px] text-muted-foreground/80 mt-0.5 leading-none">
+            Aprendendo continuamente
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
           <motion.span
-            animate={{ opacity: networkOnline ? [0.5, 1, 0.5] : [0.3, 0.7, 0.3] }}
+            animate={{ opacity: networkOnline ? [0.55, 1, 0.55] : [0.3, 0.7, 0.3] }}
             transition={{ duration: 1.8, repeat: Infinity }}
             className={cn(
               "h-1.5 w-1.5 rounded-full",
               networkOnline ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" : "bg-amber-400",
             )}
           />
+          <span className="text-[8.5px] text-muted-foreground/85 tracking-wide">
+            {networkOnline ? "Rede Neural Online" : "Aguardando"}
+          </span>
         </div>
       </div>
 
       {/* Neural network — the star */}
       <NeuralGraph professorState={professorState} agents={agents} lastAt={data?.at} />
 
-      {/* Compact terminal feed — single line per event */}
-      <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/35 px-2 py-1.5 font-mono text-[8.5px] leading-[1.4] text-sidebar-foreground/85 max-h-[80px] overflow-hidden">
+      {/* Legend chips — fade to 30%, 100% on hover */}
+      <div
+        className={cn(
+          "mt-1 flex items-center justify-between gap-1 px-0.5 transition-opacity duration-500",
+          legendFocused ? "opacity-100" : "opacity-40",
+        )}
+        onMouseEnter={() => setLegendFocused(true)}
+        onMouseLeave={() => setLegendFocused(false)}
+      >
+        {(["active", "learning", "consolidating", "waiting"] as AgentState[]).map((s) => (
+          <div
+            key={s}
+            className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
+          >
+            <span
+              className="h-1 w-1 rounded-full"
+              style={{ backgroundColor: STATE_META[s].hex, boxShadow: `0 0 4px ${STATE_META[s].glow}` }}
+            />
+            <span className="text-[7.5px] text-sidebar-foreground/80 tracking-wide">
+              {STATE_META[s].label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Terminal feed — one line per event, blinking cursor */}
+      <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/40 px-2 py-1.5 font-mono text-[8.5px] leading-[1.45] text-sidebar-foreground/90 h-[74px] overflow-hidden relative">
         {feed.length === 0 ? (
           <div className="text-muted-foreground/60 italic truncate">
-            <span className="text-emerald-400">$</span> aguardando eventos…
+            <span className="text-emerald-400">$</span> aguardando eventos<BlinkingCursor />
           </div>
         ) : (
-          <AnimatePresence initial={false}>
-            {feed.map((e, i) => (
-              <motion.div
-                key={`${e.label}-${e.ts}`}
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="flex items-baseline gap-1.5 truncate"
-              >
-                <span className="text-sky-300/70 shrink-0">{formatTime(e.ts)}</span>
-                <span className="text-emerald-400 shrink-0">✔</span>
-                <span className="text-sidebar-foreground/95 shrink-0">{e.label}</span>
-                <span className="text-muted-foreground/70 truncate">· {e.msg}</span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+          <>
+            <AnimatePresence initial={false}>
+              {feed.map((e, i) => (
+                <motion.div
+                  key={`${e.label}-${e.ts}`}
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ delay: i * 0.06, duration: 0.35 }}
+                  className="flex items-baseline gap-1.5 truncate"
+                >
+                  <span className="text-sky-300/70 shrink-0">{formatTime(e.ts)}</span>
+                  <span className="text-emerald-400 shrink-0">✓</span>
+                  <span className="text-sidebar-foreground/95 shrink-0">{e.label}</span>
+                  <span className="text-muted-foreground/75 truncate">· {e.msg}</span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            <div className="flex items-baseline gap-1">
+              <span className="text-emerald-400">$</span>
+              <BlinkingCursor />
+            </div>
+          </>
         )}
       </div>
+
+      {/* Learning indicator — never invents numbers */}
+      <div className="mt-1.5 px-0.5">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
+            Conhecimento acumulado
+          </span>
+        </div>
+        <div className="text-[9px] text-sidebar-foreground/70 italic">
+          Aguardando histórico suficiente
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- Blinking cursor -------------------- */
+
+function BlinkingCursor() {
+  return (
+    <motion.span
+      animate={{ opacity: [1, 0, 1] }}
+      transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+      className="inline-block text-emerald-400 font-mono"
+      style={{ marginLeft: 1 }}
+    >
+      █
+    </motion.span>
+  );
+}
+
+/* -------------------- Background particles -------------------- */
+
+function BackgroundParticles() {
+  const parts = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_, i) => ({
+        left: (i * 37 + 11) % 100,
+        top: (i * 53 + 7) % 100,
+        dur: 14 + (i % 5) * 3,
+        delay: i * 0.7,
+      })),
+    [],
+  );
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {parts.map((p, i) => (
+        <motion.span
+          key={i}
+          className="absolute h-[2px] w-[2px] rounded-full bg-sky-300/40"
+          style={{ left: `${p.left}%`, top: `${p.top}%` }}
+          animate={{ y: [-6, 6, -6], opacity: [0.15, 0.5, 0.15] }}
+          transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
     </div>
   );
 }
@@ -201,19 +297,19 @@ function NeuralGraph({
   lastAt?: number;
 }) {
   const W = 260;
-  const H = 230;
-  const prof = { x: W / 2, y: H / 2 - 8 };
+  const H = 240;
+  const prof = { x: W / 2, y: H / 2 - 4 };
   const [hovered, setHovered] = useState<string | null>(null);
 
-  // Organic topology — irregular orbit around Professor
-  // Radii and angles chosen to feel natural, not symmetric
+  // Organic asymmetric topology — six agents around the Professor,
+  // ordered to match the knowledge-evolution flow.
   const orbits: Array<{ r: number; angle: number }> = [
-    { r: 78, angle: -155 }, // brain — upper left
-    { r: 82, angle: -25 },  // executive — upper right
-    { r: 72, angle: 155 },  // conversation — lower left
-    { r: 76, angle: 35 },   // sales — right
-    { r: 88, angle: 100 },  // learning — bottom
-    { r: 70, angle: -95 },  // science — top
+    { r: 74, angle: 168 },  // conversation — lower-left, close
+    { r: 68, angle: -150 }, // brain — upper-left, closest
+    { r: 92, angle: 108 },  // learning — bottom, distant
+    { r: 96, angle: -78 },  // scientific — top, most distant
+    { r: 84, angle: -18 },  // executive — right, mid
+    { r: 88, angle: 52 },   // sales — lower-right, mid
   ];
 
   const positions = orbits.map(({ r, angle }) => {
@@ -224,34 +320,35 @@ function NeuralGraph({
   const profMeta = STATE_META[professorState];
   const profColor = profMeta.hex;
 
-  // Professor breathing period — synchronize propagation
-  const BREATH = 3.6;
-
   return (
     <div className="relative w-full">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
         <defs>
-          <radialGradient id="profGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={profColor} stopOpacity="0.6" />
-            <stop offset="55%" stopColor={profColor} stopOpacity="0.14" />
+          <radialGradient id="profGlowOuter" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={profColor} stopOpacity="0.55" />
+            <stop offset="55%" stopColor={profColor} stopOpacity="0.12" />
+            <stop offset="100%" stopColor={profColor} stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="profGlowInner" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={profColor} stopOpacity="0.85" />
             <stop offset="100%" stopColor={profColor} stopOpacity="0" />
           </radialGradient>
           <radialGradient id="profCore" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="hsl(220 35% 16%)" stopOpacity="1" />
+            <stop offset="0%" stopColor="hsl(220 35% 18%)" stopOpacity="1" />
             <stop offset="100%" stopColor="hsl(220 35% 8%)" stopOpacity="1" />
           </radialGradient>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(148,163,184,0.08)" />
-            <stop offset="50%" stopColor="rgba(148,163,184,0.4)" />
-            <stop offset="100%" stopColor="rgba(148,163,184,0.08)" />
+            <stop offset="0%" stopColor="rgba(148,163,184,0.06)" />
+            <stop offset="50%" stopColor="rgba(148,163,184,0.38)" />
+            <stop offset="100%" stopColor="rgba(148,163,184,0.06)" />
           </linearGradient>
           <linearGradient id="lineGradActive" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(56,189,248,0.12)" />
-            <stop offset="50%" stopColor="rgba(56,189,248,0.7)" />
-            <stop offset="100%" stopColor="rgba(56,189,248,0.12)" />
+            <stop offset="0%" stopColor="rgba(56,189,248,0.1)" />
+            <stop offset="50%" stopColor="rgba(56,189,248,0.75)" />
+            <stop offset="100%" stopColor="rgba(56,189,248,0.1)" />
           </linearGradient>
           <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feGaussianBlur stdDeviation="2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -259,14 +356,13 @@ function NeuralGraph({
           </filter>
         </defs>
 
-        {/* Connections — synchronized brightness pulse with Professor breath */}
+        {/* Connections — energized fibers, synchronized with the Professor breath.
+            Propagation delay follows the flow order (index 0 → 5). */}
         {positions.map((p, i) => {
           const a = agents[i];
           const isActive = a && a.state !== "waiting" && a.state !== "idle";
           const particleColor = a ? STATE_META[a.state].hex : "rgb(125,211,252)";
-          const reverse = i % 2 === 1;
-          const from = reverse ? p : prof;
-          const to = reverse ? prof : p;
+          const propDelay = 0.25 + i * 0.28; // sequential energy propagation
           return (
             <g key={`line-${i}`}>
               <line
@@ -275,9 +371,9 @@ function NeuralGraph({
                 x2={p.x}
                 y2={p.y}
                 stroke={isActive ? "url(#lineGradActive)" : "url(#lineGrad)"}
-                strokeWidth={isActive ? 0.85 : 0.55}
+                strokeWidth={isActive ? 0.9 : 0.55}
               />
-              {/* Propagation glow — synced with Professor breath */}
+              {/* Fiber-optic pulse traveling along the connection */}
               <motion.line
                 x1={prof.x}
                 y1={prof.y}
@@ -285,31 +381,31 @@ function NeuralGraph({
                 y2={p.y}
                 stroke={particleColor}
                 strokeLinecap="round"
-                strokeWidth={0.9}
+                strokeWidth={1.1}
                 initial={{ opacity: 0 }}
-                animate={{ opacity: isActive ? [0, 0.55, 0] : [0, 0.2, 0] }}
+                animate={{ opacity: isActive ? [0, 0.65, 0] : [0, 0.22, 0] }}
                 transition={{
                   duration: BREATH,
                   repeat: Infinity,
                   ease: "easeInOut",
-                  delay: 0.15 + i * 0.05,
+                  delay: propDelay,
                 }}
               />
-              {/* Particle traveling */}
+              {/* Traveling particle */}
               <motion.circle
-                r={1.5}
+                r={1.6}
                 fill={particleColor}
                 filter="url(#softGlow)"
-                initial={{ cx: from.x, cy: from.y, opacity: 0 }}
+                initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
                 animate={{
-                  cx: [from.x, to.x],
-                  cy: [from.y, to.y],
+                  cx: [prof.x, p.x],
+                  cy: [prof.y, p.y],
                   opacity: [0, 1, 0],
                 }}
                 transition={{
-                  duration: 3.2 + (i % 3) * 0.5,
+                  duration: BREATH,
                   repeat: Infinity,
-                  delay: i * 0.6,
+                  delay: propDelay,
                   ease: "easeInOut",
                 }}
               />
@@ -317,26 +413,30 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor rotating halos */}
+        {/* Professor: outer glow (breath) */}
+        <motion.circle
+          cx={prof.x}
+          cy={prof.y}
+          r={62}
+          fill="url(#profGlowOuter)"
+          animate={{ opacity: [0.5, 0.95, 0.5], scale: [0.94, 1.08, 0.94] }}
+          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+        />
+        {/* Professor: inner glow */}
+        <motion.circle
+          cx={prof.x}
+          cy={prof.y}
+          r={40}
+          fill="url(#profGlowInner)"
+          animate={{ opacity: [0.35, 0.7, 0.35] }}
+          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        {/* Two counter-rotating rings, very slow */}
         <motion.g
           animate={{ rotate: 360 }}
-          transition={{ duration: 50, repeat: Infinity, ease: "linear" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-        >
-          <circle
-            cx={prof.x}
-            cy={prof.y}
-            r={38}
-            fill="none"
-            stroke={profColor}
-            strokeOpacity={0.35}
-            strokeWidth={0.55}
-            strokeDasharray="2 5"
-          />
-        </motion.g>
-        <motion.g
-          animate={{ rotate: -360 }}
-          transition={{ duration: 70, repeat: Infinity, ease: "linear" }}
+          transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
         >
           <circle
@@ -345,26 +445,31 @@ function NeuralGraph({
             r={44}
             fill="none"
             stroke={profColor}
-            strokeOpacity={0.18}
-            strokeWidth={0.4}
+            strokeOpacity={0.38}
+            strokeWidth={0.55}
+            strokeDasharray="2 5"
+          />
+        </motion.g>
+        <motion.g
+          animate={{ rotate: -360 }}
+          transition={{ duration: 85, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+        >
+          <circle
+            cx={prof.x}
+            cy={prof.y}
+            r={52}
+            fill="none"
+            stroke={profColor}
+            strokeOpacity={0.22}
+            strokeWidth={0.45}
             strokeDasharray="1 8"
           />
         </motion.g>
 
-        {/* Professor outer glow — the breath source */}
-        <motion.circle
-          cx={prof.x}
-          cy={prof.y}
-          r={50}
-          fill="url(#profGlow)"
-          animate={{ opacity: [0.5, 0.95, 0.5], scale: [0.95, 1.08, 0.95] }}
-          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-        />
-
-        {/* Professor node — ~40% bigger (r 16 → 22) */}
+        {/* Professor core — ~50% larger than v3 (r 22 → 32), breathing */}
         <motion.g
-          animate={{ scale: [1, 1.05, 1] }}
+          animate={{ scale: [1, 1.06, 1] }}
           transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
           onMouseEnter={() => setHovered("professor")}
@@ -373,24 +478,24 @@ function NeuralGraph({
           <circle
             cx={prof.x}
             cy={prof.y}
-            r={22}
+            r={32}
             fill="url(#profCore)"
             stroke={profColor}
-            strokeWidth={1.6}
+            strokeWidth={1.8}
             filter="url(#softGlow)"
           />
           <text
             x={prof.x}
-            y={prof.y + 6}
+            y={prof.y + 9}
             textAnchor="middle"
-            fontSize="17"
+            fontSize="26"
             className="fill-sidebar-foreground"
           >
             🧠
           </text>
         </motion.g>
 
-        {/* Agent nodes — pulse synced with Professor */}
+        {/* Agent nodes — own glow, halo, gentle breath, synced pulse */}
         {positions.map((p, i) => {
           const a = agents[i];
           if (!a) return null;
@@ -398,8 +503,7 @@ function NeuralGraph({
           const dotColor = meta.hex;
           const isHover = hovered === a.id;
           const isActive = a.state !== "waiting" && a.state !== "idle";
-          // Delay proportional to distance-ish (index-based approximation)
-          const propDelay = 0.35 + i * 0.06;
+          const propDelay = 0.25 + i * 0.28;
           return (
             <g
               key={a.id}
@@ -407,15 +511,15 @@ function NeuralGraph({
               onMouseLeave={() => setHovered(null)}
               style={{ cursor: "pointer" }}
             >
-              {/* Outer sync glow — reacts to Professor breath */}
+              {/* Halo — outer soft ring */}
               <motion.circle
                 cx={p.x}
                 cy={p.y}
-                r={10}
+                r={13}
                 fill={dotColor}
                 animate={{
-                  opacity: isActive ? [0.08, 0.32, 0.08] : [0.05, 0.15, 0.05],
-                  scale: [1, 1.2, 1],
+                  opacity: isActive ? [0.06, 0.28, 0.06] : [0.04, 0.12, 0.04],
+                  scale: [1, 1.22, 1],
                 }}
                 transition={{
                   duration: BREATH,
@@ -423,30 +527,48 @@ function NeuralGraph({
                   ease: "easeInOut",
                   delay: propDelay,
                 }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(3px)" }}
+              />
+              {/* Node body — gentle breath 1 → 1.03 */}
+              <motion.g
+                animate={{ scale: [1, 1.03, 1] }}
+                transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut", delay: propDelay }}
                 style={{ transformOrigin: `${p.x}px ${p.y}px` }}
-              />
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={5.2}
-                fill="hsl(220 35% 10%)"
-                stroke={dotColor}
-                strokeWidth={isHover ? 1.5 : 1}
-                filter="url(#softGlow)"
-              />
-              <motion.circle
-                cx={p.x}
-                cy={p.y}
-                r={2.3}
-                fill={dotColor}
-                animate={{ opacity: [0.55, 1, 0.55] }}
-                transition={{
-                  duration: BREATH,
-                  repeat: Infinity,
-                  delay: propDelay,
-                  ease: "easeInOut",
-                }}
-              />
+              >
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={6}
+                  fill="hsl(220 35% 10%)"
+                  stroke={dotColor}
+                  strokeWidth={isHover ? 1.6 : 1.1}
+                  filter="url(#softGlow)"
+                />
+                <motion.circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={2.6}
+                  fill={dotColor}
+                  animate={{ opacity: [0.55, 1, 0.55] }}
+                  transition={{
+                    duration: BREATH,
+                    repeat: Infinity,
+                    delay: propDelay,
+                    ease: "easeInOut",
+                  }}
+                />
+              </motion.g>
+              {/* Label — tiny, muted */}
+              <text
+                x={p.x}
+                y={p.y + 16}
+                textAnchor="middle"
+                fontSize="6.5"
+                className="fill-sidebar-foreground/60"
+                style={{ letterSpacing: "0.04em" }}
+              >
+                {a.short}
+              </text>
             </g>
           );
         })}
@@ -454,58 +576,78 @@ function NeuralGraph({
 
       {/* Hover tooltip */}
       <AnimatePresence>
-        {hovered && hovered !== "professor" && (() => {
+        {hovered && (() => {
+          if (hovered === "professor") {
+            return (
+              <TooltipCard
+                title="Professor"
+                subtitle="Coordena toda a inteligência do Atende AI."
+                stateLabel={profMeta.label}
+                stateHex={profMeta.hex}
+                stateGlow={profMeta.glow}
+                lastAt={lastAt}
+              />
+            );
+          }
           const a = agents.find((x) => x.id === hovered);
           if (!a) return null;
           const meta = STATE_META[a.state];
           return (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[130px]"
-            >
-              <div className="font-semibold text-sidebar-foreground">{a.label}</div>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: meta.hex, boxShadow: `0 0 6px ${meta.glow}` }}
-                />
-                <span className="text-muted-foreground">{meta.label}</span>
-              </div>
-              <div className="text-muted-foreground/80 mt-0.5">
-                Atualizado {formatRelative(lastAt)}
-              </div>
-            </motion.div>
+            <TooltipCard
+              title={a.label}
+              subtitle={a.tooltip}
+              stateLabel={meta.label}
+              stateHex={meta.hex}
+              stateGlow={meta.glow}
+              lastAt={lastAt}
+            />
           );
         })()}
-        {hovered === "professor" && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[130px]"
-          >
-            <div className="font-semibold text-sidebar-foreground">Professor</div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: profMeta.hex, boxShadow: `0 0 6px ${profMeta.glow}` }}
-              />
-              <span className="text-muted-foreground">{profMeta.label}</span>
-            </div>
-            <div className="text-muted-foreground/80 mt-0.5">
-              Atualizado {formatRelative(lastAt)}
-            </div>
-          </motion.div>
-        )}
       </AnimatePresence>
     </div>
   );
 }
 
+function TooltipCard({
+  title,
+  subtitle,
+  stateLabel,
+  stateHex,
+  stateGlow,
+  lastAt,
+}: {
+  title: string;
+  subtitle: string;
+  stateLabel: string;
+  stateHex: string;
+  stateGlow: string;
+  lastAt?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[160px] max-w-[210px]"
+    >
+      <div className="font-semibold text-sidebar-foreground">{title}</div>
+      <div className="text-muted-foreground/85 mt-0.5">{subtitle}</div>
+      <div className="flex items-center gap-1 mt-1">
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: stateHex, boxShadow: `0 0 6px ${stateGlow}` }}
+        />
+        <span className="text-muted-foreground">{stateLabel}</span>
+        <span className="text-muted-foreground/60 ml-auto">{formatRelative(lastAt)}</span>
+      </div>
+    </motion.div>
+  );
+}
+
 /* Compact/collapsed variant — small pulsing icon */
 export function NeuralIntelligencePulse() {
+  // Force hook to keep any subscribers alive when needed (no-op UI).
+  useEffect(() => undefined, []);
   return (
     <div className="mx-auto my-2 flex items-center justify-center">
       <motion.div
