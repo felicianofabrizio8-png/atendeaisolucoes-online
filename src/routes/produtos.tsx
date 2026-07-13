@@ -116,7 +116,7 @@ function ProductsPage() {
         </button>
       </header>
 
-      <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl">
+      <div className="p-3 md:p-6 space-y-4 md:space-y-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
