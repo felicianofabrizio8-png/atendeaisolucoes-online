@@ -687,6 +687,147 @@ function ObservabilityPage() {
             )}
           </Card>
 
+          {/* 14. Aprendizagem — Learning Loop */}
+          <Card className="p-4">
+            <SectionTitle
+              icon={Brain}
+              title="Aprendizagem"
+              subtitle="Learning Loop · evolução do conhecimento em memória"
+            />
+            {learningCycles === 0 && learningIgnored === 0 ? (
+              <div className="text-sm text-muted-foreground rounded border border-dashed border-border p-4 text-center">
+                Aguardando primeira execução válida do Runtime.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <Metric label="Ciclos" value={learningCycles} hint={`ignorados=${learningIgnored}`} />
+                  <Metric
+                    label="Hipóteses"
+                    value={learningCreated}
+                    hint={`aceitas=${learningAccepted} · rejeitadas=${learningRejected}`}
+                  />
+                  <Metric
+                    label="Consolidadas"
+                    value={learningConsolidated}
+                    hint={`tenants=${num(learningEvolution.consolidatedTenants)}`}
+                  />
+                  <Metric
+                    label="Confiança média"
+                    value={learningAvgConfidence > 0 ? learningAvgConfidence.toFixed(3) : "—"}
+                  />
+                  <Metric
+                    label="Último aprendizado"
+                    value={fmtAgo(str(learning.lastLearning, ""))}
+                    hint={str(learning.lastAgent, "—")}
+                  />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  <Badge variant="outline" className="text-[10px]">
+                    Loop {learningCycles > 0 || learningIgnored > 0 ? "Online" : "Idle"}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    Store {num(learningStore.tenants)} tenants
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    TTL {Math.round(num(learningStore.ttlMs) / 60000)}min
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    Histórico {num(learningStore.totalHistory)}
+                  </Badge>
+                  {learningPublishError ? (
+                    <Badge variant="destructive" className="text-[10px]">
+                      Publisher: {learningPublishError}
+                    </Badge>
+                  ) : null}
+                </div>
+
+                {learningAgentRows.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto">
+                    <div className="text-[11px] font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Ciclos por agente
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-muted-foreground border-b border-border">
+                          <th className="py-2 pr-3">Agente</th>
+                          <th className="py-2 pr-3">Ciclos</th>
+                          <th className="py-2 pr-3">Hipóteses</th>
+                          <th className="py-2 pr-3">Aceitas</th>
+                          <th className="py-2 pr-3">Rejeitadas</th>
+                          <th className="py-2 pr-3">Consolidadas</th>
+                          <th className="py-2 pr-3">Última</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {learningAgentRows.map((r) => (
+                          <tr key={r.id} className="border-b border-border/50">
+                            <td className="py-2 pr-3 font-mono">{r.id}</td>
+                            <td className="py-2 pr-3 tabular-nums">{r.cycles}</td>
+                            <td className="py-2 pr-3 tabular-nums">{r.created}</td>
+                            <td className="py-2 pr-3 tabular-nums">{r.accepted}</td>
+                            <td className="py-2 pr-3 tabular-nums">{r.rejected}</td>
+                            <td className="py-2 pr-3 tabular-nums">{r.consolidated}</td>
+                            <td className="py-2 pr-3">{fmtAgo(r.lastAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {learningHistory.length > 0 ? (
+                  <div className="mt-5">
+                    <div className="text-[11px] font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                      <Timer className="h-3 w-3" /> Timeline recente (tenant atual)
+                    </div>
+                    <ul className="space-y-1.5">
+                      {learningHistory.slice(0, 15).map((h, i) => {
+                        const rec = asDict(h);
+                        const hyp = asDict(rec.hypothesis);
+                        const decision = str(rec.decision, "—");
+                        const level: HealthLevel =
+                          decision === "consolidated"
+                            ? "excellent"
+                            : decision === "accepted"
+                              ? "good"
+                              : decision === "rejected"
+                                ? "attention"
+                                : "unknown";
+                        const sig = str(hyp.signature, "");
+                        const sigShort = sig.length > 40 ? `${sig.slice(0, 40)}…` : sig;
+                        return (
+                          <li
+                            key={str(hyp.hypothesisId, String(i))}
+                            className="flex items-center gap-2 text-xs rounded border border-border p-2"
+                          >
+                            <HealthPill level={level} />
+                            <span className="font-mono">{str(hyp.sourceAgent, "—")}</span>
+                            <span className="text-muted-foreground">{decision}</span>
+                            <span className="tabular-nums text-muted-foreground">
+                              conf={num(hyp.confidence).toFixed(2)}
+                            </span>
+                            <span className="ml-auto text-muted-foreground">
+                              {fmtAgo(str(rec.decidedAt, ""))}
+                            </span>
+                            {sigShort ? (
+                              <span className="hidden md:inline font-mono text-[10px] text-muted-foreground truncate max-w-[240px]">
+                                {sigShort}
+                              </span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </Card>
+
+
+
           {/* 2. Agents */}
           <Card className="p-4">
             <SectionTitle icon={Workflow} title="Agents" subtitle="Ordenado pela pior saúde" />
