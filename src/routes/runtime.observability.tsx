@@ -278,6 +278,37 @@ function ObservabilityPage() {
   const topics = asArr(knowledgeBus.topics);
   const intelligence = asDict(snapshot?.intelligence);
 
+  // -------- learning loop --------
+  const learning = asDict(snapshot?.learning);
+  const learningHypotheses = asDict(learning.hypotheses);
+  const learningStore = asDict(learning.store);
+  const learningLastCycle = asDict(learning.lastCycle);
+  const learningTenant = asDict(learning.tenant);
+  const learningHistory = asArr(learningTenant.history);
+  const learningPerAgent = asDict(learning.perAgent);
+  const learningEvolution = asDict(learning.knowledgeEvolution);
+  const learningCycles = num(learning.cycles);
+  const learningCreated = num(learningHypotheses.created);
+  const learningAccepted = num(learningHypotheses.accepted);
+  const learningRejected = num(learningHypotheses.rejected);
+  const learningConsolidated = num(learningHypotheses.consolidated);
+  const learningAvgConfidence = num(learning.averageConfidence);
+  const learningIgnored = num(learning.ignoredExecutions);
+  const learningPublishError = str(learningLastCycle.publishError, "");
+  const learningAgentRows = Object.entries(learningPerAgent).map(([id, v]) => {
+    const d = asDict(v);
+    return {
+      id,
+      cycles: num(d.cycles),
+      created: num(d.created),
+      accepted: num(d.accepted),
+      rejected: num(d.rejected),
+      consolidated: num(d.consolidated),
+      lastAt: str(d.lastAt, ""),
+    };
+  }).sort((a, b) => b.cycles - a.cycles);
+
+
   const uptimeMs = num(status.uptimeMs);
   const runtimeOnline = bool(status.online);
   const schedulerEnabled =
