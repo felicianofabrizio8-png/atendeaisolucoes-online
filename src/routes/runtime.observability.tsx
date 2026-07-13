@@ -800,7 +800,7 @@ function ObservabilityPage() {
                   label="Publish"
                   value={
                     Object.values(producers).length
-                      ? `${Object.values(producers).reduce(
+                      ? `${Object.values(producers).reduce<number>(
                           (a, p) => a + num(asDict(p).publishCount),
                           0,
                         )} totais`
