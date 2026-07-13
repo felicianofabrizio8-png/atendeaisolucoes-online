@@ -61,7 +61,6 @@ export class AutonomousRuntime {
       queue: this._queue,
     });
     (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
-    });
   }
 
   get dispatcher(): AgentDispatcher {
