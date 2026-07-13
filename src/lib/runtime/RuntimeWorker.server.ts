@@ -53,6 +53,7 @@ export class RuntimeWorker {
 
   private queue: RuntimeJobQueue | null;
   private readonly engine: RuntimeExecutionEngine;
+  private learningLoop: LearningLoop | null = null;
 
   constructor(deps: WorkerDeps) {
     this.workerId = deps.workerId;
@@ -67,6 +68,10 @@ export class RuntimeWorker {
 
   bindQueue(queue: RuntimeJobQueue | null): void {
     this.queue = queue;
+  }
+
+  bindLearningLoop(loop: LearningLoop | null): void {
+    this.learningLoop = loop;
   }
 
   /**
