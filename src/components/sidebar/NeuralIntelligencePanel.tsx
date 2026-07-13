@@ -9,7 +9,7 @@
 // operacional modificado. Nenhuma alteração visual além da sincronização
 // dos estados reais dos snapshots já existentes.
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain } from "lucide-react";
