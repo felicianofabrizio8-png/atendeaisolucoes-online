@@ -12,9 +12,12 @@ import { AgentRegistry } from "./AgentRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
 import { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
+import { RuntimeScheduler } from "./RuntimeScheduler.server";
+import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
+  readonly scheduler: RuntimeScheduler;
   readonly registry: AgentRegistry;
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
@@ -37,6 +40,7 @@ export class AutonomousRuntime {
       orchestrator: this.orchestrator,
       queue: null,
     });
+    this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
@@ -56,6 +60,7 @@ export class AutonomousRuntime {
       orchestrator: this.orchestrator,
       queue: this._queue,
     });
+    (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
   }
 
   get dispatcher(): AgentDispatcher {
@@ -107,6 +112,7 @@ export class AutonomousRuntime {
         state: a.state,
       })),
       recentJobs,
+      scheduler: this.scheduler.snapshot(),
     };
   }
 
