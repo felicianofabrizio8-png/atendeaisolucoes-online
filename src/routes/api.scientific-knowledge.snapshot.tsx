@@ -93,6 +93,7 @@ export const Route = createFileRoute("/api/scientific-knowledge/snapshot")({
               observations: snapshot.observations,
               hypotheses: snapshot.hypotheses,
               evidence: snapshot.evidence,
+              theories: snapshot.theories,
               validatedKnowledge: snapshot.validatedKnowledge,
               period: snapshot.period,
               scientificVersion: snapshot.scientificVersion,

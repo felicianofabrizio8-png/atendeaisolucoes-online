@@ -1,6 +1,6 @@
 // ============================================================================
 // ScientificKnowledgeService — Orquestra Observation → Hypothesis → Evidence
-// → Validation → Knowledge. READ-ONLY. Determinístico. Sem LLM.
+// → Theory → Validation → Knowledge. READ-ONLY. Determinístico. Sem LLM.
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -12,6 +12,7 @@ import type { ExecutiveKnowledgeRecord } from "@/lib/executive-knowledge/Executi
 import type { ExecutivePeriod } from "@/lib/executive-ai/types";
 import {
   SCIENTIFIC_VERSION,
+  SCIENCE_THRESHOLDS,
   type ScientificKnowledgeSnapshot,
   type SciencePeriod,
 } from "./ScientificKnowledgeTypes";
@@ -29,9 +30,7 @@ export class ScientificKnowledgeService {
     const now = new Date().toISOString();
 
     const brain = await new BusinessBrainAgent({ supabase, companyId }).snapshot(period);
-    const learning = await new BusinessLearningAgent({ supabase, companyId }).snapshot(
-      period,
-    );
+    const learning = await new BusinessLearningAgent({ supabase, companyId }).snapshot(period);
 
     let knowledgeTimeline: ExecutiveKnowledgeRecord[] = [];
     try {
@@ -41,12 +40,23 @@ export class ScientificKnowledgeService {
       knowledgeTimeline = [];
     }
 
+    // Fase 6: histórico = dias distintos (nunca registros da mesma execução).
+    const distinctSnapshotDays = new Set(
+      knowledgeTimeline.map((r) => (r.createdAt || "").slice(0, 10)).filter(Boolean),
+    ).size;
+
+    // Fase 10: gate de produtos. Sem sinal upstream de cobertura de products_json
+    // aqui, mantemos productsReady=false para evitar falso conhecimento até que
+    // uma fonte confiável indique cobertura ≥ MIN_PRODUCTS_COVERAGE.
+    const productsReady = false;
+
     const observations = ScientificObservationEngine.build({
       brain,
       learning,
       knowledgeTimeline,
       period,
       now,
+      productsReady,
     });
 
     const hypothesesInitial = ScientificHypothesisEngine.build(observations);
@@ -56,12 +66,16 @@ export class ScientificKnowledgeService {
       brain,
       learning,
     });
-    const { hypotheses, validatedKnowledge } = ScientificValidationEngine.run({
-      hypotheses: hypothesesInitial,
-      evidence,
-      knowledgeTimelineSize: knowledgeTimeline.length,
-      now,
-    });
+    const { hypotheses, theories, validatedKnowledge } =
+      ScientificValidationEngine.run({
+        hypotheses: hypothesesInitial,
+        evidence,
+        distinctSnapshotDays,
+        now,
+      });
+
+    // silence unused threshold import warning while keeping it exported for tests
+    void SCIENCE_THRESHOLDS;
 
     return {
       generatedAt: now,
@@ -71,6 +85,7 @@ export class ScientificKnowledgeService {
         observations: observations.length,
         hypotheses: hypotheses.length,
         evidence: evidence.length,
+        theories: theories.length,
         validatedKnowledge: validatedKnowledge.length,
         brainPatterns: brain.patterns.length,
         brainKnowledge: brain.knowledge.length,
@@ -78,10 +93,13 @@ export class ScientificKnowledgeService {
         learningHypotheses: learning.hypotheses.length,
         learningEvolutions: learning.evolution.length,
         knowledgeTimeline: knowledgeTimeline.length,
+        distinctSnapshotDays,
+        productsReady,
       },
       observations,
       hypotheses,
       evidence,
+      theories,
       validatedKnowledge,
     };
   }
