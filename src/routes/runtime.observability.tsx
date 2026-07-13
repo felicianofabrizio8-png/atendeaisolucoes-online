@@ -507,6 +507,45 @@ function ObservabilityPage() {
     }
   }
 
+  // Learning-specific alerts (só disparam com amostra mínima).
+  if (learningCycles >= 10 && learningCreated > 0) {
+    const rejectRate = learningRejected / learningCreated;
+    if (rejectRate > 0.8) {
+      alerts.push({
+        level: "attention",
+        message: `Muitas hipóteses rejeitadas (${(rejectRate * 100).toFixed(0)}%)`,
+      });
+    }
+  }
+  if (learningCycles >= 10 && learningAvgConfidence > 0 && learningAvgConfidence < 0.4) {
+    alerts.push({
+      level: "attention",
+      message: `Confiança média baixa no Learning Loop (${learningAvgConfidence.toFixed(2)})`,
+    });
+  }
+  if (learningCycles >= 20 && learningConsolidated === 0) {
+    alerts.push({
+      level: "attention",
+      message: "Nenhuma consolidação após várias execuções",
+    });
+  }
+  if (learningPublishError) {
+    alerts.push({
+      level: "attention",
+      message: `Erro ao publicar hipótese: ${learningPublishError}`,
+    });
+  }
+  {
+    const totalHistory = num(learningStore.totalHistory);
+    if (totalHistory >= 450) {
+      alerts.push({
+        level: "attention",
+        message: `Learning store próximo do limite (${totalHistory} registros)`,
+      });
+    }
+  }
+
+
   // ============ render ============
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 space-y-6">
