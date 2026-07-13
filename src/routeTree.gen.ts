@@ -46,6 +46,7 @@ import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
 import { Route as ApiWhatsappForwardMessageRouteImport } from './routes/api.whatsapp.forward-message'
 import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
+import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
@@ -284,6 +285,12 @@ const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
   path: '/api/whatsapp/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScientificKnowledgeSnapshotRoute =
+  ApiScientificKnowledgeSnapshotRouteImport.update({
+    id: '/api/scientific-knowledge/snapshot',
+    path: '/api/scientific-knowledge/snapshot',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
   id: '/api/onboarding/test-send',
   path: '/api/onboarding/test-send',
@@ -525,6 +532,7 @@ export interface FileRoutesByFullPath {
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -599,6 +607,7 @@ export interface FileRoutesByTo {
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -675,6 +684,7 @@ export interface FileRoutesById {
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -752,6 +762,7 @@ export interface FileRouteTypes {
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
+    | '/api/scientific-knowledge/snapshot'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -826,6 +837,7 @@ export interface FileRouteTypes {
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
+    | '/api/scientific-knowledge/snapshot'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -901,6 +913,7 @@ export interface FileRouteTypes {
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
     | '/api/onboarding/test-send'
+    | '/api/scientific-knowledge/snapshot'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -974,6 +987,7 @@ export interface RootRouteChildren {
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
+  ApiScientificKnowledgeSnapshotRoute: typeof ApiScientificKnowledgeSnapshotRoute
   ApiWhatsappDebugRoute: typeof ApiWhatsappDebugRoute
   ApiWhatsappForwardMessageRoute: typeof ApiWhatsappForwardMessageRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
@@ -1263,6 +1277,13 @@ declare module '@tanstack/react-router' {
       path: '/api/whatsapp/debug'
       fullPath: '/api/whatsapp/debug'
       preLoaderRoute: typeof ApiWhatsappDebugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-knowledge/snapshot': {
+      id: '/api/scientific-knowledge/snapshot'
+      path: '/api/scientific-knowledge/snapshot'
+      fullPath: '/api/scientific-knowledge/snapshot'
+      preLoaderRoute: typeof ApiScientificKnowledgeSnapshotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/onboarding/test-send': {
@@ -1577,6 +1598,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
+  ApiScientificKnowledgeSnapshotRoute: ApiScientificKnowledgeSnapshotRoute,
   ApiWhatsappDebugRoute: ApiWhatsappDebugRoute,
   ApiWhatsappForwardMessageRoute: ApiWhatsappForwardMessageRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
