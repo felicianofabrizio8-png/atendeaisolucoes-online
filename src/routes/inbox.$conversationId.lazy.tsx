@@ -2352,7 +2352,7 @@ function ProductsLibraryModal({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (paths: string[]) => void;
+  onPick: (items: LibraryPick[]) => void;
 }) {
   const [, force] = useState(0);
   useEffect(() => subscribeProducts(() => force((n) => n + 1)), []);
@@ -2365,7 +2365,8 @@ function ProductsLibraryModal({
     return all.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        (p.category ?? "").toLowerCase().includes(q),
+        (p.category ?? "").toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q),
     );
   }, [all, query]);
   const byCategory = useMemo(() => {
@@ -2379,6 +2380,18 @@ function ProductsLibraryModal({
     return Array.from(map.entries());
   }, [filtered]);
 
+  // path → product (para preservar a associação imagem → produto na seleção
+  // e ao montar a legenda). Prioriza o primeiro produto que declara a imagem.
+  const imageToProduct = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const p of all) {
+      for (const img of p.images ?? []) {
+        if (!map.has(img)) map.set(img, p);
+      }
+    }
+    return map;
+  }, [all]);
+
   const toggle = (img: string) => {
     setSelected((prev) =>
       prev.includes(img) ? prev.filter((p) => p !== img) : [...prev, img],
@@ -2387,8 +2400,17 @@ function ProductsLibraryModal({
   const clearSelection = () => setSelected([]);
   const confirmSend = () => {
     if (selected.length === 0) return;
-    onPick(selected);
+    const items: LibraryPick[] = selected.map((path) => {
+      const p = imageToProduct.get(path);
+      return {
+        path,
+        productId: p?.id ?? "",
+        caption: p ? buildProductCaption(p) : "",
+      };
+    });
+    onPick(items);
   };
+
 
   return (
     <div
