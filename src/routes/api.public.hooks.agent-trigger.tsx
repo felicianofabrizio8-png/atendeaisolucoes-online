@@ -55,7 +55,10 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         const cid = correlationId();
         const startedAt = Date.now();
 
-        const expected = process.env.AGENT_TRIGGER_SECRET;
+        const expected =
+          (await getHookSecret("agent_trigger_secret")) ??
+          process.env.AGENT_TRIGGER_SECRET ??
+          null;
         if (!expected) {
           console.error("[agent-trigger]", { cid, event: "secret_not_configured" });
           return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
