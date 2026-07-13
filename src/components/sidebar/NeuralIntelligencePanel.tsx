@@ -319,6 +319,7 @@ export function NeuralIntelligencePanel() {
   const hypothesesCount = data?.science?.sample?.hypotheses ?? 0;
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
       {/* Background grid — 2% opacity */}
       <div
@@ -329,7 +330,8 @@ export function NeuralIntelligencePanel() {
           backgroundSize: "20px 20px",
         }}
       />
-      <BackgroundParticles />
+      {!reducedMotion && <BackgroundParticles />}
+
 
       {/* Header */}
       <div className="relative flex items-start justify-between gap-2 mb-1.5">
