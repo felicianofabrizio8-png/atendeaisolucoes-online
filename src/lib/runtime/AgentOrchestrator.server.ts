@@ -1,11 +1,20 @@
 // ============================================================================
 // AgentOrchestrator — Facade de orquestração.
-// Etapa 1: NÃO orquestra execução. Apenas expõe consulta de topologia,
-// dependências e ordem topológica (útil para futuras etapas).
+// Etapa 2: valida dependências / concorrência / prioridade. NÃO executa.
 // ============================================================================
 
 import type { AgentRegistry } from "./AgentRegistry.server";
-import type { RegisteredAgent } from "./RuntimeTypes";
+import type {
+  DispatchRequest,
+  OrchestratorValidation,
+  RegisteredAgent,
+  RuntimeJobCounters,
+} from "./RuntimeTypes";
+
+export interface OrchestratorContext {
+  processingByAgent?: Record<string, number>;
+  counters?: RuntimeJobCounters;
+}
 
 export class AgentOrchestrator {
   constructor(private readonly registry: AgentRegistry) {}
@@ -19,6 +28,34 @@ export class AgentOrchestrator {
     return acc;
   }
 
+  /** Valida se um agente pode ser despachado agora. */
+  validate(req: DispatchRequest, ctx: OrchestratorContext = {}): OrchestratorValidation {
+    const agent = this.registry.get(req.agentId);
+    if (!agent) return { ok: false, reason: "agent_not_found" };
+    const d = agent.descriptor;
+    if (!d.enabled || d.executionMode === "disabled") {
+      return { ok: false, reason: "agent_disabled" };
+    }
+    const mode = req.executionMode ?? d.executionMode;
+    if (!d.supportedExecutionModes.includes(mode)) {
+      return { ok: false, reason: `unsupported_execution_mode:${mode}` };
+    }
+    const priority = req.priority ?? "normal";
+    if (!d.supportedPriorities.includes(priority)) {
+      return { ok: false, reason: `unsupported_priority:${priority}` };
+    }
+    for (const dep of d.dependencies) {
+      const depAgent = this.registry.get(dep);
+      if (!depAgent) return { ok: false, reason: `missing_dependency:${dep}` };
+      if (!depAgent.descriptor.enabled) return { ok: false, reason: `dependency_disabled:${dep}` };
+    }
+    const inflight = ctx.processingByAgent?.[req.agentId] ?? 0;
+    if (inflight >= d.maxConcurrency) {
+      return { ok: false, reason: `concurrency_limit:${d.maxConcurrency}` };
+    }
+    return { ok: true };
+  }
+
   /** Ordenação topológica estável (Kahn). Lança se houver ciclo. */
   topologicalOrder(): string[] {
     const all = this.registry.list();
@@ -30,13 +67,12 @@ export class AgentOrchestrator {
     }
     for (const a of all) {
       for (const dep of a.descriptor.dependencies) {
-        if (!indeg.has(dep)) continue; // dep desconhecido: ignora
+        if (!indeg.has(dep)) continue;
         graph.get(dep)!.push(a.descriptor.id);
         indeg.set(a.descriptor.id, (indeg.get(a.descriptor.id) ?? 0) + 1);
       }
     }
     const queue: string[] = [];
-    // ordem determinística: por prioridade level asc, weight desc
     const byId = new Map(all.map((a) => [a.descriptor.id, a] as const));
     const sortKeys = (ids: string[]) =>
       ids.sort((x, y) => {
