@@ -264,6 +264,8 @@ function ObservabilityPage() {
   const status = asDict(snapshot?.status);
   const heartbeat = asDict(snapshot?.heartbeat);
   const scheduler = asDict(snapshot?.scheduler);
+  const autonomy = asDict(asDict(snapshot?.autonomy).systemHealth);
+  const autonomyTenantEnabled = bool(asDict(snapshot?.autonomy).tenantEnabled);
   const worker = asDict(snapshot?.worker);
   const workers = asArr(snapshot?.workers);
   const execution = asDict(snapshot?.execution);
@@ -1091,8 +1093,48 @@ function ObservabilityPage() {
             </Card>
           </div>
 
+          {/* Autonomia System Health (Etapa 15) */}
+          <Card className="p-4">
+            <SectionTitle
+              icon={Timer}
+              title="Autonomia · System Health"
+              subtitle="Primeira autonomia controlada por feature-flag"
+            />
+            <div className="grid gap-3 md:grid-cols-4">
+              <Metric
+                label="Tenant atual"
+                value={autonomyTenantEnabled ? "Autonomia ligada" : "Autonomia desligada"}
+              />
+              <Metric label="Tenants habilitados" value={num(autonomy.enabledTenantCount)} />
+              <Metric label="Intervalo" value={`${num(autonomy.intervalSeconds)}s`} />
+              <Metric
+                label="Segredo do tick"
+                value={bool(autonomy.secretConfigured) ? "Configurado" : "Ausente"}
+              />
+              <Metric label="Ticks recebidos" value={num(autonomy.ticksReceived)} />
+              <Metric label="Ticks rejeitados" value={num(autonomy.ticksRejected)} />
+              <Metric label="Jobs criados" value={num(autonomy.jobsCreated)} />
+              <Metric label="Jobs concluídos" value={num(autonomy.jobsCompleted)} />
+              <Metric label="Jobs falhos" value={num(autonomy.jobsFailed)} />
+              <Metric
+                label="Duplicidades evitadas"
+                value={num(autonomy.duplicatesPrevented)}
+              />
+              <Metric label="Último tick" value={fmtAgo(str(autonomy.lastTickAt, ""))} />
+              <Metric label="Próxima janela" value={str(autonomy.nextBucketAt, "—")} />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Kill switch: <code>POST /api/runtime/autonomy</code> com{" "}
+              <code>{`{ "enabled": false }`}</code> desativa a autonomia
+              imediatamente para o tenant. Endpoint público:{" "}
+              <code>/api/public/hooks/runtime-tick</code> exige header{" "}
+              <code>x-runtime-secret</code>.
+            </p>
+          </Card>
+
           {/* 7. Scheduler + 10. Memory + 11. Tenant */}
           <div className="grid gap-4 md:grid-cols-3">
+
             <Card className="p-4">
               <SectionTitle icon={Timer} title="Scheduler" subtitle="Desativado por design" />
               <div className="grid grid-cols-2 gap-3">

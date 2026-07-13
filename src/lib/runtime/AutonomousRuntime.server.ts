@@ -138,6 +138,13 @@ export class AutonomousRuntime {
   }
 
   async fullSnapshot(tenantId?: string) {
+    const { RuntimeAutonomyRegistry } = await import("./RuntimeAutonomyRegistry.server");
+    const autonomy = {
+      systemHealth: RuntimeAutonomyRegistry.snapshot("system-health"),
+      tenantEnabled: tenantId
+        ? RuntimeAutonomyRegistry.isEnabled("system-health", tenantId)
+        : null,
+    };
     const counters: RuntimeJobCounters | null = this._queue
       ? await this._queue.counters(tenantId).catch(() => null)
       : null;
@@ -148,6 +155,7 @@ export class AutonomousRuntime {
     const learningSnapshot = this.learningLoop.snapshotFor(tenantId);
     return {
       status: this.status(),
+      autonomy,
       heartbeat: tick,
       counters,
       learning: {
