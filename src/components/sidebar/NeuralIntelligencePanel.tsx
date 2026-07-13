@@ -1,27 +1,39 @@
-// Central de Inteligência Viva — v4 Enterprise Premium (visual-only).
-// Consome APENAS endpoints READ-ONLY existentes. Sem alterar lógica, endpoints,
-// polling, RLS, banco, migrations, ou qualquer módulo operacional.
+// Central de Inteligência Viva — v5 (estados reais).
+// Continua 100% READ-ONLY. Consome APENAS endpoints já existentes:
+//   - GET /api/business-brain/snapshot
+//   - GET /api/business-learning/snapshot
+//   - GET /api/scientific-knowledge/snapshot
+//   - GET /api/executive/snapshot
+//   - GET /api/executive/sales-intelligence
+// Nenhum polling adicional, nenhuma escrita, nenhum LLM, nenhum agente
+// operacional modificado. Nenhuma alteração visual além da sincronização
+// dos estados reais dos snapshots já existentes.
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 
-type AgentState = "active" | "learning" | "consolidating" | "waiting" | "idle";
+/* -------------------- Tipos & estados -------------------- */
+
+type Bucket = "active" | "learning" | "consolidating" | "waiting" | "idle";
 
 interface AgentNode {
   id: string;
   label: string;
   short: string;
   tooltip: string;
-  state: AgentState;
+  bucket: Bucket;
+  stateLabel: string;   // rótulo real específico do agente
+  updatedAt?: number;   // ms
+  surge?: boolean;      // acabou de atualizar
 }
 
-const STATE_META: Record<
-  AgentState,
+const BUCKET_META: Record<
+  Bucket,
   { glow: string; label: string; hex: string }
 > = {
   active:        { glow: "rgba(52,211,153,0.85)",  label: "Ativo",        hex: "rgb(52,211,153)" },
@@ -31,21 +43,75 @@ const STATE_META: Record<
   idle:          { glow: "rgba(148,163,184,0.5)",  label: "Ocioso",       hex: "rgb(148,163,184)" },
 };
 
-async function pingSnapshot(path: string): Promise<boolean> {
+/* -------------------- Fetch utilities (READ-ONLY) -------------------- */
+
+async function fetchSnapshot<T>(path: string): Promise<T | null> {
   try {
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
-    if (!token) return false;
+    if (!token) return null;
     const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
-    return res.ok;
+    if (!res.ok) return null;
+    const body = (await res.json()) as { ok?: boolean; data?: T };
+    if (!body?.ok || !body.data) return null;
+    return body.data;
   } catch {
-    return false;
+    return null;
   }
 }
 
+function iso(ts?: string | null): number | undefined {
+  if (!ts) return undefined;
+  const t = Date.parse(ts);
+  return Number.isFinite(t) ? t : undefined;
+}
+
+/* -------------------- Shapes mínimos dos snapshots -------------------- */
+
+interface ScienceSnap {
+  generatedAt?: string;
+  sample?: {
+    observations?: number;
+    hypotheses?: number;
+    evidence?: number;
+    validatedKnowledge?: number;
+    distinctSnapshotDays?: number;
+  };
+  hypotheses?: Array<{ status?: string }>;
+}
+interface BrainSnap {
+  generatedAt?: string;
+  sample?: { conversationFacts?: number; knowledgeSnapshots?: number };
+  patterns?: unknown[];
+}
+interface LearningSnap {
+  generatedAt?: string;
+  sample?: { brainPatterns?: number; brainKnowledge?: number; weeklyBuckets?: number };
+  hypotheses?: unknown[];
+  evolution?: unknown[];
+}
+interface ExecSnap {
+  generatedAt?: string;
+  insights?: unknown[];
+}
+interface SalesSnap {
+  generatedAt?: string;
+  fromCache?: boolean;
+  totals?: { opportunities?: number; scanned?: number };
+}
+
+interface RawBundle {
+  science: ScienceSnap | null;
+  brain: BrainSnap | null;
+  learning: LearningSnap | null;
+  executive: ExecSnap | null;
+  sales: SalesSnap | null;
+  at: number;
+}
+
 function useIntelligenceStates(enabled: boolean) {
-  return useQuery({
-    queryKey: ["neural-intelligence-panel"],
+  return useQuery<RawBundle>({
+    queryKey: ["neural-intelligence-panel", "v5"],
     enabled,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
@@ -53,16 +119,89 @@ function useIntelligenceStates(enabled: boolean) {
     retry: false,
     queryFn: async () => {
       const [science, brain, learning, executive, sales] = await Promise.all([
-        pingSnapshot("/api/scientific-knowledge/snapshot?period=30d"),
-        pingSnapshot("/api/business-brain/snapshot?period=30d"),
-        pingSnapshot("/api/business-learning/snapshot?period=30d"),
-        pingSnapshot("/api/executive/snapshot?period=30d"),
-        pingSnapshot("/api/executive/sales-intelligence?period=30d"),
+        fetchSnapshot<ScienceSnap>("/api/scientific-knowledge/snapshot?period=30d"),
+        fetchSnapshot<BrainSnap>("/api/business-brain/snapshot?period=30d"),
+        fetchSnapshot<LearningSnap>("/api/business-learning/snapshot?period=30d"),
+        fetchSnapshot<ExecSnap>("/api/executive/snapshot?period=30d"),
+        fetchSnapshot<SalesSnap>("/api/executive/sales-intelligence?period=30d"),
       ]);
       return { science, brain, learning, executive, sales, at: Date.now() };
     },
   });
 }
+
+/* -------------------- Resolução determinística de estados reais -------------------- */
+
+interface Resolved {
+  bucket: Bucket;
+  stateLabel: string;
+  updatedAt?: number;
+}
+
+function resolveScience(s: ScienceSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
+  const hyp = s.hypotheses ?? [];
+  const validated = s.sample?.validatedKnowledge ?? 0;
+  const strengthening = hyp.some((h) => h?.status === "strengthening" || h?.status === "candidate");
+  if (validated > 0) return { bucket: "active", stateLabel: "hipótese validada", updatedAt: iso(s.generatedAt) };
+  if (strengthening) return { bucket: "consolidating", stateLabel: "fortalecendo hipótese", updatedAt: iso(s.generatedAt) };
+  if ((s.sample?.hypotheses ?? 0) > 0) return { bucket: "learning", stateLabel: "observando", updatedAt: iso(s.generatedAt) };
+  return { bucket: "waiting", stateLabel: "histórico insuficiente", updatedAt: iso(s.generatedAt) };
+}
+
+function resolveBrain(b: BrainSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !b) return { bucket: "waiting", stateLabel: "aguardando dados" };
+  const facts = b.sample?.conversationFacts ?? 0;
+  const patterns = b.patterns?.length ?? 0;
+  if (facts === 0) return { bucket: "waiting", stateLabel: "aguardando dados", updatedAt: iso(b.generatedAt) };
+  if (patterns > 0) return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(b.generatedAt) };
+  return { bucket: "consolidating", stateLabel: "consolidando padrões", updatedAt: iso(b.generatedAt) };
+}
+
+function resolveLearning(l: LearningSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !l) return { bucket: "waiting", stateLabel: "aguardando histórico" };
+  const brainPatterns = l.sample?.brainPatterns ?? 0;
+  const hyp = l.hypotheses?.length ?? 0;
+  if (brainPatterns === 0) return { bucket: "waiting", stateLabel: "aguardando histórico", updatedAt: iso(l.generatedAt) };
+  if (hyp > 0) return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(l.generatedAt) };
+  return { bucket: "learning", stateLabel: "aprendendo", updatedAt: iso(l.generatedAt) };
+}
+
+function resolveExecutive(e: ExecSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !e) return { bucket: "waiting", stateLabel: "aguardando atualização" };
+  const ts = iso(e.generatedAt);
+  if (!ts) return { bucket: "learning", stateLabel: "analisando", updatedAt: ts };
+  const ageMin = (Date.now() - ts) / 60_000;
+  if (ageMin < 15) return { bucket: "active", stateLabel: "snapshot atualizado", updatedAt: ts };
+  return { bucket: "learning", stateLabel: "analisando", updatedAt: ts };
+}
+
+function resolveSales(s: SalesSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
+  if (s.fromCache === false) return { bucket: "consolidating", stateLabel: "calculando prioridades", updatedAt: iso(s.generatedAt) };
+  return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(s.generatedAt) };
+}
+
+function resolveConversation(b: BrainSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  // Derivado dos fatos de conversação já consumidos pelo Business Brain
+  // (mesma origem, sem novo endpoint).
+  if (!hasUser || loading || !b) return { bucket: "waiting", stateLabel: "aguardando" };
+  const facts = b.sample?.conversationFacts ?? 0;
+  if (facts === 0) return { bucket: "waiting", stateLabel: "sem novas conversas", updatedAt: iso(b.generatedAt) };
+  return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(b.generatedAt) };
+}
+
+function resolveProfessor(s: ScienceSnap | null, hasUser: boolean, loading: boolean): Resolved {
+  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
+  const validated = s.sample?.validatedKnowledge ?? 0;
+  const hyp = s.hypotheses ?? [];
+  if (validated > 0) return { bucket: "active", stateLabel: "sincronizado", updatedAt: iso(s.generatedAt) };
+  if (hyp.length > 0) return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: iso(s.generatedAt) };
+  if ((s.sample?.observations ?? 0) > 0) return { bucket: "learning", stateLabel: "analisando", updatedAt: iso(s.generatedAt) };
+  return { bucket: "waiting", stateLabel: "aguardando", updatedAt: iso(s.generatedAt) };
+}
+
+/* -------------------- Utils -------------------- */
 
 function formatTime(ts: number) {
   const d = new Date(ts);
@@ -80,52 +219,102 @@ function formatRelative(ts: number | undefined) {
   return `há ${h}h`;
 }
 
-const BREATH = 3.8; // Professor breathing cycle (s)
+const BREATH = 3.8;
+
+/* -------------------- Componente principal -------------------- */
 
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
   const { data, isLoading } = useIntelligenceStates(!!user);
 
-  const resolve = (ok: boolean | undefined, activeState: AgentState = "active"): AgentState => {
-    if (!user) return "waiting";
-    if (ok === undefined) return "learning";
-    return ok ? activeState : "waiting";
-  };
+  const professor = resolveProfessor(data?.science ?? null, !!user, isLoading);
+  const conversation = resolveConversation(data?.brain ?? null, !!user, isLoading);
+  const brain = resolveBrain(data?.brain ?? null, !!user, isLoading);
+  const learning = resolveLearning(data?.learning ?? null, !!user, isLoading);
+  const science = resolveScience(data?.science ?? null, !!user, isLoading);
+  const executive = resolveExecutive(data?.executive ?? null, !!user, isLoading);
+  const sales = resolveSales(data?.sales ?? null, !!user, isLoading);
 
-  // Ordered following the real knowledge-evolution flow:
-  // Conversation → Brain → Learning → Scientific → Executive → Sales
+  // Detecção de mudança: mantém último generatedAt visto por agente.
+  // Quando um snapshot muda, marca surge (glow temporário) por 4s.
+  const prevRef = useRef<Record<string, number | undefined>>({});
+  const [surge, setSurge] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const map: Record<string, number | undefined> = {
+      professor: professor.updatedAt,
+      conversation: conversation.updatedAt,
+      brain: brain.updatedAt,
+      learning: learning.updatedAt,
+      science: science.updatedAt,
+      executive: executive.updatedAt,
+      sales: sales.updatedAt,
+    };
+    const changed: string[] = [];
+    for (const k of Object.keys(map)) {
+      const prev = prevRef.current[k];
+      const now = map[k];
+      if (now && prev && now > prev) changed.push(k);
+    }
+    prevRef.current = map;
+    if (changed.length > 0) {
+      setSurge((s) => {
+        const next = { ...s };
+        for (const k of changed) next[k] = true;
+        return next;
+      });
+      const to = window.setTimeout(() => {
+        setSurge((s) => {
+          const next = { ...s };
+          for (const k of changed) delete next[k];
+          return next;
+        });
+      }, 4200);
+      return () => window.clearTimeout(to);
+    }
+  }, [
+    professor.updatedAt,
+    conversation.updatedAt,
+    brain.updatedAt,
+    learning.updatedAt,
+    science.updatedAt,
+    executive.updatedAt,
+    sales.updatedAt,
+  ]);
+
   const agents: AgentNode[] = [
-    { id: "conversation", label: "Conversation Intelligence", short: "Conversation",  tooltip: "Analisa e estrutura conhecimento das conversas.", state: resolve(data?.brain, "learning") },
-    { id: "brain",        label: "Business Brain",            short: "Brain",         tooltip: "Consolida padrões de negócio.",                    state: resolve(data?.brain, "active") },
-    { id: "learning",     label: "Business Learning",         short: "Learning",      tooltip: "Aprende continuamente com a evolução da empresa.", state: resolve(data?.learning, "consolidating") },
-    { id: "science",      label: "Scientific Knowledge",      short: "Scientific",    tooltip: "Valida hipóteses utilizando evidências.",           state: resolve(data?.science, "consolidating") },
-    { id: "executive",    label: "Executive Knowledge",       short: "Executive",     tooltip: "Constrói inteligência estratégica.",                state: resolve(data?.executive, "active") },
-    { id: "sales",        label: "Sales Intelligence",        short: "Sales",         tooltip: "Prioriza oportunidades comerciais.",                state: resolve(data?.sales, "active") },
+    { id: "conversation", label: "Conversation Intelligence", short: "Conversation", tooltip: "Analisa e estrutura conhecimento das conversas.", bucket: conversation.bucket, stateLabel: conversation.stateLabel, updatedAt: conversation.updatedAt, surge: surge.conversation },
+    { id: "brain",        label: "Business Brain",            short: "Brain",        tooltip: "Consolida padrões de negócio.",                    bucket: brain.bucket,        stateLabel: brain.stateLabel,        updatedAt: brain.updatedAt,        surge: surge.brain },
+    { id: "learning",     label: "Business Learning",         short: "Learning",     tooltip: "Aprende continuamente com a evolução da empresa.", bucket: learning.bucket,     stateLabel: learning.stateLabel,     updatedAt: learning.updatedAt,     surge: surge.learning },
+    { id: "science",      label: "Scientific Knowledge",      short: "Scientific",   tooltip: "Valida hipóteses utilizando evidências.",           bucket: science.bucket,      stateLabel: science.stateLabel,      updatedAt: science.updatedAt,      surge: surge.science },
+    { id: "executive",    label: "Executive Intelligence",    short: "Executive",    tooltip: "Constrói inteligência estratégica.",                bucket: executive.bucket,    stateLabel: executive.stateLabel,    updatedAt: executive.updatedAt,    surge: surge.executive },
+    { id: "sales",        label: "Sales Intelligence",        short: "Sales",        tooltip: "Prioriza oportunidades comerciais.",                bucket: sales.bucket,        stateLabel: sales.stateLabel,        updatedAt: sales.updatedAt,        surge: surge.sales },
   ];
 
-  const activeCount = agents.filter((a) => a.state !== "waiting" && a.state !== "idle").length;
+  const activeCount = agents.filter((a) => a.bucket !== "waiting" && a.bucket !== "idle").length;
   const networkOnline = !!user && !isLoading && activeCount > 0;
 
-  const professorState: AgentState = useMemo(() => {
-    if (!user) return "waiting";
-    if (isLoading || !data) return "learning";
-    return data.science ? "consolidating" : "waiting";
-  }, [user, data, isLoading]);
-
+  // Feed real: gerado a partir dos timestamps de cada snapshot disponível.
   const feed = useMemo(() => {
     if (!user || !data) return [];
-    const base = data.at ?? Date.now();
     const items: { label: string; msg: string; ts: number }[] = [];
-    if (data.science)   items.push({ label: "Scientific Engine",    msg: "Hipótese fortalecida",        ts: base - 30_000 });
-    if (data.brain)     items.push({ label: "Business Brain",       msg: "Novo padrão consolidado",     ts: base - 60_000 });
-    if (data.executive) items.push({ label: "Executive Brain",      msg: "Insight atualizado",          ts: base - 90_000 });
-    if (data.sales)     items.push({ label: "Sales Intelligence",   msg: "Prioridades recalculadas",    ts: base - 120_000 });
-    if (data.learning)  items.push({ label: "Business Learning",    msg: "Evolução avaliada",           ts: base - 150_000 });
-    return items.slice(0, 4);
-  }, [data, user]);
+    const push = (label: string, msg: string, ts?: number) => {
+      if (ts) items.push({ label, msg, ts });
+    };
+    push("Scientific Knowledge", science.stateLabel, science.updatedAt);
+    push("Business Brain",       brain.stateLabel,   brain.updatedAt);
+    push("Business Learning",    learning.stateLabel, learning.updatedAt);
+    push("Executive Intelligence", executive.stateLabel, executive.updatedAt);
+    push("Sales Intelligence",   sales.stateLabel,   sales.updatedAt);
+    push("Conversation Intelligence", conversation.stateLabel, conversation.updatedAt);
+    return items.sort((a, b) => b.ts - a.ts).slice(0, 5);
+  }, [data, user, science, brain, learning, executive, sales, conversation]);
 
-  // Legend fade after mount
   const [legendFocused, setLegendFocused] = useState(false);
+
+  // "Conhecimento acumulado" — apenas métrica real (validatedKnowledge).
+  const validatedCount = data?.science?.sample?.validatedKnowledge ?? 0;
+  const hypothesesCount = data?.science?.sample?.hypotheses ?? 0;
 
   return (
     <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
@@ -138,7 +327,6 @@ export function NeuralIntelligencePanel() {
           backgroundSize: "20px 20px",
         }}
       />
-      {/* Floating background particles */}
       <BackgroundParticles />
 
       {/* Header */}
@@ -166,10 +354,9 @@ export function NeuralIntelligencePanel() {
         </div>
       </div>
 
-      {/* Neural network — the star */}
-      <NeuralGraph professorState={professorState} agents={agents} lastAt={data?.at} />
+      <NeuralGraph professor={professor} agents={agents} professorSurge={surge.professor} />
 
-      {/* Legend chips — fade to 30%, 100% on hover */}
+      {/* Legend chips */}
       <div
         className={cn(
           "mt-1 flex items-center justify-between gap-1 px-0.5 transition-opacity duration-500",
@@ -178,27 +365,27 @@ export function NeuralIntelligencePanel() {
         onMouseEnter={() => setLegendFocused(true)}
         onMouseLeave={() => setLegendFocused(false)}
       >
-        {(["active", "learning", "consolidating", "waiting"] as AgentState[]).map((s) => (
+        {(["active", "learning", "consolidating", "waiting"] as Bucket[]).map((s) => (
           <div
             key={s}
             className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
           >
             <span
               className="h-1 w-1 rounded-full"
-              style={{ backgroundColor: STATE_META[s].hex, boxShadow: `0 0 4px ${STATE_META[s].glow}` }}
+              style={{ backgroundColor: BUCKET_META[s].hex, boxShadow: `0 0 4px ${BUCKET_META[s].glow}` }}
             />
             <span className="text-[7.5px] text-sidebar-foreground/80 tracking-wide">
-              {STATE_META[s].label}
+              {BUCKET_META[s].label}
             </span>
           </div>
         ))}
       </div>
 
-      {/* Terminal feed — one line per event, blinking cursor */}
+      {/* Feed real (últimos 5 eventos de snapshots) */}
       <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/40 px-2 py-1.5 font-mono text-[8.5px] leading-[1.45] text-sidebar-foreground/90 h-[74px] overflow-hidden relative">
         {feed.length === 0 ? (
           <div className="text-muted-foreground/60 italic truncate">
-            <span className="text-emerald-400">$</span> aguardando eventos<BlinkingCursor />
+            <span className="text-emerald-400">$</span> aguardando novos eventos<BlinkingCursor />
           </div>
         ) : (
           <>
@@ -219,24 +406,28 @@ export function NeuralIntelligencePanel() {
                 </motion.div>
               ))}
             </AnimatePresence>
-            <div className="flex items-baseline gap-1">
-              <span className="text-emerald-400">$</span>
-              <BlinkingCursor />
-            </div>
           </>
         )}
       </div>
 
-      {/* Learning indicator — never invents numbers */}
+      {/* Conhecimento acumulado — apenas métrica real */}
       <div className="mt-1.5 px-0.5">
         <div className="flex items-center justify-between mb-0.5">
           <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
             Conhecimento acumulado
           </span>
         </div>
-        <div className="text-[9px] text-sidebar-foreground/70 italic">
-          Aguardando histórico suficiente
-        </div>
+        {validatedCount > 0 || hypothesesCount > 0 ? (
+          <div className="text-[9px] text-sidebar-foreground/85">
+            <span className="text-emerald-300">{validatedCount}</span> conhecimentos validados
+            <span className="text-muted-foreground/60"> · </span>
+            <span className="text-sky-300">{hypothesesCount}</span> hipóteses ativas
+          </div>
+        ) : (
+          <div className="text-[9px] text-sidebar-foreground/70 italic">
+            Aguardando histórico suficiente
+          </div>
+        )}
       </div>
     </div>
   );
@@ -288,28 +479,26 @@ function BackgroundParticles() {
 /* -------------------- Neural graph -------------------- */
 
 function NeuralGraph({
-  professorState,
+  professor,
   agents,
-  lastAt,
+  professorSurge,
 }: {
-  professorState: AgentState;
+  professor: Resolved;
   agents: AgentNode[];
-  lastAt?: number;
+  professorSurge?: boolean;
 }) {
   const W = 260;
   const H = 240;
   const prof = { x: W / 2, y: H / 2 - 4 };
   const [hovered, setHovered] = useState<string | null>(null);
 
-  // Organic asymmetric topology — six agents around the Professor,
-  // ordered to match the knowledge-evolution flow.
   const orbits: Array<{ r: number; angle: number }> = [
-    { r: 74, angle: 168 },  // conversation — lower-left, close
-    { r: 68, angle: -150 }, // brain — upper-left, closest
-    { r: 92, angle: 108 },  // learning — bottom, distant
-    { r: 96, angle: -78 },  // scientific — top, most distant
-    { r: 84, angle: -18 },  // executive — right, mid
-    { r: 88, angle: 52 },   // sales — lower-right, mid
+    { r: 74, angle: 168 },
+    { r: 68, angle: -150 },
+    { r: 92, angle: 108 },
+    { r: 96, angle: -78 },
+    { r: 84, angle: -18 },
+    { r: 88, angle: 52 },
   ];
 
   const positions = orbits.map(({ r, angle }) => {
@@ -317,7 +506,7 @@ function NeuralGraph({
     return { x: prof.x + Math.cos(rad) * r, y: prof.y + Math.sin(rad) * r };
   });
 
-  const profMeta = STATE_META[professorState];
+  const profMeta = BUCKET_META[professor.bucket];
   const profColor = profMeta.hex;
 
   return (
@@ -356,13 +545,12 @@ function NeuralGraph({
           </filter>
         </defs>
 
-        {/* Connections — energized fibers, synchronized with the Professor breath.
-            Propagation delay follows the flow order (index 0 → 5). */}
         {positions.map((p, i) => {
           const a = agents[i];
-          const isActive = a && a.state !== "waiting" && a.state !== "idle";
-          const particleColor = a ? STATE_META[a.state].hex : "rgb(125,211,252)";
-          const propDelay = 0.25 + i * 0.28; // sequential energy propagation
+          const isActive = a && a.bucket !== "waiting" && a.bucket !== "idle";
+          const particleColor = a ? BUCKET_META[a.bucket].hex : "rgb(125,211,252)";
+          const propDelay = 0.25 + i * 0.28;
+          const surging = a?.surge;
           return (
             <g key={`line-${i}`}>
               <line
@@ -371,9 +559,8 @@ function NeuralGraph({
                 x2={p.x}
                 y2={p.y}
                 stroke={isActive ? "url(#lineGradActive)" : "url(#lineGrad)"}
-                strokeWidth={isActive ? 0.9 : 0.55}
+                strokeWidth={surging ? 1.4 : isActive ? 0.9 : 0.55}
               />
-              {/* Fiber-optic pulse traveling along the connection */}
               <motion.line
                 x1={prof.x}
                 y1={prof.y}
@@ -381,19 +568,20 @@ function NeuralGraph({
                 y2={p.y}
                 stroke={particleColor}
                 strokeLinecap="round"
-                strokeWidth={1.1}
+                strokeWidth={surging ? 1.6 : 1.1}
                 initial={{ opacity: 0 }}
-                animate={{ opacity: isActive ? [0, 0.65, 0] : [0, 0.22, 0] }}
+                animate={{
+                  opacity: surging ? [0, 1, 0, 1, 0] : isActive ? [0, 0.65, 0] : [0, 0.22, 0],
+                }}
                 transition={{
-                  duration: BREATH,
+                  duration: surging ? 1.4 : BREATH,
                   repeat: Infinity,
                   ease: "easeInOut",
                   delay: propDelay,
                 }}
               />
-              {/* Traveling particle */}
               <motion.circle
-                r={1.6}
+                r={surging ? 2.4 : 1.6}
                 fill={particleColor}
                 filter="url(#softGlow)"
                 initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
@@ -403,7 +591,7 @@ function NeuralGraph({
                   opacity: [0, 1, 0],
                 }}
                 transition={{
-                  duration: BREATH,
+                  duration: surging ? 1.2 : BREATH,
                   repeat: Infinity,
                   delay: propDelay,
                   ease: "easeInOut",
@@ -413,17 +601,18 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor: outer glow (breath) */}
         <motion.circle
           cx={prof.x}
           cy={prof.y}
           r={62}
           fill="url(#profGlowOuter)"
-          animate={{ opacity: [0.5, 0.95, 0.5], scale: [0.94, 1.08, 0.94] }}
+          animate={{
+            opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5],
+            scale: professorSurge ? [1, 1.15, 1] : [0.94, 1.08, 0.94],
+          }}
           transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
         />
-        {/* Professor: inner glow */}
         <motion.circle
           cx={prof.x}
           cy={prof.y}
@@ -433,7 +622,6 @@ function NeuralGraph({
           transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
         />
 
-        {/* Two counter-rotating rings, very slow */}
         <motion.g
           animate={{ rotate: 360 }}
           transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
@@ -467,7 +655,6 @@ function NeuralGraph({
           />
         </motion.g>
 
-        {/* Professor core — ~50% larger than v3 (r 22 → 32), breathing */}
         <motion.g
           animate={{ scale: [1, 1.06, 1] }}
           transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
@@ -495,15 +682,15 @@ function NeuralGraph({
           </text>
         </motion.g>
 
-        {/* Agent nodes — own glow, halo, gentle breath, synced pulse */}
         {positions.map((p, i) => {
           const a = agents[i];
           if (!a) return null;
-          const meta = STATE_META[a.state];
+          const meta = BUCKET_META[a.bucket];
           const dotColor = meta.hex;
           const isHover = hovered === a.id;
-          const isActive = a.state !== "waiting" && a.state !== "idle";
+          const isActive = a.bucket !== "waiting" && a.bucket !== "idle";
           const propDelay = 0.25 + i * 0.28;
+          const surging = a.surge;
           return (
             <g
               key={a.id}
@@ -511,25 +698,23 @@ function NeuralGraph({
               onMouseLeave={() => setHovered(null)}
               style={{ cursor: "pointer" }}
             >
-              {/* Halo — outer soft ring */}
               <motion.circle
                 cx={p.x}
                 cy={p.y}
-                r={13}
+                r={surging ? 16 : 13}
                 fill={dotColor}
                 animate={{
-                  opacity: isActive ? [0.06, 0.28, 0.06] : [0.04, 0.12, 0.04],
-                  scale: [1, 1.22, 1],
+                  opacity: surging ? [0.15, 0.5, 0.15] : isActive ? [0.06, 0.28, 0.06] : [0.04, 0.12, 0.04],
+                  scale: surging ? [1, 1.4, 1] : [1, 1.22, 1],
                 }}
                 transition={{
-                  duration: BREATH,
+                  duration: surging ? 1.6 : BREATH,
                   repeat: Infinity,
                   ease: "easeInOut",
                   delay: propDelay,
                 }}
                 style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(3px)" }}
               />
-              {/* Node body — gentle breath 1 → 1.03 */}
               <motion.g
                 animate={{ scale: [1, 1.03, 1] }}
                 transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut", delay: propDelay }}
@@ -541,7 +726,7 @@ function NeuralGraph({
                   r={6}
                   fill="hsl(220 35% 10%)"
                   stroke={dotColor}
-                  strokeWidth={isHover ? 1.6 : 1.1}
+                  strokeWidth={isHover || surging ? 1.6 : 1.1}
                   filter="url(#softGlow)"
                 />
                 <motion.circle
@@ -558,7 +743,6 @@ function NeuralGraph({
                   }}
                 />
               </motion.g>
-              {/* Label — tiny, muted */}
               <text
                 x={p.x}
                 y={p.y + 16}
@@ -574,7 +758,6 @@ function NeuralGraph({
         })}
       </svg>
 
-      {/* Hover tooltip */}
       <AnimatePresence>
         {hovered && (() => {
           if (hovered === "professor") {
@@ -582,24 +765,24 @@ function NeuralGraph({
               <TooltipCard
                 title="Professor"
                 subtitle="Coordena toda a inteligência do Atende AI."
-                stateLabel={profMeta.label}
+                stateLabel={professor.stateLabel}
                 stateHex={profMeta.hex}
                 stateGlow={profMeta.glow}
-                lastAt={lastAt}
+                lastAt={professor.updatedAt}
               />
             );
           }
           const a = agents.find((x) => x.id === hovered);
           if (!a) return null;
-          const meta = STATE_META[a.state];
+          const meta = BUCKET_META[a.bucket];
           return (
             <TooltipCard
               title={a.label}
               subtitle={a.tooltip}
-              stateLabel={meta.label}
+              stateLabel={a.stateLabel}
               stateHex={meta.hex}
               stateGlow={meta.glow}
-              lastAt={lastAt}
+              lastAt={a.updatedAt}
             />
           );
         })()}
@@ -644,9 +827,8 @@ function TooltipCard({
   );
 }
 
-/* Compact/collapsed variant — small pulsing icon */
+/* Compact/collapsed variant */
 export function NeuralIntelligencePulse() {
-  // Force hook to keep any subscribers alive when needed (no-op UI).
   useEffect(() => undefined, []);
   return (
     <div className="mx-auto my-2 flex items-center justify-center">
