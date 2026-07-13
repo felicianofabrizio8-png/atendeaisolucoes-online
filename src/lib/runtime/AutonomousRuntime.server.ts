@@ -179,6 +179,9 @@ export class AutonomousRuntime {
       },
       knowledgeBus: (() => {
         const base = this.context.snapshot();
+        const nowMs = RuntimeClock.now();
+
+        // System-health mantém seu próprio publisher (Etapa 9).
         const shAdapter = this.adapters.get("system-health") as unknown as
           | { publisherSnapshot?: () => {
               connected: boolean;
@@ -191,55 +194,99 @@ export class AutonomousRuntime {
               lastTenantId: string | null;
             } }
           | null;
-        const producer = shAdapter?.publisherSnapshot?.() ?? null;
-        const latest =
-          tenantId && producer
+        const shProducer = shAdapter?.publisherSnapshot?.() ?? null;
+        const shLatest =
+          tenantId && shProducer
             ? this.context.bus.latest(tenantId, "system-health", "system-health")
             : null;
-        const nowMs = RuntimeClock.now();
-        const ekAdapter = this.adapters.get("executive-knowledge") as unknown as
-          | { consumerTelemetry?: () => {
-              totalReads: number; hits: number; misses: number; fallbacks: number;
-              lastReadAt: string | null; lastHitAt: string | null;
-              lastMissAt: string | null; lastFallbackAt: string | null;
-              lastError: string | null; lastEnvelopeVersion: number | null;
-              lastEnvelopeAgeSeconds: number | null; lastTenantId: string | null;
-            } }
-          | null;
-        const ekTelemetry = ekAdapter?.consumerTelemetry?.() ?? null;
+
+        // Adapters ProducerConsumer da Etapa 11.
+        interface PCA {
+          agentId: string;
+          consumerTelemetry?: () => {
+            totalReads: number; hits: number; misses: number; partialHits: number;
+            fallbacks: number; lastReadAt: string | null; lastError: string | null;
+            hitRate: number; topics: string[];
+          };
+          producerTelemetry?: () => {
+            connected: boolean; publishCount: number; publishErrors: number;
+            lastPublishedAt: string | null; lastError: string | null;
+            lastEnvelopeId: string | null; lastExpiresAt: string | null;
+            lastTopic: string | null; lastTenantId: string | null;
+          };
+        }
+        const pcaIds = [
+          "business-brain",
+          "business-learning",
+          "scientific-knowledge",
+          "scientific-memory",
+          "professor",
+          "executive-intelligence",
+          "executive-knowledge",
+          "executive-narrative",
+        ] as const;
+
+        const producers: Record<string, unknown> = {};
+        const consumers: Record<string, unknown> = {};
+
+        for (const id of pcaIds) {
+          const a = this.adapters.get(id) as unknown as PCA | null;
+          const prod = a?.producerTelemetry?.();
+          const cons = a?.consumerTelemetry?.();
+          if (prod) {
+            producers[id] = {
+              agentId: id,
+              topic: prod.lastTopic,
+              connected: prod.connected,
+              publishCount: prod.publishCount,
+              publishErrors: prod.publishErrors,
+              lastPublishedAt: prod.lastPublishedAt,
+              lastError: prod.lastError,
+              currentEnvelopeAvailable: Boolean(prod.lastEnvelopeId),
+              expiresAt: prod.lastExpiresAt,
+            };
+          }
+          if (cons) {
+            consumers[id] = {
+              agentId: id,
+              totalReads: cons.totalReads,
+              hits: cons.hits,
+              misses: cons.misses,
+              partialHits: cons.partialHits,
+              fallbacks: cons.fallbacks,
+              hitRate: cons.hitRate,
+              lastRead: cons.lastReadAt,
+              lastError: cons.lastError,
+              topics: cons.topics,
+            };
+          }
+        }
+
+        // system-health producer preservado (Etapa 9)
+        producers["system-health"] = {
+          agentId: "system-health",
+          topic: "system-health",
+          connected: shProducer?.connected ?? false,
+          publishCount: shProducer?.publishCount ?? 0,
+          publishErrors: shProducer?.publishErrors ?? 0,
+          lastError: shProducer?.lastError ?? null,
+          lastPublishedAt: shProducer?.lastPublishedAtMs
+            ? new Date(shProducer.lastPublishedAtMs).toISOString()
+            : null,
+          currentEnvelopeAvailable: Boolean(shLatest),
+          envelopeAgeSeconds: shLatest
+            ? Math.max(0, Math.floor((nowMs - new Date(shLatest.createdAt).getTime()) / 1000))
+            : null,
+          expiresAt: shLatest?.expiresAt ?? shProducer?.lastExpiresAt ?? null,
+          currentEnvelopeId: shLatest?.id ?? null,
+        };
+
         return {
           ...base,
-          systemHealthProducer: {
-            connected: producer?.connected ?? false,
-            publishCount: producer?.publishCount ?? 0,
-            publishErrors: producer?.publishErrors ?? 0,
-            lastError: producer?.lastError ?? null,
-            lastPublishedAt: producer?.lastPublishedAtMs
-              ? new Date(producer.lastPublishedAtMs).toISOString()
-              : null,
-            currentEnvelopeAvailable: Boolean(latest),
-            envelopeAgeSeconds: latest
-              ? Math.max(0, Math.floor((nowMs - new Date(latest.createdAt).getTime()) / 1000))
-              : null,
-            expiresAt: latest?.expiresAt ?? producer?.lastExpiresAt ?? null,
-            currentEnvelopeId: latest?.id ?? null,
-          },
-          consumers: {
-            executiveKnowledge: {
-              connected: Boolean(ekTelemetry),
-              totalReads: ekTelemetry?.totalReads ?? 0,
-              hits: ekTelemetry?.hits ?? 0,
-              misses: ekTelemetry?.misses ?? 0,
-              fallbacks: ekTelemetry?.fallbacks ?? 0,
-              lastRead: ekTelemetry?.lastReadAt ?? null,
-              lastHit: ekTelemetry?.lastHitAt ?? null,
-              lastMiss: ekTelemetry?.lastMissAt ?? null,
-              lastFallback: ekTelemetry?.lastFallbackAt ?? null,
-              lastError: ekTelemetry?.lastError ?? null,
-              lastEnvelopeVersion: ekTelemetry?.lastEnvelopeVersion ?? null,
-              lastEnvelopeAgeSeconds: ekTelemetry?.lastEnvelopeAgeSeconds ?? null,
-            },
-          },
+          producers,
+          consumers,
+          // Backward-compat (Etapa 9/10)
+          systemHealthProducer: producers["system-health"],
         };
       })(),
     };
