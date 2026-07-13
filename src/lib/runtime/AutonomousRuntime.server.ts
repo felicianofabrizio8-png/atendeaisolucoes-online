@@ -197,6 +197,16 @@ export class AutonomousRuntime {
             ? this.context.bus.latest(tenantId, "system-health", "system-health")
             : null;
         const nowMs = RuntimeClock.now();
+        const ekAdapter = this.adapters.get("executive-knowledge") as unknown as
+          | { consumerTelemetry?: () => {
+              totalReads: number; hits: number; misses: number; fallbacks: number;
+              lastReadAt: string | null; lastHitAt: string | null;
+              lastMissAt: string | null; lastFallbackAt: string | null;
+              lastError: string | null; lastEnvelopeVersion: number | null;
+              lastEnvelopeAgeSeconds: number | null; lastTenantId: string | null;
+            } }
+          | null;
+        const ekTelemetry = ekAdapter?.consumerTelemetry?.() ?? null;
         return {
           ...base,
           systemHealthProducer: {
@@ -213,6 +223,22 @@ export class AutonomousRuntime {
               : null,
             expiresAt: latest?.expiresAt ?? producer?.lastExpiresAt ?? null,
             currentEnvelopeId: latest?.id ?? null,
+          },
+          consumers: {
+            executiveKnowledge: {
+              connected: Boolean(ekTelemetry),
+              totalReads: ekTelemetry?.totalReads ?? 0,
+              hits: ekTelemetry?.hits ?? 0,
+              misses: ekTelemetry?.misses ?? 0,
+              fallbacks: ekTelemetry?.fallbacks ?? 0,
+              lastRead: ekTelemetry?.lastReadAt ?? null,
+              lastHit: ekTelemetry?.lastHitAt ?? null,
+              lastMiss: ekTelemetry?.lastMissAt ?? null,
+              lastFallback: ekTelemetry?.lastFallbackAt ?? null,
+              lastError: ekTelemetry?.lastError ?? null,
+              lastEnvelopeVersion: ekTelemetry?.lastEnvelopeVersion ?? null,
+              lastEnvelopeAgeSeconds: ekTelemetry?.lastEnvelopeAgeSeconds ?? null,
+            },
           },
         };
       })(),
