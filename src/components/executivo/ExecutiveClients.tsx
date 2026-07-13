@@ -17,17 +17,20 @@ export function ExecutiveClients({ bundle }: { bundle: ExecutiveDashboardBundle 
   const hasAny = forgotten.length > 0 || lossRows.length > 0;
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <UserX className="h-4 w-4 text-primary" />
-        <h2 className="text-base font-semibold text-foreground">
+    <section aria-labelledby="exec-clients-title" className="rounded-2xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <UserX className="h-4 w-4 text-primary" aria-hidden="true" />
+        <h2 id="exec-clients-title" className="text-base font-semibold text-foreground">
           Clientes que precisam de atenção
         </h2>
       </div>
+      <p className="text-[11px] text-muted-foreground mb-4">
+        Lista sanitizada: sem nomes ou telefones. Depende de uma extensão futura read-only do endpoint para exibir clientes individuais.
+      </p>
 
       {!hasAny ? (
         <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Nenhum cliente crítico identificado no período.
+          Nenhum cliente crítico identificado no período — ou o endpoint ainda não expõe essa lista.
         </div>
       ) : (
         <div className="overflow-x-auto">
