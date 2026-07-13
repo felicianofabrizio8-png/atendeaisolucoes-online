@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Activity,
   AlertTriangle,
+  Brain,
   CheckCircle2,
   Cpu,
   Database,
@@ -21,6 +22,7 @@ import {
   Loader2,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Timer,
   Users,
   Workflow,
