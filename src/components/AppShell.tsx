@@ -26,6 +26,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
 
 type NavItem = {
   to:
