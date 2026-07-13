@@ -126,7 +126,7 @@ export function AppShell() {
 
   const NavList = (
     <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-      {nav.map((item) => {
+      {nav.filter((item) => !item.adminOnly || isAdmin).map((item) => {
         const Icon = item.icon;
         const active =
           item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
