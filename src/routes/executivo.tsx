@@ -30,8 +30,9 @@ function ExecutivePage() {
     err instanceof SnapshotError && (err.status === 403 || err.status === 401);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-background">
-      <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-6 animate-in fade-in duration-500">
+    <main className="flex-1 overflow-y-auto bg-background" aria-labelledby="exec-page-title">
+      <h1 id="exec-page-title" className="sr-only">Dashboard Executivo</h1>
+      <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-6 animate-in fade-in duration-500" aria-live="polite" aria-busy={query.isFetching}>
         <ExecutiveHeader
           displayName={displayName}
           generatedAt={query.data?.generatedAt}
