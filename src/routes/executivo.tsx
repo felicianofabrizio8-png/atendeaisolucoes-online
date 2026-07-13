@@ -72,7 +72,7 @@ function ExecutivePage() {
           </div>
         ) : query.data ? (
           <>
-            <ExecutiveKpis metrics={query.data.metrics} />
+            <ExecutiveKpis metrics={query.data.metrics} dataQuality={query.data.dataQuality} />
             <ExecutiveInsights
               insights={query.data.insights}
               generatedAt={query.data.generatedAt}
