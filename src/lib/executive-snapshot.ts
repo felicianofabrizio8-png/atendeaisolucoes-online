@@ -47,6 +47,8 @@ export function useExecutiveSnapshot(period: SnapshotPeriod) {
     queryKey: ["executive-snapshot", period],
     queryFn: () => fetchSnapshot(period),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     staleTime: 30_000,
     retry: (count, err) => {
       if (err instanceof SnapshotError && (err.status === 401 || err.status === 403)) return false;
