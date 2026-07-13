@@ -148,6 +148,21 @@ export class RuntimeWorker {
       queueLatencyMs,
       executionLatencyMs: report.totalDurationMs,
     });
+
+    // Registra a última execução real (allowlist-gated no engine).
+    this.engine.recordLastRealExecution({
+      agentId: report.agentId,
+      executionId: report.executionId,
+      jobId: report.jobId,
+      tenantId: report.tenantId,
+      workerId: this.workerId,
+      outcome: report.result.outcome,
+      reason: report.reason,
+      startedAt: report.result.startedAt,
+      finishedAt: report.result.finishedAt,
+      durationMs: report.result.durationMs,
+      error: report.result.error,
+    });
     return {
       workerId: this.workerId,
       jobId,
