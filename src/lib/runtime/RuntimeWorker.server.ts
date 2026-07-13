@@ -12,6 +12,9 @@ import { WorkerHeartbeat, type WorkerHeartbeatTick } from "./WorkerHeartbeat.ser
 import { WorkerMetrics, type WorkerMetricsSnapshot } from "./WorkerMetrics.server";
 import type { PipelineRunReport } from "./ExecutionPipeline.server";
 
+/** Etapa 6: worker só executa jobs de agentes na allowlist. */
+const WORKER_ALLOWLIST: ReadonlySet<string> = new Set(["system-health"]);
+
 export interface WorkerDeps {
   workerId: string;
   queue: RuntimeJobQueue | null;
