@@ -11,6 +11,8 @@ const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const META_APP_SECRETS_EXTRA = Deno.env.get("META_APP_SECRETS") ?? ""; // comma-separated fallback secrets
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? Deno.env.get("VITE_META_APP_ID") ?? "";
+const META_INSTAGRAM_APP_SECRET = Deno.env.get("META_INSTAGRAM_APP_SECRET") ?? "";
+const META_INSTAGRAM_APP_ID = "981573787924167";
 // Bypass removed for security — HMAC signature is always enforced.
 const META_SKIP_SIG = false;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -76,6 +78,15 @@ function getAllSecretCandidates(): SecretCandidate[] {
       label: META_APP_ID ? `META_APP_SECRET:${META_APP_ID}` : "META_APP_SECRET",
       secret: META_APP_SECRET.trim(),
       source: "META_APP_SECRET",
+    });
+  }
+
+  if (META_INSTAGRAM_APP_SECRET.trim()) {
+    candidates.push({
+      appId: META_INSTAGRAM_APP_ID,
+      label: `META_INSTAGRAM_APP_SECRET:${META_INSTAGRAM_APP_ID}`,
+      secret: META_INSTAGRAM_APP_SECRET.trim(),
+      source: "META_INSTAGRAM_APP_SECRET",
     });
   }
 
