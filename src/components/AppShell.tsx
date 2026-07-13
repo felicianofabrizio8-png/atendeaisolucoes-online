@@ -25,6 +25,7 @@ import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 type NavItem = {
   to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/executivo" | "/configuracoes" | "/ia" | "/campanhas" | "/saude" | "/criativos";
