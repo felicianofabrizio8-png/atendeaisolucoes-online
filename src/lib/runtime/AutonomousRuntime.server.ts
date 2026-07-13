@@ -6,20 +6,24 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { AgentAdapterRegistry } from "./AgentAdapterRegistry.server";
 import { AgentDispatcher } from "./AgentDispatcher.server";
 import { AgentOrchestrator } from "./AgentOrchestrator.server";
 import { AgentRegistry } from "./AgentRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
+import { RuntimeExecutionEngine } from "./RuntimeExecutionEngine.server";
 import { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
-import { RuntimeExecutionEngine } from "./RuntimeExecutionEngine.server";
 import { RuntimeScheduler } from "./RuntimeScheduler.server";
+import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
   readonly scheduler: RuntimeScheduler;
   readonly executionEngine: RuntimeExecutionEngine;
+  readonly adapters: AgentAdapterRegistry;
+  readonly worker: RuntimeWorker;
   readonly registry: AgentRegistry;
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
@@ -49,6 +53,12 @@ export class AutonomousRuntime {
       scheduler: this.scheduler,
       heartbeat: this.heartbeat,
     });
+    this.adapters = new AgentAdapterRegistry(this.registry);
+    this.worker = new RuntimeWorker({
+      workerId: `worker-${Math.random().toString(36).slice(2, 8)}`,
+      queue: null,
+      engine: this.executionEngine,
+    });
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
@@ -70,6 +80,7 @@ export class AutonomousRuntime {
     });
     (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
     this.executionEngine.rebind({ dispatcher: this._dispatcher });
+    this.worker.bindQueue(this._queue);
   }
 
   get dispatcher(): AgentDispatcher {
@@ -123,6 +134,9 @@ export class AutonomousRuntime {
       recentJobs,
       scheduler: this.scheduler.snapshot(),
       execution: this.executionEngine.snapshot(),
+      adapters: this.adapters.snapshot(this.registry),
+      worker: this.worker.snapshot(),
+      workers: [this.worker.snapshot()],
     };
   }
 
