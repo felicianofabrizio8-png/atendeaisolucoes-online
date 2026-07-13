@@ -91,7 +91,7 @@ export function createEnvelope(input: CreateEnvelopeInput): KnowledgeEnvelope {
   const ttlMs = input.ttlMs === null ? null : (input.ttlMs ?? KNOWLEDGE_DEFAULT_TTL_MS);
   const expiresAt = ttlMs === null ? null : new Date(nowMs + Math.max(1000, ttlMs)).toISOString();
   return {
-    id: randomId(),
+    id: input.id ?? randomId(),
     topic: input.topic,
     agentId: input.agentId,
     tenantId: input.tenantId,
