@@ -275,6 +275,7 @@ export function AppShell() {
                 <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
                 {Brand}
                 {NavList}
+                <NeuralIntelligencePanel />
                 {FooterPanel}
               </SheetContent>
             </Sheet>
