@@ -141,6 +141,11 @@ export class AutonomousRuntime {
       adapters: this.adapters.snapshot(this.registry),
       worker: this.worker.snapshot(),
       workers: [this.worker.snapshot()],
+      systemHealth: {
+        allowlist: Array.from(this.executionEngine.allowlist),
+        lastExecution: this.executionEngine.lastRealExecution("system-health"),
+        adapterHealth: this.adapters.get("system-health")?.health() ?? null,
+      },
     };
   }
 
