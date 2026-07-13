@@ -43,7 +43,8 @@ type NavItem = {
     | "/campanhas"
     | "/saude"
     | "/criativos"
-    | "/onboarding";
+    | "/onboarding"
+    | "/runtime/observability";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
