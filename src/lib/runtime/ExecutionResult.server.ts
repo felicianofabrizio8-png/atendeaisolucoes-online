@@ -1,6 +1,6 @@
 // ============================================================================
 // ExecutionResult — Contratos de resultado do Execution Engine.
-// Esta etapa: stub. Nenhum agente é executado.
+// Etapa 11: bloco knowledgeBus expandido para telemetria producer/consumer.
 // ============================================================================
 
 export type ExecutionOutcome =
@@ -12,11 +12,23 @@ export type ExecutionOutcome =
   | "stub";
 
 export interface ExecutionResultKnowledgeBus {
+  // Backward-compat (Etapa 10, primeiro consumer)
   knowledgeBusHit: boolean;
   knowledgeBusFallback: boolean;
   knowledgeTopic: string | null;
   knowledgeEnvelopeVersion: number | null;
   knowledgeEnvelopeAge: number | null;
+  // Etapa 11: telemetria agregada
+  reads?: number;
+  hits?: number;
+  misses?: number;
+  partialHits?: number;
+  fallbacks?: number;
+  topicsUsed?: string[];
+  envelopeVersions?: Record<string, number>;
+  maxEnvelopeAgeSeconds?: number | null;
+  publishedTopics?: string[];
+  publishErrors?: number;
 }
 
 export interface ExecutionResult {
