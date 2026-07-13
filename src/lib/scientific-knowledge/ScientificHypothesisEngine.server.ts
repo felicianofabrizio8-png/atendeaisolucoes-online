@@ -1,60 +1,61 @@
 // ============================================================================
-// ScientificHypothesisEngine — Agrega Observations por (category, title-normalized)
-// em hipóteses científicas. Nunca promove diretamente para "validated" — apenas
-// consolida ocorrências, primeira/última observação e confidence agregada.
-// A promoção para status "validated" é responsabilidade do ValidationEngine.
+// ScientificHypothesisEngine — Agrega Observations por provenanceKey.
+// Strengthening SOMENTE com repetição temporal (≥ N dias distintos).
+// Nunca fortalece por intra-execução. Nunca promove a validated aqui.
 // ============================================================================
 
 import type {
-  ObservationCategory,
   ScientificHypothesis,
   ScientificObservation,
 } from "./ScientificKnowledgeTypes";
 import { SCIENCE_THRESHOLDS } from "./ScientificKnowledgeTypes";
 
-function normalizeKey(cat: ObservationCategory, title: string): string {
-  const slug = title
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  return `${cat}::${slug || "untitled"}`;
-}
-
 export class ScientificHypothesisEngine {
   static build(observations: ScientificObservation[]): ScientificHypothesis[] {
     const groups = new Map<string, ScientificObservation[]>();
     for (const o of observations) {
-      const key = normalizeKey(o.category, o.title);
-      const bucket = groups.get(key);
+      const bucket = groups.get(o.provenanceKey);
       if (bucket) bucket.push(o);
-      else groups.set(key, [o]);
+      else groups.set(o.provenanceKey, [o]);
     }
 
     const out: ScientificHypothesis[] = [];
-    for (const [key, obs] of groups) {
-      const sorted = [...obs].sort((a, b) =>
-        a.observedAt.localeCompare(b.observedAt),
-      );
+    for (const [pk, obs] of groups) {
+      const sorted = [...obs].sort((a, b) => a.observedAt.localeCompare(b.observedAt));
       const first = sorted[0];
       const last = sorted[sorted.length - 1];
-      const occurrences = sorted.reduce((acc, o) => acc + Math.max(1, o.occurrences), 0);
+
+      // Fase 3+8: fatos independentes deduplicados por (source, id).
+      const factKeys = new Set(sorted.map((o) => `${o.source}#${o.id}`));
+      const occurrences = factKeys.size;
+
+      // Fase 6: dias distintos reais.
+      const distinctDays = new Set(sorted.map((o) => o.observedDay)).size;
+
       const avgConfidence =
         sorted.reduce((acc, o) => acc + o.confidence, 0) / sorted.length;
 
       let status: ScientificHypothesis["status"] = "observed";
       if (avgConfidence < SCIENCE_THRESHOLDS.DISCARD_CONFIDENCE_BELOW) {
-        status = "discarded";
+        // Fase 5: discarded exige contradição histórica; aqui só sinaliza fraqueza.
+        status = "weakening";
       } else if (avgConfidence < SCIENCE_THRESHOLDS.WEAKENING_CONFIDENCE_BELOW) {
         status = "weakening";
-      } else if (sorted.length >= SCIENCE_THRESHOLDS.MIN_OCCURRENCES_FOR_STRENGTHENING) {
+      } else if (
+        occurrences >= SCIENCE_THRESHOLDS.MIN_OCCURRENCES_FOR_STRENGTHENING &&
+        distinctDays >= SCIENCE_THRESHOLDS.MIN_DISTINCT_DAYS_FOR_STRENGTHENING
+      ) {
         status = "strengthening";
+      } else if (
+        occurrences >= SCIENCE_THRESHOLDS.MIN_OCCURRENCES_FOR_STRENGTHENING &&
+        distinctDays < SCIENCE_THRESHOLDS.MIN_DISTINCT_DAYS_FOR_STRENGTHENING
+      ) {
+        // Fase 5: amostra ok, mas sem histórico temporal.
+        status = "insufficient_history";
       }
 
       out.push({
-        id: `hyp-${key}`,
+        id: `hyp-${pk}`,
         category: first.category,
         title: first.title,
         description: first.description,
@@ -62,8 +63,11 @@ export class ScientificHypothesisEngine {
         occurrences,
         firstObserved: first.observedAt,
         lastObserved: last.observedAt,
-        supportingEvidence: [`ev-${key}`],
+        distinctDays,
+        supportingEvidence: [`ev-${pk}`],
         status,
+        provenanceKey: pk,
+        contradictionDetected: false,
       });
     }
 

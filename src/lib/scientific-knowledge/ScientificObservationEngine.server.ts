@@ -1,7 +1,7 @@
 // ============================================================================
-// ScientificObservationEngine — Converte fatos observados nas camadas
-// anteriores (Business Brain, Business Learning, Executive Knowledge Timeline)
-// em Observations determinísticas. READ-ONLY. Sem PII.
+// ScientificObservationEngine — READ-ONLY. Deriva Observations com
+// provenanceKey e sourceFingerprint. Confidence NUNCA fixa por origem.
+// Occurrences = fatos independentes; deltas ficam em métricas separadas.
 // ============================================================================
 
 import type { BusinessBrainSnapshot } from "@/lib/business-brain/BusinessBrainTypes";
@@ -11,6 +11,10 @@ import type {
   ObservationCategory,
   ScientificObservation,
   SciencePeriod,
+} from "./ScientificKnowledgeTypes";
+import {
+  buildProvenanceKey,
+  buildSourceFingerprint,
 } from "./ScientificKnowledgeTypes";
 
 function mapCategory(input: string): ObservationCategory {
@@ -31,6 +35,19 @@ function mapCategory(input: string): ObservationCategory {
     : "operational";
 }
 
+function dayOf(iso: string): string {
+  return (iso || "").slice(0, 10) || "0000-00-00";
+}
+
+/** Derive confidence from sample size (never fixed to 1). */
+function derivedConfidence(sample: number, base: number | null): number {
+  const s = Math.max(0, sample);
+  const shape = 1 - Math.exp(-s / 10);
+  if (base === null || base === undefined) return Number(shape.toFixed(4));
+  // Blend supplied base (already ≤1) with sample shape; upper bound = base.
+  return Number(Math.min(base, base * (0.4 + 0.6 * shape)).toFixed(4));
+}
+
 export class ScientificObservationEngine {
   static build(input: {
     brain: BusinessBrainSnapshot;
@@ -38,112 +55,122 @@ export class ScientificObservationEngine {
     knowledgeTimeline: ExecutiveKnowledgeRecord[];
     period: SciencePeriod;
     now: string;
+    productsReady: boolean;
   }): ScientificObservation[] {
-    const { brain, learning, knowledgeTimeline, period, now } = input;
+    const { brain, learning, knowledgeTimeline, period, now, productsReady } = input;
     const out: ScientificObservation[] = [];
 
-    // -- From Business Brain patterns ------------------------------------
-    for (const p of brain.patterns) {
+    const push = (o: Omit<ScientificObservation, "provenanceKey" | "sourceFingerprint" | "observedDay">) => {
+      // Fase 10: bloqueia observações de produto enquanto products_json não estiver populado.
+      if (!productsReady && o.category === "product") return;
       out.push({
+        ...o,
+        observedDay: dayOf(o.observedAt),
+        provenanceKey: buildProvenanceKey(o.category, o.title),
+        sourceFingerprint: buildSourceFingerprint(o.category, o.title),
+      });
+    };
+
+    for (const p of brain.patterns) {
+      const cat = mapCategory(p.category);
+      push({
         id: `obs-bb-pat-${p.id}`,
-        category: mapCategory(p.category),
+        category: cat,
         title: `Pattern: ${p.category}`,
         description: p.description,
         observedAt: p.lastObserved ?? now,
-        occurrences: p.occurrences,
-        confidence: p.confidence,
+        occurrences: Math.max(1, p.occurrences),
+        confidence: derivedConfidence(p.occurrences, p.confidence),
         source: "business_brain:pattern",
         period,
       });
     }
 
-    // -- From Business Brain knowledge -----------------------------------
     for (const k of brain.knowledge) {
-      out.push({
+      const cat = mapCategory(k.category);
+      push({
         id: `obs-bb-know-${k.id}`,
-        category: mapCategory(k.category),
+        category: cat,
         title: k.title,
         description: k.summary,
         observedAt: k.createdAt,
-        occurrences: k.evidence.sample,
-        confidence: k.confidence,
+        occurrences: Math.max(1, k.evidence.sample),
+        confidence: derivedConfidence(k.evidence.sample, k.confidence),
         source: "business_brain:knowledge",
         period,
       });
     }
 
-    // -- From Business Brain trends --------------------------------------
     for (const t of brain.trends) {
-      out.push({
+      // Trends não são fatos — occurrences=1; delta vive em métricas.
+      push({
         id: `obs-bb-trend-${t.id}`,
         category: "operational",
         title: `Trend: ${t.metric}`,
-        description: `Direção ${t.direction} com delta ${t.delta}${
-          t.percentDelta !== null ? ` (${t.percentDelta}%)` : ""
-        }.`,
+        description: `Direção ${t.direction}.`,
         observedAt: now,
-        occurrences: Math.abs(t.delta),
-        confidence: t.confidence,
+        occurrences: 1,
+        confidence: derivedConfidence(1, t.confidence),
         source: "business_brain:trend",
         period,
       });
     }
 
-    // -- From Business Learning evolutions -------------------------------
     for (const e of learning.evolution) {
-      out.push({
+      push({
         id: `obs-bl-evo-${e.id}`,
         category: "operational",
         title: `Evolução: ${e.metric}`,
-        description: `${e.metric} ${e.direction} (${e.previousValue}→${e.currentValue}).`,
+        description: `${e.metric} direção ${e.direction}.`,
         observedAt: e.observedAt,
         occurrences: 1,
-        confidence: e.confidence,
+        confidence: derivedConfidence(1, e.confidence),
         source: "business_learning:evolution",
         period,
       });
     }
 
-    // -- From Business Learning hypotheses -------------------------------
     for (const h of learning.hypotheses) {
-      out.push({
+      const cat = mapCategory(h.category);
+      push({
         id: `obs-bl-hyp-${h.id}`,
-        category: mapCategory(h.category),
+        category: cat,
         title: h.title,
         description: h.description,
         observedAt: h.lastObserved ?? now,
-        occurrences: h.occurrences,
-        confidence: h.confidence,
+        occurrences: Math.max(1, h.occurrences),
+        confidence: derivedConfidence(h.occurrences, h.confidence),
         source: "business_learning:hypothesis",
         period,
       });
     }
 
-    // -- From Business Learning learnings --------------------------------
     for (const l of learning.learning) {
-      out.push({
+      const cat = mapCategory(l.category);
+      const sample = l.supportingPatterns.length + l.supportingKnowledge.length;
+      push({
         id: `obs-bl-learn-${l.id}`,
-        category: mapCategory(l.category),
+        category: cat,
         title: l.title,
         description: l.summary,
         observedAt: l.createdAt,
-        occurrences: l.supportingPatterns.length + l.supportingKnowledge.length,
-        confidence: l.confidence,
+        occurrences: Math.max(1, sample),
+        confidence: derivedConfidence(sample, l.confidence),
         source: "business_learning:learning",
         period,
       });
     }
 
-    // -- From Executive Knowledge Timeline (aggregate only) --------------
     for (const rec of knowledgeTimeline) {
-      out.push({
+      push({
         id: `obs-ek-${rec.id}`,
         category: "operational",
         title: `Snapshot ${rec.period}`,
-        description: `Snapshot executivo com ${rec.facts.attendance.avgResponseMinutes}min de resposta média.`,
+        description: `Snapshot executivo.`,
         observedAt: rec.createdAt,
         occurrences: 1,
-        confidence: 1,
+        // Fase 7: nunca confidence=1 fixa por origem.
+        confidence: derivedConfidence(1, 0.5),
         source: "executive_knowledge:timeline",
         period,
       });
