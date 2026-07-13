@@ -27,6 +27,7 @@ const PII_VALUE_PATTERNS: RegExp[] = [
 ];
 
 export interface CreateEnvelopeInput {
+  id?: string;
   topic: KnowledgeTopicId;
   agentId: string;
   tenantId: string;
