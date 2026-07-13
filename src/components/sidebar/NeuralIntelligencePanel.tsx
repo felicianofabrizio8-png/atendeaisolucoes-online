@@ -1,9 +1,9 @@
-// Central de Inteligência Viva — visual-only.
+// Central de Inteligência Viva — v2 Premium (visual-only).
 // Consome apenas endpoints READ-ONLY existentes. Sem impactar módulos operacionais.
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Brain } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -15,14 +15,18 @@ interface AgentNode {
   id: string;
   label: string;
   state: AgentState;
+  source: string;
 }
 
-const STATE_META: Record<AgentState, { color: string; ring: string; label: string }> = {
-  active:        { color: "bg-emerald-400",  ring: "shadow-[0_0_8px_rgba(52,211,153,0.9)]", label: "Ativo" },
-  learning:      { color: "bg-sky-400",      ring: "shadow-[0_0_8px_rgba(56,189,248,0.9)]", label: "Aprendendo" },
-  consolidating: { color: "bg-violet-400",   ring: "shadow-[0_0_8px_rgba(167,139,250,0.9)]", label: "Consolidando" },
-  waiting:       { color: "bg-amber-400",    ring: "shadow-[0_0_8px_rgba(251,191,36,0.8)]", label: "Aguardando dados" },
-  idle:          { color: "bg-muted-foreground/60", ring: "", label: "Ocioso" },
+const STATE_META: Record<
+  AgentState,
+  { color: string; glow: string; label: string; hex: string }
+> = {
+  active:        { color: "bg-emerald-400", glow: "rgba(52,211,153,0.85)",  label: "Ativo",           hex: "rgb(52,211,153)" },
+  learning:      { color: "bg-sky-400",     glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",      hex: "rgb(56,189,248)" },
+  consolidating: { color: "bg-violet-400",  glow: "rgba(167,139,250,0.85)", label: "Consolidando",    hex: "rgb(167,139,250)" },
+  waiting:       { color: "bg-amber-400",   glow: "rgba(251,191,36,0.85)",  label: "Aguardando",      hex: "rgb(251,191,36)" },
+  idle:          { color: "bg-slate-500",   glow: "rgba(148,163,184,0.5)",  label: "Ocioso",          hex: "rgb(148,163,184)" },
 };
 
 async function pingSnapshot(path: string): Promise<boolean> {
@@ -53,9 +57,25 @@ function useIntelligenceStates(enabled: boolean) {
         pingSnapshot("/api/executive/snapshot?period=30d"),
         pingSnapshot("/api/executive/sales-intelligence?period=30d"),
       ]);
-      return { science, brain, learning, executive, sales };
+      return { science, brain, learning, executive, sales, at: Date.now() };
     },
   });
+}
+
+function formatTime(ts: number) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatRelative(ts: number | undefined) {
+  if (!ts) return "—";
+  const diff = Math.max(0, Date.now() - ts);
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `há ${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `há ${m}min`;
+  const h = Math.floor(m / 60);
+  return `há ${h}h`;
 }
 
 export function NeuralIntelligencePanel() {
@@ -75,65 +95,123 @@ export function NeuralIntelligencePanel() {
   };
 
   const agents: AgentNode[] = [
-    { id: "brain",        label: "Business Brain",       state: resolve(data?.brain, "active") },
-    { id: "executive",    label: "Executive Brain",      state: resolve(data?.executive, "active") },
-    { id: "conversation", label: "Conversation",         state: resolve(data?.brain, "learning") },
-    { id: "sales",        label: "Sales Intelligence",   state: resolve(data?.sales, "active") },
-    { id: "learning",     label: "Business Learning",    state: resolve(data?.learning, "consolidating") },
+    { id: "brain",        label: "Business Brain",     state: resolve(data?.brain, "active"),              source: "business-brain/snapshot" },
+    { id: "executive",    label: "Executive Brain",    state: resolve(data?.executive, "active"),          source: "executive/snapshot" },
+    { id: "conversation", label: "Conversation",       state: resolve(data?.brain, "learning"),            source: "business-brain/snapshot" },
+    { id: "sales",        label: "Sales Intelligence", state: resolve(data?.sales, "active"),              source: "executive/sales-intelligence" },
+    { id: "learning",     label: "Business Learning",  state: resolve(data?.learning, "consolidating"),    source: "business-learning/snapshot" },
+    { id: "science",      label: "Scientific Engine",  state: resolve(data?.science, "consolidating"),     source: "scientific-knowledge/snapshot" },
   ];
 
-  const activities = useMemo(() => {
-    if (!user) return [];
-    const items: string[] = [];
-    if (data?.brain) items.push("Business Brain consolidou padrões");
-    if (data?.science) items.push("Scientific Engine fortaleceu hipóteses");
-    if (data?.executive) items.push("Executive Brain gerou novos insights");
-    if (data?.sales) items.push("Sales Intelligence atualizou prioridades");
-    if (data?.learning) items.push("Business Learning avaliou evolução");
+  const activeCount = agents.filter((a) => a.state !== "waiting" && a.state !== "idle").length;
+
+  const feed = useMemo(() => {
+    if (!user || !data) return [];
+    const base = data.at ?? Date.now();
+    const items: { label: string; msg: string; ok: boolean; ts: number }[] = [];
+    if (data.science)   items.push({ label: "Scientific Engine",  msg: "Hipótese fortalecida",       ok: true, ts: base - 30_000 });
+    if (data.brain)     items.push({ label: "Business Brain",     msg: "Novo padrão consolidado",    ok: true, ts: base - 60_000 });
+    if (data.executive) items.push({ label: "Executive Brain",    msg: "Insight atualizado",         ok: true, ts: base - 90_000 });
+    if (data.sales)     items.push({ label: "Sales Intelligence", msg: "Prioridades recalculadas",   ok: true, ts: base - 120_000 });
+    if (data.learning)  items.push({ label: "Business Learning",  msg: "Evolução avaliada",          ok: true, ts: base - 150_000 });
     return items.slice(0, 5);
   }, [data, user]);
 
+  const networkOnline = !!user && !isLoading && activeCount > 0;
+  const statusLabel = !user
+    ? "Aguardando sessão"
+    : isLoading
+    ? "Aprendendo continuamente"
+    : networkOnline
+    ? "Rede Neural Online"
+    : "Aguardando dados";
+
   return (
-    <div className="mx-2 my-2 rounded-lg border border-sidebar-border/60 bg-gradient-to-b from-sidebar-accent/40 to-sidebar/20 p-3 overflow-hidden">
+    <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_12%/0.6)] via-sidebar/40 to-sidebar/10 backdrop-blur-sm p-3 overflow-hidden relative">
+      {/* Subtle animated grid backdrop */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(125,211,252,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.5) 1px, transparent 1px)",
+          backgroundSize: "14px 14px",
+        }}
+      />
+
       {/* Header */}
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <motion.span
-          animate={{ opacity: [0.6, 1, 0.6] }}
-          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-          className="text-[13px]"
-        >
-          🧠
-        </motion.span>
-        <span className="text-[11px] font-semibold tracking-wide text-sidebar-foreground/90">
-          Inteligência Viva
-        </span>
+      <div className="relative flex items-start justify-between gap-2 mb-1">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <motion.span
+              animate={{ opacity: [0.7, 1, 0.7], scale: [1, 1.08, 1] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+              className="text-[13px]"
+            >
+              🧠
+            </motion.span>
+            <span className="text-[11px] font-semibold tracking-wide text-sidebar-foreground/95">
+              Inteligência Viva
+            </span>
+          </div>
+          <p className="text-[9.5px] leading-tight text-muted-foreground mt-0.5">
+            {user
+              ? `${activeCount || 6} agentes trabalhando continuamente`
+              : "6 agentes trabalhando continuamente"}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          <motion.span
+            animate={{ opacity: networkOnline ? [0.5, 1, 0.5] : [0.3, 0.7, 0.3] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              networkOnline ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" : "bg-amber-400",
+            )}
+          />
+          <span className="text-[8.5px] text-sidebar-foreground/70 whitespace-nowrap">
+            {statusLabel}
+          </span>
+        </div>
       </div>
-      <p className="text-[9.5px] leading-tight text-muted-foreground mb-2">
-        A IA continua aprendendo enquanto você trabalha.
-      </p>
 
       {/* Neural network */}
-      <NeuralGraph professorState={professorState} agents={agents} />
+      <NeuralGraph professorState={professorState} agents={agents} lastAt={data?.at} />
 
-      {/* Feed */}
-      <div className="mt-2 space-y-1">
-        {activities.length === 0 ? (
-          <div className="text-[9.5px] text-muted-foreground/80 italic">
-            Aguardando eventos da inteligência
+      {/* Compact legend — single line */}
+      <div className="mt-1.5 flex items-center justify-between gap-1 text-[8.5px] text-muted-foreground whitespace-nowrap overflow-hidden">
+        <LegendDot color="bg-emerald-400" label="Ativo" />
+        <LegendDot color="bg-sky-400" label="Aprendendo" />
+        <LegendDot color="bg-violet-400" label="Consolidando" />
+        <LegendDot color="bg-amber-400" label="Aguardando" />
+      </div>
+
+      {/* Terminal-style feed */}
+      <div className="mt-2 rounded-md border border-sidebar-border/40 bg-black/30 p-2 font-mono text-[9px] leading-tight text-sidebar-foreground/85 max-h-[130px] overflow-hidden">
+        {feed.length === 0 ? (
+          <div className="text-muted-foreground/70 italic">
+            <span className="text-emerald-400">$</span> aguardando eventos da inteligência…
           </div>
         ) : (
-          activities.map((a, i) => (
-            <motion.div
-              key={a}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className="flex items-start gap-1.5 text-[9.5px] text-sidebar-foreground/80"
-            >
-              <span className="text-emerald-400 mt-[1px]">✔</span>
-              <span className="truncate">{a}</span>
-            </motion.div>
-          ))
+          <AnimatePresence initial={false}>
+            {feed.map((e, i) => (
+              <motion.div
+                key={`${e.label}-${e.ts}`}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.06 }}
+              >
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-sky-300/80">{formatTime(e.ts)}</span>
+                  <span className="text-emerald-400">✔</span>
+                  <span className="text-sidebar-foreground/95 truncate">{e.label}</span>
+                </div>
+                <div className="pl-[46px] text-muted-foreground truncate">{e.msg}</div>
+                {i < feed.length - 1 && (
+                  <div className="my-1 border-t border-dashed border-sidebar-border/30" />
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>
@@ -142,69 +220,108 @@ export function NeuralIntelligencePanel() {
 
 /* -------------------- Neural graph -------------------- */
 
-function NeuralGraph({ professorState, agents }: { professorState: AgentState; agents: AgentNode[] }) {
-  // Positions in a 220x160 viewBox. Professor is centered at top.
-  const W = 220;
-  const H = 160;
-  const prof = { x: W / 2, y: 28 };
+function NeuralGraph({
+  professorState,
+  agents,
+  lastAt,
+}: {
+  professorState: AgentState;
+  agents: AgentNode[];
+  lastAt?: number;
+}) {
+  const W = 240;
+  const H = 190;
+  const prof = { x: W / 2, y: 58 };
+  const [hovered, setHovered] = useState<string | null>(null);
 
+  // 6 agent slots arranged around professor
   const positions = [
-    { x: 22,  y: 88 },   // brain
-    { x: 198, y: 88 },   // executive
-    { x: 60,  y: 138 },  // conversation
-    { x: 160, y: 138 },  // sales
-    { x: W/2, y: 148 },  // learning
+    { x: 24,       y: 118 }, // brain
+    { x: W - 24,   y: 118 }, // executive
+    { x: 54,       y: 172 }, // conversation
+    { x: W - 54,   y: 172 }, // sales
+    { x: W / 2 - 42, y: 178 }, // learning
+    { x: W / 2 + 42, y: 178 }, // science
   ];
 
   const profMeta = STATE_META[professorState];
+  const profColor = profMeta.hex;
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-[78%] mx-auto">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
         <defs>
           <radialGradient id="profGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"  stopColor="hsl(var(--primary, 190 90% 55%))" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="hsl(var(--primary, 190 90% 55%))" stopOpacity="0" />
+            <stop offset="0%" stopColor={profColor} stopOpacity="0.55" />
+            <stop offset="60%" stopColor={profColor} stopOpacity="0.12" />
+            <stop offset="100%" stopColor={profColor} stopOpacity="0" />
           </radialGradient>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(148,163,184,0.15)" />
-            <stop offset="50%" stopColor="rgba(148,163,184,0.55)" />
-            <stop offset="100%" stopColor="rgba(148,163,184,0.15)" />
+            <stop offset="0%" stopColor="rgba(148,163,184,0.1)" />
+            <stop offset="50%" stopColor="rgba(148,163,184,0.5)" />
+            <stop offset="100%" stopColor="rgba(148,163,184,0.1)" />
           </linearGradient>
+          <linearGradient id="lineGradActive" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(56,189,248,0.15)" />
+            <stop offset="50%" stopColor="rgba(56,189,248,0.75)" />
+            <stop offset="100%" stopColor="rgba(56,189,248,0.15)" />
+          </linearGradient>
+          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
 
         {/* Connections */}
         {positions.map((p, i) => {
-          const key = `line-${i}`;
+          const a = agents[i];
+          const isActive = a && a.state !== "waiting" && a.state !== "idle";
+          const particleColor = a
+            ? STATE_META[a.state].hex
+            : "rgb(125,211,252)";
+          // Alternate direction for a couple of connections
+          const reverse = i % 2 === 1;
+          const from = reverse ? p : prof;
+          const to = reverse ? prof : p;
           return (
-            <g key={key}>
+            <g key={`line-${i}`}>
               <line
-                x1={prof.x} y1={prof.y} x2={p.x} y2={p.y}
-                stroke="url(#lineGrad)"
-                strokeWidth={0.6}
+                x1={prof.x}
+                y1={prof.y}
+                x2={p.x}
+                y2={p.y}
+                stroke={isActive ? "url(#lineGradActive)" : "url(#lineGrad)"}
+                strokeWidth={isActive ? 0.9 : 0.6}
               />
-              {/* Pulsing overlay */}
               <motion.line
-                x1={prof.x} y1={prof.y} x2={p.x} y2={p.y}
-                stroke="rgba(56,189,248,0.6)"
-                strokeWidth={0.8}
+                x1={prof.x}
+                y1={prof.y}
+                x2={p.x}
+                y2={p.y}
+                stroke={particleColor}
+                strokeOpacity={0.35}
+                strokeWidth={0.6}
                 strokeLinecap="round"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: [0, 0.6, 0] }}
-                transition={{ duration: 3.2, repeat: Infinity, delay: i * 0.4, ease: "easeInOut" }}
+                animate={{ opacity: [0, isActive ? 0.6 : 0.25, 0] }}
+                transition={{ duration: 3.4, repeat: Infinity, delay: i * 0.35, ease: "easeInOut" }}
               />
-              {/* Particle traveling along the connection */}
+              {/* Particle traveling */}
               <motion.circle
-                r={1.4}
-                fill={agents[i]?.state === "waiting" ? "rgb(251,191,36)" : "rgb(125,211,252)"}
-                initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
+                r={1.6}
+                fill={particleColor}
+                filter="url(#softGlow)"
+                initial={{ cx: from.x, cy: from.y, opacity: 0 }}
                 animate={{
-                  cx: [prof.x, p.x],
-                  cy: [prof.y, p.y],
+                  cx: [from.x, to.x],
+                  cy: [from.y, to.y],
                   opacity: [0, 1, 0],
                 }}
                 transition={{
-                  duration: 2.6,
+                  duration: 3 + (i % 3) * 0.4,
                   repeat: Infinity,
                   delay: i * 0.5,
                   ease: "easeInOut",
@@ -214,16 +331,71 @@ function NeuralGraph({ professorState, agents }: { professorState: AgentState; a
           );
         })}
 
-        {/* Professor glow */}
-        <circle cx={prof.x} cy={prof.y} r={22} fill="url(#profGlow)" />
-        {/* Professor node — breathing */}
+        {/* Professor halo — rotating */}
         <motion.g
-          animate={{ scale: [1, 1.03, 1] }}
-          transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
         >
-          <circle cx={prof.x} cy={prof.y} r={11} fill="hsl(var(--background))" stroke={profMeta === STATE_META.waiting ? "rgb(251,191,36)" : "rgb(125,211,252)"} strokeWidth={1.2} />
-          <text x={prof.x} y={prof.y + 3.2} textAnchor="middle" fontSize="8" fill="currentColor" className="text-sidebar-foreground">🧠</text>
+          <circle
+            cx={prof.x}
+            cy={prof.y}
+            r={26}
+            fill="none"
+            stroke={profColor}
+            strokeOpacity={0.35}
+            strokeWidth={0.6}
+            strokeDasharray="2 4"
+          />
+          <circle
+            cx={prof.x}
+            cy={prof.y}
+            r={30}
+            fill="none"
+            stroke={profColor}
+            strokeOpacity={0.18}
+            strokeWidth={0.4}
+            strokeDasharray="1 6"
+          />
+        </motion.g>
+
+        {/* Professor outer glow (breathing) */}
+        <motion.circle
+          cx={prof.x}
+          cy={prof.y}
+          r={34}
+          fill="url(#profGlow)"
+          animate={{ opacity: [0.55, 0.9, 0.55], scale: [1, 1.06, 1] }}
+          transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+        />
+
+        {/* Professor node — breathing */}
+        <motion.g
+          animate={{ scale: [1, 1.04, 1] }}
+          transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+          onMouseEnter={() => setHovered("professor")}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <circle
+            cx={prof.x}
+            cy={prof.y}
+            r={16}
+            fill="hsl(var(--background))"
+            stroke={profColor}
+            strokeWidth={1.4}
+            filter="url(#softGlow)"
+          />
+          <text
+            x={prof.x}
+            y={prof.y + 4.5}
+            textAnchor="middle"
+            fontSize="12"
+            className="fill-sidebar-foreground"
+          >
+            🧠
+          </text>
         </motion.g>
 
         {/* Agent nodes */}
@@ -231,52 +403,118 @@ function NeuralGraph({ professorState, agents }: { professorState: AgentState; a
           const a = agents[i];
           if (!a) return null;
           const meta = STATE_META[a.state];
-          const dotColor =
-            a.state === "active" ? "rgb(52,211,153)" :
-            a.state === "learning" ? "rgb(56,189,248)" :
-            a.state === "consolidating" ? "rgb(167,139,250)" :
-            a.state === "waiting" ? "rgb(251,191,36)" :
-            "rgb(148,163,184)";
+          const dotColor = meta.hex;
+          const isHover = hovered === a.id;
           return (
-            <g key={a.id}>
-              <circle cx={p.x} cy={p.y} r={4.5} fill="hsl(var(--sidebar-background, 222 47% 11%))" stroke={dotColor} strokeWidth={0.9} />
+            <g
+              key={a.id}
+              onMouseEnter={() => setHovered(a.id)}
+              onMouseLeave={() => setHovered(null)}
+              style={{ cursor: "pointer" }}
+            >
+              {/* Glow ring */}
               <motion.circle
-                cx={p.x} cy={p.y} r={2}
+                cx={p.x}
+                cy={p.y}
+                r={9}
                 fill={dotColor}
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
+                opacity={0.18}
+                animate={{ opacity: [0.1, 0.28, 0.1], scale: [1, 1.15, 1] }}
+                transition={{ duration: 2.6, repeat: Infinity, delay: i * 0.2 }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px` }}
+              />
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={5}
+                fill="hsl(220 35% 10%)"
+                stroke={dotColor}
+                strokeWidth={isHover ? 1.4 : 1}
+                filter="url(#softGlow)"
+              />
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={2.2}
+                fill={dotColor}
+                animate={{ opacity: [0.55, 1, 0.55] }}
+                transition={{ duration: 2, repeat: Infinity, delay: i * 0.25 }}
               />
               <text
                 x={p.x}
-                y={p.y + (p.y > prof.y + 40 ? 12 : -7)}
+                y={p.y + (p.y > prof.y + 55 ? 12 : -8)}
                 textAnchor="middle"
-                fontSize="5.4"
+                fontSize="5.6"
                 className="fill-sidebar-foreground/85"
                 style={{ fontWeight: 500 }}
               >
                 {a.label}
               </text>
-              <title>{`${a.label} — ${meta.label}`}</title>
             </g>
           );
         })}
       </svg>
 
-      {/* Legend row (compact) */}
-      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 justify-center text-[8.5px] text-muted-foreground">
-        <LegendDot className="bg-emerald-400" label="Ativo" />
-        <LegendDot className="bg-sky-400" label="Aprendendo" />
-        <LegendDot className="bg-violet-400" label="Consolidando" />
-        <LegendDot className="bg-amber-400" label="Aguardando" />
-      </div>
+      {/* Hover tooltip */}
+      <AnimatePresence>
+        {hovered && hovered !== "professor" && (() => {
+          const a = agents.find((x) => x.id === hovered);
+          if (!a) return null;
+          const meta = STATE_META[a.state];
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              className="pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[130px]"
+            >
+              <div className="font-semibold text-sidebar-foreground">{a.label}</div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: meta.hex, boxShadow: `0 0 6px ${meta.glow}` }}
+                />
+                <span className="text-muted-foreground">{meta.label}</span>
+              </div>
+              <div className="text-muted-foreground/80 mt-0.5">
+                Atualizado {formatRelative(lastAt)}
+              </div>
+              <div className="text-muted-foreground/60 truncate">src: {a.source}</div>
+            </motion.div>
+          );
+        })()}
+        {hovered === "professor" && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[130px]"
+          >
+            <div className="font-semibold text-sidebar-foreground">Professor</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: profMeta.hex, boxShadow: `0 0 6px ${profMeta.glow}` }}
+              />
+              <span className="text-muted-foreground">{profMeta.label}</span>
+            </div>
+            <div className="text-muted-foreground/80 mt-0.5">
+              Atualizado {formatRelative(lastAt)}
+            </div>
+            <div className="text-muted-foreground/60 truncate">
+              src: scientific-knowledge/snapshot
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function LegendDot({ className, label }: { className: string; label: string }) {
+function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={cn("h-1.5 w-1.5 rounded-full", className)} />
+      <span className={cn("h-1.5 w-1.5 rounded-full", color)} />
       {label}
     </span>
   );
@@ -287,12 +525,12 @@ export function NeuralIntelligencePulse() {
   return (
     <div className="mx-auto my-2 flex items-center justify-center">
       <motion.div
-        animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
+        animate={{ scale: [1, 1.18, 1], opacity: [0.75, 1, 0.75] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-        className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center shadow-[0_0_12px_rgba(56,189,248,0.55)]"
+        className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center shadow-[0_0_16px_rgba(56,189,248,0.65)]"
         title="Inteligência Viva"
       >
-        <Brain className="h-3.5 w-3.5 text-primary" />
+        <Brain className="h-4 w-4 text-primary" />
       </motion.div>
     </div>
   );
