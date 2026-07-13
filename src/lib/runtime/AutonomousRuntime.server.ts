@@ -82,6 +82,9 @@ export class AutonomousRuntime {
       queue: null,
       engine: this.executionEngine,
     });
+    // Etapa 8: Shared Intelligence Context (Knowledge Bus). Nenhum agente
+    // publica ou consome automaticamente — infraestrutura apenas.
+    this.context = new SharedIntelligenceContext();
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
