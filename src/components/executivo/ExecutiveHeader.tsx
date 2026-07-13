@@ -64,13 +64,19 @@ export function ExecutiveHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+          <div
+            className="inline-flex rounded-lg border border-border bg-background p-0.5"
+            role="group"
+            aria-label="Período de análise"
+          >
             {PERIODS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => onPeriodChange(p.value)}
+                aria-pressed={period === p.value}
+                aria-label={`Ver últimos ${p.label}`}
                 className={cn(
-                  "px-3 py-1.5 text-xs rounded-md transition-colors",
+                  "px-3 py-1.5 text-xs rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   period === p.value
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -83,12 +89,17 @@ export function ExecutiveHeader({
           <button
             onClick={onRefresh}
             disabled={isFetching}
+            aria-label={isFetching ? "Atualizando dados" : "Atualizar agora"}
             className={cn(
               "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium",
               "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             )}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+              aria-hidden="true"
+            />
             Atualizar Agora
           </button>
         </div>

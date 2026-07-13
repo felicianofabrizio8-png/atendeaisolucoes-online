@@ -25,12 +25,26 @@ import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/executivo" | "/configuracoes" | "/ia" | "/campanhas" | "/saude" | "/criativos";
+  to:
+    | "/"
+    | "/inbox"
+    | "/agenda"
+    | "/orcamentos"
+    | "/produtos"
+    | "/relatorios"
+    | "/executivo"
+    | "/configuracoes"
+    | "/ia"
+    | "/campanhas"
+    | "/saude"
+    | "/criativos";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
+  adminOnly?: boolean;
 };
 
 const nav: NavItem[] = [
@@ -42,17 +56,17 @@ const nav: NavItem[] = [
   { to: "/criativos", label: "Criativos IA", icon: Sparkles },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/executivo", label: "Executivo", icon: Crown },
+  { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
-
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, company, signOut } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -123,31 +137,33 @@ export function AppShell() {
 
   const NavList = (
     <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-      {nav.map((item) => {
-        const Icon = item.icon;
-        const active =
-          item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
-        const dynamicBadge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : item.badge;
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            className={cn(
-              "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-sm transition-colors",
-              "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            <span className="flex-1">{item.label}</span>
-            {dynamicBadge ? (
-              <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
-                {dynamicBadge > 99 ? "99+" : dynamicBadge}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
+      {nav
+        .filter((item) => !item.adminOnly || isAdmin)
+        .map((item) => {
+          const Icon = item.icon;
+          const active =
+            item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+          const dynamicBadge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : item.badge;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-sm transition-colors",
+                "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="flex-1">{item.label}</span>
+              {dynamicBadge ? (
+                <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
+                  {dynamicBadge > 99 ? "99+" : dynamicBadge}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
     </nav>
   );
 
@@ -241,39 +257,40 @@ export function AppShell() {
         {/* Topbar mobile */}
         <div className="md:hidden safe-top px-3 border-b border-border flex items-center gap-2 bg-sidebar shrink-0">
           <div className="h-14 flex items-center gap-2 w-full">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <button
-                aria-label="Abrir menu"
-                className="h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent active:bg-accent"
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <button
+                  aria-label="Abrir menu"
+                  className="h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent active:bg-accent"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom"
               >
-                <Menu className="h-5 w-5" />
-              </button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom">
-              <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-              {Brand}
-              {NavList}
-              {FooterPanel}
-            </SheetContent>
-          </Sheet>
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <img
-              src="/icon-192.png"
-              alt="Atende Ai!"
-              className="h-7 w-7 shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
-            />
-            <span className="text-sm font-semibold truncate">Atende Ai!</span>
-          </div>
-          <ThemeToggle />
+                <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+                {Brand}
+                {NavList}
+                {FooterPanel}
+              </SheetContent>
+            </Sheet>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <img
+                src="/icon-192.png"
+                alt="Atende Ai!"
+                className="h-7 w-7 shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
+              />
+              <span className="text-sm font-semibold truncate">Atende Ai!</span>
+            </div>
+            <ThemeToggle />
           </div>
         </div>
-
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto">
           <Outlet />
         </div>
-
       </main>
     </div>
   );

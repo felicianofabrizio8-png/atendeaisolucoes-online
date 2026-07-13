@@ -14,8 +14,7 @@ function Trend({ score, avg }: { score: number; avg: number }) {
   if (avg === 0)
     return (
       <span className="inline-flex items-center gap-1 text-muted-foreground">
-        <Minus className="h-3 w-3" />
-        —
+        <Minus className="h-3 w-3" />—
       </span>
     );
   const up = score > avg * 1.1;
@@ -44,22 +43,29 @@ export function ExecutiveCampaigns({ campaigns }: { campaigns: CampaignMetricsBu
     ...campaigns.best.map((c) => ({ ...c, status: "melhor" as const })),
     ...campaigns.worst.map((c) => ({ ...c, status: "pior" as const })),
   ];
-  const avgScore =
-    all.length > 0 ? all.reduce((s, c) => s + c.score, 0) / all.length : 0;
+  const avgScore = all.length > 0 ? all.reduce((s, c) => s + c.score, 0) / all.length : 0;
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5">
+    <section
+      aria-labelledby="exec-camp-title"
+      className="rounded-2xl border border-border bg-card p-5"
+    >
       <div className="flex items-center gap-2 mb-4">
-        <Megaphone className="h-4 w-4 text-primary" />
-        <h2 className="text-base font-semibold text-foreground">Campanhas</h2>
-        <span className="ml-auto text-xs text-muted-foreground">
-          CPL médio {formatBRL(campaigns.avgCostPerLead)}
-        </span>
+        <Megaphone className="h-4 w-4 text-primary" aria-hidden="true" />
+        <h2 id="exec-camp-title" className="text-base font-semibold text-foreground">
+          Campanhas
+        </h2>
+        {campaigns.avgCostPerLead > 0 && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            CPL médio {formatBRL(campaigns.avgCostPerLead)}
+          </span>
+        )}
       </div>
 
       {all.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Nenhuma campanha com volume mínimo analisada no período.
+          Volume insuficiente — nenhuma campanha atingiu o mínimo (spend ≥ R$ 50 ou 5+ leads) para
+          classificação.
         </div>
       ) : (
         <div className="overflow-x-auto">
