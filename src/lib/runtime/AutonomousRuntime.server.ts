@@ -163,6 +163,14 @@ export class AutonomousRuntime {
         lastExecution: this.executionEngine.lastRealExecution("system-health"),
         adapterHealth: this.adapters.get("system-health")?.health() ?? null,
       },
+      intelligence: {
+        allowlist: Array.from(this.executionEngine.allowlist),
+        connectedAgents: Array.from(this.executionEngine.allowlist).map((id) => ({
+          agentId: id,
+          adapterHealth: this.adapters.get(id)?.health() ?? null,
+          lastExecution: this.executionEngine.lastRealExecution(id),
+        })),
+      },
     };
   }
 
