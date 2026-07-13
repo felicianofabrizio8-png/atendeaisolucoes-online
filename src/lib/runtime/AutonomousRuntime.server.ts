@@ -176,6 +176,7 @@ export class AutonomousRuntime {
           lastExecution: this.executionEngine.lastRealExecution(id),
         })),
       },
+      knowledgeBus: this.context.snapshot(),
     };
   }
 
