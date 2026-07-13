@@ -226,8 +226,9 @@ export class AutonomousRuntime {
           "executive-narrative",
         ] as const;
 
-        const producers: Record<string, Record<string, unknown>> = {};
-        const consumers: Record<string, Record<string, unknown>> = {};
+        type JV = string | number | boolean | null | string[];
+        const producers: Record<string, Record<string, JV>> = {};
+        const consumers: Record<string, Record<string, JV>> = {};
 
         for (const id of pcaIds) {
           const a = this.adapters.get(id) as unknown as PCA | null;
