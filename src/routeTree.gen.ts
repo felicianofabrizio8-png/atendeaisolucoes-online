@@ -54,6 +54,7 @@ import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
 import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
 import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
+import { Route as ApiBusinessBrainSnapshotRouteImport } from './routes/api.business-brain.snapshot'
 import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
@@ -323,6 +324,12 @@ const ApiCoachAnalyzeRoute = ApiCoachAnalyzeRouteImport.update({
   path: '/api/coach/analyze',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBusinessBrainSnapshotRoute =
+  ApiBusinessBrainSnapshotRouteImport.update({
+    id: '/api/business-brain/snapshot',
+    path: '/api/business-brain/snapshot',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAiTestNowRoute = ApiAiTestNowRouteImport.update({
   id: '/api/ai/test-now',
   path: '/api/ai/test-now',
@@ -501,6 +508,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
@@ -573,6 +581,7 @@ export interface FileRoutesByTo {
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
@@ -647,6 +656,7 @@ export interface FileRoutesById {
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
@@ -722,6 +732,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/test-now'
+    | '/api/business-brain/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
@@ -794,6 +805,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/test-now'
+    | '/api/business-brain/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
@@ -867,6 +879,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/test-now'
+    | '/api/business-brain/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
@@ -938,6 +951,7 @@ export interface RootRouteChildren {
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiAiTestNowRoute: typeof ApiAiTestNowRoute
+  ApiBusinessBrainSnapshotRoute: typeof ApiBusinessBrainSnapshotRoute
   ApiCoachAnalyzeRoute: typeof ApiCoachAnalyzeRoute
   ApiCoachSuggestRoute: typeof ApiCoachSuggestRoute
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
@@ -1293,6 +1307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoachAnalyzeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/business-brain/snapshot': {
+      id: '/api/business-brain/snapshot'
+      path: '/api/business-brain/snapshot'
+      fullPath: '/api/business-brain/snapshot'
+      preLoaderRoute: typeof ApiBusinessBrainSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/test-now': {
       id: '/api/ai/test-now'
       path: '/api/ai/test-now'
@@ -1525,6 +1546,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiAiTestNowRoute: ApiAiTestNowRoute,
+  ApiBusinessBrainSnapshotRoute: ApiBusinessBrainSnapshotRoute,
   ApiCoachAnalyzeRoute: ApiCoachAnalyzeRoute,
   ApiCoachSuggestRoute: ApiCoachSuggestRoute,
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
