@@ -177,7 +177,45 @@ export class AutonomousRuntime {
           lastExecution: this.executionEngine.lastRealExecution(id),
         })),
       },
-      knowledgeBus: this.context.snapshot(),
+      knowledgeBus: (() => {
+        const base = this.context.snapshot();
+        const shAdapter = this.adapters.get("system-health") as unknown as
+          | { publisherSnapshot?: () => {
+              connected: boolean;
+              publishCount: number;
+              publishErrors: number;
+              lastPublishedAtMs: number | null;
+              lastError: string | null;
+              lastEnvelopeId: string | null;
+              lastExpiresAt: string | null;
+              lastTenantId: string | null;
+            } }
+          | null;
+        const producer = shAdapter?.publisherSnapshot?.() ?? null;
+        const latest =
+          tenantId && producer
+            ? this.context.bus.latest(tenantId, "system-health", "system-health")
+            : null;
+        const nowMs = RuntimeClock.now();
+        return {
+          ...base,
+          systemHealthProducer: {
+            connected: producer?.connected ?? false,
+            publishCount: producer?.publishCount ?? 0,
+            publishErrors: producer?.publishErrors ?? 0,
+            lastError: producer?.lastError ?? null,
+            lastPublishedAt: producer?.lastPublishedAtMs
+              ? new Date(producer.lastPublishedAtMs).toISOString()
+              : null,
+            currentEnvelopeAvailable: Boolean(latest),
+            envelopeAgeSeconds: latest
+              ? Math.max(0, Math.floor((nowMs - new Date(latest.createdAt).getTime()) / 1000))
+              : null,
+            expiresAt: latest?.expiresAt ?? producer?.lastExpiresAt ?? null,
+            currentEnvelopeId: latest?.id ?? null,
+          },
+        };
+      })(),
     };
   }
 
