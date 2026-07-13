@@ -68,6 +68,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import {
+  buildProductCaption,
+  buildProductCardSubtitle,
+  buildProductInfoLines,
+} from "@/lib/product-caption";
+
+type LibraryPick = { path: string; caption: string; productId: string };
+
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
