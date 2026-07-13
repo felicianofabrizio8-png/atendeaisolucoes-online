@@ -14,7 +14,7 @@ export async function getHookSecret(name: string): Promise<string | null> {
   const cached = cache.get(name);
   if (cached && cached.expiresAt > now) return cached.value;
 
-  const { data, error } = await supabaseAdmin.rpc("get_hook_secret", { _name: name });
+  const { data, error } = await (supabaseAdmin.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)("get_hook_secret", { _name: name });
   if (error || !data || typeof data !== "string" || data.length === 0) {
     return null;
   }
