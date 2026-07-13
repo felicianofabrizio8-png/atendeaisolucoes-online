@@ -175,7 +175,7 @@ export class OnboardingRepository {
   async appendEvent(
     companyId: string,
     eventType: string,
-    payload: Record<string, unknown> = {},
+    payload: Record<string, string | number | boolean | null> = {},
   ): Promise<void> {
     const { error } = (await this.writer.from("company_onboarding_events").insert({
       company_id: companyId,
@@ -197,7 +197,7 @@ export class OnboardingRepository {
     return (data ?? []).map((r) => ({
       id: r.id,
       eventType: r.event_type,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
+      payload: (r.payload ?? {}) as Record<string, string | number | boolean | null>,
       createdAt: r.created_at,
     }));
   }

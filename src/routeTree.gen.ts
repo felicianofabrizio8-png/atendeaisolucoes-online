@@ -54,7 +54,10 @@ import { Route as ApiScientificKnowledgeTimelineRouteImport } from './routes/api
 import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
 import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
+import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
+import { Route as ApiOnboardingHealthRouteImport } from './routes/api.onboarding.health'
+import { Route as ApiOnboardingChecklistRouteImport } from './routes/api.onboarding.checklist'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
@@ -337,9 +340,24 @@ const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
   path: '/api/onboarding/test-send',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOnboardingStatusRoute = ApiOnboardingStatusRouteImport.update({
+  id: '/api/onboarding/status',
+  path: '/api/onboarding/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingMetaSaveRoute = ApiOnboardingMetaSaveRouteImport.update({
   id: '/api/onboarding/meta-save',
   path: '/api/onboarding/meta-save',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingHealthRoute = ApiOnboardingHealthRouteImport.update({
+  id: '/api/onboarding/health',
+  path: '/api/onboarding/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingChecklistRoute = ApiOnboardingChecklistRouteImport.update({
+  id: '/api/onboarding/checklist',
+  path: '/api/onboarding/checklist',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
@@ -572,7 +590,10 @@ export interface FileRoutesByFullPath {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
+  '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
@@ -653,7 +674,10 @@ export interface FileRoutesByTo {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
+  '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
@@ -736,7 +760,10 @@ export interface FileRoutesById {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
+  '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
+  '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
@@ -820,7 +847,10 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/onboarding/checklist'
+    | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
@@ -901,7 +931,10 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/onboarding/checklist'
+    | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
@@ -983,7 +1016,10 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/onboarding/checklist'
+    | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
+    | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
@@ -1063,7 +1099,10 @@ export interface RootRouteChildren {
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
+  ApiOnboardingChecklistRoute: typeof ApiOnboardingChecklistRoute
+  ApiOnboardingHealthRoute: typeof ApiOnboardingHealthRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
+  ApiOnboardingStatusRoute: typeof ApiOnboardingStatusRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
   ApiScientificKnowledgePersistRoute: typeof ApiScientificKnowledgePersistRoute
   ApiScientificKnowledgeSnapshotRoute: typeof ApiScientificKnowledgeSnapshotRoute
@@ -1418,11 +1457,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOnboardingTestSendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/onboarding/status': {
+      id: '/api/onboarding/status'
+      path: '/api/onboarding/status'
+      fullPath: '/api/onboarding/status'
+      preLoaderRoute: typeof ApiOnboardingStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/meta-save': {
       id: '/api/onboarding/meta-save'
       path: '/api/onboarding/meta-save'
       fullPath: '/api/onboarding/meta-save'
       preLoaderRoute: typeof ApiOnboardingMetaSaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/health': {
+      id: '/api/onboarding/health'
+      path: '/api/onboarding/health'
+      fullPath: '/api/onboarding/health'
+      preLoaderRoute: typeof ApiOnboardingHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/checklist': {
+      id: '/api/onboarding/checklist'
+      path: '/api/onboarding/checklist'
+      fullPath: '/api/onboarding/checklist'
+      preLoaderRoute: typeof ApiOnboardingChecklistRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/meta/config': {
@@ -1722,7 +1782,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
+  ApiOnboardingChecklistRoute: ApiOnboardingChecklistRoute,
+  ApiOnboardingHealthRoute: ApiOnboardingHealthRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
+  ApiOnboardingStatusRoute: ApiOnboardingStatusRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
   ApiScientificKnowledgePersistRoute: ApiScientificKnowledgePersistRoute,
   ApiScientificKnowledgeSnapshotRoute: ApiScientificKnowledgeSnapshotRoute,

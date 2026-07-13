@@ -102,6 +102,6 @@ export interface OnboardingSignals {
 export interface OnboardingTimelineEvent {
   id: string;
   eventType: string;
-  payload: Record<string, unknown>;
+  payload: Record<string, string | number | boolean | null>;
   createdAt: string;
 }
