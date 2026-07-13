@@ -71,8 +71,8 @@ import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import {
   buildProductCaption,
   buildProductCardSubtitle,
-  buildProductInfoLines,
 } from "@/lib/product-caption";
+
 
 type LibraryPick = { path: string; caption: string; productId: string };
 
