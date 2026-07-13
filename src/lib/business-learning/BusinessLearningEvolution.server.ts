@@ -101,6 +101,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.conversations + curr.conversations),
+          prev.conversations + curr.conversations,
         ),
       );
       evolutions.push(
@@ -112,6 +113,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.sold + curr.sold),
+          prev.sold + curr.sold,
         ),
       );
       evolutions.push(
@@ -123,6 +125,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.lost + curr.lost),
+          prev.lost + curr.lost,
         ),
       );
     }
