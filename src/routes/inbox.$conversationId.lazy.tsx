@@ -2499,9 +2499,8 @@ function ProductsLibraryModal({
                   });
                 })}
               </div>
-
-              </div>
             </div>
+
           ))}
         </div>
         <div className="p-3 border-t border-border flex items-center justify-between gap-2 bg-card">
