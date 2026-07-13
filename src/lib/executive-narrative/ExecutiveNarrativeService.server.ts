@@ -10,6 +10,7 @@ import {
   NARRATIVE_SYSTEM_PROMPT,
   buildUserPrompt,
   sanitizeSnapshotForLLM,
+  type PreviousKnowledgeContext,
 } from "./ExecutiveNarrativePrompt";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -19,6 +20,7 @@ export interface NarrativeInput {
   bundle: ExecutiveDashboardBundle;
   executiveFirstName: string;
   localHour: number;
+  previousKnowledge?: PreviousKnowledgeContext;
 }
 
 interface GatewayResponse {
@@ -54,7 +56,12 @@ export class ExecutiveNarrativeService {
     if (!apiKey) throw new Error("missing_api_key");
 
     const sanitized = sanitizeSnapshotForLLM(input.bundle);
-    const userPrompt = buildUserPrompt(sanitized, input.executiveFirstName, input.localHour);
+    const userPrompt = buildUserPrompt(
+      sanitized,
+      input.executiveFirstName,
+      input.localHour,
+      input.previousKnowledge,
+    );
 
     const res = await fetch(GATEWAY_URL, {
       method: "POST",
