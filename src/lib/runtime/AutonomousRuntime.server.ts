@@ -88,6 +88,10 @@ export class AutonomousRuntime {
       queue: null,
       engine: this.executionEngine,
     });
+    // Etapa 14: Learning Loop plugado ao worker. Não executa agentes.
+    this.learningLoop = new LearningLoop();
+    this.learningLoop.bindContext(this.context);
+    this.worker.bindLearningLoop(this.learningLoop);
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
