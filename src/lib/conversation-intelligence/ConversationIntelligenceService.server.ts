@@ -98,14 +98,17 @@ export async function backfill(opts: RunOpts): Promise<BackfillReport> {
         continue;
       }
       if (!res.inserted) {
+        // Idempotência não é erro: preserva estado semântico "completed"
+        // e mantém last_error_code=null. O "duplicate" fica apenas no
+        // relatório da execução (duplicates_skipped), não no watermark.
         report.duplicates_skipped += 1;
         await markState({
           companyId: raw.company_id,
           conversationId: raw.conversation_id,
           contentHash: content_hash,
           lastMessageAt: row.last_message_at,
-          status: "skipped",
-          errorCode: "duplicate",
+          status: "completed",
+          errorCode: null,
         });
         continue;
       }
