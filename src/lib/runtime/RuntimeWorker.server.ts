@@ -89,6 +89,19 @@ export class RuntimeWorker {
       };
     }
 
+    // Etapa 6: apenas system-health é permitido. Outros permanecem em queue.
+    if (!WORKER_ALLOWLIST.has(job.agentId)) {
+      return {
+        workerId: this.workerId,
+        jobId,
+        found: true,
+        ok: false,
+        reason: `agent_not_enabled:${job.agentId}`,
+        report: null,
+        processingMs: RuntimeClock.now() - started,
+      };
+    }
+
     this.health.markStart(jobId);
     let report: PipelineRunReport;
     let err: string | null = null;
