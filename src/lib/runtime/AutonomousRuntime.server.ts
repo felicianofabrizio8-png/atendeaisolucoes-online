@@ -27,6 +27,7 @@ import { ExecutiveIntelligenceAdapter } from "./ExecutiveIntelligenceAdapter.ser
 import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
 import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
 import { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
+import { LearningLoop } from "./LearningLoop.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
@@ -38,6 +39,7 @@ export class AutonomousRuntime {
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
   readonly context: SharedIntelligenceContext;
+  readonly learningLoop: LearningLoop;
   readonly startedAtMs: number;
   readonly startedAtIso: string;
 
@@ -86,6 +88,10 @@ export class AutonomousRuntime {
       queue: null,
       engine: this.executionEngine,
     });
+    // Etapa 14: Learning Loop plugado ao worker. Não executa agentes.
+    this.learningLoop = new LearningLoop();
+    this.learningLoop.bindContext(this.context);
+    this.worker.bindLearningLoop(this.learningLoop);
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
@@ -139,10 +145,35 @@ export class AutonomousRuntime {
     const recentJobs = this._queue
       ? await this._queue.list({ tenantId, limit: 25 }).catch(() => [])
       : [];
+    const learningSnapshot = this.learningLoop.snapshotFor(tenantId);
     return {
       status: this.status(),
       heartbeat: tick,
       counters,
+      learning: {
+        cycles: learningSnapshot.metrics.learningCycles,
+        hypotheses: {
+          created: learningSnapshot.metrics.hypothesesCreated,
+          accepted: learningSnapshot.metrics.hypothesesAccepted,
+          rejected: learningSnapshot.metrics.hypothesesRejected,
+          consolidated: learningSnapshot.metrics.knowledgeConsolidated,
+        },
+        knowledgeConsolidated: learningSnapshot.metrics.knowledgeConsolidated,
+        averageConfidence: learningSnapshot.metrics.averageConfidence,
+        lastLearning: learningSnapshot.metrics.lastLearningAt,
+        lastAgent: learningSnapshot.metrics.lastAgentId,
+        ignoredExecutions: learningSnapshot.metrics.ignoredExecutions,
+        perAgent: learningSnapshot.metrics.perAgent,
+        store: learningSnapshot.store,
+        lastCycle: learningSnapshot.lastCycle,
+        chain: learningSnapshot.chain,
+        tenant: learningSnapshot.tenant ?? null,
+        knowledgeEvolution: {
+          consolidatedTenants: learningSnapshot.store.tenantsWithConsolidated,
+          totalCycles: learningSnapshot.store.totalCycles,
+          averageConfidence: learningSnapshot.metrics.averageConfidence,
+        },
+      },
       agents: this.registry.list().map((a) => ({
         id: a.descriptor.id,
         name: a.descriptor.name,

@@ -11,6 +11,7 @@ import { WorkerHealth, type WorkerHealthSnapshot } from "./WorkerHealth.server";
 import { WorkerHeartbeat, type WorkerHeartbeatTick } from "./WorkerHeartbeat.server";
 import { WorkerMetrics, type WorkerMetricsSnapshot } from "./WorkerMetrics.server";
 import type { PipelineRunReport } from "./ExecutionPipeline.server";
+import type { LearningLoop, LearningCycleReport } from "./LearningLoop.server";
 
 /** Etapa 7: worker executa system-health + agentes de inteligência. */
 const WORKER_ALLOWLIST: ReadonlySet<string> = new Set([
@@ -39,6 +40,7 @@ export interface WorkerProcessResult {
   reason: string;
   report: PipelineRunReport | null;
   processingMs: number;
+  learning: LearningCycleReport | null;
 }
 
 export class RuntimeWorker {
@@ -51,6 +53,7 @@ export class RuntimeWorker {
 
   private queue: RuntimeJobQueue | null;
   private readonly engine: RuntimeExecutionEngine;
+  private learningLoop: LearningLoop | null = null;
 
   constructor(deps: WorkerDeps) {
     this.workerId = deps.workerId;
@@ -65,6 +68,10 @@ export class RuntimeWorker {
 
   bindQueue(queue: RuntimeJobQueue | null): void {
     this.queue = queue;
+  }
+
+  bindLearningLoop(loop: LearningLoop | null): void {
+    this.learningLoop = loop;
   }
 
   /**
@@ -83,6 +90,7 @@ export class RuntimeWorker {
         reason: "queue_not_bound",
         report: null,
         processingMs: 0,
+        learning: null,
       };
     }
 
@@ -96,6 +104,7 @@ export class RuntimeWorker {
         reason: "job_not_found",
         report: null,
         processingMs: RuntimeClock.now() - started,
+        learning: null,
       };
     }
 
@@ -109,6 +118,7 @@ export class RuntimeWorker {
         reason: `agent_not_enabled:${job.agentId}`,
         report: null,
         processingMs: RuntimeClock.now() - started,
+        learning: null,
       };
     }
 
@@ -136,6 +146,7 @@ export class RuntimeWorker {
         reason: err,
         report: null,
         processingMs,
+        learning: null,
       };
     }
 
@@ -173,6 +184,18 @@ export class RuntimeWorker {
       durationMs: report.result.durationMs,
       error: report.result.error,
     });
+
+    // Etapa 14: dispara o Learning Loop APÓS a execução concluída.
+    // Nunca executa outro agente. Nunca gera novo job.
+    let learning: LearningCycleReport | null = null;
+    if (this.learningLoop) {
+      try {
+        learning = this.learningLoop.onExecutionCompleted(report.result);
+      } catch {
+        learning = null;
+      }
+    }
+
     return {
       workerId: this.workerId,
       jobId,
@@ -181,6 +204,7 @@ export class RuntimeWorker {
       reason: report.reason,
       report,
       processingMs,
+      learning,
     };
   }
 
