@@ -71,14 +71,6 @@ export function classifyLead(f: LeadFacts, now: number): ScoreResult | null {
   const daysToQuoteExpiry = daysBetween(f.lastQuoteValidUntil, now);
 
   // ---- Regra 1: orçamento próximo de expirar --------------------------------
-  if (
-    f.hasQuote &&
-    f.lastQuoteValidUntil &&
-    new Date(f.lastQuoteValidUntil).getTime() > now &&
-    (daysToQuoteExpiry ?? 999) < 0 // negative means future via daysBetween? no
-  ) {
-    // daysBetween returns >=0 always; recalcular:
-  }
   const validUntilTs = f.lastQuoteValidUntil ? new Date(f.lastQuoteValidUntil).getTime() : null;
   const daysUntilExpiry = validUntilTs !== null ? (validUntilTs - now) / DAY : null;
 
