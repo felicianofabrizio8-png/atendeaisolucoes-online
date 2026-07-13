@@ -59,6 +59,7 @@ import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiOnboardingHealthRouteImport } from './routes/api.onboarding.health'
 import { Route as ApiOnboardingChecklistRouteImport } from './routes/api.onboarding.checklist'
+import { Route as ApiMetaDisconnectRouteImport } from './routes/api.meta.disconnect'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
@@ -366,6 +367,11 @@ const ApiOnboardingChecklistRoute = ApiOnboardingChecklistRouteImport.update({
   path: '/api/onboarding/checklist',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetaDisconnectRoute = ApiMetaDisconnectRouteImport.update({
+  id: '/api/meta/disconnect',
+  path: '/api/meta/disconnect',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
   id: '/api/meta/config',
   path: '/api/meta/config',
@@ -597,6 +603,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
   '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -682,6 +689,7 @@ export interface FileRoutesByTo {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
   '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -769,6 +777,7 @@ export interface FileRoutesById {
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
+  '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
   '/api/onboarding/health': typeof ApiOnboardingHealthRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -857,6 +866,7 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
     | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
@@ -942,6 +952,7 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
     | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
@@ -1028,6 +1039,7 @@ export interface FileRouteTypes {
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
+    | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
     | '/api/onboarding/health'
     | '/api/onboarding/meta-save'
@@ -1111,6 +1123,7 @@ export interface RootRouteChildren {
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
+  ApiMetaDisconnectRoute: typeof ApiMetaDisconnectRoute
   ApiOnboardingChecklistRoute: typeof ApiOnboardingChecklistRoute
   ApiOnboardingHealthRoute: typeof ApiOnboardingHealthRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
@@ -1504,6 +1517,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOnboardingChecklistRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/meta/disconnect': {
+      id: '/api/meta/disconnect'
+      path: '/api/meta/disconnect'
+      fullPath: '/api/meta/disconnect'
+      preLoaderRoute: typeof ApiMetaDisconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/meta/config': {
       id: '/api/meta/config'
       path: '/api/meta/config'
@@ -1813,6 +1833,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
+  ApiMetaDisconnectRoute: ApiMetaDisconnectRoute,
   ApiOnboardingChecklistRoute: ApiOnboardingChecklistRoute,
   ApiOnboardingHealthRoute: ApiOnboardingHealthRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
