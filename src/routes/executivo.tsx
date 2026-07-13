@@ -87,6 +87,6 @@ function ExecutivePage() {
           </>
         ) : null}
       </div>
-    </div>
+    </main>
   );
 }
