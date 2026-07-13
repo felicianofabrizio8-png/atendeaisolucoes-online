@@ -46,6 +46,7 @@ export interface ConversationRaw {
   lead_estimated_value: number | null;
   quote_count: number;
   quote_last_sent_at: string | null;
+  follow_up_count: number;
   messages: RawMessage[]; // já ordenadas asc por `at`
 }
 

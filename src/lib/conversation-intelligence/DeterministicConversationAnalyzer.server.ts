@@ -136,25 +136,43 @@ export function analyzeDeterministic(
     sentimentScore = Math.round(sentimentScore * 100) / 100;
   }
 
-  // Lifecycle — só usa dados estruturados
+  // Lifecycle — só usa dados estruturados. Prioridade: sold > lost > abandoned > in_progress.
   const isSold = raw.lead_status === "fechado" && Boolean(raw.lead_closed_at);
   const isLost = raw.lead_status === "perdido";
+
+  // primary_intent = a mais forte (ordem do dicionário)
+  const primary = INTENT_DICT.find((d) => intents.has(d.intent))?.intent ?? null;
+
+  // Atividade comercial mínima exigida para rotular como "abandoned".
+  // Uma única mensagem sem orçamento/follow-up/intenção confiável NÃO caracteriza
+  // uma negociação abandonada — apenas um lead frio sem evidência.
+  const hasConfidentIntent = primary !== null && sanitizedMessages.length >= 2;
+  const hasCommercialActivity =
+    sanitizedMessages.length >= 2 ||
+    raw.quote_count > 0 ||
+    raw.follow_up_count > 0 ||
+    hasConfidentIntent;
+
   let lifecycle: DeterministicOutput["lifecycle_status"];
+  let insufficientAbandonment = false;
   if (isSold) lifecycle = "sold";
   else if (isLost) lifecycle = "lost";
   else {
     const lastAtMs = last ? new Date(last.at).getTime() : 0;
     const inactiveDays = lastAtMs ? (Date.now() - lastAtMs) / 86400_000 : 0;
-    if (inactiveDays >= ABANDON_DAYS) lifecycle = "abandoned";
-    else lifecycle = "in_progress";
+    if (inactiveDays >= ABANDON_DAYS && hasCommercialActivity) {
+      lifecycle = "abandoned";
+    } else if (inactiveDays >= ABANDON_DAYS && !hasCommercialActivity) {
+      lifecycle = "in_progress";
+      insufficientAbandonment = true;
+    } else {
+      lifecycle = "in_progress";
+    }
   }
 
   const quoteDetected = raw.quote_count > 0;
   const saleDetected = isSold; // NUNCA infere venda de texto
   const lossDetected = isLost;
-
-  // primary_intent = a mais forte (ordem do dicionário)
-  const primary = INTENT_DICT.find((d) => intents.has(d.intent))?.intent ?? null;
 
   // Confiança — heurística conservadora
   let confidence = 0.4;
@@ -162,12 +180,14 @@ export function analyzeDeterministic(
   if (intents.size > 0) confidence += 0.1;
   if (lifecycle === "sold" || lifecycle === "lost") confidence += 0.2;
   if (firstResponseMin !== null) confidence += 0.1;
+  if (insufficientAbandonment) confidence = Math.max(0.3, confidence - 0.1);
   confidence = Math.min(1, Math.round(confidence * 100) / 100);
 
   const warnings: string[] = [];
   if (sanitizedMessages.length < 2) warnings.push("very_short_conversation");
   if (!raw.channel) warnings.push("missing_channel");
   if (intents.size === 0 && !isSold && !isLost) warnings.push("no_intent_detected");
+  if (insufficientAbandonment) warnings.push("insufficient_activity_for_abandonment");
 
   return {
     primary_intent: primary,

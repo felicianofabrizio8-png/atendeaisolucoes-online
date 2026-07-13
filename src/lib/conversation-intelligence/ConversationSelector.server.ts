@@ -89,6 +89,13 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
     .in("conversation_id", convIds);
   if (qErr) throw qErr;
 
+  const { data: followups, error: fErr } = await supabaseAdmin
+    .from("follow_ups")
+    .select("id, conversation_id")
+    .eq("company_id", opts.companyId)
+    .in("conversation_id", convIds);
+  if (fErr) throw fErr;
+
   const msgsByConv = new Map<string, RawMessage[]>();
   for (const m of msgs ?? []) {
     const list = msgsByConv.get(m.conversation_id as string) ?? [];
@@ -113,6 +120,13 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
     quotesByConv.set(cid, cur);
   }
 
+  const followupCountByConv = new Map<string, number>();
+  for (const f of followups ?? []) {
+    const cid = f.conversation_id as string | null;
+    if (!cid) continue;
+    followupCountByConv.set(cid, (followupCountByConv.get(cid) ?? 0) + 1);
+  }
+
   const result: ConversationRaw[] = convs
     .map((c) => {
       const l = c.lead_id ? leadMap.get(c.lead_id) : null;
@@ -129,6 +143,7 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
         lead_estimated_value: l?.estimated_value ?? null,
         quote_count: qi.count,
         quote_last_sent_at: qi.last,
+        follow_up_count: followupCountByConv.get(c.id) ?? 0,
         messages: msgsByConv.get(c.id) ?? [],
       };
     })
