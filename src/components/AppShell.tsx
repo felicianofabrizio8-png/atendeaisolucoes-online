@@ -42,7 +42,7 @@ const nav: NavItem[] = [
   { to: "/criativos", label: "Criativos IA", icon: Sparkles },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/executivo", label: "Executivo", icon: Crown },
+  { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
@@ -53,6 +53,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, company, signOut } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
