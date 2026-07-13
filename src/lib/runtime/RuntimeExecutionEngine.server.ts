@@ -150,6 +150,8 @@ export class RuntimeExecutionEngine {
         aggregate: this.metrics.aggregate(),
         perAgent: this.metrics.snapshot(),
       },
+      allowlist: Array.from(this.allowlist),
+      lastRealExecutions: this.lastRealExecutions(),
     };
   }
 }
