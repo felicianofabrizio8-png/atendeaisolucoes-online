@@ -145,6 +145,7 @@ export class BusinessLearningEvolution {
           cmp,
           now,
           confidenceFor(prev.conversations + curr.conversations),
+          prev.conversations + curr.conversations,
         ),
       );
     }
