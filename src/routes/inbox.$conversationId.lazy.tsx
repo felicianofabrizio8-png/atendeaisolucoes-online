@@ -2450,9 +2450,10 @@ function ProductsLibraryModal({
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
                 {cat}
               </div>
-              <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                {items.flatMap((p) =>
-                  (p.images ?? []).map((img, i) => {
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {items.flatMap((p) => {
+                  const subtitle = buildProductCardSubtitle(p);
+                  return (p.images ?? []).map((img, i) => {
                     const isSel = selected.includes(img);
                     const selIndex = isSel ? selected.indexOf(img) + 1 : 0;
                     return (
@@ -2461,33 +2462,44 @@ function ProductsLibraryModal({
                         type="button"
                         onClick={() => toggle(img)}
                         className={cn(
-                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition",
+                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition text-left bg-background",
                           isSel
                             ? "border-primary ring-2 ring-primary"
                             : "border-border hover:border-primary",
                         )}
                         title={p.name}
                       >
-                        <SmartImage
-                          src={img}
-                          alt={p.name}
-                          aspectRatio="1/1"
-                          wrapperClassName="w-full"
-                          thumbWidth={240}
-                          thumbQuality={70}
-                        />
-                        {isSel && (
-                          <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
-                            {selIndex}
+                        <div className="relative">
+                          <SmartImage
+                            src={img}
+                            alt={p.name}
+                            aspectRatio="1/1"
+                            wrapperClassName="w-full"
+                            thumbWidth={320}
+                            thumbQuality={72}
+                          />
+                          {isSel && (
+                            <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
+                              {selIndex}
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-2 space-y-0.5">
+                          <div className="text-xs font-semibold text-foreground line-clamp-2 leading-snug">
+                            {p.name}
                           </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                          <div className="text-[10px] text-white truncate">{p.name}</div>
+                          {subtitle && (
+                            <div className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">
+                              {subtitle}
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
-                  }),
-                )}
+                  });
+                })}
+              </div>
+
               </div>
             </div>
           ))}
