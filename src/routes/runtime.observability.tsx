@@ -3,7 +3,7 @@
 // Não executa jobs, não altera Scheduler, banco, filas ou Knowledge Bus.
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
