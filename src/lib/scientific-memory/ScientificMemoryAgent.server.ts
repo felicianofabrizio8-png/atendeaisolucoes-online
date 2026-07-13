@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { ScientificMemoryService } from "./ScientificMemoryService.server";
+import { ScientificMemoryService, type PersistOptions, type PersistResult } from "./ScientificMemoryService.server";
 import type {
   ScientificMemoryEvolution,
   ScientificMemoryPeriod,
@@ -17,21 +17,19 @@ import type {
 export interface ScientificMemoryAgentDeps {
   supabase: SupabaseClient<Database>;
   companyId: string;
+  writer?: SupabaseClient<Database>;
 }
 
 export class ScientificMemoryAgent {
   private readonly service: ScientificMemoryService;
 
   constructor(deps: ScientificMemoryAgentDeps) {
-    this.service = new ScientificMemoryService(deps.supabase, deps.companyId);
+    this.service = new ScientificMemoryService(deps.supabase, deps.companyId, deps.writer);
   }
 
-  /** Gera + persiste + calcula evolução. Não é acionado por agentes operacionais. */
-  persist(period: ScientificMemoryPeriod = "30d"): Promise<{
-    saved: ScientificMemoryRecord | null;
-    evolution: ScientificMemoryEvolution;
-  }> {
-    return this.service.persist(period);
+  /** Gera + (opcionalmente) persiste + calcula evolução. dryRun por padrão. */
+  persist(opts: PersistOptions = {}): Promise<PersistResult> {
+    return this.service.persist(opts);
   }
 
   latest(period?: ScientificMemoryPeriod): Promise<{
@@ -45,3 +43,4 @@ export class ScientificMemoryAgent {
     return this.service.timeline(period);
   }
 }
+
