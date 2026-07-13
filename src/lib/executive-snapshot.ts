@@ -34,7 +34,10 @@ async function fetchSnapshot(period: SnapshotPeriod): Promise<ExecutiveDashboard
   }
   if (!res.ok || !body || typeof body !== "object" || !(body as { ok?: boolean }).ok) {
     const code =
-      (body && typeof body === "object" && "error" in body && typeof (body as { error?: unknown }).error === "string")
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof (body as { error?: unknown }).error === "string"
         ? (body as { error: string }).error
         : `http_${res.status}`;
     throw new SnapshotError(res.status, code);

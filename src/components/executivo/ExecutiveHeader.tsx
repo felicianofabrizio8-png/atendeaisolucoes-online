@@ -64,7 +64,11 @@ export function ExecutiveHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-border bg-background p-0.5" role="group" aria-label="Período de análise">
+          <div
+            className="inline-flex rounded-lg border border-border bg-background p-0.5"
+            role="group"
+            aria-label="Período de análise"
+          >
             {PERIODS.map((p) => (
               <button
                 key={p.value}
@@ -92,12 +96,14 @@ export function ExecutiveHeader({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             )}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} aria-hidden="true" />
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+              aria-hidden="true"
+            />
             Atualizar Agora
           </button>
         </div>
       </div>
-
     </div>
   );
 }

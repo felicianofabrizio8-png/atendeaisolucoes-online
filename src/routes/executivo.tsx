@@ -26,13 +26,18 @@ function ExecutivePage() {
     profile?.display_name?.split(/\s+/)[0] ?? user?.email?.split("@")[0] ?? "Executivo";
 
   const err = query.error;
-  const forbidden =
-    err instanceof SnapshotError && (err.status === 403 || err.status === 401);
+  const forbidden = err instanceof SnapshotError && (err.status === 403 || err.status === 401);
 
   return (
     <main className="flex-1 overflow-y-auto bg-background" aria-labelledby="exec-page-title">
-      <h1 id="exec-page-title" className="sr-only">Dashboard Executivo</h1>
-      <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-6 animate-in fade-in duration-500" aria-live="polite" aria-busy={query.isFetching}>
+      <h1 id="exec-page-title" className="sr-only">
+        Dashboard Executivo
+      </h1>
+      <div
+        className="mx-auto max-w-7xl p-4 md:p-6 space-y-6 animate-in fade-in duration-500"
+        aria-live="polite"
+        aria-busy={query.isFetching}
+      >
         <ExecutiveHeader
           displayName={displayName}
           generatedAt={query.data?.generatedAt}
@@ -59,8 +64,8 @@ function ExecutivePage() {
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground">Falha ao carregar snapshot</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {err instanceof SnapshotError ? err.code : "Erro desconhecido"}. Tente
-                  atualizar novamente em instantes.
+                  {err instanceof SnapshotError ? err.code : "Erro desconhecido"}. Tente atualizar
+                  novamente em instantes.
                 </p>
                 <button
                   onClick={() => query.refetch()}

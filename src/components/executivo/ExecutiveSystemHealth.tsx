@@ -1,6 +1,14 @@
 // Saúde do sistema — usa apenas fontes confiáveis do snapshot.
 // Sem fonte confiável de status ⇒ "Não monitorado". Não inventa "Online".
-import { Activity, Instagram, MessageSquare, Facebook, Sparkles, Database, Cloud } from "lucide-react";
+import {
+  Activity,
+  Instagram,
+  MessageSquare,
+  Facebook,
+  Sparkles,
+  Database,
+  Cloud,
+} from "lucide-react";
 import type { DataQualityReport } from "@/lib/executive-ai/types";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +25,11 @@ interface Row {
 const statusMeta: Record<Status, { color: string; dot: string; label: string }> = {
   online: { color: "text-emerald-500", dot: "bg-emerald-500", label: "Ativo" },
   warning: { color: "text-amber-500", dot: "bg-amber-500", label: "Atenção" },
-  unmonitored: { color: "text-muted-foreground", dot: "bg-muted-foreground", label: "Não monitorado" },
+  unmonitored: {
+    color: "text-muted-foreground",
+    dot: "bg-muted-foreground",
+    label: "Não monitorado",
+  },
 };
 
 function derive(dq: DataQualityReport): Row[] {
@@ -73,7 +85,10 @@ function derive(dq: DataQualityReport): Row[] {
 export function ExecutiveSystemHealth({ dataQuality }: { dataQuality: DataQualityReport }) {
   const rows = derive(dataQuality);
   return (
-    <section aria-labelledby="exec-health-title" className="rounded-2xl border border-border bg-card p-5">
+    <section
+      aria-labelledby="exec-health-title"
+      className="rounded-2xl border border-border bg-card p-5"
+    >
       <div className="flex items-center gap-2 mb-4">
         <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
         <h2 id="exec-health-title" className="text-base font-semibold text-foreground">
@@ -81,7 +96,8 @@ export function ExecutiveSystemHealth({ dataQuality }: { dataQuality: DataQualit
         </h2>
       </div>
       <p className="text-[11px] text-muted-foreground mb-3">
-        Este endpoint não coleta healthchecks de WhatsApp/Instagram/Facebook/OpenAI. Consulte a página
+        Este endpoint não coleta healthchecks de WhatsApp/Instagram/Facebook/OpenAI. Consulte a
+        página
         <span className="mx-1 font-medium">Saúde do sistema</span> para status ao vivo.
       </p>
       <ul className="grid grid-cols-2 md:grid-cols-3 gap-3 list-none p-0">

@@ -98,10 +98,18 @@ function KpiCard({ icon: Icon, label, value, hint, tone = "default", tooltip, ki
               <Info className="h-3 w-3" aria-hidden="true" />
             </span>
           )}
-          <Icon className={cn("h-4 w-4 transition-transform group-hover:scale-110", toneClass[effectiveTone])} aria-hidden="true" />
+          <Icon
+            className={cn(
+              "h-4 w-4 transition-transform group-hover:scale-110",
+              toneClass[effectiveTone],
+            )}
+            aria-hidden="true"
+          />
         </div>
       </div>
-      <div className={cn("mt-2 text-2xl font-semibold", toneClass[effectiveTone])}>{displayValue}</div>
+      <div className={cn("mt-2 text-2xl font-semibold", toneClass[effectiveTone])}>
+        {displayValue}
+      </div>
       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
         {hint && kind !== "unavailable" && kind !== "insufficient" ? (
           <span className="text-[11px] text-muted-foreground">{hint}</span>
@@ -228,8 +236,13 @@ export function ExecutiveKpis({
           label="Tempo médio de resposta"
           value={formatMinutes(a.avgResponseMinutes)}
           hint="1ª mensagem → 1ª resposta"
-          tone={a.avgResponseMinutes > 30 ? "critical" : a.avgResponseMinutes > 10 ? "warn" : "good"}
-          tooltip={reasonEstimated(dataQuality, "attendance.avgResponseMinutes") ?? "Tempo médio entre chegada do lead e primeira resposta."}
+          tone={
+            a.avgResponseMinutes > 30 ? "critical" : a.avgResponseMinutes > 10 ? "warn" : "good"
+          }
+          tooltip={
+            reasonEstimated(dataQuality, "attendance.avgResponseMinutes") ??
+            "Tempo médio entre chegada do lead e primeira resposta."
+          }
           kind={respKind}
         />
       </div>
@@ -257,9 +270,16 @@ export function ExecutiveKpis({
           icon={Sparkles}
           label="IA"
           value={metrics.aiUsage.autoReplies.toString()}
-          hint={metrics.aiUsage.timeSavedMinutes > 0 ? `${formatMinutes(metrics.aiUsage.timeSavedMinutes)} economizados` : undefined}
+          hint={
+            metrics.aiUsage.timeSavedMinutes > 0
+              ? `${formatMinutes(metrics.aiUsage.timeSavedMinutes)} economizados`
+              : undefined
+          }
           tone="info"
-          tooltip={reasonEstimated(dataQuality, "aiUsage.timeSavedMinutes") ?? "Auto-respostas enviadas pela IA."}
+          tooltip={
+            reasonEstimated(dataQuality, "aiUsage.timeSavedMinutes") ??
+            "Auto-respostas enviadas pela IA."
+          }
           kind={aiKind}
         />
         <KpiCard
