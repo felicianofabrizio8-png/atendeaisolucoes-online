@@ -156,7 +156,7 @@ export class ExecutionPipeline {
     }
 
     // execute — REAL somente para agentes na allowlist com adapter não-stub.
-    let result: ExecutionResult;
+    let result: ExecutionResult | null = null;
     if (ok) {
       const allowlist = this.deps.realExecutionAllowlist;
       const adapter = this.deps.adapters?.get(ctx.agentId) ?? null;
@@ -165,25 +165,40 @@ export class ExecutionPipeline {
       const isRealAdapter = Boolean(adapter) && !adapterVersion.startsWith("stub-");
 
       if (isAllowed && adapter && isRealAdapter) {
-        // Adapter real: valida/prepara/executa/cleanup via adapter.
+        let realResult: ExecutionResult | null = null;
+        let stageErr: string | null = null;
         const av = await runStage("execute", async () => {
           const validation = await adapter.validate(ctx);
-          if (!validation.ok) return validation;
+          if (!validation.ok) {
+            stageErr = validation.reason;
+            return validation;
+          }
           const preparation = await adapter.prepare(ctx);
-          if (!preparation.ok) return preparation;
+          if (!preparation.ok) {
+            stageErr = preparation.reason;
+            return preparation;
+          }
           try {
-            result = await adapter.execute(ctx);
+            realResult = await adapter.execute(ctx);
           } finally {
             await adapter.cleanup(ctx).catch(() => undefined);
           }
           return {
-            ok: result.outcome === "success",
-            reason: result.reason,
+            ok: realResult.outcome === "success",
+            reason: realResult.reason,
           };
         });
-        if (!av.ok && !result!) {
+        if (realResult) {
+          result = realResult;
+          if (!av.ok) {
+            ok = false;
+            reason = av.reason;
+          } else {
+            reason = "execution_ok";
+          }
+        } else {
           ok = false;
-          reason = av.reason;
+          reason = stageErr ?? av.reason;
           result = {
             ...stubResult({
               executionId: ctx.executionId,
@@ -191,16 +206,11 @@ export class ExecutionPipeline {
               agentId: ctx.agentId,
               tenantId: ctx.tenantId,
               attempt: ctx.attempt,
-              reason: av.reason,
+              reason,
             }),
             outcome: "blocked",
             stub: false,
           };
-        } else if (!av.ok) {
-          ok = false;
-          reason = av.reason;
-        } else {
-          reason = "execution_ok";
         }
       } else {
         await runStage("execute", async () => ({ ok: true, reason: "execution_stub" }));
@@ -226,6 +236,7 @@ export class ExecutionPipeline {
         outcome: "blocked",
       };
     }
+    const finalResult: ExecutionResult = result!;
 
     // release lock
     if (lock) {
