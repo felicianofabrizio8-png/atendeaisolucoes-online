@@ -18,6 +18,14 @@ import { RuntimeScheduler } from "./RuntimeScheduler.server";
 import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { SystemHealthAdapter } from "./SystemHealthAdapter.server";
+import { BusinessBrainAdapter } from "./BusinessBrainAdapter.server";
+import { BusinessLearningAdapter } from "./BusinessLearningAdapter.server";
+import { ScientificKnowledgeAdapter } from "./ScientificKnowledgeAdapter.server";
+import { ScientificMemoryAdapter } from "./ScientificMemoryAdapter.server";
+import { ProfessorAdapter } from "./ProfessorAdapter.server";
+import { ExecutiveIntelligenceAdapter } from "./ExecutiveIntelligenceAdapter.server";
+import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
+import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
@@ -49,8 +57,17 @@ export class AutonomousRuntime {
     });
     this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
     this.adapters = new AgentAdapterRegistry(this.registry);
-    // Etapa 6: substitui o Stub do system-health pelo adapter real.
+    // Etapa 6: system-health.  Etapa 7: agentes de inteligência conectados.
+    // Follow-up, Sales e Coach permanecem StubAgentAdapter.
     this.adapters.register(new SystemHealthAdapter());
+    this.adapters.register(new BusinessBrainAdapter());
+    this.adapters.register(new BusinessLearningAdapter());
+    this.adapters.register(new ScientificKnowledgeAdapter());
+    this.adapters.register(new ScientificMemoryAdapter());
+    this.adapters.register(new ProfessorAdapter());
+    this.adapters.register(new ExecutiveIntelligenceAdapter());
+    this.adapters.register(new ExecutiveKnowledgeAdapter());
+    this.adapters.register(new ExecutiveNarrativeAdapter());
     this.executionEngine = new RuntimeExecutionEngine({
       registry: this.registry,
       dispatcher: this._dispatcher,
@@ -145,6 +162,14 @@ export class AutonomousRuntime {
         allowlist: Array.from(this.executionEngine.allowlist),
         lastExecution: this.executionEngine.lastRealExecution("system-health"),
         adapterHealth: this.adapters.get("system-health")?.health() ?? null,
+      },
+      intelligence: {
+        allowlist: Array.from(this.executionEngine.allowlist),
+        connectedAgents: Array.from(this.executionEngine.allowlist).map((id) => ({
+          agentId: id,
+          adapterHealth: this.adapters.get(id)?.health() ?? null,
+          lastExecution: this.executionEngine.lastRealExecution(id),
+        })),
       },
     };
   }

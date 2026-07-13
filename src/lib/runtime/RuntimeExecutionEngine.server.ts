@@ -16,8 +16,18 @@ import type { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import type { RuntimeScheduler } from "./RuntimeScheduler.server";
 import type { RuntimeJobRecord } from "./RuntimeTypes";
 
-/** Etapa 6: apenas `system-health` pode executar REAL. */
-export const REAL_EXECUTION_ALLOWLIST: ReadonlySet<string> = new Set(["system-health"]);
+/** Etapa 7: agentes de inteligência conectados. Follow-up/Sales/Coach seguem stub. */
+export const REAL_EXECUTION_ALLOWLIST: ReadonlySet<string> = new Set([
+  "system-health",
+  "business-brain",
+  "business-learning",
+  "scientific-knowledge",
+  "scientific-memory",
+  "professor",
+  "executive-intelligence",
+  "executive-knowledge",
+  "executive-narrative",
+]);
 
 export interface ExecutionEngineDeps {
   registry: AgentRegistry;

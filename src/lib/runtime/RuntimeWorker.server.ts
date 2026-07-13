@@ -12,8 +12,18 @@ import { WorkerHeartbeat, type WorkerHeartbeatTick } from "./WorkerHeartbeat.ser
 import { WorkerMetrics, type WorkerMetricsSnapshot } from "./WorkerMetrics.server";
 import type { PipelineRunReport } from "./ExecutionPipeline.server";
 
-/** Etapa 6: worker só executa jobs de agentes na allowlist. */
-const WORKER_ALLOWLIST: ReadonlySet<string> = new Set(["system-health"]);
+/** Etapa 7: worker executa system-health + agentes de inteligência. */
+const WORKER_ALLOWLIST: ReadonlySet<string> = new Set([
+  "system-health",
+  "business-brain",
+  "business-learning",
+  "scientific-knowledge",
+  "scientific-memory",
+  "professor",
+  "executive-intelligence",
+  "executive-knowledge",
+  "executive-narrative",
+]);
 
 export interface WorkerDeps {
   workerId: string;
