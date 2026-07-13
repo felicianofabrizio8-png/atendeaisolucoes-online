@@ -2986,6 +2986,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_hook_secret: { Args: { _name: string }; Returns: string }
       get_storage_usage_bytes: {
         Args: { _company_id: string }
         Returns: number
