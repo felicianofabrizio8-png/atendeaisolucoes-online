@@ -89,6 +89,13 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
     .in("conversation_id", convIds);
   if (qErr) throw qErr;
 
+  const { data: followups, error: fErr } = await supabaseAdmin
+    .from("follow_ups")
+    .select("id, conversation_id")
+    .eq("company_id", opts.companyId)
+    .in("conversation_id", convIds);
+  if (fErr) throw fErr;
+
   const msgsByConv = new Map<string, RawMessage[]>();
   for (const m of msgs ?? []) {
     const list = msgsByConv.get(m.conversation_id as string) ?? [];
