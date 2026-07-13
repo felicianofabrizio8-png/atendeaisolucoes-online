@@ -9,7 +9,7 @@
 // operacional modificado. Nenhuma alteração visual além da sincronização
 // dos estados reais dos snapshots já existentes.
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain } from "lucide-react";
@@ -115,6 +115,7 @@ function useIntelligenceStates(enabled: boolean) {
     enabled,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
     staleTime: 8_000,
     retry: false,
     queryFn: async () => {
@@ -225,6 +226,7 @@ const BREATH = 3.8;
 
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
+  const reducedMotion = useReducedMotion();
   const { data, isLoading } = useIntelligenceStates(!!user);
 
   const professor = resolveProfessor(data?.science ?? null, !!user, isLoading);
@@ -317,6 +319,7 @@ export function NeuralIntelligencePanel() {
   const hypothesesCount = data?.science?.sample?.hypotheses ?? 0;
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
       {/* Background grid — 2% opacity */}
       <div
@@ -327,7 +330,8 @@ export function NeuralIntelligencePanel() {
           backgroundSize: "20px 20px",
         }}
       />
-      <BackgroundParticles />
+      {!reducedMotion && <BackgroundParticles />}
+
 
       {/* Header */}
       <div className="relative flex items-start justify-between gap-2 mb-1.5">
@@ -430,8 +434,10 @@ export function NeuralIntelligencePanel() {
         )}
       </div>
     </div>
+    </MotionConfig>
   );
 }
+
 
 /* -------------------- Blinking cursor -------------------- */
 
