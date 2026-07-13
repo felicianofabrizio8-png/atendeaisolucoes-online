@@ -434,8 +434,10 @@ export function NeuralIntelligencePanel() {
         )}
       </div>
     </div>
+    </MotionConfig>
   );
 }
+
 
 /* -------------------- Blinking cursor -------------------- */
 
