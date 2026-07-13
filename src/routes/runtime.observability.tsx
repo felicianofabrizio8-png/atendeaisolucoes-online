@@ -424,7 +424,7 @@ function ObservabilityPage() {
   const workerHealth: HealthLevel = workers.length ? "excellent" : "attention";
   const schedulerHealth: HealthLevel = "good"; // desativado intencionalmente
   const kbHealth: HealthLevel = (() => {
-    const errs = Object.values(producers).reduce(
+    const errs = Object.values(producers).reduce<number>(
       (a, p) => a + num(asDict(p).publishErrors),
       0,
     );
