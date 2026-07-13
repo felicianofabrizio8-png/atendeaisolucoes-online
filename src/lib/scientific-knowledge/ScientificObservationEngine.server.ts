@@ -137,9 +137,9 @@ export class ScientificObservationEngine {
     // -- From Executive Knowledge Timeline (aggregate only) --------------
     for (const rec of knowledgeTimeline) {
       out.push({
-        id: `obs-ek-${rec.periodLabel}`,
+        id: `obs-ek-${rec.id}`,
         category: "operational",
-        title: `Snapshot ${rec.periodLabel}`,
+        title: `Snapshot ${rec.period}`,
         description: `Snapshot executivo com ${rec.facts.attendance.avgResponseMinutes}min de resposta média.`,
         observedAt: rec.createdAt,
         occurrences: 1,
