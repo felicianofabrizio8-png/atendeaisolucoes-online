@@ -6,6 +6,7 @@
 // ============================================================================
 
 import type { AgentRegistry } from "./AgentRegistry.server";
+import type { AgentAdapterRegistry } from "./AgentAdapterRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
 import type { ExecutionContext } from "./ExecutionContext.server";
 import type { ExecutionLocks, LockHandle } from "./ExecutionLocks.server";
