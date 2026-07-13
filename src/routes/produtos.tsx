@@ -27,12 +27,15 @@ import {
   Loader2,
   Camera,
   Search,
+  Copy,
+  Eye,
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
+import { motion } from "framer-motion";
 
 
 export const Route = createFileRoute("/produtos")({
