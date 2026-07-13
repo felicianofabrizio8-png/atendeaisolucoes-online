@@ -57,8 +57,17 @@ export class AutonomousRuntime {
     });
     this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
     this.adapters = new AgentAdapterRegistry(this.registry);
-    // Etapa 6: substitui o Stub do system-health pelo adapter real.
+    // Etapa 6: system-health.  Etapa 7: agentes de inteligência conectados.
+    // Follow-up, Sales e Coach permanecem StubAgentAdapter.
     this.adapters.register(new SystemHealthAdapter());
+    this.adapters.register(new BusinessBrainAdapter());
+    this.adapters.register(new BusinessLearningAdapter());
+    this.adapters.register(new ScientificKnowledgeAdapter());
+    this.adapters.register(new ScientificMemoryAdapter());
+    this.adapters.register(new ProfessorAdapter());
+    this.adapters.register(new ExecutiveIntelligenceAdapter());
+    this.adapters.register(new ExecutiveKnowledgeAdapter());
+    this.adapters.register(new ExecutiveNarrativeAdapter());
     this.executionEngine = new RuntimeExecutionEngine({
       registry: this.registry,
       dispatcher: this._dispatcher,
