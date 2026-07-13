@@ -11,6 +11,7 @@ import { WorkerHealth, type WorkerHealthSnapshot } from "./WorkerHealth.server";
 import { WorkerHeartbeat, type WorkerHeartbeatTick } from "./WorkerHeartbeat.server";
 import { WorkerMetrics, type WorkerMetricsSnapshot } from "./WorkerMetrics.server";
 import type { PipelineRunReport } from "./ExecutionPipeline.server";
+import type { LearningLoop, LearningCycleReport } from "./LearningLoop.server";
 
 /** Etapa 7: worker executa system-health + agentes de inteligência. */
 const WORKER_ALLOWLIST: ReadonlySet<string> = new Set([
