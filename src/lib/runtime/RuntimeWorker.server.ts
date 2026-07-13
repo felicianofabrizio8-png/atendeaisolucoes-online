@@ -90,6 +90,7 @@ export class RuntimeWorker {
         reason: "queue_not_bound",
         report: null,
         processingMs: 0,
+        learning: null,
       };
     }
 
@@ -103,6 +104,7 @@ export class RuntimeWorker {
         reason: "job_not_found",
         report: null,
         processingMs: RuntimeClock.now() - started,
+        learning: null,
       };
     }
 
@@ -116,6 +118,7 @@ export class RuntimeWorker {
         reason: `agent_not_enabled:${job.agentId}`,
         report: null,
         processingMs: RuntimeClock.now() - started,
+        learning: null,
       };
     }
 
@@ -143,6 +146,7 @@ export class RuntimeWorker {
         reason: err,
         report: null,
         processingMs,
+        learning: null,
       };
     }
 
@@ -180,6 +184,18 @@ export class RuntimeWorker {
       durationMs: report.result.durationMs,
       error: report.result.error,
     });
+
+    // Etapa 14: dispara o Learning Loop APÓS a execução concluída.
+    // Nunca executa outro agente. Nunca gera novo job.
+    let learning: LearningCycleReport | null = null;
+    if (this.learningLoop) {
+      try {
+        learning = this.learningLoop.onExecutionCompleted(report.result);
+      } catch {
+        learning = null;
+      }
+    }
+
     return {
       workerId: this.workerId,
       jobId,
@@ -188,6 +204,7 @@ export class RuntimeWorker {
       reason: report.reason,
       report,
       processingMs,
+      learning,
     };
   }
 
