@@ -17,6 +17,7 @@ import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
 import { RuntimeScheduler } from "./RuntimeScheduler.server";
 import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
+import { SystemHealthAdapter } from "./SystemHealthAdapter.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
