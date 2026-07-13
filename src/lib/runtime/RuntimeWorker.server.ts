@@ -120,8 +120,14 @@ export class RuntimeWorker {
       0,
       started - new Date(job.scheduledAt).getTime(),
     );
+    const outcome = report.result.outcome === "success" ? "success"
+      : report.result.outcome === "failure" ? "failure"
+      : report.result.outcome === "timeout" ? "timeout"
+      : report.result.outcome === "cancelled" ? "cancelled"
+      : report.result.outcome === "blocked" ? "blocked"
+      : "stub";
     this.metrics.record({
-      outcome: report.result.outcome as WorkerProcessResult extends never ? never : "success" | "failure" | "stub" | "timeout" | "cancelled" | "blocked",
+      outcome,
       processingMs,
       queueLatencyMs,
       executionLatencyMs: report.totalDurationMs,
