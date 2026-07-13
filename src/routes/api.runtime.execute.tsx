@@ -200,7 +200,7 @@ export const Route = createFileRoute("/api/runtime/execute")({
             ? {
                 id: finalJob.id,
                 status: finalJob.status,
-                attempts: finalJob.attempts,
+                attempt: finalJob.attempt,
                 scheduledAt: finalJob.scheduledAt,
                 startedAt: finalJob.startedAt,
                 finishedAt: finalJob.finishedAt,
@@ -215,7 +215,7 @@ export const Route = createFileRoute("/api/runtime/execute")({
             processingMs: processed.processingMs,
           },
           execution: sanitizeReport(processed.report),
-          envelope: latestEnvelope(agentId === "system-health" ? "system-health" : agentId),
+          envelope,
         });
       },
     },
