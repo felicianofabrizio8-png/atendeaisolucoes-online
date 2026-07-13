@@ -98,6 +98,7 @@ export class RuntimeExecutionEngine {
       dispatcher: this.deps.dispatcher,
       scheduler: this.deps.scheduler,
       heartbeat: this.deps.heartbeat,
+      context: this.deps.context ?? null,
     };
   }
 
