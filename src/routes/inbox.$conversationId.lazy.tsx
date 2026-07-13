@@ -2295,6 +2295,11 @@ function MediaSendPanel({
               )}
             </div>
             <div className="p-4 space-y-3 border-t border-border">
+              {caption.trim() && (
+                <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-xs text-foreground whitespace-pre-wrap leading-snug">
+                  {caption}
+                </div>
+              )}
               <input
                 type="text"
                 value={caption}
@@ -2303,6 +2308,7 @@ function MediaSendPanel({
                 maxLength={1024}
                 className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
+
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={cancelPending}
