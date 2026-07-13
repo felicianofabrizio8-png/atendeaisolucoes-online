@@ -37,6 +37,21 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Onboarding timeline (best-effort; nunca derruba o handler; sem PII).
+// deno-lint-ignore no-explicit-any
+async function appendOnboardingEvent(sb: any, companyId: string, eventType: string, payload: Record<string, string | number | boolean | null> = {}) {
+  try {
+    if (!companyId) return;
+    await sb.from("company_onboarding_events").insert({
+      company_id: companyId,
+      event_type: eventType,
+      payload,
+    });
+  } catch (err) {
+    console.warn("APPEND_ONBOARDING_EVENT_FAIL", { eventType, err: String(err) });
+  }
+}
+
 // Sanitiza page_access_token: detecta concatenação dupla (bug histórico que
 // salvou o mesmo token duas vezes no mesmo campo) e devolve só a primeira
 // metade. Rejeita tokens que não começam com "EAA".
@@ -466,6 +481,9 @@ Deno.serve(async (req) => {
       },
       { onConflict: "company_id,channel,external_account_id" },
     );
+
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "basic" });
+    await appendOnboardingEvent(sb, companyId, "facebook_connected", { mode: "basic" });
 
     return json({ ok: true, user: { id: me.id, name: me.name } });
   }
