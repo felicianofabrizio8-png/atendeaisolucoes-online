@@ -39,6 +39,7 @@ export class AutonomousRuntime {
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
   readonly context: SharedIntelligenceContext;
+  readonly learningLoop: LearningLoop;
   readonly startedAtMs: number;
   readonly startedAtIso: string;
 
