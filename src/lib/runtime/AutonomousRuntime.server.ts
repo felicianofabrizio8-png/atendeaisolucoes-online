@@ -155,6 +155,7 @@ export class AutonomousRuntime {
     const learningSnapshot = this.learningLoop.snapshotFor(tenantId);
     return {
       status: this.status(),
+      autonomy,
       heartbeat: tick,
       counters,
       learning: {
