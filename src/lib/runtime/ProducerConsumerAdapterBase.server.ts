@@ -168,7 +168,7 @@ export abstract class ProducerConsumerAdapterBase extends IntelligenceAdapterBas
               Math.floor((RuntimeClock.now() - new Date(env.createdAt).getTime()) / 1000),
             );
             bus.maxEnvelopeAgeSeconds =
-              bus.maxEnvelopeAgeSeconds === null
+              bus.maxEnvelopeAgeSeconds === null || bus.maxEnvelopeAgeSeconds === undefined
                 ? ageSec
                 : Math.max(bus.maxEnvelopeAgeSeconds, ageSec);
             // Backward-compat: primeira HIT preenche os campos singulares.
