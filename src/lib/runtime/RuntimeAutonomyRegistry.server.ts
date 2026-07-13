@@ -1,16 +1,20 @@
 // ============================================================================
-// RuntimeAutonomyRegistry — Feature-flag por tenant para AUTONOMIA controlada.
-// Etapa 15: apenas system-health é elegível.
-// Fonte de verdade primária: env var RUNTIME_AUTONOMY_SYSTEM_HEALTH_TENANTS
-// (lista separada por vírgulas de UUIDs). Overrides em memória podem
-// habilitar/desabilitar tenants em tempo de execução (kill switch imediato).
+// RuntimeAutonomyRegistry — FASE 2: fonte de verdade persistida.
+//
+// A autonomia por tenant e o kill switch agora ficam em `company_settings`
+// (via RuntimeStateStore). Métricas de tick/jobs continuam em memória
+// APENAS para observabilidade — nunca decidem execução.
 // ============================================================================
+
+import {
+  getRuntimeFlags,
+  listAutonomyEnabledTenants,
+  invalidateFlagsCache,
+} from "./RuntimeStateStore.server";
 
 export type AutonomyAgentKey = "system-health";
 
-interface AutonomyState {
-  seededFromEnv: Set<string>;
-  overrides: Map<string, boolean>; // tenantId -> enabled
+interface AutonomyMetrics {
   lastTickAt: string | null;
   lastTickTenants: string[];
   lastTickReason: string | null;
@@ -22,10 +26,8 @@ interface AutonomyState {
   jobsFailed: number;
 }
 
-const STATE: Record<AutonomyAgentKey, AutonomyState> = {
+const METRICS: Record<AutonomyAgentKey, AutonomyMetrics> = {
   "system-health": {
-    seededFromEnv: new Set<string>(),
-    overrides: new Map<string, boolean>(),
     lastTickAt: null,
     lastTickTenants: [],
     lastTickReason: null,
@@ -38,54 +40,30 @@ const STATE: Record<AutonomyAgentKey, AutonomyState> = {
   },
 };
 
-let _seeded = false;
-function seedFromEnv(): void {
-  if (_seeded) return;
-  _seeded = true;
-  const raw = process.env.RUNTIME_AUTONOMY_SYSTEM_HEALTH_TENANTS ?? "";
-  raw
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .forEach((id) => STATE["system-health"].seededFromEnv.add(id));
-}
-
 export class RuntimeAutonomyRegistry {
   static readonly INTERVAL_SECONDS = 300; // 5 min bucket
 
-  static isEnabled(agent: AutonomyAgentKey, tenantId: string): boolean {
-    seedFromEnv();
-    const s = STATE[agent];
-    if (s.overrides.has(tenantId)) return s.overrides.get(tenantId)!;
-    return s.seededFromEnv.has(tenantId);
+  /** Verifica no banco (com cache 30s) se o tenant está elegível para autonomia. */
+  static async isEnabled(agent: AutonomyAgentKey, tenantId: string): Promise<boolean> {
+    if (agent !== "system-health") return false;
+    const f = await getRuntimeFlags(tenantId);
+    return (
+      f.autonomyEnabled &&
+      f.systemHealthEnabled &&
+      f.schedulerEnabled &&
+      f.killSwitch === false
+    );
   }
 
-  static enabledTenants(agent: AutonomyAgentKey): string[] {
-    seedFromEnv();
-    const s = STATE[agent];
-    const all = new Set<string>(s.seededFromEnv);
-    for (const [t, v] of s.overrides.entries()) {
-      if (v) all.add(t);
-      else all.delete(t);
-    }
-    return Array.from(all);
+  /** Lista tenants elegíveis (batch — sem N+1). */
+  static async enabledTenants(agent: AutonomyAgentKey): Promise<string[]> {
+    if (agent !== "system-health") return [];
+    return listAutonomyEnabledTenants();
   }
 
-  static setOverride(agent: AutonomyAgentKey, tenantId: string, enabled: boolean): void {
-    seedFromEnv();
-    STATE[agent].overrides.set(tenantId, enabled);
-  }
-
-  static clearOverride(agent: AutonomyAgentKey, tenantId: string): void {
-    STATE[agent].overrides.delete(tenantId);
-  }
-
-  /** Global kill switch: desabilita para TODOS os tenants habilitados. */
-  static killAll(agent: AutonomyAgentKey): void {
-    seedFromEnv();
-    const s = STATE[agent];
-    for (const t of s.seededFromEnv) s.overrides.set(t, false);
-    for (const [t] of s.overrides) s.overrides.set(t, false);
+  /** Invalida cache local de flags após mudança admin. */
+  static invalidateCache(tenantId?: string): void {
+    invalidateFlagsCache(tenantId);
   }
 
   static bucketFor(nowMs: number = Date.now()): number {
@@ -97,57 +75,54 @@ export class RuntimeAutonomyRegistry {
   }
 
   static recordTick(agent: AutonomyAgentKey, tenants: string[], reason: string): void {
-    const s = STATE[agent];
-    s.ticksReceived += 1;
-    s.lastTickAt = new Date().toISOString();
-    s.lastTickTenants = tenants;
-    s.lastTickReason = reason;
+    const m = METRICS[agent];
+    m.ticksReceived += 1;
+    m.lastTickAt = new Date().toISOString();
+    m.lastTickTenants = tenants;
+    m.lastTickReason = reason;
   }
 
   static recordTickRejected(agent: AutonomyAgentKey): void {
-    STATE[agent].ticksRejected += 1;
+    METRICS[agent].ticksRejected += 1;
   }
 
   static recordJobCreated(agent: AutonomyAgentKey): void {
-    STATE[agent].jobsCreated += 1;
+    METRICS[agent].jobsCreated += 1;
   }
 
   static recordDuplicatePrevented(agent: AutonomyAgentKey): void {
-    STATE[agent].duplicatesPrevented += 1;
+    METRICS[agent].duplicatesPrevented += 1;
   }
 
   static recordJobCompleted(agent: AutonomyAgentKey, ok: boolean): void {
-    const s = STATE[agent];
-    if (ok) s.jobsCompleted += 1;
-    else s.jobsFailed += 1;
+    const m = METRICS[agent];
+    if (ok) m.jobsCompleted += 1;
+    else m.jobsFailed += 1;
   }
 
-  static snapshot(agent: AutonomyAgentKey) {
-    seedFromEnv();
-    const s = STATE[agent];
-    const tenants = this.enabledTenants(agent).map((t) => ({
-      tenantId: t,
-      source: s.seededFromEnv.has(t) ? "env" : "override",
-      enabled: this.isEnabled(agent, t),
-    }));
+  /** Snapshot observacional. `tenants` é resolvido de forma assíncrona. */
+  static async snapshot(agent: AutonomyAgentKey) {
+    const m = METRICS[agent];
+    const tenantIds = await this.enabledTenants(agent);
     return {
       agent,
       intervalSeconds: this.INTERVAL_SECONDS,
-      enabledTenantCount: tenants.length,
-      tenants,
-      lastTickAt: s.lastTickAt,
-      lastTickTenants: s.lastTickTenants,
-      lastTickReason: s.lastTickReason,
-      ticksReceived: s.ticksReceived,
-      ticksRejected: s.ticksRejected,
-      duplicatesPrevented: s.duplicatesPrevented,
-      jobsCreated: s.jobsCreated,
-      jobsCompleted: s.jobsCompleted,
-      jobsFailed: s.jobsFailed,
+      enabledTenantCount: tenantIds.length,
+      tenants: tenantIds.map((t) => ({ tenantId: t, source: "persisted", enabled: true })),
+      lastTickAt: m.lastTickAt,
+      lastTickTenants: m.lastTickTenants,
+      lastTickReason: m.lastTickReason,
+      ticksReceived: m.ticksReceived,
+      ticksRejected: m.ticksRejected,
+      duplicatesPrevented: m.duplicatesPrevented,
+      jobsCreated: m.jobsCreated,
+      jobsCompleted: m.jobsCompleted,
+      jobsFailed: m.jobsFailed,
       nextBucketAt: new Date(
         (this.bucketFor() + 1) * this.INTERVAL_SECONDS * 1000,
       ).toISOString(),
       secretConfigured: Boolean(process.env.RUNTIME_TICK_SECRET),
+      source: "persisted" as const,
     };
   }
 }
