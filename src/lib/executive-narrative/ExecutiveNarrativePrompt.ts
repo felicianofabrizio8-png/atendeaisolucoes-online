@@ -88,15 +88,39 @@ export function sanitizeSnapshotForLLM(bundle: ExecutiveDashboardBundle): unknow
   };
 }
 
+export interface PreviousKnowledgeContext {
+  previousSnapshotAt: string;
+  daysBetween: number | null;
+  improvements: string[];
+  regressions: string[];
+  newFacts: string[];
+  summary: string;
+}
+
 export function buildUserPrompt(
   sanitized: unknown,
   executiveFirstName: string,
   localHour: number,
+  previous?: PreviousKnowledgeContext,
 ): string {
   const timeOfDay = localHour < 12 ? "manhã" : localHour < 18 ? "tarde" : "noite";
+  const historyBlock = previous
+    ? `
+
+Memória da análise anterior (${previous.daysBetween ?? "?"} dias atrás, snapshot em ${previous.previousSnapshotAt}):
+${JSON.stringify({
+  summary: previous.summary,
+  improvements: previous.improvements,
+  regressions: previous.regressions,
+  newFacts: previous.newFacts,
+})}
+
+Ao redigir o resumo, quando fizer sentido, comece uma frase com "Desde minha última análise..." e cite melhoras ou pioras concretas dessa memória.`
+    : "";
+
   return `Executivo: ${executiveFirstName}
 Momento do dia: ${timeOfDay} (hora local ${localHour}h)
 
 Snapshot executivo (JSON — única fonte de verdade):
-${JSON.stringify(sanitized)}`;
+${JSON.stringify(sanitized)}${historyBlock}`;
 }
