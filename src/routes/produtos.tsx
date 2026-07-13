@@ -39,6 +39,11 @@ import { motion } from "framer-motion";
 
 
 export const Route = createFileRoute("/produtos")({
+  // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.
+  // A biblioteca é 100% client-side (localStorage/Supabase realtime + framer-motion),
+  // então desligamos o SSR aqui para eliminar a superfície de falha sem tocar em
+  // cadastro, banco ou envio de mídia.
+  ssr: false,
   component: ProductsPage,
 });
 
