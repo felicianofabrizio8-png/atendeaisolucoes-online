@@ -77,6 +77,8 @@ import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whats
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
+import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
+import { Route as ApiExecutiveConversationIntelligenceInspectRouteImport } from './routes/api.executive.conversation-intelligence.inspect'
 
 const CampanhasIndexLazyRouteImport = createFileRoute('/campanhas/')()
 const CampanhasNovaLazyRouteImport = createFileRoute('/campanhas/nova')()
@@ -443,6 +445,18 @@ const ApiPublicHooksAgentTriggerRoute =
     path: '/api/public/hooks/agent-trigger',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiExecutiveConversationIntelligenceJobRoute =
+  ApiExecutiveConversationIntelligenceJobRouteImport.update({
+    id: '/api/executive/conversation-intelligence/job',
+    path: '/api/executive/conversation-intelligence/job',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiExecutiveConversationIntelligenceInspectRoute =
+  ApiExecutiveConversationIntelligenceInspectRouteImport.update({
+    id: '/api/executive/conversation-intelligence/inspect',
+    path: '/api/executive/conversation-intelligence/inspect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -507,6 +521,8 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/executive/conversation-intelligence/inspect': typeof ApiExecutiveConversationIntelligenceInspectRoute
+  '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -577,6 +593,8 @@ export interface FileRoutesByTo {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/executive/conversation-intelligence/inspect': typeof ApiExecutiveConversationIntelligenceInspectRoute
+  '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -649,6 +667,8 @@ export interface FileRoutesById {
   '/api/whatsapp/token-refresh': typeof ApiWhatsappTokenRefreshRoute
   '/api/whatsapp/unmapped': typeof ApiWhatsappUnmappedRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/api/executive/conversation-intelligence/inspect': typeof ApiExecutiveConversationIntelligenceInspectRoute
+  '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -722,6 +742,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
     | '/auth/meta/callback'
+    | '/api/executive/conversation-intelligence/inspect'
+    | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
@@ -792,6 +814,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
     | '/auth/meta/callback'
+    | '/api/executive/conversation-intelligence/inspect'
+    | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
@@ -863,6 +887,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-refresh'
     | '/api/whatsapp/unmapped'
     | '/auth/meta/callback'
+    | '/api/executive/conversation-intelligence/inspect'
+    | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
     | '/api/public/whatsapp/webhook'
@@ -932,6 +958,8 @@ export interface RootRouteChildren {
   ApiWhatsappTokenRefreshRoute: typeof ApiWhatsappTokenRefreshRoute
   ApiWhatsappUnmappedRoute: typeof ApiWhatsappUnmappedRoute
   AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
+  ApiExecutiveConversationIntelligenceInspectRoute: typeof ApiExecutiveConversationIntelligenceInspectRoute
+  ApiExecutiveConversationIntelligenceJobRoute: typeof ApiExecutiveConversationIntelligenceJobRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
@@ -1426,6 +1454,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAgentTriggerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/executive/conversation-intelligence/job': {
+      id: '/api/executive/conversation-intelligence/job'
+      path: '/api/executive/conversation-intelligence/job'
+      fullPath: '/api/executive/conversation-intelligence/job'
+      preLoaderRoute: typeof ApiExecutiveConversationIntelligenceJobRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive/conversation-intelligence/inspect': {
+      id: '/api/executive/conversation-intelligence/inspect'
+      path: '/api/executive/conversation-intelligence/inspect'
+      fullPath: '/api/executive/conversation-intelligence/inspect'
+      preLoaderRoute: typeof ApiExecutiveConversationIntelligenceInspectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1503,6 +1545,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappTokenRefreshRoute: ApiWhatsappTokenRefreshRoute,
   ApiWhatsappUnmappedRoute: ApiWhatsappUnmappedRoute,
   AuthMetaCallbackRoute: AuthMetaCallbackRoute,
+  ApiExecutiveConversationIntelligenceInspectRoute:
+    ApiExecutiveConversationIntelligenceInspectRoute,
+  ApiExecutiveConversationIntelligenceJobRoute:
+    ApiExecutiveConversationIntelligenceJobRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
