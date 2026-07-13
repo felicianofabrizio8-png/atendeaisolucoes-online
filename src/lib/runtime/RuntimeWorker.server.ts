@@ -40,6 +40,7 @@ export interface WorkerProcessResult {
   reason: string;
   report: PipelineRunReport | null;
   processingMs: number;
+  learning: LearningCycleReport | null;
 }
 
 export class RuntimeWorker {
