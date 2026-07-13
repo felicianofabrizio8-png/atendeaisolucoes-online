@@ -88,7 +88,7 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         }
         const conversationId = parsed.data.conversation_id;
 
-        // Rate limit global e por conversa.
+        // Rate limit local (fast-path) + distribuído (fonte de verdade).
         const globalRl = rateLimit("agent-trigger:global", RATE_GLOBAL_PER_MIN, 60_000);
         if (!globalRl.allowed) {
           console.warn("[agent-trigger]", { cid, event: "rate_limited_global" });
@@ -100,23 +100,41 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
           60_000,
         );
         if (!convRl.allowed) {
-          console.warn("[agent-trigger]", {
-            cid,
-            event: "rate_limited_conv",
-            conv: maskId(conversationId),
-          });
+          console.warn("[agent-trigger]", { cid, event: "rate_limited_conv", conv: maskId(conversationId) });
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
         }
 
-        // Dedupe curto (evita chamadas LLM duplicadas por callback repetido).
+        const { rateLimitCheck, tryDedupe, auditRuntimeEvent } = await import(
+          "@/lib/runtime/RuntimeStateStore.server"
+        );
+        const distGlobalOk = await rateLimitCheck({
+          companyId: null,
+          bucket: "agent-trigger:global",
+          windowSeconds: 60,
+          max: RATE_GLOBAL_PER_MIN,
+        });
+        if (!distGlobalOk) {
+          console.warn("[agent-trigger]", { cid, event: "rate_limited_global_dist" });
+          return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
+        }
+
+        // Dedupe LOCAL curto (evita callback repetido no mesmo isolate).
         if (seenRecently(`agent-trigger:${conversationId}`, DEDUPE_TTL_MS)) {
-          console.info("[agent-trigger]", {
-            cid,
-            event: "duplicate_prevented",
-            conv: maskId(conversationId),
-            ms: Date.now() - startedAt,
-          });
-          return Response.json({ ok: true, deduped: true });
+          console.info("[agent-trigger]", { cid, event: "duplicate_prevented_local", conv: maskId(conversationId), ms: Date.now() - startedAt });
+          return Response.json({ ok: true, deduped: true, scope: "local" });
+        }
+        // Dedupe DISTRIBUÍDO (unique constraint) — bucket de 30s.
+        const nowSec = Math.floor(Date.now() / 1000);
+        const distDedupeOk = await tryDedupe({
+          operation: "agent-trigger",
+          resourceKey: conversationId,
+          bucket: Math.floor(nowSec / 30),
+          ttlSeconds: 60,
+        });
+        if (!distDedupeOk) {
+          await auditRuntimeEvent({ action: "agent_trigger_dedup_hit", after: { conv: maskId(conversationId) } });
+          console.info("[agent-trigger]", { cid, event: "duplicate_prevented_dist", conv: maskId(conversationId), ms: Date.now() - startedAt });
+          return Response.json({ ok: true, deduped: true, scope: "distributed" });
         }
 
         try {
