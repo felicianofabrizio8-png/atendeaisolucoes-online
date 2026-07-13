@@ -12,9 +12,12 @@ import { AgentRegistry } from "./AgentRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
 import { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
+import { RuntimeScheduler } from "./RuntimeScheduler.server";
+import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
+  readonly scheduler: RuntimeScheduler;
   readonly registry: AgentRegistry;
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
