@@ -27,12 +27,15 @@ import {
   Loader2,
   Camera,
   Search,
+  Copy,
+  Eye,
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
+import { motion } from "framer-motion";
 
 
 export const Route = createFileRoute("/produtos")({
@@ -113,7 +116,7 @@ function ProductsPage() {
         </button>
       </header>
 
-      <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl">
+      <div className="p-3 md:p-6 space-y-4 md:space-y-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
@@ -156,88 +159,41 @@ function ProductsPage() {
 
         {grouped.map(([category, items]) => (
           <section key={category}>
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
+            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3 px-1">
               {category}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 md:gap-3">
-              {items.map((p) => {
-                const hasPromo = p.promoPrice && p.promoPrice < p.price;
-                const cover = p.images?.[0];
-                return (
-                  <div
-                    key={p.id}
-                    className="rounded-lg border border-border bg-card p-3 md:p-4 flex gap-3 md:flex-col md:gap-1.5"
-                  >
-                    {cover && (
-                      <div className="md:hidden h-20 w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border">
-                        <SmartImage src={cover} alt={p.name} aspectRatio="1/1" wrapperClassName="w-full h-full" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold truncate">{p.name}</div>
-                          {p.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>
-                          )}
-                        </div>
-                        <div className="text-right shrink-0">
-                          {hasPromo ? (
-                            <>
-                              <div className="text-[11px] text-muted-foreground line-through">
-                                {formatBRL(p.price)}
-                              </div>
-                              <div className="text-sm font-bold text-[var(--status-won)]">
-                                {formatBRL(p.promoPrice!)}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-sm font-bold">{formatBRL(p.price)}</div>
-                          )}
-                        </div>
-                      </div>
-                      {p.notes && (
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Tag className="h-3 w-3 shrink-0" /> <span className="truncate">{p.notes}</span>
-                        </div>
-                      )}
-                      <div className="pt-1.5 mt-auto flex items-center gap-1.5 flex-wrap">
-                        <button
-                          onClick={() =>
-                            navigate({
-                              to: "/orcamentos",
-                              search: { new: "1", suggestedProductId: p.id },
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 min-h-9 md:min-h-0 md:py-1.5 hover:opacity-90"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          <span>Orçar</span>
-                        </button>
-                        <button
-                          onClick={() => setEditing(p)}
-                          aria-label="Editar"
-                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-accent"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          <span className="hidden md:inline">Editar</span>
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(p)}
-                          aria-label="Excluir"
-                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="hidden md:inline">Excluir</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+              {items.map((p, idx) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  query={query}
+                  index={idx}
+                  onEdit={() => setEditing(p)}
+                  onDelete={() => setConfirmDelete(p)}
+                  onDuplicate={() => {
+                    void createProduct({
+                      name: `${p.name} (cópia)`,
+                      category: p.category,
+                      description: p.description,
+                      price: p.price,
+                      promoPrice: p.promoPrice,
+                      notes: p.notes,
+                      images: p.images ?? [],
+                    }).then(() => toast.success("Produto duplicado"));
+                  }}
+                  onQuote={() =>
+                    navigate({
+                      to: "/orcamentos",
+                      search: { new: "1", suggestedProductId: p.id },
+                    })
+                  }
+                />
+              ))}
             </div>
           </section>
         ))}
+
 
         {!query.trim() && products.length > 0 && (
           <div className="pt-2">
@@ -271,6 +227,151 @@ function ProductsPage() {
     </div>
   );
 }
+
+function highlightMatch(text: string, query: string): React.ReactNode {
+  const q = query.trim();
+  if (!q) return text;
+  const nText = normalizeSearch(text);
+  const nQuery = normalizeSearch(q);
+  const idx = nText.indexOf(nQuery);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded-sm px-0.5">
+        {text.slice(idx, idx + q.length)}
+      </mark>
+      {text.slice(idx + q.length)}
+    </>
+  );
+}
+
+interface ProductCardProps {
+  product: Product;
+  query: string;
+  index: number;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onQuote: () => void;
+}
+
+function ProductCard({ product, query, index, onEdit, onDelete, onDuplicate, onQuote }: ProductCardProps) {
+  const hasPromo = product.promoPrice && product.promoPrice < product.price;
+  const cover = product.images?.[0];
+  const displayPrice = hasPromo ? product.promoPrice! : product.price;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min(index * 0.02, 0.2), ease: "easeOut" }}
+      whileHover={{ y: -4 }}
+      className="group relative flex flex-col rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-lg hover:border-primary/40 transition-all duration-200"
+    >
+      <div className="relative w-full bg-muted/40" style={{ aspectRatio: "1 / 1" }}>
+        {cover ? (
+          <SmartImage
+            src={cover}
+            alt={product.name}
+            wrapperClassName="w-full h-full"
+            aspectRatio="1/1"
+            thumbWidth={480}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+            <ImageIcon className="h-8 w-8 opacity-40" />
+          </div>
+        )}
+
+        <div className="absolute top-2 left-2">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide rounded-full bg-background/85 backdrop-blur px-2 py-0.5 text-foreground border border-border/60">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            Ativo
+          </span>
+        </div>
+
+        {hasPromo && (
+          <div className="absolute top-2 right-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-[var(--status-won)] text-[var(--status-won-foreground)] px-2 py-0.5 shadow-sm">
+              Promo
+            </span>
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-center gap-1.5 p-2.5">
+          <CardIconButton label="Visualizar" onClick={onQuote}>
+            <Eye className="h-3.5 w-3.5" />
+          </CardIconButton>
+          <CardIconButton label="Editar" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" />
+          </CardIconButton>
+          <CardIconButton label="Duplicar" onClick={onDuplicate}>
+            <Copy className="h-3.5 w-3.5" />
+          </CardIconButton>
+          <CardIconButton label="Excluir" onClick={onDelete} destructive>
+            <Trash2 className="h-3.5 w-3.5" />
+          </CardIconButton>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5 p-3">
+        <h3
+          className="text-sm font-semibold leading-snug line-clamp-2 min-h-[2.5rem]"
+          title={product.name}
+        >
+          {highlightMatch(product.name, query)}
+        </h3>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium rounded-md bg-secondary text-secondary-foreground px-1.5 py-0.5 truncate max-w-full">
+            <Tag className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{product.category}</span>
+          </span>
+        </div>
+        <div className="flex items-baseline gap-2 pt-0.5">
+          <span className="text-base font-bold text-foreground">{formatBRL(displayPrice)}</span>
+          {hasPromo && (
+            <span className="text-[11px] text-muted-foreground line-through">
+              {formatBRL(product.price)}
+            </span>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function CardIconButton({
+  children,
+  onClick,
+  label,
+  destructive,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  label: string;
+  destructive?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "h-8 w-8 inline-flex items-center justify-center rounded-full bg-background/95 backdrop-blur border border-border/60 shadow-sm text-foreground hover:scale-110 transition-transform",
+        destructive && "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive",
+        !destructive && "hover:bg-primary hover:text-primary-foreground hover:border-primary",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 
 function ProductFormModal({ product, onClose }: { product: Product | null; onClose: () => void }) {
   const isEdit = !!product;
