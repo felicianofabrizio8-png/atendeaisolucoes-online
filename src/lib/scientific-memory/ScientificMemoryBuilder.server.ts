@@ -188,28 +188,80 @@ function buildQuality(
   };
 }
 
+/** Hash SHA-256 hex (Web Crypto) — determinístico e sem PII. */
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Serializa determinísticamente (chaves ordenadas). */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
+function utcDate(iso: string): string {
+  return iso.slice(0, 10); // ISO já é UTC
+}
+
 export class ScientificMemoryBuilder {
-  static build(input: {
+  static async build(input: {
     period: ScientificMemoryPeriod;
     science: ScientificKnowledgeSnapshot;
     brain: BusinessBrainSnapshot;
     now?: string;
-  }): ScientificMemoryInsert {
+  }): Promise<ScientificMemoryInsert> {
     const { period, science, brain } = input;
     const now = input.now ?? new Date().toISOString();
+    const memoryDate = utcDate(now);
+    const knowledgeScore = computeKnowledgeScore(science);
+    const scientificScore = computeScientificScore(science);
+    const validatedTheories = buildValidatedTheories(science);
+    const strengtheningHypotheses = buildStrengtheningHypotheses(science);
+    const observedPatterns = buildObservedPatterns(brain);
+    const businessConclusions = buildBusinessConclusions(brain);
+    const correlations = buildCorrelations(science);
+    const limitations = buildLimitations(science, brain);
+    const quality = buildQuality(science, brain);
+
+    // Fingerprint: apenas dados sanitizados/agregados. Sem generatedAt/memoryDate/PII.
+    const fingerprintSource = stableStringify({
+      period,
+      version: SCIENTIFIC_MEMORY_VERSION,
+      knowledgeScore: Math.round(knowledgeScore * 1000) / 1000,
+      scientificScore: Math.round(scientificScore * 1000) / 1000,
+      validatedTheories,
+      strengtheningHypotheses,
+      observedPatterns,
+      businessConclusions,
+      correlations,
+      limitations,
+      quality,
+    });
+    const sourceFingerprint = (await sha256Hex(fingerprintSource)).slice(0, 32);
+
     return {
       generatedAt: now,
+      memoryDate,
+      sourceFingerprint,
       period,
-      knowledgeScore: computeKnowledgeScore(science),
-      scientificScore: computeScientificScore(science),
-      validatedTheories: buildValidatedTheories(science),
-      strengtheningHypotheses: buildStrengtheningHypotheses(science),
-      observedPatterns: buildObservedPatterns(brain),
-      businessConclusions: buildBusinessConclusions(brain),
-      correlations: buildCorrelations(science),
-      limitations: buildLimitations(science, brain),
-      quality: buildQuality(science, brain),
+      knowledgeScore,
+      scientificScore,
+      validatedTheories,
+      strengtheningHypotheses,
+      observedPatterns,
+      businessConclusions,
+      correlations,
+      limitations,
+      quality,
       version: SCIENTIFIC_MEMORY_VERSION,
     };
   }
 }
+
