@@ -2155,10 +2155,12 @@ export type Database = {
           id: string
           knowledge_score: number
           limitations: Json
+          memory_date: string
           observed_patterns: Json
           period: string
           quality: Json
           scientific_score: number
+          source_fingerprint: string
           strengthening_hypotheses: Json
           validated_theories: Json
           version: string
@@ -2172,10 +2174,12 @@ export type Database = {
           id?: string
           knowledge_score?: number
           limitations?: Json
+          memory_date?: string
           observed_patterns?: Json
           period: string
           quality?: Json
           scientific_score?: number
+          source_fingerprint?: string
           strengthening_hypotheses?: Json
           validated_theories?: Json
           version: string
@@ -2189,10 +2193,12 @@ export type Database = {
           id?: string
           knowledge_score?: number
           limitations?: Json
+          memory_date?: string
           observed_patterns?: Json
           period?: string
           quality?: Json
           scientific_score?: number
+          source_fingerprint?: string
           strengthening_hypotheses?: Json
           validated_theories?: Json
           version?: string

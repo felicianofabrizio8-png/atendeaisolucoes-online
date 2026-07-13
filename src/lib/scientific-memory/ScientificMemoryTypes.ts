@@ -85,6 +85,8 @@ export interface ScientificMemoryRecord {
   id: string;
   companyId: string;
   generatedAt: string; // ISO
+  memoryDate: string; // YYYY-MM-DD (UTC)
+  sourceFingerprint: string; // SHA-256 curto do payload sanitizado
   period: ScientificMemoryPeriod;
   knowledgeScore: number; // 0..1
   scientificScore: number; // 0..1
@@ -102,18 +104,22 @@ export interface ScientificMemoryRecord {
 /** Payload de gravação (companyId injetado pelo repositório; id/createdAt pelo banco). */
 export type ScientificMemoryInsert = Omit<ScientificMemoryRecord, "id" | "createdAt" | "companyId">;
 
+export type EvolutionStatus = "ok" | "insufficient_history";
+
 /** Evolução entre a memória atual e a imediatamente anterior. */
 export interface ScientificMemoryEvolution {
+  status: EvolutionStatus;
   hasPrevious: boolean;
   previousGeneratedAt: string | null;
-  knowledgeEvolution: number; // delta knowledgeScore
-  scientificEvolution: number; // delta scientificScore
-  businessEvolution: number; // delta (# conclusões) + delta média de confiança
-  confidenceEvolution: number; // delta avgConfidence
+  knowledgeEvolution: number;
+  scientificEvolution: number;
+  businessEvolution: number;
+  confidenceEvolution: number;
   validatedTheoriesDelta: number;
   strengtheningHypothesesDelta: number;
   observedPatternsDelta: number;
 }
+
 
 /** Item da timeline (365 dias) — payload público (sanitizado). */
 export interface ScientificMemoryTimelineItem {
