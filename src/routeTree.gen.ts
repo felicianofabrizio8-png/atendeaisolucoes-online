@@ -20,6 +20,7 @@ import { Route as ProdutosRouteImport } from './routes/produtos'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as IaRouteImport } from './routes/ia'
@@ -141,6 +142,11 @@ const OrcamentosRoute = OrcamentosRouteImport.update({
   path: '/orcamentos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -206,9 +212,9 @@ const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/campanhas.$id.lazy').then((d) => d.Route))
 const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
-  id: '/onboarding/whatsapp',
-  path: '/onboarding/whatsapp',
-  getParentRoute: () => rootRouteImport,
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => OnboardingRoute,
 } as any)
 const InboxRecoveryRoute = InboxRecoveryRouteImport.update({
   id: '/recovery',
@@ -547,6 +553,7 @@ export interface FileRoutesByFullPath {
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
@@ -631,6 +638,7 @@ export interface FileRoutesByTo {
   '/executivo': typeof ExecutivoRoute
   '/ia': typeof IaRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
@@ -717,6 +725,7 @@ export interface FileRoutesById {
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
@@ -804,6 +813,7 @@ export interface FileRouteTypes {
     | '/ia'
     | '/inbox'
     | '/login'
+    | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
     | '/privacy'
@@ -888,6 +898,7 @@ export interface FileRouteTypes {
     | '/executivo'
     | '/ia'
     | '/login'
+    | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
     | '/privacy'
@@ -973,6 +984,7 @@ export interface FileRouteTypes {
     | '/ia'
     | '/inbox'
     | '/login'
+    | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
     | '/privacy'
@@ -1059,6 +1071,7 @@ export interface RootRouteChildren {
   IaRoute: typeof IaRoute
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRouteWithChildren
   OrcamentosRoute: typeof OrcamentosRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -1071,7 +1084,6 @@ export interface RootRouteChildren {
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
-  OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
   CampanhasIdLazyRoute: typeof CampanhasIdLazyRoute
   CampanhasNovaLazyRoute: typeof CampanhasNovaLazyRoute
   CampanhasIndexLazyRoute: typeof CampanhasIndexLazyRoute
@@ -1198,6 +1210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrcamentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -1284,10 +1303,10 @@ declare module '@tanstack/react-router' {
     }
     '/onboarding/whatsapp': {
       id: '/onboarding/whatsapp'
-      path: '/onboarding/whatsapp'
+      path: '/whatsapp'
       fullPath: '/onboarding/whatsapp'
       preLoaderRoute: typeof OnboardingWhatsappRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof OnboardingRoute
     }
     '/inbox/recovery': {
       id: '/inbox/recovery'
@@ -1733,6 +1752,18 @@ const InboxRouteChildren: InboxRouteChildren = {
 
 const InboxRouteWithChildren = InboxRoute._addFileChildren(InboxRouteChildren)
 
+interface OnboardingRouteChildren {
+  OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
+}
+
+const OnboardingRouteChildren: OnboardingRouteChildren = {
+  OnboardingWhatsappRoute: OnboardingWhatsappRoute,
+}
+
+const OnboardingRouteWithChildren = OnboardingRoute._addFileChildren(
+  OnboardingRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
@@ -1742,6 +1773,7 @@ const rootRouteChildren: RootRouteChildren = {
   IaRoute: IaRoute,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRouteWithChildren,
   OrcamentosRoute: OrcamentosRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   PrivacyRoute: PrivacyRoute,
@@ -1754,7 +1786,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSystemHealthRoute: ApiSystemHealthRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
-  OnboardingWhatsappRoute: OnboardingWhatsappRoute,
   CampanhasIdLazyRoute: CampanhasIdLazyRoute,
   CampanhasNovaLazyRoute: CampanhasNovaLazyRoute,
   CampanhasIndexLazyRoute: CampanhasIndexLazyRoute,
