@@ -24,6 +24,7 @@ import {
   correlationId,
   maskId,
 } from "@/lib/runtime/HookSecurity.server";
+import { getHookSecret } from "@/lib/runtime/HookSecretVault.server";
 
 const MAX_BODY_BYTES = 2 * 1024;
 const DEDUPE_TTL_MS = 30_000;
@@ -54,7 +55,10 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         const cid = correlationId();
         const startedAt = Date.now();
 
-        const expected = process.env.AGENT_TRIGGER_SECRET;
+        const expected =
+          (await getHookSecret("agent_trigger_secret")) ??
+          process.env.AGENT_TRIGGER_SECRET ??
+          null;
         if (!expected) {
           console.error("[agent-trigger]", { cid, event: "secret_not_configured" });
           return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
