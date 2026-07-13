@@ -248,9 +248,9 @@ export class ExecutionPipeline {
 
     // finish
     const totalDurationMs = RuntimeClock.now() - startedMs;
-    result.durationMs = totalDurationMs;
-    result.startedAt = new Date(startedMs).toISOString();
-    result.finishedAt = RuntimeClock.nowIso();
+    finalResult.durationMs = totalDurationMs;
+    finalResult.startedAt = new Date(startedMs).toISOString();
+    finalResult.finishedAt = RuntimeClock.nowIso();
     await runStage("finish", async () => ({ ok, reason }));
 
     const report: PipelineRunReport = {
@@ -261,7 +261,7 @@ export class ExecutionPipeline {
       ok,
       reason,
       stages,
-      result,
+      result: finalResult,
       totalDurationMs,
     };
     this.lastReport = report;
