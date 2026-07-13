@@ -115,29 +115,21 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
 
   const result: ConversationRaw[] = convs
     .map((c) => {
-      const leadRaw = c.leads as unknown;
-      const lead = Array.isArray(leadRaw) ? leadRaw[0] : leadRaw;
-      const l = (lead ?? {}) as {
-        status?: string | null;
-        source?: string | null;
-        closed_at?: string | null;
-        lost_at?: string | null;
-        estimated_value?: number | null;
-      };
-      const qi = quotesByConv.get(c.id as string) ?? { count: 0, last: null };
+      const l = c.lead_id ? leadMap.get(c.lead_id) : null;
+      const qi = quotesByConv.get(c.id) ?? { count: 0, last: null };
       return {
-        conversation_id: c.id as string,
-        company_id: c.company_id as string,
-        channel: (c.channel as string | null) ?? null,
-        lead_id: (c.lead_id as string | null) ?? null,
-        lead_status: l.status ?? null,
-        lead_source: l.source ?? null,
-        lead_closed_at: l.closed_at ?? null,
-        lead_lost_at: l.lost_at ?? null,
-        lead_estimated_value: l.estimated_value ?? null,
+        conversation_id: c.id,
+        company_id: c.company_id,
+        channel: c.channel,
+        lead_id: c.lead_id,
+        lead_status: l?.status ?? null,
+        lead_source: l?.source ?? null,
+        lead_closed_at: l?.closed_at ?? null,
+        lead_lost_at: l?.lost_at ?? null,
+        lead_estimated_value: l?.estimated_value ?? null,
         quote_count: qi.count,
         quote_last_sent_at: qi.last,
-        messages: msgsByConv.get(c.id as string) ?? [],
+        messages: msgsByConv.get(c.id) ?? [],
       };
     })
     .filter((c) => {
