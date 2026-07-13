@@ -18,6 +18,14 @@ import { RuntimeScheduler } from "./RuntimeScheduler.server";
 import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { SystemHealthAdapter } from "./SystemHealthAdapter.server";
+import { BusinessBrainAdapter } from "./BusinessBrainAdapter.server";
+import { BusinessLearningAdapter } from "./BusinessLearningAdapter.server";
+import { ScientificKnowledgeAdapter } from "./ScientificKnowledgeAdapter.server";
+import { ScientificMemoryAdapter } from "./ScientificMemoryAdapter.server";
+import { ProfessorAdapter } from "./ProfessorAdapter.server";
+import { ExecutiveIntelligenceAdapter } from "./ExecutiveIntelligenceAdapter.server";
+import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
+import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
