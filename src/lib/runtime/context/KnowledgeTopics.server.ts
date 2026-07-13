@@ -21,7 +21,7 @@ const TOPICS: KnowledgeTopicDescriptor[] = [
   { id: "professor-insights", ownerAgentId: "professor", description: "Insights consolidados do Professor.", defaultTtlMs: KNOWLEDGE_DEFAULT_TTL_MS, defaultPriority: "normal" },
   { id: "sales-insights", ownerAgentId: "sales-intelligence", description: "Insights consolidados de vendas.", defaultTtlMs: KNOWLEDGE_DEFAULT_TTL_MS, defaultPriority: "normal" },
   { id: "coach-insights", ownerAgentId: "coach", description: "Insights consolidados do coach.", defaultTtlMs: KNOWLEDGE_DEFAULT_TTL_MS, defaultPriority: "normal" },
-  { id: "system-health", ownerAgentId: "system-health", description: "Sinal consolidado de saúde do sistema.", defaultTtlMs: 30 * 60 * 1000, defaultPriority: "critical" },
+  { id: "system-health", ownerAgentId: "system-health", description: "Sinal consolidado de saúde do sistema.", defaultTtlMs: 5 * 60 * 1000, defaultPriority: "critical" },
   { id: "billing", ownerAgentId: "billing", description: "Métricas consolidadas de billing.", defaultTtlMs: KNOWLEDGE_DEFAULT_TTL_MS, defaultPriority: "background" },
 ];
 
