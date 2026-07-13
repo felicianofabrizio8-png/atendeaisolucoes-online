@@ -16,6 +16,7 @@ import {
   Menu,
   Activity,
   Crown,
+  Rocket,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
@@ -41,7 +42,8 @@ type NavItem = {
     | "/ia"
     | "/campanhas"
     | "/saude"
-    | "/criativos";
+    | "/criativos"
+    | "/onboarding";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -50,6 +52,7 @@ type NavItem = {
 
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/onboarding", label: "Primeiros passos", icon: Rocket, adminOnly: true },
   { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
