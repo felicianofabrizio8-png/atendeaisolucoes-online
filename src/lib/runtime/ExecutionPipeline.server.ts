@@ -44,6 +44,9 @@ export interface PipelineRunReport {
 interface PipelineDeps {
   registry: AgentRegistry;
   locks: ExecutionLocks;
+  adapters?: AgentAdapterRegistry | null;
+  /** Allowlist de agentes que podem executar REAL. Fora daqui = stub. */
+  realExecutionAllowlist?: ReadonlySet<string>;
 }
 
 export class ExecutionPipeline {
