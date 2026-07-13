@@ -226,6 +226,7 @@ const BREATH = 3.8;
 
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
+  const reducedMotion = useReducedMotion();
   const { data, isLoading } = useIntelligenceStates(!!user);
 
   const professor = resolveProfessor(data?.science ?? null, !!user, isLoading);
