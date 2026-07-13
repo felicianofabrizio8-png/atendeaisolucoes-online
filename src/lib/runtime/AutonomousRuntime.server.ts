@@ -6,14 +6,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { AgentAdapterRegistry } from "./AgentAdapterRegistry.server";
 import { AgentDispatcher } from "./AgentDispatcher.server";
 import { AgentOrchestrator } from "./AgentOrchestrator.server";
 import { AgentRegistry } from "./AgentRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
+import { RuntimeExecutionEngine } from "./RuntimeExecutionEngine.server";
 import { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
-import { RuntimeExecutionEngine } from "./RuntimeExecutionEngine.server";
 import { RuntimeScheduler } from "./RuntimeScheduler.server";
+import { RuntimeWorker } from "./RuntimeWorker.server";
 import { SchedulerRegistry } from "./SchedulerRegistry.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
