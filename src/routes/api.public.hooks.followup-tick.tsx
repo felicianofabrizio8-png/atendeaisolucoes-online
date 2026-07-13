@@ -51,7 +51,10 @@ export const Route = createFileRoute("/api/public/hooks/followup-tick")({
         const cid = correlationId();
         const startedAt = Date.now();
 
-        const expected = process.env.FOLLOWUP_TICK_SECRET;
+        const expected =
+          (await getHookSecret("followup_tick_secret")) ??
+          process.env.FOLLOWUP_TICK_SECRET ??
+          null;
         if (!expected) {
           console.error("[followup-tick]", { cid, event: "secret_not_configured" });
           return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
