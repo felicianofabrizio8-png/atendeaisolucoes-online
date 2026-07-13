@@ -15,6 +15,7 @@ import {
   LogIn,
   Menu,
   Activity,
+  Crown,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
@@ -26,7 +27,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 
 type NavItem = {
-  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/configuracoes" | "/ia" | "/campanhas" | "/saude" | "/criativos";
+  to: "/" | "/inbox" | "/agenda" | "/orcamentos" | "/produtos" | "/relatorios" | "/executivo" | "/configuracoes" | "/ia" | "/campanhas" | "/saude" | "/criativos";
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
@@ -41,6 +42,7 @@ const nav: NavItem[] = [
   { to: "/criativos", label: "Criativos IA", icon: Sparkles },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { to: "/executivo", label: "Executivo", icon: Crown },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
