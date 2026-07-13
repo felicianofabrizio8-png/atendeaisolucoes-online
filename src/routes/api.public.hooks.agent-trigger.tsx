@@ -24,6 +24,7 @@ import {
   correlationId,
   maskId,
 } from "@/lib/runtime/HookSecurity.server";
+import { getHookSecret } from "@/lib/runtime/HookSecretVault.server";
 
 const MAX_BODY_BYTES = 2 * 1024;
 const DEDUPE_TTL_MS = 30_000;
