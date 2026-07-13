@@ -2,13 +2,32 @@
 // em jobs server-only. Escopo restrito e sempre validando company_id.
 import type { ConversationFactsRow } from "./ConversationIntelligenceTypes";
 
+// Alias sem tipos gerados (types.ts é regenerado após aprovação da migration).
+type LooseClient = {
+  from: (t: string) => {
+    select: (c: string) => {
+      eq: (col: string, v: unknown) => {
+        eq: (col: string, v: unknown) => {
+          eq: (col: string, v: unknown) => {
+            eq: (col: string, v: unknown) => {
+              maybeSingle: () => Promise<{ data: { id: string } | null }>;
+            };
+          };
+        };
+      };
+    };
+    insert: (row: Record<string, unknown>) => Promise<{ error: { code?: string; message?: string } | null }>;
+  };
+};
+
 /** Insere se (company, conv, version, hash) não existir; retorna false se já existia. */
 export async function upsertFactIfNew(
   row: ConversationFactsRow
 ): Promise<{ inserted: boolean; error?: string }> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const client = supabaseAdmin as unknown as LooseClient;
 
-  const { data: existing } = await supabaseAdmin
+  const { data: existing } = await client
     .from("conversation_facts")
     .select("id")
     .eq("company_id", row.company_id)
@@ -19,20 +38,20 @@ export async function upsertFactIfNew(
 
   if (existing) return { inserted: false };
 
-  const { error } = await supabaseAdmin.from("conversation_facts").insert({
+  const { error } = await client.from("conversation_facts").insert({
     company_id: row.company_id,
     conversation_id: row.conversation_id,
     analyzer_version: row.analyzer_version,
     content_hash: row.content_hash,
     lifecycle_status: row.lifecycle_status,
     primary_intent: row.primary_intent,
-    intents_json: row.intents_json as never,
-    objections_json: row.objections_json as never,
-    buying_signals_json: row.buying_signals_json as never,
-    negative_signals_json: row.negative_signals_json as never,
-    products_json: row.products_json as never,
-    topics_json: row.topics_json as never,
-    quality_warnings_json: row.quality_warnings_json as never,
+    intents_json: row.intents_json,
+    objections_json: row.objections_json,
+    buying_signals_json: row.buying_signals_json,
+    negative_signals_json: row.negative_signals_json,
+    products_json: row.products_json,
+    topics_json: row.topics_json,
+    quality_warnings_json: row.quality_warnings_json,
     sentiment_label: row.sentiment_label,
     sentiment_score: row.sentiment_score,
     lead_source: row.lead_source,
