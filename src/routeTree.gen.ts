@@ -54,6 +54,7 @@ import { Route as ApiScientificMemoryLatestRouteImport } from './routes/api.scie
 import { Route as ApiScientificKnowledgeTimelineRouteImport } from './routes/api.scientific-knowledge.timeline'
 import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
 import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
+import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
@@ -342,6 +343,11 @@ const ApiScientificKnowledgePersistRoute =
     path: '/api/scientific-knowledge/persist',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiRuntimeStatusRoute = ApiRuntimeStatusRouteImport.update({
+  id: '/api/runtime/status',
+  path: '/api/runtime/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
   id: '/api/onboarding/test-send',
   path: '/api/onboarding/test-send',
@@ -609,6 +615,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
@@ -695,6 +702,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
@@ -783,6 +791,7 @@ export interface FileRoutesById {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
@@ -872,6 +881,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
@@ -958,6 +968,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
@@ -1045,6 +1056,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
@@ -1129,6 +1141,7 @@ export interface RootRouteChildren {
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingStatusRoute: typeof ApiOnboardingStatusRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
+  ApiRuntimeStatusRoute: typeof ApiRuntimeStatusRoute
   ApiScientificKnowledgePersistRoute: typeof ApiScientificKnowledgePersistRoute
   ApiScientificKnowledgeSnapshotRoute: typeof ApiScientificKnowledgeSnapshotRoute
   ApiScientificKnowledgeTimelineRoute: typeof ApiScientificKnowledgeTimelineRoute
@@ -1480,6 +1493,13 @@ declare module '@tanstack/react-router' {
       path: '/api/scientific-knowledge/persist'
       fullPath: '/api/scientific-knowledge/persist'
       preLoaderRoute: typeof ApiScientificKnowledgePersistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/status': {
+      id: '/api/runtime/status'
+      path: '/api/runtime/status'
+      fullPath: '/api/runtime/status'
+      preLoaderRoute: typeof ApiRuntimeStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/onboarding/test-send': {
@@ -1839,6 +1859,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingStatusRoute: ApiOnboardingStatusRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
+  ApiRuntimeStatusRoute: ApiRuntimeStatusRoute,
   ApiScientificKnowledgePersistRoute: ApiScientificKnowledgePersistRoute,
   ApiScientificKnowledgeSnapshotRoute: ApiScientificKnowledgeSnapshotRoute,
   ApiScientificKnowledgeTimelineRoute: ApiScientificKnowledgeTimelineRoute,

@@ -1,24 +1,28 @@
 // ============================================================================
 // AutonomousRuntime — Ponto central do sistema nervoso.
-// Etapa 1 (Fundação): inicializa, registra agentes, mantém heartbeat e
-// expõe status. NÃO executa agentes. NÃO altera comportamento operacional.
+// Etapa 2: agora controla a fila (Dispatcher + Queue). NÃO executa agentes.
 // Stateless multi-tenant: nunca armazena contexto de empresa.
 // ============================================================================
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { AgentDispatcher } from "./AgentDispatcher.server";
 import { AgentOrchestrator } from "./AgentOrchestrator.server";
 import { AgentRegistry } from "./AgentRegistry.server";
 import { RuntimeClock } from "./RuntimeClock.server";
 import { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
-import { RUNTIME_VERSION, type RuntimeStatus } from "./RuntimeTypes";
+import { RuntimeJobQueue } from "./RuntimeJobQueue.server";
+import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
   readonly registry: AgentRegistry;
-  readonly dispatcher: AgentDispatcher;
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
   readonly startedAtMs: number;
   readonly startedAtIso: string;
+
+  private _queue: RuntimeJobQueue | null = null;
+  private _dispatcher: AgentDispatcher;
 
   private static _instance: AutonomousRuntime | null = null;
 
@@ -26,19 +30,40 @@ export class AutonomousRuntime {
     this.startedAtMs = RuntimeClock.now();
     this.startedAtIso = new Date(this.startedAtMs).toISOString();
     this.registry = new AgentRegistry();
-    this.dispatcher = new AgentDispatcher(this.registry);
     this.orchestrator = new AgentOrchestrator(this.registry);
     this.heartbeat = new RuntimeHeartbeat(this.registry, this.startedAtMs);
-    // Primeiro tick sincrônico (sem iniciar loop automático).
+    this._dispatcher = new AgentDispatcher({
+      registry: this.registry,
+      orchestrator: this.orchestrator,
+      queue: null,
+    });
+    // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
 
-  /** Singleton lazy. Sem side-effects globais até a primeira chamada. */
   static instance(): AutonomousRuntime {
     if (!AutonomousRuntime._instance) {
       AutonomousRuntime._instance = new AutonomousRuntime();
     }
     return AutonomousRuntime._instance;
+  }
+
+  /** Conecta o Runtime a um cliente Supabase admin (writer). Idempotente. */
+  bindWriter(writer: SupabaseClient<Database>): void {
+    this._queue = new RuntimeJobQueue(writer);
+    this._dispatcher = new AgentDispatcher({
+      registry: this.registry,
+      orchestrator: this.orchestrator,
+      queue: this._queue,
+    });
+  }
+
+  get dispatcher(): AgentDispatcher {
+    return this._dispatcher;
+  }
+
+  get queue(): RuntimeJobQueue | null {
+    return this._queue;
   }
 
   status(): RuntimeStatus {
@@ -54,24 +79,37 @@ export class AutonomousRuntime {
     };
   }
 
-  /** Snapshot completo para observabilidade (Neural Panel futuro). */
-  snapshot() {
+  async fullSnapshot(tenantId?: string) {
+    const counters: RuntimeJobCounters | null = this._queue
+      ? await this._queue.counters(tenantId).catch(() => null)
+      : null;
+    const tick = await this.heartbeat.tickWithQueue(this._queue, tenantId);
+    const recentJobs = this._queue
+      ? await this._queue.list({ tenantId, limit: 25 }).catch(() => [])
+      : [];
     return {
       status: this.status(),
+      heartbeat: tick,
+      counters,
       agents: this.registry.list().map((a) => ({
         id: a.descriptor.id,
         name: a.descriptor.name,
         category: a.descriptor.category,
         enabled: a.descriptor.enabled,
         executionMode: a.descriptor.executionMode,
+        supportedExecutionModes: a.descriptor.supportedExecutionModes,
+        supportedPriorities: a.descriptor.supportedPriorities,
+        maxConcurrency: a.descriptor.maxConcurrency,
+        retryPolicy: a.descriptor.retryPolicy,
+        timeoutPolicy: a.descriptor.timeoutPolicy,
         priority: a.descriptor.priority,
         dependencies: a.descriptor.dependencies,
         state: a.state,
       })),
+      recentJobs,
     };
   }
 
-  /** EXCLUSIVO para testes. */
   static __resetForTests(): void {
     AutonomousRuntime._instance?.heartbeat.stop();
     AutonomousRuntime._instance = null;
