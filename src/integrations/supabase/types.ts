@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          company_id: string
+          created_at: string
+          dedupe_key: string | null
+          finished_at: string | null
+          id: string
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload_json: Json
+          priority: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          company_id: string
+          created_at?: string
+          dedupe_key?: string | null
+          finished_at?: string | null
+          id?: string
+          job_type: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload_json?: Json
+          priority?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          company_id?: string
+          created_at?: string
+          dedupe_key?: string | null
+          finished_at?: string | null
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload_json?: Json
+          priority?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_flow_events: {
         Row: {
           company_id: string
@@ -247,6 +315,53 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      billing_usage_events: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          metric: string
+          occurred_at: string
+          period_day: string | null
+          provider: string | null
+          unit: string
+          value: number
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          metric: string
+          occurred_at?: string
+          period_day?: string | null
+          provider?: string | null
+          unit?: string
+          value?: number
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          metric?: string
+          occurred_at?: string
+          period_day?: string | null
+          provider?: string | null
+          unit?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_usage_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaign_ai_analyses: {
         Row: {
@@ -1339,6 +1454,53 @@ export type Database = {
         }
         Relationships: []
       }
+      http_audit_log: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          method: string
+          outcome: string | null
+          path: string
+          status: number | null
+          user_id: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          method: string
+          outcome?: string | null
+          path: string
+          status?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          method?: string
+          outcome?: string | null
+          path?: string
+          status?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "http_audit_log_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           access_token: string | null
@@ -1938,6 +2100,47 @@ export type Database = {
           },
         ]
       }
+      rate_limit_counters: {
+        Row: {
+          bucket: string
+          company_id: string
+          count: number
+          created_at: string
+          id: string
+          updated_at: string
+          window_seconds: number
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          company_id: string
+          count?: number
+          created_at?: string
+          id?: string
+          updated_at?: string
+          window_seconds: number
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          company_id?: string
+          count?: number
+          created_at?: string
+          id?: string
+          updated_at?: string
+          window_seconds?: number
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limit_counters_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scientific_hypothesis_registry: {
         Row: {
           category: string
@@ -2206,6 +2409,85 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "scientific_memory_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_health_samples: {
+        Row: {
+          collected_at: string
+          company_id: string | null
+          id: string
+          metric: string
+          tags: Json
+          value: number
+        }
+        Insert: {
+          collected_at?: string
+          company_id?: string | null
+          id?: string
+          metric: string
+          tags?: Json
+          value: number
+        }
+        Update: {
+          collected_at?: string
+          company_id?: string | null
+          id?: string
+          metric?: string
+          tags?: Json
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_health_samples_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upload_hashes: {
+        Row: {
+          bucket: string
+          byte_size: number
+          company_id: string
+          created_at: string
+          id: string
+          magic_family: string | null
+          mime: string | null
+          object_path: string
+          sha256: string
+        }
+        Insert: {
+          bucket: string
+          byte_size: number
+          company_id: string
+          created_at?: string
+          id?: string
+          magic_family?: string | null
+          mime?: string | null
+          object_path: string
+          sha256: string
+        }
+        Update: {
+          bucket?: string
+          byte_size?: number
+          company_id?: string
+          created_at?: string
+          id?: string
+          magic_family?: string | null
+          mime?: string | null
+          object_path?: string
+          sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upload_hashes_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -2560,8 +2842,74 @@ export type Database = {
       cleanup_executive_knowledge: { Args: never; Returns: number }
       cleanup_scientific_memory: { Args: never; Returns: number }
       cleanup_scientific_snapshots: { Args: never; Returns: number }
+      complete_agent_job: {
+        Args: {
+          _backoff_seconds?: number
+          _error?: string
+          _job_id: string
+          _success: boolean
+          _worker_id: string
+        }
+        Returns: {
+          attempts: number
+          available_at: string
+          company_id: string
+          created_at: string
+          dedupe_key: string | null
+          finished_at: string | null
+          id: string
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload_json: Json
+          priority: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
       current_company_id: { Args: never; Returns: string }
+      dequeue_agent_job: {
+        Args: {
+          _job_types: string[]
+          _lock_seconds?: number
+          _worker_id: string
+        }
+        Returns: {
+          attempts: number
+          available_at: string
+          company_id: string
+          created_at: string
+          dedupe_key: string | null
+          finished_at: string | null
+          id: string
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload_json: Json
+          priority: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "agent_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_storage_usage_bytes: {
         Args: { _company_id: string }
         Returns: number
@@ -2602,6 +2950,16 @@ export type Database = {
           _user_id: string
         }
         Returns: string
+      }
+      rate_limit_increment: {
+        Args: {
+          _bucket: string
+          _company_id: string
+          _increment?: number
+          _window_seconds: number
+          _window_start: string
+        }
+        Returns: number
       }
       touch_last_seen: { Args: never; Returns: undefined }
     }
