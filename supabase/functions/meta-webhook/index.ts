@@ -81,6 +81,15 @@ function getAllSecretCandidates(): SecretCandidate[] {
     });
   }
 
+  if (META_INSTAGRAM_APP_SECRET.trim()) {
+    candidates.push({
+      appId: META_INSTAGRAM_APP_ID,
+      label: `META_INSTAGRAM_APP_SECRET:${META_INSTAGRAM_APP_ID}`,
+      secret: META_INSTAGRAM_APP_SECRET.trim(),
+      source: "META_INSTAGRAM_APP_SECRET",
+    });
+  }
+
   const extra = META_APP_SECRETS_EXTRA.trim();
   if (extra.startsWith("{") || extra.startsWith("[")) {
     try {
