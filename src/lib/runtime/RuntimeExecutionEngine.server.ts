@@ -4,6 +4,7 @@
 // Toda execução futura passará OBRIGATORIAMENTE por este motor.
 // ============================================================================
 
+import type { AgentAdapterRegistry } from "./AgentAdapterRegistry.server";
 import type { AgentDispatcher } from "./AgentDispatcher.server";
 import type { AgentRegistry } from "./AgentRegistry.server";
 import { createExecutionContext, type ExecutionRuntimeRefs } from "./ExecutionContext.server";
@@ -15,11 +16,29 @@ import type { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import type { RuntimeScheduler } from "./RuntimeScheduler.server";
 import type { RuntimeJobRecord } from "./RuntimeTypes";
 
+/** Etapa 6: apenas `system-health` pode executar REAL. */
+export const REAL_EXECUTION_ALLOWLIST: ReadonlySet<string> = new Set(["system-health"]);
+
 export interface ExecutionEngineDeps {
   registry: AgentRegistry;
   dispatcher: AgentDispatcher;
   scheduler: RuntimeScheduler;
   heartbeat: RuntimeHeartbeat;
+  adapters?: AgentAdapterRegistry | null;
+}
+
+export interface LastRealExecution {
+  agentId: string;
+  executionId: string;
+  jobId: string;
+  tenantId: string;
+  workerId: string | null;
+  outcome: string;
+  reason: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number;
+  error: string | null;
 }
 
 export class RuntimeExecutionEngine {
@@ -27,13 +46,34 @@ export class RuntimeExecutionEngine {
   readonly metrics = new ExecutionMetrics();
   readonly health: ExecutionHealth;
   readonly pipeline: ExecutionPipeline;
+  readonly allowlist: ReadonlySet<string> = REAL_EXECUTION_ALLOWLIST;
 
   private deps: ExecutionEngineDeps;
+  private lastRealExecutionByAgent = new Map<string, LastRealExecution>();
 
   constructor(deps: ExecutionEngineDeps) {
     this.deps = deps;
-    this.pipeline = new ExecutionPipeline({ registry: deps.registry, locks: this.locks });
+    this.pipeline = new ExecutionPipeline({
+      registry: deps.registry,
+      locks: this.locks,
+      adapters: deps.adapters ?? null,
+      realExecutionAllowlist: this.allowlist,
+    });
     this.health = new ExecutionHealth(this.locks, this.metrics);
+  }
+
+  /** Chamado pelo Worker após executar. Registra a última execução real. */
+  recordLastRealExecution(entry: LastRealExecution): void {
+    if (!this.allowlist.has(entry.agentId)) return;
+    this.lastRealExecutionByAgent.set(entry.agentId, entry);
+  }
+
+  lastRealExecution(agentId: string): LastRealExecution | null {
+    return this.lastRealExecutionByAgent.get(agentId) ?? null;
+  }
+
+  lastRealExecutions(): LastRealExecution[] {
+    return Array.from(this.lastRealExecutionByAgent.values());
   }
 
   /** Reconecta dependências (usado quando o Runtime é rebindado a um writer). */
