@@ -13,6 +13,7 @@ import { ExecutiveClients } from "@/components/executivo/ExecutiveClients";
 import { ExecutiveSystemHealth } from "@/components/executivo/ExecutiveSystemHealth";
 import { ExecutiveSkeleton } from "@/components/executivo/ExecutiveSkeleton";
 import { ExecutiveNarrative } from "@/components/executivo/ExecutiveNarrative";
+import { ExecutiveSalesAgent } from "@/components/executivo/ExecutiveSalesAgent";
 
 export const Route = createFileRoute("/executivo")({
   component: ExecutivePage,
@@ -84,6 +85,7 @@ function ExecutivePage() {
               snapshotGeneratedAt={query.data.generatedAt}
             />
             <ExecutiveKpis metrics={query.data.metrics} dataQuality={query.data.dataQuality} />
+            <ExecutiveSalesAgent period={period} />
             <ExecutiveInsights
               insights={query.data.insights}
               generatedAt={query.data.generatedAt}

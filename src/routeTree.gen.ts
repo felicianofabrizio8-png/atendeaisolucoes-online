@@ -50,6 +50,7 @@ import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboardi
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
+import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
 import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
 import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
@@ -299,6 +300,12 @@ const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
   path: '/api/executive/snapshot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExecutiveSalesIntelligenceRoute =
+  ApiExecutiveSalesIntelligenceRouteImport.update({
+    id: '/api/executive/sales-intelligence',
+    path: '/api/executive/sales-intelligence',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiExecutiveNarrativeRoute = ApiExecutiveNarrativeRouteImport.update({
   id: '/api/executive/narrative',
   path: '/api/executive/narrative',
@@ -483,6 +490,7 @@ export interface FileRoutesByFullPath {
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
+  '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -552,6 +560,7 @@ export interface FileRoutesByTo {
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
+  '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -623,6 +632,7 @@ export interface FileRoutesById {
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
+  '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
@@ -695,6 +705,7 @@ export interface FileRouteTypes {
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
+    | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
@@ -764,6 +775,7 @@ export interface FileRouteTypes {
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
+    | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
@@ -834,6 +846,7 @@ export interface FileRouteTypes {
     | '/api/coach/analyze'
     | '/api/coach/suggest'
     | '/api/executive/narrative'
+    | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
     | '/api/meta/config'
     | '/api/onboarding/meta-save'
@@ -902,6 +915,7 @@ export interface RootRouteChildren {
   ApiCoachAnalyzeRoute: typeof ApiCoachAnalyzeRoute
   ApiCoachSuggestRoute: typeof ApiCoachSuggestRoute
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
+  ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
@@ -1223,6 +1237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiExecutiveSnapshotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/executive/sales-intelligence': {
+      id: '/api/executive/sales-intelligence'
+      path: '/api/executive/sales-intelligence'
+      fullPath: '/api/executive/sales-intelligence'
+      preLoaderRoute: typeof ApiExecutiveSalesIntelligenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/executive/narrative': {
       id: '/api/executive/narrative'
       path: '/api/executive/narrative'
@@ -1465,6 +1486,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCoachAnalyzeRoute: ApiCoachAnalyzeRoute,
   ApiCoachSuggestRoute: ApiCoachSuggestRoute,
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
+  ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
