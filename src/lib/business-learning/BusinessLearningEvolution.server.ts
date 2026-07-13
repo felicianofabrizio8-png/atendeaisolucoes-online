@@ -210,6 +210,7 @@ export class BusinessLearningEvolution {
             cmp,
             now,
             confidenceFor(pr.sample),
+            pr.sample,
           ),
         );
       }
