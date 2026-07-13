@@ -64,6 +64,7 @@ const nav: NavItem[] = [
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
+  { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
