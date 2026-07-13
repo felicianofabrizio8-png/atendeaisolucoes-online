@@ -95,6 +95,34 @@ export const Route = createFileRoute("/api/executive/narrative")({
           const agent = new ExecutiveAgent({ supabase, companyId: profile.company_id });
           const bundle = await agent.snapshot(parsed.data.period);
 
+          // Ingest Executive Knowledge (idempotente por snapshot_generated_at).
+          // Falhas aqui NÃO derrubam a narrativa — knowledge é enriquecimento.
+          let previousCtx: import(
+            "@/lib/executive-narrative/ExecutiveNarrativePrompt"
+          ).PreviousKnowledgeContext | undefined;
+          try {
+            const { ExecutiveKnowledgeService } = await import(
+              "@/lib/executive-knowledge/ExecutiveKnowledgeService.server"
+            );
+            const ingest = await ExecutiveKnowledgeService.ingestSnapshot(
+              supabase,
+              profile.company_id,
+              bundle,
+            );
+            if (ingest.previous) {
+              previousCtx = {
+                previousSnapshotAt: ingest.comparison.previousSnapshotAt ?? ingest.previous.snapshotGeneratedAt,
+                daysBetween: ingest.comparison.daysBetween,
+                improvements: ingest.comparison.improvements,
+                regressions: ingest.comparison.regressions,
+                newFacts: ingest.comparison.newFacts,
+                summary: ingest.comparison.summary,
+              };
+            }
+          } catch {
+            // silencioso: nunca bloqueia a narrativa por causa do histórico.
+          }
+
           const firstName =
             (profile.display_name ?? userData.user.email ?? "Executivo")
               .split(/\s+|@/)[0] || "Executivo";
@@ -104,6 +132,7 @@ export const Route = createFileRoute("/api/executive/narrative")({
             bundle,
             executiveFirstName: firstName,
             localHour,
+            previousKnowledge: previousCtx,
           });
 
           return json(200, { ok: true, data: narrative });
