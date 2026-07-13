@@ -1,6 +1,6 @@
 // ============================================================================
-// Scientific Memory — Repository (Fase 4)
-// READ + INSERT only. RLS admin-only já cuida da autorização.
+// Scientific Memory — Repository (Fase 4 + Quality Gate)
+// READ + INSERT idempotente. Gravação apenas server-side (service_role).
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,11 +19,12 @@ import type {
   MemoryLimitation,
 } from "./ScientificMemoryTypes";
 
-// Row shape flexível: a tabela é nova e pode ainda não estar tipada em Database.
 interface RawRow {
   id: string;
   company_id: string;
   generated_at: string;
+  memory_date: string;
+  source_fingerprint: string;
   period: string;
   knowledge_score: number | string;
   scientific_score: number | string;
@@ -49,22 +50,25 @@ function asNumber(v: number | string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+const emptyQuality: MemoryQuality = {
+  observationsCount: 0,
+  hypothesesCount: 0,
+  evidenceCount: 0,
+  theoriesCount: 0,
+  validatedKnowledgeCount: 0,
+  distinctSnapshotDays: 0,
+  brainPatterns: 0,
+  brainKnowledge: 0,
+  avgConfidence: 0,
+};
+
 function mapRow(row: RawRow): ScientificMemoryRecord {
-  const emptyQuality: MemoryQuality = {
-    observationsCount: 0,
-    hypothesesCount: 0,
-    evidenceCount: 0,
-    theoriesCount: 0,
-    validatedKnowledgeCount: 0,
-    distinctSnapshotDays: 0,
-    brainPatterns: 0,
-    brainKnowledge: 0,
-    avgConfidence: 0,
-  };
   return {
     id: row.id,
     companyId: row.company_id,
     generatedAt: row.generated_at,
+    memoryDate: row.memory_date,
+    sourceFingerprint: row.source_fingerprint,
     period: row.period as ScientificMemoryPeriod,
     knowledgeScore: asNumber(row.knowledge_score),
     scientificScore: asNumber(row.scientific_score),
@@ -80,6 +84,11 @@ function mapRow(row: RawRow): ScientificMemoryRecord {
   };
 }
 
+export interface InsertResult {
+  record: ScientificMemoryRecord | null;
+  alreadyExists: boolean;
+}
+
 export class ScientificMemoryRepository {
   private readonly supabase: SupabaseClient<Database>;
   private readonly companyId: string;
@@ -89,7 +98,27 @@ export class ScientificMemoryRepository {
     this.companyId = companyId;
   }
 
-  async insert(payload: ScientificMemoryInsert): Promise<ScientificMemoryRecord | null> {
+  async findByFingerprint(
+    payload: ScientificMemoryInsert,
+  ): Promise<ScientificMemoryRecord | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (this.supabase as any)
+      .from("scientific_memory")
+      .select("*")
+      .eq("company_id", this.companyId)
+      .eq("period", payload.period)
+      .eq("version", payload.version)
+      .eq("memory_date", payload.memoryDate)
+      .eq("source_fingerprint", payload.sourceFingerprint)
+      .maybeSingle();
+    if (error || !data) return null;
+    return mapRow(data as RawRow);
+  }
+
+  async insert(payload: ScientificMemoryInsert): Promise<InsertResult> {
+    const existing = await this.findByFingerprint(payload);
+    if (existing) return { record: existing, alreadyExists: true };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = this.supabase as any;
     const { data, error } = await client
@@ -97,6 +126,8 @@ export class ScientificMemoryRepository {
       .insert({
         company_id: this.companyId,
         generated_at: payload.generatedAt,
+        memory_date: payload.memoryDate,
+        source_fingerprint: payload.sourceFingerprint,
         period: payload.period,
         knowledge_score: payload.knowledgeScore,
         scientific_score: payload.scientificScore,
@@ -111,8 +142,15 @@ export class ScientificMemoryRepository {
       })
       .select("*")
       .single();
-    if (error || !data) return null;
-    return mapRow(data as RawRow);
+    if (error) {
+      // 23505 = unique_violation → corrida com outra chamada idêntica.
+      if ((error as { code?: string }).code === "23505") {
+        const again = await this.findByFingerprint(payload);
+        return { record: again, alreadyExists: true };
+      }
+      return { record: null, alreadyExists: false };
+    }
+    return { record: data ? mapRow(data as RawRow) : null, alreadyExists: false };
   }
 
   async latest(period?: ScientificMemoryPeriod): Promise<ScientificMemoryRecord | null> {
@@ -133,6 +171,7 @@ export class ScientificMemoryRepository {
   async previous(
     beforeIso: string,
     period: ScientificMemoryPeriod,
+    version: string,
   ): Promise<ScientificMemoryRecord | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (this.supabase as any)
@@ -140,6 +179,7 @@ export class ScientificMemoryRepository {
       .select("*")
       .eq("company_id", this.companyId)
       .eq("period", period)
+      .eq("version", version)
       .lt("generated_at", beforeIso)
       .order("generated_at", { ascending: false })
       .limit(1)
@@ -148,7 +188,6 @@ export class ScientificMemoryRepository {
     return mapRow(data as RawRow);
   }
 
-  /** Últimos 365 dias (limite protetor de 730 linhas). */
   async timeline(period?: ScientificMemoryPeriod): Promise<ScientificMemoryTimelineItem[]> {
     const since = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,17 +205,7 @@ export class ScientificMemoryRepository {
       period: String(r.period) as ScientificMemoryPeriod,
       knowledgeScore: asNumber(r.knowledge_score as number),
       scientificScore: asNumber(r.scientific_score as number),
-      quality: asObject<MemoryQuality>(r.quality, {
-        observationsCount: 0,
-        hypothesesCount: 0,
-        evidenceCount: 0,
-        theoriesCount: 0,
-        validatedKnowledgeCount: 0,
-        distinctSnapshotDays: 0,
-        brainPatterns: 0,
-        brainKnowledge: 0,
-        avgConfidence: 0,
-      }),
+      quality: asObject<MemoryQuality>(r.quality, emptyQuality),
       version: String(r.version),
     }));
   }
