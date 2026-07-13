@@ -17,7 +17,8 @@ export class BillingRepository {
       unit: input.unit ?? "count",
       provider: input.provider ?? null,
       occurred_at: (input.occurredAt ?? new Date()).toISOString(),
-      metadata: (input.metadata ?? {}) as Database["public"]["Tables"]["billing_usage_events"]["Insert"]["metadata"],
+      metadata: (input.metadata ??
+        {}) as Database["public"]["Tables"]["billing_usage_events"]["Insert"]["metadata"],
     });
     if (error) throw new Error(`[Billing.record] ${error.message}`);
   }
@@ -31,7 +32,8 @@ export class BillingRepository {
       unit: i.unit ?? "count",
       provider: i.provider ?? null,
       occurred_at: (i.occurredAt ?? new Date()).toISOString(),
-      metadata: (i.metadata ?? {}) as Database["public"]["Tables"]["billing_usage_events"]["Insert"]["metadata"],
+      metadata: (i.metadata ??
+        {}) as Database["public"]["Tables"]["billing_usage_events"]["Insert"]["metadata"],
     }));
     const { error } = await this.writer.from("billing_usage_events").insert(rows);
     if (error) throw new Error(`[Billing.recordMany] ${error.message}`);
@@ -64,7 +66,9 @@ export class BillingRepository {
       }
     }
     return [...acc.values()].sort((a, b) =>
-      a.periodDay === b.periodDay ? a.metric.localeCompare(b.metric) : a.periodDay.localeCompare(b.periodDay),
+      a.periodDay === b.periodDay
+        ? a.metric.localeCompare(b.metric)
+        : a.periodDay.localeCompare(b.periodDay),
     );
   }
 }

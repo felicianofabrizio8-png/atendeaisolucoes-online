@@ -12,7 +12,10 @@ interface CacheEntry {
 
 export class LLMCache {
   private readonly store = new Map<string, CacheEntry>();
-  constructor(private readonly ttlMs = 30_000, private readonly maxEntries = 200) {}
+  constructor(
+    private readonly ttlMs = 30_000,
+    private readonly maxEntries = 200,
+  ) {}
 
   static key(req: LLMRequest): string {
     const canonical = {

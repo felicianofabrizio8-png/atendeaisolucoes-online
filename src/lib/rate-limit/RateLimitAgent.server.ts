@@ -27,11 +27,7 @@ export class RateLimitAgent {
     return this.service.check(companyId, policy, by);
   }
 
-  checkWithPolicy(
-    companyId: string,
-    policy: RateLimitPolicy,
-    by = 1,
-  ): Promise<RateLimitDecision> {
+  checkWithPolicy(companyId: string, policy: RateLimitPolicy, by = 1): Promise<RateLimitDecision> {
     return this.service.check(companyId, policy, by);
   }
 }

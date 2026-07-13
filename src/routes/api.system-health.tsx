@@ -13,7 +13,10 @@ const fetchHealthSnapshot = createServerFn({ method: "GET" })
     const supabase = context.supabase as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (col: string, v: string) => {
+          eq: (
+            col: string,
+            v: string,
+          ) => {
             maybeSingle: () => Promise<{ data: { company_id: string } | null }>;
           };
         };

@@ -19,13 +19,7 @@ export interface UploadValidationResult {
   mime: string | null;
 }
 
-export type MagicFamily =
-  | "image"
-  | "audio"
-  | "video"
-  | "pdf"
-  | "text"
-  | "unknown";
+export type MagicFamily = "image" | "audio" | "video" | "pdf" | "text" | "unknown";
 
 interface MagicRule {
   family: MagicFamily;
@@ -71,7 +65,9 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function validateUpload(input: UploadValidationInput): Promise<UploadValidationResult> {
+export async function validateUpload(
+  input: UploadValidationInput,
+): Promise<UploadValidationResult> {
   const size = input.bytes.byteLength;
   const sha256 = await sha256Hex(input.bytes);
   const detected = detectMagic(input.bytes);

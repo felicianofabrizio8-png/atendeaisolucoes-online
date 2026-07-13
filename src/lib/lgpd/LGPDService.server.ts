@@ -78,7 +78,10 @@ export class LGPDService {
     // A tipagem de select-em-tabela-dinâmica não é validável pelo TS.
     const w = this.writer as unknown as {
       from: (t: string) => {
-        select: (c: string, o: { count: "exact"; head: true }) => {
+        select: (
+          c: string,
+          o: { count: "exact"; head: true },
+        ) => {
           eq: (col: string, v: string) => Promise<{ count: number | null }>;
         };
       };

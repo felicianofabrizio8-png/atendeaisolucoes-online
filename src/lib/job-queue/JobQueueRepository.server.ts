@@ -6,12 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import type {
-  CompleteJobInput,
-  DequeueOptions,
-  EnqueueJobInput,
-  JobRecord,
-} from "./JobQueueTypes";
+import type { CompleteJobInput, DequeueOptions, EnqueueJobInput, JobRecord } from "./JobQueueTypes";
 
 type Row = Database["public"]["Tables"]["agent_jobs"]["Row"];
 
@@ -44,7 +39,8 @@ export class JobQueueRepository {
     const row = {
       company_id: input.companyId,
       job_type: input.jobType,
-      payload_json: (input.payload ?? {}) as Database["public"]["Tables"]["agent_jobs"]["Insert"]["payload_json"],
+      payload_json: (input.payload ??
+        {}) as Database["public"]["Tables"]["agent_jobs"]["Insert"]["payload_json"],
       priority: input.priority ?? 100,
       max_attempts: input.maxAttempts ?? 5,
       available_at: (input.availableAt ?? new Date()).toISOString(),

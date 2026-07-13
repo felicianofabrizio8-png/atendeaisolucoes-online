@@ -14,7 +14,8 @@ export class HealthRepository {
       metric: sample.metric,
       value: Number(sample.value),
       company_id: sample.companyId ?? null,
-      tags: (sample.tags ?? {}) as Database["public"]["Tables"]["system_health_samples"]["Insert"]["tags"],
+      tags: (sample.tags ??
+        {}) as Database["public"]["Tables"]["system_health_samples"]["Insert"]["tags"],
       collected_at: (sample.collectedAt ?? new Date()).toISOString(),
     });
     if (error) throw new Error(`[Health.insert] ${error.message}`);
@@ -26,7 +27,8 @@ export class HealthRepository {
       metric: s.metric,
       value: Number(s.value),
       company_id: s.companyId ?? null,
-      tags: (s.tags ?? {}) as Database["public"]["Tables"]["system_health_samples"]["Insert"]["tags"],
+      tags: (s.tags ??
+        {}) as Database["public"]["Tables"]["system_health_samples"]["Insert"]["tags"],
       collected_at: (s.collectedAt ?? new Date()).toISOString(),
     }));
     const { error } = await this.writer.from("system_health_samples").insert(rows);

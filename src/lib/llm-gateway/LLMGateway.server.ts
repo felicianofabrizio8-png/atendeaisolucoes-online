@@ -42,21 +42,18 @@ export class LLMGateway {
     }
 
     const start = Date.now();
-    const { result, attempts } = await withRetry(
-      () => runProviderChain(this.opts.providers, req),
-      {
-        maxAttempts: this.opts.retryAttempts ?? 2,
-        isRetryable: (err) => {
-          const msg = err instanceof Error ? err.message.toLowerCase() : "";
-          return (
-            msg.includes("timeout") ||
-            msg.includes("network") ||
-            msg.includes("rate") ||
-            msg.includes("5")
-          );
-        },
+    const { result, attempts } = await withRetry(() => runProviderChain(this.opts.providers, req), {
+      maxAttempts: this.opts.retryAttempts ?? 2,
+      isRetryable: (err) => {
+        const msg = err instanceof Error ? err.message.toLowerCase() : "";
+        return (
+          msg.includes("timeout") ||
+          msg.includes("network") ||
+          msg.includes("rate") ||
+          msg.includes("5")
+        );
       },
-    );
+    });
 
     const response: LLMResponse = {
       ...result.response,
