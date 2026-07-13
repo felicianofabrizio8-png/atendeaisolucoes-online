@@ -112,6 +112,7 @@ export class AutonomousRuntime {
         state: a.state,
       })),
       recentJobs,
+      scheduler: this.scheduler.snapshot(),
     };
   }
 
