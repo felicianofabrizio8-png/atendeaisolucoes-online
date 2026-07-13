@@ -67,7 +67,15 @@ export interface InspectFilter {
 
 export async function listFactsForInspection(f: InspectFilter) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  let q = supabaseAdmin
+  // Cast necessário: types.ts é regenerado apenas após aprovação da migration.
+  const client = supabaseAdmin as unknown as {
+    from: (t: string) => {
+      select: (c: string) => {
+        eq: (col: string, v: unknown) => unknown;
+      };
+    };
+  };
+  let q = client
     .from("conversation_facts")
     .select(
       "id, analyzer_version, lifecycle_status, primary_intent, intents_json, " +
@@ -78,16 +86,51 @@ export async function listFactsForInspection(f: InspectFilter) {
         "quote_detected, sale_detected, loss_detected, confidence, " +
         "extraction_method, quality_warnings_json, analyzed_at"
     )
-    .eq("company_id", f.companyId)
-    .order("analyzed_at", { ascending: false })
-    .limit(Math.min(f.limit, 50));
-  if (f.lifecycle) q = q.eq("lifecycle_status", f.lifecycle);
-  if (f.channel) q = q.eq("channel", f.channel);
-  if (f.confidenceMin !== undefined) q = q.gte("confidence", f.confidenceMin);
+    .eq("company_id", f.companyId) as unknown as {
+      order: (col: string, opts: { ascending: boolean }) => unknown;
+    };
+  let qb = q.order("analyzed_at", { ascending: false }) as unknown as {
+    limit: (n: number) => unknown;
+    eq: (col: string, v: unknown) => unknown;
+    gte: (col: string, v: unknown) => unknown;
+  };
+  qb = qb.limit(Math.min(f.limit, 50)) as typeof qb;
+  if (f.lifecycle) qb = qb.eq("lifecycle_status", f.lifecycle) as typeof qb;
+  if (f.channel) qb = qb.eq("channel", f.channel) as typeof qb;
+  if (f.confidenceMin !== undefined) qb = qb.gte("confidence", f.confidenceMin) as typeof qb;
   if (f.sinceDays) {
-    q = q.gte("analyzed_at", new Date(Date.now() - f.sinceDays * 86400_000).toISOString());
+    qb = qb.gte("analyzed_at", new Date(Date.now() - f.sinceDays * 86400_000).toISOString()) as typeof qb;
   }
-  const { data, error } = await q;
-  if (error) throw error;
+  const { data, error } = (await (qb as unknown as Promise<{ data: FactInspectRow[] | null; error: { message: string } | null }>));
+  if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+export interface FactInspectRow {
+  id: string;
+  analyzer_version: string;
+  lifecycle_status: string | null;
+  primary_intent: string | null;
+  intents_json: string[];
+  objections_json: string[];
+  buying_signals_json: string[];
+  negative_signals_json: string[];
+  products_json: string[];
+  topics_json: string[];
+  sentiment_label: string | null;
+  sentiment_score: number | null;
+  channel: string | null;
+  lead_source: string | null;
+  message_count: number;
+  lead_message_count: number;
+  agent_message_count: number;
+  first_response_minutes: number | null;
+  negotiation_duration_minutes: number | null;
+  quote_detected: boolean;
+  sale_detected: boolean;
+  loss_detected: boolean;
+  confidence: number;
+  extraction_method: string;
+  quality_warnings_json: string[];
+  analyzed_at: string;
 }
