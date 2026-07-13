@@ -4,6 +4,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { appendOnboardingEvent } from "@/lib/onboarding/appendEvent.server";
 
 interface UpsertBody {
   displayName: string;
@@ -143,6 +144,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
             );
           }
           console.log("integrations updated", { id: updated.id, company_id: updated.company_id });
+          await appendOnboardingEvent(auth.companyId, "whatsapp_connected", { updated: true });
           return Response.json({
             id: updated.id,
             updated: true,
@@ -163,6 +165,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           );
         }
         console.log("integrations inserted", { id: data.id, company_id: data.company_id });
+        await appendOnboardingEvent(auth.companyId, "whatsapp_connected", { created: true });
         return Response.json({
           id: data.id,
           created: true,

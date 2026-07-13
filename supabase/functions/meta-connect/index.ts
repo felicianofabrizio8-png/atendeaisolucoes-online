@@ -37,6 +37,21 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Onboarding timeline (best-effort; nunca derruba o handler; sem PII).
+// deno-lint-ignore no-explicit-any
+async function appendOnboardingEvent(sb: any, companyId: string, eventType: string, payload: Record<string, string | number | boolean | null> = {}) {
+  try {
+    if (!companyId) return;
+    await sb.from("company_onboarding_events").insert({
+      company_id: companyId,
+      event_type: eventType,
+      payload,
+    });
+  } catch (err) {
+    console.warn("APPEND_ONBOARDING_EVENT_FAIL", { eventType, err: String(err) });
+  }
+}
+
 // Sanitiza page_access_token: detecta concatenação dupla (bug histórico que
 // salvou o mesmo token duas vezes no mesmo campo) e devolve só a primeira
 // metade. Rejeita tokens que não começam com "EAA".
@@ -467,6 +482,9 @@ Deno.serve(async (req) => {
       { onConflict: "company_id,channel,external_account_id" },
     );
 
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "basic" });
+    await appendOnboardingEvent(sb, companyId, "facebook_connected", { mode: "basic" });
+
     return json({ ok: true, user: { id: me.id, name: me.name } });
   }
 
@@ -657,6 +675,13 @@ Deno.serve(async (req) => {
     }
     console.log("META_TOKEN_SAVED", { page_id: page.id, integration_id: integ?.id });
 
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "page", has_ig: !!igId });
+    if (igId) {
+      await appendOnboardingEvent(sb, companyId, "instagram_connected", {});
+    } else {
+      await appendOnboardingEvent(sb, companyId, "facebook_connected", {});
+    }
+
     // Assina a página aos eventos do webhook usando o page access token.
     // Se a Meta rejeitar, a integração permanece salva e exibimos apenas aviso.
     const webhookResult = await subscribePage(page.id, safePageToken);
@@ -841,9 +866,14 @@ Deno.serve(async (req) => {
         webhook_subscribed: subResult.ok,
         webhook_warning: subResult.ok ? undefined : "Webhook não confirmado",
       });
+      await appendOnboardingEvent(sb, companyId, ig ? "instagram_connected" : "facebook_connected", {});
     } catch (e) {
       results.push({ page_id: p.id, ok: false, error: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  if (results.some((r) => r.ok)) {
+    await appendOnboardingEvent(sb, companyId, "meta_connected", { mode: "bulk_pages", count: results.length });
   }
 
   return json({ ok: true, results });
