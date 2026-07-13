@@ -46,6 +46,7 @@ import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
 import { Route as ApiWhatsappForwardMessageRouteImport } from './routes/api.whatsapp.forward-message'
 import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
+import { Route as ApiScientificMemoryTimelineRouteImport } from './routes/api.scientific-memory.timeline'
 import { Route as ApiScientificKnowledgeTimelineRouteImport } from './routes/api.scientific-knowledge.timeline'
 import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
 import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
@@ -287,6 +288,12 @@ const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
   path: '/api/whatsapp/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScientificMemoryTimelineRoute =
+  ApiScientificMemoryTimelineRouteImport.update({
+    id: '/api/scientific-memory/timeline',
+    path: '/api/scientific-memory/timeline',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiScientificKnowledgeTimelineRoute =
   ApiScientificKnowledgeTimelineRouteImport.update({
     id: '/api/scientific-knowledge/timeline',
@@ -549,6 +556,7 @@ export interface FileRoutesByFullPath {
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
+  '/api/scientific-memory/timeline': typeof ApiScientificMemoryTimelineRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -626,6 +634,7 @@ export interface FileRoutesByTo {
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
+  '/api/scientific-memory/timeline': typeof ApiScientificMemoryTimelineRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -705,6 +714,7 @@ export interface FileRoutesById {
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
   '/api/scientific-knowledge/snapshot': typeof ApiScientificKnowledgeSnapshotRoute
   '/api/scientific-knowledge/timeline': typeof ApiScientificKnowledgeTimelineRoute
+  '/api/scientific-memory/timeline': typeof ApiScientificMemoryTimelineRoute
   '/api/whatsapp/debug': typeof ApiWhatsappDebugRoute
   '/api/whatsapp/forward-message': typeof ApiWhatsappForwardMessageRoute
   '/api/whatsapp/integration': typeof ApiWhatsappIntegrationRoute
@@ -785,6 +795,7 @@ export interface FileRouteTypes {
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
+    | '/api/scientific-memory/timeline'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -862,6 +873,7 @@ export interface FileRouteTypes {
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
+    | '/api/scientific-memory/timeline'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -940,6 +952,7 @@ export interface FileRouteTypes {
     | '/api/scientific-knowledge/persist'
     | '/api/scientific-knowledge/snapshot'
     | '/api/scientific-knowledge/timeline'
+    | '/api/scientific-memory/timeline'
     | '/api/whatsapp/debug'
     | '/api/whatsapp/forward-message'
     | '/api/whatsapp/integration'
@@ -1016,6 +1029,7 @@ export interface RootRouteChildren {
   ApiScientificKnowledgePersistRoute: typeof ApiScientificKnowledgePersistRoute
   ApiScientificKnowledgeSnapshotRoute: typeof ApiScientificKnowledgeSnapshotRoute
   ApiScientificKnowledgeTimelineRoute: typeof ApiScientificKnowledgeTimelineRoute
+  ApiScientificMemoryTimelineRoute: typeof ApiScientificMemoryTimelineRoute
   ApiWhatsappDebugRoute: typeof ApiWhatsappDebugRoute
   ApiWhatsappForwardMessageRoute: typeof ApiWhatsappForwardMessageRoute
   ApiWhatsappIntegrationRoute: typeof ApiWhatsappIntegrationRoute
@@ -1305,6 +1319,13 @@ declare module '@tanstack/react-router' {
       path: '/api/whatsapp/debug'
       fullPath: '/api/whatsapp/debug'
       preLoaderRoute: typeof ApiWhatsappDebugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-memory/timeline': {
+      id: '/api/scientific-memory/timeline'
+      path: '/api/scientific-memory/timeline'
+      fullPath: '/api/scientific-memory/timeline'
+      preLoaderRoute: typeof ApiScientificMemoryTimelineRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/scientific-knowledge/timeline': {
@@ -1643,6 +1664,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiScientificKnowledgePersistRoute: ApiScientificKnowledgePersistRoute,
   ApiScientificKnowledgeSnapshotRoute: ApiScientificKnowledgeSnapshotRoute,
   ApiScientificKnowledgeTimelineRoute: ApiScientificKnowledgeTimelineRoute,
+  ApiScientificMemoryTimelineRoute: ApiScientificMemoryTimelineRoute,
   ApiWhatsappDebugRoute: ApiWhatsappDebugRoute,
   ApiWhatsappForwardMessageRoute: ApiWhatsappForwardMessageRoute,
   ApiWhatsappIntegrationRoute: ApiWhatsappIntegrationRoute,
