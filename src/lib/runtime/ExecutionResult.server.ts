@@ -11,6 +11,14 @@ export type ExecutionOutcome =
   | "blocked"
   | "stub";
 
+export interface ExecutionResultKnowledgeBus {
+  knowledgeBusHit: boolean;
+  knowledgeBusFallback: boolean;
+  knowledgeTopic: string | null;
+  knowledgeEnvelopeVersion: number | null;
+  knowledgeEnvelopeAge: number | null;
+}
+
 export interface ExecutionResult {
   executionId: string;
   jobId: string;
@@ -24,6 +32,7 @@ export interface ExecutionResult {
   durationMs: number;
   stub: boolean;
   error: string | null;
+  knowledgeBus?: ExecutionResultKnowledgeBus;
 }
 
 export function stubResult(input: {
