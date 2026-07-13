@@ -1004,6 +1004,12 @@ export type Database = {
           default_quote_included_items: string | null
           greeting_message: string | null
           location: Json | null
+          runtime_autonomy_enabled: boolean
+          runtime_kill_switch: boolean
+          runtime_scheduler_enabled: boolean
+          runtime_system_health_enabled: boolean
+          runtime_updated_at: string | null
+          runtime_updated_by: string | null
           signature: string | null
           sla_minutes: number
           updated_at: string
@@ -1050,6 +1056,12 @@ export type Database = {
           default_quote_included_items?: string | null
           greeting_message?: string | null
           location?: Json | null
+          runtime_autonomy_enabled?: boolean
+          runtime_kill_switch?: boolean
+          runtime_scheduler_enabled?: boolean
+          runtime_system_health_enabled?: boolean
+          runtime_updated_at?: string | null
+          runtime_updated_by?: string | null
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -1096,6 +1108,12 @@ export type Database = {
           default_quote_included_items?: string | null
           greeting_message?: string | null
           location?: Json | null
+          runtime_autonomy_enabled?: boolean
+          runtime_kill_switch?: boolean
+          runtime_scheduler_enabled?: boolean
+          runtime_system_health_enabled?: boolean
+          runtime_updated_at?: string | null
+          runtime_updated_by?: string | null
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -2217,6 +2235,96 @@ export type Database = {
           },
         ]
       }
+      runtime_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after: Json | null
+          before: Json | null
+          company_id: string | null
+          correlation_id: string | null
+          created_at: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          company_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          company_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      runtime_dedupe: {
+        Row: {
+          bucket: number
+          company_id: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          operation: string
+          resource_key: string
+        }
+        Insert: {
+          bucket: number
+          company_id?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          operation: string
+          resource_key: string
+        }
+        Update: {
+          bucket?: number
+          company_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          operation?: string
+          resource_key?: string
+        }
+        Relationships: []
+      }
+      runtime_locks: {
+        Row: {
+          acquired_at: string
+          company_id: string | null
+          expires_at: string
+          lock_key: string
+          owner_id: string
+          released_at: string | null
+        }
+        Insert: {
+          acquired_at?: string
+          company_id?: string | null
+          expires_at: string
+          lock_key: string
+          owner_id: string
+          released_at?: string | null
+        }
+        Update: {
+          acquired_at?: string
+          company_id?: string | null
+          expires_at?: string
+          lock_key?: string
+          owner_id?: string
+          released_at?: string | null
+        }
+        Relationships: []
+      }
       scientific_hypothesis_registry: {
         Row: {
           category: string
@@ -3037,6 +3145,36 @@ export type Database = {
           _window_start: string
         }
         Returns: number
+      }
+      runtime_cleanup_expired: {
+        Args: never
+        Returns: {
+          deleted_dedupe: number
+          deleted_locks: number
+        }[]
+      }
+      runtime_release_lock: {
+        Args: { _lock_key: string; _owner_id: string }
+        Returns: boolean
+      }
+      runtime_try_acquire_lock: {
+        Args: {
+          _company_id?: string
+          _lock_key: string
+          _owner_id: string
+          _ttl_seconds: number
+        }
+        Returns: boolean
+      }
+      runtime_try_dedupe: {
+        Args: {
+          _bucket: number
+          _company_id?: string
+          _operation: string
+          _resource_key: string
+          _ttl_seconds: number
+        }
+        Returns: boolean
       }
       touch_last_seen: { Args: never; Returns: undefined }
     }
