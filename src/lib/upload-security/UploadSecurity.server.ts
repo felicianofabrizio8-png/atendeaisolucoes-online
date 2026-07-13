@@ -65,7 +65,9 @@ export function detectMagic(bytes: Uint8Array): { family: MagicFamily; mime: str
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", bytes);
+  const view = new Uint8Array(bytes.byteLength);
+  view.set(bytes);
+  const buf = await crypto.subtle.digest("SHA-256", view.buffer as ArrayBuffer);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 

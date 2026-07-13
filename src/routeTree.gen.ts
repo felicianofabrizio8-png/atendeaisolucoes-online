@@ -34,6 +34,7 @@ import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
+import { Route as ApiSystemHealthRouteImport } from './routes/api.system-health'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
 import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
@@ -229,6 +230,11 @@ const ConfiguracoesRespostasRapidasRoute =
     path: '/configuracoes/respostas-rapidas',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiSystemHealthRoute = ApiSystemHealthRouteImport.update({
+  id: '/api/system-health',
+  path: '/api/system-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/auth/meta/callback',
   path: '/auth/meta/callback',
@@ -532,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -612,6 +619,7 @@ export interface FileRoutesByTo {
   '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -694,6 +702,7 @@ export interface FileRoutesById {
   '/saude': typeof SaudeRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
+  '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -777,6 +786,7 @@ export interface FileRouteTypes {
     | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/api/system-health'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -857,6 +867,7 @@ export interface FileRouteTypes {
     | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/api/system-health'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -938,6 +949,7 @@ export interface FileRouteTypes {
     | '/saude'
     | '/sitemap.xml'
     | '/whatsapp'
+    | '/api/system-health'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
@@ -1020,6 +1032,7 @@ export interface RootRouteChildren {
   SaudeRoute: typeof SaudeRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
+  ApiSystemHealthRoute: typeof ApiSystemHealthRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
   OnboardingWhatsappRoute: typeof OnboardingWhatsappRoute
@@ -1263,6 +1276,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/respostas-rapidas'
       fullPath: '/configuracoes/respostas-rapidas'
       preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/system-health': {
+      id: '/api/system-health'
+      path: '/api/system-health'
+      fullPath: '/api/system-health'
+      preLoaderRoute: typeof ApiSystemHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/meta/callback': {
@@ -1671,6 +1691,7 @@ const rootRouteChildren: RootRouteChildren = {
   SaudeRoute: SaudeRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
+  ApiSystemHealthRoute: ApiSystemHealthRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
   OnboardingWhatsappRoute: OnboardingWhatsappRoute,

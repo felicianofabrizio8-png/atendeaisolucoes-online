@@ -64,24 +64,26 @@ export class JobQueueRepository {
   }
 
   async dequeueOne(opts: DequeueOptions): Promise<JobRecord | null> {
-    const { data, error } = await this.writer.rpc("dequeue_agent_job", {
+    const args: { _worker_id: string; _job_types: string[]; _lock_seconds: number } = {
       _worker_id: opts.workerId,
-      _job_types: opts.jobTypes ?? null,
+      _job_types: opts.jobTypes ?? [],
       _lock_seconds: opts.lockSeconds ?? 300,
-    });
+    };
+    const { data, error } = await this.writer.rpc("dequeue_agent_job", args);
     if (error) throw new Error(`[JobQueue.dequeue] ${error.message}`);
     const list = (data ?? []) as Row[];
     return list.length ? mapRow(list[0]) : null;
   }
 
   async complete(input: CompleteJobInput): Promise<JobRecord> {
-    const { data, error } = await this.writer.rpc("complete_agent_job", {
+    const args = {
       _job_id: input.jobId,
       _worker_id: input.workerId,
       _success: input.success,
-      _error: input.error ?? null,
-      _backoff_seconds: input.backoffSeconds ?? null,
-    });
+      _error: input.error ?? undefined,
+      _backoff_seconds: input.backoffSeconds ?? undefined,
+    };
+    const { data, error } = await this.writer.rpc("complete_agent_job", args);
     if (error) throw new Error(`[JobQueue.complete] ${error.message}`);
     return mapRow(data as Row);
   }

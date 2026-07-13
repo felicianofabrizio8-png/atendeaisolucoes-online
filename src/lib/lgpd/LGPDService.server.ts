@@ -74,10 +74,19 @@ export class LGPDService {
     action: "export" | "delete",
   ): Promise<LGPDDryRunReport> {
     const wouldTouch: Record<string, number> = {};
+    // Uso de `any` local — este é apenas um previewer LGPD Fase 1, sem execução real.
+    // A tipagem de select-em-tabela-dinâmica não é validável pelo TS.
+    const w = this.writer as unknown as {
+      from: (t: string) => {
+        select: (c: string, o: { count: "exact"; head: true }) => {
+          eq: (col: string, v: string) => Promise<{ count: number | null }>;
+        };
+      };
+    };
     for (const table of COMPANY_TABLES) {
       try {
-        const { count } = await this.writer
-          .from(table)
+        const { count } = await w
+          .from(String(table))
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId);
         if (typeof count === "number") wouldTouch[String(table)] = count;
