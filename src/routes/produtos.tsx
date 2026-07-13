@@ -159,88 +159,41 @@ function ProductsPage() {
 
         {grouped.map(([category, items]) => (
           <section key={category}>
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
+            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3 px-1">
               {category}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 md:gap-3">
-              {items.map((p) => {
-                const hasPromo = p.promoPrice && p.promoPrice < p.price;
-                const cover = p.images?.[0];
-                return (
-                  <div
-                    key={p.id}
-                    className="rounded-lg border border-border bg-card p-3 md:p-4 flex gap-3 md:flex-col md:gap-1.5"
-                  >
-                    {cover && (
-                      <div className="md:hidden h-20 w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border">
-                        <SmartImage src={cover} alt={p.name} aspectRatio="1/1" wrapperClassName="w-full h-full" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold truncate">{p.name}</div>
-                          {p.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>
-                          )}
-                        </div>
-                        <div className="text-right shrink-0">
-                          {hasPromo ? (
-                            <>
-                              <div className="text-[11px] text-muted-foreground line-through">
-                                {formatBRL(p.price)}
-                              </div>
-                              <div className="text-sm font-bold text-[var(--status-won)]">
-                                {formatBRL(p.promoPrice!)}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-sm font-bold">{formatBRL(p.price)}</div>
-                          )}
-                        </div>
-                      </div>
-                      {p.notes && (
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Tag className="h-3 w-3 shrink-0" /> <span className="truncate">{p.notes}</span>
-                        </div>
-                      )}
-                      <div className="pt-1.5 mt-auto flex items-center gap-1.5 flex-wrap">
-                        <button
-                          onClick={() =>
-                            navigate({
-                              to: "/orcamentos",
-                              search: { new: "1", suggestedProductId: p.id },
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 min-h-9 md:min-h-0 md:py-1.5 hover:opacity-90"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          <span>Orçar</span>
-                        </button>
-                        <button
-                          onClick={() => setEditing(p)}
-                          aria-label="Editar"
-                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-accent"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          <span className="hidden md:inline">Editar</span>
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(p)}
-                          aria-label="Excluir"
-                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background h-9 w-9 md:w-auto md:px-2.5 md:py-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="hidden md:inline">Excluir</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+              {items.map((p, idx) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  query={query}
+                  index={idx}
+                  onEdit={() => setEditing(p)}
+                  onDelete={() => setConfirmDelete(p)}
+                  onDuplicate={() => {
+                    void createProduct({
+                      name: `${p.name} (cópia)`,
+                      category: p.category,
+                      description: p.description,
+                      price: p.price,
+                      promoPrice: p.promoPrice,
+                      notes: p.notes,
+                      images: p.images ?? [],
+                    }).then(() => toast.success("Produto duplicado"));
+                  }}
+                  onQuote={() =>
+                    navigate({
+                      to: "/orcamentos",
+                      search: { new: "1", suggestedProductId: p.id },
+                    })
+                  }
+                />
+              ))}
             </div>
           </section>
         ))}
+
 
         {!query.trim() && products.length > 0 && (
           <div className="pt-2">
