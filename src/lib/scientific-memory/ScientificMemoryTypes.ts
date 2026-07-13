@@ -99,10 +99,10 @@ export interface ScientificMemoryRecord {
   createdAt: string; // ISO
 }
 
-/** Payload de gravação (sem id/created_at, geridos pelo banco). */
+/** Payload de gravação (companyId injetado pelo repositório; id/createdAt pelo banco). */
 export type ScientificMemoryInsert = Omit<
   ScientificMemoryRecord,
-  "id" | "createdAt"
+  "id" | "createdAt" | "companyId"
 >;
 
 /** Evolução entre a memória atual e a imediatamente anterior. */
