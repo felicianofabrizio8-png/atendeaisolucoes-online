@@ -58,6 +58,7 @@ import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api
 import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
 import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
 import { Route as ApiRuntimeExecuteRouteImport } from './routes/api.runtime.execute'
+import { Route as ApiRuntimeAutonomyRouteImport } from './routes/api.runtime.autonomy'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
@@ -93,6 +94,7 @@ import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whats
 import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whatsapp.templates.send'
 import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
+import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
@@ -366,6 +368,11 @@ const ApiRuntimeExecuteRoute = ApiRuntimeExecuteRouteImport.update({
   path: '/api/runtime/execute',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRuntimeAutonomyRoute = ApiRuntimeAutonomyRouteImport.update({
+  id: '/api/runtime/autonomy',
+  path: '/api/runtime/autonomy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
   id: '/api/onboarding/test-send',
   path: '/api/onboarding/test-send',
@@ -549,6 +556,12 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksRuntimeTickRoute =
+  ApiPublicHooksRuntimeTickRouteImport.update({
+    id: '/api/public/hooks/runtime-tick',
+    path: '/api/public/hooks/runtime-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksFollowupTickRoute =
   ApiPublicHooksFollowupTickRouteImport.update({
     id: '/api/public/hooks/followup-tick',
@@ -635,6 +648,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
@@ -659,6 +673,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -725,6 +740,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
@@ -749,6 +765,7 @@ export interface FileRoutesByTo {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -817,6 +834,7 @@ export interface FileRoutesById {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
   '/api/scientific-knowledge/persist': typeof ApiScientificKnowledgePersistRoute
@@ -841,6 +859,7 @@ export interface FileRoutesById {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -910,6 +929,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
@@ -934,6 +954,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1000,6 +1021,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
@@ -1024,6 +1046,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1091,6 +1114,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
     | '/api/scientific-knowledge/persist'
@@ -1115,6 +1139,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1179,6 +1204,7 @@ export interface RootRouteChildren {
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingStatusRoute: typeof ApiOnboardingStatusRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
+  ApiRuntimeAutonomyRoute: typeof ApiRuntimeAutonomyRoute
   ApiRuntimeExecuteRoute: typeof ApiRuntimeExecuteRoute
   ApiRuntimeStatusRoute: typeof ApiRuntimeStatusRoute
   ApiScientificKnowledgePersistRoute: typeof ApiScientificKnowledgePersistRoute
@@ -1203,6 +1229,7 @@ export interface RootRouteChildren {
   ApiExecutiveConversationIntelligenceJobRoute: typeof ApiExecutiveConversationIntelligenceJobRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
+  ApiPublicHooksRuntimeTickRoute: typeof ApiPublicHooksRuntimeTickRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappTemplatesListRoute: typeof ApiWhatsappTemplatesListRoute
   ApiWhatsappTemplatesSendRoute: typeof ApiWhatsappTemplatesSendRoute
@@ -1562,6 +1589,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRuntimeExecuteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/runtime/autonomy': {
+      id: '/api/runtime/autonomy'
+      path: '/api/runtime/autonomy'
+      fullPath: '/api/runtime/autonomy'
+      preLoaderRoute: typeof ApiRuntimeAutonomyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/test-send': {
       id: '/api/onboarding/test-send'
       path: '/api/onboarding/test-send'
@@ -1807,6 +1841,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/runtime-tick': {
+      id: '/api/public/hooks/runtime-tick'
+      path: '/api/public/hooks/runtime-tick'
+      fullPath: '/api/public/hooks/runtime-tick'
+      preLoaderRoute: typeof ApiPublicHooksRuntimeTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/followup-tick': {
       id: '/api/public/hooks/followup-tick'
       path: '/api/public/hooks/followup-tick'
@@ -1921,6 +1962,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingStatusRoute: ApiOnboardingStatusRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
+  ApiRuntimeAutonomyRoute: ApiRuntimeAutonomyRoute,
   ApiRuntimeExecuteRoute: ApiRuntimeExecuteRoute,
   ApiRuntimeStatusRoute: ApiRuntimeStatusRoute,
   ApiScientificKnowledgePersistRoute: ApiScientificKnowledgePersistRoute,
@@ -1947,6 +1989,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiExecutiveConversationIntelligenceJobRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
+  ApiPublicHooksRuntimeTickRoute: ApiPublicHooksRuntimeTickRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappTemplatesListRoute: ApiWhatsappTemplatesListRoute,
   ApiWhatsappTemplatesSendRoute: ApiWhatsappTemplatesSendRoute,
@@ -1956,13 +1999,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
