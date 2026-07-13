@@ -52,8 +52,9 @@ export class SystemHealthAdapter implements AgentAdapter {
       const scheduler = ctx.runtime.scheduler;
 
       const lastTick = heartbeat?.last?.() ?? null;
-      const heartbeatAgeMs = lastTick?.at
-        ? Math.max(0, RuntimeClock.now() - new Date(lastTick.at).getTime())
+      const lastTickTs = lastTick?.ts ?? null;
+      const heartbeatAgeMs = lastTickTs
+        ? Math.max(0, RuntimeClock.now() - new Date(lastTickTs).getTime())
         : null;
 
       const schedulerSnap = scheduler?.snapshot?.() as
@@ -64,9 +65,7 @@ export class SystemHealthAdapter implements AgentAdapter {
         : 0;
 
       const probe: SystemHealthProbe = {
-        runtimeUptimeMs: heartbeat?.last?.()
-          ? Math.max(0, RuntimeClock.now() - new Date(heartbeat.last()!.at).getTime())
-          : 0,
+        runtimeUptimeMs: lastTick?.uptimeMs ?? 0,
         registeredAgents: registry.size(),
         healthyAgents: registry.healthyCount(),
         adapters: 0, // preenchido pelo Runtime via getLastProbe se necessário
