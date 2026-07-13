@@ -251,6 +251,7 @@ export function AppShell() {
           </div>
         )}
         {NavList}
+        <NeuralIntelligencePanel />
         {FooterPanel}
       </aside>
 
