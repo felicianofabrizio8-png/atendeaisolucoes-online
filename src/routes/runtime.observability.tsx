@@ -264,6 +264,8 @@ function ObservabilityPage() {
   const status = asDict(snapshot?.status);
   const heartbeat = asDict(snapshot?.heartbeat);
   const scheduler = asDict(snapshot?.scheduler);
+  const autonomy = asDict(asDict(snapshot?.autonomy).systemHealth);
+  const autonomyTenantEnabled = bool(asDict(snapshot?.autonomy).tenantEnabled);
   const worker = asDict(snapshot?.worker);
   const workers = asArr(snapshot?.workers);
   const execution = asDict(snapshot?.execution);
