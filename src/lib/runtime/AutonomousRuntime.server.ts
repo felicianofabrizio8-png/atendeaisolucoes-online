@@ -40,6 +40,7 @@ export class AutonomousRuntime {
       orchestrator: this.orchestrator,
       queue: null,
     });
+    this.scheduler = new RuntimeScheduler(new SchedulerRegistry(), this._dispatcher);
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
@@ -58,6 +59,8 @@ export class AutonomousRuntime {
       registry: this.registry,
       orchestrator: this.orchestrator,
       queue: this._queue,
+    });
+    (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
     });
   }
 
