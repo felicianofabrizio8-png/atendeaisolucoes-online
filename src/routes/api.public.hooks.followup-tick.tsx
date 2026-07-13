@@ -85,20 +85,49 @@ export const Route = createFileRoute("/api/public/hooks/followup-tick")({
           }
         }
 
-        // Rate limit global.
+        // Rate limit local (fast-path).
         const rl = rateLimit("followup-tick:global", RATE_GLOBAL_PER_MIN, 60_000);
         if (!rl.allowed) {
-          console.warn("[followup-tick]", { cid, event: "rate_limited" });
+          console.warn("[followup-tick]", { cid, event: "rate_limited_local" });
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
         }
 
-        // Lock técnico: se já houver execução, resposta idempotente.
+        const {
+          rateLimitCheck,
+          tryAcquireLock: tryAcquireLockDist,
+          releaseLock: releaseLockDist,
+          auditRuntimeEvent,
+        } = await import("@/lib/runtime/RuntimeStateStore.server");
+
+        const distRlOk = await rateLimitCheck({
+          companyId: null,
+          bucket: "followup-tick:global",
+          windowSeconds: 60,
+          max: RATE_GLOBAL_PER_MIN,
+        });
+        if (!distRlOk) {
+          console.warn("[followup-tick]", { cid, event: "rate_limited_dist" });
+          return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
+        }
+
+        // Lock LOCAL (fast) — se já houver execução no mesmo isolate.
         if (!tryAcquireLock(LOCK_KEY)) {
-          console.info("[followup-tick]", { cid, event: "already_running" });
-          return Response.json(
-            { ok: true, alreadyRunning: true },
-            { status: 409 },
-          );
+          console.info("[followup-tick]", { cid, event: "already_running_local" });
+          return Response.json({ ok: true, alreadyRunning: true, scope: "local" }, { status: 409 });
+        }
+
+        // Lock DISTRIBUÍDO — impede execução paralela em outro isolate.
+        const distLockOwner = `followup-tick:${cid}`;
+        const distLocked = await tryAcquireLockDist({
+          lockKey: "followup-tick:global",
+          ownerId: distLockOwner,
+          ttlSeconds: 90,
+        });
+        if (!distLocked) {
+          releaseLock(LOCK_KEY);
+          await auditRuntimeEvent({ action: "followup_tick_lock_denied", after: { cid } });
+          console.info("[followup-tick]", { cid, event: "already_running_dist" });
+          return Response.json({ ok: true, alreadyRunning: true, scope: "distributed" }, { status: 409 });
         }
 
         try {
