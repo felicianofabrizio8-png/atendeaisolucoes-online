@@ -26,6 +26,7 @@ import {
   releaseLock,
   correlationId,
 } from "@/lib/runtime/HookSecurity.server";
+import { getHookSecret } from "@/lib/runtime/HookSecretVault.server";
 
 const MAX_BODY_BYTES = 512;
 const RATE_GLOBAL_PER_MIN = 12;
