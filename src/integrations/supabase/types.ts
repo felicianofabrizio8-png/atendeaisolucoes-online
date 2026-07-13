@@ -2145,6 +2145,68 @@ export type Database = {
           },
         ]
       }
+      scientific_memory: {
+        Row: {
+          business_conclusions: Json
+          company_id: string
+          correlations: Json
+          created_at: string
+          generated_at: string
+          id: string
+          knowledge_score: number
+          limitations: Json
+          observed_patterns: Json
+          period: string
+          quality: Json
+          scientific_score: number
+          strengthening_hypotheses: Json
+          validated_theories: Json
+          version: string
+        }
+        Insert: {
+          business_conclusions?: Json
+          company_id: string
+          correlations?: Json
+          created_at?: string
+          generated_at?: string
+          id?: string
+          knowledge_score?: number
+          limitations?: Json
+          observed_patterns?: Json
+          period: string
+          quality?: Json
+          scientific_score?: number
+          strengthening_hypotheses?: Json
+          validated_theories?: Json
+          version: string
+        }
+        Update: {
+          business_conclusions?: Json
+          company_id?: string
+          correlations?: Json
+          created_at?: string
+          generated_at?: string
+          id?: string
+          knowledge_score?: number
+          limitations?: Json
+          observed_patterns?: Json
+          period?: string
+          quality?: Json
+          scientific_score?: number
+          strengthening_hypotheses?: Json
+          validated_theories?: Json
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scientific_memory_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           company_id: string
@@ -2490,6 +2552,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_executive_knowledge: { Args: never; Returns: number }
+      cleanup_scientific_memory: { Args: never; Returns: number }
       cleanup_scientific_snapshots: { Args: never; Returns: number }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
       current_company_id: { Args: never; Returns: string }
