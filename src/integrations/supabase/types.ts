@@ -1057,6 +1057,50 @@ export type Database = {
         }
         Relationships: []
       }
+      executive_knowledge: {
+        Row: {
+          company_id: string
+          created_at: string
+          facts_json: Json
+          highlights_json: Json
+          id: string
+          knowledge_version: number
+          period: string
+          recommendations_json: Json
+          snapshot_generated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          facts_json?: Json
+          highlights_json?: Json
+          id?: string
+          knowledge_version?: number
+          period: string
+          recommendations_json?: Json
+          snapshot_generated_at: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          facts_json?: Json
+          highlights_json?: Json
+          id?: string
+          knowledge_version?: number
+          period?: string
+          recommendations_json?: Json
+          snapshot_generated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executive_knowledge_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follow_ups: {
         Row: {
           attempt_number: number
@@ -2066,6 +2110,7 @@ export type Database = {
         Args: { _company_id: string; _new_size: number }
         Returns: boolean
       }
+      cleanup_executive_knowledge: { Args: never; Returns: number }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
       current_company_id: { Args: never; Returns: string }
       get_storage_usage_bytes: {
