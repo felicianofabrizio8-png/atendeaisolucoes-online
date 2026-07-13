@@ -35,6 +35,7 @@ export interface ExecutionEngineDeps {
   scheduler: RuntimeScheduler;
   heartbeat: RuntimeHeartbeat;
   adapters?: AgentAdapterRegistry | null;
+  context?: import("./context/SharedIntelligenceContext.server").SharedIntelligenceContext | null;
 }
 
 export interface LastRealExecution {
@@ -97,6 +98,7 @@ export class RuntimeExecutionEngine {
       dispatcher: this.deps.dispatcher,
       scheduler: this.deps.scheduler,
       heartbeat: this.deps.heartbeat,
+      context: this.deps.context ?? null,
     };
   }
 

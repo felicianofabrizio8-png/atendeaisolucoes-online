@@ -8,6 +8,7 @@ import type { AgentRegistry } from "./AgentRegistry.server";
 import type { RuntimeHeartbeat } from "./RuntimeHeartbeat.server";
 import type { RuntimeScheduler } from "./RuntimeScheduler.server";
 import { RuntimeClock } from "./RuntimeClock.server";
+import type { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
 import type { RuntimeJobPriority, RuntimeJobRecord } from "./RuntimeTypes";
 
 export interface ExecutionRuntimeRefs {
@@ -15,6 +16,7 @@ export interface ExecutionRuntimeRefs {
   dispatcher: AgentDispatcher;
   scheduler: RuntimeScheduler;
   heartbeat: RuntimeHeartbeat;
+  context?: SharedIntelligenceContext | null;
 }
 
 export interface ExecutionContext {
