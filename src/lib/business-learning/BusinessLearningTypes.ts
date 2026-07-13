@@ -15,7 +15,9 @@ export type EvolutionDirection =
   | "falling"
   | "stable"
   | "emerging"
-  | "disappearing";
+  | "disappearing"
+  | "insufficient_sample"
+  | "insufficient_history";
 
 export interface BusinessEvolution {
   id: string;
