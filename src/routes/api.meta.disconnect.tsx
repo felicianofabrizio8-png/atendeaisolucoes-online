@@ -15,10 +15,12 @@ const BodySchema = z
   })
   .strict();
 
-const METHOD_NOT_ALLOWED = new Response("Method Not Allowed", {
-  status: 405,
-  headers: { Allow: "POST" },
-});
+function methodNotAllowed(): Response {
+  return new Response("Method Not Allowed", {
+    status: 405,
+    headers: { Allow: "POST" },
+  });
+}
 
 function bearer(request: Request): string | null {
   const h = request.headers.get("authorization") ?? "";
@@ -55,10 +57,10 @@ export const Route = createFileRoute("/api/meta/disconnect")({
         }
         return Response.json(result);
       },
-      GET: () => METHOD_NOT_ALLOWED,
-      PUT: () => METHOD_NOT_ALLOWED,
-      PATCH: () => METHOD_NOT_ALLOWED,
-      DELETE: () => METHOD_NOT_ALLOWED,
+      GET: () => methodNotAllowed(),
+      PUT: () => methodNotAllowed(),
+      PATCH: () => methodNotAllowed(),
+      DELETE: () => methodNotAllowed(),
     },
   },
 });
