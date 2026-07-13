@@ -115,6 +115,7 @@ function useIntelligenceStates(enabled: boolean) {
     enabled,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
     staleTime: 8_000,
     retry: false,
     queryFn: async () => {
