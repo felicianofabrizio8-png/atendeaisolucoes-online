@@ -885,6 +885,82 @@ export type Database = {
         }
         Relationships: []
       }
+      company_onboarding: {
+        Row: {
+          company_id: string
+          completed_at: string | null
+          completed_steps_json: Json
+          current_step: string
+          id: string
+          progress: number
+          started_at: string
+          status: Database["public"]["Enums"]["onboarding_status"]
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          completed_at?: string | null
+          completed_steps_json?: Json
+          current_step?: string
+          id?: string
+          progress?: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["onboarding_status"]
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          completed_at?: string | null
+          completed_steps_json?: Json
+          current_step?: string
+          id?: string
+          progress?: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["onboarding_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_onboarding_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_onboarding_events: {
+        Row: {
+          company_id: string
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_onboarding_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_settings: {
         Row: {
           ai_after_hours_only: boolean
@@ -2989,6 +3065,7 @@ export type Database = {
         | "fechado"
         | "perdido"
       message_role: "lead" | "agent" | "system"
+      onboarding_status: "pending" | "in_progress" | "completed" | "paused"
       quote_status:
         | "rascunho"
         | "enviado"
@@ -3158,6 +3235,7 @@ export const Constants = {
         "perdido",
       ],
       message_role: ["lead", "agent", "system"],
+      onboarding_status: ["pending", "in_progress", "completed", "paused"],
       quote_status: [
         "rascunho",
         "enviado",
