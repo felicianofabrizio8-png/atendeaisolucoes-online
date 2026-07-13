@@ -189,6 +189,7 @@ export const Route = createFileRoute("/api/public/hooks/followup-tick")({
           return Response.json({ ok: false, error: "internal_error" }, { status: 500 });
         } finally {
           releaseLock(LOCK_KEY);
+          await releaseLockDist("followup-tick:global", distLockOwner);
         }
       },
       GET: async () => methodNotAllowed(),
