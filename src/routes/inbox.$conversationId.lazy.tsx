@@ -68,6 +68,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import {
+  buildProductCaption,
+  buildProductCardSubtitle,
+} from "@/lib/product-caption";
+
+
+type LibraryPick = { path: string; caption: string; productId: string };
+
 import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
@@ -2034,28 +2042,28 @@ function MediaSendPanel({
   );
 
   const sendLibraryBatch = useCallback(
-    async (paths: string[]) => {
-      if (paths.length === 0) return;
+    async (items: LibraryPick[]) => {
+      if (items.length === 0) return;
       if (!isWhats) {
         toast.error("Envio de mídia disponível apenas para WhatsApp.");
         return;
       }
-      setMultiSendProgress({ current: 0, total: paths.length });
+      setMultiSendProgress({ current: 0, total: items.length });
       let ok = 0;
-      for (let i = 0; i < paths.length; i++) {
+      for (let i = 0; i < items.length; i++) {
         try {
-          await sendMediaPath(paths[i], "image");
+          await sendMediaPath(items[i].path, "image", items[i].caption);
           ok++;
           onSent();
         } catch (e) {
-          console.error("MULTI_MEDIA_SEND_ERROR", { path: paths[i], error: e });
+          console.error("MULTI_MEDIA_SEND_ERROR", { path: items[i].path, error: e });
           toast.error(
-            `Falha ao enviar ${i + 1}/${paths.length}: ${
+            `Falha ao enviar ${i + 1}/${items.length}: ${
               e instanceof Error ? e.message : "erro"
             }`,
           );
         }
-        setMultiSendProgress({ current: i + 1, total: paths.length });
+        setMultiSendProgress({ current: i + 1, total: items.length });
       }
       setMultiSendProgress(null);
       if (ok > 0) toast.success(`${ok} foto(s) enviada(s)`);
@@ -2063,17 +2071,18 @@ function MediaSendPanel({
     [isWhats, onSent, sendMediaPath],
   );
 
-  const selectFromLibrary = (paths: string[]) => {
+  const selectFromLibrary = (items: LibraryPick[]) => {
     setLibraryOpen(false);
-    if (paths.length === 0) return;
-    if (paths.length === 1) {
-      const url = paths[0];
-      setPending({ kind: "image", path: url, previewUrl: url });
-      setCaption("");
+    if (items.length === 0) return;
+    if (items.length === 1) {
+      const { path, caption: cap } = items[0];
+      setPending({ kind: "image", path, previewUrl: path });
+      setCaption(cap ?? "");
       return;
     }
-    void sendLibraryBatch(paths);
+    void sendLibraryBatch(items);
   };
+
 
   return (
     <>
@@ -2286,6 +2295,11 @@ function MediaSendPanel({
               )}
             </div>
             <div className="p-4 space-y-3 border-t border-border">
+              {caption.trim() && (
+                <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-xs text-foreground whitespace-pre-wrap leading-snug">
+                  {caption}
+                </div>
+              )}
               <input
                 type="text"
                 value={caption}
@@ -2294,6 +2308,7 @@ function MediaSendPanel({
                 maxLength={1024}
                 className="w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
+
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={cancelPending}
@@ -2343,7 +2358,7 @@ function ProductsLibraryModal({
   onPick,
 }: {
   onClose: () => void;
-  onPick: (paths: string[]) => void;
+  onPick: (items: LibraryPick[]) => void;
 }) {
   const [, force] = useState(0);
   useEffect(() => subscribeProducts(() => force((n) => n + 1)), []);
@@ -2356,7 +2371,8 @@ function ProductsLibraryModal({
     return all.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        (p.category ?? "").toLowerCase().includes(q),
+        (p.category ?? "").toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q),
     );
   }, [all, query]);
   const byCategory = useMemo(() => {
@@ -2370,6 +2386,18 @@ function ProductsLibraryModal({
     return Array.from(map.entries());
   }, [filtered]);
 
+  // path → product (para preservar a associação imagem → produto na seleção
+  // e ao montar a legenda). Prioriza o primeiro produto que declara a imagem.
+  const imageToProduct = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const p of all) {
+      for (const img of p.images ?? []) {
+        if (!map.has(img)) map.set(img, p);
+      }
+    }
+    return map;
+  }, [all]);
+
   const toggle = (img: string) => {
     setSelected((prev) =>
       prev.includes(img) ? prev.filter((p) => p !== img) : [...prev, img],
@@ -2378,8 +2406,17 @@ function ProductsLibraryModal({
   const clearSelection = () => setSelected([]);
   const confirmSend = () => {
     if (selected.length === 0) return;
-    onPick(selected);
+    const items: LibraryPick[] = selected.map((path) => {
+      const p = imageToProduct.get(path);
+      return {
+        path,
+        productId: p?.id ?? "",
+        caption: p ? buildProductCaption(p) : "",
+      };
+    });
+    onPick(items);
   };
+
 
   return (
     <div
@@ -2419,9 +2456,10 @@ function ProductsLibraryModal({
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
                 {cat}
               </div>
-              <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                {items.flatMap((p) =>
-                  (p.images ?? []).map((img, i) => {
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {items.flatMap((p) => {
+                  const subtitle = buildProductCardSubtitle(p);
+                  return (p.images ?? []).map((img, i) => {
                     const isSel = selected.includes(img);
                     const selIndex = isSel ? selected.indexOf(img) + 1 : 0;
                     return (
@@ -2430,35 +2468,45 @@ function ProductsLibraryModal({
                         type="button"
                         onClick={() => toggle(img)}
                         className={cn(
-                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition",
+                          "group relative rounded-md overflow-hidden border focus:outline-none focus:ring-2 focus:ring-ring transition text-left bg-background",
                           isSel
                             ? "border-primary ring-2 ring-primary"
                             : "border-border hover:border-primary",
                         )}
                         title={p.name}
                       >
-                        <SmartImage
-                          src={img}
-                          alt={p.name}
-                          aspectRatio="1/1"
-                          wrapperClassName="w-full"
-                          thumbWidth={240}
-                          thumbQuality={70}
-                        />
-                        {isSel && (
-                          <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
-                            {selIndex}
+                        <div className="relative">
+                          <SmartImage
+                            src={img}
+                            alt={p.name}
+                            aspectRatio="1/1"
+                            wrapperClassName="w-full"
+                            thumbWidth={320}
+                            thumbQuality={72}
+                          />
+                          {isSel && (
+                            <div className="absolute top-1 right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center shadow">
+                              {selIndex}
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-2 space-y-0.5">
+                          <div className="text-xs font-semibold text-foreground line-clamp-2 leading-snug">
+                            {p.name}
                           </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                          <div className="text-[10px] text-white truncate">{p.name}</div>
+                          {subtitle && (
+                            <div className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">
+                              {subtitle}
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
-                  }),
-                )}
+                  });
+                })}
               </div>
             </div>
+
           ))}
         </div>
         <div className="p-3 border-t border-border flex items-center justify-between gap-2 bg-card">
