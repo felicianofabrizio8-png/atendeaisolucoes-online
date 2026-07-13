@@ -26,6 +26,7 @@ import { ProfessorAdapter } from "./ProfessorAdapter.server";
 import { ExecutiveIntelligenceAdapter } from "./ExecutiveIntelligenceAdapter.server";
 import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
 import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
+import { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
@@ -36,6 +37,7 @@ export class AutonomousRuntime {
   readonly registry: AgentRegistry;
   readonly orchestrator: AgentOrchestrator;
   readonly heartbeat: RuntimeHeartbeat;
+  readonly context: SharedIntelligenceContext;
   readonly startedAtMs: number;
   readonly startedAtIso: string;
 
@@ -80,6 +82,9 @@ export class AutonomousRuntime {
       queue: null,
       engine: this.executionEngine,
     });
+    // Etapa 8: Shared Intelligence Context (Knowledge Bus). Nenhum agente
+    // publica ou consome automaticamente — infraestrutura apenas.
+    this.context = new SharedIntelligenceContext();
     // Primeiro tick sincrônico (sem banco).
     this.heartbeat.tick();
   }
@@ -171,6 +176,7 @@ export class AutonomousRuntime {
           lastExecution: this.executionEngine.lastRealExecution(id),
         })),
       },
+      knowledgeBus: this.context.snapshot(),
     };
   }
 
