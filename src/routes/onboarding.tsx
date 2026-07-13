@@ -311,7 +311,7 @@ function OnboardingPage() {
       </Card>
 
       {/* Antes de começar — Health */}
-      {hlth.issues.length > 0 && (
+      {hlth.health.issues.length > 0 && (
         <section aria-labelledby="health-title" className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 id="health-title" className="text-lg font-semibold">
@@ -323,7 +323,7 @@ function OnboardingPage() {
             </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {hlth.issues.map((issue) => (
+            {hlth.health.issues.map((issue: OnboardingHealthIssue) => (
               <HealthIssueCard
                 key={issue.code}
                 issue={issue}
