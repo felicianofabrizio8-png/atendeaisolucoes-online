@@ -577,7 +577,7 @@ export function NeuralIntelligencePanel() {
         label: s.label,
         short: s.short,
         resolved: { bucket: "idle" as Bucket, stateLabel: "conectando" },
-        metricPrimary: "—",
+        metricPrimary: "conectando",
         metricSecondary: "aguardando runtime",
         present: false,
       }));
