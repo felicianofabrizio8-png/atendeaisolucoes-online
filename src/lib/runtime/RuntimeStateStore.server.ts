@@ -29,6 +29,7 @@ function rpc(): RpcClient {
 export interface RuntimeFlags {
   autonomyEnabled: boolean;
   systemHealthEnabled: boolean;
+  businessBrainEnabled: boolean;
   killSwitch: boolean;
   schedulerEnabled: boolean;
   updatedAt: string | null;
@@ -41,11 +42,13 @@ const flagsCache = new Map<string, { value: RuntimeFlags; expiresAt: number }>()
 const FLAG_DEFAULTS: RuntimeFlags = {
   autonomyEnabled: false,
   systemHealthEnabled: false,
+  businessBrainEnabled: false,
   killSwitch: true, // fail-closed
   schedulerEnabled: false,
   updatedAt: null,
   updatedBy: null,
 };
+
 
 export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
   const now = Date.now();
@@ -57,7 +60,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
       .from("company_settings")
       // Colunas novas — o tipo gerado ainda não as expõe. Cast para any local.
       .select(
-        "runtime_autonomy_enabled, runtime_system_health_enabled, runtime_kill_switch, runtime_scheduler_enabled, runtime_updated_at, runtime_updated_by" as unknown as "*",
+        "runtime_autonomy_enabled, runtime_system_health_enabled, runtime_business_brain_enabled, runtime_kill_switch, runtime_scheduler_enabled, runtime_updated_at, runtime_updated_by" as unknown as "*",
       )
       .eq("company_id", tenantId)
       .maybeSingle();
@@ -66,6 +69,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
     const value: RuntimeFlags = {
       autonomyEnabled: Boolean(row.runtime_autonomy_enabled) || false,
       systemHealthEnabled: Boolean(row.runtime_system_health_enabled) || false,
+      businessBrainEnabled: Boolean(row.runtime_business_brain_enabled) || false,
       // fail-closed: se coluna nula, kill switch é considerado ligado
       killSwitch: row.runtime_kill_switch === false ? false : true,
       schedulerEnabled: Boolean(row.runtime_scheduler_enabled) || false,
@@ -80,8 +84,10 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
   }
 }
 
+
 export interface FlagUpdate {
   systemHealthEnabled?: boolean;
+  businessBrainEnabled?: boolean;
   killSwitch?: boolean;
   actorId: string;
   correlationId: string;
@@ -98,13 +104,26 @@ export async function updateRuntimeFlags(
   };
   if (typeof update.systemHealthEnabled === "boolean") {
     patch.runtime_system_health_enabled = update.systemHealthEnabled;
-    // Autonomia é implícita se algum agente está habilitado.
-    patch.runtime_autonomy_enabled = update.systemHealthEnabled;
-    patch.runtime_scheduler_enabled = update.systemHealthEnabled;
   }
+  if (typeof update.businessBrainEnabled === "boolean") {
+    patch.runtime_business_brain_enabled = update.businessBrainEnabled;
+  }
+  // Autonomia + Scheduler são implícitos: qualquer agente autônomo ligado.
+  const nextSystemHealth =
+    typeof update.systemHealthEnabled === "boolean"
+      ? update.systemHealthEnabled
+      : before.systemHealthEnabled;
+  const nextBusinessBrain =
+    typeof update.businessBrainEnabled === "boolean"
+      ? update.businessBrainEnabled
+      : before.businessBrainEnabled;
+  const anyAgentOn = nextSystemHealth || nextBusinessBrain;
+  patch.runtime_autonomy_enabled = anyAgentOn;
+  patch.runtime_scheduler_enabled = anyAgentOn;
   if (typeof update.killSwitch === "boolean") {
     patch.runtime_kill_switch = update.killSwitch;
   }
+
 
   const { error } = await supabaseAdmin
     .from("company_settings")
@@ -143,14 +162,24 @@ export function invalidateFlagsCache(tenantId?: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Lista de tenants com system-health habilitado (batch, sem N+1)
+// Lista de tenants com autonomia habilitada por agente (batch, sem N+1)
 // ---------------------------------------------------------------------------
-export async function listAutonomyEnabledTenants(): Promise<string[]> {
+export type AutonomyAgent = "system-health" | "business-brain";
+
+export async function listAutonomyEnabledTenants(
+  agent: AutonomyAgent = "system-health",
+): Promise<string[]> {
+  const agentColumn =
+    agent === "business-brain"
+      ? "runtime_business_brain_enabled"
+      : "runtime_system_health_enabled";
   try {
     const { data, error } = await supabaseAdmin
       .from("company_settings")
-      .select("company_id, runtime_system_health_enabled, runtime_kill_switch, runtime_autonomy_enabled, runtime_scheduler_enabled" as unknown as "*")
-      .eq("runtime_system_health_enabled" as never, true as never)
+      .select(
+        "company_id, runtime_system_health_enabled, runtime_business_brain_enabled, runtime_kill_switch, runtime_autonomy_enabled, runtime_scheduler_enabled" as unknown as "*",
+      )
+      .eq(agentColumn as never, true as never)
       .eq("runtime_autonomy_enabled" as never, true as never)
       .eq("runtime_scheduler_enabled" as never, true as never)
       .eq("runtime_kill_switch" as never, false as never);
@@ -163,6 +192,7 @@ export async function listAutonomyEnabledTenants(): Promise<string[]> {
     return [];
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Dedupe distribuído

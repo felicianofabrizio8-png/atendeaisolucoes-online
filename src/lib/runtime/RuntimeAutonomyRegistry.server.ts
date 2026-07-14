@@ -1,9 +1,9 @@
 // ============================================================================
-// RuntimeAutonomyRegistry — FASE 2: fonte de verdade persistida.
+// RuntimeAutonomyRegistry — FASE 2 (Etapa 17): suporta system-health + business-brain.
 //
-// A autonomia por tenant e o kill switch agora ficam em `company_settings`
-// (via RuntimeStateStore). Métricas de tick/jobs continuam em memória
-// APENAS para observabilidade — nunca decidem execução.
+// A autonomia por tenant e o kill switch ficam em `company_settings`
+// (via RuntimeStateStore). Métricas de tick/jobs em memória APENAS para
+// observabilidade — nunca decidem execução.
 // ============================================================================
 
 import {
@@ -12,7 +12,7 @@ import {
   invalidateFlagsCache,
 } from "./RuntimeStateStore.server";
 
-export type AutonomyAgentKey = "system-health";
+export type AutonomyAgentKey = "system-health" | "business-brain";
 
 interface AutonomyMetrics {
   lastTickAt: string | null;
@@ -26,8 +26,8 @@ interface AutonomyMetrics {
   jobsFailed: number;
 }
 
-const METRICS: Record<AutonomyAgentKey, AutonomyMetrics> = {
-  "system-health": {
+function emptyMetrics(): AutonomyMetrics {
+  return {
     lastTickAt: null,
     lastTickTenants: [],
     lastTickReason: null,
@@ -37,28 +37,40 @@ const METRICS: Record<AutonomyAgentKey, AutonomyMetrics> = {
     jobsCreated: 0,
     jobsCompleted: 0,
     jobsFailed: 0,
-  },
+  };
+}
+
+const METRICS: Record<AutonomyAgentKey, AutonomyMetrics> = {
+  "system-health": emptyMetrics(),
+  "business-brain": emptyMetrics(),
+};
+
+// Intervalo por agente (bucket em segundos)
+const INTERVALS: Record<AutonomyAgentKey, number> = {
+  "system-health": 300, // 5 min
+  "business-brain": 3600, // 60 min (Etapa 17)
 };
 
 export class RuntimeAutonomyRegistry {
-  static readonly INTERVAL_SECONDS = 300; // 5 min bucket
+  /** Retro-compat: intervalo do system-health (5 min). */
+  static readonly INTERVAL_SECONDS = 300;
+
+  static intervalSeconds(agent: AutonomyAgentKey): number {
+    return INTERVALS[agent];
+  }
 
   /** Verifica no banco (com cache 30s) se o tenant está elegível para autonomia. */
   static async isEnabled(agent: AutonomyAgentKey, tenantId: string): Promise<boolean> {
-    if (agent !== "system-health") return false;
     const f = await getRuntimeFlags(tenantId);
-    return (
-      f.autonomyEnabled &&
-      f.systemHealthEnabled &&
-      f.schedulerEnabled &&
-      f.killSwitch === false
-    );
+    if (!f.autonomyEnabled || !f.schedulerEnabled || f.killSwitch) return false;
+    if (agent === "system-health") return f.systemHealthEnabled;
+    if (agent === "business-brain") return f.businessBrainEnabled;
+    return false;
   }
 
   /** Lista tenants elegíveis (batch — sem N+1). */
   static async enabledTenants(agent: AutonomyAgentKey): Promise<string[]> {
-    if (agent !== "system-health") return [];
-    return listAutonomyEnabledTenants();
+    return listAutonomyEnabledTenants(agent);
   }
 
   /** Invalida cache local de flags após mudança admin. */
@@ -66,12 +78,12 @@ export class RuntimeAutonomyRegistry {
     invalidateFlagsCache(tenantId);
   }
 
-  static bucketFor(nowMs: number = Date.now()): number {
-    return Math.floor(nowMs / (this.INTERVAL_SECONDS * 1000));
+  static bucketFor(nowMs: number = Date.now(), agent: AutonomyAgentKey = "system-health"): number {
+    return Math.floor(nowMs / (INTERVALS[agent] * 1000));
   }
 
   static dedupeKey(agent: AutonomyAgentKey, tenantId: string, bucket?: number): string {
-    return `autonomy:${agent}:${tenantId}:${bucket ?? this.bucketFor()}`;
+    return `autonomy:${agent}:${tenantId}:${bucket ?? this.bucketFor(Date.now(), agent)}`;
   }
 
   static recordTick(agent: AutonomyAgentKey, tenants: string[], reason: string): void {
@@ -104,9 +116,10 @@ export class RuntimeAutonomyRegistry {
   static async snapshot(agent: AutonomyAgentKey) {
     const m = METRICS[agent];
     const tenantIds = await this.enabledTenants(agent);
+    const interval = INTERVALS[agent];
     return {
       agent,
-      intervalSeconds: this.INTERVAL_SECONDS,
+      intervalSeconds: interval,
       enabledTenantCount: tenantIds.length,
       tenants: tenantIds.map((t) => ({ tenantId: t, source: "persisted", enabled: true })),
       lastTickAt: m.lastTickAt,
@@ -119,7 +132,7 @@ export class RuntimeAutonomyRegistry {
       jobsCompleted: m.jobsCompleted,
       jobsFailed: m.jobsFailed,
       nextBucketAt: new Date(
-        (this.bucketFor() + 1) * this.INTERVAL_SECONDS * 1000,
+        (this.bucketFor(Date.now(), agent) + 1) * interval * 1000,
       ).toISOString(),
       secretConfigured: Boolean(process.env.RUNTIME_TICK_SECRET),
       source: "persisted" as const,

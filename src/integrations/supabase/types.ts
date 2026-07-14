@@ -1005,6 +1005,7 @@ export type Database = {
           greeting_message: string | null
           location: Json | null
           runtime_autonomy_enabled: boolean
+          runtime_business_brain_enabled: boolean
           runtime_kill_switch: boolean
           runtime_scheduler_enabled: boolean
           runtime_system_health_enabled: boolean
@@ -1057,6 +1058,7 @@ export type Database = {
           greeting_message?: string | null
           location?: Json | null
           runtime_autonomy_enabled?: boolean
+          runtime_business_brain_enabled?: boolean
           runtime_kill_switch?: boolean
           runtime_scheduler_enabled?: boolean
           runtime_system_health_enabled?: boolean
@@ -1109,6 +1111,7 @@ export type Database = {
           greeting_message?: string | null
           location?: Json | null
           runtime_autonomy_enabled?: boolean
+          runtime_business_brain_enabled?: boolean
           runtime_kill_switch?: boolean
           runtime_scheduler_enabled?: boolean
           runtime_system_health_enabled?: boolean
