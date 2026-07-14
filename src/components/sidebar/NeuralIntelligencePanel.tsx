@@ -1083,16 +1083,25 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor halo */}
+        {/* Professor halo — 3 camadas */}
         <motion.circle
           cx={50}
           cy={50}
-          r={22}
+          r={32}
+          fill="url(#profGlowOuter)"
+          animate={profActive ? { opacity: [0.25, 0.55, 0.25], scale: [0.95, 1.08, 0.95] } : { opacity: 0.3, scale: 1 }}
+          transition={{ duration: BREATH * 1.4, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(1.2px)" }}
+        />
+        <motion.circle
+          cx={50}
+          cy={50}
+          r={24}
           fill="url(#profGlowOuter)"
           animate={
             profActive
-              ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5], scale: professorSurge ? [1, 1.1, 1] : [0.95, 1.06, 0.95] }
-              : { opacity: 0.4, scale: 1 }
+              ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.55, 0.95, 0.55], scale: professorSurge ? [1, 1.12, 1] : [0.96, 1.08, 0.96] }
+              : { opacity: 0.45, scale: 1 }
           }
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: "50px 50px" }}
@@ -1100,13 +1109,13 @@ function NeuralGraph({
         <motion.circle
           cx={50}
           cy={50}
-          r={14}
+          r={16}
           fill="url(#profGlowInner)"
-          animate={profActive ? { opacity: [0.35, 0.75, 0.35] } : { opacity: 0.3 }}
+          animate={profActive ? { opacity: [0.45, 0.85, 0.45] } : { opacity: 0.35 }}
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
         />
 
-        {/* Agent halos (soft glow behind each node) */}
+        {/* Agent halos — 2 camadas por nó */}
         {agents.map((a) => {
           const s = SLOT_STYLE[a.id];
           if (!s) return null;
@@ -1115,21 +1124,36 @@ function NeuralGraph({
           const isAnimated = !!meta.animate && a.present && !reducedMotion;
           const surging = a.surge && !reducedMotion;
           return (
-            <motion.circle
-              key={`halo-${a.id}`}
-              cx={p.x}
-              cy={p.y}
-              r={surging ? 12 : 10}
-              fill={s.color}
-              opacity={a.present ? 0.28 : 0.12}
-              animate={
-                isAnimated || surging
-                  ? { opacity: surging ? [0.25, 0.55, 0.25] : [0.15, 0.35, 0.15], scale: surging ? [1, 1.25, 1] : [1, 1.12, 1] }
-                  : { opacity: a.present ? 0.18 : 0.08, scale: 1 }
-              }
-              transition={{ duration: surging ? 1.6 : BREATH, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
-              style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(1.5px)" }}
-            />
+            <g key={`halo-${a.id}`}>
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={surging ? 18 : 15}
+                fill={s.color}
+                opacity={a.present ? 0.14 : 0.06}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.1, 0.28, 0.1] : [0.08, 0.18, 0.08], scale: surging ? [1, 1.18, 1] : [1, 1.08, 1] }
+                    : { opacity: a.present ? 0.1 : 0.05, scale: 1 }
+                }
+                transition={{ duration: surging ? 1.8 : BREATH * 1.3, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(2.6px)" }}
+              />
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={surging ? 13 : 11}
+                fill={s.color}
+                opacity={a.present ? 0.32 : 0.14}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.28, 0.6, 0.28] : [0.2, 0.42, 0.2], scale: surging ? [1, 1.25, 1] : [1, 1.12, 1] }
+                    : { opacity: a.present ? 0.22 : 0.1, scale: 1 }
+                }
+                transition={{ duration: surging ? 1.6 : BREATH, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(1.2px)" }}
+              />
+            </g>
           );
         })}
       </svg>
