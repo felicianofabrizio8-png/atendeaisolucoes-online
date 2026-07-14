@@ -20,7 +20,12 @@ export type AuditAction =
   | "send_campaign"
   | "invite_user"
   | "remove_user"
-  | "change_user_role";
+  | "change_user_role"
+  | "create_next_action"
+  | "clear_next_action"
+  | "schedule_visit"
+  | "mark_lead_lost"
+  | "mark_lead_won";
 
 export type AuditEntity =
   | "auth"
