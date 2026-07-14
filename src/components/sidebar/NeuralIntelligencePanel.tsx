@@ -726,21 +726,27 @@ export function NeuralIntelligencePanel() {
             value={busLevel ?? "—"}
             detail={
               busHealth
-                ? `${busPublishes} pub · ${busReads} rd${
-                    busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""
-                  }`
+                ? `${busPublishes} pub · ${busReads} rd · ${busEnvelopes} env · ${busTopicsCount} tópicos${
+                    busErrors > 0 ? ` · ${busErrors} err` : ""
+                  }${busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""}`
                 : "—"
             }
-            active={busLevel === "healthy" && busPublishes > 0}
+            active={busLevel === "healthy" && (busPublishes > 0 || busReads > 0)}
           />
           <InfraStat
             label="Learning Loop"
-            value={learning ? `${learning.cycles ?? 0} ciclos` : "—"}
+            value={
+              learning
+                ? `${learning.cycles ?? 0} ciclos · ${learning.knowledgeConsolidated ?? 0} consol.`
+                : "—"
+            }
             detail={
               learning?.lastLearning
                 ? `${formatRelative(iso(learning.lastLearning))}${
                     learning.lastAgent ? ` · ${learning.lastAgent}` : ""
-                  }`
+                  } · acc ${learning.hypotheses?.accepted ?? 0}/rej ${learning.hypotheses?.rejected ?? 0}`
+                : learning && (learning.cycles ?? 0) > 0
+                ? `${learning.cycles} ciclos · sem timestamp`
                 : "sem ciclos"
             }
             active={
