@@ -1,7 +1,7 @@
 // ============================================================================
 // LearningLoop — Primeiro ciclo de aprendizagem contínua do Runtime.
 // Executa APÓS um job concluído com sucesso. Nunca dispara agentes,
-// nunca gera jobs, nunca escreve em banco. Somente estado em memória.
+// nunca gera jobs. Persiste apenas metadados (sem PII) via RuntimePersistence.
 // ============================================================================
 
 import type { ExecutionResult } from "./ExecutionResult.server";
@@ -14,6 +14,7 @@ import {
   type LearningRecord,
 } from "./LearningSnapshot.server";
 import type { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
+import { RuntimePersistence } from "./RuntimePersistence.server";
 
 const CHAIN_DOWNSTREAM: Readonly<Record<string, string[]>> = {
   "business-brain": ["business-learning", "scientific-memory", "executive-knowledge"],
