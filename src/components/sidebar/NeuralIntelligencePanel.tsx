@@ -6,7 +6,18 @@ import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, Activity, ArrowRight } from "lucide-react";
+import {
+  Brain,
+  Activity,
+  ArrowRight,
+  Cpu,
+  GraduationCap,
+  FlaskConical,
+  Crown,
+  MessageCircle,
+  Megaphone,
+  type LucideIcon,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
