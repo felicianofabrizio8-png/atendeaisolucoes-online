@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import type { CompleteJobInput, DequeueOptions, EnqueueJobInput, JobRecord } from "./JobQueueTypes";
+import type { ClaimJobInput, ClaimJobResult, CompleteJobInput, DequeueOptions, EnqueueJobInput, JobRecord } from "./JobQueueTypes";
 
 type Row = Database["public"]["Tables"]["agent_jobs"]["Row"];
 
