@@ -14,15 +14,25 @@ import { useAuth } from "@/auth/AuthContext";
 
 /* -------------------- Buckets visuais -------------------- */
 
-type Bucket = "active" | "learning" | "consolidating" | "waiting" | "error" | "idle";
+type Bucket =
+  | "running"
+  | "queued"
+  | "learning"
+  | "consolidating"
+  | "completed"
+  | "error"
+  | "disabled"
+  | "idle";
 
 const BUCKET_META: Record<Bucket, { glow: string; label: string; hex: string; animate: boolean }> = {
-  active:        { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)", animate: true  },
-  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)", animate: true  },
+  running:       { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)",  animate: true  },
+  queued:        { glow: "rgba(251,191,36,0.85)",  label: "Na fila",      hex: "rgb(251,191,36)",  animate: true  },
+  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)",  animate: true  },
   consolidating: { glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)", animate: true  },
-  waiting:       { glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)",  animate: false },
+  completed:     { glow: "rgba(45,212,191,0.75)",  label: "Concluído",    hex: "rgb(45,212,191)",  animate: false },
   error:         { glow: "rgba(248,113,113,0.9)",  label: "Erro",         hex: "rgb(248,113,113)", animate: true  },
-  idle:          { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
+  disabled:      { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
+  idle:          { glow: "rgba(148,163,184,0.55)", label: "Ocioso",       hex: "rgb(148,163,184)", animate: false },
 };
 
 /* -------------------- Tipos do snapshot -------------------- */
@@ -55,10 +65,28 @@ interface RecentJob {
 }
 
 interface LearningPerAgent {
+  cycles: number;
+  created: number;
+  accepted: number;
+  rejected: number;
+  consolidated: number;
+  lastAt: string | null;
+}
+
+interface LastRealExecution {
   agentId: string;
-  learningCycles: number;
-  lastLearningAt: string | null;
-  averageConfidence: number;
+  outcome: string;
+  reason: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number;
+  error: string | null;
+}
+
+interface ConnectedAgentEntry {
+  agentId: string;
+  adapterHealth: unknown;
+  lastExecution: LastRealExecution | null;
 }
 
 interface RuntimeSnapshot {
@@ -80,8 +108,15 @@ interface RuntimeSnapshot {
     averageConfidence: number;
     lastLearning: string | null;
     lastAgent: string | null;
-    perAgent?: LearningPerAgent[];
+    perAgent?: Record<string, LearningPerAgent> | LearningPerAgent[];
   };
+  execution?: {
+    state?: string;
+    lastRealExecutions?: LastRealExecution[];
+  } | null;
+  intelligence?: {
+    connectedAgents?: ConnectedAgentEntry[];
+  } | null;
   worker?: {
     workerId?: string;
     health?: { state?: string; inFlight?: number; jobsProcessed?: number; lastJobAt?: string | null; lastError?: string | null };
@@ -100,6 +135,7 @@ interface RuntimeSnapshot {
   knowledgeBus?: {
     health?: { level?: string; publishCount?: number; readCount?: number; lastActivityAt?: string | null; errors?: number };
     cache?: { totalEnvelopes?: number };
+    topics?: Array<{ id?: string }> | Record<string, unknown>;
   } | null;
   counters?: {
     queued?: number;
@@ -180,49 +216,99 @@ interface Resolved {
   detail?: string;
 }
 
-function resolveAgent(a: AgentEntry, learningMap: Map<string, LearningPerAgent>): Resolved {
+interface AgentJobHint {
+  latestStatus: string | null;
+  latestTs: number | undefined;
+  hasProcessing: boolean;
+  hasQueued: boolean;
+  lastCompletedTs?: number;
+  lastFailedTs?: number;
+  lastError?: string | null;
+}
+
+function resolveAgent(
+  a: AgentEntry,
+  learningMap: Map<string, LearningPerAgent>,
+  lastRealExecMap: Map<string, LastRealExecution>,
+  jobHintMap: Map<string, AgentJobHint>,
+  connectedSet: Set<string>,
+): Resolved {
   const learn = learningMap.get(a.id);
+  const realExec = lastRealExecMap.get(a.id);
+  const jobHint = jobHintMap.get(a.id);
   const lastExec = iso(a.state.lastExecution);
   const lastSuccess = iso(a.state.lastSuccess);
   const lastFail = iso(a.state.lastFailure);
-  const lastLearning = iso(learn?.lastLearningAt ?? null);
+  const lastLearning = iso(learn?.lastAt ?? null);
+  const lastRealFinished = iso(realExec?.finishedAt ?? realExec?.startedAt ?? null);
   const now = Date.now();
 
   if (!a.enabled || a.state.status === "disabled") {
-    return { bucket: "idle", stateLabel: "desativado", updatedAt: lastExec };
+    return { bucket: "disabled", stateLabel: "desativado", updatedAt: lastExec };
   }
-  if (a.state.status === "running") {
-    return { bucket: "active", stateLabel: "executando", updatedAt: lastExec };
+
+  // Running: agent.state, execution.lastRealExecutions ou fila em processamento
+  if (a.state.status === "running" || jobHint?.hasProcessing) {
+    return {
+      bucket: "running",
+      stateLabel: "executando",
+      updatedAt: jobHint?.latestTs ?? lastRealFinished ?? lastExec,
+    };
   }
+
+  // Erro real: failure recente do agente ou última execução real com falha
+  const realFailed = realExec?.outcome === "failure" || realExec?.outcome === "timeout";
   if (
     a.state.status === "failure" ||
+    realFailed ||
     (a.state.lastError && lastFail && lastSuccess && lastFail > lastSuccess) ||
     (a.state.lastError && lastFail && !lastSuccess)
   ) {
     return {
       bucket: "error",
       stateLabel: "erro",
-      updatedAt: lastFail ?? lastExec,
-      detail: a.state.lastError ?? undefined,
+      updatedAt: lastFail ?? lastRealFinished ?? lastExec,
+      detail: realExec?.error ?? a.state.lastError ?? undefined,
     };
   }
-  if (lastLearning && now - lastLearning < 5 * 60_000) {
+
+  // Queued: fila com jobs aguardando dispatch
+  if (jobHint?.hasQueued) {
+    return { bucket: "queued", stateLabel: "na fila", updatedAt: jobHint.latestTs };
+  }
+
+  // Learning: perAgent do Learning Loop com atividade recente
+  if (learn && (learn.cycles > 0 || learn.consolidated > 0) && lastLearning && now - lastLearning < 5 * 60_000) {
+    if (learn.consolidated > 0 && now - lastLearning < 2 * 60_000) {
+      return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastLearning };
+    }
     return { bucket: "learning", stateLabel: "aprendendo", updatedAt: lastLearning };
   }
-  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
-    return { bucket: "active", stateLabel: "online", updatedAt: lastSuccess };
+
+  // Completed: execução real bem-sucedida recente
+  if (realExec?.outcome === "success" && lastRealFinished && now - lastRealFinished < 5 * 60_000) {
+    return { bucket: "completed", stateLabel: "concluído", updatedAt: lastRealFinished };
   }
+  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
+    return { bucket: "completed", stateLabel: "concluído", updatedAt: lastSuccess };
+  }
+
   if (a.state.health === "degraded") {
-    return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastExec };
+    return { bucket: "consolidating", stateLabel: "degradado", updatedAt: lastExec };
   }
   if (a.state.health === "down") {
     return { bucket: "error", stateLabel: "indisponível", updatedAt: lastExec };
   }
-  return { bucket: "waiting", stateLabel: "aguardando", updatedAt: lastExec };
+
+  // Sem sinal recente: conectado ao Runtime = idle, caso contrário disabled visual
+  if (!connectedSet.has(a.id)) {
+    return { bucket: "idle", stateLabel: "ocioso", updatedAt: lastExec };
+  }
+  return { bucket: "idle", stateLabel: "aguardando trabalho", updatedAt: lastExec };
 }
 
 function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
-  if (!snap) return { bucket: "waiting", stateLabel: "conectando" };
+  if (!snap) return { bucket: "idle", stateLabel: "conectando" };
   if (snap.autonomy?.tenantEnabled?.killSwitch) {
     return { bucket: "error", stateLabel: "kill switch ativo" };
   }
@@ -230,11 +316,11 @@ function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
   const hbTs = iso(snap.status?.lastHeartbeat?.ts);
   const agentsArr = Array.isArray(snap.agents) ? snap.agents : [];
   const anyRunning = agentsArr.some((a) => a?.state?.status === "running");
-  if (anyRunning) return { bucket: "active", stateLabel: "coordenando", updatedAt: hbTs };
+  if (anyRunning) return { bucket: "running", stateLabel: "coordenando", updatedAt: hbTs };
   if ((snap.status?.healthyAgents ?? 0) > 0) {
-    return { bucket: "active", stateLabel: "online", updatedAt: hbTs };
+    return { bucket: "completed", stateLabel: "online", updatedAt: hbTs };
   }
-  return { bucket: "waiting", stateLabel: "aguardando agentes", updatedAt: hbTs };
+  return { bucket: "idle", stateLabel: "aguardando agentes", updatedAt: hbTs };
 }
 
 /* -------------------- Componente principal -------------------- */
@@ -283,14 +369,76 @@ export function NeuralIntelligencePanel() {
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
     const raw = snap?.learning?.perAgent;
-    const list: LearningPerAgent[] = Array.isArray(raw)
+    if (!raw) return m;
+    if (Array.isArray(raw)) {
+      // Fallback defensivo caso o formato mude para array com agentId embutido
+      for (const p of raw as Array<LearningPerAgent & { agentId?: string }>) {
+        if (p && typeof p === "object" && typeof p.agentId === "string") {
+          m.set(p.agentId, p);
+        }
+      }
+    } else if (typeof raw === "object") {
+      for (const [agentId, entry] of Object.entries(raw as Record<string, LearningPerAgent>)) {
+        if (entry && typeof entry === "object") m.set(agentId, entry);
+      }
+    }
+    return m;
+  }, [snap]);
+
+  const lastRealExecMap = useMemo(() => {
+    const m = new Map<string, LastRealExecution>();
+    const raw = snap?.execution?.lastRealExecutions;
+    const list: LastRealExecution[] = Array.isArray(raw)
       ? raw
       : raw && typeof raw === "object"
-      ? (Object.values(raw as Record<string, LearningPerAgent>) ?? [])
+      ? (Object.values(raw as Record<string, LastRealExecution>) ?? [])
       : [];
-    for (const p of list) {
-      if (p && typeof p === "object" && typeof p.agentId === "string") {
-        m.set(p.agentId, p);
+    for (const e of list) {
+      if (e && typeof e === "object" && typeof e.agentId === "string") m.set(e.agentId, e);
+    }
+    return m;
+  }, [snap]);
+
+  const connectedSet = useMemo(() => {
+    const s = new Set<string>();
+    const raw = snap?.intelligence?.connectedAgents;
+    const list: ConnectedAgentEntry[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, ConnectedAgentEntry>) ?? [])
+      : [];
+    for (const c of list) {
+      if (c && typeof c === "object" && typeof c.agentId === "string") s.add(c.agentId);
+    }
+    return s;
+  }, [snap]);
+
+  const jobHintMap = useMemo(() => {
+    const m = new Map<string, AgentJobHint>();
+    const raw = snap?.recentJobs;
+    const jobs: RecentJob[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, RecentJob>) ?? [])
+      : [];
+    for (const j of jobs) {
+      if (!j || typeof j !== "object" || typeof j.agentId !== "string") continue;
+      const ts = iso(j.finishedAt) ?? iso(j.startedAt) ?? iso(j.createdAt);
+      let hint = m.get(j.agentId);
+      if (!hint) {
+        hint = { latestStatus: null, latestTs: undefined, hasProcessing: false, hasQueued: false };
+        m.set(j.agentId, hint);
+      }
+      if (ts && (!hint.latestTs || ts > hint.latestTs)) {
+        hint.latestTs = ts;
+        hint.latestStatus = typeof j.status === "string" ? j.status : null;
+        hint.lastError = j.lastError ?? null;
+      }
+      if (j.status === "processing") hint.hasProcessing = true;
+      if (j.status === "queued" || j.status === "scheduled" || j.status === "retry") hint.hasQueued = true;
+      if (j.status === "completed") hint.lastCompletedTs = Math.max(hint.lastCompletedTs ?? 0, ts ?? 0);
+      if (j.status === "failed" || j.status === "dead_letter" || j.status === "timeout") {
+        hint.lastFailedTs = Math.max(hint.lastFailedTs ?? 0, ts ?? 0);
       }
     }
     return m;
@@ -325,10 +473,10 @@ export function NeuralIntelligencePanel() {
         id: a.id,
         label: meta.label,
         short: meta.short,
-        resolved: resolveAgent(a, learningMap),
+        resolved: resolveAgent(a, learningMap, lastRealExecMap, jobHintMap, connectedSet),
       };
     });
-  }, [snap, learningMap]);
+  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet]);
 
   // Surge: detecta mudança de lastExecution/lastSuccess/lastLearning por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
@@ -413,7 +561,15 @@ export function NeuralIntelligencePanel() {
   const busLevel = busHealth?.level ?? null;
   const busPublishes = busHealth?.publishCount ?? 0;
   const busReads = busHealth?.readCount ?? 0;
+  const busErrors = busHealth?.errors ?? 0;
   const busLastActivity = iso(busHealth?.lastActivityAt ?? null);
+  const busEnvelopes = snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0;
+  const busTopicsRaw = snap?.knowledgeBus?.topics;
+  const busTopicsCount = Array.isArray(busTopicsRaw)
+    ? busTopicsRaw.length
+    : busTopicsRaw && typeof busTopicsRaw === "object"
+    ? Object.keys(busTopicsRaw).length
+    : 0;
   const scheduler = snap?.scheduler;
   const schedulerEnabled = scheduler?.enabled ?? 0;
   const schedulerRegistered = scheduler?.registered ?? 0;
@@ -489,7 +645,7 @@ export function NeuralIntelligencePanel() {
           onMouseEnter={() => setLegendFocused(true)}
           onMouseLeave={() => setLegendFocused(false)}
         >
-          {(["active", "learning", "consolidating", "waiting", "error", "idle"] as Bucket[]).map((s) => (
+          {(["running", "queued", "learning", "consolidating", "completed", "error", "disabled", "idle"] as Bucket[]).map((s) => (
             <div
               key={s}
               className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
@@ -570,21 +726,27 @@ export function NeuralIntelligencePanel() {
             value={busLevel ?? "—"}
             detail={
               busHealth
-                ? `${busPublishes} pub · ${busReads} rd${
-                    busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""
-                  }`
+                ? `${busPublishes} pub · ${busReads} rd · ${busEnvelopes} env · ${busTopicsCount} tópicos${
+                    busErrors > 0 ? ` · ${busErrors} err` : ""
+                  }${busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""}`
                 : "—"
             }
-            active={busLevel === "healthy" && busPublishes > 0}
+            active={busLevel === "healthy" && (busPublishes > 0 || busReads > 0)}
           />
           <InfraStat
             label="Learning Loop"
-            value={learning ? `${learning.cycles ?? 0} ciclos` : "—"}
+            value={
+              learning
+                ? `${learning.cycles ?? 0} ciclos · ${learning.knowledgeConsolidated ?? 0} consol.`
+                : "—"
+            }
             detail={
               learning?.lastLearning
                 ? `${formatRelative(iso(learning.lastLearning))}${
                     learning.lastAgent ? ` · ${learning.lastAgent}` : ""
-                  }`
+                  } · acc ${learning.hypotheses?.accepted ?? 0}/rej ${learning.hypotheses?.rejected ?? 0}`
+                : learning && (learning.cycles ?? 0) > 0
+                ? `${learning.cycles} ciclos · sem timestamp`
                 : "sem ciclos"
             }
             active={
@@ -639,10 +801,14 @@ export function NeuralIntelligencePanel() {
             </span>
           </div>
           {(() => {
+            const cycles = learning?.cycles ?? 0;
             const consolidated = learning?.knowledgeConsolidated ?? 0;
             const accepted = learning?.hypotheses?.accepted ?? 0;
+            const rejected = learning?.hypotheses?.rejected ?? 0;
             const conf = learning?.averageConfidence;
-            if (!learning || (consolidated === 0 && accepted === 0)) {
+            const lastTs = iso(learning?.lastLearning ?? null);
+            // Aguardando apenas quando não houve nenhum ciclo real.
+            if (!learning || cycles === 0) {
               return (
                 <div className="text-[9px] text-sidebar-foreground/70 italic">
                   Aguardando ciclos de aprendizado
@@ -650,15 +816,24 @@ export function NeuralIntelligencePanel() {
               );
             }
             return (
-              <div className="text-[9px] text-sidebar-foreground/85">
-                <span className="text-emerald-300">{consolidated}</span> consolidados
-                <span className="text-muted-foreground/60"> · </span>
-                <span className="text-sky-300">{accepted}</span> hipóteses aceitas
-                <span className="text-muted-foreground/60"> · </span>
-                <span className="text-violet-300">
-                  {typeof conf === "number" ? `${Math.round(conf * 100)}%` : "—"}
-                </span>{" "}
-                confiança
+              <div className="text-[9px] text-sidebar-foreground/85 space-y-0.5">
+                <div>
+                  <span className="text-sky-300">{cycles}</span> ciclos
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-emerald-300">{consolidated}</span> consolidados
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-violet-300">
+                    {typeof conf === "number" && conf > 0 ? `${Math.round(conf * 100)}%` : "—"}
+                  </span>{" "}
+                  confiança
+                </div>
+                <div className="text-muted-foreground/70">
+                  <span className="text-sky-300">{accepted}</span> aceitas
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-red-300">{rejected}</span> rejeitadas
+                  <span className="text-muted-foreground/60"> · </span>
+                  última {lastTs ? formatRelative(lastTs) : "—"}
+                </div>
               </div>
             );
           })()}
