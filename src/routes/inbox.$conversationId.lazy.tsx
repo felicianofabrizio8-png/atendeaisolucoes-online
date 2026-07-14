@@ -4345,17 +4345,20 @@ function ActionButton({
   variant = "default",
   onClick,
   disabled,
+  title,
 }: {
   icon: typeof FileText;
   children: React.ReactNode;
   variant?: "default" | "won" | "lost";
   onClick?: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={cn(
         "w-full inline-flex items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
         variant === "won" && "text-[var(--status-won)]",
