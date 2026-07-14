@@ -2301,6 +2301,102 @@ export type Database = {
         }
         Relationships: []
       }
+      runtime_knowledge_envelopes: {
+        Row: {
+          agent_id: string
+          company_id: string
+          confidence: number | null
+          created_at: string
+          envelope_id: string
+          expires_at: string | null
+          id: string
+          metadata: Json
+          priority: string | null
+          topic: string
+          ttl_ms: number | null
+          version: number | null
+        }
+        Insert: {
+          agent_id: string
+          company_id: string
+          confidence?: number | null
+          created_at?: string
+          envelope_id: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          priority?: string | null
+          topic: string
+          ttl_ms?: number | null
+          version?: number | null
+        }
+        Update: {
+          agent_id?: string
+          company_id?: string
+          confidence?: number | null
+          created_at?: string
+          envelope_id?: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          priority?: string | null
+          topic?: string
+          ttl_ms?: number | null
+          version?: number | null
+        }
+        Relationships: []
+      }
+      runtime_learning_cycles: {
+        Row: {
+          agent_id: string
+          company_id: string
+          confidence: number
+          created_at: string
+          decision: string
+          duration_ms: number | null
+          execution_id: string
+          hypothesis_id: string
+          id: string
+          job_id: string | null
+          published_topics: string[]
+          reason: string | null
+          signature: string
+          topics_used: string[]
+        }
+        Insert: {
+          agent_id: string
+          company_id: string
+          confidence?: number
+          created_at?: string
+          decision: string
+          duration_ms?: number | null
+          execution_id: string
+          hypothesis_id: string
+          id?: string
+          job_id?: string | null
+          published_topics?: string[]
+          reason?: string | null
+          signature: string
+          topics_used?: string[]
+        }
+        Update: {
+          agent_id?: string
+          company_id?: string
+          confidence?: number
+          created_at?: string
+          decision?: string
+          duration_ms?: number | null
+          execution_id?: string
+          hypothesis_id?: string
+          id?: string
+          job_id?: string | null
+          published_topics?: string[]
+          reason?: string | null
+          signature?: string
+          topics_used?: string[]
+        }
+        Relationships: []
+      }
       runtime_locks: {
         Row: {
           acquired_at: string
