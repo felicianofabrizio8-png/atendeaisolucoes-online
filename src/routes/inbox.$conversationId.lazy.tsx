@@ -4128,10 +4128,11 @@ function ConversationPage() {
           let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
             icon: Target,
             label: "Definir próxima ação",
+            onClick: () => setNextActionOpen(true),
             variant: "default",
           };
           if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
-          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", variant: "default" };
+          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
           else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
           const Icon = primary.icon;
           return (
