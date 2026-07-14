@@ -465,6 +465,7 @@ function InboxPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ViewToggle view={view} onChange={changeView} />
             <Link
               to="/inbox/recovery"
               className="h-9 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 inline-flex items-center gap-1.5 whitespace-nowrap"
