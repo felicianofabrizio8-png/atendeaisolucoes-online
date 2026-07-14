@@ -535,33 +535,101 @@ export function NeuralIntelligencePanel() {
           )}
         </div>
 
-        {/* Infra: Worker, Scheduler, Knowledge Bus, Learning */}
+        {/* Infra: Worker, Scheduler, Knowledge Bus, Learning, Fila */}
         <div className="mt-1.5 grid grid-cols-2 gap-1 px-0.5">
           <InfraStat
             label="Worker"
-            value={worker?.state ?? "—"}
-            detail={worker ? `${worker.inFlight ?? 0} em voo · ${worker.jobsProcessed ?? 0} jobs` : "sem worker"}
-            active={worker?.state === "running" || (worker?.inFlight ?? 0) > 0}
+            value={workerState ?? "—"}
+            detail={
+              workerHealth
+                ? `${workerInFlight} em voo · ${workerJobs} jobs${
+                    workerHealth.lastJobAt ? ` · ${formatRelative(iso(workerHealth.lastJobAt))}` : ""
+                  }`
+                : "—"
+            }
+            active={workerState === "busy" || workerInFlight > 0}
           />
           <InfraStat
             label="Scheduler"
-            value={scheduler?.enabled === false ? "off" : `${scheduler?.registered ?? 0} sched.`}
-            detail={scheduler?.nextRunAt ? `próx. ${formatRelative(iso(scheduler.nextRunAt))}` : "sem próximo tick"}
-            active={!!scheduler?.enabled}
+            value={
+              scheduler
+                ? `${schedulerEnabled}/${schedulerRegistered} ativos`
+                : "—"
+            }
+            detail={
+              schedulerNextTs
+                ? `próx. ${formatRelative(schedulerNextTs)}`
+                : scheduler
+                ? "sem próximo tick"
+                : "—"
+            }
+            active={schedulerEnabled > 0}
           />
           <InfraStat
             label="Knowledge Bus"
-            value={busLevel}
-            detail={`${busPublishes} publicações`}
+            value={busLevel ?? "—"}
+            detail={
+              busHealth
+                ? `${busPublishes} pub · ${busReads} rd${
+                    busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""
+                  }`
+                : "—"
+            }
             active={busLevel === "healthy" && busPublishes > 0}
           />
           <InfraStat
             label="Learning Loop"
-            value={`${learning?.cycles ?? 0} ciclos`}
-            detail={learning?.lastLearning ? formatRelative(iso(learning.lastLearning)) : "sem ciclos"}
-            active={!!learning?.lastLearning && Date.now() - (iso(learning.lastLearning) ?? 0) < 15 * 60_000}
+            value={learning ? `${learning.cycles ?? 0} ciclos` : "—"}
+            detail={
+              learning?.lastLearning
+                ? `${formatRelative(iso(learning.lastLearning))}${
+                    learning.lastAgent ? ` · ${learning.lastAgent}` : ""
+                  }`
+                : "sem ciclos"
+            }
+            active={
+              !!learning?.lastLearning &&
+              Date.now() - (iso(learning.lastLearning) ?? 0) < 15 * 60_000
+            }
           />
         </div>
+
+        {/* Fila do Runtime */}
+        <div className="mt-1.5 px-0.5">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
+              Fila
+            </span>
+            {snap?.status?.lastHeartbeat?.ts && (
+              <span className="text-[8px] text-muted-foreground/70">
+                heartbeat {formatRelative(iso(snap.status.lastHeartbeat.ts))}
+              </span>
+            )}
+          </div>
+          {counters ? (
+            <div className="text-[9px] text-sidebar-foreground/85 flex flex-wrap gap-x-2 gap-y-0.5">
+              <span>
+                <span className="text-amber-300">{counters.queued ?? 0}</span>{" "}
+                <span className="text-muted-foreground/70">queued</span>
+              </span>
+              <span>
+                <span className="text-sky-300">{counters.processing ?? 0}</span>{" "}
+                <span className="text-muted-foreground/70">running</span>
+              </span>
+              <span>
+                <span className="text-emerald-300">{counters.completed ?? 0}</span>{" "}
+                <span className="text-muted-foreground/70">done</span>
+              </span>
+              <span>
+                <span className="text-red-300">{counters.failed ?? 0}</span>{" "}
+                <span className="text-muted-foreground/70">failed</span>
+              </span>
+            </div>
+          ) : (
+            <div className="text-[9px] text-sidebar-foreground/70 italic">—</div>
+          )}
+        </div>
+
 
         {/* Conhecimento acumulado — apenas dados reais do Learning Loop */}
         <div className="mt-1.5 px-0.5">
