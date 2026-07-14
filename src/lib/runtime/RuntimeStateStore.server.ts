@@ -87,6 +87,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
 
 export interface FlagUpdate {
   systemHealthEnabled?: boolean;
+  businessBrainEnabled?: boolean;
   killSwitch?: boolean;
   actorId: string;
   correlationId: string;
@@ -103,13 +104,26 @@ export async function updateRuntimeFlags(
   };
   if (typeof update.systemHealthEnabled === "boolean") {
     patch.runtime_system_health_enabled = update.systemHealthEnabled;
-    // Autonomia é implícita se algum agente está habilitado.
-    patch.runtime_autonomy_enabled = update.systemHealthEnabled;
-    patch.runtime_scheduler_enabled = update.systemHealthEnabled;
   }
+  if (typeof update.businessBrainEnabled === "boolean") {
+    patch.runtime_business_brain_enabled = update.businessBrainEnabled;
+  }
+  // Autonomia + Scheduler são implícitos: qualquer agente autônomo ligado.
+  const nextSystemHealth =
+    typeof update.systemHealthEnabled === "boolean"
+      ? update.systemHealthEnabled
+      : before.systemHealthEnabled;
+  const nextBusinessBrain =
+    typeof update.businessBrainEnabled === "boolean"
+      ? update.businessBrainEnabled
+      : before.businessBrainEnabled;
+  const anyAgentOn = nextSystemHealth || nextBusinessBrain;
+  patch.runtime_autonomy_enabled = anyAgentOn;
+  patch.runtime_scheduler_enabled = anyAgentOn;
   if (typeof update.killSwitch === "boolean") {
     patch.runtime_kill_switch = update.killSwitch;
   }
+
 
   const { error } = await supabaseAdmin
     .from("company_settings")
