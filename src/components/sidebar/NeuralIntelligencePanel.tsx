@@ -824,43 +824,121 @@ function LiveBadge({ online, label }: { online: boolean; label: string }) {
 function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; active: boolean }) {
   const parts = useMemo(
     () =>
-      Array.from({ length: 10 }, (_, i) => ({
+      Array.from({ length: 22 }, (_, i) => ({
         left: (i * 41 + 13) % 100,
         top: (i * 59 + 9) % 100,
-        dur: 14 + (i % 5) * 3,
-        delay: i * 0.7,
+        dur: 10 + (i % 6) * 2.5,
+        delay: i * 0.4,
+        size: 1 + (i % 3) * 0.6,
       })),
+    [],
+  );
+  const fibers = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => {
+        const a1 = (i * 47) % 360;
+        const a2 = (a1 + 120 + (i % 5) * 20) % 360;
+        const r1 = 12 + (i % 4) * 8;
+        const r2 = 30 + (i % 5) * 6;
+        const rad = (deg: number, r: number) => ({
+          x: 50 + Math.cos((deg * Math.PI) / 180) * r,
+          y: 50 + Math.sin((deg * Math.PI) / 180) * r,
+        });
+        const p1 = rad(a1, r1);
+        const p2 = rad(a2, r2);
+        const cx = (p1.x + p2.x) / 2 + Math.sin(i) * 6;
+        const cy = (p1.y + p2.y) / 2 + Math.cos(i) * 6;
+        return { d: `M${p1.x} ${p1.y} Q ${cx} ${cy} ${p2.x} ${p2.y}`, dur: 8 + (i % 4) * 3, delay: i * 0.3 };
+      }),
     [],
   );
   return (
     <>
       {/* Aurora glows */}
       <div
-        className="pointer-events-none absolute -top-16 -left-12 h-40 w-40 rounded-full opacity-40 blur-3xl"
+        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-50 blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute -bottom-16 -right-10 h-44 w-44 rounded-full opacity-35 blur-3xl"
+        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-45 blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)" }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-30 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.45), transparent 70%)" }}
       />
       {/* Neon grid */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        className="pointer-events-none absolute inset-0 opacity-[0.08]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
+          backgroundSize: "22px 22px",
+          maskImage: "radial-gradient(circle at 50% 50%, black 40%, transparent 85%)",
+          WebkitMaskImage: "radial-gradient(circle at 50% 50%, black 40%, transparent 85%)",
         }}
       />
+      {/* Diagonal light beams */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.10] mix-blend-screen"
+        style={{
+          background:
+            "repeating-linear-gradient(115deg, transparent 0 22px, rgba(125,211,252,0.35) 22px 23px, transparent 23px 46px)",
+          maskImage: "radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%)",
+          WebkitMaskImage: "radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%)",
+        }}
+      />
+      {/* Neural fibers */}
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id="fiberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="rgba(56,189,248,0.55)" />
+            <stop offset="50%" stopColor="rgba(168,85,247,0.45)" />
+            <stop offset="100%" stopColor="rgba(45,212,191,0.5)" />
+          </linearGradient>
+          <filter id="fiberBlur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="0.35" />
+          </filter>
+        </defs>
+        {fibers.map((f, i) => (
+          <motion.path
+            key={i}
+            d={f.d}
+            fill="none"
+            stroke="url(#fiberGrad)"
+            strokeWidth={0.18}
+            strokeLinecap="round"
+            filter="url(#fiberBlur)"
+            initial={{ opacity: 0.08, pathLength: 0.4 }}
+            animate={
+              !reducedMotion && active
+                ? { opacity: [0.05, 0.28, 0.05], pathLength: [0.35, 1, 0.35] }
+                : { opacity: 0.12 }
+            }
+            transition={{ duration: f.dur, delay: f.delay, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
+      </svg>
       {/* Particles */}
       {!reducedMotion && active && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {parts.map((p, i) => (
             <motion.span
               key={i}
-              className="absolute h-[2px] w-[2px] rounded-full bg-cyan-300/50"
-              style={{ left: `${p.left}%`, top: `${p.top}%` }}
-              animate={{ y: [-8, 8, -8], opacity: [0.1, 0.6, 0.1] }}
+              className="absolute rounded-full bg-cyan-300/60"
+              style={{
+                left: `${p.left}%`,
+                top: `${p.top}%`,
+                width: `${p.size}px`,
+                height: `${p.size}px`,
+                boxShadow: "0 0 6px rgba(125,211,252,0.85)",
+              }}
+              animate={{ y: [-10, 10, -10], opacity: [0.1, 0.75, 0.1] }}
               transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
             />
           ))}
