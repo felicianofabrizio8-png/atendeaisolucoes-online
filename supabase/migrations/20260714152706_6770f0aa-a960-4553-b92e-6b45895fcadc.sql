@@ -1,0 +1,1 @@
+DELETE FROM public.runtime_dedupe WHERE operation = 'runtime-tick:business-brain' AND company_id = '3a7e989c-2e1c-425d-8fc6-0feecbeb48fd';
