@@ -812,27 +812,33 @@ export function NeuralIntelligencePanel() {
 
 function LiveBadge({ online, label }: { online: boolean; label: string }) {
   return (
-    <div
+    <motion.div
       className={cn(
-        "shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em]",
+        "relative shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.12em] backdrop-blur-sm",
         online
-          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.25)]"
-          : "border-amber-400/40 bg-amber-400/10 text-amber-300",
+          ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-200"
+          : "border-amber-400/40 bg-amber-400/10 text-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.2)]",
       )}
       title={label}
+      animate={online ? { boxShadow: [
+        "0 0 10px rgba(52,211,153,0.35), inset 0 0 8px rgba(52,211,153,0.2)",
+        "0 0 18px rgba(52,211,153,0.65), inset 0 0 10px rgba(52,211,153,0.35)",
+        "0 0 10px rgba(52,211,153,0.35), inset 0 0 8px rgba(52,211,153,0.2)",
+      ] } : undefined}
+      transition={online ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" } : undefined}
     >
       <motion.span
         className={cn(
           "h-1.5 w-1.5 rounded-full",
           online
-            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+            ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]"
             : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]",
         )}
-        animate={online ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+        animate={online ? { opacity: [0.55, 1, 0.55], scale: [1, 1.15, 1] } : { opacity: 0.6 }}
         transition={{ duration: 1.6, repeat: online ? Infinity : 0 }}
       />
       {online ? "AO VIVO" : label.toUpperCase()}
-    </div>
+    </motion.div>
   );
 }
 
