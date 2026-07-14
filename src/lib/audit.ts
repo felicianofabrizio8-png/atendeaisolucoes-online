@@ -33,6 +33,7 @@ export type AuditEntity =
   | "campaign_creative"
   | "product"
   | "lead"
+  | "visit"
   | "company_settings"
   | "integration"
   | "user_role"
