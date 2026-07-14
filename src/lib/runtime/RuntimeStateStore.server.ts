@@ -162,14 +162,24 @@ export function invalidateFlagsCache(tenantId?: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Lista de tenants com system-health habilitado (batch, sem N+1)
+// Lista de tenants com autonomia habilitada por agente (batch, sem N+1)
 // ---------------------------------------------------------------------------
-export async function listAutonomyEnabledTenants(): Promise<string[]> {
+export type AutonomyAgent = "system-health" | "business-brain";
+
+export async function listAutonomyEnabledTenants(
+  agent: AutonomyAgent = "system-health",
+): Promise<string[]> {
+  const agentColumn =
+    agent === "business-brain"
+      ? "runtime_business_brain_enabled"
+      : "runtime_system_health_enabled";
   try {
     const { data, error } = await supabaseAdmin
       .from("company_settings")
-      .select("company_id, runtime_system_health_enabled, runtime_kill_switch, runtime_autonomy_enabled, runtime_scheduler_enabled" as unknown as "*")
-      .eq("runtime_system_health_enabled" as never, true as never)
+      .select(
+        "company_id, runtime_system_health_enabled, runtime_business_brain_enabled, runtime_kill_switch, runtime_autonomy_enabled, runtime_scheduler_enabled" as unknown as "*",
+      )
+      .eq(agentColumn as never, true as never)
       .eq("runtime_autonomy_enabled" as never, true as never)
       .eq("runtime_scheduler_enabled" as never, true as never)
       .eq("runtime_kill_switch" as never, false as never);
@@ -182,6 +192,7 @@ export async function listAutonomyEnabledTenants(): Promise<string[]> {
     return [];
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Dedupe distribuído
