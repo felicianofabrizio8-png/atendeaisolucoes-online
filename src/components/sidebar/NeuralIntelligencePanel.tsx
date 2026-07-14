@@ -373,7 +373,7 @@ function buildDisplayAgent(
       label: slot.label,
       short: slot.short,
       resolved: { bucket: "unavailable", stateLabel: "indisponível" },
-      metricPrimary: "—",
+      metricPrimary: "sem dados",
       metricSecondary: "sem métrica real",
       present: false,
     };
@@ -422,7 +422,7 @@ function buildDisplayAgent(
       break;
     }
     default: {
-      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "—";
+      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "aguardando";
       metricSecondary = agent.enabled ? resolved.stateLabel : "desativado";
     }
   }
@@ -577,7 +577,7 @@ export function NeuralIntelligencePanel() {
         label: s.label,
         short: s.short,
         resolved: { bucket: "idle" as Bucket, stateLabel: "conectando" },
-        metricPrimary: "—",
+        metricPrimary: "conectando",
         metricSecondary: "aguardando runtime",
         present: false,
       }));
@@ -685,7 +685,7 @@ export function NeuralIntelligencePanel() {
       <div
         role="region"
         aria-label="Central de Inteligência AI"
-        className="relative mx-1.5 my-2 overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-2.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
+        className="relative mx-1.5 my-2 overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-1.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
       >
         {/* Neural background layers */}
         <NeuralBackdrop reducedMotion={!!reducedMotion} active={networkOnline} />
@@ -812,27 +812,33 @@ export function NeuralIntelligencePanel() {
 
 function LiveBadge({ online, label }: { online: boolean; label: string }) {
   return (
-    <div
+    <motion.div
       className={cn(
-        "shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em]",
+        "relative shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.12em] backdrop-blur-sm",
         online
-          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.25)]"
-          : "border-amber-400/40 bg-amber-400/10 text-amber-300",
+          ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-200"
+          : "border-amber-400/40 bg-amber-400/10 text-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.2)]",
       )}
       title={label}
+      animate={online ? { boxShadow: [
+        "0 0 10px rgba(52,211,153,0.35), inset 0 0 8px rgba(52,211,153,0.2)",
+        "0 0 18px rgba(52,211,153,0.65), inset 0 0 10px rgba(52,211,153,0.35)",
+        "0 0 10px rgba(52,211,153,0.35), inset 0 0 8px rgba(52,211,153,0.2)",
+      ] } : undefined}
+      transition={online ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" } : undefined}
     >
       <motion.span
         className={cn(
           "h-1.5 w-1.5 rounded-full",
           online
-            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+            ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]"
             : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]",
         )}
-        animate={online ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+        animate={online ? { opacity: [0.55, 1, 0.55], scale: [1, 1.15, 1] } : { opacity: 0.6 }}
         transition={{ duration: 1.6, repeat: online ? Infinity : 0 }}
       />
       {online ? "AO VIVO" : label.toUpperCase()}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1016,7 +1022,16 @@ function NeuralGraph({
   const profActive = profMeta.animate && !reducedMotion;
 
   return (
-    <div className="relative w-full aspect-square">
+    <div className="relative w-full aspect-square mx-auto max-w-[100%] my-0.5">
+      {/* Sutil vinheta radial para dar profundidade à rede */}
+      <div
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08) 0%, rgba(168,85,247,0.06) 45%, transparent 75%)",
+        }}
+        aria-hidden
+      />
       {/* SVG layer: background rings, connections, particles, professor halo */}
       <svg
         viewBox="0 0 100 100"
@@ -1100,15 +1115,24 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor halo — 3 camadas */}
+        {/* Professor halo — 4 camadas de profundidade */}
+        <motion.circle
+          cx={50}
+          cy={50}
+          r={42}
+          fill="url(#profGlowOuter)"
+          animate={profActive ? { opacity: [0.15, 0.32, 0.15], scale: [0.94, 1.06, 0.94] } : { opacity: 0.18, scale: 1 }}
+          transition={{ duration: BREATH * 1.8, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(2.4px)" }}
+        />
         <motion.circle
           cx={50}
           cy={50}
           r={32}
           fill="url(#profGlowOuter)"
-          animate={profActive ? { opacity: [0.25, 0.55, 0.25], scale: [0.95, 1.08, 0.95] } : { opacity: 0.3, scale: 1 }}
+          animate={profActive ? { opacity: [0.28, 0.58, 0.28], scale: [0.95, 1.08, 0.95] } : { opacity: 0.32, scale: 1 }}
           transition={{ duration: BREATH * 1.4, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
-          style={{ transformOrigin: "50px 50px", filter: "blur(1.2px)" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(1.4px)" }}
         />
         <motion.circle
           cx={50}
@@ -1118,7 +1142,7 @@ function NeuralGraph({
           animate={
             profActive
               ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.55, 0.95, 0.55], scale: professorSurge ? [1, 1.12, 1] : [0.96, 1.08, 0.96] }
-              : { opacity: 0.45, scale: 1 }
+              : { opacity: 0.48, scale: 1 }
           }
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: "50px 50px" }}
@@ -1128,7 +1152,7 @@ function NeuralGraph({
           cy={50}
           r={16}
           fill="url(#profGlowInner)"
-          animate={profActive ? { opacity: [0.45, 0.85, 0.45] } : { opacity: 0.35 }}
+          animate={profActive ? { opacity: [0.5, 0.9, 0.5] } : { opacity: 0.4 }}
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
         />
 
@@ -1142,6 +1166,20 @@ function NeuralGraph({
           const surging = a.surge && !reducedMotion;
           return (
             <g key={`halo-${a.id}`}>
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={surging ? 22 : 19}
+                fill={s.color}
+                opacity={a.present ? 0.08 : 0.03}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.06 , 0.18, 0.06] : [0.05, 0.12, 0.05], scale: surging ? [1, 1.14, 1] : [1, 1.06, 1] }
+                    : { opacity: a.present ? 0.06 : 0.03, scale: 1 }
+                }
+                transition={{ duration: surging ? 2 : BREATH * 1.6, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(4px)" }}
+              />
               <motion.circle
                 cx={p.x}
                 cy={p.y}
@@ -1184,7 +1222,7 @@ function NeuralGraph({
         onFocus={() => setHovered("professor")}
         onBlur={() => setHovered(null)}
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
-        style={{ width: "46%", height: "46%" }}
+        style={{ width: "53%", height: "53%" }}
       >
         <div
           className="relative flex h-full w-full items-center justify-center rounded-full border-2"
@@ -1225,7 +1263,7 @@ function NeuralGraph({
             onFocus={() => setHovered(a.id)}
             onBlur={() => setHovered(null)}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-lg"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "34%" }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "41%" }}
           >
             <motion.div
               className="relative flex items-center justify-center rounded-full border-2"
