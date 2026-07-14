@@ -3198,7 +3198,15 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
-    if (lead) void markLeadWon(lead.id, value);
+    if (lead) {
+      void markLeadWon(lead.id, value);
+      recordAudit({
+        action: "mark_lead_won",
+        entity: "lead",
+        entityId: lead.id,
+        after: { value },
+      });
+    }
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
@@ -3211,22 +3219,127 @@ function ConversationPage() {
     ]);
   };
 
-  const confirmLost = (reason: string) => {
+  const confirmLost = (reason: string, notes?: string) => {
     if (!lead) return;
     void markLeadLost(lead.id, reason);
+    recordAudit({
+      action: "mark_lead_lost",
+      entity: "lead",
+      entityId: lead.id,
+      after: { reason, notes: notes ?? null },
+    });
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
+    const detail = notes ? ` — ${reason} (${notes})` : ` — ${reason}`;
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
         conversationId,
         role: "system",
-        text: `❌ Lead marcado como perdido — ${reason}`,
+        text: `❌ Lead marcado como perdido${detail}`,
         at: new Date().toISOString(),
       },
     ]);
+    toast.success("Lead marcado como perdido");
   };
+
+  const confirmNextAction = async (payload: {
+    label: string;
+    dueAt: string;
+    notes?: string;
+  }) => {
+    if (!lead) return;
+    try {
+      await updateLeadNextAction(lead.id, { label: payload.label, dueAt: payload.dueAt });
+      recordAudit({
+        action: "create_next_action",
+        entity: "lead",
+        entityId: lead.id,
+        after: payload,
+      });
+      setLocalMessages((prev: Message[]) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          conversationId,
+          role: "system",
+          text: `🎯 Próxima ação: ${payload.label} — ${new Date(payload.dueAt).toLocaleString("pt-BR")}`,
+          at: new Date().toISOString(),
+        },
+      ]);
+      setNextActionOpen(false);
+      toast.success("Próxima ação criada");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao salvar próxima ação");
+    }
+  };
+
+  const confirmVisit = async (payload: {
+    date: string;
+    time: string;
+    address: string;
+    appointmentType: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao";
+    confirmed: boolean;
+    notes: string;
+  }) => {
+    if (!lead || !authProfile?.company_id) return;
+    const scheduledAt = new Date(`${payload.date}T${payload.time}:00`).toISOString();
+    const typeLabel: Record<string, string> = {
+      visita_tecnica: "Visita técnica",
+      loja: "Cliente na loja",
+      retorno_comercial: "Retorno comercial",
+      instalacao: "Instalação",
+    };
+    try {
+      const { data, error } = await supabase
+        .from("visits")
+        .insert({
+          company_id: authProfile.company_id,
+          title: `${typeLabel[payload.appointmentType]} — ${lead.name}`,
+          appointment_type: payload.appointmentType,
+          address: payload.appointmentType === "loja" ? null : payload.address || null,
+          scheduled_at: scheduledAt,
+          status: payload.confirmed ? "confirmada" : "agendada",
+          notes: payload.notes || null,
+          customer_name: lead.name,
+          customer_phone: lead.phone ?? null,
+          product: lead.product ?? null,
+          lead_id: lead.id,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      recordAudit({
+        action: "schedule_visit",
+        entity: "visit",
+        entityId: data?.id ?? null,
+        after: { leadId: lead.id, scheduledAt, type: payload.appointmentType },
+      });
+      // Sincroniza também como próxima ação do lead
+      await updateLeadNextAction(lead.id, {
+        label: typeLabel[payload.appointmentType],
+        dueAt: scheduledAt,
+      });
+      setLocalMessages((prev: Message[]) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          conversationId,
+          role: "system",
+          text: `📅 ${typeLabel[payload.appointmentType]} agendada — ${new Date(scheduledAt).toLocaleString("pt-BR")}`,
+          at: new Date().toISOString(),
+        },
+      ]);
+      setVisitOpen(false);
+      toast.success("Visita agendada");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao agendar visita");
+    }
+  };
+
 
   const sendPendingQuote = () => {
     if (!pendingQuote) return;
