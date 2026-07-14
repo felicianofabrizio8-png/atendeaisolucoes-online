@@ -350,8 +350,15 @@ export function NeuralIntelligencePanel() {
 
   // Feed real: últimos jobs do Runtime.
   const feed = useMemo(() => {
-    if (!snap?.recentJobs?.length) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
-    return snap.recentJobs
+    const raw = snap?.recentJobs;
+    const jobs: RecentJob[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, RecentJob>) ?? [])
+      : [];
+    if (jobs.length === 0) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
+    return jobs
+      .filter((j): j is RecentJob => !!j && typeof j === "object" && typeof j.agentId === "string")
       .map((j) => {
         const ts =
           iso(j.finishedAt) ??
@@ -359,11 +366,12 @@ export function NeuralIntelligencePanel() {
           iso(j.createdAt) ??
           0;
         const meta = AGENT_LABEL[j.agentId];
+        const statusStr = typeof j.status === "string" ? j.status : "—";
         return {
           label: meta?.label ?? j.agentId,
-          msg: j.lastError ? `${j.status} · ${j.lastError.slice(0, 40)}` : j.status,
+          msg: j.lastError ? `${statusStr} · ${String(j.lastError).slice(0, 40)}` : statusStr,
           ts,
-          ok: !j.lastError && (j.status === "completed" || j.status === "processing"),
+          ok: !j.lastError && (statusStr === "completed" || statusStr === "processing"),
         };
       })
       .filter((e) => e.ts > 0)
