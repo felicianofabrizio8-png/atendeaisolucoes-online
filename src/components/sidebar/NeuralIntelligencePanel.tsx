@@ -1234,7 +1234,7 @@ function NeuralGraph({
                 aria-hidden
               />
             </motion.div>
-            <div className="text-[7.5px] font-semibold leading-tight tracking-tight text-cyan-50/95 text-center max-w-full truncate">
+            <div className="mt-0.5 text-[8.5px] font-semibold leading-tight tracking-tight text-cyan-50/95 text-center max-w-full truncate drop-shadow-[0_0_4px_rgba(0,0,0,0.9)]">
               {a.short}
             </div>
           </button>
