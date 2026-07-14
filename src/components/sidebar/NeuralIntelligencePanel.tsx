@@ -890,7 +890,7 @@ const SLOT_STYLE: Record<string, SlotStyle> = {
 
 const PROFESSOR_COLOR = "#a855f7";
 const PROFESSOR_GLOW = "rgba(168,85,247,0.65)";
-const ORBIT_PCT = 37; // % of container radius
+const ORBIT_PCT = 40; // % of container radius
 
 function polar(angleDeg: number, r: number) {
   const a = (angleDeg * Math.PI) / 180;
