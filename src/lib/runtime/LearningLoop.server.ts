@@ -195,6 +195,14 @@ export class LearningLoop {
       publishError,
     };
     this.lastCycle = report;
+
+    // Persistência sem PII (fail-soft). Não bloqueia o resultado do worker.
+    try {
+      await RuntimePersistence.instance().recordLearningCycle(record, result.durationMs);
+    } catch {
+      /* fail-soft */
+    }
+
     return report;
   }
 
