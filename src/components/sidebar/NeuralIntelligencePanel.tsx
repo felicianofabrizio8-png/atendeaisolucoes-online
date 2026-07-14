@@ -1018,10 +1018,17 @@ function NeuralGraph({
             <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.85" />
             <stop offset="100%" stopColor={PROFESSOR_COLOR} stopOpacity="0" />
           </radialGradient>
-          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="0.7" result="blur" />
+          <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="1.4" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="2.4" result="b1" />
+            <feMerge>
+              <feMergeNode in="b1" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
