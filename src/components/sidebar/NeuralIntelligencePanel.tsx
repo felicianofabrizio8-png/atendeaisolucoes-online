@@ -645,7 +645,7 @@ export function NeuralIntelligencePanel() {
           onMouseEnter={() => setLegendFocused(true)}
           onMouseLeave={() => setLegendFocused(false)}
         >
-          {(["active", "learning", "consolidating", "waiting", "error", "idle"] as Bucket[]).map((s) => (
+          {(["running", "queued", "learning", "consolidating", "completed", "error", "disabled", "idle"] as Bucket[]).map((s) => (
             <div
               key={s}
               className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
