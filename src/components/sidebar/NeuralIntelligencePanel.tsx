@@ -1184,7 +1184,7 @@ function NeuralGraph({
         onFocus={() => setHovered("professor")}
         onBlur={() => setHovered(null)}
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
-        style={{ width: "46%", height: "46%" }}
+        style={{ width: "53%", height: "53%" }}
       >
         <div
           className="relative flex h-full w-full items-center justify-center rounded-full border-2"
