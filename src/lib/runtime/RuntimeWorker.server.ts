@@ -122,14 +122,58 @@ export class RuntimeWorker {
       };
     }
 
+    // ---- Reserva atômica (persistente) ANTES de executar ------------------
+    // Idempotência: repetidas chamadas com o mesmo jobId retornam sem executar.
+    let claimReason = "claimed";
+    try {
+      const claim = await this.queue.claim(jobId, this.workerId, 300);
+      claimReason = claim.reason;
+      if (!claim.claimed) {
+        return {
+          workerId: this.workerId,
+          jobId,
+          found: true,
+          ok: claim.reason === "already_completed",
+          reason: claim.reason,
+          report: null,
+          processingMs: RuntimeClock.now() - started,
+          learning: null,
+        };
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "claim_failed";
+      return {
+        workerId: this.workerId,
+        jobId,
+        found: true,
+        ok: false,
+        reason: `claim_error:${msg.slice(0, 80)}`,
+        report: null,
+        processingMs: RuntimeClock.now() - started,
+        learning: null,
+      };
+    }
+    void claimReason;
+
     this.health.markStart(jobId);
-    let report: PipelineRunReport;
+    let report: PipelineRunReport | null = null;
     let err: string | null = null;
     try {
       report = await this.engine.execute(job);
     } catch (e) {
       err = e instanceof Error ? e.message : "worker_error";
-      this.health.markEnd(err);
+    }
+
+    // ---- Persistência do resultado (SEMPRE, mesmo em erro) ----------------
+    // Sanitizado: apenas código técnico + duração; jamais payload/PII.
+    if (err !== null || !report) {
+      const safeErr = (err ?? "no_report").slice(0, 200);
+      try {
+        await this.queue.complete(jobId, this.workerId, false, safeErr);
+      } catch {
+        /* fail-soft: se persistência falhar, health/metrics ainda registram */
+      }
+      this.health.markEnd(safeErr);
       this.heartbeat.tick();
       const processingMs = RuntimeClock.now() - started;
       this.metrics.record({
@@ -143,11 +187,30 @@ export class RuntimeWorker {
         jobId,
         found: true,
         ok: false,
-        reason: err,
+        reason: safeErr,
         report: null,
         processingMs,
         learning: null,
       };
+    }
+
+    const outcome = report.result.outcome === "success" ? "success"
+      : report.result.outcome === "failure" ? "failure"
+      : report.result.outcome === "timeout" ? "timeout"
+      : report.result.outcome === "cancelled" ? "cancelled"
+      : report.result.outcome === "blocked" ? "blocked"
+      : "stub";
+
+    // Sucesso operacional exige outcome=success e stub=false.
+    const persistSuccess =
+      outcome === "success" && report.result.stub !== true;
+    try {
+      const errCode = persistSuccess
+        ? null
+        : (report.result.error ?? outcome).slice(0, 200);
+      await this.queue.complete(jobId, this.workerId, persistSuccess, errCode);
+    } catch {
+      /* fail-soft */
     }
 
     this.health.markEnd(report.result.error);
@@ -157,12 +220,6 @@ export class RuntimeWorker {
       0,
       started - new Date(job.scheduledAt).getTime(),
     );
-    const outcome = report.result.outcome === "success" ? "success"
-      : report.result.outcome === "failure" ? "failure"
-      : report.result.outcome === "timeout" ? "timeout"
-      : report.result.outcome === "cancelled" ? "cancelled"
-      : report.result.outcome === "blocked" ? "blocked"
-      : "stub";
     this.metrics.record({
       outcome,
       processingMs,
@@ -185,10 +242,9 @@ export class RuntimeWorker {
       error: report.result.error,
     });
 
-    // Etapa 14: dispara o Learning Loop APÓS a execução concluída.
-    // Nunca executa outro agente. Nunca gera novo job.
+    // Learning Loop APÓS conclusão persistida com sucesso.
     let learning: LearningCycleReport | null = null;
-    if (this.learningLoop) {
+    if (this.learningLoop && persistSuccess) {
       try {
         learning = this.learningLoop.onExecutionCompleted(report.result);
       } catch {
@@ -200,7 +256,7 @@ export class RuntimeWorker {
       workerId: this.workerId,
       jobId,
       found: true,
-      ok: report.ok,
+      ok: report.ok && persistSuccess,
       reason: report.reason,
       report,
       processingMs,
