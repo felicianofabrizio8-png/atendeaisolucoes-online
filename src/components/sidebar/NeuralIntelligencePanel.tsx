@@ -599,9 +599,10 @@ export function NeuralIntelligencePanel() {
         connectedSet,
         snap.learning,
         busPublishes,
+        busEnvelopes,
       ),
     );
-  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet, busPublishes]);
+  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet, busPublishes, busEnvelopes]);
 
   // Detecta surge (nova atividade) por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
