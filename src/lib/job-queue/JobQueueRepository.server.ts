@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import type { CompleteJobInput, DequeueOptions, EnqueueJobInput, JobRecord } from "./JobQueueTypes";
+import type { ClaimJobInput, ClaimJobResult, CompleteJobInput, DequeueOptions, EnqueueJobInput, JobRecord } from "./JobQueueTypes";
 
 type Row = Database["public"]["Tables"]["agent_jobs"]["Row"];
 
@@ -82,6 +82,35 @@ export class JobQueueRepository {
     const { data, error } = await this.writer.rpc("complete_agent_job", args);
     if (error) throw new Error(`[JobQueue.complete] ${error.message}`);
     return mapRow(data as Row);
+  }
+
+  /**
+   * Reserva atômica de um job específico (por id). Diferente de `dequeueOne`,
+   * usado quando o dispatcher já conhece o jobId. Retorna claim=true apenas
+   * na primeira reserva; chamadas repetidas devolvem already_completed /
+   * already_processing sem alterar estado.
+   */
+  async claim(input: ClaimJobInput): Promise<ClaimJobResult> {
+    const args = {
+      _job_id: input.jobId,
+      _worker_id: input.workerId,
+      _lock_seconds: input.lockSeconds ?? 300,
+    };
+    // A RPC retorna SETOF de uma linha com colunas (claimed, reason, job composite).
+    const { data, error } = await (this.writer as unknown as {
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<{
+        data: Array<{ claimed: boolean; reason: string; job: Row | null }> | null;
+        error: { message: string } | null;
+      }>;
+    }).rpc("claim_agent_job", args);
+    if (error) throw new Error(`[JobQueue.claim] ${error.message}`);
+    const row = (data ?? [])[0];
+    if (!row) return { claimed: false, reason: "not_found", job: null };
+    return {
+      claimed: !!row.claimed,
+      reason: row.reason,
+      job: row.job ? mapRow(row.job) : null,
+    };
   }
 
   async pendingCount(companyId?: string): Promise<number> {

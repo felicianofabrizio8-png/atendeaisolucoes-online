@@ -55,3 +55,22 @@ export interface CompleteJobInput {
   error?: string | null;
   backoffSeconds?: number;
 }
+
+export interface ClaimJobInput {
+  jobId: string;
+  workerId: string;
+  lockSeconds?: number;
+}
+
+export type ClaimReason =
+  | "claimed"
+  | "not_found"
+  | "already_completed"
+  | "already_processing"
+  | string; // "not_claimable:<status>"
+
+export interface ClaimJobResult {
+  claimed: boolean;
+  reason: ClaimReason;
+  job: JobRecord | null;
+}

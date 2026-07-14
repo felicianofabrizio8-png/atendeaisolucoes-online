@@ -218,6 +218,27 @@ export class RuntimeJobQueue {
     return true;
   }
 
+  /** Reserva atômica de um job específico. Idempotente. */
+  async claim(
+    jobId: string,
+    workerId: string,
+    lockSeconds = 300,
+  ): Promise<{ claimed: boolean; reason: string }> {
+    const r = await this.repo.claim({ jobId, workerId, lockSeconds });
+    return { claimed: r.claimed, reason: r.reason };
+  }
+
+  /** Finaliza um job (sucesso ou falha) via RPC atômica. */
+  async complete(
+    jobId: string,
+    workerId: string,
+    success: boolean,
+    error?: string | null,
+    backoffSeconds?: number,
+  ): Promise<void> {
+    await this.repo.complete({ jobId, workerId, success, error: error ?? null, backoffSeconds });
+  }
+
   async counters(tenantId?: string): Promise<RuntimeJobCounters> {
     const nowIso = RuntimeClock.nowIso();
     const base = () => {
