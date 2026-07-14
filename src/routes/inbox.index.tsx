@@ -23,8 +23,10 @@ import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 import { OpportunityHub } from "@/components/inbox/OpportunityHub";
+import { OpsCockpit } from "@/components/inbox/OpsCockpit";
 import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
+import { LayoutDashboard, List } from "lucide-react";
 
 
 const STATUS_FILTERS = [
