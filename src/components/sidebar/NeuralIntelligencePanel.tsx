@@ -734,28 +734,46 @@ export function NeuralIntelligencePanel() {
           )}
         </div>
 
-        {/* Atividades em tempo real */}
+        {/* Terminal futurista */}
         <div className="relative mt-2">
           <div className="flex items-center justify-between mb-1 px-0.5">
-            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.16em] text-cyan-200/70">
+            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.18em] text-cyan-200/75 font-mono">
               <Activity className="h-2.5 w-2.5" />
-              Atividades em tempo real
+              runtime.log
             </div>
             <Link
               to="/runtime/observability"
-              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5"
+              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5 font-mono"
             >
-              Ver todos
+              ver todos
               <ArrowRight className="h-2.5 w-2.5" />
             </Link>
           </div>
-          <div className="rounded-lg border border-cyan-400/20 bg-black/50 backdrop-blur-sm px-2 py-1.5 min-h-[62px]">
+          <div
+            className="relative overflow-hidden rounded-lg border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.85))] backdrop-blur-sm px-2 py-1.5 min-h-[68px] shadow-[inset_0_0_20px_rgba(56,189,248,0.08),0_0_14px_rgba(56,189,248,0.10)]"
+          >
+            {/* scanlines */}
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.08]"
+              style={{
+                backgroundImage: "repeating-linear-gradient(0deg, transparent 0 2px, rgba(125,211,252,0.6) 2px 3px)",
+              }}
+              aria-hidden
+            />
+            {/* topbar mini */}
+            <div className="pointer-events-none absolute top-1 right-1.5 flex items-center gap-1 opacity-70" aria-hidden>
+              <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.9)]" />
+              <span className="h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.9)]" />
+              <span className="h-1 w-1 rounded-full bg-rose-400 shadow-[0_0_4px_rgba(248,113,113,0.9)]" />
+            </div>
             {feed.length === 0 ? (
-              <div className="text-[9px] text-cyan-100/40 italic py-1.5">
-                Sistema em espera · nenhuma atividade recente
+              <div className="relative font-mono text-[9px] text-cyan-100/50 py-1.5">
+                <span className="text-emerald-300/80">$</span>{" "}
+                <span>runtime --status</span>
+                <div className="text-cyan-100/40 italic mt-0.5">// sistema em espera · nenhuma atividade recente</div>
               </div>
             ) : (
-              <ul className="space-y-1" aria-live="polite">
+              <ul className="relative space-y-0.5 font-mono" aria-live="polite">
                 <AnimatePresence initial={false}>
                   {feed.map((e, i) => (
                     <motion.li
@@ -766,6 +784,7 @@ export function NeuralIntelligencePanel() {
                       transition={{ delay: i * 0.05, duration: 0.3 }}
                       className="flex items-center gap-1.5 text-[9.5px] leading-tight"
                     >
+                      <span className="text-emerald-300/90 shrink-0">›</span>
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full shrink-0",
@@ -776,9 +795,7 @@ export function NeuralIntelligencePanel() {
                         aria-hidden
                       />
                       <span className="text-cyan-50/95 truncate flex-1">{e.msg}</span>
-                      <span className="text-cyan-200/50 text-[8.5px] shrink-0">
-                        {formatRelative(e.ts)}
-                      </span>
+                      <span className="text-cyan-200/60 text-[8.5px] shrink-0">{formatRelative(e.ts)}</span>
                     </motion.li>
                   ))}
                 </AnimatePresence>
