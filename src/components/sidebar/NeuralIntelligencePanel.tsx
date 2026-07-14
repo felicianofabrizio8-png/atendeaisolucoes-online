@@ -561,7 +561,15 @@ export function NeuralIntelligencePanel() {
   const busLevel = busHealth?.level ?? null;
   const busPublishes = busHealth?.publishCount ?? 0;
   const busReads = busHealth?.readCount ?? 0;
+  const busErrors = busHealth?.errors ?? 0;
   const busLastActivity = iso(busHealth?.lastActivityAt ?? null);
+  const busEnvelopes = snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0;
+  const busTopicsRaw = snap?.knowledgeBus?.topics;
+  const busTopicsCount = Array.isArray(busTopicsRaw)
+    ? busTopicsRaw.length
+    : busTopicsRaw && typeof busTopicsRaw === "object"
+    ? Object.keys(busTopicsRaw).length
+    : 0;
   const scheduler = snap?.scheduler;
   const schedulerEnabled = scheduler?.enabled ?? 0;
   const schedulerRegistered = scheduler?.registered ?? 0;
