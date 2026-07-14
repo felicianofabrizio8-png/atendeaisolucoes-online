@@ -204,11 +204,12 @@ function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
   if (snap.autonomy?.tenantEnabled?.killSwitch) {
     return { bucket: "error", stateLabel: "kill switch ativo" };
   }
-  if (!snap.status.online) return { bucket: "error", stateLabel: "offline" };
-  const hbTs = iso(snap.status.lastHeartbeat?.ts);
-  const anyRunning = snap.agents.some((a) => a.state.status === "running");
+  if (!snap.status?.online) return { bucket: "error", stateLabel: "offline" };
+  const hbTs = iso(snap.status?.lastHeartbeat?.ts);
+  const agentsArr = Array.isArray(snap.agents) ? snap.agents : [];
+  const anyRunning = agentsArr.some((a) => a?.state?.status === "running");
   if (anyRunning) return { bucket: "active", stateLabel: "coordenando", updatedAt: hbTs };
-  if (snap.status.healthyAgents > 0) {
+  if ((snap.status?.healthyAgents ?? 0) > 0) {
     return { bucket: "active", stateLabel: "online", updatedAt: hbTs };
   }
   return { bucket: "waiting", stateLabel: "aguardando agentes", updatedAt: hbTs };
