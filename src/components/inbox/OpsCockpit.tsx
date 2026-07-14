@@ -4,7 +4,7 @@
 // Nada de novos endpoints, nada de novas IAs, nada de novos agentes.
 // ============================================================================
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Play, Star, StarOff, ChevronDown, ChevronRight, Clock,
@@ -15,17 +15,15 @@ import { cn } from "@/lib/utils";
 import { timeAgo, formatBRL, type Lead } from "@/data/mock";
 import { subscribeRepo, getConversationById, getLeadById } from "@/data/leadRepo";
 import { subscribeQuotes } from "@/data/quotes";
-import { useSyncExternalStore } from "react";
 import {
   rankConversations, computeDayPanel, computeMyDay, groupByTime,
   type PrioritizedConversation, type ActionKind, type TimeBucket,
 } from "@/lib/priority-engine";
 import {
-  useFavorites, useRecent, toggleFavorite, startFocus,
+  useFavorites, useRecent, toggleFavorite, startFocus, pushRecent,
 } from "@/lib/inbox-focus";
 import { useCoachAlerts } from "@/hooks/useCoachAlerts";
 import { getSettings, subscribeSettings } from "@/data/settings";
-import { pushRecent } from "@/lib/inbox-focus";
 
 const ACTION_META: Record<ActionKind, { label: string; icon: typeof Send; tone: string }> = {
   responder: { label: "Responder", icon: Send, tone: "text-primary" },
