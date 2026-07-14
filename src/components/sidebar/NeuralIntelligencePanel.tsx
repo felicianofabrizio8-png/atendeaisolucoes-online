@@ -559,7 +559,10 @@ export function NeuralIntelligencePanel() {
 
   const professor = resolveProfessor(snap ?? null);
 
-  const busPublishes = snap?.knowledgeBus?.health?.publishCount ?? 0;
+  const busPublishes =
+    (snap?.knowledgeBus?.health?.publishCount ?? 0) ||
+    (snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0);
+  const busEnvelopes = snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0;
 
   const agents = useMemo<DisplayAgent[]>(() => {
     if (!snap) {
