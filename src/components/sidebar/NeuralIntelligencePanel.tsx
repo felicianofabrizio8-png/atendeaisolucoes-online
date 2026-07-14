@@ -82,11 +82,33 @@ interface RuntimeSnapshot {
     lastAgent: string | null;
     perAgent?: LearningPerAgent[];
   };
-  worker?: { state?: string; inFlight?: number; jobsProcessed?: number } | null;
-  workers?: Array<{ state?: string; inFlight?: number; jobsProcessed?: number }>;
-  scheduler?: { enabled?: boolean; registered?: number; nextRunAt?: string | null } | null;
+  worker?: {
+    workerId?: string;
+    health?: { state?: string; inFlight?: number; jobsProcessed?: number; lastJobAt?: string | null; lastError?: string | null };
+  } | null;
+  workers?: Array<{
+    workerId?: string;
+    health?: { state?: string; inFlight?: number; jobsProcessed?: number; lastJobAt?: string | null };
+  }>;
+  scheduler?: {
+    registered?: number;
+    enabled?: number;
+    disabled?: number;
+    nextExecutionAt?: string | null;
+    totalEnqueued?: number;
+  } | null;
   knowledgeBus?: {
-    health?: { level?: string; publishCount?: number; readCount?: number };
+    health?: { level?: string; publishCount?: number; readCount?: number; lastActivityAt?: string | null; errors?: number };
+    cache?: { totalEnvelopes?: number };
+  } | null;
+  counters?: {
+    queued?: number;
+    scheduled?: number;
+    processing?: number;
+    completed?: number;
+    failed?: number;
+    retry?: number;
+    deadLetter?: number;
   } | null;
   autonomy?: {
     tenantEnabled?: {
