@@ -89,7 +89,7 @@ export class LearningLoop {
    * Consome um ExecutionResult e produz (ou descarta) uma hipótese.
    * Não executa nenhum agente. Não gera nenhum job.
    */
-  onExecutionCompleted(result: ExecutionResult): LearningCycleReport {
+  async onExecutionCompleted(result: ExecutionResult): Promise<LearningCycleReport> {
     const eligibility = LearningPolicy.evaluate(result);
     if (!eligibility.eligible) {
       this.metrics.recordIgnored();
