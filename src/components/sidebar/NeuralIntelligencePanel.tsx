@@ -14,15 +14,25 @@ import { useAuth } from "@/auth/AuthContext";
 
 /* -------------------- Buckets visuais -------------------- */
 
-type Bucket = "active" | "learning" | "consolidating" | "waiting" | "error" | "idle";
+type Bucket =
+  | "running"
+  | "queued"
+  | "learning"
+  | "consolidating"
+  | "completed"
+  | "error"
+  | "disabled"
+  | "idle";
 
 const BUCKET_META: Record<Bucket, { glow: string; label: string; hex: string; animate: boolean }> = {
-  active:        { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)", animate: true  },
-  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)", animate: true  },
+  running:       { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)",  animate: true  },
+  queued:        { glow: "rgba(251,191,36,0.85)",  label: "Na fila",      hex: "rgb(251,191,36)",  animate: true  },
+  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)",  animate: true  },
   consolidating: { glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)", animate: true  },
-  waiting:       { glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)",  animate: false },
+  completed:     { glow: "rgba(45,212,191,0.75)",  label: "Concluído",    hex: "rgb(45,212,191)",  animate: false },
   error:         { glow: "rgba(248,113,113,0.9)",  label: "Erro",         hex: "rgb(248,113,113)", animate: true  },
-  idle:          { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
+  disabled:      { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
+  idle:          { glow: "rgba(148,163,184,0.55)", label: "Ocioso",       hex: "rgb(148,163,184)", animate: false },
 };
 
 /* -------------------- Tipos do snapshot -------------------- */
