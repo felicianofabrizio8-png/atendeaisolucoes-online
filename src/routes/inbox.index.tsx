@@ -23,8 +23,10 @@ import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 import { OpportunityHub } from "@/components/inbox/OpportunityHub";
+import { OpsCockpit } from "@/components/inbox/OpsCockpit";
 import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
+import { LayoutDashboard, List } from "lucide-react";
 
 
 const STATUS_FILTERS = [
@@ -207,6 +209,43 @@ function buildSortedItems(
     .sort((a, b) => b.score - a.score);
 }
 
+const VIEW_KEY = "inbox.view.v1";
+function readView(): "cockpit" | "classic" {
+  if (typeof window === "undefined") return "cockpit";
+  return localStorage.getItem(VIEW_KEY) === "classic" ? "classic" : "cockpit";
+}
+
+function ViewToggle({ view, onChange }: { view: "cockpit" | "classic"; onChange: (v: "cockpit" | "classic") => void }) {
+  return (
+    <div className="inline-flex items-center rounded-md border border-border bg-secondary/40 p-0.5 text-xs">
+      <button
+        type="button"
+        onClick={() => onChange("cockpit")}
+        className={cn(
+          "inline-flex items-center gap-1 px-2 h-7 rounded font-medium",
+          view === "cockpit" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+        title="Central de Operações"
+      >
+        <LayoutDashboard className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Cockpit</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("classic")}
+        className={cn(
+          "inline-flex items-center gap-1 px-2 h-7 rounded font-medium",
+          view === "classic" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+        title="Visão clássica com filtros"
+      >
+        <List className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Clássico</span>
+      </button>
+    </div>
+  );
+}
+
 function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
@@ -215,7 +254,25 @@ function InboxPage() {
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
   const [oppCollapsed, setOppCollapsed] = useState(false);
+  const [view, setView] = useState<"cockpit" | "classic">(readView);
   const { alertsByConv, totalConversations: coachCount } = useCoachAlerts();
+
+  const changeView = (v: "cockpit" | "classic") => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* noop */ }
+  };
+
+  if (view === "cockpit") {
+    return (
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        <div className="absolute top-3 right-4 z-20">
+          <ViewToggle view={view} onChange={changeView} />
+        </div>
+        <OpsCockpit />
+      </div>
+    );
+  }
+
 
   const itemsRaw = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const items =
@@ -408,6 +465,7 @@ function InboxPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ViewToggle view={view} onChange={changeView} />
             <Link
               to="/inbox/recovery"
               className="h-9 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 inline-flex items-center gap-1.5 whitespace-nowrap"
