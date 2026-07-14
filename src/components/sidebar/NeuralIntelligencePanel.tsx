@@ -422,7 +422,7 @@ function buildDisplayAgent(
       break;
     }
     default: {
-      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "—";
+      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "aguardando";
       metricSecondary = agent.enabled ? resolved.stateLabel : "desativado";
     }
   }
