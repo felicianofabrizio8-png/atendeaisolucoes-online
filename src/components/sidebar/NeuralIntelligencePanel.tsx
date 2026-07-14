@@ -1225,7 +1225,7 @@ function NeuralGraph({
             onFocus={() => setHovered(a.id)}
             onBlur={() => setHovered(null)}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-lg"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "34%" }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "41%" }}
           >
             <motion.div
               className="relative flex items-center justify-center rounded-full border-2"
