@@ -1060,7 +1060,7 @@ function NeuralGraph({
                 x2={p.x}
                 y2={p.y}
                 stroke={`url(#line-${a.id})`}
-                strokeWidth={surging ? 0.7 : isAnimated ? 0.55 : 0.35}
+                strokeWidth={surging ? 1.35 : isAnimated ? 1.05 : 0.75}
                 opacity={a.present ? 0.9 : 0.35}
                 filter="url(#softGlow)"
               />
