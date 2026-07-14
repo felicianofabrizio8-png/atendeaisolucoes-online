@@ -1,13 +1,8 @@
-// Central de Inteligência Viva — v5 (estados reais).
-// Continua 100% READ-ONLY. Consome APENAS endpoints já existentes:
-//   - GET /api/business-brain/snapshot
-//   - GET /api/business-learning/snapshot
-//   - GET /api/scientific-knowledge/snapshot
-//   - GET /api/executive/snapshot
-//   - GET /api/executive/sales-intelligence
-// Nenhum polling adicional, nenhuma escrita, nenhum LLM, nenhum agente
-// operacional modificado. Nenhuma alteração visual além da sincronização
-// dos estados reais dos snapshots já existentes.
+// Central de Inteligência Viva — v6 (Runtime real).
+// 100% READ-ONLY. Consome EXCLUSIVAMENTE GET /api/runtime/status.
+// Nenhum outro endpoint, nenhum mock, nenhum valor simulado.
+// Animações só ocorrem quando há atividade real (running, learning,
+// consolidating, error). Agentes desativados ou ociosos permanecem estáticos.
 
 import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -17,192 +12,126 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 
-/* -------------------- Tipos & estados -------------------- */
+/* -------------------- Buckets visuais -------------------- */
 
-type Bucket = "active" | "learning" | "consolidating" | "waiting" | "idle";
+type Bucket = "active" | "learning" | "consolidating" | "waiting" | "error" | "idle";
 
-interface AgentNode {
-  id: string;
-  label: string;
-  short: string;
-  tooltip: string;
-  bucket: Bucket;
-  stateLabel: string;   // rótulo real específico do agente
-  updatedAt?: number;   // ms
-  surge?: boolean;      // acabou de atualizar
-}
-
-const BUCKET_META: Record<
-  Bucket,
-  { glow: string; label: string; hex: string }
-> = {
-  active:        { glow: "rgba(52,211,153,0.85)",  label: "Ativo",        hex: "rgb(52,211,153)" },
-  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)" },
-  consolidating: { glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)" },
-  waiting:       { glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)" },
-  idle:          { glow: "rgba(148,163,184,0.5)",  label: "Ocioso",       hex: "rgb(148,163,184)" },
+const BUCKET_META: Record<Bucket, { glow: string; label: string; hex: string; animate: boolean }> = {
+  active:        { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)", animate: true  },
+  learning:      { glow: "rgba(56,189,248,0.85)",  label: "Aprendendo",   hex: "rgb(56,189,248)", animate: true  },
+  consolidating: { glow: "rgba(167,139,250,0.85)", label: "Consolidando", hex: "rgb(167,139,250)", animate: true  },
+  waiting:       { glow: "rgba(251,191,36,0.85)",  label: "Aguardando",   hex: "rgb(251,191,36)",  animate: false },
+  error:         { glow: "rgba(248,113,113,0.9)",  label: "Erro",         hex: "rgb(248,113,113)", animate: true  },
+  idle:          { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
 };
 
-/* -------------------- Fetch utilities (READ-ONLY) -------------------- */
+/* -------------------- Tipos do snapshot -------------------- */
 
-async function fetchSnapshot<T>(path: string): Promise<T | null> {
-  try {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
-    if (!token) return null;
-    const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { ok?: boolean; data?: T };
-    if (!body?.ok || !body.data) return null;
-    return body.data;
-  } catch {
-    return null;
-  }
-}
+type AgentStatus = "idle" | "running" | "success" | "failure" | "unknown" | "disabled";
+type AgentHealth = "healthy" | "degraded" | "unknown" | "down";
 
-function iso(ts?: string | null): number | undefined {
-  if (!ts) return undefined;
-  const t = Date.parse(ts);
-  return Number.isFinite(t) ? t : undefined;
-}
-
-/* -------------------- Shapes mínimos dos snapshots -------------------- */
-
-interface ScienceSnap {
-  generatedAt?: string;
-  sample?: {
-    observations?: number;
-    hypotheses?: number;
-    evidence?: number;
-    validatedKnowledge?: number;
-    distinctSnapshotDays?: number;
+interface AgentEntry {
+  id: string;
+  name: string;
+  enabled: boolean;
+  state: {
+    status: AgentStatus;
+    health: AgentHealth;
+    lastExecution: string | null;
+    lastSuccess: string | null;
+    lastFailure: string | null;
+    lastError: string | null;
   };
-  hypotheses?: Array<{ status?: string }>;
-}
-interface BrainSnap {
-  generatedAt?: string;
-  sample?: { conversationFacts?: number; knowledgeSnapshots?: number };
-  patterns?: unknown[];
-}
-interface LearningSnap {
-  generatedAt?: string;
-  sample?: { brainPatterns?: number; brainKnowledge?: number; weeklyBuckets?: number };
-  hypotheses?: unknown[];
-  evolution?: unknown[];
-}
-interface ExecSnap {
-  generatedAt?: string;
-  insights?: unknown[];
-}
-interface SalesSnap {
-  generatedAt?: string;
-  fromCache?: boolean;
-  totals?: { opportunities?: number; scanned?: number };
 }
 
-interface RawBundle {
-  science: ScienceSnap | null;
-  brain: BrainSnap | null;
-  learning: LearningSnap | null;
-  executive: ExecSnap | null;
-  sales: SalesSnap | null;
-  at: number;
+interface RecentJob {
+  id: string;
+  agentId: string;
+  status: string;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastError: string | null;
 }
 
-function useIntelligenceStates(enabled: boolean) {
-  return useQuery<RawBundle>({
-    queryKey: ["neural-intelligence-panel", "v5"],
+interface LearningPerAgent {
+  agentId: string;
+  learningCycles: number;
+  lastLearningAt: string | null;
+  averageConfidence: number;
+}
+
+interface RuntimeSnapshot {
+  status: {
+    online: boolean;
+    version: string;
+    uptimeMs: number;
+    registeredAgents: number;
+    healthyAgents: number;
+    disabledAgents: number;
+    lastHeartbeat: { ts: string } | null;
+  };
+  agents: AgentEntry[];
+  recentJobs: RecentJob[];
+  learning: {
+    cycles: number;
+    hypotheses: { created: number; accepted: number; rejected: number; consolidated: number };
+    knowledgeConsolidated: number;
+    averageConfidence: number;
+    lastLearning: string | null;
+    lastAgent: string | null;
+    perAgent?: LearningPerAgent[];
+  };
+  worker?: { state?: string; inFlight?: number; jobsProcessed?: number } | null;
+  workers?: Array<{ state?: string; inFlight?: number; jobsProcessed?: number }>;
+  scheduler?: { enabled?: boolean; registered?: number; nextRunAt?: string | null } | null;
+  knowledgeBus?: {
+    health?: { level?: string; publishCount?: number; readCount?: number };
+  } | null;
+  autonomy?: {
+    tenantEnabled?: {
+      autonomyEnabled?: boolean;
+      systemHealthEnabled?: boolean;
+      killSwitch?: boolean;
+    } | null;
+  };
+}
+
+/* -------------------- Fetch -------------------- */
+
+async function fetchRuntimeStatus(): Promise<RuntimeSnapshot | null> {
+  const { data: sess } = await supabase.auth.getSession();
+  const token = sess.session?.access_token;
+  if (!token) return null;
+  const res = await fetch("/api/runtime/status", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { ok?: boolean; snapshot?: RuntimeSnapshot };
+  if (!body?.ok || !body.snapshot) return null;
+  return body.snapshot;
+}
+
+function useRuntimeStatus(enabled: boolean) {
+  return useQuery<RuntimeSnapshot | null>({
+    queryKey: ["neural-intelligence-panel", "runtime-status", "v6"],
     enabled,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
     staleTime: 8_000,
     retry: false,
-    queryFn: async () => {
-      const [science, brain, learning, executive, sales] = await Promise.all([
-        fetchSnapshot<ScienceSnap>("/api/scientific-knowledge/snapshot?period=30d"),
-        fetchSnapshot<BrainSnap>("/api/business-brain/snapshot?period=30d"),
-        fetchSnapshot<LearningSnap>("/api/business-learning/snapshot?period=30d"),
-        fetchSnapshot<ExecSnap>("/api/executive/snapshot?period=30d"),
-        fetchSnapshot<SalesSnap>("/api/executive/sales-intelligence?period=30d"),
-      ]);
-      return { science, brain, learning, executive, sales, at: Date.now() };
-    },
+    queryFn: fetchRuntimeStatus,
   });
 }
 
-/* -------------------- Resolução determinística de estados reais -------------------- */
+/* -------------------- Utilidades -------------------- */
 
-interface Resolved {
-  bucket: Bucket;
-  stateLabel: string;
-  updatedAt?: number;
+function iso(ts?: string | null): number | undefined {
+  if (!ts) return undefined;
+  const t = Date.parse(ts);
+  return Number.isFinite(t) ? t : undefined;
 }
-
-function resolveScience(s: ScienceSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
-  const hyp = s.hypotheses ?? [];
-  const validated = s.sample?.validatedKnowledge ?? 0;
-  const strengthening = hyp.some((h) => h?.status === "strengthening" || h?.status === "candidate");
-  if (validated > 0) return { bucket: "active", stateLabel: "hipótese validada", updatedAt: iso(s.generatedAt) };
-  if (strengthening) return { bucket: "consolidating", stateLabel: "fortalecendo hipótese", updatedAt: iso(s.generatedAt) };
-  if ((s.sample?.hypotheses ?? 0) > 0) return { bucket: "learning", stateLabel: "observando", updatedAt: iso(s.generatedAt) };
-  return { bucket: "waiting", stateLabel: "histórico insuficiente", updatedAt: iso(s.generatedAt) };
-}
-
-function resolveBrain(b: BrainSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !b) return { bucket: "waiting", stateLabel: "aguardando dados" };
-  const facts = b.sample?.conversationFacts ?? 0;
-  const patterns = b.patterns?.length ?? 0;
-  if (facts === 0) return { bucket: "waiting", stateLabel: "aguardando dados", updatedAt: iso(b.generatedAt) };
-  if (patterns > 0) return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(b.generatedAt) };
-  return { bucket: "consolidating", stateLabel: "consolidando padrões", updatedAt: iso(b.generatedAt) };
-}
-
-function resolveLearning(l: LearningSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !l) return { bucket: "waiting", stateLabel: "aguardando histórico" };
-  const brainPatterns = l.sample?.brainPatterns ?? 0;
-  const hyp = l.hypotheses?.length ?? 0;
-  if (brainPatterns === 0) return { bucket: "waiting", stateLabel: "aguardando histórico", updatedAt: iso(l.generatedAt) };
-  if (hyp > 0) return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(l.generatedAt) };
-  return { bucket: "learning", stateLabel: "aprendendo", updatedAt: iso(l.generatedAt) };
-}
-
-function resolveExecutive(e: ExecSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !e) return { bucket: "waiting", stateLabel: "aguardando atualização" };
-  const ts = iso(e.generatedAt);
-  if (!ts) return { bucket: "learning", stateLabel: "analisando", updatedAt: ts };
-  const ageMin = (Date.now() - ts) / 60_000;
-  if (ageMin < 15) return { bucket: "active", stateLabel: "snapshot atualizado", updatedAt: ts };
-  return { bucket: "learning", stateLabel: "analisando", updatedAt: ts };
-}
-
-function resolveSales(s: SalesSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
-  if (s.fromCache === false) return { bucket: "consolidating", stateLabel: "calculando prioridades", updatedAt: iso(s.generatedAt) };
-  return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(s.generatedAt) };
-}
-
-function resolveConversation(b: BrainSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  // Derivado dos fatos de conversação já consumidos pelo Business Brain
-  // (mesma origem, sem novo endpoint).
-  if (!hasUser || loading || !b) return { bucket: "waiting", stateLabel: "aguardando" };
-  const facts = b.sample?.conversationFacts ?? 0;
-  if (facts === 0) return { bucket: "waiting", stateLabel: "sem novas conversas", updatedAt: iso(b.generatedAt) };
-  return { bucket: "active", stateLabel: "atualizado", updatedAt: iso(b.generatedAt) };
-}
-
-function resolveProfessor(s: ScienceSnap | null, hasUser: boolean, loading: boolean): Resolved {
-  if (!hasUser || loading || !s) return { bucket: "waiting", stateLabel: "aguardando" };
-  const validated = s.sample?.validatedKnowledge ?? 0;
-  const hyp = s.hypotheses ?? [];
-  if (validated > 0) return { bucket: "active", stateLabel: "sincronizado", updatedAt: iso(s.generatedAt) };
-  if (hyp.length > 0) return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: iso(s.generatedAt) };
-  if ((s.sample?.observations ?? 0) > 0) return { bucket: "learning", stateLabel: "analisando", updatedAt: iso(s.generatedAt) };
-  return { bucket: "waiting", stateLabel: "aguardando", updatedAt: iso(s.generatedAt) };
-}
-
-/* -------------------- Utils -------------------- */
 
 function formatTime(ts: number) {
   const d = new Date(ts);
@@ -220,38 +149,153 @@ function formatRelative(ts: number | undefined) {
   return `há ${h}h`;
 }
 
-const BREATH = 3.8;
+/* -------------------- Resolução de estado real -------------------- */
+
+interface Resolved {
+  bucket: Bucket;
+  stateLabel: string;
+  updatedAt?: number;
+  detail?: string;
+}
+
+function resolveAgent(a: AgentEntry, learningMap: Map<string, LearningPerAgent>): Resolved {
+  const learn = learningMap.get(a.id);
+  const lastExec = iso(a.state.lastExecution);
+  const lastSuccess = iso(a.state.lastSuccess);
+  const lastFail = iso(a.state.lastFailure);
+  const lastLearning = iso(learn?.lastLearningAt ?? null);
+  const now = Date.now();
+
+  if (!a.enabled || a.state.status === "disabled") {
+    return { bucket: "idle", stateLabel: "desativado", updatedAt: lastExec };
+  }
+  if (a.state.status === "running") {
+    return { bucket: "active", stateLabel: "executando", updatedAt: lastExec };
+  }
+  if (
+    a.state.status === "failure" ||
+    (a.state.lastError && lastFail && lastSuccess && lastFail > lastSuccess) ||
+    (a.state.lastError && lastFail && !lastSuccess)
+  ) {
+    return {
+      bucket: "error",
+      stateLabel: "erro",
+      updatedAt: lastFail ?? lastExec,
+      detail: a.state.lastError ?? undefined,
+    };
+  }
+  if (lastLearning && now - lastLearning < 5 * 60_000) {
+    return { bucket: "learning", stateLabel: "aprendendo", updatedAt: lastLearning };
+  }
+  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
+    return { bucket: "active", stateLabel: "online", updatedAt: lastSuccess };
+  }
+  if (a.state.health === "degraded") {
+    return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastExec };
+  }
+  if (a.state.health === "down") {
+    return { bucket: "error", stateLabel: "indisponível", updatedAt: lastExec };
+  }
+  return { bucket: "waiting", stateLabel: "aguardando", updatedAt: lastExec };
+}
+
+function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
+  if (!snap) return { bucket: "waiting", stateLabel: "conectando" };
+  if (snap.autonomy?.tenantEnabled?.killSwitch) {
+    return { bucket: "error", stateLabel: "kill switch ativo" };
+  }
+  if (!snap.status.online) return { bucket: "error", stateLabel: "offline" };
+  const hbTs = iso(snap.status.lastHeartbeat?.ts);
+  const anyRunning = snap.agents.some((a) => a.state.status === "running");
+  if (anyRunning) return { bucket: "active", stateLabel: "coordenando", updatedAt: hbTs };
+  if (snap.status.healthyAgents > 0) {
+    return { bucket: "active", stateLabel: "online", updatedAt: hbTs };
+  }
+  return { bucket: "waiting", stateLabel: "aguardando agentes", updatedAt: hbTs };
+}
 
 /* -------------------- Componente principal -------------------- */
+
+interface DisplayAgent {
+  id: string;
+  label: string;
+  short: string;
+  resolved: Resolved;
+  surge?: boolean;
+}
+
+const AGENT_LABEL: Record<string, { label: string; short: string }> = {
+  "system-health": { label: "System Health", short: "Health" },
+  "business-brain": { label: "Business Brain", short: "Brain" },
+  "business-learning": { label: "Business Learning", short: "Learning" },
+  "scientific-knowledge": { label: "Scientific Knowledge", short: "Scientific" },
+  "scientific-memory": { label: "Scientific Memory", short: "Memory" },
+  "executive-intelligence": { label: "Executive Intelligence", short: "Executive" },
+  "executive-knowledge": { label: "Executive Knowledge", short: "Exec. KB" },
+  "executive-narrative": { label: "Executive Narrative", short: "Narrative" },
+  "professor": { label: "Professor", short: "Professor" },
+  "sales-intelligence": { label: "Sales Intelligence", short: "Sales" },
+  "coach": { label: "Coach", short: "Coach" },
+  "follow-up": { label: "Follow-up", short: "Followup" },
+};
+
+const ORBIT_PRIORITY = [
+  "business-brain",
+  "business-learning",
+  "scientific-knowledge",
+  "scientific-memory",
+  "executive-intelligence",
+  "system-health",
+  "executive-knowledge",
+  "executive-narrative",
+];
+
+const BREATH = 3.8;
 
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
   const reducedMotion = useReducedMotion();
-  const { data, isLoading } = useIntelligenceStates(!!user);
+  const { data: snap, isLoading, isError } = useRuntimeStatus(!!user);
 
-  const professor = resolveProfessor(data?.science ?? null, !!user, isLoading);
-  const conversation = resolveConversation(data?.brain ?? null, !!user, isLoading);
-  const brain = resolveBrain(data?.brain ?? null, !!user, isLoading);
-  const learning = resolveLearning(data?.learning ?? null, !!user, isLoading);
-  const science = resolveScience(data?.science ?? null, !!user, isLoading);
-  const executive = resolveExecutive(data?.executive ?? null, !!user, isLoading);
-  const sales = resolveSales(data?.sales ?? null, !!user, isLoading);
+  const learningMap = useMemo(() => {
+    const m = new Map<string, LearningPerAgent>();
+    for (const p of snap?.learning?.perAgent ?? []) m.set(p.agentId, p);
+    return m;
+  }, [snap]);
 
-  // Detecção de mudança: mantém último generatedAt visto por agente.
-  // Quando um snapshot muda, marca surge (glow temporário) por 4s.
+  const professor = resolveProfessor(snap ?? null);
+
+  const agents: DisplayAgent[] = useMemo(() => {
+    if (!snap) return [];
+    const byId = new Map(snap.agents.map((a) => [a.id, a]));
+    const ordered: AgentEntry[] = [];
+    for (const id of ORBIT_PRIORITY) {
+      const a = byId.get(id);
+      if (a && a.id !== "professor") ordered.push(a);
+    }
+    for (const a of snap.agents) {
+      if (a.id === "professor") continue;
+      if (!ordered.find((x) => x.id === a.id)) ordered.push(a);
+    }
+    return ordered.slice(0, 6).map((a) => {
+      const meta = AGENT_LABEL[a.id] ?? { label: a.name, short: a.name };
+      return {
+        id: a.id,
+        label: meta.label,
+        short: meta.short,
+        resolved: resolveAgent(a, learningMap),
+      };
+    });
+  }, [snap, learningMap]);
+
+  // Surge: detecta mudança de lastExecution/lastSuccess/lastLearning por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
   const [surge, setSurge] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const map: Record<string, number | undefined> = {
-      professor: professor.updatedAt,
-      conversation: conversation.updatedAt,
-      brain: brain.updatedAt,
-      learning: learning.updatedAt,
-      science: science.updatedAt,
-      executive: executive.updatedAt,
-      sales: sales.updatedAt,
-    };
+    const map: Record<string, number | undefined> = {};
+    for (const a of agents) map[a.id] = a.resolved.updatedAt;
+    map.professor = professor.updatedAt;
     const changed: string[] = [];
     for (const k of Object.keys(map)) {
       const prev = prevRef.current[k];
@@ -274,129 +318,144 @@ export function NeuralIntelligencePanel() {
       }, 4200);
       return () => window.clearTimeout(to);
     }
-  }, [
-    professor.updatedAt,
-    conversation.updatedAt,
-    brain.updatedAt,
-    learning.updatedAt,
-    science.updatedAt,
-    executive.updatedAt,
-    sales.updatedAt,
-  ]);
+  }, [agents, professor.updatedAt]);
 
-  const agents: AgentNode[] = [
-    { id: "conversation", label: "Conversation Intelligence", short: "Conversation", tooltip: "Analisa e estrutura conhecimento das conversas.", bucket: conversation.bucket, stateLabel: conversation.stateLabel, updatedAt: conversation.updatedAt, surge: surge.conversation },
-    { id: "brain",        label: "Business Brain",            short: "Brain",        tooltip: "Consolida padrões de negócio.",                    bucket: brain.bucket,        stateLabel: brain.stateLabel,        updatedAt: brain.updatedAt,        surge: surge.brain },
-    { id: "learning",     label: "Business Learning",         short: "Learning",     tooltip: "Aprende continuamente com a evolução da empresa.", bucket: learning.bucket,     stateLabel: learning.stateLabel,     updatedAt: learning.updatedAt,     surge: surge.learning },
-    { id: "science",      label: "Scientific Knowledge",      short: "Scientific",   tooltip: "Valida hipóteses utilizando evidências.",           bucket: science.bucket,      stateLabel: science.stateLabel,      updatedAt: science.updatedAt,      surge: surge.science },
-    { id: "executive",    label: "Executive Intelligence",    short: "Executive",    tooltip: "Constrói inteligência estratégica.",                bucket: executive.bucket,    stateLabel: executive.stateLabel,    updatedAt: executive.updatedAt,    surge: surge.executive },
-    { id: "sales",        label: "Sales Intelligence",        short: "Sales",        tooltip: "Prioriza oportunidades comerciais.",                bucket: sales.bucket,        stateLabel: sales.stateLabel,        updatedAt: sales.updatedAt,        surge: surge.sales },
-  ];
+  const agentsWithSurge = agents.map((a) => ({ ...a, surge: surge[a.id] }));
 
-  const activeCount = agents.filter((a) => a.bucket !== "waiting" && a.bucket !== "idle").length;
-  const networkOnline = !!user && !isLoading && activeCount > 0;
+  const networkOnline =
+    !!user &&
+    !isError &&
+    !!snap?.status?.online &&
+    !snap?.autonomy?.tenantEnabled?.killSwitch;
 
-  // Feed real: gerado a partir dos timestamps de cada snapshot disponível.
+  // Feed real: últimos jobs do Runtime.
   const feed = useMemo(() => {
-    if (!user || !data) return [];
-    const items: { label: string; msg: string; ts: number }[] = [];
-    const push = (label: string, msg: string, ts?: number) => {
-      if (ts) items.push({ label, msg, ts });
-    };
-    push("Scientific Knowledge", science.stateLabel, science.updatedAt);
-    push("Business Brain",       brain.stateLabel,   brain.updatedAt);
-    push("Business Learning",    learning.stateLabel, learning.updatedAt);
-    push("Executive Intelligence", executive.stateLabel, executive.updatedAt);
-    push("Sales Intelligence",   sales.stateLabel,   sales.updatedAt);
-    push("Conversation Intelligence", conversation.stateLabel, conversation.updatedAt);
-    return items.sort((a, b) => b.ts - a.ts).slice(0, 5);
-  }, [data, user, science, brain, learning, executive, sales, conversation]);
+    if (!snap?.recentJobs?.length) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
+    return snap.recentJobs
+      .map((j) => {
+        const ts =
+          iso(j.finishedAt) ??
+          iso(j.startedAt) ??
+          iso(j.createdAt) ??
+          0;
+        const meta = AGENT_LABEL[j.agentId];
+        return {
+          label: meta?.label ?? j.agentId,
+          msg: j.lastError ? `${j.status} · ${j.lastError.slice(0, 40)}` : j.status,
+          ts,
+          ok: !j.lastError && (j.status === "completed" || j.status === "processing"),
+        };
+      })
+      .filter((e) => e.ts > 0)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 5);
+  }, [snap]);
 
   const [legendFocused, setLegendFocused] = useState(false);
 
-  // "Conhecimento acumulado" — apenas métrica real (validatedKnowledge).
-  const validatedCount = data?.science?.sample?.validatedKnowledge ?? 0;
-  const hypothesesCount = data?.science?.sample?.hypotheses ?? 0;
+  const learning = snap?.learning;
+  const worker = snap?.worker ?? snap?.workers?.[0] ?? null;
+  const busLevel = snap?.knowledgeBus?.health?.level ?? "unknown";
+  const busPublishes = snap?.knowledgeBus?.health?.publishCount ?? 0;
+  const scheduler = snap?.scheduler;
+
+  const statusLabel = !user
+    ? "Aguardando sessão"
+    : isLoading && !snap
+    ? "Conectando ao Runtime"
+    : isError
+    ? "Runtime indisponível"
+    : snap?.autonomy?.tenantEnabled?.killSwitch
+    ? "Kill switch ativo"
+    : networkOnline
+    ? "Runtime Online"
+    : "Runtime offline";
 
   return (
     <MotionConfig reducedMotion="user">
-    <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
-      {/* Background grid — 2% opacity */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(125,211,252,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.6) 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
-        }}
-      />
-      {!reducedMotion && <BackgroundParticles />}
+      <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(125,211,252,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.6) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+        {!reducedMotion && networkOnline && <BackgroundParticles />}
 
-
-      {/* Header */}
-      <div className="relative flex items-start justify-between gap-2 mb-1.5">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold tracking-[0.14em] uppercase text-sidebar-foreground/95 leading-none">
-            Inteligência Viva
+        {/* Header */}
+        <div className="relative flex items-start justify-between gap-2 mb-1.5">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold tracking-[0.14em] uppercase text-sidebar-foreground/95 leading-none">
+              Inteligência Viva
+            </div>
+            <div className="text-[9px] text-muted-foreground/80 mt-0.5 leading-none truncate">
+              {snap?.status?.version ? `Runtime ${snap.status.version}` : "Runtime"}
+            </div>
           </div>
-          <div className="text-[9px] text-muted-foreground/80 mt-0.5 leading-none">
-            Aprendendo continuamente
-          </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0 mt-0.5">
-          <motion.span
-            animate={{ opacity: networkOnline ? [0.55, 1, 0.55] : [0.3, 0.7, 0.3] }}
-            transition={{ duration: 1.8, repeat: Infinity }}
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              networkOnline ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" : "bg-amber-400",
-            )}
-          />
-          <span className="text-[8.5px] text-muted-foreground/85 tracking-wide">
-            {networkOnline ? "Rede Neural Online" : "Aguardando"}
-          </span>
-        </div>
-      </div>
-
-      <NeuralGraph professor={professor} agents={agents} professorSurge={surge.professor} />
-
-      {/* Legend chips */}
-      <div
-        className={cn(
-          "mt-1 flex items-center justify-between gap-1 px-0.5 transition-opacity duration-500",
-          legendFocused ? "opacity-100" : "opacity-40",
-        )}
-        onMouseEnter={() => setLegendFocused(true)}
-        onMouseLeave={() => setLegendFocused(false)}
-      >
-        {(["active", "learning", "consolidating", "waiting"] as Bucket[]).map((s) => (
-          <div
-            key={s}
-            className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
-          >
-            <span
-              className="h-1 w-1 rounded-full"
-              style={{ backgroundColor: BUCKET_META[s].hex, boxShadow: `0 0 4px ${BUCKET_META[s].glow}` }}
+          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+            <motion.span
+              animate={
+                networkOnline
+                  ? { opacity: [0.55, 1, 0.55] }
+                  : { opacity: 0.55 }
+              }
+              transition={{ duration: 1.8, repeat: networkOnline ? Infinity : 0 }}
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                networkOnline
+                  ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                  : isError || snap?.autonomy?.tenantEnabled?.killSwitch
+                  ? "bg-red-400"
+                  : "bg-amber-400",
+              )}
             />
-            <span className="text-[7.5px] text-sidebar-foreground/80 tracking-wide">
-              {BUCKET_META[s].label}
+            <span className="text-[8.5px] text-muted-foreground/85 tracking-wide">
+              {statusLabel}
             </span>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Feed real (últimos 5 eventos de snapshots) */}
-      <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/40 px-2 py-1.5 font-mono text-[8.5px] leading-[1.45] text-sidebar-foreground/90 h-[74px] overflow-hidden relative">
-        {feed.length === 0 ? (
-          <div className="text-muted-foreground/60 italic truncate">
-            <span className="text-emerald-400">$</span> aguardando novos eventos<BlinkingCursor />
-          </div>
-        ) : (
-          <>
+        <NeuralGraph professor={professor} agents={agentsWithSurge} professorSurge={surge.professor} />
+
+        {/* Legenda */}
+        <div
+          className={cn(
+            "mt-1 flex items-center justify-between gap-1 px-0.5 transition-opacity duration-500",
+            legendFocused ? "opacity-100" : "opacity-40",
+          )}
+          onMouseEnter={() => setLegendFocused(true)}
+          onMouseLeave={() => setLegendFocused(false)}
+        >
+          {(["active", "learning", "consolidating", "waiting", "error", "idle"] as Bucket[]).map((s) => (
+            <div
+              key={s}
+              className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
+            >
+              <span
+                className="h-1 w-1 rounded-full"
+                style={{ backgroundColor: BUCKET_META[s].hex, boxShadow: `0 0 4px ${BUCKET_META[s].glow}` }}
+              />
+              <span className="text-[7.5px] text-sidebar-foreground/80 tracking-wide">
+                {BUCKET_META[s].label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Feed real do Runtime */}
+        <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/40 px-2 py-1.5 font-mono text-[8.5px] leading-[1.45] text-sidebar-foreground/90 h-[74px] overflow-hidden relative">
+          {feed.length === 0 ? (
+            <div className="text-muted-foreground/60 italic truncate">
+              <span className="text-emerald-400">$</span> aguardando jobs do Runtime
+              <BlinkingCursor />
+            </div>
+          ) : (
             <AnimatePresence initial={false}>
               {feed.map((e, i) => (
                 <motion.div
-                  key={`${e.label}-${e.ts}`}
+                  key={`${e.label}-${e.ts}-${i}`}
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
@@ -404,40 +463,105 @@ export function NeuralIntelligencePanel() {
                   className="flex items-baseline gap-1.5 truncate"
                 >
                   <span className="text-sky-300/70 shrink-0">{formatTime(e.ts)}</span>
-                  <span className="text-emerald-400 shrink-0">✓</span>
+                  <span className={cn("shrink-0", e.ok ? "text-emerald-400" : "text-red-400")}>
+                    {e.ok ? "✓" : "!"}
+                  </span>
                   <span className="text-sidebar-foreground/95 shrink-0">{e.label}</span>
                   <span className="text-muted-foreground/75 truncate">· {e.msg}</span>
                 </motion.div>
               ))}
             </AnimatePresence>
-          </>
-        )}
-      </div>
-
-      {/* Conhecimento acumulado — apenas métrica real */}
-      <div className="mt-1.5 px-0.5">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
-            Conhecimento acumulado
-          </span>
+          )}
         </div>
-        {validatedCount > 0 || hypothesesCount > 0 ? (
-          <div className="text-[9px] text-sidebar-foreground/85">
-            <span className="text-emerald-300">{validatedCount}</span> conhecimentos validados
-            <span className="text-muted-foreground/60"> · </span>
-            <span className="text-sky-300">{hypothesesCount}</span> hipóteses ativas
+
+        {/* Infra: Worker, Scheduler, Knowledge Bus, Learning */}
+        <div className="mt-1.5 grid grid-cols-2 gap-1 px-0.5">
+          <InfraStat
+            label="Worker"
+            value={worker?.state ?? "—"}
+            detail={worker ? `${worker.inFlight ?? 0} em voo · ${worker.jobsProcessed ?? 0} jobs` : "sem worker"}
+            active={worker?.state === "running" || (worker?.inFlight ?? 0) > 0}
+          />
+          <InfraStat
+            label="Scheduler"
+            value={scheduler?.enabled === false ? "off" : `${scheduler?.registered ?? 0} sched.`}
+            detail={scheduler?.nextRunAt ? `próx. ${formatRelative(iso(scheduler.nextRunAt))}` : "sem próximo tick"}
+            active={!!scheduler?.enabled}
+          />
+          <InfraStat
+            label="Knowledge Bus"
+            value={busLevel}
+            detail={`${busPublishes} publicações`}
+            active={busLevel === "healthy" && busPublishes > 0}
+          />
+          <InfraStat
+            label="Learning Loop"
+            value={`${learning?.cycles ?? 0} ciclos`}
+            detail={learning?.lastLearning ? formatRelative(iso(learning.lastLearning)) : "sem ciclos"}
+            active={!!learning?.lastLearning && Date.now() - (iso(learning.lastLearning) ?? 0) < 15 * 60_000}
+          />
+        </div>
+
+        {/* Conhecimento acumulado — apenas dados reais do Learning Loop */}
+        <div className="mt-1.5 px-0.5">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
+              Conhecimento acumulado
+            </span>
           </div>
-        ) : (
-          <div className="text-[9px] text-sidebar-foreground/70 italic">
-            Aguardando histórico suficiente
-          </div>
-        )}
+          {learning && (learning.knowledgeConsolidated > 0 || learning.hypotheses.accepted > 0) ? (
+            <div className="text-[9px] text-sidebar-foreground/85">
+              <span className="text-emerald-300">{learning.knowledgeConsolidated}</span> consolidados
+              <span className="text-muted-foreground/60"> · </span>
+              <span className="text-sky-300">{learning.hypotheses.accepted}</span> hipóteses aceitas
+              <span className="text-muted-foreground/60"> · </span>
+              <span className="text-violet-300">
+                {Math.round((learning.averageConfidence ?? 0) * 100)}%
+              </span>{" "}
+              confiança
+            </div>
+          ) : (
+            <div className="text-[9px] text-sidebar-foreground/70 italic">
+              Aguardando ciclos de aprendizado
+            </div>
+          )}
+        </div>
       </div>
-    </div>
     </MotionConfig>
   );
 }
 
+/* -------------------- InfraStat -------------------- */
+
+function InfraStat({
+  label,
+  value,
+  detail,
+  active,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  active: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-sidebar-border/40 bg-black/25 px-1.5 py-1">
+      <div className="flex items-center gap-1">
+        <span
+          className={cn(
+            "h-1 w-1 rounded-full",
+            active ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" : "bg-muted-foreground/40",
+          )}
+        />
+        <span className="text-[7.5px] uppercase tracking-[0.12em] text-muted-foreground/80">
+          {label}
+        </span>
+      </div>
+      <div className="text-[9px] text-sidebar-foreground/95 mt-0.5 truncate">{value}</div>
+      <div className="text-[8px] text-muted-foreground/70 truncate">{detail}</div>
+    </div>
+  );
+}
 
 /* -------------------- Blinking cursor -------------------- */
 
@@ -490,7 +614,7 @@ function NeuralGraph({
   professorSurge,
 }: {
   professor: Resolved;
-  agents: AgentNode[];
+  agents: DisplayAgent[];
   professorSurge?: boolean;
 }) {
   const W = 260;
@@ -514,6 +638,7 @@ function NeuralGraph({
 
   const profMeta = BUCKET_META[professor.bucket];
   const profColor = profMeta.hex;
+  const profAnimate = profMeta.animate;
 
   return (
     <div className="relative w-full">
@@ -553,8 +678,9 @@ function NeuralGraph({
 
         {positions.map((p, i) => {
           const a = agents[i];
-          const isActive = a && a.bucket !== "waiting" && a.bucket !== "idle";
-          const particleColor = a ? BUCKET_META[a.bucket].hex : "rgb(125,211,252)";
+          const meta = a ? BUCKET_META[a.resolved.bucket] : null;
+          const isAnimated = !!meta?.animate;
+          const particleColor = meta?.hex ?? "rgb(125,211,252)";
           const propDelay = 0.25 + i * 0.28;
           const surging = a?.surge;
           return (
@@ -564,45 +690,49 @@ function NeuralGraph({
                 y1={prof.y}
                 x2={p.x}
                 y2={p.y}
-                stroke={isActive ? "url(#lineGradActive)" : "url(#lineGrad)"}
-                strokeWidth={surging ? 1.4 : isActive ? 0.9 : 0.55}
+                stroke={isAnimated ? "url(#lineGradActive)" : "url(#lineGrad)"}
+                strokeWidth={surging ? 1.4 : isAnimated ? 0.9 : 0.55}
               />
-              <motion.line
-                x1={prof.x}
-                y1={prof.y}
-                x2={p.x}
-                y2={p.y}
-                stroke={particleColor}
-                strokeLinecap="round"
-                strokeWidth={surging ? 1.6 : 1.1}
-                initial={{ opacity: 0 }}
-                animate={{
-                  opacity: surging ? [0, 1, 0, 1, 0] : isActive ? [0, 0.65, 0] : [0, 0.22, 0],
-                }}
-                transition={{
-                  duration: surging ? 1.4 : BREATH,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: propDelay,
-                }}
-              />
-              <motion.circle
-                r={surging ? 2.4 : 1.6}
-                fill={particleColor}
-                filter="url(#softGlow)"
-                initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
-                animate={{
-                  cx: [prof.x, p.x],
-                  cy: [prof.y, p.y],
-                  opacity: [0, 1, 0],
-                }}
-                transition={{
-                  duration: surging ? 1.2 : BREATH,
-                  repeat: Infinity,
-                  delay: propDelay,
-                  ease: "easeInOut",
-                }}
-              />
+              {(isAnimated || surging) && (
+                <>
+                  <motion.line
+                    x1={prof.x}
+                    y1={prof.y}
+                    x2={p.x}
+                    y2={p.y}
+                    stroke={particleColor}
+                    strokeLinecap="round"
+                    strokeWidth={surging ? 1.6 : 1.1}
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      opacity: surging ? [0, 1, 0, 1, 0] : [0, 0.65, 0],
+                    }}
+                    transition={{
+                      duration: surging ? 1.4 : BREATH,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      delay: propDelay,
+                    }}
+                  />
+                  <motion.circle
+                    r={surging ? 2.4 : 1.6}
+                    fill={particleColor}
+                    filter="url(#softGlow)"
+                    initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
+                    animate={{
+                      cx: [prof.x, p.x],
+                      cy: [prof.y, p.y],
+                      opacity: [0, 1, 0],
+                    }}
+                    transition={{
+                      duration: surging ? 1.2 : BREATH,
+                      repeat: Infinity,
+                      delay: propDelay,
+                      ease: "easeInOut",
+                    }}
+                  />
+                </>
+              )}
             </g>
           );
         })}
@@ -612,11 +742,15 @@ function NeuralGraph({
           cy={prof.y}
           r={62}
           fill="url(#profGlowOuter)"
-          animate={{
-            opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5],
-            scale: professorSurge ? [1, 1.15, 1] : [0.94, 1.08, 0.94],
-          }}
-          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
+          animate={
+            profAnimate
+              ? {
+                  opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5],
+                  scale: professorSurge ? [1, 1.15, 1] : [0.94, 1.08, 0.94],
+                }
+              : { opacity: 0.35, scale: 1 }
+          }
+          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
         />
         <motion.circle
@@ -624,46 +758,50 @@ function NeuralGraph({
           cy={prof.y}
           r={40}
           fill="url(#profGlowInner)"
-          animate={{ opacity: [0.35, 0.7, 0.35] }}
-          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
+          animate={profAnimate ? { opacity: [0.35, 0.7, 0.35] } : { opacity: 0.25 }}
+          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
         />
 
-        <motion.g
-          animate={{ rotate: 360 }}
-          transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-        >
-          <circle
-            cx={prof.x}
-            cy={prof.y}
-            r={44}
-            fill="none"
-            stroke={profColor}
-            strokeOpacity={0.38}
-            strokeWidth={0.55}
-            strokeDasharray="2 5"
-          />
-        </motion.g>
-        <motion.g
-          animate={{ rotate: -360 }}
-          transition={{ duration: 85, repeat: Infinity, ease: "linear" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-        >
-          <circle
-            cx={prof.x}
-            cy={prof.y}
-            r={52}
-            fill="none"
-            stroke={profColor}
-            strokeOpacity={0.22}
-            strokeWidth={0.45}
-            strokeDasharray="1 8"
-          />
-        </motion.g>
+        {profAnimate && (
+          <>
+            <motion.g
+              animate={{ rotate: 360 }}
+              transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+              style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+            >
+              <circle
+                cx={prof.x}
+                cy={prof.y}
+                r={44}
+                fill="none"
+                stroke={profColor}
+                strokeOpacity={0.38}
+                strokeWidth={0.55}
+                strokeDasharray="2 5"
+              />
+            </motion.g>
+            <motion.g
+              animate={{ rotate: -360 }}
+              transition={{ duration: 85, repeat: Infinity, ease: "linear" }}
+              style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+            >
+              <circle
+                cx={prof.x}
+                cy={prof.y}
+                r={52}
+                fill="none"
+                stroke={profColor}
+                strokeOpacity={0.22}
+                strokeWidth={0.45}
+                strokeDasharray="1 8"
+              />
+            </motion.g>
+          </>
+        )}
 
         <motion.g
-          animate={{ scale: [1, 1.06, 1] }}
-          transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut" }}
+          animate={profAnimate ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
           onMouseEnter={() => setHovered("professor")}
           onMouseLeave={() => setHovered(null)}
@@ -677,24 +815,32 @@ function NeuralGraph({
             strokeWidth={1.8}
             filter="url(#softGlow)"
           />
-          <text
-            x={prof.x}
-            y={prof.y + 9}
-            textAnchor="middle"
-            fontSize="26"
-            className="fill-sidebar-foreground"
-          >
+          <text x={prof.x} y={prof.y + 9} textAnchor="middle" fontSize="26" className="fill-sidebar-foreground">
             🧠
           </text>
         </motion.g>
 
         {positions.map((p, i) => {
           const a = agents[i];
-          if (!a) return null;
-          const meta = BUCKET_META[a.bucket];
+          if (!a) {
+            return (
+              <g key={`empty-${i}`}>
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={5}
+                  fill="hsl(220 35% 10%)"
+                  stroke={BUCKET_META.idle.hex}
+                  strokeOpacity={0.35}
+                  strokeWidth={0.8}
+                />
+              </g>
+            );
+          }
+          const meta = BUCKET_META[a.resolved.bucket];
           const dotColor = meta.hex;
+          const isAnimated = meta.animate;
           const isHover = hovered === a.id;
-          const isActive = a.bucket !== "waiting" && a.bucket !== "idle";
           const propDelay = 0.25 + i * 0.28;
           const surging = a.surge;
           return (
@@ -709,21 +855,25 @@ function NeuralGraph({
                 cy={p.y}
                 r={surging ? 16 : 13}
                 fill={dotColor}
-                animate={{
-                  opacity: surging ? [0.15, 0.5, 0.15] : isActive ? [0.06, 0.28, 0.06] : [0.04, 0.12, 0.04],
-                  scale: surging ? [1, 1.4, 1] : [1, 1.22, 1],
-                }}
+                animate={
+                  isAnimated || surging
+                    ? {
+                        opacity: surging ? [0.15, 0.5, 0.15] : [0.06, 0.28, 0.06],
+                        scale: surging ? [1, 1.4, 1] : [1, 1.22, 1],
+                      }
+                    : { opacity: 0.05, scale: 1 }
+                }
                 transition={{
                   duration: surging ? 1.6 : BREATH,
-                  repeat: Infinity,
+                  repeat: isAnimated || surging ? Infinity : 0,
                   ease: "easeInOut",
                   delay: propDelay,
                 }}
                 style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(3px)" }}
               />
               <motion.g
-                animate={{ scale: [1, 1.03, 1] }}
-                transition={{ duration: BREATH, repeat: Infinity, ease: "easeInOut", delay: propDelay }}
+                animate={isAnimated ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+                transition={{ duration: BREATH, repeat: isAnimated ? Infinity : 0, ease: "easeInOut", delay: propDelay }}
                 style={{ transformOrigin: `${p.x}px ${p.y}px` }}
               >
                 <circle
@@ -740,10 +890,10 @@ function NeuralGraph({
                   cy={p.y}
                   r={2.6}
                   fill={dotColor}
-                  animate={{ opacity: [0.55, 1, 0.55] }}
+                  animate={isAnimated ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.4 }}
                   transition={{
                     duration: BREATH,
-                    repeat: Infinity,
+                    repeat: isAnimated ? Infinity : 0,
                     delay: propDelay,
                     ease: "easeInOut",
                   }}
@@ -769,8 +919,8 @@ function NeuralGraph({
           if (hovered === "professor") {
             return (
               <TooltipCard
-                title="Professor"
-                subtitle="Coordena toda a inteligência do Atende AI."
+                title="Professor / Runtime"
+                subtitle="Coordena o Runtime autônomo do Atende AI."
                 stateLabel={professor.stateLabel}
                 stateHex={profMeta.hex}
                 stateGlow={profMeta.glow}
@@ -780,15 +930,15 @@ function NeuralGraph({
           }
           const a = agents.find((x) => x.id === hovered);
           if (!a) return null;
-          const meta = BUCKET_META[a.bucket];
+          const meta = BUCKET_META[a.resolved.bucket];
           return (
             <TooltipCard
               title={a.label}
-              subtitle={a.tooltip}
-              stateLabel={a.stateLabel}
+              subtitle={a.resolved.detail ?? "Agente registrado no Runtime."}
+              stateLabel={a.resolved.stateLabel}
               stateHex={meta.hex}
               stateGlow={meta.glow}
-              lastAt={a.updatedAt}
+              lastAt={a.resolved.updatedAt}
             />
           );
         })()}
@@ -817,10 +967,10 @@ function TooltipCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
-      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[160px] max-w-[210px]"
+      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[160px] max-w-[240px]"
     >
       <div className="font-semibold text-sidebar-foreground">{title}</div>
-      <div className="text-muted-foreground/85 mt-0.5">{subtitle}</div>
+      <div className="text-muted-foreground/85 mt-0.5 line-clamp-2">{subtitle}</div>
       <div className="flex items-center gap-1 mt-1">
         <span
           className="h-1.5 w-1.5 rounded-full"
