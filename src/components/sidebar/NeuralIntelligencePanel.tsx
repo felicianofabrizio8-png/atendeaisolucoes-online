@@ -204,11 +204,12 @@ function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
   if (snap.autonomy?.tenantEnabled?.killSwitch) {
     return { bucket: "error", stateLabel: "kill switch ativo" };
   }
-  if (!snap.status.online) return { bucket: "error", stateLabel: "offline" };
-  const hbTs = iso(snap.status.lastHeartbeat?.ts);
-  const anyRunning = snap.agents.some((a) => a.state.status === "running");
+  if (!snap.status?.online) return { bucket: "error", stateLabel: "offline" };
+  const hbTs = iso(snap.status?.lastHeartbeat?.ts);
+  const agentsArr = Array.isArray(snap.agents) ? snap.agents : [];
+  const anyRunning = agentsArr.some((a) => a?.state?.status === "running");
   if (anyRunning) return { bucket: "active", stateLabel: "coordenando", updatedAt: hbTs };
-  if (snap.status.healthyAgents > 0) {
+  if ((snap.status?.healthyAgents ?? 0) > 0) {
     return { bucket: "active", stateLabel: "online", updatedAt: hbTs };
   }
   return { bucket: "waiting", stateLabel: "aguardando agentes", updatedAt: hbTs };
@@ -259,7 +260,17 @@ export function NeuralIntelligencePanel() {
 
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
-    for (const p of snap?.learning?.perAgent ?? []) m.set(p.agentId, p);
+    const raw = snap?.learning?.perAgent;
+    const list: LearningPerAgent[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, LearningPerAgent>) ?? [])
+      : [];
+    for (const p of list) {
+      if (p && typeof p === "object" && typeof p.agentId === "string") {
+        m.set(p.agentId, p);
+      }
+    }
     return m;
   }, [snap]);
 
@@ -267,18 +278,27 @@ export function NeuralIntelligencePanel() {
 
   const agents: DisplayAgent[] = useMemo(() => {
     if (!snap) return [];
-    const byId = new Map(snap.agents.map((a) => [a.id, a]));
+    const rawAgents = snap.agents;
+    const agentList: AgentEntry[] = Array.isArray(rawAgents)
+      ? rawAgents
+      : rawAgents && typeof rawAgents === "object"
+      ? (Object.values(rawAgents as Record<string, AgentEntry>) ?? [])
+      : [];
+    const safeAgents = agentList.filter(
+      (a): a is AgentEntry => !!a && typeof a === "object" && typeof a.id === "string" && !!a.state,
+    );
+    const byId = new Map(safeAgents.map((a) => [a.id, a]));
     const ordered: AgentEntry[] = [];
     for (const id of ORBIT_PRIORITY) {
       const a = byId.get(id);
       if (a && a.id !== "professor") ordered.push(a);
     }
-    for (const a of snap.agents) {
+    for (const a of safeAgents) {
       if (a.id === "professor") continue;
       if (!ordered.find((x) => x.id === a.id)) ordered.push(a);
     }
     return ordered.slice(0, 6).map((a) => {
-      const meta = AGENT_LABEL[a.id] ?? { label: a.name, short: a.name };
+      const meta = AGENT_LABEL[a.id] ?? { label: a.name ?? a.id, short: a.name ?? a.id };
       return {
         id: a.id,
         label: meta.label,
@@ -330,8 +350,15 @@ export function NeuralIntelligencePanel() {
 
   // Feed real: últimos jobs do Runtime.
   const feed = useMemo(() => {
-    if (!snap?.recentJobs?.length) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
-    return snap.recentJobs
+    const raw = snap?.recentJobs;
+    const jobs: RecentJob[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, RecentJob>) ?? [])
+      : [];
+    if (jobs.length === 0) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
+    return jobs
+      .filter((j): j is RecentJob => !!j && typeof j === "object" && typeof j.agentId === "string")
       .map((j) => {
         const ts =
           iso(j.finishedAt) ??
@@ -339,11 +366,12 @@ export function NeuralIntelligencePanel() {
           iso(j.createdAt) ??
           0;
         const meta = AGENT_LABEL[j.agentId];
+        const statusStr = typeof j.status === "string" ? j.status : "—";
         return {
           label: meta?.label ?? j.agentId,
-          msg: j.lastError ? `${j.status} · ${j.lastError.slice(0, 40)}` : j.status,
+          msg: j.lastError ? `${statusStr} · ${String(j.lastError).slice(0, 40)}` : statusStr,
           ts,
-          ok: !j.lastError && (j.status === "completed" || j.status === "processing"),
+          ok: !j.lastError && (statusStr === "completed" || statusStr === "processing"),
         };
       })
       .filter((e) => e.ts > 0)
