@@ -4533,12 +4533,24 @@ function MarkLostModal({
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && valid) onConfirm(finalReason);
+                  if (e.key === "Enter" && valid) onConfirm(finalReason, notes.trim() || undefined);
                 }}
                 placeholder="Descreva o motivo"
                 className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             )}
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Observações (opcional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Detalhes adicionais"
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
           </div>
           <p className="text-[11px] text-muted-foreground">
             Você pode gerenciar a lista em{" "}
@@ -4554,7 +4566,7 @@ function MarkLostModal({
           </button>
           <button
             disabled={!valid}
-            onClick={() => onConfirm(finalReason)}
+            onClick={() => onConfirm(finalReason, notes.trim() || undefined)}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[var(--status-lost)] text-white px-3 py-2 hover:opacity-90 disabled:opacity-40"
           >
             <XCircle className="h-3.5 w-3.5" /> Confirmar perda
