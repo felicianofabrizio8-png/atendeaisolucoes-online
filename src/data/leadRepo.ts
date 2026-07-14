@@ -649,6 +649,39 @@ export async function markLeadLost(leadId: string, reason: string) {
   notify();
 }
 
+export async function updateLeadNextAction(
+  leadId: string,
+  next: { label: string; dueAt: string } | null,
+) {
+  if (mode === "demo") {
+    const idx = mockLeads.findIndex((l) => l.id === leadId);
+    if (idx !== -1) {
+      mockLeads[idx] = {
+        ...mockLeads[idx],
+        nextAction: next ? { label: next.label, dueAt: next.dueAt } : undefined,
+      };
+    }
+    notify();
+    return;
+  }
+  await supabase
+    .from("leads")
+    .update({
+      next_action_label: next?.label ?? null,
+      next_action_due_at: next?.dueAt ?? null,
+    })
+    .eq("id", leadId);
+  remoteLeads = remoteLeads.map((l) =>
+    l.id === leadId
+      ? {
+          ...l,
+          nextAction: next ? { label: next.label, dueAt: next.dueAt } : undefined,
+        }
+      : l,
+  );
+  notify();
+}
+
 export async function createLead(
   input: {
     name: string;

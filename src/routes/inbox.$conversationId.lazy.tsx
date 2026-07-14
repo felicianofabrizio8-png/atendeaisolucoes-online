@@ -14,6 +14,7 @@ import {
   appendMessage,
   markLeadLost,
   markLeadWon,
+  updateLeadNextAction,
   refetchConversationMessages,
   subscribeRepo,
   editMessage,
@@ -22,6 +23,7 @@ import {
   loadConversationOlder,
   hasMoreOlderMessages,
 } from "@/data/leadRepo";
+import { recordAudit } from "@/lib/audit";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
@@ -2633,6 +2635,8 @@ function ConversationPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
+  const [nextActionOpen, setNextActionOpen] = useState(false);
+  const [visitOpen, setVisitOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
@@ -3194,7 +3198,15 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
-    if (lead) void markLeadWon(lead.id, value);
+    if (lead) {
+      void markLeadWon(lead.id, value);
+      recordAudit({
+        action: "mark_lead_won",
+        entity: "lead",
+        entityId: lead.id,
+        after: { value },
+      });
+    }
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
@@ -3207,22 +3219,127 @@ function ConversationPage() {
     ]);
   };
 
-  const confirmLost = (reason: string) => {
+  const confirmLost = (reason: string, notes?: string) => {
     if (!lead) return;
     void markLeadLost(lead.id, reason);
+    recordAudit({
+      action: "mark_lead_lost",
+      entity: "lead",
+      entityId: lead.id,
+      after: { reason, notes: notes ?? null },
+    });
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
+    const detail = notes ? ` — ${reason} (${notes})` : ` — ${reason}`;
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
         conversationId,
         role: "system",
-        text: `❌ Lead marcado como perdido — ${reason}`,
+        text: `❌ Lead marcado como perdido${detail}`,
         at: new Date().toISOString(),
       },
     ]);
+    toast.success("Lead marcado como perdido");
   };
+
+  const confirmNextAction = async (payload: {
+    label: string;
+    dueAt: string;
+    notes?: string;
+  }) => {
+    if (!lead) return;
+    try {
+      await updateLeadNextAction(lead.id, { label: payload.label, dueAt: payload.dueAt });
+      recordAudit({
+        action: "create_next_action",
+        entity: "lead",
+        entityId: lead.id,
+        after: payload,
+      });
+      setLocalMessages((prev: Message[]) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          conversationId,
+          role: "system",
+          text: `🎯 Próxima ação: ${payload.label} — ${new Date(payload.dueAt).toLocaleString("pt-BR")}`,
+          at: new Date().toISOString(),
+        },
+      ]);
+      setNextActionOpen(false);
+      toast.success("Próxima ação criada");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao salvar próxima ação");
+    }
+  };
+
+  const confirmVisit = async (payload: {
+    date: string;
+    time: string;
+    address: string;
+    appointmentType: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao";
+    confirmed: boolean;
+    notes: string;
+  }) => {
+    if (!lead || !authProfile?.company_id) return;
+    const scheduledAt = new Date(`${payload.date}T${payload.time}:00`).toISOString();
+    const typeLabel: Record<string, string> = {
+      visita_tecnica: "Visita técnica",
+      loja: "Cliente na loja",
+      retorno_comercial: "Retorno comercial",
+      instalacao: "Instalação",
+    };
+    try {
+      const { data, error } = await supabase
+        .from("visits")
+        .insert({
+          company_id: authProfile.company_id,
+          title: `${typeLabel[payload.appointmentType]} — ${lead.name}`,
+          appointment_type: payload.appointmentType,
+          address: payload.appointmentType === "loja" ? null : payload.address || null,
+          scheduled_at: scheduledAt,
+          status: payload.confirmed ? "confirmada" : "agendada",
+          notes: payload.notes || null,
+          customer_name: lead.name,
+          customer_phone: lead.phone ?? null,
+          product: lead.product ?? null,
+          lead_id: lead.id,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      recordAudit({
+        action: "schedule_visit",
+        entity: "visit",
+        entityId: data?.id ?? null,
+        after: { leadId: lead.id, scheduledAt, type: payload.appointmentType },
+      });
+      // Sincroniza também como próxima ação do lead
+      await updateLeadNextAction(lead.id, {
+        label: typeLabel[payload.appointmentType],
+        dueAt: scheduledAt,
+      });
+      setLocalMessages((prev: Message[]) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          conversationId,
+          role: "system",
+          text: `📅 ${typeLabel[payload.appointmentType]} agendada — ${new Date(scheduledAt).toLocaleString("pt-BR")}`,
+          at: new Date().toISOString(),
+        },
+      ]);
+      setVisitOpen(false);
+      toast.success("Visita agendada");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao agendar visita");
+    }
+  };
+
 
   const sendPendingQuote = () => {
     if (!pendingQuote) return;
@@ -4011,10 +4128,11 @@ function ConversationPage() {
           let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
             icon: Target,
             label: "Definir próxima ação",
+            onClick: () => setNextActionOpen(true),
             variant: "default",
           };
           if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
-          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", variant: "default" };
+          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
           else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
           const Icon = primary.icon;
           return (
@@ -4141,8 +4259,20 @@ function ConversationPage() {
           >
             {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
           </ActionButton>
-          <ActionButton icon={Calendar}>Agendar visita</ActionButton>
-          <ActionButton icon={Target}>Definir próxima ação</ActionButton>
+          <ActionButton
+            icon={Calendar}
+            onClick={() => setVisitOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Agendar visita
+          </ActionButton>
+          <ActionButton
+            icon={Target}
+            onClick={() => setNextActionOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Definir próxima ação
+          </ActionButton>
           <ActionButton
             icon={CheckCircle2}
             variant="won"
@@ -4155,7 +4285,8 @@ function ConversationPage() {
             icon={XCircle}
             variant="lost"
             onClick={() => setLostOpen(true)}
-            disabled={!!closedInfo}
+            disabled={!!closedInfo || !isAdmin}
+            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
           >
             Marcar como perdido
           </ActionButton>
@@ -4179,6 +4310,22 @@ function ConversationPage() {
           onConfirm={confirmLost}
         />
       )}
+
+      {nextActionOpen && (
+        <NextActionModal
+          leadName={lead.name}
+          onCancel={() => setNextActionOpen(false)}
+          onConfirm={confirmNextAction}
+        />
+      )}
+
+      {visitOpen && (
+        <ScheduleVisitModal
+          leadName={lead.name}
+          onCancel={() => setVisitOpen(false)}
+          onConfirm={confirmVisit}
+        />
+      )}
     </div>
   );
 }
@@ -4198,17 +4345,20 @@ function ActionButton({
   variant = "default",
   onClick,
   disabled,
+  title,
 }: {
   icon: typeof FileText;
   children: React.ReactNode;
   variant?: "default" | "won" | "lost";
   onClick?: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={cn(
         "w-full inline-flex items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
         variant === "won" && "text-[var(--status-won)]",
@@ -4303,13 +4453,14 @@ function MarkLostModal({
 }: {
   leadName: string;
   onCancel: () => void;
-  onConfirm: (reason: string) => void;
+  onConfirm: (reason: string, notes?: string) => void;
 }) {
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
   const reasons = settings.lossReasons;
   // Não pré-seleciona — força a vendedora a escolher um motivo conscientemente.
   const [selected, setSelected] = useState<string>("");
   const [custom, setCustom] = useState("");
+  const [notes, setNotes] = useState("");
   const useCustom = selected === "__custom__";
   const finalReason = useCustom ? custom.trim() : selected;
   const valid = !!finalReason;
@@ -4382,12 +4533,24 @@ function MarkLostModal({
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && valid) onConfirm(finalReason);
+                  if (e.key === "Enter" && valid) onConfirm(finalReason, notes.trim() || undefined);
                 }}
                 placeholder="Descreva o motivo"
                 className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             )}
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Observações (opcional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Detalhes adicionais"
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
           </div>
           <p className="text-[11px] text-muted-foreground">
             Você pode gerenciar a lista em{" "}
@@ -4403,10 +4566,318 @@ function MarkLostModal({
           </button>
           <button
             disabled={!valid}
-            onClick={() => onConfirm(finalReason)}
+            onClick={() => onConfirm(finalReason, notes.trim() || undefined)}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[var(--status-lost)] text-white px-3 py-2 hover:opacity-90 disabled:opacity-40"
           >
             <XCircle className="h-3.5 w-3.5" /> Confirmar perda
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// NextActionModal — cria "próxima ação" para o lead.
+// ============================================================================
+const NEXT_ACTION_TYPES: { value: string; label: string }[] = [
+  { value: "Ligação", label: "Ligação" },
+  { value: "WhatsApp", label: "WhatsApp" },
+  { value: "E-mail", label: "E-mail" },
+  { value: "Enviar orçamento", label: "Enviar orçamento" },
+  { value: "Agendar visita", label: "Agendar visita" },
+  { value: "Retorno", label: "Retorno" },
+  { value: "Outro", label: "Outro" },
+];
+
+function NextActionModal({
+  leadName,
+  onCancel,
+  onConfirm,
+}: {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (payload: { label: string; dueAt: string; notes?: string }) => void | Promise<void>;
+}) {
+  const { profile } = useAuth();
+  const now = new Date();
+  const defaultDate = now.toISOString().slice(0, 10);
+  const defaultTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes() + 30).padStart(2, "0")}`.slice(0, 5);
+
+  const [type, setType] = useState<string>("Ligação");
+  const [customLabel, setCustomLabel] = useState("");
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+  const [responsible, setResponsible] = useState(profile?.display_name ?? "");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const isOther = type === "Outro";
+  const finalLabel = isOther ? customLabel.trim() : type;
+  const valid = !!finalLabel && !!date && !!time;
+
+  async function handleSave() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const dueAt = new Date(`${date}T${time}:00`).toISOString();
+      const composedLabel = responsible.trim()
+        ? `${finalLabel} · ${responsible.trim()}`
+        : finalLabel;
+      await onConfirm({ label: composedLabel, dueAt, notes: notes.trim() || undefined });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Definir próxima ação — {leadName}</h2>
+          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tipo *</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {NEXT_ACTION_TYPES.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {isOther && (
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Descreva *</label>
+              <input
+                autoFocus
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                placeholder="Ex.: Enviar catálogo em PDF"
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Data *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hora *</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Responsável</label>
+            <input
+              value={responsible}
+              onChange={(e) => setResponsible(e.target.value)}
+              placeholder="Nome do responsável"
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Observações</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Detalhes adicionais"
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!valid || saving}
+            onClick={handleSave}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
+            Salvar próxima ação
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// ScheduleVisitModal — cria uma visita vinculada ao lead.
+// ============================================================================
+const VISIT_TYPE_OPTIONS: { value: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao"; label: string }[] = [
+  { value: "visita_tecnica", label: "Residência" },
+  { value: "loja", label: "Loja" },
+  { value: "instalacao", label: "Empresa" },
+  { value: "retorno_comercial", label: "Terreno" },
+];
+
+function ScheduleVisitModal({
+  leadName,
+  onCancel,
+  onConfirm,
+}: {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (payload: {
+    date: string;
+    time: string;
+    address: string;
+    appointmentType: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao";
+    confirmed: boolean;
+    notes: string;
+  }) => void | Promise<void>;
+}) {
+  const now = new Date();
+  const [date, setDate] = useState(now.toISOString().slice(0, 10));
+  const [time, setTime] = useState("09:00");
+  const [address, setAddress] = useState("");
+  const [appointmentType, setAppointmentType] =
+    useState<"visita_tecnica" | "loja" | "retorno_comercial" | "instalacao">("visita_tecnica");
+  const [confirmed, setConfirmed] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const needsAddress = appointmentType !== "loja";
+  const valid = !!date && !!time && (!needsAddress || !!address.trim());
+
+  async function handleSave() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      await onConfirm({ date, time, address: address.trim(), appointmentType, confirmed, notes: notes.trim() });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Agendar visita — {leadName}</h2>
+          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Data *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hora *</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tipo *</label>
+            <select
+              value={appointmentType}
+              onChange={(e) => setAppointmentType(e.target.value as typeof appointmentType)}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {VISIT_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Endereço {needsAddress ? "*" : "(opcional)"}
+            </label>
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              disabled={!needsAddress}
+              placeholder={needsAddress ? "Rua, número, bairro" : "Atendimento na loja"}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="accent-primary"
+            />
+            Cliente confirmou a visita
+          </label>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Observações</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Instruções ao vendedor, referências do local, etc."
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!valid || saving}
+            onClick={handleSave}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Calendar className="h-3.5 w-3.5" />}
+            Agendar visita
           </button>
         </div>
       </div>
