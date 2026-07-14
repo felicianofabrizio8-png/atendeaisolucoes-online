@@ -169,6 +169,15 @@ export class AutonomousRuntime {
       ? await this._queue.list({ tenantId, limit: 25 }).catch(() => [])
       : [];
     const learningSnapshot = this.learningLoop.snapshotFor(tenantId);
+    const persistence = RuntimePersistence.instance();
+    const [persistedLearning, persistedBus, learningTimeline, envelopeTimeline] = tenantId
+      ? await Promise.all([
+          persistence.learningAggregate(tenantId),
+          persistence.busAggregate(tenantId),
+          persistence.recentLearning(tenantId, 20),
+          persistence.recentEnvelopes(tenantId, 20),
+        ])
+      : [null, null, [], []];
     return {
       status: this.status(),
       autonomy,
