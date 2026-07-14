@@ -638,22 +638,30 @@ export function NeuralIntelligencePanel() {
               Conhecimento acumulado
             </span>
           </div>
-          {learning && (learning.knowledgeConsolidated > 0 || learning.hypotheses.accepted > 0) ? (
-            <div className="text-[9px] text-sidebar-foreground/85">
-              <span className="text-emerald-300">{learning.knowledgeConsolidated}</span> consolidados
-              <span className="text-muted-foreground/60"> · </span>
-              <span className="text-sky-300">{learning.hypotheses.accepted}</span> hipóteses aceitas
-              <span className="text-muted-foreground/60"> · </span>
-              <span className="text-violet-300">
-                {Math.round((learning.averageConfidence ?? 0) * 100)}%
-              </span>{" "}
-              confiança
-            </div>
-          ) : (
-            <div className="text-[9px] text-sidebar-foreground/70 italic">
-              Aguardando ciclos de aprendizado
-            </div>
-          )}
+          {(() => {
+            const consolidated = learning?.knowledgeConsolidated ?? 0;
+            const accepted = learning?.hypotheses?.accepted ?? 0;
+            const conf = learning?.averageConfidence;
+            if (!learning || (consolidated === 0 && accepted === 0)) {
+              return (
+                <div className="text-[9px] text-sidebar-foreground/70 italic">
+                  Aguardando ciclos de aprendizado
+                </div>
+              );
+            }
+            return (
+              <div className="text-[9px] text-sidebar-foreground/85">
+                <span className="text-emerald-300">{consolidated}</span> consolidados
+                <span className="text-muted-foreground/60"> · </span>
+                <span className="text-sky-300">{accepted}</span> hipóteses aceitas
+                <span className="text-muted-foreground/60"> · </span>
+                <span className="text-violet-300">
+                  {typeof conf === "number" ? `${Math.round(conf * 100)}%` : "—"}
+                </span>{" "}
+                confiança
+              </div>
+            );
+          })()}
         </div>
       </div>
     </MotionConfig>
