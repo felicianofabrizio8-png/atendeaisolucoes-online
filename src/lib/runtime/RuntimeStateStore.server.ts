@@ -25,7 +25,7 @@ function rpc(): RpcClient {
   // e o catch dos tryDedupe/tryAcquireLock/releaseLock engole silenciosamente,
   // resultando em duplicate_prevented / lock_denied falsos.
   const admin = supabaseAdmin as Admin;
-  const rpcFn = admin.rpc as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  const rpcFn = admin.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
   return rpcFn.bind(admin) as unknown as RpcClient;
 }
 
