@@ -184,27 +184,37 @@ export class AutonomousRuntime {
       heartbeat: tick,
       counters,
       learning: {
-        cycles: learningSnapshot.metrics.learningCycles,
+        cycles: persistedLearning?.cycles ?? learningSnapshot.metrics.learningCycles,
         hypotheses: {
-          created: learningSnapshot.metrics.hypothesesCreated,
-          accepted: learningSnapshot.metrics.hypothesesAccepted,
-          rejected: learningSnapshot.metrics.hypothesesRejected,
-          consolidated: learningSnapshot.metrics.knowledgeConsolidated,
+          created:
+            (persistedLearning?.cycles ?? learningSnapshot.metrics.hypothesesCreated) || 0,
+          accepted:
+            persistedLearning?.accepted ?? learningSnapshot.metrics.hypothesesAccepted,
+          rejected:
+            persistedLearning?.rejected ?? learningSnapshot.metrics.hypothesesRejected,
+          consolidated:
+            persistedLearning?.consolidated ?? learningSnapshot.metrics.knowledgeConsolidated,
         },
-        knowledgeConsolidated: learningSnapshot.metrics.knowledgeConsolidated,
-        averageConfidence: learningSnapshot.metrics.averageConfidence,
-        lastLearning: learningSnapshot.metrics.lastLearningAt,
-        lastAgent: learningSnapshot.metrics.lastAgentId,
+        knowledgeConsolidated:
+          persistedLearning?.consolidated ?? learningSnapshot.metrics.knowledgeConsolidated,
+        averageConfidence:
+          persistedLearning?.averageConfidence ?? learningSnapshot.metrics.averageConfidence,
+        lastLearning:
+          persistedLearning?.lastLearningAt ?? learningSnapshot.metrics.lastLearningAt,
+        lastAgent: persistedLearning?.lastAgentId ?? learningSnapshot.metrics.lastAgentId,
         ignoredExecutions: learningSnapshot.metrics.ignoredExecutions,
-        perAgent: learningSnapshot.metrics.perAgent,
+        perAgent: persistedLearning?.perAgent ?? learningSnapshot.metrics.perAgent,
         store: learningSnapshot.store,
         lastCycle: learningSnapshot.lastCycle,
         chain: learningSnapshot.chain,
         tenant: learningSnapshot.tenant ?? null,
+        timeline: learningTimeline,
+        persistence: persistence.stats(),
         knowledgeEvolution: {
           consolidatedTenants: learningSnapshot.store.tenantsWithConsolidated,
-          totalCycles: learningSnapshot.store.totalCycles,
-          averageConfidence: learningSnapshot.metrics.averageConfidence,
+          totalCycles: persistedLearning?.cycles ?? learningSnapshot.store.totalCycles,
+          averageConfidence:
+            persistedLearning?.averageConfidence ?? learningSnapshot.metrics.averageConfidence,
         },
       },
       agents: this.registry.list().map((a) => ({
