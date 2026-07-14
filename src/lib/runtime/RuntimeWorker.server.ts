@@ -246,7 +246,7 @@ export class RuntimeWorker {
     let learning: LearningCycleReport | null = null;
     if (this.learningLoop && persistSuccess) {
       try {
-        learning = this.learningLoop.onExecutionCompleted(report.result);
+        learning = await this.learningLoop.onExecutionCompleted(report.result);
       } catch {
         learning = null;
       }
