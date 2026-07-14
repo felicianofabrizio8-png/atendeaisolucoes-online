@@ -405,9 +405,20 @@ export function NeuralIntelligencePanel() {
 
   const learning = snap?.learning;
   const worker = snap?.worker ?? snap?.workers?.[0] ?? null;
-  const busLevel = snap?.knowledgeBus?.health?.level ?? "unknown";
-  const busPublishes = snap?.knowledgeBus?.health?.publishCount ?? 0;
+  const workerHealth = worker?.health ?? null;
+  const workerState = workerHealth?.state ?? null;
+  const workerInFlight = workerHealth?.inFlight ?? 0;
+  const workerJobs = workerHealth?.jobsProcessed ?? 0;
+  const busHealth = snap?.knowledgeBus?.health;
+  const busLevel = busHealth?.level ?? null;
+  const busPublishes = busHealth?.publishCount ?? 0;
+  const busReads = busHealth?.readCount ?? 0;
+  const busLastActivity = iso(busHealth?.lastActivityAt ?? null);
   const scheduler = snap?.scheduler;
+  const schedulerEnabled = scheduler?.enabled ?? 0;
+  const schedulerRegistered = scheduler?.registered ?? 0;
+  const schedulerNextTs = iso(scheduler?.nextExecutionAt ?? null);
+  const counters = snap?.counters ?? null;
 
   const statusLabel = !user
     ? "Aguardando sessão"
