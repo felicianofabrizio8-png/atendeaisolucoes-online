@@ -68,17 +68,28 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
         const { getRuntimeFlags } = await import(
           "@/lib/runtime/RuntimeStateStore.server"
         );
-        const [snap, flags, enabled] = await Promise.all([
-          RuntimeAutonomyRegistry.snapshot("system-health"),
-          getRuntimeFlags(ctx.tenantId),
-          RuntimeAutonomyRegistry.isEnabled("system-health", ctx.tenantId),
-        ]);
+        const [systemHealthSnap, brainSnap, flags, systemHealthEnabled, brainEnabled] =
+          await Promise.all([
+            RuntimeAutonomyRegistry.snapshot("system-health"),
+            RuntimeAutonomyRegistry.snapshot("business-brain"),
+            getRuntimeFlags(ctx.tenantId),
+            RuntimeAutonomyRegistry.isEnabled("system-health", ctx.tenantId),
+            RuntimeAutonomyRegistry.isEnabled("business-brain", ctx.tenantId),
+          ]);
         return Response.json({
           ok: true,
           tenantId: ctx.tenantId,
-          tenantEnabled: enabled,
+          tenantEnabled: systemHealthEnabled,
+          tenantEnabledPerAgent: {
+            "system-health": systemHealthEnabled,
+            "business-brain": brainEnabled,
+          },
           flags,
-          autonomy: snap,
+          autonomy: systemHealthSnap,
+          autonomyPerAgent: {
+            "system-health": systemHealthSnap,
+            "business-brain": brainSnap,
+          },
         });
       },
       POST: async ({ request }) => {
@@ -118,6 +129,7 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
         const cid = correlationId();
         const result = await updateRuntimeFlags(ctx.tenantId, {
           systemHealthEnabled: parsed.data.systemHealthEnabled,
+          businessBrainEnabled: parsed.data.businessBrainEnabled,
           killSwitch: parsed.data.killSwitch,
           actorId: ctx.userId,
           correlationId: cid,
@@ -128,14 +140,24 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
 
         RuntimeAutonomyRegistry.invalidateCache(ctx.tenantId);
 
+        const [systemHealthSnap, brainSnap] = await Promise.all([
+          RuntimeAutonomyRegistry.snapshot("system-health"),
+          RuntimeAutonomyRegistry.snapshot("business-brain"),
+        ]);
+
         return Response.json({
           ok: true,
           tenantId: ctx.tenantId,
           correlationId: cid,
           flags: result.flags,
-          autonomy: await RuntimeAutonomyRegistry.snapshot("system-health"),
+          autonomy: systemHealthSnap,
+          autonomyPerAgent: {
+            "system-health": systemHealthSnap,
+            "business-brain": brainSnap,
+          },
         });
       },
+
     },
   },
 });
