@@ -22,18 +22,24 @@ export const Route = createFileRoute("/api/public/hooks/runtime-tick")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const expected = process.env.RUNTIME_TICK_SECRET;
-        if (!expected) {
+        const { getHookSecret } = await import("@/lib/runtime/HookSecretVault.server");
+        const envSecret = process.env.RUNTIME_TICK_SECRET ?? null;
+        const vaultSecret = await getHookSecret("runtime_tick_secret");
+        if (!envSecret && !vaultSecret) {
           return Response.json({ ok: false, error: "secret_not_configured" }, { status: 503 });
         }
         const provided = request.headers.get("x-runtime-secret") ?? "";
-        if (!provided || !safeEqual(provided, expected)) {
+        const matches =
+          (!!provided && !!envSecret && safeEqual(provided, envSecret)) ||
+          (!!provided && !!vaultSecret && safeEqual(provided, vaultSecret));
+        if (!matches) {
           const { RuntimeAutonomyRegistry } = await import(
             "@/lib/runtime/RuntimeAutonomyRegistry.server"
           );
           RuntimeAutonomyRegistry.recordTickRejected("system-health");
           return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
         }
+
 
         // Rejeita qualquer tentativa de forçar tenant pelo cliente.
         try {
