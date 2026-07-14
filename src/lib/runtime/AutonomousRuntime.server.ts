@@ -139,16 +139,26 @@ export class AutonomousRuntime {
 
   async fullSnapshot(tenantId?: string) {
     const { RuntimeAutonomyRegistry } = await import("./RuntimeAutonomyRegistry.server");
-    const [systemHealthSnap, tenantEnabled] = await Promise.all([
+    const [systemHealthSnap, brainSnap, tenantEnabled, tenantEnabledBrain] = await Promise.all([
       RuntimeAutonomyRegistry.snapshot("system-health"),
+      RuntimeAutonomyRegistry.snapshot("business-brain"),
       tenantId
         ? RuntimeAutonomyRegistry.isEnabled("system-health", tenantId)
+        : Promise.resolve(null),
+      tenantId
+        ? RuntimeAutonomyRegistry.isEnabled("business-brain", tenantId)
         : Promise.resolve(null),
     ]);
     const autonomy = {
       systemHealth: systemHealthSnap,
+      businessBrain: brainSnap,
       tenantEnabled,
+      tenantEnabledPerAgent: {
+        "system-health": tenantEnabled,
+        "business-brain": tenantEnabledBrain,
+      },
     };
+
     const counters: RuntimeJobCounters | null = this._queue
       ? await this._queue.counters(tenantId).catch(() => null)
       : null;
