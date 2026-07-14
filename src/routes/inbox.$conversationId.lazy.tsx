@@ -4259,8 +4259,20 @@ function ConversationPage() {
           >
             {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
           </ActionButton>
-          <ActionButton icon={Calendar}>Agendar visita</ActionButton>
-          <ActionButton icon={Target}>Definir próxima ação</ActionButton>
+          <ActionButton
+            icon={Calendar}
+            onClick={() => setVisitOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Agendar visita
+          </ActionButton>
+          <ActionButton
+            icon={Target}
+            onClick={() => setNextActionOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Definir próxima ação
+          </ActionButton>
           <ActionButton
             icon={CheckCircle2}
             variant="won"
@@ -4273,7 +4285,8 @@ function ConversationPage() {
             icon={XCircle}
             variant="lost"
             onClick={() => setLostOpen(true)}
-            disabled={!!closedInfo}
+            disabled={!!closedInfo || !isAdmin}
+            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
           >
             Marcar como perdido
           </ActionButton>
@@ -4295,6 +4308,22 @@ function ConversationPage() {
           leadName={lead.name}
           onCancel={() => setLostOpen(false)}
           onConfirm={confirmLost}
+        />
+      )}
+
+      {nextActionOpen && (
+        <NextActionModal
+          leadName={lead.name}
+          onCancel={() => setNextActionOpen(false)}
+          onConfirm={confirmNextAction}
+        />
+      )}
+
+      {visitOpen && (
+        <ScheduleVisitModal
+          leadName={lead.name}
+          onCancel={() => setVisitOpen(false)}
+          onConfirm={confirmVisit}
         />
       )}
     </div>
