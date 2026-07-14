@@ -1169,6 +1169,20 @@ function NeuralGraph({
               <motion.circle
                 cx={p.x}
                 cy={p.y}
+                r={surging ? 22 : 19}
+                fill={s.color}
+                opacity={a.present ? 0.08 : 0.03}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.06 , 0.18, 0.06] : [0.05, 0.12, 0.05], scale: surging ? [1, 1.14, 1] : [1, 1.06, 1] }
+                    : { opacity: a.present ? 0.06 : 0.03, scale: 1 }
+                }
+                transition={{ duration: surging ? 2 : BREATH * 1.6, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(4px)" }}
+              />
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
                 r={surging ? 18 : 15}
                 fill={s.color}
                 opacity={a.present ? 0.14 : 0.06}
