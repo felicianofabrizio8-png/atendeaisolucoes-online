@@ -365,6 +365,7 @@ function buildDisplayAgent(
   connectedSet: Set<string>,
   learningSummary: RuntimeSnapshot["learning"] | undefined,
   busPublishes: number,
+  busEnvelopes: number,
 ): DisplayAgent {
   if (!agent) {
     return {
