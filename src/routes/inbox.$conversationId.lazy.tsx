@@ -4453,13 +4453,14 @@ function MarkLostModal({
 }: {
   leadName: string;
   onCancel: () => void;
-  onConfirm: (reason: string) => void;
+  onConfirm: (reason: string, notes?: string) => void;
 }) {
   const settings = useSyncExternalStore(subscribeSettings, getSettings, getSettings);
   const reasons = settings.lossReasons;
   // Não pré-seleciona — força a vendedora a escolher um motivo conscientemente.
   const [selected, setSelected] = useState<string>("");
   const [custom, setCustom] = useState("");
+  const [notes, setNotes] = useState("");
   const useCustom = selected === "__custom__";
   const finalReason = useCustom ? custom.trim() : selected;
   const valid = !!finalReason;
