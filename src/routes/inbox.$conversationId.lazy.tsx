@@ -2633,6 +2633,8 @@ function ConversationPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
+  const [nextActionOpen, setNextActionOpen] = useState(false);
+  const [visitOpen, setVisitOpen] = useState(false);
   const [closedInfo, setClosedInfo] = useState<{ value: number; at: string } | null>(null);
   const [pendingQuote, setPendingQuote] = useState<Quote | null>(null);
   const [quoteSuggesting, setQuoteSuggesting] = useState(false);
