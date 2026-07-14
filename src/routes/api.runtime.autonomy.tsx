@@ -13,13 +13,18 @@ import { z } from "zod";
 const BodySchema = z
   .object({
     systemHealthEnabled: z.boolean().optional(),
+    businessBrainEnabled: z.boolean().optional(),
     killSwitch: z.boolean().optional(),
   })
   .strict()
   .refine(
-    (v) => typeof v.systemHealthEnabled === "boolean" || typeof v.killSwitch === "boolean",
+    (v) =>
+      typeof v.systemHealthEnabled === "boolean" ||
+      typeof v.businessBrainEnabled === "boolean" ||
+      typeof v.killSwitch === "boolean",
     { message: "at least one flag required" },
   );
+
 
 async function resolveAdminTenant(request: Request) {
   const authHeader = request.headers.get("authorization");
