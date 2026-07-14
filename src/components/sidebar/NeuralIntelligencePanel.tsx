@@ -6,7 +6,18 @@ import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, Activity, ArrowRight } from "lucide-react";
+import {
+  Brain,
+  Activity,
+  ArrowRight,
+  Cpu,
+  GraduationCap,
+  FlaskConical,
+  Crown,
+  MessageCircle,
+  Megaphone,
+  type LucideIcon,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
@@ -664,23 +675,15 @@ export function NeuralIntelligencePanel() {
       <div
         role="region"
         aria-label="Central de Inteligência AI"
-        className="mx-2 my-2 rounded-2xl border border-cyan-400/20 bg-[radial-gradient(ellipse_at_top,_hsl(220_60%_12%)_0%,_hsl(224_50%_6%)_65%,_hsl(230_60%_4%)_100%)] p-3 overflow-hidden relative shadow-[0_0_24px_rgba(56,189,248,0.08),inset_0_1px_0_rgba(148,163,184,0.06)]"
+        className="relative mx-1.5 my-2 overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-2.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
       >
-        {/* grid neon de fundo */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.05]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        />
-        {!reducedMotion && networkOnline && <BackgroundParticles />}
+        {/* Neural background layers */}
+        <NeuralBackdrop reducedMotion={!!reducedMotion} active={networkOnline} />
 
         {/* Header */}
-        <div className="relative flex items-start justify-between gap-2 mb-2">
+        <div className="relative flex items-center justify-between gap-2 mb-2 pb-2 border-b border-cyan-400/10">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold tracking-[0.08em] text-cyan-100 leading-tight">
+            <div className="text-[11px] font-semibold tracking-[0.08em] text-cyan-50 leading-tight">
               Central de Inteligência AI
             </div>
             <div className="text-[9px] text-cyan-200/60 mt-0.5 leading-tight truncate">
@@ -695,7 +698,31 @@ export function NeuralIntelligencePanel() {
           agents={agentsWithSurge}
           professorSurge={surge.professor}
           snap={snap ?? null}
+          reducedMotion={!!reducedMotion}
         />
+
+        {/* Processando agora */}
+        <div className="relative mt-2 flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-black/40 px-2 py-1.5 backdrop-blur-sm">
+          <motion.span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full shrink-0",
+              anyActive
+                ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.95)]"
+                : "bg-slate-500",
+            )}
+            animate={anyActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+            transition={{ duration: 1.6, repeat: anyActive ? Infinity : 0 }}
+            aria-hidden
+          />
+          <span className="text-[9.5px] text-cyan-50/95 font-medium">
+            {anyActive ? "Processando agora" : "Sistema em espera"}
+          </span>
+          {snap?.status?.lastHeartbeat?.ts && (
+            <span className="ml-auto text-[8.5px] text-cyan-200/50">
+              {formatRelative(iso(snap.status.lastHeartbeat.ts))}
+            </span>
+          )}
+        </div>
 
         {/* Atividades em tempo real */}
         <div className="relative mt-2">
@@ -712,7 +739,7 @@ export function NeuralIntelligencePanel() {
               <ArrowRight className="h-2.5 w-2.5" />
             </Link>
           </div>
-          <div className="rounded-lg border border-cyan-400/15 bg-black/40 backdrop-blur-sm px-2 py-1.5 min-h-[68px]">
+          <div className="rounded-lg border border-cyan-400/20 bg-black/50 backdrop-blur-sm px-2 py-1.5 min-h-[62px]">
             {feed.length === 0 ? (
               <div className="text-[9px] text-cyan-100/40 italic py-1.5">
                 Sistema em espera · nenhuma atividade recente
@@ -738,7 +765,7 @@ export function NeuralIntelligencePanel() {
                         )}
                         aria-hidden
                       />
-                      <span className="text-cyan-50/90 truncate flex-1">{e.msg}</span>
+                      <span className="text-cyan-50/95 truncate flex-1">{e.msg}</span>
                       <span className="text-cyan-200/50 text-[8.5px] shrink-0">
                         {formatRelative(e.ts)}
                       </span>
@@ -748,29 +775,6 @@ export function NeuralIntelligencePanel() {
               </ul>
             )}
           </div>
-        </div>
-
-        {/* Status inferior */}
-        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-black/30 px-2 py-1.5">
-          <motion.span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full shrink-0",
-              anyActive
-                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
-                : "bg-slate-500",
-            )}
-            animate={anyActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
-            transition={{ duration: 1.6, repeat: anyActive ? Infinity : 0 }}
-            aria-hidden
-          />
-          <span className="text-[9.5px] text-cyan-50/90 font-medium">
-            {anyActive ? "Processando agora" : "Sistema em espera"}
-          </span>
-          {snap?.status?.lastHeartbeat?.ts && (
-            <span className="ml-auto text-[8.5px] text-cyan-200/50">
-              {formatRelative(iso(snap.status.lastHeartbeat.ts))}
-            </span>
-          )}
         </div>
       </div>
     </MotionConfig>
@@ -785,7 +789,7 @@ function LiveBadge({ online, label }: { online: boolean; label: string }) {
       className={cn(
         "shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em]",
         online
-          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.25)]"
           : "border-amber-400/40 bg-amber-400/10 text-amber-300",
       )}
       title={label}
@@ -805,35 +809,85 @@ function LiveBadge({ online, label }: { online: boolean; label: string }) {
   );
 }
 
-/* -------------------- Background particles -------------------- */
+/* -------------------- Neural backdrop -------------------- */
 
-function BackgroundParticles() {
+function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; active: boolean }) {
   const parts = useMemo(
     () =>
-      Array.from({ length: 8 }, (_, i) => ({
+      Array.from({ length: 10 }, (_, i) => ({
         left: (i * 41 + 13) % 100,
         top: (i * 59 + 9) % 100,
-        dur: 16 + (i % 4) * 3,
-        delay: i * 0.8,
+        dur: 14 + (i % 5) * 3,
+        delay: i * 0.7,
       })),
     [],
   );
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {parts.map((p, i) => (
-        <motion.span
-          key={i}
-          className="absolute h-[2px] w-[2px] rounded-full bg-cyan-300/40"
-          style={{ left: `${p.left}%`, top: `${p.top}%` }}
-          animate={{ y: [-6, 6, -6], opacity: [0.1, 0.5, 0.1] }}
-          transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
-        />
-      ))}
-    </div>
+    <>
+      {/* Aurora glows */}
+      <div
+        className="pointer-events-none absolute -top-16 -left-12 h-40 w-40 rounded-full opacity-40 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)" }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-16 -right-10 h-44 w-44 rounded-full opacity-35 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)" }}
+      />
+      {/* Neon grid */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
+        }}
+      />
+      {/* Particles */}
+      {!reducedMotion && active && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {parts.map((p, i) => (
+            <motion.span
+              key={i}
+              className="absolute h-[2px] w-[2px] rounded-full bg-cyan-300/50"
+              style={{ left: `${p.left}%`, top: `${p.top}%` }}
+              animate={{ y: [-8, 8, -8], opacity: [0.1, 0.6, 0.1] }}
+              transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
+            />
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
-/* -------------------- Neural graph -------------------- */
+/* -------------------- Slot styles (per-agent color/icon/angle) -------------------- */
+
+interface SlotStyle {
+  angle: number; // 0 = right, 90 = bottom, 180 = left, 270 = top (SVG y-down)
+  color: string;
+  glow: string;
+  icon: LucideIcon;
+}
+
+const SLOT_STYLE: Record<string, SlotStyle> = {
+  "business-brain":         { angle: 225, color: "#22d3ee", glow: "rgba(34,211,238,0.60)",  icon: Cpu },
+  "business-learning":      { angle: 315, color: "#34d399", glow: "rgba(52,211,153,0.60)",  icon: GraduationCap },
+  "scientific-knowledge":   { angle: 180, color: "#f59e0b", glow: "rgba(245,158,11,0.60)",  icon: FlaskConical },
+  "campaign-intelligence":  { angle: 0,   color: "#ec4899", glow: "rgba(236,72,153,0.60)",  icon: Megaphone },
+  "ai-attendant":           { angle: 135, color: "#60a5fa", glow: "rgba(96,165,250,0.60)",  icon: MessageCircle },
+  "executive-intelligence": { angle: 45,  color: "#2dd4bf", glow: "rgba(45,212,191,0.60)",  icon: Crown },
+};
+
+const PROFESSOR_COLOR = "#a855f7";
+const PROFESSOR_GLOW = "rgba(168,85,247,0.65)";
+const ORBIT_PCT = 37; // % of container radius
+
+function polar(angleDeg: number, r: number) {
+  const a = (angleDeg * Math.PI) / 180;
+  return { x: 50 + Math.cos(a) * r, y: 50 + Math.sin(a) * r };
+}
+
+/* -------------------- Neural graph (large radial) -------------------- */
 
 const BREATH = 3.8;
 
@@ -842,116 +896,90 @@ function NeuralGraph({
   agents,
   professorSurge,
   snap,
+  reducedMotion,
 }: {
   professor: Resolved;
   agents: DisplayAgent[];
   professorSurge?: boolean;
   snap: RuntimeSnapshot | null;
+  reducedMotion: boolean;
 }) {
-  const W = 260;
-  const H = 236;
-  const prof = { x: W / 2, y: H / 2 };
   const [hovered, setHovered] = useState<string | null>(null);
 
-  // 6 nós distribuídos em anel — visual referência: círculos grandes ao redor.
-  const positions = useMemo(() => {
-    const R = 92;
-    return AGENT_SLOTS.map((_, i) => {
-      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AGENT_SLOTS.length;
-      return { x: prof.x + Math.cos(angle) * R, y: prof.y + Math.sin(angle) * R };
-    });
-  }, [prof.x, prof.y]);
-
   const profMeta = BUCKET_META[professor.bucket];
-  const profColor = profMeta.hex;
-  const profAnimate = profMeta.animate;
+  const profStateHex = profMeta.hex;
+  const profActive = profMeta.animate && !reducedMotion;
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full aspect-square">
+      {/* SVG layer: background rings, connections, particles, professor halo */}
       <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto"
+        viewBox="0 0 100 100"
         preserveAspectRatio="xMidYMid meet"
+        className="absolute inset-0 h-full w-full"
         role="img"
         aria-label="Rede neural viva dos agentes de inteligência"
       >
         <defs>
           <radialGradient id="profGlowOuter" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={profColor} stopOpacity="0.55" />
-            <stop offset="55%" stopColor={profColor} stopOpacity="0.12" />
-            <stop offset="100%" stopColor={profColor} stopOpacity="0" />
+            <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.55" />
+            <stop offset="55%" stopColor={PROFESSOR_COLOR} stopOpacity="0.12" />
+            <stop offset="100%" stopColor={PROFESSOR_COLOR} stopOpacity="0" />
           </radialGradient>
           <radialGradient id="profGlowInner" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={profColor} stopOpacity="0.85" />
-            <stop offset="100%" stopColor={profColor} stopOpacity="0" />
+            <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.85" />
+            <stop offset="100%" stopColor={PROFESSOR_COLOR} stopOpacity="0" />
           </radialGradient>
-          <radialGradient id="profCore" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="hsl(220 55% 14%)" stopOpacity="1" />
-            <stop offset="100%" stopColor="hsl(224 60% 6%)" stopOpacity="1" />
-          </radialGradient>
-          <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(125,211,252,0.05)" />
-            <stop offset="50%" stopColor="rgba(125,211,252,0.28)" />
-            <stop offset="100%" stopColor="rgba(125,211,252,0.05)" />
-          </linearGradient>
-          <linearGradient id="lineGradActive" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(56,189,248,0.15)" />
-            <stop offset="50%" stopColor="rgba(56,189,248,0.85)" />
-            <stop offset="100%" stopColor="rgba(56,189,248,0.15)" />
-          </linearGradient>
           <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feGaussianBlur stdDeviation="0.7" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          {Object.entries(SLOT_STYLE).map(([id, s]) => (
+            <linearGradient key={id} id={`line-${id}`} x1="50%" y1="50%" x2={`${polar(s.angle, ORBIT_PCT).x}%`} y2={`${polar(s.angle, ORBIT_PCT).y}%`} gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={s.color} stopOpacity="0.9" />
+            </linearGradient>
+          ))}
         </defs>
 
-        {/* Anel orbital decorativo */}
-        <circle
-          cx={prof.x}
-          cy={prof.y}
-          r={92}
-          fill="none"
-          stroke="rgba(125,211,252,0.08)"
-          strokeWidth={0.5}
-          strokeDasharray="1 4"
-        />
+        {/* orbital rings */}
+        <circle cx={50} cy={50} r={ORBIT_PCT} fill="none" stroke="rgba(125,211,252,0.14)" strokeWidth={0.2} strokeDasharray="0.6 1.2" />
+        <circle cx={50} cy={50} r={ORBIT_PCT - 8} fill="none" stroke="rgba(168,85,247,0.10)" strokeWidth={0.2} strokeDasharray="0.4 1.6" />
 
-        {/* Conexões */}
-        {positions.map((p, i) => {
-          const a = agents[i];
-          const meta = a ? BUCKET_META[a.resolved.bucket] : null;
-          const isAnimated = !!meta?.animate && !!a?.present;
-          const particleColor = meta?.hex ?? "rgb(125,211,252)";
-          const propDelay = 0.2 + i * 0.24;
-          const surging = a?.surge;
+        {/* Connections */}
+        {agents.map((a) => {
+          const s = SLOT_STYLE[a.id];
+          if (!s) return null;
+          const p = polar(s.angle, ORBIT_PCT);
+          const meta = BUCKET_META[a.resolved.bucket];
+          const isAnimated = !!meta.animate && a.present && !reducedMotion;
+          const surging = a.surge && !reducedMotion;
           return (
-            <g key={`line-${i}`}>
+            <g key={`line-${a.id}`}>
               <line
-                x1={prof.x}
-                y1={prof.y}
+                x1={50}
+                y1={50}
                 x2={p.x}
                 y2={p.y}
-                stroke={isAnimated ? "url(#lineGradActive)" : "url(#lineGrad)"}
-                strokeWidth={surging ? 1.4 : isAnimated ? 0.95 : 0.55}
+                stroke={`url(#line-${a.id})`}
+                strokeWidth={surging ? 0.7 : isAnimated ? 0.55 : 0.35}
+                opacity={a.present ? 0.9 : 0.35}
+                filter="url(#softGlow)"
               />
               {(isAnimated || surging) && (
                 <motion.circle
-                  r={surging ? 2.4 : 1.6}
-                  fill={particleColor}
+                  r={surging ? 0.9 : 0.7}
+                  fill={s.color}
                   filter="url(#softGlow)"
-                  initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
-                  animate={{
-                    cx: [prof.x, p.x],
-                    cy: [prof.y, p.y],
-                    opacity: [0, 1, 0],
-                  }}
+                  initial={{ cx: 50, cy: 50, opacity: 0 }}
+                  animate={{ cx: [50, p.x], cy: [50, p.y], opacity: [0, 1, 0] }}
                   transition={{
                     duration: surging ? 1.2 : BREATH,
                     repeat: Infinity,
-                    delay: propDelay,
+                    delay: 0.2 + (SLOT_STYLE[a.id]?.angle ?? 0) / 720,
                     ease: "easeInOut",
                   }}
                 />
@@ -960,128 +988,139 @@ function NeuralGraph({
           );
         })}
 
-        {/* Cérebro central: glow + core */}
+        {/* Professor halo */}
         <motion.circle
-          cx={prof.x}
-          cy={prof.y}
-          r={54}
+          cx={50}
+          cy={50}
+          r={22}
           fill="url(#profGlowOuter)"
           animate={
-            profAnimate
-              ? {
-                  opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5],
-                  scale: professorSurge ? [1, 1.12, 1] : [0.95, 1.08, 0.95],
-                }
-              : { opacity: 0.35, scale: 1 }
+            profActive
+              ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5], scale: professorSurge ? [1, 1.1, 1] : [0.95, 1.06, 0.95] }
+              : { opacity: 0.4, scale: 1 }
           }
-          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+          transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
+          style={{ transformOrigin: "50px 50px" }}
         />
         <motion.circle
-          cx={prof.x}
-          cy={prof.y}
-          r={36}
+          cx={50}
+          cy={50}
+          r={14}
           fill="url(#profGlowInner)"
-          animate={profAnimate ? { opacity: [0.35, 0.7, 0.35] } : { opacity: 0.25 }}
-          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
+          animate={profActive ? { opacity: [0.35, 0.75, 0.35] } : { opacity: 0.3 }}
+          transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
         />
 
-        <motion.g
-          animate={profAnimate ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-          transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px`, cursor: "pointer" }}
-          onMouseEnter={() => setHovered("professor")}
-          onMouseLeave={() => setHovered(null)}
-        >
-          <circle
-            cx={prof.x}
-            cy={prof.y}
-            r={28}
-            fill="url(#profCore)"
-            stroke={profColor}
-            strokeWidth={1.6}
-            filter="url(#softGlow)"
-          />
-          <text x={prof.x} y={prof.y + 8} textAnchor="middle" fontSize="22">
-            🧠
-          </text>
-        </motion.g>
-
-        {/* Nós dos agentes */}
-        {positions.map((p, i) => {
-          const a = agents[i];
-          if (!a) return null;
+        {/* Agent halos (soft glow behind each node) */}
+        {agents.map((a) => {
+          const s = SLOT_STYLE[a.id];
+          if (!s) return null;
+          const p = polar(s.angle, ORBIT_PCT);
           const meta = BUCKET_META[a.resolved.bucket];
-          const dotColor = meta.hex;
-          const isAnimated = meta.animate && a.present;
-          const isHover = hovered === a.id;
-          const propDelay = 0.2 + i * 0.24;
-          const surging = a.surge;
-          const opacity = a.present ? 1 : 0.55;
+          const isAnimated = !!meta.animate && a.present && !reducedMotion;
+          const surging = a.surge && !reducedMotion;
           return (
-            <g
-              key={a.id}
-              onMouseEnter={() => setHovered(a.id)}
-              onMouseLeave={() => setHovered(null)}
-              style={{ cursor: "pointer", opacity }}
-            >
-              <motion.circle
-                cx={p.x}
-                cy={p.y}
-                r={surging ? 18 : 15}
-                fill={dotColor}
-                animate={
-                  isAnimated || surging
-                    ? {
-                        opacity: surging ? [0.15, 0.5, 0.15] : [0.08, 0.3, 0.08],
-                        scale: surging ? [1, 1.35, 1] : [1, 1.2, 1],
-                      }
-                    : { opacity: 0.06, scale: 1 }
-                }
-                transition={{
-                  duration: surging ? 1.6 : BREATH,
-                  repeat: isAnimated || surging ? Infinity : 0,
-                  ease: "easeInOut",
-                  delay: propDelay,
-                }}
-                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(3px)" }}
-              />
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={9}
-                fill="hsl(224 55% 8%)"
-                stroke={dotColor}
-                strokeWidth={isHover || surging ? 1.8 : 1.2}
-                filter="url(#softGlow)"
-              />
-              <motion.circle
-                cx={p.x}
-                cy={p.y}
-                r={3.2}
-                fill={dotColor}
-                animate={isAnimated ? { opacity: [0.55, 1, 0.55] } : { opacity: a.present ? 0.5 : 0.3 }}
-                transition={{
-                  duration: BREATH,
-                  repeat: isAnimated ? Infinity : 0,
-                  delay: propDelay,
-                  ease: "easeInOut",
-                }}
-              />
-              <text
-                x={p.x}
-                y={p.y + 20}
-                textAnchor="middle"
-                fontSize="6.8"
-                className="fill-cyan-100/75"
-                style={{ letterSpacing: "0.04em", fontWeight: 500 }}
-              >
-                {a.short}
-              </text>
-            </g>
+            <motion.circle
+              key={`halo-${a.id}`}
+              cx={p.x}
+              cy={p.y}
+              r={surging ? 12 : 10}
+              fill={s.color}
+              opacity={a.present ? 0.28 : 0.12}
+              animate={
+                isAnimated || surging
+                  ? { opacity: surging ? [0.25, 0.55, 0.25] : [0.15, 0.35, 0.15], scale: surging ? [1, 1.25, 1] : [1, 1.12, 1] }
+                  : { opacity: a.present ? 0.18 : 0.08, scale: 1 }
+              }
+              transition={{ duration: surging ? 1.6 : BREATH, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+              style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(1.5px)" }}
+            />
           );
         })}
       </svg>
+
+      {/* HTML overlay: Professor + agent cards */}
+      <button
+        type="button"
+        aria-label={`Professor ${professor.stateLabel}`}
+        onMouseEnter={() => setHovered("professor")}
+        onMouseLeave={() => setHovered(null)}
+        onFocus={() => setHovered("professor")}
+        onBlur={() => setHovered(null)}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
+        style={{ width: "34%", height: "34%" }}
+      >
+        <div
+          className="relative flex h-full w-full items-center justify-center rounded-full border-2"
+          style={{
+            borderColor: PROFESSOR_COLOR,
+            background:
+              "radial-gradient(circle at 30% 25%, hsl(260 60% 22%) 0%, hsl(255 55% 12%) 55%, hsl(230 65% 5%) 100%)",
+            boxShadow: `0 0 22px ${PROFESSOR_GLOW}, inset 0 0 18px rgba(168,85,247,0.35)`,
+          }}
+        >
+          <Brain className="h-[42%] w-[42%] text-violet-100 drop-shadow-[0_0_6px_rgba(168,85,247,0.9)]" />
+          {/* state indicator dot on professor */}
+          <span
+            className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[hsl(226_65%_7%)]"
+            style={{ backgroundColor: profStateHex, boxShadow: `0 0 8px ${profMeta.glow}` }}
+            aria-hidden
+          />
+        </div>
+        <div className="mt-1 text-[8.5px] font-semibold tracking-wide text-violet-100/95 leading-none">
+          Professor
+        </div>
+      </button>
+
+      {agents.map((a) => {
+        const s = SLOT_STYLE[a.id];
+        if (!s) return null;
+        const p = polar(s.angle, ORBIT_PCT);
+        const meta = BUCKET_META[a.resolved.bucket];
+        const Icon = s.icon;
+        const surging = a.surge && !reducedMotion;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            aria-label={`${a.label} ${a.resolved.stateLabel}`}
+            onMouseEnter={() => setHovered(a.id)}
+            onMouseLeave={() => setHovered(null)}
+            onFocus={() => setHovered(a.id)}
+            onBlur={() => setHovered(null)}
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-lg"
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "26%" }}
+          >
+            <motion.div
+              className="relative flex items-center justify-center rounded-full border-2"
+              style={{
+                width: "78%",
+                aspectRatio: "1 / 1",
+                borderColor: s.color,
+                background:
+                  "radial-gradient(circle at 30% 25%, hsl(224 55% 18%) 0%, hsl(226 65% 9%) 55%, hsl(230 70% 5%) 100%)",
+                boxShadow: `0 0 14px ${s.glow}, inset 0 0 10px ${s.glow}`,
+                opacity: a.present ? 1 : 0.55,
+              }}
+              animate={surging ? { scale: [1, 1.12, 1] } : undefined}
+              transition={surging ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" } : undefined}
+            >
+              <Icon
+                className="h-[52%] w-[52%]"
+                style={{ color: s.color, filter: `drop-shadow(0 0 4px ${s.glow})` }}
+              />
+              <span
+                className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-[hsl(226_65%_7%)]"
+                style={{ backgroundColor: meta.hex, boxShadow: `0 0 6px ${meta.glow}` }}
+                aria-hidden
+              />
+            </motion.div>
+            <div className="text-[7.5px] font-semibold leading-tight tracking-tight text-cyan-50/95 text-center max-w-full truncate">
+              {a.short}
+            </div>
+          </button>
+        );
+      })}
 
       <AnimatePresence>
         {hovered && (() => {
@@ -1128,6 +1167,7 @@ function NeuralGraph({
     </div>
   );
 }
+
 
 function TooltipCard({
   title,
