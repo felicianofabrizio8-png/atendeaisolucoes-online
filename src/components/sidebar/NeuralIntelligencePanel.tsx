@@ -1016,7 +1016,16 @@ function NeuralGraph({
   const profActive = profMeta.animate && !reducedMotion;
 
   return (
-    <div className="relative w-full aspect-square">
+    <div className="relative w-full aspect-square mx-auto max-w-[100%] my-0.5">
+      {/* Sutil vinheta radial para dar profundidade à rede */}
+      <div
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08) 0%, rgba(168,85,247,0.06) 45%, transparent 75%)",
+        }}
+        aria-hidden
+      />
       {/* SVG layer: background rings, connections, particles, professor halo */}
       <svg
         viewBox="0 0 100 100"
