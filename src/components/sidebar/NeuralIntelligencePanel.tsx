@@ -801,10 +801,14 @@ export function NeuralIntelligencePanel() {
             </span>
           </div>
           {(() => {
+            const cycles = learning?.cycles ?? 0;
             const consolidated = learning?.knowledgeConsolidated ?? 0;
             const accepted = learning?.hypotheses?.accepted ?? 0;
+            const rejected = learning?.hypotheses?.rejected ?? 0;
             const conf = learning?.averageConfidence;
-            if (!learning || (consolidated === 0 && accepted === 0)) {
+            const lastTs = iso(learning?.lastLearning ?? null);
+            // Aguardando apenas quando não houve nenhum ciclo real.
+            if (!learning || cycles === 0) {
               return (
                 <div className="text-[9px] text-sidebar-foreground/70 italic">
                   Aguardando ciclos de aprendizado
@@ -812,15 +816,24 @@ export function NeuralIntelligencePanel() {
               );
             }
             return (
-              <div className="text-[9px] text-sidebar-foreground/85">
-                <span className="text-emerald-300">{consolidated}</span> consolidados
-                <span className="text-muted-foreground/60"> · </span>
-                <span className="text-sky-300">{accepted}</span> hipóteses aceitas
-                <span className="text-muted-foreground/60"> · </span>
-                <span className="text-violet-300">
-                  {typeof conf === "number" ? `${Math.round(conf * 100)}%` : "—"}
-                </span>{" "}
-                confiança
+              <div className="text-[9px] text-sidebar-foreground/85 space-y-0.5">
+                <div>
+                  <span className="text-sky-300">{cycles}</span> ciclos
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-emerald-300">{consolidated}</span> consolidados
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-violet-300">
+                    {typeof conf === "number" && conf > 0 ? `${Math.round(conf * 100)}%` : "—"}
+                  </span>{" "}
+                  confiança
+                </div>
+                <div className="text-muted-foreground/70">
+                  <span className="text-sky-300">{accepted}</span> aceitas
+                  <span className="text-muted-foreground/60"> · </span>
+                  <span className="text-red-300">{rejected}</span> rejeitadas
+                  <span className="text-muted-foreground/60"> · </span>
+                  última {lastTs ? formatRelative(lastTs) : "—"}
+                </div>
               </div>
             );
           })()}
