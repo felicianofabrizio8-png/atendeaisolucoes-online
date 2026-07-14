@@ -65,10 +65,28 @@ interface RecentJob {
 }
 
 interface LearningPerAgent {
+  cycles: number;
+  created: number;
+  accepted: number;
+  rejected: number;
+  consolidated: number;
+  lastAt: string | null;
+}
+
+interface LastRealExecution {
   agentId: string;
-  learningCycles: number;
-  lastLearningAt: string | null;
-  averageConfidence: number;
+  outcome: string;
+  reason: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number;
+  error: string | null;
+}
+
+interface ConnectedAgentEntry {
+  agentId: string;
+  adapterHealth: unknown;
+  lastExecution: LastRealExecution | null;
 }
 
 interface RuntimeSnapshot {
@@ -90,8 +108,15 @@ interface RuntimeSnapshot {
     averageConfidence: number;
     lastLearning: string | null;
     lastAgent: string | null;
-    perAgent?: LearningPerAgent[];
+    perAgent?: Record<string, LearningPerAgent> | LearningPerAgent[];
   };
+  execution?: {
+    state?: string;
+    lastRealExecutions?: LastRealExecution[];
+  } | null;
+  intelligence?: {
+    connectedAgents?: ConnectedAgentEntry[];
+  } | null;
   worker?: {
     workerId?: string;
     health?: { state?: string; inFlight?: number; jobsProcessed?: number; lastJobAt?: string | null; lastError?: string | null };
@@ -110,6 +135,7 @@ interface RuntimeSnapshot {
   knowledgeBus?: {
     health?: { level?: string; publishCount?: number; readCount?: number; lastActivityAt?: string | null; errors?: number };
     cache?: { totalEnvelopes?: number };
+    topics?: Array<{ id?: string }> | Record<string, unknown>;
   } | null;
   counters?: {
     queued?: number;
