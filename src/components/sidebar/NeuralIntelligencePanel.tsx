@@ -259,7 +259,17 @@ export function NeuralIntelligencePanel() {
 
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
-    for (const p of snap?.learning?.perAgent ?? []) m.set(p.agentId, p);
+    const raw = snap?.learning?.perAgent;
+    const list: LearningPerAgent[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, LearningPerAgent>) ?? [])
+      : [];
+    for (const p of list) {
+      if (p && typeof p === "object" && typeof p.agentId === "string") {
+        m.set(p.agentId, p);
+      }
+    }
     return m;
   }, [snap]);
 
@@ -267,18 +277,27 @@ export function NeuralIntelligencePanel() {
 
   const agents: DisplayAgent[] = useMemo(() => {
     if (!snap) return [];
-    const byId = new Map(snap.agents.map((a) => [a.id, a]));
+    const rawAgents = snap.agents;
+    const agentList: AgentEntry[] = Array.isArray(rawAgents)
+      ? rawAgents
+      : rawAgents && typeof rawAgents === "object"
+      ? (Object.values(rawAgents as Record<string, AgentEntry>) ?? [])
+      : [];
+    const safeAgents = agentList.filter(
+      (a): a is AgentEntry => !!a && typeof a === "object" && typeof a.id === "string" && !!a.state,
+    );
+    const byId = new Map(safeAgents.map((a) => [a.id, a]));
     const ordered: AgentEntry[] = [];
     for (const id of ORBIT_PRIORITY) {
       const a = byId.get(id);
       if (a && a.id !== "professor") ordered.push(a);
     }
-    for (const a of snap.agents) {
+    for (const a of safeAgents) {
       if (a.id === "professor") continue;
       if (!ordered.find((x) => x.id === a.id)) ordered.push(a);
     }
     return ordered.slice(0, 6).map((a) => {
-      const meta = AGENT_LABEL[a.id] ?? { label: a.name, short: a.name };
+      const meta = AGENT_LABEL[a.id] ?? { label: a.name ?? a.id, short: a.name ?? a.id };
       return {
         id: a.id,
         label: meta.label,
