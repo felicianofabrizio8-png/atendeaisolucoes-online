@@ -14,6 +14,7 @@ import {
   appendMessage,
   markLeadLost,
   markLeadWon,
+  updateLeadNextAction,
   refetchConversationMessages,
   subscribeRepo,
   editMessage,
@@ -22,6 +23,7 @@ import {
   loadConversationOlder,
   hasMoreOlderMessages,
 } from "@/data/leadRepo";
+import { recordAudit } from "@/lib/audit";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
