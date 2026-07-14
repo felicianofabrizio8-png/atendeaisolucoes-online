@@ -373,7 +373,7 @@ function buildDisplayAgent(
       label: slot.label,
       short: slot.short,
       resolved: { bucket: "unavailable", stateLabel: "indisponível" },
-      metricPrimary: "—",
+      metricPrimary: "sem dados",
       metricSecondary: "sem métrica real",
       present: false,
     };
