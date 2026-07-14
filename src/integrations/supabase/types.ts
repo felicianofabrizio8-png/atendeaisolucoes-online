@@ -3268,6 +3268,15 @@ export type Database = {
           deleted_locks: number
         }[]
       }
+      runtime_cleanup_learning_and_knowledge: {
+        Args: never
+        Returns: {
+          cycles_removed: number
+          duration_ms: number
+          envelopes_removed: number
+          tenants_processed: number
+        }[]
+      }
       runtime_release_lock: {
         Args: { _lock_key: string; _owner_id: string }
         Returns: boolean
