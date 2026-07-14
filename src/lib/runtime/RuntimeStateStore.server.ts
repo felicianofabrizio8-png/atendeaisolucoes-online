@@ -60,7 +60,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
       .from("company_settings")
       // Colunas novas — o tipo gerado ainda não as expõe. Cast para any local.
       .select(
-        "runtime_autonomy_enabled, runtime_system_health_enabled, runtime_kill_switch, runtime_scheduler_enabled, runtime_updated_at, runtime_updated_by" as unknown as "*",
+        "runtime_autonomy_enabled, runtime_system_health_enabled, runtime_business_brain_enabled, runtime_kill_switch, runtime_scheduler_enabled, runtime_updated_at, runtime_updated_by" as unknown as "*",
       )
       .eq("company_id", tenantId)
       .maybeSingle();
@@ -69,6 +69,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
     const value: RuntimeFlags = {
       autonomyEnabled: Boolean(row.runtime_autonomy_enabled) || false,
       systemHealthEnabled: Boolean(row.runtime_system_health_enabled) || false,
+      businessBrainEnabled: Boolean(row.runtime_business_brain_enabled) || false,
       // fail-closed: se coluna nula, kill switch é considerado ligado
       killSwitch: row.runtime_kill_switch === false ? false : true,
       schedulerEnabled: Boolean(row.runtime_scheduler_enabled) || false,
@@ -82,6 +83,7 @@ export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
     return { ...FLAG_DEFAULTS };
   }
 }
+
 
 export interface FlagUpdate {
   systemHealthEnabled?: boolean;
