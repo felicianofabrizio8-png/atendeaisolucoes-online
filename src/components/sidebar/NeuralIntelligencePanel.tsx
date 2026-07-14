@@ -1,13 +1,12 @@
-// Central de Inteligência Viva — v6 (Runtime real).
+// Central de Inteligência AI — Premium neon redesign (UI-only).
 // 100% READ-ONLY. Consome EXCLUSIVAMENTE GET /api/runtime/status.
-// Nenhum outro endpoint, nenhum mock, nenhum valor simulado.
-// Animações só ocorrem quando há atividade real (running, learning,
-// consolidating, error). Agentes desativados ou ociosos permanecem estáticos.
+// Nenhuma métrica fictícia. Nenhuma alteração de backend / runtime / dados.
 
 import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain } from "lucide-react";
+import { Brain, Activity, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
@@ -22,7 +21,8 @@ type Bucket =
   | "completed"
   | "error"
   | "disabled"
-  | "idle";
+  | "idle"
+  | "unavailable";
 
 const BUCKET_META: Record<Bucket, { glow: string; label: string; hex: string; animate: boolean }> = {
   running:       { glow: "rgba(52,211,153,0.85)",  label: "Executando",   hex: "rgb(52,211,153)",  animate: true  },
@@ -33,6 +33,7 @@ const BUCKET_META: Record<Bucket, { glow: string; label: string; hex: string; an
   error:         { glow: "rgba(248,113,113,0.9)",  label: "Erro",         hex: "rgb(248,113,113)", animate: true  },
   disabled:      { glow: "rgba(148,163,184,0.5)",  label: "Desativado",   hex: "rgb(148,163,184)", animate: false },
   idle:          { glow: "rgba(148,163,184,0.55)", label: "Ocioso",       hex: "rgb(148,163,184)", animate: false },
+  unavailable:   { glow: "rgba(100,116,139,0.4)",  label: "Indisponível", hex: "rgb(100,116,139)", animate: false },
 };
 
 /* -------------------- Tipos do snapshot -------------------- */
@@ -130,7 +131,6 @@ interface RuntimeSnapshot {
     enabled?: number;
     disabled?: number;
     nextExecutionAt?: string | null;
-    totalEnqueued?: number;
   } | null;
   knowledgeBus?: {
     health?: { level?: string; publishCount?: number; readCount?: number; lastActivityAt?: string | null; errors?: number };
@@ -172,7 +172,7 @@ async function fetchRuntimeStatus(): Promise<RuntimeSnapshot | null> {
 
 function useRuntimeStatus(enabled: boolean) {
   return useQuery<RuntimeSnapshot | null>({
-    queryKey: ["neural-intelligence-panel", "runtime-status", "v6"],
+    queryKey: ["neural-intelligence-panel", "runtime-status", "v7"],
     enabled,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
@@ -183,17 +183,12 @@ function useRuntimeStatus(enabled: boolean) {
   });
 }
 
-/* -------------------- Utilidades -------------------- */
+/* -------------------- Utils -------------------- */
 
 function iso(ts?: string | null): number | undefined {
   if (!ts) return undefined;
   const t = Date.parse(ts);
   return Number.isFinite(t) ? t : undefined;
-}
-
-function formatTime(ts: number) {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function formatRelative(ts: number | undefined) {
@@ -204,10 +199,13 @@ function formatRelative(ts: number | undefined) {
   const m = Math.floor(s / 60);
   if (m < 60) return `há ${m}min`;
   const h = Math.floor(m / 60);
-  return `há ${h}h`;
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
 }
 
-/* -------------------- Resolução de estado real -------------------- */
+const COMPLETED_WINDOW_MS = 15 * 60_000;
+
+/* -------------------- Resolução de estado -------------------- */
 
 interface Resolved {
   bucket: Bucket;
@@ -247,7 +245,6 @@ function resolveAgent(
     return { bucket: "disabled", stateLabel: "desativado", updatedAt: lastExec };
   }
 
-  // Running: agent.state, execution.lastRealExecutions ou fila em processamento
   if (a.state.status === "running" || jobHint?.hasProcessing) {
     return {
       bucket: "running",
@@ -256,7 +253,6 @@ function resolveAgent(
     };
   }
 
-  // Erro real: failure recente do agente ou última execução real com falha
   const realFailed = realExec?.outcome === "failure" || realExec?.outcome === "timeout";
   if (
     a.state.status === "failure" ||
@@ -272,12 +268,10 @@ function resolveAgent(
     };
   }
 
-  // Queued: fila com jobs aguardando dispatch
   if (jobHint?.hasQueued) {
     return { bucket: "queued", stateLabel: "na fila", updatedAt: jobHint.latestTs };
   }
 
-  // Learning: perAgent do Learning Loop com atividade recente
   if (learn && (learn.cycles > 0 || learn.consolidated > 0) && lastLearning && now - lastLearning < 5 * 60_000) {
     if (learn.consolidated > 0 && now - lastLearning < 2 * 60_000) {
       return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastLearning };
@@ -285,11 +279,10 @@ function resolveAgent(
     return { bucket: "learning", stateLabel: "aprendendo", updatedAt: lastLearning };
   }
 
-  // Completed: execução real bem-sucedida recente
-  if (realExec?.outcome === "success" && lastRealFinished && now - lastRealFinished < 5 * 60_000) {
+  if (realExec?.outcome === "success" && lastRealFinished && now - lastRealFinished < COMPLETED_WINDOW_MS) {
     return { bucket: "completed", stateLabel: "concluído", updatedAt: lastRealFinished };
   }
-  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
+  if (lastSuccess && now - lastSuccess < COMPLETED_WINDOW_MS) {
     return { bucket: "completed", stateLabel: "concluído", updatedAt: lastSuccess };
   }
 
@@ -300,7 +293,6 @@ function resolveAgent(
     return { bucket: "error", stateLabel: "indisponível", updatedAt: lastExec };
   }
 
-  // Sem sinal recente: conectado ao Runtime = idle, caso contrário disabled visual
   if (!connectedSet.has(a.id)) {
     return { bucket: "idle", stateLabel: "ocioso", updatedAt: lastExec };
   }
@@ -323,7 +315,24 @@ function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
   return { bucket: "idle", stateLabel: "aguardando agentes", updatedAt: hbTs };
 }
 
-/* -------------------- Componente principal -------------------- */
+/* -------------------- Layout agentes -------------------- */
+
+interface AgentSlot {
+  id: string;
+  label: string;
+  short: string;
+}
+
+// Slots fixos ao redor do cérebro. Se um agente não existir no snapshot,
+// permanece como "Indisponível" sem inventar métricas.
+const AGENT_SLOTS: AgentSlot[] = [
+  { id: "business-brain",          label: "Business Brain",         short: "Brain" },
+  { id: "business-learning",       label: "Business Learning",      short: "Learning" },
+  { id: "scientific-knowledge",    label: "Scientific Knowledge",   short: "Scientific" },
+  { id: "executive-intelligence",  label: "Executive Intelligence", short: "Executive" },
+  { id: "ai-attendant",            label: "Atendimento IA",         short: "IA Atend." },
+  { id: "campaign-intelligence",   label: "Marketing / Campanhas",  short: "Marketing" },
+];
 
 interface DisplayAgent {
   id: string;
@@ -331,35 +340,131 @@ interface DisplayAgent {
   short: string;
   resolved: Resolved;
   surge?: boolean;
+  metricPrimary: string;
+  metricSecondary: string;
+  present: boolean;
 }
 
-const AGENT_LABEL: Record<string, { label: string; short: string }> = {
-  "system-health": { label: "System Health", short: "Health" },
-  "business-brain": { label: "Business Brain", short: "Brain" },
-  "business-learning": { label: "Business Learning", short: "Learning" },
-  "scientific-knowledge": { label: "Scientific Knowledge", short: "Scientific" },
-  "scientific-memory": { label: "Scientific Memory", short: "Memory" },
-  "executive-intelligence": { label: "Executive Intelligence", short: "Executive" },
-  "executive-knowledge": { label: "Executive Knowledge", short: "Exec. KB" },
-  "executive-narrative": { label: "Executive Narrative", short: "Narrative" },
-  "professor": { label: "Professor", short: "Professor" },
-  "sales-intelligence": { label: "Sales Intelligence", short: "Sales" },
-  "coach": { label: "Coach", short: "Coach" },
-  "follow-up": { label: "Follow-up", short: "Followup" },
-};
+function buildDisplayAgent(
+  slot: AgentSlot,
+  agent: AgentEntry | undefined,
+  learningMap: Map<string, LearningPerAgent>,
+  lastRealExecMap: Map<string, LastRealExecution>,
+  jobHintMap: Map<string, AgentJobHint>,
+  connectedSet: Set<string>,
+  learningSummary: RuntimeSnapshot["learning"] | undefined,
+  busPublishes: number,
+): DisplayAgent {
+  if (!agent) {
+    return {
+      id: slot.id,
+      label: slot.label,
+      short: slot.short,
+      resolved: { bucket: "unavailable", stateLabel: "indisponível" },
+      metricPrimary: "—",
+      metricSecondary: "sem métrica real",
+      present: false,
+    };
+  }
+  const resolved = resolveAgent(agent, learningMap, lastRealExecMap, jobHintMap, connectedSet);
+  const learn = learningMap.get(agent.id);
+  const jobHint = jobHintMap.get(agent.id);
+  const completedCount = jobHint?.lastCompletedTs ? 1 : 0;
+  let metricPrimary = "—";
+  let metricSecondary = formatRelative(resolved.updatedAt) ?? "—";
 
-const ORBIT_PRIORITY = [
-  "business-brain",
-  "business-learning",
-  "scientific-knowledge",
-  "scientific-memory",
-  "executive-intelligence",
-  "system-health",
-  "executive-knowledge",
-  "executive-narrative",
+  switch (slot.id) {
+    case "business-brain": {
+      const patterns = busPublishes;
+      metricPrimary = `${patterns} publicações`;
+      metricSecondary = resolved.updatedAt ? `última ${formatRelative(resolved.updatedAt)}` : "sem execução recente";
+      break;
+    }
+    case "business-learning": {
+      const cycles = learn?.cycles ?? learningSummary?.cycles ?? 0;
+      const acc = learn?.accepted ?? learningSummary?.hypotheses?.accepted ?? 0;
+      const rej = learn?.rejected ?? learningSummary?.hypotheses?.rejected ?? 0;
+      const conf = learningSummary?.averageConfidence;
+      metricPrimary = `${cycles} ciclos`;
+      metricSecondary =
+        typeof conf === "number" && conf > 0
+          ? `${Math.round(conf * 100)}% conf · ${acc}✓/${rej}✗`
+          : `${acc}✓ / ${rej}✗`;
+      break;
+    }
+    case "scientific-knowledge": {
+      const cycles = learn?.cycles ?? 0;
+      const consolidated = learn?.consolidated ?? 0;
+      metricPrimary = `${cycles} hipóteses`;
+      metricSecondary = `${consolidated} consolidadas · ${formatRelative(resolved.updatedAt)}`;
+      break;
+    }
+    case "executive-intelligence": {
+      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "sem análise";
+      metricSecondary = jobHint ? `${completedCount} concluída` : "aguardando";
+      break;
+    }
+    default: {
+      metricPrimary = resolved.updatedAt ? formatRelative(resolved.updatedAt) : "—";
+      metricSecondary = agent.enabled ? resolved.stateLabel : "desativado";
+    }
+  }
+
+  return {
+    id: slot.id,
+    label: slot.label,
+    short: slot.short,
+    resolved,
+    metricPrimary,
+    metricSecondary,
+    present: true,
+  };
+}
+
+/* -------------------- Feed filtragem -------------------- */
+
+const FEED_NOISE = [
+  "orphan_legacy",
+  "runtime_execution_reconciled",
+  "duplicate_prevented",
+  "dedup_hit",
+  "cancelled",
+  "cancel",
 ];
 
-const BREATH = 3.8;
+const AGENT_LABEL_LOOKUP: Record<string, string> = {
+  "business-brain": "Business Brain",
+  "business-learning": "Business Learning",
+  "scientific-knowledge": "Scientific Knowledge",
+  "scientific-memory": "Scientific Memory",
+  "executive-intelligence": "Executive",
+  "executive-knowledge": "Executive Knowledge",
+  "executive-narrative": "Executive Narrative",
+  "professor": "Professor",
+  "sales-intelligence": "Sales",
+  "coach": "Coach",
+  "follow-up": "Follow-up",
+  "system-health": "System Health",
+};
+
+function friendlyFeedMessage(j: RecentJob): string {
+  const label = AGENT_LABEL_LOOKUP[j.agentId] ?? j.agentId;
+  if (j.status === "completed") {
+    if (j.agentId === "business-brain") return `${label} concluiu análise.`;
+    if (j.agentId === "business-learning") return `${label} consolidou novo ciclo.`;
+    if (j.agentId === "scientific-knowledge") return `${label} atualizou hipótese.`;
+    if (j.agentId === "executive-intelligence") return `${label} finalizou análise.`;
+    return `${label} concluiu tarefa.`;
+  }
+  if (j.status === "failed" || j.status === "dead_letter" || j.status === "timeout") {
+    return `${label} falhou.`;
+  }
+  if (j.status === "processing") return `${label} em execução.`;
+  if (j.status === "queued" || j.status === "scheduled") return `${label} na fila.`;
+  return `${label}: ${j.status}`;
+}
+
+/* -------------------- Componente principal -------------------- */
 
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
@@ -371,11 +476,8 @@ export function NeuralIntelligencePanel() {
     const raw = snap?.learning?.perAgent;
     if (!raw) return m;
     if (Array.isArray(raw)) {
-      // Fallback defensivo caso o formato mude para array com agentId embutido
       for (const p of raw as Array<LearningPerAgent & { agentId?: string }>) {
-        if (p && typeof p === "object" && typeof p.agentId === "string") {
-          m.set(p.agentId, p);
-        }
+        if (p && typeof p === "object" && typeof p.agentId === "string") m.set(p.agentId, p);
       }
     } else if (typeof raw === "object") {
       for (const [agentId, entry] of Object.entries(raw as Record<string, LearningPerAgent>)) {
@@ -446,42 +548,44 @@ export function NeuralIntelligencePanel() {
 
   const professor = resolveProfessor(snap ?? null);
 
-  const agents: DisplayAgent[] = useMemo(() => {
-    if (!snap) return [];
+  const busPublishes = snap?.knowledgeBus?.health?.publishCount ?? 0;
+
+  const agents = useMemo<DisplayAgent[]>(() => {
+    if (!snap) {
+      return AGENT_SLOTS.map((s) => ({
+        id: s.id,
+        label: s.label,
+        short: s.short,
+        resolved: { bucket: "idle" as Bucket, stateLabel: "conectando" },
+        metricPrimary: "—",
+        metricSecondary: "aguardando runtime",
+        present: false,
+      }));
+    }
     const rawAgents = snap.agents;
-    const agentList: AgentEntry[] = Array.isArray(rawAgents)
+    const list: AgentEntry[] = Array.isArray(rawAgents)
       ? rawAgents
       : rawAgents && typeof rawAgents === "object"
       ? (Object.values(rawAgents as Record<string, AgentEntry>) ?? [])
       : [];
-    const safeAgents = agentList.filter(
-      (a): a is AgentEntry => !!a && typeof a === "object" && typeof a.id === "string" && !!a.state,
+    const byId = new Map(list.filter((a): a is AgentEntry => !!a && typeof a?.id === "string").map((a) => [a.id, a]));
+    return AGENT_SLOTS.map((slot) =>
+      buildDisplayAgent(
+        slot,
+        byId.get(slot.id),
+        learningMap,
+        lastRealExecMap,
+        jobHintMap,
+        connectedSet,
+        snap.learning,
+        busPublishes,
+      ),
     );
-    const byId = new Map(safeAgents.map((a) => [a.id, a]));
-    const ordered: AgentEntry[] = [];
-    for (const id of ORBIT_PRIORITY) {
-      const a = byId.get(id);
-      if (a && a.id !== "professor") ordered.push(a);
-    }
-    for (const a of safeAgents) {
-      if (a.id === "professor") continue;
-      if (!ordered.find((x) => x.id === a.id)) ordered.push(a);
-    }
-    return ordered.slice(0, 6).map((a) => {
-      const meta = AGENT_LABEL[a.id] ?? { label: a.name ?? a.id, short: a.name ?? a.id };
-      return {
-        id: a.id,
-        label: meta.label,
-        short: meta.short,
-        resolved: resolveAgent(a, learningMap, lastRealExecMap, jobHintMap, connectedSet),
-      };
-    });
-  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet]);
+  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet, busPublishes]);
 
-  // Surge: detecta mudança de lastExecution/lastSuccess/lastLearning por agente.
+  // Detecta surge (nova atividade) por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
   const [surge, setSurge] = useState<Record<string, boolean>>({});
-
   useEffect(() => {
     const map: Record<string, number | undefined> = {};
     for (const a of agents) map[a.id] = a.resolved.updatedAt;
@@ -513,12 +617,9 @@ export function NeuralIntelligencePanel() {
   const agentsWithSurge = agents.map((a) => ({ ...a, surge: surge[a.id] }));
 
   const networkOnline =
-    !!user &&
-    !isError &&
-    !!snap?.status?.online &&
-    !snap?.autonomy?.tenantEnabled?.killSwitch;
+    !!user && !isError && !!snap?.status?.online && !snap?.autonomy?.tenantEnabled?.killSwitch;
 
-  // Feed real: últimos jobs do Runtime.
+  // Feed: até 3 eventos reais, filtrando ruído.
   const feed = useMemo(() => {
     const raw = snap?.recentJobs;
     const jobs: RecentJob[] = Array.isArray(raw)
@@ -526,367 +627,181 @@ export function NeuralIntelligencePanel() {
       : raw && typeof raw === "object"
       ? (Object.values(raw as Record<string, RecentJob>) ?? [])
       : [];
-    if (jobs.length === 0) return [] as Array<{ label: string; msg: string; ts: number; ok: boolean }>;
     return jobs
       .filter((j): j is RecentJob => !!j && typeof j === "object" && typeof j.agentId === "string")
+      .filter((j) => {
+        const noise = FEED_NOISE.some((n) => j.agentId.includes(n) || (j.lastError ?? "").toLowerCase().includes(n) || j.status.toLowerCase().includes(n));
+        return !noise;
+      })
       .map((j) => {
-        const ts =
-          iso(j.finishedAt) ??
-          iso(j.startedAt) ??
-          iso(j.createdAt) ??
-          0;
-        const meta = AGENT_LABEL[j.agentId];
-        const statusStr = typeof j.status === "string" ? j.status : "—";
-        return {
-          label: meta?.label ?? j.agentId,
-          msg: j.lastError ? `${statusStr} · ${String(j.lastError).slice(0, 40)}` : statusStr,
-          ts,
-          ok: !j.lastError && (statusStr === "completed" || statusStr === "processing"),
-        };
+        const ts = iso(j.finishedAt) ?? iso(j.startedAt) ?? iso(j.createdAt) ?? 0;
+        const ok = j.status === "completed" || j.status === "processing";
+        return { ts, ok, msg: friendlyFeedMessage(j) };
       })
       .filter((e) => e.ts > 0)
       .sort((a, b) => b.ts - a.ts)
-      .slice(0, 5);
+      .slice(0, 3);
   }, [snap]);
 
-  const [legendFocused, setLegendFocused] = useState(false);
-
-  const learning = snap?.learning;
-  const worker = snap?.worker ?? snap?.workers?.[0] ?? null;
-  const workerHealth = worker?.health ?? null;
-  const workerState = workerHealth?.state ?? null;
-  const workerInFlight = workerHealth?.inFlight ?? 0;
-  const workerJobs = workerHealth?.jobsProcessed ?? 0;
-  const busHealth = snap?.knowledgeBus?.health;
-  const busLevel = busHealth?.level ?? null;
-  const busPublishes = busHealth?.publishCount ?? 0;
-  const busReads = busHealth?.readCount ?? 0;
-  const busErrors = busHealth?.errors ?? 0;
-  const busLastActivity = iso(busHealth?.lastActivityAt ?? null);
-  const busEnvelopes = snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0;
-  const busTopicsRaw = snap?.knowledgeBus?.topics;
-  const busTopicsCount = Array.isArray(busTopicsRaw)
-    ? busTopicsRaw.length
-    : busTopicsRaw && typeof busTopicsRaw === "object"
-    ? Object.keys(busTopicsRaw).length
-    : 0;
-  const scheduler = snap?.scheduler;
-  const schedulerEnabled = scheduler?.enabled ?? 0;
-  const schedulerRegistered = scheduler?.registered ?? 0;
-  const schedulerNextTs = iso(scheduler?.nextExecutionAt ?? null);
-  const counters = snap?.counters ?? null;
+  const anyActive =
+    professor.bucket === "running" ||
+    agents.some((a) => a.resolved.bucket === "running" || a.resolved.bucket === "queued" || a.resolved.bucket === "learning" || a.resolved.bucket === "consolidating");
 
   const statusLabel = !user
     ? "Aguardando sessão"
     : isLoading && !snap
-    ? "Conectando ao Runtime"
+    ? "Conectando"
     : isError
     ? "Runtime indisponível"
     : snap?.autonomy?.tenantEnabled?.killSwitch
-    ? "Kill switch ativo"
+    ? "Kill switch"
     : networkOnline
-    ? "Runtime Online"
-    : "Runtime offline";
+    ? "Online"
+    : "Offline";
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="mx-2 my-2 rounded-xl border border-sidebar-border/60 bg-gradient-to-b from-[hsl(220_35%_11%/0.85)] via-sidebar/50 to-sidebar/20 backdrop-blur-sm p-2.5 overflow-hidden relative">
+      <div
+        role="region"
+        aria-label="Central de Inteligência AI"
+        className="mx-2 my-2 rounded-2xl border border-cyan-400/20 bg-[radial-gradient(ellipse_at_top,_hsl(220_60%_12%)_0%,_hsl(224_50%_6%)_65%,_hsl(230_60%_4%)_100%)] p-3 overflow-hidden relative shadow-[0_0_24px_rgba(56,189,248,0.08),inset_0_1px_0_rgba(148,163,184,0.06)]"
+      >
+        {/* grid neon de fundo */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.02]"
+          className="pointer-events-none absolute inset-0 opacity-[0.05]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(125,211,252,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.6) 1px, transparent 1px)",
-            backgroundSize: "20px 20px",
+              "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
           }}
         />
         {!reducedMotion && networkOnline && <BackgroundParticles />}
 
         {/* Header */}
-        <div className="relative flex items-start justify-between gap-2 mb-1.5">
+        <div className="relative flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold tracking-[0.14em] uppercase text-sidebar-foreground/95 leading-none">
-              Inteligência Viva
+            <div className="text-[11px] font-semibold tracking-[0.08em] text-cyan-100 leading-tight">
+              Central de Inteligência AI
             </div>
-            <div className="text-[9px] text-muted-foreground/80 mt-0.5 leading-none truncate">
-              {snap?.status?.version ? `Runtime ${snap.status.version}` : "Runtime"}
+            <div className="text-[9px] text-cyan-200/60 mt-0.5 leading-tight truncate">
+              Seu sistema está aprendendo 24/7
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0 mt-0.5">
-            <motion.span
-              animate={
-                networkOnline
-                  ? { opacity: [0.55, 1, 0.55] }
-                  : { opacity: 0.55 }
-              }
-              transition={{ duration: 1.8, repeat: networkOnline ? Infinity : 0 }}
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                networkOnline
-                  ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                  : isError || snap?.autonomy?.tenantEnabled?.killSwitch
-                  ? "bg-red-400"
-                  : "bg-amber-400",
-              )}
-            />
-            <span className="text-[8.5px] text-muted-foreground/85 tracking-wide">
-              {statusLabel}
-            </span>
-          </div>
+          <LiveBadge online={networkOnline} label={statusLabel} />
         </div>
 
-        <NeuralGraph professor={professor} agents={agentsWithSurge} professorSurge={surge.professor} />
+        <NeuralGraph
+          professor={professor}
+          agents={agentsWithSurge}
+          professorSurge={surge.professor}
+          snap={snap ?? null}
+        />
 
-        {/* Legenda */}
-        <div
-          className={cn(
-            "mt-1 flex items-center justify-between gap-1 px-0.5 transition-opacity duration-500",
-            legendFocused ? "opacity-100" : "opacity-40",
-          )}
-          onMouseEnter={() => setLegendFocused(true)}
-          onMouseLeave={() => setLegendFocused(false)}
-        >
-          {(["running", "queued", "learning", "consolidating", "completed", "error", "disabled", "idle"] as Bucket[]).map((s) => (
-            <div
-              key={s}
-              className="flex items-center gap-1 rounded-full border border-sidebar-border/40 bg-black/25 px-1.5 py-[2px]"
+        {/* Atividades em tempo real */}
+        <div className="relative mt-2">
+          <div className="flex items-center justify-between mb-1 px-0.5">
+            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.16em] text-cyan-200/70">
+              <Activity className="h-2.5 w-2.5" />
+              Atividades em tempo real
+            </div>
+            <Link
+              to="/runtime/observability"
+              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5"
             >
-              <span
-                className="h-1 w-1 rounded-full"
-                style={{ backgroundColor: BUCKET_META[s].hex, boxShadow: `0 0 4px ${BUCKET_META[s].glow}` }}
-              />
-              <span className="text-[7.5px] text-sidebar-foreground/80 tracking-wide">
-                {BUCKET_META[s].label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Feed real do Runtime */}
-        <div className="mt-1.5 rounded-md border border-sidebar-border/40 bg-black/40 px-2 py-1.5 font-mono text-[8.5px] leading-[1.45] text-sidebar-foreground/90 h-[74px] overflow-hidden relative">
-          {feed.length === 0 ? (
-            <div className="text-muted-foreground/60 italic truncate">
-              <span className="text-emerald-400">$</span> aguardando jobs do Runtime
-              <BlinkingCursor />
-            </div>
-          ) : (
-            <AnimatePresence initial={false}>
-              {feed.map((e, i) => (
-                <motion.div
-                  key={`${e.label}-${e.ts}-${i}`}
-                  initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.35 }}
-                  className="flex items-baseline gap-1.5 truncate"
-                >
-                  <span className="text-sky-300/70 shrink-0">{formatTime(e.ts)}</span>
-                  <span className={cn("shrink-0", e.ok ? "text-emerald-400" : "text-red-400")}>
-                    {e.ok ? "✓" : "!"}
-                  </span>
-                  <span className="text-sidebar-foreground/95 shrink-0">{e.label}</span>
-                  <span className="text-muted-foreground/75 truncate">· {e.msg}</span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          )}
-        </div>
-
-        {/* Infra: Worker, Scheduler, Knowledge Bus, Learning, Fila */}
-        <div className="mt-1.5 grid grid-cols-2 gap-1 px-0.5">
-          <InfraStat
-            label="Worker"
-            value={workerState ?? "—"}
-            detail={
-              workerHealth
-                ? `${workerInFlight} em voo · ${workerJobs} jobs${
-                    workerHealth.lastJobAt ? ` · ${formatRelative(iso(workerHealth.lastJobAt))}` : ""
-                  }`
-                : "—"
-            }
-            active={workerState === "busy" || workerInFlight > 0}
-          />
-          <InfraStat
-            label="Scheduler"
-            value={
-              scheduler
-                ? `${schedulerEnabled}/${schedulerRegistered} ativos`
-                : "—"
-            }
-            detail={
-              schedulerNextTs
-                ? `próx. ${formatRelative(schedulerNextTs)}`
-                : scheduler
-                ? "sem próximo tick"
-                : "—"
-            }
-            active={schedulerEnabled > 0}
-          />
-          <InfraStat
-            label="Knowledge Bus"
-            value={busLevel ?? "—"}
-            detail={
-              busHealth
-                ? `${busPublishes} pub · ${busReads} rd · ${busEnvelopes} env · ${busTopicsCount} tópicos${
-                    busErrors > 0 ? ` · ${busErrors} err` : ""
-                  }${busLastActivity ? ` · ${formatRelative(busLastActivity)}` : ""}`
-                : "—"
-            }
-            active={busLevel === "healthy" && (busPublishes > 0 || busReads > 0)}
-          />
-          <InfraStat
-            label="Learning Loop"
-            value={
-              learning
-                ? `${learning.cycles ?? 0} ciclos · ${learning.knowledgeConsolidated ?? 0} consol.`
-                : "—"
-            }
-            detail={
-              learning?.lastLearning
-                ? `${formatRelative(iso(learning.lastLearning))}${
-                    learning.lastAgent ? ` · ${learning.lastAgent}` : ""
-                  } · acc ${learning.hypotheses?.accepted ?? 0}/rej ${learning.hypotheses?.rejected ?? 0}`
-                : learning && (learning.cycles ?? 0) > 0
-                ? `${learning.cycles} ciclos · sem timestamp`
-                : "sem ciclos"
-            }
-            active={
-              !!learning?.lastLearning &&
-              Date.now() - (iso(learning.lastLearning) ?? 0) < 15 * 60_000
-            }
-          />
-        </div>
-
-        {/* Fila do Runtime */}
-        <div className="mt-1.5 px-0.5">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
-              Fila
-            </span>
-            {snap?.status?.lastHeartbeat?.ts && (
-              <span className="text-[8px] text-muted-foreground/70">
-                heartbeat {formatRelative(iso(snap.status.lastHeartbeat.ts))}
-              </span>
+              Ver todos
+              <ArrowRight className="h-2.5 w-2.5" />
+            </Link>
+          </div>
+          <div className="rounded-lg border border-cyan-400/15 bg-black/40 backdrop-blur-sm px-2 py-1.5 min-h-[68px]">
+            {feed.length === 0 ? (
+              <div className="text-[9px] text-cyan-100/40 italic py-1.5">
+                Sistema em espera · nenhuma atividade recente
+              </div>
+            ) : (
+              <ul className="space-y-1" aria-live="polite">
+                <AnimatePresence initial={false}>
+                  {feed.map((e, i) => (
+                    <motion.li
+                      key={`${e.msg}-${e.ts}`}
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ delay: i * 0.05, duration: 0.3 }}
+                      className="flex items-center gap-1.5 text-[9.5px] leading-tight"
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full shrink-0",
+                          e.ok
+                            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                            : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="text-cyan-50/90 truncate flex-1">{e.msg}</span>
+                      <span className="text-cyan-200/50 text-[8.5px] shrink-0">
+                        {formatRelative(e.ts)}
+                      </span>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
             )}
           </div>
-          {counters ? (
-            <div className="text-[9px] text-sidebar-foreground/85 flex flex-wrap gap-x-2 gap-y-0.5">
-              <span>
-                <span className="text-amber-300">{counters.queued ?? 0}</span>{" "}
-                <span className="text-muted-foreground/70">queued</span>
-              </span>
-              <span>
-                <span className="text-sky-300">{counters.processing ?? 0}</span>{" "}
-                <span className="text-muted-foreground/70">running</span>
-              </span>
-              <span>
-                <span className="text-emerald-300">{counters.completed ?? 0}</span>{" "}
-                <span className="text-muted-foreground/70">done</span>
-              </span>
-              <span>
-                <span className="text-red-300">{counters.failed ?? 0}</span>{" "}
-                <span className="text-muted-foreground/70">failed</span>
-              </span>
-            </div>
-          ) : (
-            <div className="text-[9px] text-sidebar-foreground/70 italic">—</div>
-          )}
         </div>
 
-
-        {/* Conhecimento acumulado — apenas dados reais do Learning Loop */}
-        <div className="mt-1.5 px-0.5">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[8.5px] uppercase tracking-[0.14em] text-muted-foreground/75">
-              Conhecimento acumulado
+        {/* Status inferior */}
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-black/30 px-2 py-1.5">
+          <motion.span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full shrink-0",
+              anyActive
+                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
+                : "bg-slate-500",
+            )}
+            animate={anyActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+            transition={{ duration: 1.6, repeat: anyActive ? Infinity : 0 }}
+            aria-hidden
+          />
+          <span className="text-[9.5px] text-cyan-50/90 font-medium">
+            {anyActive ? "Processando agora" : "Sistema em espera"}
+          </span>
+          {snap?.status?.lastHeartbeat?.ts && (
+            <span className="ml-auto text-[8.5px] text-cyan-200/50">
+              {formatRelative(iso(snap.status.lastHeartbeat.ts))}
             </span>
-          </div>
-          {(() => {
-            const cycles = learning?.cycles ?? 0;
-            const consolidated = learning?.knowledgeConsolidated ?? 0;
-            const accepted = learning?.hypotheses?.accepted ?? 0;
-            const rejected = learning?.hypotheses?.rejected ?? 0;
-            const conf = learning?.averageConfidence;
-            const lastTs = iso(learning?.lastLearning ?? null);
-            // Aguardando apenas quando não houve nenhum ciclo real.
-            if (!learning || cycles === 0) {
-              return (
-                <div className="text-[9px] text-sidebar-foreground/70 italic">
-                  Aguardando ciclos de aprendizado
-                </div>
-              );
-            }
-            return (
-              <div className="text-[9px] text-sidebar-foreground/85 space-y-0.5">
-                <div>
-                  <span className="text-sky-300">{cycles}</span> ciclos
-                  <span className="text-muted-foreground/60"> · </span>
-                  <span className="text-emerald-300">{consolidated}</span> consolidados
-                  <span className="text-muted-foreground/60"> · </span>
-                  <span className="text-violet-300">
-                    {typeof conf === "number" && conf > 0 ? `${Math.round(conf * 100)}%` : "—"}
-                  </span>{" "}
-                  confiança
-                </div>
-                <div className="text-muted-foreground/70">
-                  <span className="text-sky-300">{accepted}</span> aceitas
-                  <span className="text-muted-foreground/60"> · </span>
-                  <span className="text-red-300">{rejected}</span> rejeitadas
-                  <span className="text-muted-foreground/60"> · </span>
-                  última {lastTs ? formatRelative(lastTs) : "—"}
-                </div>
-              </div>
-            );
-          })()}
+          )}
         </div>
       </div>
     </MotionConfig>
   );
 }
 
-/* -------------------- InfraStat -------------------- */
+/* -------------------- Live badge -------------------- */
 
-function InfraStat({
-  label,
-  value,
-  detail,
-  active,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  active: boolean;
-}) {
+function LiveBadge({ online, label }: { online: boolean; label: string }) {
   return (
-    <div className="rounded-md border border-sidebar-border/40 bg-black/25 px-1.5 py-1">
-      <div className="flex items-center gap-1">
-        <span
-          className={cn(
-            "h-1 w-1 rounded-full",
-            active ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" : "bg-muted-foreground/40",
-          )}
-        />
-        <span className="text-[7.5px] uppercase tracking-[0.12em] text-muted-foreground/80">
-          {label}
-        </span>
-      </div>
-      <div className="text-[9px] text-sidebar-foreground/95 mt-0.5 truncate">{value}</div>
-      <div className="text-[8px] text-muted-foreground/70 truncate">{detail}</div>
-    </div>
-  );
-}
-
-/* -------------------- Blinking cursor -------------------- */
-
-function BlinkingCursor() {
-  return (
-    <motion.span
-      animate={{ opacity: [1, 0, 1] }}
-      transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
-      className="inline-block text-emerald-400 font-mono"
-      style={{ marginLeft: 1 }}
+    <div
+      className={cn(
+        "shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em]",
+        online
+          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+          : "border-amber-400/40 bg-amber-400/10 text-amber-300",
+      )}
+      title={label}
     >
-      █
-    </motion.span>
+      <motion.span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          online
+            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+            : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]",
+        )}
+        animate={online ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+        transition={{ duration: 1.6, repeat: online ? Infinity : 0 }}
+      />
+      {online ? "AO VIVO" : label.toUpperCase()}
+    </div>
   );
 }
 
@@ -895,11 +810,11 @@ function BlinkingCursor() {
 function BackgroundParticles() {
   const parts = useMemo(
     () =>
-      Array.from({ length: 10 }, (_, i) => ({
-        left: (i * 37 + 11) % 100,
-        top: (i * 53 + 7) % 100,
-        dur: 14 + (i % 5) * 3,
-        delay: i * 0.7,
+      Array.from({ length: 8 }, (_, i) => ({
+        left: (i * 41 + 13) % 100,
+        top: (i * 59 + 9) % 100,
+        dur: 16 + (i % 4) * 3,
+        delay: i * 0.8,
       })),
     [],
   );
@@ -908,9 +823,9 @@ function BackgroundParticles() {
       {parts.map((p, i) => (
         <motion.span
           key={i}
-          className="absolute h-[2px] w-[2px] rounded-full bg-sky-300/40"
+          className="absolute h-[2px] w-[2px] rounded-full bg-cyan-300/40"
           style={{ left: `${p.left}%`, top: `${p.top}%` }}
-          animate={{ y: [-6, 6, -6], opacity: [0.15, 0.5, 0.15] }}
+          animate={{ y: [-6, 6, -6], opacity: [0.1, 0.5, 0.1] }}
           transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
         />
       ))}
@@ -920,33 +835,32 @@ function BackgroundParticles() {
 
 /* -------------------- Neural graph -------------------- */
 
+const BREATH = 3.8;
+
 function NeuralGraph({
   professor,
   agents,
   professorSurge,
+  snap,
 }: {
   professor: Resolved;
   agents: DisplayAgent[];
   professorSurge?: boolean;
+  snap: RuntimeSnapshot | null;
 }) {
   const W = 260;
-  const H = 240;
-  const prof = { x: W / 2, y: H / 2 - 4 };
+  const H = 236;
+  const prof = { x: W / 2, y: H / 2 };
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const orbits: Array<{ r: number; angle: number }> = [
-    { r: 74, angle: 168 },
-    { r: 68, angle: -150 },
-    { r: 92, angle: 108 },
-    { r: 96, angle: -78 },
-    { r: 84, angle: -18 },
-    { r: 88, angle: 52 },
-  ];
-
-  const positions = orbits.map(({ r, angle }) => {
-    const rad = (angle * Math.PI) / 180;
-    return { x: prof.x + Math.cos(rad) * r, y: prof.y + Math.sin(rad) * r };
-  });
+  // 6 nós distribuídos em anel — visual referência: círculos grandes ao redor.
+  const positions = useMemo(() => {
+    const R = 92;
+    return AGENT_SLOTS.map((_, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AGENT_SLOTS.length;
+      return { x: prof.x + Math.cos(angle) * R, y: prof.y + Math.sin(angle) * R };
+    });
+  }, [prof.x, prof.y]);
 
   const profMeta = BUCKET_META[professor.bucket];
   const profColor = profMeta.hex;
@@ -954,7 +868,13 @@ function NeuralGraph({
 
   return (
     <div className="relative w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label="Rede neural viva dos agentes de inteligência"
+      >
         <defs>
           <radialGradient id="profGlowOuter" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor={profColor} stopOpacity="0.55" />
@@ -966,18 +886,18 @@ function NeuralGraph({
             <stop offset="100%" stopColor={profColor} stopOpacity="0" />
           </radialGradient>
           <radialGradient id="profCore" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="hsl(220 35% 18%)" stopOpacity="1" />
-            <stop offset="100%" stopColor="hsl(220 35% 8%)" stopOpacity="1" />
+            <stop offset="0%" stopColor="hsl(220 55% 14%)" stopOpacity="1" />
+            <stop offset="100%" stopColor="hsl(224 60% 6%)" stopOpacity="1" />
           </radialGradient>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(148,163,184,0.06)" />
-            <stop offset="50%" stopColor="rgba(148,163,184,0.38)" />
-            <stop offset="100%" stopColor="rgba(148,163,184,0.06)" />
+            <stop offset="0%" stopColor="rgba(125,211,252,0.05)" />
+            <stop offset="50%" stopColor="rgba(125,211,252,0.28)" />
+            <stop offset="100%" stopColor="rgba(125,211,252,0.05)" />
           </linearGradient>
           <linearGradient id="lineGradActive" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(56,189,248,0.1)" />
-            <stop offset="50%" stopColor="rgba(56,189,248,0.75)" />
-            <stop offset="100%" stopColor="rgba(56,189,248,0.1)" />
+            <stop offset="0%" stopColor="rgba(56,189,248,0.15)" />
+            <stop offset="50%" stopColor="rgba(56,189,248,0.85)" />
+            <stop offset="100%" stopColor="rgba(56,189,248,0.15)" />
           </linearGradient>
           <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="2" result="blur" />
@@ -988,12 +908,24 @@ function NeuralGraph({
           </filter>
         </defs>
 
+        {/* Anel orbital decorativo */}
+        <circle
+          cx={prof.x}
+          cy={prof.y}
+          r={92}
+          fill="none"
+          stroke="rgba(125,211,252,0.08)"
+          strokeWidth={0.5}
+          strokeDasharray="1 4"
+        />
+
+        {/* Conexões */}
         {positions.map((p, i) => {
           const a = agents[i];
           const meta = a ? BUCKET_META[a.resolved.bucket] : null;
-          const isAnimated = !!meta?.animate;
+          const isAnimated = !!meta?.animate && !!a?.present;
           const particleColor = meta?.hex ?? "rgb(125,211,252)";
-          const propDelay = 0.25 + i * 0.28;
+          const propDelay = 0.2 + i * 0.24;
           const surging = a?.surge;
           return (
             <g key={`line-${i}`}>
@@ -1003,62 +935,42 @@ function NeuralGraph({
                 x2={p.x}
                 y2={p.y}
                 stroke={isAnimated ? "url(#lineGradActive)" : "url(#lineGrad)"}
-                strokeWidth={surging ? 1.4 : isAnimated ? 0.9 : 0.55}
+                strokeWidth={surging ? 1.4 : isAnimated ? 0.95 : 0.55}
               />
               {(isAnimated || surging) && (
-                <>
-                  <motion.line
-                    x1={prof.x}
-                    y1={prof.y}
-                    x2={p.x}
-                    y2={p.y}
-                    stroke={particleColor}
-                    strokeLinecap="round"
-                    strokeWidth={surging ? 1.6 : 1.1}
-                    initial={{ opacity: 0 }}
-                    animate={{
-                      opacity: surging ? [0, 1, 0, 1, 0] : [0, 0.65, 0],
-                    }}
-                    transition={{
-                      duration: surging ? 1.4 : BREATH,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                      delay: propDelay,
-                    }}
-                  />
-                  <motion.circle
-                    r={surging ? 2.4 : 1.6}
-                    fill={particleColor}
-                    filter="url(#softGlow)"
-                    initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
-                    animate={{
-                      cx: [prof.x, p.x],
-                      cy: [prof.y, p.y],
-                      opacity: [0, 1, 0],
-                    }}
-                    transition={{
-                      duration: surging ? 1.2 : BREATH,
-                      repeat: Infinity,
-                      delay: propDelay,
-                      ease: "easeInOut",
-                    }}
-                  />
-                </>
+                <motion.circle
+                  r={surging ? 2.4 : 1.6}
+                  fill={particleColor}
+                  filter="url(#softGlow)"
+                  initial={{ cx: prof.x, cy: prof.y, opacity: 0 }}
+                  animate={{
+                    cx: [prof.x, p.x],
+                    cy: [prof.y, p.y],
+                    opacity: [0, 1, 0],
+                  }}
+                  transition={{
+                    duration: surging ? 1.2 : BREATH,
+                    repeat: Infinity,
+                    delay: propDelay,
+                    ease: "easeInOut",
+                  }}
+                />
               )}
             </g>
           );
         })}
 
+        {/* Cérebro central: glow + core */}
         <motion.circle
           cx={prof.x}
           cy={prof.y}
-          r={62}
+          r={54}
           fill="url(#profGlowOuter)"
           animate={
             profAnimate
               ? {
                   opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5],
-                  scale: professorSurge ? [1, 1.15, 1] : [0.94, 1.08, 0.94],
+                  scale: professorSurge ? [1, 1.12, 1] : [0.95, 1.08, 0.95],
                 }
               : { opacity: 0.35, scale: 1 }
           }
@@ -1068,112 +980,63 @@ function NeuralGraph({
         <motion.circle
           cx={prof.x}
           cy={prof.y}
-          r={40}
+          r={36}
           fill="url(#profGlowInner)"
           animate={profAnimate ? { opacity: [0.35, 0.7, 0.35] } : { opacity: 0.25 }}
           transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
         />
 
-        {profAnimate && (
-          <>
-            <motion.g
-              animate={{ rotate: 360 }}
-              transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-              style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-            >
-              <circle
-                cx={prof.x}
-                cy={prof.y}
-                r={44}
-                fill="none"
-                stroke={profColor}
-                strokeOpacity={0.38}
-                strokeWidth={0.55}
-                strokeDasharray="2 5"
-              />
-            </motion.g>
-            <motion.g
-              animate={{ rotate: -360 }}
-              transition={{ duration: 85, repeat: Infinity, ease: "linear" }}
-              style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
-            >
-              <circle
-                cx={prof.x}
-                cy={prof.y}
-                r={52}
-                fill="none"
-                stroke={profColor}
-                strokeOpacity={0.22}
-                strokeWidth={0.45}
-                strokeDasharray="1 8"
-              />
-            </motion.g>
-          </>
-        )}
-
         <motion.g
           animate={profAnimate ? { scale: [1, 1.06, 1] } : { scale: 1 }}
           transition={{ duration: BREATH, repeat: profAnimate ? Infinity : 0, ease: "easeInOut" }}
-          style={{ transformOrigin: `${prof.x}px ${prof.y}px` }}
+          style={{ transformOrigin: `${prof.x}px ${prof.y}px`, cursor: "pointer" }}
           onMouseEnter={() => setHovered("professor")}
           onMouseLeave={() => setHovered(null)}
         >
           <circle
             cx={prof.x}
             cy={prof.y}
-            r={32}
+            r={28}
             fill="url(#profCore)"
             stroke={profColor}
-            strokeWidth={1.8}
+            strokeWidth={1.6}
             filter="url(#softGlow)"
           />
-          <text x={prof.x} y={prof.y + 9} textAnchor="middle" fontSize="26" className="fill-sidebar-foreground">
+          <text x={prof.x} y={prof.y + 8} textAnchor="middle" fontSize="22">
             🧠
           </text>
         </motion.g>
 
+        {/* Nós dos agentes */}
         {positions.map((p, i) => {
           const a = agents[i];
-          if (!a) {
-            return (
-              <g key={`empty-${i}`}>
-                <circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={5}
-                  fill="hsl(220 35% 10%)"
-                  stroke={BUCKET_META.idle.hex}
-                  strokeOpacity={0.35}
-                  strokeWidth={0.8}
-                />
-              </g>
-            );
-          }
+          if (!a) return null;
           const meta = BUCKET_META[a.resolved.bucket];
           const dotColor = meta.hex;
-          const isAnimated = meta.animate;
+          const isAnimated = meta.animate && a.present;
           const isHover = hovered === a.id;
-          const propDelay = 0.25 + i * 0.28;
+          const propDelay = 0.2 + i * 0.24;
           const surging = a.surge;
+          const opacity = a.present ? 1 : 0.55;
           return (
             <g
               key={a.id}
               onMouseEnter={() => setHovered(a.id)}
               onMouseLeave={() => setHovered(null)}
-              style={{ cursor: "pointer" }}
+              style={{ cursor: "pointer", opacity }}
             >
               <motion.circle
                 cx={p.x}
                 cy={p.y}
-                r={surging ? 16 : 13}
+                r={surging ? 18 : 15}
                 fill={dotColor}
                 animate={
                   isAnimated || surging
                     ? {
-                        opacity: surging ? [0.15, 0.5, 0.15] : [0.06, 0.28, 0.06],
-                        scale: surging ? [1, 1.4, 1] : [1, 1.22, 1],
+                        opacity: surging ? [0.15, 0.5, 0.15] : [0.08, 0.3, 0.08],
+                        scale: surging ? [1, 1.35, 1] : [1, 1.2, 1],
                       }
-                    : { opacity: 0.05, scale: 1 }
+                    : { opacity: 0.06, scale: 1 }
                 }
                 transition={{
                   duration: surging ? 1.6 : BREATH,
@@ -1183,41 +1046,35 @@ function NeuralGraph({
                 }}
                 style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(3px)" }}
               />
-              <motion.g
-                animate={isAnimated ? { scale: [1, 1.03, 1] } : { scale: 1 }}
-                transition={{ duration: BREATH, repeat: isAnimated ? Infinity : 0, ease: "easeInOut", delay: propDelay }}
-                style={{ transformOrigin: `${p.x}px ${p.y}px` }}
-              >
-                <circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={6}
-                  fill="hsl(220 35% 10%)"
-                  stroke={dotColor}
-                  strokeWidth={isHover || surging ? 1.6 : 1.1}
-                  filter="url(#softGlow)"
-                />
-                <motion.circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={2.6}
-                  fill={dotColor}
-                  animate={isAnimated ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.4 }}
-                  transition={{
-                    duration: BREATH,
-                    repeat: isAnimated ? Infinity : 0,
-                    delay: propDelay,
-                    ease: "easeInOut",
-                  }}
-                />
-              </motion.g>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={9}
+                fill="hsl(224 55% 8%)"
+                stroke={dotColor}
+                strokeWidth={isHover || surging ? 1.8 : 1.2}
+                filter="url(#softGlow)"
+              />
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={3.2}
+                fill={dotColor}
+                animate={isAnimated ? { opacity: [0.55, 1, 0.55] } : { opacity: a.present ? 0.5 : 0.3 }}
+                transition={{
+                  duration: BREATH,
+                  repeat: isAnimated ? Infinity : 0,
+                  delay: propDelay,
+                  ease: "easeInOut",
+                }}
+              />
               <text
                 x={p.x}
-                y={p.y + 16}
+                y={p.y + 20}
                 textAnchor="middle"
-                fontSize="6.5"
-                className="fill-sidebar-foreground/60"
-                style={{ letterSpacing: "0.04em" }}
+                fontSize="6.8"
+                className="fill-cyan-100/75"
+                style={{ letterSpacing: "0.04em", fontWeight: 500 }}
               >
                 {a.short}
               </text>
@@ -1229,14 +1086,26 @@ function NeuralGraph({
       <AnimatePresence>
         {hovered && (() => {
           if (hovered === "professor") {
+            const worker = snap?.worker ?? snap?.workers?.[0] ?? null;
+            const bus = snap?.knowledgeBus?.health?.level ?? "—";
+            const sched = snap?.scheduler;
+            const learn = snap?.learning;
+            const lines = [
+              `Runtime ${snap?.status?.online ? "online" : "offline"}`,
+              `Worker ${worker?.health?.state ?? "—"}`,
+              `Scheduler ${sched ? `${sched.enabled ?? 0}/${sched.registered ?? 0}` : "—"}`,
+              `Knowledge Bus ${bus}`,
+              `Learning ${learn?.cycles ?? 0} ciclos`,
+            ];
             return (
               <TooltipCard
-                title="Professor / Runtime"
-                subtitle="Coordena o Runtime autônomo do Atende AI."
+                title="Runtime Core"
+                subtitle="Professor · coordena todo o sistema"
                 stateLabel={professor.stateLabel}
                 stateHex={profMeta.hex}
                 stateGlow={profMeta.glow}
                 lastAt={professor.updatedAt}
+                lines={lines}
               />
             );
           }
@@ -1246,11 +1115,12 @@ function NeuralGraph({
           return (
             <TooltipCard
               title={a.label}
-              subtitle={a.resolved.detail ?? "Agente registrado no Runtime."}
+              subtitle={a.present ? (a.resolved.detail ?? "Agente registrado no Runtime.") : "Nenhum dado real disponível ainda."}
               stateLabel={a.resolved.stateLabel}
               stateHex={meta.hex}
               stateGlow={meta.glow}
               lastAt={a.resolved.updatedAt}
+              lines={[a.metricPrimary, a.metricSecondary]}
             />
           );
         })()}
@@ -1266,6 +1136,7 @@ function TooltipCard({
   stateHex,
   stateGlow,
   lastAt,
+  lines,
 }: {
   title: string;
   subtitle: string;
@@ -1273,40 +1144,50 @@ function TooltipCard({
   stateHex: string;
   stateGlow: string;
   lastAt?: number;
+  lines?: string[];
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
-      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-md border border-sidebar-border/70 bg-popover/95 backdrop-blur px-2 py-1.5 shadow-lg text-[9px] leading-tight min-w-[160px] max-w-[240px]"
+      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-0 z-10 rounded-lg border border-cyan-400/30 bg-[hsl(224_55%_6%/0.96)] backdrop-blur px-2.5 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.5),0_0_16px_rgba(56,189,248,0.15)] text-[9.5px] leading-tight min-w-[180px] max-w-[240px]"
     >
-      <div className="font-semibold text-sidebar-foreground">{title}</div>
-      <div className="text-muted-foreground/85 mt-0.5 line-clamp-2">{subtitle}</div>
-      <div className="flex items-center gap-1 mt-1">
+      <div className="font-semibold text-cyan-50">{title}</div>
+      <div className="text-cyan-200/70 mt-0.5 line-clamp-2">{subtitle}</div>
+      <div className="flex items-center gap-1 mt-1.5">
         <span
           className="h-1.5 w-1.5 rounded-full"
           style={{ backgroundColor: stateHex, boxShadow: `0 0 6px ${stateGlow}` }}
+          aria-hidden
         />
-        <span className="text-muted-foreground">{stateLabel}</span>
-        <span className="text-muted-foreground/60 ml-auto">{formatRelative(lastAt)}</span>
+        <span className="text-cyan-100/85">{stateLabel}</span>
+        <span className="text-cyan-200/50 ml-auto">{formatRelative(lastAt)}</span>
       </div>
+      {lines && lines.length > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t border-cyan-400/10 space-y-0.5">
+          {lines.map((l, i) => (
+            <div key={i} className="text-cyan-100/80 text-[9px] truncate">
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }
 
-/* Compact/collapsed variant */
+/* Compact/collapsed variant — mostra apenas o cérebro pulsante. */
 export function NeuralIntelligencePulse() {
-  useEffect(() => undefined, []);
   return (
-    <div className="mx-auto my-2 flex items-center justify-center">
+    <div className="mx-auto my-2 flex items-center justify-center" title="Central de Inteligência AI">
       <motion.div
         animate={{ scale: [1, 1.18, 1], opacity: [0.75, 1, 0.75] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-        className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center shadow-[0_0_16px_rgba(56,189,248,0.65)]"
-        title="Inteligência Viva"
+        className="h-8 w-8 rounded-full bg-cyan-400/15 flex items-center justify-center shadow-[0_0_16px_rgba(56,189,248,0.65)]"
+        aria-label="Central de Inteligência AI"
       >
-        <Brain className="h-4 w-4 text-primary" />
+        <Brain className="h-4 w-4 text-cyan-300" />
       </motion.div>
     </div>
   );
