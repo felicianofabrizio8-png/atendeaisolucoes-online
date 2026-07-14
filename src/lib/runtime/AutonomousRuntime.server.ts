@@ -115,6 +115,7 @@ export class AutonomousRuntime {
     (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
     this.executionEngine.rebind({ dispatcher: this._dispatcher });
     this.worker.bindQueue(this._queue);
+    RuntimePersistence.instance().bindWriter(writer);
   }
 
   get dispatcher(): AgentDispatcher {
