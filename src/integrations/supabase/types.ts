@@ -3026,6 +3026,14 @@ export type Database = {
         Args: { _company_id: string; _new_size: number }
         Returns: boolean
       }
+      claim_agent_job: {
+        Args: { _job_id: string; _lock_seconds?: number; _worker_id: string }
+        Returns: {
+          claimed: boolean
+          job: Database["public"]["Tables"]["agent_jobs"]["Row"]
+          reason: string
+        }[]
+      }
       cleanup_executive_knowledge: { Args: never; Returns: number }
       cleanup_scientific_memory: { Args: never; Returns: number }
       cleanup_scientific_snapshots: { Args: never; Returns: number }
@@ -3138,6 +3146,14 @@ export type Database = {
           _user_id: string
         }
         Returns: string
+      }
+      peek_agent_job_status: {
+        Args: { _job_id: string }
+        Returns: {
+          attempts: number
+          locked_by: string
+          status: string
+        }[]
       }
       rate_limit_increment: {
         Args: {
