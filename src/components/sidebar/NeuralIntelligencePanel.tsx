@@ -365,6 +365,7 @@ function buildDisplayAgent(
   connectedSet: Set<string>,
   learningSummary: RuntimeSnapshot["learning"] | undefined,
   busPublishes: number,
+  busEnvelopes: number,
 ): DisplayAgent {
   if (!agent) {
     return {
@@ -406,8 +407,13 @@ function buildDisplayAgent(
     case "scientific-knowledge": {
       const cycles = learn?.cycles ?? 0;
       const consolidated = learn?.consolidated ?? 0;
-      metricPrimary = `${cycles} hipóteses`;
-      metricSecondary = `${consolidated} consolidadas · ${formatRelative(resolved.updatedAt)}`;
+      const envelopes = busEnvelopes;
+      const primaryCount = cycles > 0 ? cycles : envelopes;
+      metricPrimary = cycles > 0 ? `${cycles} hipóteses` : envelopes > 0 ? `${envelopes} envelopes` : "sem dados";
+      metricSecondary =
+        primaryCount > 0
+          ? `${consolidated} consolidadas · ${formatRelative(resolved.updatedAt)}`
+          : "aguardando publicação";
       break;
     }
     case "executive-intelligence": {
@@ -559,7 +565,10 @@ export function NeuralIntelligencePanel() {
 
   const professor = resolveProfessor(snap ?? null);
 
-  const busPublishes = snap?.knowledgeBus?.health?.publishCount ?? 0;
+  const busPublishes =
+    (snap?.knowledgeBus?.health?.publishCount ?? 0) ||
+    (snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0);
+  const busEnvelopes = snap?.knowledgeBus?.cache?.totalEnvelopes ?? 0;
 
   const agents = useMemo<DisplayAgent[]>(() => {
     if (!snap) {
@@ -590,9 +599,10 @@ export function NeuralIntelligencePanel() {
         connectedSet,
         snap.learning,
         busPublishes,
+        busEnvelopes,
       ),
     );
-  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet, busPublishes]);
+  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet, busPublishes, busEnvelopes]);
 
   // Detecta surge (nova atividade) por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
@@ -724,28 +734,46 @@ export function NeuralIntelligencePanel() {
           )}
         </div>
 
-        {/* Atividades em tempo real */}
+        {/* Terminal futurista */}
         <div className="relative mt-2">
           <div className="flex items-center justify-between mb-1 px-0.5">
-            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.16em] text-cyan-200/70">
+            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.18em] text-cyan-200/75 font-mono">
               <Activity className="h-2.5 w-2.5" />
-              Atividades em tempo real
+              runtime.log
             </div>
             <Link
               to="/runtime/observability"
-              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5"
+              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5 font-mono"
             >
-              Ver todos
+              ver todos
               <ArrowRight className="h-2.5 w-2.5" />
             </Link>
           </div>
-          <div className="rounded-lg border border-cyan-400/20 bg-black/50 backdrop-blur-sm px-2 py-1.5 min-h-[62px]">
+          <div
+            className="relative overflow-hidden rounded-lg border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.85))] backdrop-blur-sm px-2 py-1.5 min-h-[68px] shadow-[inset_0_0_20px_rgba(56,189,248,0.08),0_0_14px_rgba(56,189,248,0.10)]"
+          >
+            {/* scanlines */}
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.08]"
+              style={{
+                backgroundImage: "repeating-linear-gradient(0deg, transparent 0 2px, rgba(125,211,252,0.6) 2px 3px)",
+              }}
+              aria-hidden
+            />
+            {/* topbar mini */}
+            <div className="pointer-events-none absolute top-1 right-1.5 flex items-center gap-1 opacity-70" aria-hidden>
+              <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.9)]" />
+              <span className="h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.9)]" />
+              <span className="h-1 w-1 rounded-full bg-rose-400 shadow-[0_0_4px_rgba(248,113,113,0.9)]" />
+            </div>
             {feed.length === 0 ? (
-              <div className="text-[9px] text-cyan-100/40 italic py-1.5">
-                Sistema em espera · nenhuma atividade recente
+              <div className="relative font-mono text-[9px] text-cyan-100/50 py-1.5">
+                <span className="text-emerald-300/80">$</span>{" "}
+                <span>runtime --status</span>
+                <div className="text-cyan-100/40 italic mt-0.5">// sistema em espera · nenhuma atividade recente</div>
               </div>
             ) : (
-              <ul className="space-y-1" aria-live="polite">
+              <ul className="relative space-y-0.5 font-mono" aria-live="polite">
                 <AnimatePresence initial={false}>
                   {feed.map((e, i) => (
                     <motion.li
@@ -756,6 +784,7 @@ export function NeuralIntelligencePanel() {
                       transition={{ delay: i * 0.05, duration: 0.3 }}
                       className="flex items-center gap-1.5 text-[9.5px] leading-tight"
                     >
+                      <span className="text-emerald-300/90 shrink-0">›</span>
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full shrink-0",
@@ -766,9 +795,7 @@ export function NeuralIntelligencePanel() {
                         aria-hidden
                       />
                       <span className="text-cyan-50/95 truncate flex-1">{e.msg}</span>
-                      <span className="text-cyan-200/50 text-[8.5px] shrink-0">
-                        {formatRelative(e.ts)}
-                      </span>
+                      <span className="text-cyan-200/60 text-[8.5px] shrink-0">{formatRelative(e.ts)}</span>
                     </motion.li>
                   ))}
                 </AnimatePresence>
@@ -814,43 +841,121 @@ function LiveBadge({ online, label }: { online: boolean; label: string }) {
 function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; active: boolean }) {
   const parts = useMemo(
     () =>
-      Array.from({ length: 10 }, (_, i) => ({
+      Array.from({ length: 22 }, (_, i) => ({
         left: (i * 41 + 13) % 100,
         top: (i * 59 + 9) % 100,
-        dur: 14 + (i % 5) * 3,
-        delay: i * 0.7,
+        dur: 10 + (i % 6) * 2.5,
+        delay: i * 0.4,
+        size: 1 + (i % 3) * 0.6,
       })),
+    [],
+  );
+  const fibers = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => {
+        const a1 = (i * 47) % 360;
+        const a2 = (a1 + 120 + (i % 5) * 20) % 360;
+        const r1 = 12 + (i % 4) * 8;
+        const r2 = 30 + (i % 5) * 6;
+        const rad = (deg: number, r: number) => ({
+          x: 50 + Math.cos((deg * Math.PI) / 180) * r,
+          y: 50 + Math.sin((deg * Math.PI) / 180) * r,
+        });
+        const p1 = rad(a1, r1);
+        const p2 = rad(a2, r2);
+        const cx = (p1.x + p2.x) / 2 + Math.sin(i) * 6;
+        const cy = (p1.y + p2.y) / 2 + Math.cos(i) * 6;
+        return { d: `M${p1.x} ${p1.y} Q ${cx} ${cy} ${p2.x} ${p2.y}`, dur: 8 + (i % 4) * 3, delay: i * 0.3 };
+      }),
     [],
   );
   return (
     <>
       {/* Aurora glows */}
       <div
-        className="pointer-events-none absolute -top-16 -left-12 h-40 w-40 rounded-full opacity-40 blur-3xl"
+        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-50 blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute -bottom-16 -right-10 h-44 w-44 rounded-full opacity-35 blur-3xl"
+        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-45 blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)" }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-30 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.45), transparent 70%)" }}
       />
       {/* Neon grid */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        className="pointer-events-none absolute inset-0 opacity-[0.08]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
+          backgroundSize: "22px 22px",
+          maskImage: "radial-gradient(circle at 50% 50%, black 40%, transparent 85%)",
+          WebkitMaskImage: "radial-gradient(circle at 50% 50%, black 40%, transparent 85%)",
         }}
       />
+      {/* Diagonal light beams */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.10] mix-blend-screen"
+        style={{
+          background:
+            "repeating-linear-gradient(115deg, transparent 0 22px, rgba(125,211,252,0.35) 22px 23px, transparent 23px 46px)",
+          maskImage: "radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%)",
+          WebkitMaskImage: "radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%)",
+        }}
+      />
+      {/* Neural fibers */}
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id="fiberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="rgba(56,189,248,0.55)" />
+            <stop offset="50%" stopColor="rgba(168,85,247,0.45)" />
+            <stop offset="100%" stopColor="rgba(45,212,191,0.5)" />
+          </linearGradient>
+          <filter id="fiberBlur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="0.35" />
+          </filter>
+        </defs>
+        {fibers.map((f, i) => (
+          <motion.path
+            key={i}
+            d={f.d}
+            fill="none"
+            stroke="url(#fiberGrad)"
+            strokeWidth={0.18}
+            strokeLinecap="round"
+            filter="url(#fiberBlur)"
+            initial={{ opacity: 0.08, pathLength: 0.4 }}
+            animate={
+              !reducedMotion && active
+                ? { opacity: [0.05, 0.28, 0.05], pathLength: [0.35, 1, 0.35] }
+                : { opacity: 0.12 }
+            }
+            transition={{ duration: f.dur, delay: f.delay, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
+      </svg>
       {/* Particles */}
       {!reducedMotion && active && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {parts.map((p, i) => (
             <motion.span
               key={i}
-              className="absolute h-[2px] w-[2px] rounded-full bg-cyan-300/50"
-              style={{ left: `${p.left}%`, top: `${p.top}%` }}
-              animate={{ y: [-8, 8, -8], opacity: [0.1, 0.6, 0.1] }}
+              className="absolute rounded-full bg-cyan-300/60"
+              style={{
+                left: `${p.left}%`,
+                top: `${p.top}%`,
+                width: `${p.size}px`,
+                height: `${p.size}px`,
+                boxShadow: "0 0 6px rgba(125,211,252,0.85)",
+              }}
+              animate={{ y: [-10, 10, -10], opacity: [0.1, 0.75, 0.1] }}
               transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
             />
           ))}
@@ -880,7 +985,7 @@ const SLOT_STYLE: Record<string, SlotStyle> = {
 
 const PROFESSOR_COLOR = "#a855f7";
 const PROFESSOR_GLOW = "rgba(168,85,247,0.65)";
-const ORBIT_PCT = 37; // % of container radius
+const ORBIT_PCT = 40; // % of container radius
 
 function polar(angleDeg: number, r: number) {
   const a = (angleDeg * Math.PI) / 180;
@@ -930,10 +1035,17 @@ function NeuralGraph({
             <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.85" />
             <stop offset="100%" stopColor={PROFESSOR_COLOR} stopOpacity="0" />
           </radialGradient>
-          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="0.7" result="blur" />
+          <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="1.4" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="2.4" result="b1" />
+            <feMerge>
+              <feMergeNode in="b1" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
@@ -965,7 +1077,7 @@ function NeuralGraph({
                 x2={p.x}
                 y2={p.y}
                 stroke={`url(#line-${a.id})`}
-                strokeWidth={surging ? 0.7 : isAnimated ? 0.55 : 0.35}
+                strokeWidth={surging ? 1.35 : isAnimated ? 1.05 : 0.75}
                 opacity={a.present ? 0.9 : 0.35}
                 filter="url(#softGlow)"
               />
@@ -988,16 +1100,25 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor halo */}
+        {/* Professor halo — 3 camadas */}
         <motion.circle
           cx={50}
           cy={50}
-          r={22}
+          r={32}
+          fill="url(#profGlowOuter)"
+          animate={profActive ? { opacity: [0.25, 0.55, 0.25], scale: [0.95, 1.08, 0.95] } : { opacity: 0.3, scale: 1 }}
+          transition={{ duration: BREATH * 1.4, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(1.2px)" }}
+        />
+        <motion.circle
+          cx={50}
+          cy={50}
+          r={24}
           fill="url(#profGlowOuter)"
           animate={
             profActive
-              ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.5, 0.95, 0.5], scale: professorSurge ? [1, 1.1, 1] : [0.95, 1.06, 0.95] }
-              : { opacity: 0.4, scale: 1 }
+              ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.55, 0.95, 0.55], scale: professorSurge ? [1, 1.12, 1] : [0.96, 1.08, 0.96] }
+              : { opacity: 0.45, scale: 1 }
           }
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: "50px 50px" }}
@@ -1005,13 +1126,13 @@ function NeuralGraph({
         <motion.circle
           cx={50}
           cy={50}
-          r={14}
+          r={16}
           fill="url(#profGlowInner)"
-          animate={profActive ? { opacity: [0.35, 0.75, 0.35] } : { opacity: 0.3 }}
+          animate={profActive ? { opacity: [0.45, 0.85, 0.45] } : { opacity: 0.35 }}
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
         />
 
-        {/* Agent halos (soft glow behind each node) */}
+        {/* Agent halos — 2 camadas por nó */}
         {agents.map((a) => {
           const s = SLOT_STYLE[a.id];
           if (!s) return null;
@@ -1020,21 +1141,36 @@ function NeuralGraph({
           const isAnimated = !!meta.animate && a.present && !reducedMotion;
           const surging = a.surge && !reducedMotion;
           return (
-            <motion.circle
-              key={`halo-${a.id}`}
-              cx={p.x}
-              cy={p.y}
-              r={surging ? 12 : 10}
-              fill={s.color}
-              opacity={a.present ? 0.28 : 0.12}
-              animate={
-                isAnimated || surging
-                  ? { opacity: surging ? [0.25, 0.55, 0.25] : [0.15, 0.35, 0.15], scale: surging ? [1, 1.25, 1] : [1, 1.12, 1] }
-                  : { opacity: a.present ? 0.18 : 0.08, scale: 1 }
-              }
-              transition={{ duration: surging ? 1.6 : BREATH, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
-              style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(1.5px)" }}
-            />
+            <g key={`halo-${a.id}`}>
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={surging ? 18 : 15}
+                fill={s.color}
+                opacity={a.present ? 0.14 : 0.06}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.1, 0.28, 0.1] : [0.08, 0.18, 0.08], scale: surging ? [1, 1.18, 1] : [1, 1.08, 1] }
+                    : { opacity: a.present ? 0.1 : 0.05, scale: 1 }
+                }
+                transition={{ duration: surging ? 1.8 : BREATH * 1.3, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(2.6px)" }}
+              />
+              <motion.circle
+                cx={p.x}
+                cy={p.y}
+                r={surging ? 13 : 11}
+                fill={s.color}
+                opacity={a.present ? 0.32 : 0.14}
+                animate={
+                  isAnimated || surging
+                    ? { opacity: surging ? [0.28, 0.6, 0.28] : [0.2, 0.42, 0.2], scale: surging ? [1, 1.25, 1] : [1, 1.12, 1] }
+                    : { opacity: a.present ? 0.22 : 0.1, scale: 1 }
+                }
+                transition={{ duration: surging ? 1.6 : BREATH, repeat: isAnimated || surging ? Infinity : 0, ease: "easeInOut" }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px`, filter: "blur(1.2px)" }}
+              />
+            </g>
           );
         })}
       </svg>
@@ -1048,7 +1184,7 @@ function NeuralGraph({
         onFocus={() => setHovered("professor")}
         onBlur={() => setHovered(null)}
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
-        style={{ width: "34%", height: "34%" }}
+        style={{ width: "46%", height: "46%" }}
       >
         <div
           className="relative flex h-full w-full items-center justify-center rounded-full border-2"
@@ -1056,7 +1192,7 @@ function NeuralGraph({
             borderColor: PROFESSOR_COLOR,
             background:
               "radial-gradient(circle at 30% 25%, hsl(260 60% 22%) 0%, hsl(255 55% 12%) 55%, hsl(230 65% 5%) 100%)",
-            boxShadow: `0 0 22px ${PROFESSOR_GLOW}, inset 0 0 18px rgba(168,85,247,0.35)`,
+            boxShadow: `0 0 32px ${PROFESSOR_GLOW}, 0 0 60px rgba(168,85,247,0.35), inset 0 0 26px rgba(168,85,247,0.4)`,
           }}
         >
           <Brain className="h-[42%] w-[42%] text-violet-100 drop-shadow-[0_0_6px_rgba(168,85,247,0.9)]" />
@@ -1089,17 +1225,17 @@ function NeuralGraph({
             onFocus={() => setHovered(a.id)}
             onBlur={() => setHovered(null)}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-lg"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "26%" }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "34%" }}
           >
             <motion.div
               className="relative flex items-center justify-center rounded-full border-2"
               style={{
-                width: "78%",
+                width: "100%",
                 aspectRatio: "1 / 1",
                 borderColor: s.color,
                 background:
-                  "radial-gradient(circle at 30% 25%, hsl(224 55% 18%) 0%, hsl(226 65% 9%) 55%, hsl(230 70% 5%) 100%)",
-                boxShadow: `0 0 14px ${s.glow}, inset 0 0 10px ${s.glow}`,
+                  "radial-gradient(circle at 30% 25%, hsl(224 55% 20%) 0%, hsl(226 65% 9%) 55%, hsl(230 70% 5%) 100%)",
+                boxShadow: `0 0 22px ${s.glow}, 0 0 44px ${s.glow}, inset 0 0 14px ${s.glow}`,
                 opacity: a.present ? 1 : 0.55,
               }}
               animate={surging ? { scale: [1, 1.12, 1] } : undefined}
@@ -1115,7 +1251,7 @@ function NeuralGraph({
                 aria-hidden
               />
             </motion.div>
-            <div className="text-[7.5px] font-semibold leading-tight tracking-tight text-cyan-50/95 text-center max-w-full truncate">
+            <div className="mt-0.5 text-[8.5px] font-semibold leading-tight tracking-tight text-cyan-50/95 text-center max-w-full truncate drop-shadow-[0_0_4px_rgba(0,0,0,0.9)]">
               {a.short}
             </div>
           </button>
