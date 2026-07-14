@@ -356,10 +356,35 @@ export class AutonomousRuntime {
           currentEnvelopeId: shLatest?.id ?? null,
         };
 
+        const mergedHealth = persistedBus
+          ? {
+              ...base.health,
+              publishCount: persistedBus.publishCount,
+              lastActivityAt: persistedBus.lastActivityAt ?? base.health.lastActivityAt,
+              level:
+                persistedBus.publishCount > 0 && base.health.errors === 0
+                  ? ("healthy" as const)
+                  : base.health.level,
+            }
+          : base.health;
+        const mergedCache = persistedBus
+          ? { ...base.cache, totalEnvelopes: persistedBus.totalEnvelopes }
+          : base.cache;
         return {
           ...base,
+          health: mergedHealth,
+          cache: mergedCache,
           producers,
           consumers,
+          persistence: persistedBus
+            ? {
+                publishCount: persistedBus.publishCount,
+                totalEnvelopes: persistedBus.totalEnvelopes,
+                lastActivityAt: persistedBus.lastActivityAt,
+                perTopic: persistedBus.perTopic,
+                timeline: envelopeTimeline,
+              }
+            : null,
           // Backward-compat (Etapa 9/10)
           systemHealthProducer: producers["system-health"],
         };
