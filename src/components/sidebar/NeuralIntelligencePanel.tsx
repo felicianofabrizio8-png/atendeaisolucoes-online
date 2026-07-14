@@ -1208,17 +1208,17 @@ function NeuralGraph({
             onFocus={() => setHovered(a.id)}
             onBlur={() => setHovered(null)}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-lg"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "26%" }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: "34%" }}
           >
             <motion.div
               className="relative flex items-center justify-center rounded-full border-2"
               style={{
-                width: "78%",
+                width: "100%",
                 aspectRatio: "1 / 1",
                 borderColor: s.color,
                 background:
-                  "radial-gradient(circle at 30% 25%, hsl(224 55% 18%) 0%, hsl(226 65% 9%) 55%, hsl(230 70% 5%) 100%)",
-                boxShadow: `0 0 14px ${s.glow}, inset 0 0 10px ${s.glow}`,
+                  "radial-gradient(circle at 30% 25%, hsl(224 55% 20%) 0%, hsl(226 65% 9%) 55%, hsl(230 70% 5%) 100%)",
+                boxShadow: `0 0 22px ${s.glow}, 0 0 44px ${s.glow}, inset 0 0 14px ${s.glow}`,
                 opacity: a.present ? 1 : 0.55,
               }}
               animate={surging ? { scale: [1, 1.12, 1] } : undefined}
