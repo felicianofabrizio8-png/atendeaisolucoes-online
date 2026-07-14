@@ -4576,3 +4576,311 @@ function MarkLostModal({
     </div>
   );
 }
+
+// ============================================================================
+// NextActionModal — cria "próxima ação" para o lead.
+// ============================================================================
+const NEXT_ACTION_TYPES: { value: string; label: string }[] = [
+  { value: "Ligação", label: "Ligação" },
+  { value: "WhatsApp", label: "WhatsApp" },
+  { value: "E-mail", label: "E-mail" },
+  { value: "Enviar orçamento", label: "Enviar orçamento" },
+  { value: "Agendar visita", label: "Agendar visita" },
+  { value: "Retorno", label: "Retorno" },
+  { value: "Outro", label: "Outro" },
+];
+
+function NextActionModal({
+  leadName,
+  onCancel,
+  onConfirm,
+}: {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (payload: { label: string; dueAt: string; notes?: string }) => void | Promise<void>;
+}) {
+  const { profile } = useAuth();
+  const now = new Date();
+  const defaultDate = now.toISOString().slice(0, 10);
+  const defaultTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes() + 30).padStart(2, "0")}`.slice(0, 5);
+
+  const [type, setType] = useState<string>("Ligação");
+  const [customLabel, setCustomLabel] = useState("");
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+  const [responsible, setResponsible] = useState(profile?.display_name ?? "");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const isOther = type === "Outro";
+  const finalLabel = isOther ? customLabel.trim() : type;
+  const valid = !!finalLabel && !!date && !!time;
+
+  async function handleSave() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const dueAt = new Date(`${date}T${time}:00`).toISOString();
+      const composedLabel = responsible.trim()
+        ? `${finalLabel} · ${responsible.trim()}`
+        : finalLabel;
+      await onConfirm({ label: composedLabel, dueAt, notes: notes.trim() || undefined });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Definir próxima ação — {leadName}</h2>
+          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tipo *</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {NEXT_ACTION_TYPES.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {isOther && (
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Descreva *</label>
+              <input
+                autoFocus
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                placeholder="Ex.: Enviar catálogo em PDF"
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Data *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hora *</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Responsável</label>
+            <input
+              value={responsible}
+              onChange={(e) => setResponsible(e.target.value)}
+              placeholder="Nome do responsável"
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Observações</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Detalhes adicionais"
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!valid || saving}
+            onClick={handleSave}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
+            Salvar próxima ação
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// ScheduleVisitModal — cria uma visita vinculada ao lead.
+// ============================================================================
+const VISIT_TYPE_OPTIONS: { value: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao"; label: string }[] = [
+  { value: "visita_tecnica", label: "Residência" },
+  { value: "loja", label: "Loja" },
+  { value: "instalacao", label: "Empresa" },
+  { value: "retorno_comercial", label: "Terreno" },
+];
+
+function ScheduleVisitModal({
+  leadName,
+  onCancel,
+  onConfirm,
+}: {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (payload: {
+    date: string;
+    time: string;
+    address: string;
+    appointmentType: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao";
+    confirmed: boolean;
+    notes: string;
+  }) => void | Promise<void>;
+}) {
+  const now = new Date();
+  const [date, setDate] = useState(now.toISOString().slice(0, 10));
+  const [time, setTime] = useState("09:00");
+  const [address, setAddress] = useState("");
+  const [appointmentType, setAppointmentType] =
+    useState<"visita_tecnica" | "loja" | "retorno_comercial" | "instalacao">("visita_tecnica");
+  const [confirmed, setConfirmed] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const needsAddress = appointmentType !== "loja";
+  const valid = !!date && !!time && (!needsAddress || !!address.trim());
+
+  async function handleSave() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      await onConfirm({ date, time, address: address.trim(), appointmentType, confirmed, notes: notes.trim() });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Agendar visita — {leadName}</h2>
+          <button onClick={onCancel} className="ml-auto p-1 rounded hover:bg-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Data *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hora *</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tipo *</label>
+            <select
+              value={appointmentType}
+              onChange={(e) => setAppointmentType(e.target.value as typeof appointmentType)}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {VISIT_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Endereço {needsAddress ? "*" : "(opcional)"}
+            </label>
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              disabled={!needsAddress}
+              placeholder={needsAddress ? "Rua, número, bairro" : "Atendimento na loja"}
+              className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="accent-primary"
+            />
+            Cliente confirmou a visita
+          </label>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Observações</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Instruções ao vendedor, referências do local, etc."
+              className="mt-1 w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent"
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!valid || saving}
+            onClick={handleSave}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Calendar className="h-3.5 w-3.5" />}
+            Agendar visita
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
