@@ -1115,15 +1115,24 @@ function NeuralGraph({
           );
         })}
 
-        {/* Professor halo — 3 camadas */}
+        {/* Professor halo — 4 camadas de profundidade */}
+        <motion.circle
+          cx={50}
+          cy={50}
+          r={42}
+          fill="url(#profGlowOuter)"
+          animate={profActive ? { opacity: [0.15, 0.32, 0.15], scale: [0.94, 1.06, 0.94] } : { opacity: 0.18, scale: 1 }}
+          transition={{ duration: BREATH * 1.8, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(2.4px)" }}
+        />
         <motion.circle
           cx={50}
           cy={50}
           r={32}
           fill="url(#profGlowOuter)"
-          animate={profActive ? { opacity: [0.25, 0.55, 0.25], scale: [0.95, 1.08, 0.95] } : { opacity: 0.3, scale: 1 }}
+          animate={profActive ? { opacity: [0.28, 0.58, 0.28], scale: [0.95, 1.08, 0.95] } : { opacity: 0.32, scale: 1 }}
           transition={{ duration: BREATH * 1.4, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
-          style={{ transformOrigin: "50px 50px", filter: "blur(1.2px)" }}
+          style={{ transformOrigin: "50px 50px", filter: "blur(1.4px)" }}
         />
         <motion.circle
           cx={50}
@@ -1133,7 +1142,7 @@ function NeuralGraph({
           animate={
             profActive
               ? { opacity: professorSurge ? [0.7, 1, 0.7] : [0.55, 0.95, 0.55], scale: professorSurge ? [1, 1.12, 1] : [0.96, 1.08, 0.96] }
-              : { opacity: 0.45, scale: 1 }
+              : { opacity: 0.48, scale: 1 }
           }
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
           style={{ transformOrigin: "50px 50px" }}
@@ -1143,7 +1152,7 @@ function NeuralGraph({
           cy={50}
           r={16}
           fill="url(#profGlowInner)"
-          animate={profActive ? { opacity: [0.45, 0.85, 0.45] } : { opacity: 0.35 }}
+          animate={profActive ? { opacity: [0.5, 0.9, 0.5] } : { opacity: 0.4 }}
           transition={{ duration: BREATH, repeat: profActive ? Infinity : 0, ease: "easeInOut" }}
         />
 
