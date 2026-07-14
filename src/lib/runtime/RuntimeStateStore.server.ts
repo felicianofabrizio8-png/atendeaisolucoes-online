@@ -29,6 +29,7 @@ function rpc(): RpcClient {
 export interface RuntimeFlags {
   autonomyEnabled: boolean;
   systemHealthEnabled: boolean;
+  businessBrainEnabled: boolean;
   killSwitch: boolean;
   schedulerEnabled: boolean;
   updatedAt: string | null;
@@ -41,11 +42,13 @@ const flagsCache = new Map<string, { value: RuntimeFlags; expiresAt: number }>()
 const FLAG_DEFAULTS: RuntimeFlags = {
   autonomyEnabled: false,
   systemHealthEnabled: false,
+  businessBrainEnabled: false,
   killSwitch: true, // fail-closed
   schedulerEnabled: false,
   updatedAt: null,
   updatedBy: null,
 };
+
 
 export async function getRuntimeFlags(tenantId: string): Promise<RuntimeFlags> {
   const now = Date.now();
