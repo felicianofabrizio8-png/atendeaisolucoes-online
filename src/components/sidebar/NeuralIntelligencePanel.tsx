@@ -369,14 +369,76 @@ export function NeuralIntelligencePanel() {
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
     const raw = snap?.learning?.perAgent;
-    const list: LearningPerAgent[] = Array.isArray(raw)
+    if (!raw) return m;
+    if (Array.isArray(raw)) {
+      // Fallback defensivo caso o formato mude para array com agentId embutido
+      for (const p of raw as Array<LearningPerAgent & { agentId?: string }>) {
+        if (p && typeof p === "object" && typeof p.agentId === "string") {
+          m.set(p.agentId, p);
+        }
+      }
+    } else if (typeof raw === "object") {
+      for (const [agentId, entry] of Object.entries(raw as Record<string, LearningPerAgent>)) {
+        if (entry && typeof entry === "object") m.set(agentId, entry);
+      }
+    }
+    return m;
+  }, [snap]);
+
+  const lastRealExecMap = useMemo(() => {
+    const m = new Map<string, LastRealExecution>();
+    const raw = snap?.execution?.lastRealExecutions;
+    const list: LastRealExecution[] = Array.isArray(raw)
       ? raw
       : raw && typeof raw === "object"
-      ? (Object.values(raw as Record<string, LearningPerAgent>) ?? [])
+      ? (Object.values(raw as Record<string, LastRealExecution>) ?? [])
       : [];
-    for (const p of list) {
-      if (p && typeof p === "object" && typeof p.agentId === "string") {
-        m.set(p.agentId, p);
+    for (const e of list) {
+      if (e && typeof e === "object" && typeof e.agentId === "string") m.set(e.agentId, e);
+    }
+    return m;
+  }, [snap]);
+
+  const connectedSet = useMemo(() => {
+    const s = new Set<string>();
+    const raw = snap?.intelligence?.connectedAgents;
+    const list: ConnectedAgentEntry[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, ConnectedAgentEntry>) ?? [])
+      : [];
+    for (const c of list) {
+      if (c && typeof c === "object" && typeof c.agentId === "string") s.add(c.agentId);
+    }
+    return s;
+  }, [snap]);
+
+  const jobHintMap = useMemo(() => {
+    const m = new Map<string, AgentJobHint>();
+    const raw = snap?.recentJobs;
+    const jobs: RecentJob[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+      ? (Object.values(raw as Record<string, RecentJob>) ?? [])
+      : [];
+    for (const j of jobs) {
+      if (!j || typeof j !== "object" || typeof j.agentId !== "string") continue;
+      const ts = iso(j.finishedAt) ?? iso(j.startedAt) ?? iso(j.createdAt);
+      let hint = m.get(j.agentId);
+      if (!hint) {
+        hint = { latestStatus: null, latestTs: undefined, hasProcessing: false, hasQueued: false };
+        m.set(j.agentId, hint);
+      }
+      if (ts && (!hint.latestTs || ts > hint.latestTs)) {
+        hint.latestTs = ts;
+        hint.latestStatus = typeof j.status === "string" ? j.status : null;
+        hint.lastError = j.lastError ?? null;
+      }
+      if (j.status === "processing") hint.hasProcessing = true;
+      if (j.status === "queued" || j.status === "scheduled" || j.status === "retry") hint.hasQueued = true;
+      if (j.status === "completed") hint.lastCompletedTs = Math.max(hint.lastCompletedTs ?? 0, ts ?? 0);
+      if (j.status === "failed" || j.status === "dead_letter" || j.status === "timeout") {
+        hint.lastFailedTs = Math.max(hint.lastFailedTs ?? 0, ts ?? 0);
       }
     }
     return m;
@@ -411,10 +473,10 @@ export function NeuralIntelligencePanel() {
         id: a.id,
         label: meta.label,
         short: meta.short,
-        resolved: resolveAgent(a, learningMap),
+        resolved: resolveAgent(a, learningMap, lastRealExecMap, jobHintMap, connectedSet),
       };
     });
-  }, [snap, learningMap]);
+  }, [snap, learningMap, lastRealExecMap, jobHintMap, connectedSet]);
 
   // Surge: detecta mudança de lastExecution/lastSuccess/lastLearning por agente.
   const prevRef = useRef<Record<string, number | undefined>>({});
