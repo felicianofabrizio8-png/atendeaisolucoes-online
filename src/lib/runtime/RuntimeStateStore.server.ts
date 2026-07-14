@@ -20,7 +20,13 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 type RpcClient = (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 type Admin = typeof supabaseAdmin & Record<string, unknown>;
 function rpc(): RpcClient {
-  return (supabaseAdmin as Admin).rpc as unknown as RpcClient;
+  // IMPORTANTE: `.rpc` precisa ser chamado como método (this=client). Se retornado
+  // como função nua, supabase-js lança "undefined is not an object (this.rest)"
+  // e o catch dos tryDedupe/tryAcquireLock/releaseLock engole silenciosamente,
+  // resultando em duplicate_prevented / lock_denied falsos.
+  const admin = supabaseAdmin as Admin;
+  const rpcFn = admin.rpc as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  return rpcFn.bind(admin) as unknown as RpcClient;
 }
 
 // ---------------------------------------------------------------------------
