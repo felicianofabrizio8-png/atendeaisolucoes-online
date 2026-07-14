@@ -407,8 +407,13 @@ function buildDisplayAgent(
     case "scientific-knowledge": {
       const cycles = learn?.cycles ?? 0;
       const consolidated = learn?.consolidated ?? 0;
-      metricPrimary = `${cycles} hipóteses`;
-      metricSecondary = `${consolidated} consolidadas · ${formatRelative(resolved.updatedAt)}`;
+      const envelopes = busEnvelopes;
+      const primaryCount = cycles > 0 ? cycles : envelopes;
+      metricPrimary = cycles > 0 ? `${cycles} hipóteses` : envelopes > 0 ? `${envelopes} envelopes` : "sem dados";
+      metricSecondary =
+        primaryCount > 0
+          ? `${consolidated} consolidadas · ${formatRelative(resolved.updatedAt)}`
+          : "aguardando publicação";
       break;
     }
     case "executive-intelligence": {
