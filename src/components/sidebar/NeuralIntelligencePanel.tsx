@@ -216,49 +216,99 @@ interface Resolved {
   detail?: string;
 }
 
-function resolveAgent(a: AgentEntry, learningMap: Map<string, LearningPerAgent>): Resolved {
+interface AgentJobHint {
+  latestStatus: string | null;
+  latestTs: number | undefined;
+  hasProcessing: boolean;
+  hasQueued: boolean;
+  lastCompletedTs?: number;
+  lastFailedTs?: number;
+  lastError?: string | null;
+}
+
+function resolveAgent(
+  a: AgentEntry,
+  learningMap: Map<string, LearningPerAgent>,
+  lastRealExecMap: Map<string, LastRealExecution>,
+  jobHintMap: Map<string, AgentJobHint>,
+  connectedSet: Set<string>,
+): Resolved {
   const learn = learningMap.get(a.id);
+  const realExec = lastRealExecMap.get(a.id);
+  const jobHint = jobHintMap.get(a.id);
   const lastExec = iso(a.state.lastExecution);
   const lastSuccess = iso(a.state.lastSuccess);
   const lastFail = iso(a.state.lastFailure);
-  const lastLearning = iso(learn?.lastLearningAt ?? null);
+  const lastLearning = iso(learn?.lastAt ?? null);
+  const lastRealFinished = iso(realExec?.finishedAt ?? realExec?.startedAt ?? null);
   const now = Date.now();
 
   if (!a.enabled || a.state.status === "disabled") {
-    return { bucket: "idle", stateLabel: "desativado", updatedAt: lastExec };
+    return { bucket: "disabled", stateLabel: "desativado", updatedAt: lastExec };
   }
-  if (a.state.status === "running") {
-    return { bucket: "active", stateLabel: "executando", updatedAt: lastExec };
+
+  // Running: agent.state, execution.lastRealExecutions ou fila em processamento
+  if (a.state.status === "running" || jobHint?.hasProcessing) {
+    return {
+      bucket: "running",
+      stateLabel: "executando",
+      updatedAt: jobHint?.latestTs ?? lastRealFinished ?? lastExec,
+    };
   }
+
+  // Erro real: failure recente do agente ou última execução real com falha
+  const realFailed = realExec?.outcome === "failure" || realExec?.outcome === "timeout";
   if (
     a.state.status === "failure" ||
+    realFailed ||
     (a.state.lastError && lastFail && lastSuccess && lastFail > lastSuccess) ||
     (a.state.lastError && lastFail && !lastSuccess)
   ) {
     return {
       bucket: "error",
       stateLabel: "erro",
-      updatedAt: lastFail ?? lastExec,
-      detail: a.state.lastError ?? undefined,
+      updatedAt: lastFail ?? lastRealFinished ?? lastExec,
+      detail: realExec?.error ?? a.state.lastError ?? undefined,
     };
   }
-  if (lastLearning && now - lastLearning < 5 * 60_000) {
+
+  // Queued: fila com jobs aguardando dispatch
+  if (jobHint?.hasQueued) {
+    return { bucket: "queued", stateLabel: "na fila", updatedAt: jobHint.latestTs };
+  }
+
+  // Learning: perAgent do Learning Loop com atividade recente
+  if (learn && (learn.cycles > 0 || learn.consolidated > 0) && lastLearning && now - lastLearning < 5 * 60_000) {
+    if (learn.consolidated > 0 && now - lastLearning < 2 * 60_000) {
+      return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastLearning };
+    }
     return { bucket: "learning", stateLabel: "aprendendo", updatedAt: lastLearning };
   }
-  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
-    return { bucket: "active", stateLabel: "online", updatedAt: lastSuccess };
+
+  // Completed: execução real bem-sucedida recente
+  if (realExec?.outcome === "success" && lastRealFinished && now - lastRealFinished < 5 * 60_000) {
+    return { bucket: "completed", stateLabel: "concluído", updatedAt: lastRealFinished };
   }
+  if (lastSuccess && now - lastSuccess < 5 * 60_000) {
+    return { bucket: "completed", stateLabel: "concluído", updatedAt: lastSuccess };
+  }
+
   if (a.state.health === "degraded") {
-    return { bucket: "consolidating", stateLabel: "consolidando", updatedAt: lastExec };
+    return { bucket: "consolidating", stateLabel: "degradado", updatedAt: lastExec };
   }
   if (a.state.health === "down") {
     return { bucket: "error", stateLabel: "indisponível", updatedAt: lastExec };
   }
-  return { bucket: "waiting", stateLabel: "aguardando", updatedAt: lastExec };
+
+  // Sem sinal recente: conectado ao Runtime = idle, caso contrário disabled visual
+  if (!connectedSet.has(a.id)) {
+    return { bucket: "idle", stateLabel: "ocioso", updatedAt: lastExec };
+  }
+  return { bucket: "idle", stateLabel: "aguardando trabalho", updatedAt: lastExec };
 }
 
 function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
-  if (!snap) return { bucket: "waiting", stateLabel: "conectando" };
+  if (!snap) return { bucket: "idle", stateLabel: "conectando" };
   if (snap.autonomy?.tenantEnabled?.killSwitch) {
     return { bucket: "error", stateLabel: "kill switch ativo" };
   }
@@ -266,11 +316,11 @@ function resolveProfessor(snap: RuntimeSnapshot | null): Resolved {
   const hbTs = iso(snap.status?.lastHeartbeat?.ts);
   const agentsArr = Array.isArray(snap.agents) ? snap.agents : [];
   const anyRunning = agentsArr.some((a) => a?.state?.status === "running");
-  if (anyRunning) return { bucket: "active", stateLabel: "coordenando", updatedAt: hbTs };
+  if (anyRunning) return { bucket: "running", stateLabel: "coordenando", updatedAt: hbTs };
   if ((snap.status?.healthyAgents ?? 0) > 0) {
-    return { bucket: "active", stateLabel: "online", updatedAt: hbTs };
+    return { bucket: "completed", stateLabel: "online", updatedAt: hbTs };
   }
-  return { bucket: "waiting", stateLabel: "aguardando agentes", updatedAt: hbTs };
+  return { bucket: "idle", stateLabel: "aguardando agentes", updatedAt: hbTs };
 }
 
 /* -------------------- Componente principal -------------------- */
