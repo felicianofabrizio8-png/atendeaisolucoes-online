@@ -28,6 +28,7 @@ import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
 import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
 import { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
 import { LearningLoop } from "./LearningLoop.server";
+import { RuntimePersistence } from "./RuntimePersistence.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
