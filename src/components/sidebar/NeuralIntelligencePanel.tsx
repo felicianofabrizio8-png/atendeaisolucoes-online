@@ -1175,7 +1175,7 @@ function NeuralGraph({
             borderColor: PROFESSOR_COLOR,
             background:
               "radial-gradient(circle at 30% 25%, hsl(260 60% 22%) 0%, hsl(255 55% 12%) 55%, hsl(230 65% 5%) 100%)",
-            boxShadow: `0 0 22px ${PROFESSOR_GLOW}, inset 0 0 18px rgba(168,85,247,0.35)`,
+            boxShadow: `0 0 32px ${PROFESSOR_GLOW}, 0 0 60px rgba(168,85,247,0.35), inset 0 0 26px rgba(168,85,247,0.4)`,
           }}
         >
           <Brain className="h-[42%] w-[42%] text-violet-100 drop-shadow-[0_0_6px_rgba(168,85,247,0.9)]" />
