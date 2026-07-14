@@ -28,6 +28,7 @@ import { ExecutiveKnowledgeAdapter } from "./ExecutiveKnowledgeAdapter.server";
 import { ExecutiveNarrativeAdapter } from "./ExecutiveNarrativeAdapter.server";
 import { SharedIntelligenceContext } from "./context/SharedIntelligenceContext.server";
 import { LearningLoop } from "./LearningLoop.server";
+import { RuntimePersistence } from "./RuntimePersistence.server";
 import { RUNTIME_VERSION, type RuntimeJobCounters, type RuntimeStatus } from "./RuntimeTypes";
 
 export class AutonomousRuntime {
@@ -114,6 +115,7 @@ export class AutonomousRuntime {
     (this.scheduler as unknown as { dispatcher: AgentDispatcher })["dispatcher"] = this._dispatcher;
     this.executionEngine.rebind({ dispatcher: this._dispatcher });
     this.worker.bindQueue(this._queue);
+    RuntimePersistence.instance().bindWriter(writer);
   }
 
   get dispatcher(): AgentDispatcher {
@@ -167,33 +169,52 @@ export class AutonomousRuntime {
       ? await this._queue.list({ tenantId, limit: 25 }).catch(() => [])
       : [];
     const learningSnapshot = this.learningLoop.snapshotFor(tenantId);
+    const persistence = RuntimePersistence.instance();
+    const [persistedLearning, persistedBus, learningTimeline, envelopeTimeline] = tenantId
+      ? await Promise.all([
+          persistence.learningAggregate(tenantId),
+          persistence.busAggregate(tenantId),
+          persistence.recentLearning(tenantId, 20),
+          persistence.recentEnvelopes(tenantId, 20),
+        ])
+      : [null, null, [], []];
     return {
       status: this.status(),
       autonomy,
       heartbeat: tick,
       counters,
       learning: {
-        cycles: learningSnapshot.metrics.learningCycles,
+        cycles: persistedLearning?.cycles ?? learningSnapshot.metrics.learningCycles,
         hypotheses: {
-          created: learningSnapshot.metrics.hypothesesCreated,
-          accepted: learningSnapshot.metrics.hypothesesAccepted,
-          rejected: learningSnapshot.metrics.hypothesesRejected,
-          consolidated: learningSnapshot.metrics.knowledgeConsolidated,
+          created:
+            (persistedLearning?.cycles ?? learningSnapshot.metrics.hypothesesCreated) || 0,
+          accepted:
+            persistedLearning?.accepted ?? learningSnapshot.metrics.hypothesesAccepted,
+          rejected:
+            persistedLearning?.rejected ?? learningSnapshot.metrics.hypothesesRejected,
+          consolidated:
+            persistedLearning?.consolidated ?? learningSnapshot.metrics.knowledgeConsolidated,
         },
-        knowledgeConsolidated: learningSnapshot.metrics.knowledgeConsolidated,
-        averageConfidence: learningSnapshot.metrics.averageConfidence,
-        lastLearning: learningSnapshot.metrics.lastLearningAt,
-        lastAgent: learningSnapshot.metrics.lastAgentId,
+        knowledgeConsolidated:
+          persistedLearning?.consolidated ?? learningSnapshot.metrics.knowledgeConsolidated,
+        averageConfidence:
+          persistedLearning?.averageConfidence ?? learningSnapshot.metrics.averageConfidence,
+        lastLearning:
+          persistedLearning?.lastLearningAt ?? learningSnapshot.metrics.lastLearningAt,
+        lastAgent: persistedLearning?.lastAgentId ?? learningSnapshot.metrics.lastAgentId,
         ignoredExecutions: learningSnapshot.metrics.ignoredExecutions,
-        perAgent: learningSnapshot.metrics.perAgent,
+        perAgent: persistedLearning?.perAgent ?? learningSnapshot.metrics.perAgent,
         store: learningSnapshot.store,
         lastCycle: learningSnapshot.lastCycle,
         chain: learningSnapshot.chain,
         tenant: learningSnapshot.tenant ?? null,
+        timeline: learningTimeline,
+        persistence: persistence.stats(),
         knowledgeEvolution: {
           consolidatedTenants: learningSnapshot.store.tenantsWithConsolidated,
-          totalCycles: learningSnapshot.store.totalCycles,
-          averageConfidence: learningSnapshot.metrics.averageConfidence,
+          totalCycles: persistedLearning?.cycles ?? learningSnapshot.store.totalCycles,
+          averageConfidence:
+            persistedLearning?.averageConfidence ?? learningSnapshot.metrics.averageConfidence,
         },
       },
       agents: this.registry.list().map((a) => ({
@@ -335,10 +356,35 @@ export class AutonomousRuntime {
           currentEnvelopeId: shLatest?.id ?? null,
         };
 
+        const mergedHealth = persistedBus
+          ? {
+              ...base.health,
+              publishCount: persistedBus.publishCount,
+              lastActivityAt: persistedBus.lastActivityAt ?? base.health.lastActivityAt,
+              level:
+                persistedBus.publishCount > 0 && base.health.errors === 0
+                  ? ("healthy" as const)
+                  : base.health.level,
+            }
+          : base.health;
+        const mergedCache = persistedBus
+          ? { ...base.cache, totalEnvelopes: persistedBus.totalEnvelopes }
+          : base.cache;
         return {
           ...base,
+          health: mergedHealth,
+          cache: mergedCache,
           producers,
           consumers,
+          persistence: persistedBus
+            ? {
+                publishCount: persistedBus.publishCount,
+                totalEnvelopes: persistedBus.totalEnvelopes,
+                lastActivityAt: persistedBus.lastActivityAt,
+                perTopic: persistedBus.perTopic,
+                timeline: envelopeTimeline,
+              }
+            : null,
           // Backward-compat (Etapa 9/10)
           systemHealthProducer: producers["system-health"],
         };
