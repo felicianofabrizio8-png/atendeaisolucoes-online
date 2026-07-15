@@ -237,7 +237,7 @@ describe("api.whatsapp.templates.send — migração B.3 (template)", () => {
     });
     const res = await invoke(
       "@/routes/api.whatsapp.templates.send",
-      jsonRequest({ conversationId: "conv-1", templateId: "tpl-1", variables: { "1": "João" } }),
+      jsonRequest({ conversationId: "conv-1", templateId: "tpl-1", variables: { nome: "João" } }),
     );
     expect(res.status).toBe(200);
     expect(postGraphSpy).toHaveBeenCalledTimes(1);
@@ -271,7 +271,7 @@ describe("api.whatsapp.templates.send — migração B.3 (template)", () => {
     });
     const res = await invoke(
       "@/routes/api.whatsapp.templates.send",
-      jsonRequest({ conversationId: "conv-1", templateId: "tpl-1", variables: { "1": "João" } }),
+      jsonRequest({ conversationId: "conv-1", templateId: "tpl-1", variables: { nome: "João" } }),
     );
     expect(res.status).toBe(200);
     const json = await res.json();
