@@ -485,10 +485,26 @@ function friendlyFeedMessage(j: RecentJob): string {
 
 /* -------------------- Componente principal -------------------- */
 
+const COLLAPSE_KEY = "atendeai.neural.collapsed";
+
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
   const reducedMotion = useReducedMotion();
   const { data: snap, isLoading, isError } = useRuntimeStatus(!!user);
+
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const v = window.localStorage.getItem(COLLAPSE_KEY);
+    if (v === "1") return true;
+    if (v === "0") return false;
+    // Notebook / tela baixa: iniciar recolhido
+    return typeof window !== "undefined" && window.innerHeight < 780;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
 
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
