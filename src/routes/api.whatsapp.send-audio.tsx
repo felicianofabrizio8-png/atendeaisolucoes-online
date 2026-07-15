@@ -10,6 +10,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
 const BUCKET = "whatsapp-media";
 const MAX_BYTES = 16 * 1024 * 1024; // WhatsApp Cloud API: audio até 16MB
