@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Facebook,
+  Info,
   Instagram,
   MessageSquare,
   RefreshCw,
