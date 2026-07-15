@@ -125,7 +125,8 @@ export async function postGraph<TRaw = unknown>(
     };
   }
 
-  const externalId = input.extractExternalId ? input.extractExternalId(json) : null;
+  const successJson: unknown = parsedOk ? parsed : text || null;
+  const externalId = input.extractExternalId ? input.extractExternalId(successJson) : null;
   return {
     success: true,
     simulated: false,
@@ -133,7 +134,7 @@ export async function postGraph<TRaw = unknown>(
     externalRequestSent: true,
     externalId,
     status: res.status,
-    raw: json as TRaw,
+    raw: successJson as TRaw,
   };
 }
 
