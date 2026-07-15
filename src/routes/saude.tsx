@@ -372,9 +372,13 @@ function HealthPage() {
   const [showAllAudit, setShowAllAudit] = useState(false);
 
   const alerts = useMemo(() => (data?.ok ? deriveAlerts(data) : []), [data]);
-  const status = useMemo(
-    () => (data?.ok ? overallStatus(data, alerts) : null),
+  const healthScore = useMemo(
+    () => (data?.ok ? computeHealthScore(data, alerts) : 0),
     [data, alerts],
+  );
+  const status = useMemo(
+    () => (data?.ok ? overallStatus(data, alerts, healthScore) : null),
+    [data, alerts, healthScore],
   );
 
   if (isLoading) {
