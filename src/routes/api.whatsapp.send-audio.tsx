@@ -489,7 +489,9 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               meta_error_subcode: providerErr.error_subcode ?? null,
               meta_error_type: providerErr.type ?? null,
               fbtrace_id: providerErr.fbtrace_id ?? null,
-              meta_body: isNetwork ? null : JSON.stringify(outbound.providerError ?? null),
+              meta_body: isNetwork
+                ? null
+                : (outbound.rawBody ?? JSON.stringify(outbound.providerError ?? null)),
               meta_message_id: null,
             },
           }).then(() => null, () => null);
@@ -531,7 +533,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               meta_error_subcode: providerErr.error_subcode ?? null,
               meta_error_type: providerErr.type ?? null,
               fbtrace_id: providerErr.fbtrace_id ?? null,
-              meta_body: JSON.stringify(outbound.providerError ?? null),
+              meta_body: outbound.rawBody ?? JSON.stringify(outbound.providerError ?? null),
               meta_message_id: null,
               payload,
               phone_number_id: integration.external_account_id,

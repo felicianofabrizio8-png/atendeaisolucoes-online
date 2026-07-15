@@ -189,4 +189,120 @@ describe("MetaOutbound.postGraph", () => {
     expect(r.externalRequestSent).toBe(false);
     expect(r.error).toContain("ECONNRESET");
   });
+
+  it("falha 4xx JSON → rawBody preserva texto original, parsedBody = objeto, providerError e status corretos", async () => {
+    const rawText = '{"error":{"message":"bad audio","code":100,"error_subcode":2494048,"fbtrace_id":"ABC"}}';
+    const fetchSpy = vi.fn(async () =>
+      new Response(rawText, {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const r = await postGraph({
+      companyId: COMPANY,
+      action: "whatsapp.send.audio",
+      url: "https://graph.facebook.com/v20.0/x/messages",
+      guardDeps: {
+        isEnabled: async () => false,
+        lookupEnv: async () => ({ ok: true, environment: "production", cachedAt: 0 }),
+        logger: async () => ({ ok: true, id: "x" }),
+      },
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+    expect(isFailure(r)).toBe(true);
+    if (!isFailure(r)) throw new Error("unreachable");
+    expect(r.rawBody).toBe(rawText);
+    expect(r.parsedBody).toEqual(JSON.parse(rawText));
+    expect((r.providerError as { code?: number })?.code).toBe(100);
+    expect(r.status).toBe(400);
+    expect(r.error).toBe("bad audio");
+  });
+
+  it("falha com corpo NÃO-JSON → rawBody preservado integralmente, parsedBody=null", async () => {
+    const rawText = "upstream 502 gateway";
+    const fetchSpy = vi.fn(async () =>
+      new Response(rawText, { status: 502, headers: { "content-type": "text/plain" } }),
+    );
+    const r = await postGraph({
+      companyId: COMPANY,
+      action: "whatsapp.send.audio",
+      url: "https://graph.facebook.com/v20.0/x/messages",
+      guardDeps: {
+        isEnabled: async () => false,
+        lookupEnv: async () => ({ ok: true, environment: "production", cachedAt: 0 }),
+        logger: async () => ({ ok: true, id: "x" }),
+      },
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+    expect(isFailure(r)).toBe(true);
+    if (!isFailure(r)) throw new Error("unreachable");
+    expect(r.rawBody).toBe(rawText);
+    expect(r.parsedBody).toBeNull();
+    expect(r.status).toBe(502);
+    expect(r.retryable).toBe(true);
+  });
+
+  it("simulação staging → NÃO fabrica rawBody/parsedBody", async () => {
+    const r = await postGraph({
+      companyId: COMPANY,
+      action: "whatsapp.send.audio",
+      url: "https://graph.facebook.com/v20.0/x/messages",
+      guardDeps: {
+        isEnabled: async () => true,
+        lookupEnv: async () => ({ ok: true, environment: "staging", cachedAt: 0 }),
+        logger: async () => ({ ok: true, id: "sim-1" }),
+      },
+      fetchImpl: (async () => {
+        throw new Error("não deveria ser chamado");
+      }) as unknown as typeof fetch,
+    });
+    expect(isSimulation(r)).toBe(true);
+    const asAny = r as unknown as Record<string, unknown>;
+    expect(asAny.rawBody).toBeUndefined();
+    expect(asAny.parsedBody).toBeUndefined();
+  });
+
+  it("erro de rede → NÃO fabrica rawBody (fetch nunca completou)", async () => {
+    const r = await postGraph({
+      companyId: COMPANY,
+      action: "whatsapp.send.audio",
+      url: "https://graph.facebook.com/v20.0/x/messages",
+      guardDeps: {
+        isEnabled: async () => false,
+        lookupEnv: async () => ({ ok: true, environment: "production", cachedAt: 0 }),
+        logger: async () => ({ ok: true, id: "x" }),
+      },
+      fetchImpl: (async () => {
+        throw new Error("ENETDOWN");
+      }) as unknown as typeof fetch,
+    });
+    expect(isFailure(r)).toBe(true);
+    if (!isFailure(r)) throw new Error("unreachable");
+    expect(r.rawBody).toBeUndefined();
+    expect(r.parsedBody).toBeUndefined();
+    expect(r.externalRequestSent).toBe(false);
+  });
+
+  it("sucesso 200 → contrato de sucesso inalterado (sem rawBody/parsedBody)", async () => {
+    const fetchSpy = vi.fn(async () => fakeResponse(200, { messages: [{ id: "wamid.OK" }] }));
+    const r = await postGraph({
+      companyId: COMPANY,
+      action: "whatsapp.send.text",
+      url: "https://graph.facebook.com/v20.0/x/messages",
+      extractExternalId: (j) =>
+        (j as { messages?: Array<{ id: string }> }).messages?.[0]?.id ?? null,
+      guardDeps: {
+        isEnabled: async () => false,
+        lookupEnv: async () => ({ ok: true, environment: "production", cachedAt: 0 }),
+        logger: async () => ({ ok: true, id: "x" }),
+      },
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+    expect(isRealDelivery(r)).toBe(true);
+    if (!isRealDelivery(r)) throw new Error("unreachable");
+    const asAny = r as unknown as Record<string, unknown>;
+    expect(asAny.rawBody).toBeUndefined();
+    expect(asAny.parsedBody).toBeUndefined();
+    expect(r.externalId).toBe("wamid.OK");
+  });
 });
