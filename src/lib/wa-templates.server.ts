@@ -13,6 +13,8 @@
 //  - inbox / messages / conversations
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
 export type TemplateCategory = "utility" | "marketing" | "authentication";
 export type TemplatePurpose =
@@ -197,18 +199,47 @@ export function renderTemplateBody(
 // Envio via Cloud API (type=template)
 // ---------------------------------------------------------------------------
 
-export interface SendTemplateResult {
-  ok: boolean;
-  externalId?: string | null;
-  error?: string;
-  metaError?: {
-    code?: number;
-    subcode?: number;
-    type?: string;
-    message?: string;
-  } | null;
-  status?: number;
-}
+/**
+ * Contrato de retorno discriminado de `sendWhatsappTemplate` (Fase B.5).
+ *
+ * - `simulated:false, ok:true`  → envio real via MetaOutbound.
+ * - `simulated:true,  ok:true`  → EnvironmentGuard bloqueou (staging/unknown).
+ *   Consumidores DEVEM tratar como não-entregue (sem retry, sem contagem
+ *   real, sem `external_id` fabricado, sem update de integração).
+ * - `ok:false`                  → falha (HTTP não-2xx, meta error ou rede).
+ *
+ * Campos legados (`externalId`, `error`, `metaError`, `status`) preservados
+ * para compatibilidade com consumidores existentes.
+ */
+export type SendTemplateResult =
+  | {
+      ok: true;
+      simulated: false;
+      externalId: string | null;
+      metaError?: null;
+      status?: number;
+    }
+  | {
+      ok: true;
+      simulated: true;
+      externalId: null;
+      simulationId: string | null;
+      externalRequestSent: false;
+    }
+  | {
+      ok: false;
+      simulated: false;
+      error: string;
+      metaError?: {
+        code?: number;
+        subcode?: number;
+        type?: string;
+        message?: string;
+      } | null;
+      status?: number;
+      rawBody?: string;
+      parsedBody?: unknown;
+    };
 
 export async function sendWhatsappTemplate(params: {
   companyId: string;
@@ -227,10 +258,10 @@ export async function sendWhatsappTemplate(params: {
     .select("phone, external_id, integration_id, name")
     .eq("id", leadId)
     .maybeSingle();
-  if (!lead) return { ok: false, error: "lead não encontrado" };
+  if (!lead) return { ok: false, simulated: false, error: "lead não encontrado" };
   const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
   if (recipient.length < 8 || recipient.length > 15) {
-    return { ok: false, error: "telefone inválido" };
+    return { ok: false, simulated: false, error: "telefone inválido" };
   }
 
   // 2) Integração WhatsApp Cloud da empresa
@@ -244,7 +275,7 @@ export async function sendWhatsappTemplate(params: {
     ? await intQuery.eq("id", lead.integration_id).maybeSingle()
     : await intQuery.limit(1).maybeSingle();
   if (!integration?.access_token || !integration.external_account_id) {
-    return { ok: false, error: "WhatsApp Cloud não conectado" };
+    return { ok: false, simulated: false, error: "WhatsApp Cloud não conectado" };
   }
 
   // 3) Template aprovado
@@ -268,7 +299,7 @@ export async function sendWhatsappTemplate(params: {
       expected_category: expectedCategory,
       conversation_id: conversationId,
     });
-    return { ok: false, error: reason };
+    return { ok: false, simulated: false, error: reason };
   }
   // Garantia: a categoria do template precisa bater com a esperada para o propósito.
   if (template.category !== expectedCategory) {
@@ -281,6 +312,7 @@ export async function sendWhatsappTemplate(params: {
     });
     return {
       ok: false,
+      simulated: false,
       error: `Template "${template.name}" tem categoria ${template.category}, esperada ${expectedCategory} para o propósito "${purpose}".`,
     };
   }
@@ -306,88 +338,105 @@ export async function sendWhatsappTemplate(params: {
     },
   };
 
-  // 5) Envia para Cloud API
+  // 5) Envia para Cloud API via MetaOutbound (única porta de saída autorizada)
   const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
-  let res: Response;
-  try {
-    res = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${integration.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    const error = e instanceof Error ? e.message : "falha de rede";
+  const outbound = await postGraph<{
+    messages?: Array<{ id: string }>;
+    error?: { message?: string; code?: number; type?: string; error_subcode?: number };
+  }>({
+    companyId,
+    action: "whatsapp.send.template",
+    url: apiUrl,
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${integration.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    logicalPayload: payload,
+    agentId: "wa-template",
+    extractExternalId: (j) =>
+      (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+  });
+
+  // Staging/unknown → simulação explícita. NÃO persiste mensagem, NÃO
+  // loga template_sent (é um envio não realizado), NÃO atualiza conversa.
+  if (isSimulation(outbound)) {
+    return {
+      ok: true,
+      simulated: true,
+      externalId: null,
+      simulationId: outbound.simulationId,
+      externalRequestSent: false,
+    };
+  }
+
+  if (!isRealDelivery(outbound)) {
+    // Falha (HTTP ou rede). Reconstrói meta_error a partir de parsedBody.
+    if (outbound.externalRequestSent) {
+      const parsed = (outbound.parsedBody ?? null) as
+        | { error?: { message?: string; code?: number; type?: string; error_subcode?: number } }
+        | null;
+      const metaError = parsed?.error ?? null;
+      const raw = outbound.rawBody ?? "";
+      console.error("[WA_TEMPLATE_HTTP]", outbound.status, raw.slice(0, 500));
+      await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
+        template_name: template.name,
+        template_category: template.category,
+        template_language: template.language,
+        purpose,
+        delivery_method: "template",
+        status: outbound.status,
+        meta_error_code: metaError?.code ?? null,
+        meta_error_subcode: metaError?.error_subcode ?? null,
+        meta_error_type: metaError?.type ?? null,
+        meta_error_message: metaError?.message ?? null,
+      });
+      await logErrorAndAudit(companyId, leadId, "template_send_error", {
+        template_name: template.name,
+        template_category: template.category,
+        purpose,
+        status: outbound.status,
+        meta_error_message: metaError?.message ?? null,
+        conversation_id: conversationId,
+      });
+      return {
+        ok: false,
+        simulated: false,
+        error: metaError?.message ?? outbound.error,
+        metaError: {
+          code: metaError?.code,
+          subcode: metaError?.error_subcode,
+          type: metaError?.type,
+          message: metaError?.message,
+        },
+        status: outbound.status,
+        rawBody: outbound.rawBody,
+        parsedBody: outbound.parsedBody,
+      };
+    }
+    // Erro de rede — request nunca chegou à Meta.
     await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
       template_name: template.name,
       template_category: template.category,
       template_language: template.language,
       purpose,
       delivery_method: "template",
-      error,
+      error: outbound.error,
     });
     await logErrorAndAudit(companyId, leadId, "template_network_error", {
       template_name: template.name,
       template_category: template.category,
       purpose,
-      error,
+      error: outbound.error,
       conversation_id: conversationId,
     });
-    return { ok: false, error: `network: ${error}` };
+    return { ok: false, simulated: false, error: `network: ${outbound.error}` };
   }
 
-  const raw = await res.text();
-  let parsed: {
-    messages?: Array<{ id: string }>;
-    error?: { message?: string; code?: number; type?: string; error_subcode?: number };
-  } = {};
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    /* not json */
-  }
+  const externalId = outbound.externalId;
 
-  if (!res.ok) {
-    const metaError = parsed.error ?? null;
-    console.error("[WA_TEMPLATE_HTTP]", res.status, raw.slice(0, 500));
-    await logTemplateEvent(companyId, conversationId, leadId, "template_send_error", {
-      template_name: template.name,
-      template_category: template.category,
-      template_language: template.language,
-      purpose,
-      delivery_method: "template",
-      status: res.status,
-      meta_error_code: metaError?.code ?? null,
-      meta_error_subcode: metaError?.error_subcode ?? null,
-      meta_error_type: metaError?.type ?? null,
-      meta_error_message: metaError?.message ?? null,
-    });
-    await logErrorAndAudit(companyId, leadId, "template_send_error", {
-      template_name: template.name,
-      template_category: template.category,
-      purpose,
-      status: res.status,
-      meta_error_message: metaError?.message ?? null,
-      conversation_id: conversationId,
-    });
-    return {
-      ok: false,
-      error: metaError?.message ?? `HTTP ${res.status}`,
-      metaError: {
-        code: metaError?.code,
-        subcode: metaError?.error_subcode,
-        type: metaError?.type,
-        message: metaError?.message,
-      },
-      status: res.status,
-    };
-  }
-
-  const externalId = parsed.messages?.[0]?.id ?? null;
-
-  // 6) Persiste mensagem (role=agent, source=template)
+  // 6) Persiste mensagem (role=agent, source=template) — SOMENTE em envio real.
   const sentAt = new Date().toISOString();
   await supabaseAdmin.from("messages").insert({
     company_id: companyId,
@@ -424,7 +473,7 @@ export async function sendWhatsappTemplate(params: {
     whatsapp_message_id: externalId,
   });
 
-  return { ok: true, externalId };
+  return { ok: true, simulated: false, externalId };
 }
 
 /**
