@@ -121,7 +121,7 @@ async function graphWrite<T>(
   };
 }
 
-export const publishCampaign = createServerFn({ method: "POST" })
+const GRAPH = "https://graph.facebook.com/v21.0";
 
 async function graphFetch<T>(
   url: string,
