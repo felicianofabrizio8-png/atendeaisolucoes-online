@@ -926,16 +926,16 @@ function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; act
     <>
       {/* Aurora glows */}
       <div
-        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-50 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)" }}
+        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-25 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.45), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-45 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)" }}
+        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-20 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.45), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-30 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.45), transparent 70%)" }}
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-15 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.35), transparent 70%)" }}
       />
       {/* Neon grid */}
       <div
