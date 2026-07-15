@@ -381,6 +381,67 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
+    // ------------------------------------------------------------------
+    // Guard probe (Fase B.6.2): decisão de ambiente ANTES da primeira
+    // mutação (DB ou Graph). Em staging, curto-circuita a publicação
+    // inteira com uma única entrada em environment_simulations descrevendo
+    // as etapas que teriam sido executadas. Não persiste status=publishing,
+    // não sobe imagem, não cria campaign/adset/creative/ad, não fabrica IDs,
+    // não marca active_on_meta, não grava meta_publish_error.
+    // ------------------------------------------------------------------
+    const publishProbe = await assertOutbound({
+      companyId,
+      userId,
+      action: "meta.campaign.publish",
+      targetUrl: `${GRAPH}/${actId}/campaigns`,
+      method: "POST",
+      payload: {
+        campaign_id: campaignId,
+        campaign_name: campaign.name,
+        objective: campaign.objective,
+        goal: campaign.goal,
+        daily_budget_cents: Math.round(Number(campaign.daily_budget) * 100),
+        ad_account_id: actId,
+        page_id: pageId,
+        resume: isResume,
+        steps_planned: [
+          "upload_media/adimages",
+          isResume && resumeMetaCampaignId ? "reuse_campaign" : "create_campaign",
+          isResume && resumeMetaAdsetId ? "reuse_adset" : "create_adset",
+          "create_creative",
+          "create_ad",
+          "activate_campaign",
+          "activate_adset",
+          "activate_ad",
+        ],
+      },
+    });
+    if (!publishProbe.proceed) {
+      console.log("[publishCampaign] simulated (staging) — nenhuma escrita executada", {
+        campaignId,
+        environment: publishProbe.environment,
+        simulationId: publishProbe.simulationId,
+        reason: publishProbe.reason,
+      });
+      return {
+        ok: true as const,
+        simulated: true,
+        externalRequestSent: false,
+        environment: publishProbe.environment,
+        simulationId: publishProbe.simulationId,
+        steps_skipped: [
+          "status=publishing",
+          "upload_media/adimages",
+          "create_campaign",
+          "create_adset",
+          "create_creative",
+          "create_ad",
+          "activate_objects",
+          "persist_meta_ids",
+          "mark_active_on_meta",
+        ],
+      };
+    }
 
     // 4) Marca status=publishing.
     await supabase
