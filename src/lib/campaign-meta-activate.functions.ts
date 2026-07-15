@@ -5,6 +5,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isRealDelivery, isSimulation } from "@/lib/outbound/MetaOutboundContract";
 
 const Input = z.object({ campaignId: z.string().uuid() });
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -18,29 +20,40 @@ type ActivationEntry = {
   activate_error?: string;
   status_after?: string;
   effective_status_after?: string;
+  simulated?: boolean;
 };
 
 async function activateOne(
   object: ActivationEntry["object"],
   id: string,
   token: string,
+  companyId: string,
+  userId: string,
 ): Promise<ActivationEntry> {
   const form = new URLSearchParams();
   form.set("status", "ACTIVE");
   form.set("access_token", token);
   let activate_ok = false;
   let activate_error: string | undefined;
-  try {
-    const r = await fetch(`${GRAPH}/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
-    const j = (await r.json().catch(() => ({}))) as StatusResp;
-    activate_ok = r.ok && !j.error;
-    if (!activate_ok) activate_error = j.error?.message ?? `HTTP ${r.status}`;
-  } catch (e) {
-    activate_error = e instanceof Error ? e.message : "network_error";
+  let simulated = false;
+  const res = await postGraph({
+    companyId,
+    userId,
+    action: `meta.campaign.activate.${object}`,
+    url: `${GRAPH}/${id}`,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+    logicalPayload: { object, id, status: "ACTIVE" },
+  });
+  if (isSimulation(res)) {
+    simulated = true;
+    return { object, id, activate_ok: false, simulated };
+  }
+  if (isRealDelivery(res)) {
+    activate_ok = true;
+  } else {
+    activate_error = res.error;
   }
   let status_after: string | undefined;
   let effective_status_after: string | undefined;
@@ -115,9 +128,16 @@ export const activateCampaignOnMeta = createServerFn({ method: "POST" })
     }
 
     const results: ActivationEntry[] = [];
-    results.push(await activateOne("campaign", camp.meta_campaign_id, token));
-    results.push(await activateOne("adset", camp.meta_adset_id, token));
-    results.push(await activateOne("ad", camp.meta_ad_id, token));
+    results.push(await activateOne("campaign", camp.meta_campaign_id, token, companyId, userId));
+    results.push(await activateOne("adset", camp.meta_adset_id, token, companyId, userId));
+    results.push(await activateOne("ad", camp.meta_ad_id, token, companyId, userId));
+
+    const anySimulated = results.some((r) => r.simulated === true);
+    if (anySimulated) {
+      // Staging/guard: nada de escrita real. Não fabricar status_after; não atualizar
+      // meta_delivery_status como active_on_meta; não gravar meta_publish_error.
+      return { ok: true as const, simulated: true, results, error: null };
+    }
 
     const [campR, adsetR, adR] = results;
     const allActive =
