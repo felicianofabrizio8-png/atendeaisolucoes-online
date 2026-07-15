@@ -19,7 +19,7 @@ function withinTimeWindow(start: string, end: string, now = new Date()): boolean
 }
 
 export async function runReactivation(companyId: string): Promise<ReactivationResult> {
-  const out: ReactivationResult = { scanned: 0, sent: 0, skipped: [] };
+  const out: ReactivationResult = { scanned: 0, sent: 0, simulated: 0, skipped: [] };
   try {
     const v2 = await getFollowupV2Settings(companyId);
     if (!v2 || !v2.reactivationEnabled) return out;
@@ -61,6 +61,28 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           out.skipped.push({ leadId: lead.id, reason: "sem conversa" });
           continue;
         }
+
+        // Dedupe de simulações: se já houve uma tentativa simulada de
+        // reativação para este lead dentro da janela reactivationDays, não
+        // reeleger (evita disparos duplicados em staging enquanto o guard
+        // estiver ON — em production/legacy nunca haverá registro simulated).
+        const simCutoff = new Date(
+          Date.now() - v2.reactivationDays * 24 * 3600 * 1000,
+        ).toISOString();
+        const { data: prevSim } = await supabaseAdmin
+          .from("follow_ups")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("lead_id", lead.id)
+          .eq("rule_type", "returning_customer")
+          .eq("status", "simulated")
+          .gte("created_at", simCutoff)
+          .limit(1);
+        if (prevSim && prevSim.length > 0) {
+          out.skipped.push({ leadId: lead.id, reason: "reativação já simulada" });
+          continue;
+        }
+
         const nome = (lead.name || "").trim().split(/\s+/)[0] || "tudo bem";
         const seed = Math.floor(Date.now() / 1000) + lead.id.charCodeAt(0);
         const { text, variant } = humanizeTemplate(
@@ -79,6 +101,32 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           out.skipped.push({ leadId: lead.id, reason: send.error ?? "envio falhou" });
           continue;
         }
+        if (send.simulated) {
+          // Registra tentativa simulada com status distinto — NÃO marca
+          // leads.reactivated_at (não conta como reativação real).
+          await supabaseAdmin.from("follow_ups").insert({
+            company_id: companyId,
+            conversation_id: conv.id,
+            lead_id: lead.id,
+            rule_type: "returning_customer",
+            attempt_number: 1,
+            message_text: text,
+            status: "simulated",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            variant_seed: variant,
+            trigger_reason: `Reativação (simulada): lead parado há mais de ${v2.reactivationDays} dias`,
+            metadata: {
+              signal: "reactivation",
+              via: "text",
+              simulated: true,
+              simulation_id: send.simulationId,
+              external_request_sent: false,
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
+          out.simulated = (out.simulated ?? 0) + 1;
+          continue;
+        }
         await supabaseAdmin.from("follow_ups").insert({
           company_id: companyId,
           conversation_id: conv.id,
@@ -90,7 +138,7 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           variant_seed: variant,
           trigger_reason: `Reativação: lead parado há mais de ${v2.reactivationDays} dias`,
-          metadata: { signal: "reactivation", via: "text" },
+          metadata: { signal: "reactivation", via: "text", external_id: send.externalId },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
         await supabaseAdmin

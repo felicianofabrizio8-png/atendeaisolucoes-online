@@ -499,21 +499,44 @@ export async function runAgentTurn(params: {
 // WhatsApp Cloud API sender (direto, sem alterar meta-send)
 // ----------------------------------------------------------------------------
 
+/**
+ * Contrato de retorno discriminado de `sendWhatsappText`.
+ *
+ * - `simulated:false` → caminho legado / produção real (guard OFF ou tenant
+ *   `production`). O externalId reflete o `wamid` retornado pela Meta.
+ * - `simulated:true`  → EnvironmentGuard bloqueou (staging/unknown).
+ *   Nenhuma requisição chegou à Graph API. Consumidores DEVEM tratar este
+ *   caso como "ação não entregue" — sem retry, sem contagem como envio
+ *   real, sem `external_id` fabricado.
+ * - `ok:false`        → falha real (HTTP não-2xx ou erro de rede).
+ */
+export type SendWhatsappTextResult =
+  | { ok: true; simulated: false; externalId: string | null }
+  | {
+      ok: true;
+      simulated: true;
+      externalId: null;
+      simulationId: string | null;
+      externalRequestSent: false;
+    }
+  | { ok: false; simulated: false; error: string };
+
 export async function sendWhatsappText(params: {
   companyId: string;
   conversationId: string;
   leadId: string;
   text: string;
-}): Promise<{ ok: true; externalId: string | null } | { ok: false; error: string }> {
+}): Promise<SendWhatsappTextResult> {
   const { data: lead } = await supabaseAdmin
     .from("leads")
     .select("phone, external_id, integration_id, channel")
     .eq("id", params.leadId)
     .maybeSingle();
-  if (!lead) return { ok: false, error: "lead não encontrado" };
+  if (!lead) return { ok: false, simulated: false, error: "lead não encontrado" };
 
   const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
-  if (recipient.length < 8 || recipient.length > 15) return { ok: false, error: "telefone inválido" };
+  if (recipient.length < 8 || recipient.length > 15)
+    return { ok: false, simulated: false, error: "telefone inválido" };
 
   const integrationQuery = supabaseAdmin
     .from("integrations")
@@ -532,7 +555,8 @@ export async function sendWhatsappText(params: {
     "";
   const phoneNumberId =
     integration?.external_account_id || process.env.WHATSAPP_PHONE_NUMBER_ID || "";
-  if (!accessTok || !phoneNumberId) return { ok: false, error: "WhatsApp não conectado" };
+  if (!accessTok || !phoneNumberId)
+    return { ok: false, simulated: false, error: "WhatsApp não conectado" };
 
   const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   const payload = {
@@ -560,10 +584,16 @@ export async function sendWhatsappText(params: {
       (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
   });
 
-  // Staging/unknown → simulação. Preserva contrato (ok:true) para não induzir
-  // retry/duplicidade nos consumidores; NÃO persiste mensagem/entrega.
+  // Staging/unknown → simulação explícita. Consumidores DEVEM tratar como
+  // não-entregue (sem retry, sem contagem real, sem external_id fabricado).
   if (isSimulation(outbound)) {
-    return { ok: true, externalId: null };
+    return {
+      ok: true,
+      simulated: true,
+      externalId: null,
+      simulationId: outbound.simulationId,
+      externalRequestSent: false,
+    };
   }
 
   if (!isRealDelivery(outbound)) {
@@ -571,14 +601,18 @@ export async function sendWhatsappText(params: {
       const providerErr = outbound.providerError as { message?: string } | null | undefined;
       const raw = outbound.rawBody ?? "";
       console.error("[AGENT_WHATSAPP_HTTP]", outbound.status, raw.slice(0, 500));
-      return { ok: false, error: providerErr?.message ?? outbound.error };
+      return {
+        ok: false,
+        simulated: false,
+        error: providerErr?.message ?? outbound.error,
+      };
     }
-    return { ok: false, error: `network: ${outbound.error}` };
+    return { ok: false, simulated: false, error: `network: ${outbound.error}` };
   }
 
   const externalId = outbound.externalId;
 
-  // Insere mensagem na DB (role=agent, source=ai_agent)
+  // Insere mensagem na DB (role=agent, source=ai_agent) — SOMENTE em envio real.
   await supabaseAdmin.from("messages").insert({
     company_id: params.companyId,
     conversation_id: params.conversationId,
@@ -594,7 +628,7 @@ export async function sendWhatsappText(params: {
     .update({ last_message_at: new Date().toISOString(), awaiting_reply: false })
     .eq("id", params.conversationId);
 
-  return { ok: true, externalId };
+  return { ok: true, simulated: false, externalId };
 }
 
 // ----------------------------------------------------------------------------
@@ -736,7 +770,7 @@ async function qualifyAndPersist(params: {
 
 export async function runAgentTick(conversationId: string): Promise<{
   ok: boolean;
-  action: "replied" | "handoff" | "skipped" | "error";
+  action: "replied" | "handoff" | "skipped" | "error" | "simulated";
   reason?: string;
 }> {
   const { data: conv } = await supabaseAdmin
@@ -902,7 +936,20 @@ export async function runAgentTick(conversationId: string): Promise<{
       return { ok: false, action: "error", reason: sent.error };
     }
 
-    // Atualiza counters + status IA
+    // Fluxo simulado (staging/unknown): NÃO conta como auto_reply real.
+    // Sem incremento de auto_reply_count, sem last_auto_reply_at, sem
+    // atualização de ai_status. Registra evento distinto para observabilidade.
+    if (sent.simulated) {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_simulated", {
+        message: decision.message.slice(0, 240),
+        simulation_id: sent.simulationId,
+        external_request_sent: false,
+        suggested_products: decision.suggested_products ?? [],
+      });
+      return { ok: true, action: "simulated", reason: "environment_guard" };
+    }
+
+    // Atualiza counters + status IA (apenas envio real)
     await supabaseAdmin
       .from("conversations")
       .update({

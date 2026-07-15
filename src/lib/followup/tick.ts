@@ -30,6 +30,7 @@ export async function runFollowupTickForCompany(
     companyId,
     scanned: 0,
     sent: 0,
+    simulated: 0,
     skipped: [],
     errors: [],
   };
@@ -203,6 +204,41 @@ export async function runFollowupTickForCompany(
         payload: { rule: c.rule, error: send.error },
       });
       result.errors.push(`${c.rule}: ${send.error}`);
+      continue;
+    }
+    // Simulação: NÃO conta como sent real. Persiste follow_up com
+    // status='simulated' e metadata.simulated=true — o candidato entra no
+    // count de safety.canSend (attempts) e no minHoursBetween, o que impede
+    // reenvio automático imediato sem inflar métricas de "enviados".
+    if (send.simulated) {
+      await supabaseAdmin.from("follow_ups").insert({
+        company_id: companyId,
+        conversation_id: c.conversationId,
+        lead_id: c.leadId,
+        rule_type: c.rule,
+        attempt_number: attempt,
+        message_text: text,
+        status: "simulated",
+        metadata: {
+          signal: c.signal,
+          simulated: true,
+          simulation_id: send.simulationId,
+          external_request_sent: false,
+        },
+      });
+      await supabaseAdmin.from("ai_flow_events").insert({
+        company_id: companyId,
+        conversation_id: c.conversationId,
+        lead_id: c.leadId,
+        event_type: "followup_simulated",
+        payload: {
+          rule: c.rule,
+          attempt,
+          signal: c.signal,
+          simulation_id: send.simulationId,
+        },
+      });
+      result.simulated = (result.simulated ?? 0) + 1;
       continue;
     }
     await supabaseAdmin.from("follow_ups").insert({

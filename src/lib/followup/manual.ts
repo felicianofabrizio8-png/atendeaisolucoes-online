@@ -220,7 +220,12 @@ export async function runManualFollowup(
     leadId: conv.lead_id,
     text,
   });
-  const status = send.ok ? "sent" : "failed";
+  const isSimulated = send.ok && send.simulated === true;
+  const status: "sent" | "failed" | "simulated" = !send.ok
+    ? "failed"
+    : isSimulated
+      ? "simulated"
+      : "sent";
   await supabaseAdmin.from("follow_ups").insert({
     company_id: companyId,
     conversation_id: conv.id,
@@ -234,12 +239,29 @@ export async function runManualFollowup(
       manual: true,
       by: userId,
       via: "text",
-      ...(send.ok ? { external_id: send.externalId } : { error: send.error }),
+      ...(send.ok
+        ? isSimulated
+          ? {
+              simulated: true,
+              simulation_id: send.simulationId,
+              external_request_sent: false,
+            }
+          : { external_id: send.externalId }
+        : { error: send.error }),
     },
   });
   await writeAudit(
-    send.ok ? "manual_followup_sent" : "manual_followup_failed",
-    { rule, via: "text", error: send.ok ? null : send.error },
+    !send.ok
+      ? "manual_followup_failed"
+      : isSimulated
+        ? "manual_followup_simulated"
+        : "manual_followup_sent",
+    {
+      rule,
+      via: "text",
+      error: send.ok ? null : send.error,
+      simulated: isSimulated,
+    },
   );
   return {
     eligible: true,
@@ -247,7 +269,9 @@ export async function runManualFollowup(
     generatedMessage: text,
     sendStatus: status,
     sendError: send.ok ? undefined : send.error,
-    externalId: send.ok ? send.externalId : null,
+    externalId: send.ok && !isSimulated ? send.externalId : null,
+    simulated: isSimulated,
+    simulationId: isSimulated ? send.simulationId : null,
     via: "text",
   };
 }
