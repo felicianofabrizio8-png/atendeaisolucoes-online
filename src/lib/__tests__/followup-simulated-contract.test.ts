@@ -315,9 +315,15 @@ describe("followup/reactivation — simulação não marca reactivated_at", () =
     vi.resetModules();
 
     tableRows.leads = [
-      { id: "lead-r", name: "Bruno", phone: "11999", updated_at: "2020-01-01" },
+      {
+        id: "lead-r",
+        company_id: "company-1",
+        name: "Bruno",
+        phone: "11999",
+        updated_at: "2020-01-01",
+      },
     ];
-    tableRows.conversations = { id: "conv-r" };
+    tableRows.conversations = { id: "conv-r", lead_id: "lead-r", company_id: "company-1" };
     tableRows.follow_ups = []; // nenhum simulated prévio
   });
 
