@@ -4,6 +4,8 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
 interface Body {
   integrationId: string;
@@ -117,30 +119,59 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
         let status = 0;
         let respJson: unknown = null;
         let respText = "";
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
+        const outbound = await postGraph({
+          companyId: profile.company_id,
+          userId,
+          action: "whatsapp.test-send",
+          url,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+        });
+
+        if (isSimulation(outbound)) {
+          console.log("[whatsapp test-send] simulated (staging)", {
+            integrationId,
+            simulationId: outbound.simulationId,
           });
-          status = res.status;
-          respText = await res.text();
-          try {
-            respJson = JSON.parse(respText);
-          } catch {
-            respJson = null;
+          return Response.json({
+            ok: true,
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            diagnostics: {
+              phoneNumberId,
+              tokenSaved: "Yes",
+              tokenPrefix,
+              endpoint: url,
+            },
+            request: { url, payload },
+          });
+        }
+
+        if (!isRealDelivery(outbound)) {
+          // failure
+          if (!outbound.externalRequestSent) {
+            const msg = outbound.error;
+            console.error("[whatsapp test-send] network error", msg);
+            await supabaseAdmin
+              .from("integrations")
+              .update({ last_error: `teste: ${msg}` })
+              .eq("id", integrationId);
+            return Response.json({ ok: false, error: msg }, { status: 502 });
           }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "falha de rede";
-          console.error("[whatsapp test-send] network error", msg);
-          await supabaseAdmin
-            .from("integrations")
-            .update({ last_error: `teste: ${msg}` })
-            .eq("id", integrationId);
-          return Response.json({ ok: false, error: msg }, { status: 502 });
+          status = outbound.status ?? 0;
+          respJson = outbound.providerError ?? null;
+          respText = typeof respJson === "string" ? respJson : JSON.stringify(respJson ?? "");
+        } else {
+          status = outbound.status;
+          respJson = outbound.raw;
+          respText = typeof respJson === "string" ? respJson : JSON.stringify(respJson ?? "");
         }
 
         const ok = status >= 200 && status < 300;
@@ -156,7 +187,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           error?: { message?: string; code?: number; type?: string };
         })?.error;
 
-        // Detecta 401 / OAuthException / código 190 (token expirado/inválido)
         const isAuthError =
           status === 401 ||
           metaError?.type === "OAuthException" ||
