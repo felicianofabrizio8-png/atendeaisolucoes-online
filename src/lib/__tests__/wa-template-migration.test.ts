@@ -269,11 +269,3 @@ describe("sendWhatsappTemplate — paridade de request via MetaOutbound", () => 
   });
 });
 
-describe("debug", () => {
-  it("check chain returns template", async () => {
-    const { findApprovedTemplateForPurpose } = await import("@/lib/wa-templates.server");
-    const t = await findApprovedTemplateForPurpose("c1", "quote_no_reply");
-    console.log("TEMPLATE:", t);
-    console.log("supabase.from calls:", (supabaseAdmin.from as any).mock.calls.map((c: any) => c[0]));
-  });
-});
