@@ -40,7 +40,88 @@ function formatGraphError(body: GraphErrorBody, fallback: string): string {
   return parts.join(" ");
 }
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+// -------------------------------------------------------------------------
+// Fronteira MetaOutbound (Fase B.6.2): TODAS as escritas para Graph passam
+// aqui. Preserva a forma de retorno do graphFetch legado (drop-in), mas em
+// staging (kill switch ON + tenant staging) o postGraph curto-circuita
+// devolvendo simulation — nenhum fetch real acontece.
+//
+// GETs somente-leitura permanecem no graphFetch original (por diretriz).
+// -------------------------------------------------------------------------
+type GraphWriteOk<T> = { ok: true; data: T; status: number; rawText: string; responseHeaders: Record<string, string> };
+type GraphWriteFail = { ok: false; status: number; body: GraphErrorBody; message: string; rawText: string; responseHeaders: Record<string, string> };
+type GraphWriteResult<T> = GraphWriteOk<T> | GraphWriteFail;
+
+async function graphWrite<T>(
+  args: {
+    companyId: string;
+    userId: string;
+    action: string;
+    url: string;
+    method?: "POST" | "DELETE" | "PUT" | "PATCH";
+    headers?: Record<string, string>;
+    body?: BodyInit;
+    logicalPayload?: unknown;
+  },
+): Promise<GraphWriteResult<T>> {
+  const r = await postGraph<T>({
+    companyId: args.companyId,
+    userId: args.userId,
+    action: args.action,
+    url: args.url,
+    method: args.method ?? "POST",
+    headers: args.headers,
+    body: args.body,
+    logicalPayload: args.logicalPayload,
+  });
+
+  if (isSimulation(r)) {
+    // Defesa: o pipeline sempre executa o probe upfront; se um write cair
+    // em simulation aqui, é um bug de guard. Trata como falha suave, sem
+    // fabricar IDs, para que a etapa seja registrada como "não executada".
+    return {
+      ok: false,
+      status: 0,
+      body: { error: { message: "simulated_after_probe_pass" } },
+      message: "simulated_after_probe_pass",
+      rawText: "",
+      responseHeaders: {},
+    };
+  }
+  if (isRealDelivery(r)) {
+    const rawText = typeof r.raw === "string" ? r.raw : JSON.stringify(r.raw ?? null);
+    return {
+      ok: true,
+      data: r.raw as T,
+      status: r.status,
+      rawText,
+      responseHeaders: {},
+    };
+  }
+  // isFailure
+  if (isFailure(r)) {
+    const body = (r.parsedBody ?? {}) as GraphErrorBody;
+    return {
+      ok: false,
+      status: r.status ?? 0,
+      body,
+      message: r.error,
+      rawText: r.rawBody ?? "",
+      responseHeaders: {},
+    };
+  }
+  // Inalcançável — exhaustive.
+  return {
+    ok: false,
+    status: 0,
+    body: {},
+    message: "unknown_outbound_state",
+    rawText: "",
+    responseHeaders: {},
+  };
+}
+
+export const publishCampaign = createServerFn({ method: "POST" })
 
 async function graphFetch<T>(
   url: string,
