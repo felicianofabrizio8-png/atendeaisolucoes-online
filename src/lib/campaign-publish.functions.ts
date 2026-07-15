@@ -1171,14 +1171,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.log("[publishCampaign] adset targeting", targeting);
       console.log("[publishCampaign] create_adset payload", adsetPayload);
 
-      const adsetRes = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(adsetPayload),
-        },
-      );
+      const adsetRes = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: "meta.campaign.create_adset",
+        url: `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(adsetPayload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/adsets`, payload: adsetPayload },
+      });
       if (!adsetRes.ok) {
         console.error("[publishCampaign] create_adset fail", {
           status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
