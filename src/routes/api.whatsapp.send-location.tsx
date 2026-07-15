@@ -165,36 +165,53 @@ export const Route = createFileRoute("/api/whatsapp/send-location")({
         };
 
         let externalId: string | null = null;
-        try {
-          const apiRes = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
+        const outbound = await postGraph<{ messages?: Array<{ id: string }>; error?: { message?: string } }>({
+          companyId,
+          userId,
+          action: "whatsapp.send.location",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
+          return Response.json({
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            conversationId: conv.id,
           });
-          const apiText = await apiRes.text();
-          let apiJson: { messages?: Array<{ id: string }>; error?: { message?: string } } = {};
-          try { apiJson = JSON.parse(apiText); } catch { /* */ }
-          if (!apiRes.ok) {
-            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-            await supabaseAdmin
-              .from("integrations")
-              .update({ last_error: msg })
-              .eq("id", integration.id);
+        }
+
+        if (!isRealDelivery(outbound)) {
+          if (!outbound.externalRequestSent) {
             return Response.json(
-              { error: `WhatsApp: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status },
+              { error: `Falha ao enviar: ${outbound.error}` },
               { status: 502 },
             );
           }
-          externalId = apiJson.messages?.[0]?.id ?? null;
-        } catch (e) {
+          const providerErr = outbound.providerError as { message?: string } | null | undefined;
+          const msg = providerErr?.message ?? outbound.error;
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: msg })
+            .eq("id", integration.id);
           return Response.json(
-            { error: `Falha ao enviar: ${shortError(e)}` },
+            { error: `WhatsApp: ${msg}`, metaError: providerErr ?? null, status: outbound.status },
             { status: 502 },
           );
         }
+
+        externalId = outbound.externalId;
+
 
         // 10. Persistência
         const messageText = `📍 Localização${name ? `: ${name}` : ""}${address ? ` — ${address}` : ""}`;
