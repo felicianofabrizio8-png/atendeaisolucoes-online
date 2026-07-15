@@ -95,15 +95,22 @@ export async function postGraph<TRaw = unknown>(
   }
 
   const text = await res.text();
-  let json: unknown = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = text;
+  let parsed: unknown = null;
+  let parsedOk = false;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+      parsedOk = true;
+    } catch {
+      parsed = null;
+      parsedOk = false;
+    }
   }
 
   if (!res.ok) {
-    const providerErr = (json as { error?: { message?: string } } | null)?.error;
+    const providerErr = parsedOk
+      ? (parsed as { error?: { message?: string } } | null)?.error
+      : undefined;
     return {
       success: false,
       simulated: false,
@@ -112,7 +119,9 @@ export async function postGraph<TRaw = unknown>(
       error: providerErr?.message ?? `HTTP ${res.status}`,
       status: res.status,
       retryable: isRetryable(res.status),
-      providerError: providerErr ?? json,
+      providerError: providerErr ?? (parsedOk ? parsed : text),
+      rawBody: text,
+      parsedBody: parsedOk ? parsed : null,
     };
   }
 
