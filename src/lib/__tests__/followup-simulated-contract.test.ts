@@ -276,36 +276,43 @@ describe("followup/manual — resposta ao admin discrimina simulação", () => {
 // =====================================================
 describe("followup/reactivation — simulação não marca reactivated_at", () => {
   beforeEach(() => {
-    // company_settings com v2 preenchido — sem doMock relativo.
-    tableRows.company_settings = {
-      ai_followup_reactivation_enabled: true,
-      ai_followup_reactivation_days: 30,
-      ai_followup_reactivation_daily_max: 5,
-      ai_followup_reactivation_hours_start: "00:00",
-      ai_followup_reactivation_hours_end: "23:59",
-      ai_followup_reactivation_template: "Olá {{nome}}",
-      ai_followup_humanize: false,
-      ai_followup_daily_limit: 100,
-      ai_followup_min_response_rate: 0,
-      ai_followup_warmup_enabled: false,
-      ai_followup_delay_jitter_minutes: 0,
-      ai_followup_warmup_started_at: null,
-      // v1 mínimo para o gate canSendFollowupNow (se necessário)
-      ai_followup_enabled: true,
-    };
+    // Isola dependências externas do reactivation
+    vi.doMock("../followup/settings", () => ({
+      getFollowupV2Settings: async () => ({
+        humanize: false,
+        delayJitterMinutes: 0,
+        dailyLimit: 100,
+        minResponseRate: 0,
+        warmupEnabled: false,
+        warmupStartedAt: null,
+        reactivationEnabled: true,
+        reactivationDays: 30,
+        reactivationDailyMax: 5,
+        reactivationHoursStart: "00:00",
+        reactivationHoursEnd: "23:59",
+        reactivationTemplate: "Olá {{nome}}",
+      }),
+      getFollowupSettings: async () => null,
+    }));
+    vi.doMock("../followup/gates", () => ({
+      canSendFollowupNow: async () => ({ ok: true }),
+    }));
+    vi.resetModules();
+
     tableRows.leads = [
       { id: "lead-r", name: "Bruno", phone: "11999", updated_at: "2020-01-01" },
     ];
     tableRows.conversations = { id: "conv-r" };
     tableRows.follow_ups = []; // nenhum simulated prévio
-    // integrações e afins para gate — se lookup falhar, gate retorna ok:true por catch
-    tableRows.integrations = {
-      id: "int-1",
-      active: true,
-      access_token: "t",
-      external_account_id: "p",
-    };
   });
+
+  afterAll(() => {
+    vi.doUnmock("../followup/settings");
+    vi.doUnmock("../followup/gates");
+    vi.resetModules();
+  });
+
+
 
 
   it("simulated: insere follow_up status='simulated', NÃO atualiza leads.reactivated_at, incrementa out.simulated", async () => {
