@@ -1111,19 +1111,63 @@ function NeuralGraph({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          {Object.entries(SLOT_STYLE).map(([id, s]) => (
-            <linearGradient key={id} id={`line-${id}`} x1="50%" y1="50%" x2={`${polar(s.angle, ORBIT_PCT).x}%`} y2={`${polar(s.angle, ORBIT_PCT).y}%`} gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.9" />
-              <stop offset="100%" stopColor={s.color} stopOpacity="0.9" />
-            </linearGradient>
-          ))}
+          <filter id="wireGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="0.9" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="conductorHalo" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="1.8" />
+          </filter>
+          {Object.entries(SLOT_STYLE).map(([id, s]) => {
+            const p = polar(s.angle, ORBIT_PCT);
+            return (
+              <linearGradient
+                key={id}
+                id={`line-${id}`}
+                x1="50"
+                y1="50"
+                x2={p.x}
+                y2={p.y}
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0%" stopColor={PROFESSOR_COLOR} stopOpacity="0.95" />
+                <stop offset="45%" stopColor={PROFESSOR_COLOR} stopOpacity="0.55" />
+                <stop offset="100%" stopColor={s.color} stopOpacity="0.95" />
+              </linearGradient>
+            );
+          })}
         </defs>
 
-        {/* orbital rings */}
-        <circle cx={50} cy={50} r={ORBIT_PCT} fill="none" stroke="rgba(125,211,252,0.14)" strokeWidth={0.2} strokeDasharray="0.6 1.2" />
-        <circle cx={50} cy={50} r={ORBIT_PCT - 8} fill="none" stroke="rgba(168,85,247,0.10)" strokeWidth={0.2} strokeDasharray="0.4 1.6" />
+        {/* Background technical rings + micro-fibers */}
+        <circle cx={50} cy={50} r={ORBIT_PCT} fill="none" stroke="rgba(125,211,252,0.16)" strokeWidth={0.22} strokeDasharray="0.6 1.2" />
+        <circle cx={50} cy={50} r={ORBIT_PCT - 8} fill="none" stroke="rgba(168,85,247,0.12)" strokeWidth={0.22} strokeDasharray="0.4 1.6" />
+        <circle cx={50} cy={50} r={ORBIT_PCT + 5} fill="none" stroke="rgba(56,189,248,0.06)" strokeWidth={0.18} strokeDasharray="0.3 2.2" />
+        {/* subtle secondary micro-trails between adjacent agents (idle grid) */}
+        {agents.map((a, i) => {
+          const s = SLOT_STYLE[a.id];
+          const next = SLOT_STYLE[agents[(i + 1) % agents.length]?.id];
+          if (!s || !next) return null;
+          const p1 = polar(s.angle, ORBIT_PCT + 1.5);
+          const p2 = polar(next.angle, ORBIT_PCT + 1.5);
+          const midR = ORBIT_PCT + 6;
+          const midAngle = (s.angle + next.angle) / 2;
+          const cp = polar(midAngle, midR);
+          return (
+            <path
+              key={`micro-${a.id}`}
+              d={`M${p1.x} ${p1.y} Q ${cp.x} ${cp.y} ${p2.x} ${p2.y}`}
+              fill="none"
+              stroke="rgba(148,163,184,0.10)"
+              strokeWidth={0.18}
+              strokeDasharray="0.5 1.4"
+            />
+          );
+        })}
 
-        {/* Connections */}
+        {/* Conductor connections — layered wires (dark base → glow → luminous core) */}
         {agents.map((a) => {
           const s = SLOT_STYLE[a.id];
           if (!s) return null;
@@ -1131,32 +1175,97 @@ function NeuralGraph({
           const meta = BUCKET_META[a.resolved.bucket];
           const isAnimated = !!meta.animate && a.present && !reducedMotion;
           const surging = a.surge && !reducedMotion;
+          const active = isAnimated || surging;
+          // Curved conductor for organic look
+          const midAngle = s.angle;
+          const cp = polar(midAngle, ORBIT_PCT * 0.55);
+          const bend = Math.sin((s.angle * Math.PI) / 180) * 2.2;
+          const cpx = cp.x + bend;
+          const cpy = cp.y - bend * 0.6;
+          const d = `M50 50 Q ${cpx} ${cpy} ${p.x} ${p.y}`;
           return (
             <g key={`line-${a.id}`}>
-              <line
-                x1={50}
-                y1={50}
-                x2={p.x}
-                y2={p.y}
-                stroke={`url(#line-${a.id})`}
-                strokeWidth={surging ? 1.35 : isAnimated ? 1.05 : 0.75}
-                opacity={a.present ? 0.9 : 0.35}
-                filter="url(#softGlow)"
-              />
-              {(isAnimated || surging) && (
-                <motion.circle
-                  r={surging ? 0.9 : 0.7}
-                  fill={s.color}
-                  filter="url(#softGlow)"
-                  initial={{ cx: 50, cy: 50, opacity: 0 }}
-                  animate={{ cx: [50, p.x], cy: [50, p.y], opacity: [0, 1, 0] }}
-                  transition={{
-                    duration: surging ? 1.2 : BREATH,
-                    repeat: Infinity,
-                    delay: 0.2 + (SLOT_STYLE[a.id]?.angle ?? 0) / 720,
-                    ease: "easeInOut",
-                  }}
+              {/* 1. outer diffuse halo — only when active */}
+              {active && (
+                <motion.path
+                  d={d}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={surging ? 2.6 : 2.0}
+                  strokeLinecap="round"
+                  filter="url(#conductorHalo)"
+                  animate={{ opacity: surging ? [0.25, 0.55, 0.25] : [0.15, 0.32, 0.15] }}
+                  transition={{ duration: BREATH * 1.1, repeat: Infinity, ease: "easeInOut" }}
                 />
+              )}
+              {/* 2. dark base trail — always present */}
+              <path
+                d={d}
+                fill="none"
+                stroke="rgba(6,10,22,0.85)"
+                strokeWidth={1.55}
+                strokeLinecap="round"
+                opacity={a.present ? 0.9 : 0.55}
+              />
+              {/* 3. luminous core */}
+              <path
+                d={d}
+                fill="none"
+                stroke={`url(#line-${a.id})`}
+                strokeWidth={surging ? 0.75 : active ? 0.6 : 0.42}
+                strokeLinecap="round"
+                opacity={a.present ? (active ? 0.95 : 0.55) : 0.28}
+                filter="url(#wireGlow)"
+              />
+              {/* 4. connector nub at agent end */}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={0.9}
+                fill={s.color}
+                opacity={a.present ? 0.85 : 0.35}
+                filter="url(#wireGlow)"
+              />
+              {/* 5. energy pulse — only during real activity */}
+              {active && (
+                <>
+                  <motion.circle
+                    r={surging ? 1.0 : 0.8}
+                    fill={s.color}
+                    filter="url(#softGlow)"
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      cx: [50, cpx, p.x],
+                      cy: [50, cpy, p.y],
+                      opacity: [0, 1, 0],
+                    }}
+                    transition={{
+                      duration: surging ? 1.1 : BREATH,
+                      repeat: Infinity,
+                      delay: 0.15 + (SLOT_STYLE[a.id]?.angle ?? 0) / 720,
+                      ease: "easeInOut",
+                    }}
+                  />
+                  {/* trailing after-glow */}
+                  <motion.circle
+                    r={surging ? 1.8 : 1.4}
+                    fill={s.color}
+                    opacity={0.35}
+                    filter="url(#conductorHalo)"
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      cx: [50, cpx, p.x],
+                      cy: [50, cpy, p.y],
+                      opacity: [0, 0.35, 0],
+                    }}
+                    transition={{
+                      duration: surging ? 1.3 : BREATH * 1.1,
+                      repeat: Infinity,
+                      delay: 0.25 + (SLOT_STYLE[a.id]?.angle ?? 0) / 720,
+                      ease: "easeInOut",
+                    }}
+                  />
+                </>
               )}
             </g>
           );
