@@ -939,7 +939,7 @@ function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; act
       />
       {/* Neon grid */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        className="pointer-events-none absolute inset-0 opacity-[0.14]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
