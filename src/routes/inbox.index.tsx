@@ -439,7 +439,7 @@ function InboxPage() {
         <div className="absolute top-3 right-4 z-20">
           <ViewToggle view={view} onChange={changeView} />
         </div>
-        <OpsCockpit />
+        <OpsCockpit alertsByConv={alertsByConv} />
       </div>
     );
   }
