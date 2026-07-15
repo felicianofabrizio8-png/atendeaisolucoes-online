@@ -216,8 +216,8 @@ describe("followup/tick — simulated não é contado como envio real", () => {
 // =====================================================
 describe("followup/manual — resposta ao admin discrimina simulação", () => {
   beforeEach(() => {
-    // Configura company_settings real — evita mocks relativos.
     tableRows.company_settings = {
+      company_id: "company-1",
       ai_followup_enabled: true,
       ai_followup_business_hours_only: false,
       ai_agent_name: "Fabri",
@@ -234,7 +234,6 @@ describe("followup/manual — resposta ao admin discrimina simulação", () => {
       lead_temperature: "morno",
     };
     tableRows.leads = { id: "lead-m", name: "Ana", product: null };
-    // Mensagens: agente sem envio recente, lead com mensagem dentro da janela 24h.
     tableRows.messages = [
       { role: "lead", at: new Date().toISOString(), conversation_id: "conv-m" },
     ];
