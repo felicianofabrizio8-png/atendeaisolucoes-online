@@ -128,9 +128,16 @@ export const activateCampaignOnMeta = createServerFn({ method: "POST" })
     }
 
     const results: ActivationEntry[] = [];
-    results.push(await activateOne("campaign", camp.meta_campaign_id, token));
-    results.push(await activateOne("adset", camp.meta_adset_id, token));
-    results.push(await activateOne("ad", camp.meta_ad_id, token));
+    results.push(await activateOne("campaign", camp.meta_campaign_id, token, companyId, userId));
+    results.push(await activateOne("adset", camp.meta_adset_id, token, companyId, userId));
+    results.push(await activateOne("ad", camp.meta_ad_id, token, companyId, userId));
+
+    const anySimulated = results.some((r) => r.simulated === true);
+    if (anySimulated) {
+      // Staging/guard: nada de escrita real. Não fabricar status_after; não atualizar
+      // meta_delivery_status como active_on_meta; não gravar meta_publish_error.
+      return { ok: true as const, simulated: true, results, error: null };
+    }
 
     const [campR, adsetR, adR] = results;
     const allActive =
