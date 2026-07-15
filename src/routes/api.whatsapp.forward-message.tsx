@@ -618,7 +618,7 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
             status: outbound.status,
             ok: false,
             error: providerErr ?? null,
-            rawBody: JSON.stringify(outbound.providerError ?? null).slice(0, 1200),
+            rawBody: (outbound.rawBody ?? JSON.stringify(outbound.providerError ?? null)).slice(0, 1200),
             recipient,
             type: kind,
             phoneNumberId: integration.external_account_id,
