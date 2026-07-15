@@ -464,16 +464,6 @@ function HealthPage() {
                 {status.label}
               </h1>
               <p className="text-sm text-muted-foreground mt-1">{status.sub}</p>
-              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-muted-foreground">
-                {status.tone === "ok" ? (
-                  <CheckCircle2 className={cn("h-3.5 w-3.5", t.text)} />
-                ) : status.tone === "warn" ? (
-                  <AlertTriangle className={cn("h-3.5 w-3.5", t.text)} />
-                ) : (
-                  <XCircle className={cn("h-3.5 w-3.5", t.text)} />
-                )}
-                <span>{status.label}</span>
-              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
