@@ -41,6 +41,8 @@ export interface TickResult {
   companyId: string;
   scanned: number;
   sent: number;
+  /** Envios bloqueados por EnvironmentGuard (staging/unknown). Não são falhas. */
+  simulated?: number;
   skipped: Array<{ conversationId: string; rule: FollowupRule; reason: string }>;
   errors: string[];
 }
@@ -114,6 +116,8 @@ export interface AdvancedAnalytics {
 export interface ReactivationResult {
   scanned: number;
   sent: number;
+  /** Envios bloqueados por EnvironmentGuard. Nenhuma reativação real. */
+  simulated?: number;
   skipped: Array<{ leadId: string; reason: string }>;
 }
 
@@ -122,8 +126,11 @@ export interface ManualFollowupResult {
   blockedReason?: string;
   rule?: string;
   generatedMessage?: string;
-  sendStatus?: "sent" | "failed" | "blocked";
+  sendStatus?: "sent" | "failed" | "blocked" | "simulated";
   sendError?: string;
   externalId?: string | null;
+  /** True quando o EnvironmentGuard bloqueou o envio (staging/unknown). */
+  simulated?: boolean;
+  simulationId?: string | null;
   via?: "text" | "template";
 }

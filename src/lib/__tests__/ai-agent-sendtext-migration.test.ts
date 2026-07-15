@@ -95,7 +95,7 @@ describe("sendWhatsappText — migração B.4", () => {
       raw: { messages: [{ id: "wamid.AGENT" }] },
     });
     const out = await callSend("Olá cliente");
-    expect(out).toEqual({ ok: true, externalId: "wamid.AGENT" });
+    expect(out).toEqual({ ok: true, simulated: false, externalId: "wamid.AGENT" });
 
     expect(postGraphSpy).toHaveBeenCalledTimes(1);
     const call = postGraphSpy.mock.calls[0][0];
@@ -117,7 +117,7 @@ describe("sendWhatsappText — migração B.4", () => {
     expect(updatedRows.find((u) => u.table === "conversations")).toBeTruthy();
   });
 
-  it("B. staging simulated → ok:true, externalId:null e SEM persistência (não duplica)", async () => {
+  it("B. staging simulated → contrato discriminado + zero persistência", async () => {
     postGraphSpy.mockResolvedValueOnce({
       success: true,
       simulated: true,
@@ -127,14 +127,18 @@ describe("sendWhatsappText — migração B.4", () => {
       would: { url: "x", method: "POST" },
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: true, externalId: null });
-    // Zero persistência → consumidores registram follow_up sent com external_id=null
-    // mas NÃO reenviam, e mensagens reais não são fabricadas na tabela messages.
+    expect(out).toEqual({
+      ok: true,
+      simulated: true,
+      externalId: null,
+      simulationId: "sim-42",
+      externalRequestSent: false,
+    });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
     expect(updatedRows.some((u) => u.table === "conversations")).toBe(false);
   });
 
-  it("C. unknown lookup → ok:true, externalId:null (bloqueia sem falha)", async () => {
+  it("C. unknown lookup → simulated=true + simulationId propagado", async () => {
     postGraphSpy.mockResolvedValueOnce({
       success: true,
       simulated: true,
@@ -144,11 +148,17 @@ describe("sendWhatsappText — migração B.4", () => {
       would: { url: "x", method: "POST" },
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: true, externalId: null });
+    expect(out).toEqual({
+      ok: true,
+      simulated: true,
+      externalId: null,
+      simulationId: "sim-unk",
+      externalRequestSent: false,
+    });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
   });
 
-  it("D. erro HTTP → ok:false com providerError.message + sem persistência", async () => {
+  it("D. erro HTTP → ok:false, simulated:false, providerError.message", async () => {
     postGraphSpy.mockResolvedValueOnce({
       success: false,
       simulated: false,
@@ -162,11 +172,11 @@ describe("sendWhatsappText — migração B.4", () => {
       parsedBody: { error: { message: "Invalid phone" } },
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, error: "Invalid phone" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "Invalid phone" });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
   });
 
-  it("E. erro HTTP sem providerError → cai para outbound.error", async () => {
+  it("E. erro HTTP sem providerError → outbound.error preservado", async () => {
     postGraphSpy.mockResolvedValueOnce({
       success: false,
       simulated: false,
@@ -179,7 +189,7 @@ describe("sendWhatsappText — migração B.4", () => {
       parsedBody: null,
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, error: "HTTP 500" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "HTTP 500" });
   });
 
   it("F. erro de rede → ok:false com prefixo 'network:'", async () => {
@@ -192,7 +202,7 @@ describe("sendWhatsappText — migração B.4", () => {
       retryable: true,
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, error: "network: ECONNRESET" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "network: ECONNRESET" });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
   });
 
