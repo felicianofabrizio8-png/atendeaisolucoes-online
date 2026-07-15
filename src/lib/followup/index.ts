@@ -31,9 +31,13 @@ export { canSendFollowupNow } from "./gates";
 // --- Métricas e leitura
 export { getWhatsappIntegrationStatus } from "./integration";
 export {
-  computeLeadScore,
+  computeLeadScoreFromDb,
   getLeadTemperatureSummary,
 } from "./scoring";
+// @deprecated — use `computeLeadScoreFromDb`. Alias mantido temporariamente
+// para preservar a fachada legada `ai-followup-v2.server.ts` e evitar colisão
+// com `computeLeadScore` (síncrono, puro) de `@/lib/ai-qualifier.server`.
+export { computeLeadScoreFromDb as computeLeadScore } from "./scoring";
 export { getAdvancedAnalytics } from "./analytics";
 
 // --- Utilidades puras
