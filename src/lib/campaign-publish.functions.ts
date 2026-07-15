@@ -1584,14 +1584,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       creative_id: creativeId,
     });
     console.log("[publishCampaign] create_ad", { payload: adPayload });
-    const adRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adPayload),
-      },
-    );
+    const adRes = await graphWrite<{ id: string }>({
+      companyId,
+      userId,
+      action: "meta.campaign.create_ad",
+      url: `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adPayload),
+      logicalPayload: { endpoint: `${GRAPH}/${actId}/ads`, payload: adPayload },
+    });
     if (!adRes.ok) {
       console.error("[publishCampaign] create_ad fail — resposta bruta da Meta", {
         endpoint: `${GRAPH}/${actId}/ads`,
