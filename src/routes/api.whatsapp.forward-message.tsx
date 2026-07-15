@@ -15,6 +15,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
 interface ForwardBody {
   sourceMessageId?: string;
@@ -561,75 +563,98 @@ export const Route = createFileRoute("/api/whatsapp/forward-message")({
         };
 
         let externalId: string | null = null;
-        try {
-          const apiRes = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          });
-          const apiText = await apiRes.text();
-          let apiJson: {
-            messages?: Array<{ id: string }>;
-            error?: { message?: string; code?: number };
-          } = {};
-          try {
-            apiJson = JSON.parse(apiText);
-          } catch {
-            /* */
-          }
-          if (!apiRes.ok) {
-            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-            debug.meta = {
-              status: apiRes.status,
-              ok: false,
-              error: apiJson.error ?? null,
-              rawBody: apiText.slice(0, 1200),
-              recipient,
-              type: kind,
-              phoneNumberId: integration.external_account_id,
-              mediaMime: detectedMime,
-              signedUrlStatus: debug.signedUrl,
-            };
-            console.error("[forward-message] meta error", {
-              requestId: debug.requestId,
-              debug,
-            });
-            await supabaseAdmin
-              .from("integrations")
-              .update({ last_error: msg })
-              .eq("id", integration.id);
-            return Response.json(
-              {
-                error: `WhatsApp: ${msg}`,
-                metaError: apiJson.error ?? null,
-                status: apiRes.status,
-                debug,
-              },
-              { status: 502 },
-            );
-          }
-          externalId = apiJson.messages?.[0]?.id ?? null;
+        const outbound = await postGraph<{
+          messages?: Array<{ id: string }>;
+          error?: { message?: string; code?: number };
+        }>({
+          companyId,
+          userId,
+          action: "whatsapp.forward.media",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
           debug.meta = {
-            status: apiRes.status,
-            ok: true,
-            externalId,
+            simulated: true,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
             recipient,
             type: kind,
             phoneNumberId: integration.external_account_id,
           };
-          console.log("[forward-message] meta success", debug.meta);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "falha de rede";
-          debug.meta = { ok: false, networkError: msg };
-          console.error("[forward-message] meta network error", debug);
+          console.log("[forward-message] simulated (staging)", debug.meta);
+          return Response.json({
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            conversationId: targetConv.id,
+            kind,
+            debug,
+          });
+        }
+
+        if (!isRealDelivery(outbound)) {
+          if (!outbound.externalRequestSent) {
+            debug.meta = { ok: false, networkError: outbound.error };
+            console.error("[forward-message] meta network error", debug);
+            return Response.json(
+              { error: `Falha ao enviar: ${outbound.error}`, debug },
+              { status: 502 },
+            );
+          }
+          const providerErr = outbound.providerError as { message?: string; code?: number } | null | undefined;
+          const msg = providerErr?.message ?? outbound.error;
+          debug.meta = {
+            status: outbound.status,
+            ok: false,
+            error: providerErr ?? null,
+            rawBody: JSON.stringify(outbound.providerError ?? null).slice(0, 1200),
+            recipient,
+            type: kind,
+            phoneNumberId: integration.external_account_id,
+            mediaMime: detectedMime,
+            signedUrlStatus: debug.signedUrl,
+          };
+          console.error("[forward-message] meta error", {
+            requestId: debug.requestId,
+            debug,
+          });
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: msg })
+            .eq("id", integration.id);
           return Response.json(
-            { error: `Falha ao enviar: ${msg}`, debug },
+            {
+              error: `WhatsApp: ${msg}`,
+              metaError: providerErr ?? null,
+              status: outbound.status,
+              debug,
+            },
             { status: 502 },
           );
         }
+
+        externalId = outbound.externalId;
+        debug.meta = {
+          status: outbound.status,
+          ok: true,
+          externalId,
+          recipient,
+          type: kind,
+          phoneNumberId: integration.external_account_id,
+        };
+        console.log("[forward-message] meta success", debug.meta);
+
 
         // ---- 11. Persistência aditiva ----
         // Reaproveitamos a referência da mídia original em whatsapp-media.

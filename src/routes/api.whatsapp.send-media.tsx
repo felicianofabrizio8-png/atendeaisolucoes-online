@@ -6,6 +6,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
 type MediaKind = "image" | "video";
 
@@ -203,42 +205,55 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
         };
 
         let externalId: string | null = null;
-        try {
-          const apiRes = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
+        const outbound = await postGraph<{
+          messages?: Array<{ id: string }>;
+          error?: { message?: string; code?: number };
+        }>({
+          companyId,
+          userId,
+          action: "whatsapp.send.media",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
+          return Response.json({
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            conversationId,
+            kind,
           });
-          const apiText = await apiRes.text();
-          let apiJson: {
-            messages?: Array<{ id: string }>;
-            error?: { message?: string; code?: number };
-          } = {};
-          try {
-            apiJson = JSON.parse(apiText);
-          } catch {
-            /* */
-          }
-          if (!apiRes.ok) {
-            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-            console.error("[send-media] meta error", { status: apiRes.status, body: apiText.slice(0, 800) });
-            await supabaseAdmin
-              .from("integrations")
-              .update({ last_error: msg })
-              .eq("id", integration.id);
-            return Response.json(
-              { error: `WhatsApp: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status },
-              { status: 502 },
-            );
-          }
-          externalId = apiJson.messages?.[0]?.id ?? null;
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "falha de rede";
-          return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
         }
+
+        if (!isRealDelivery(outbound)) {
+          if (!outbound.externalRequestSent) {
+            return Response.json({ error: `Falha ao enviar: ${outbound.error}` }, { status: 502 });
+          }
+          const providerErr = outbound.providerError as { message?: string; code?: number } | null | undefined;
+          const msg = providerErr?.message ?? outbound.error;
+          console.error("[send-media] meta error", { status: outbound.status, error: msg });
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: msg })
+            .eq("id", integration.id);
+          return Response.json(
+            { error: `WhatsApp: ${msg}`, metaError: providerErr ?? null, status: outbound.status },
+            { status: 502 },
+          );
+        }
+
+        externalId = outbound.externalId;
+
 
         const messageText = caption || `[${kind === "video" ? "vídeo" : "imagem"}]`;
         // Persistência aditiva: além de media_url/type (legados), gravamos
