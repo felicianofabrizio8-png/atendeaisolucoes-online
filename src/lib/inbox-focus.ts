@@ -3,7 +3,7 @@
 // fila do Modo Foco. Sem backend, sem endpoints, sem migrations.
 // ============================================================================
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 const FAV_KEY = "inbox.favorites.v1";
 const RECENT_KEY = "inbox.recent.v1";
@@ -13,6 +13,13 @@ const RECENT_MAX = 10;
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
+let favoritesRaw: string | null = null;
+let favoritesSnapshot: string[] = [];
+let recentRaw: string | null = null;
+let recentSnapshot: string[] = [];
+let focusRaw: string | null = null;
+let focusSnapshot: FocusState | null = null;
+
 function notify() { for (const l of listeners) l(); }
 
 function subscribe(cb: Listener) {
@@ -20,10 +27,14 @@ function subscribe(cb: Listener) {
   const onStorage = (e: StorageEvent) => {
     if (!e.key || [FAV_KEY, RECENT_KEY, FOCUS_KEY].includes(e.key)) cb();
   };
-  window.addEventListener("storage", onStorage);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage);
+  }
   return () => {
     listeners.delete(cb);
-    window.removeEventListener("storage", onStorage);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage);
+    }
   };
 }
 
@@ -41,8 +52,28 @@ function writeArray(key: string, val: string[]) {
   notify();
 }
 
+function readCachedArray(
+  key: string,
+  currentRaw: string | null,
+  currentSnapshot: string[],
+  update: (raw: string | null, snapshot: string[]) => void,
+): string[] {
+  if (typeof window === "undefined") return currentSnapshot;
+  let raw: string | null = null;
+  try { raw = localStorage.getItem(key); } catch { raw = null; }
+  if (raw === currentRaw) return currentSnapshot;
+  const nextSnapshot = readArray(key);
+  update(raw, nextSnapshot);
+  return nextSnapshot;
+}
+
 // -------- Favoritos ---------------------------------------------------------
-export function getFavorites(): string[] { return readArray(FAV_KEY); }
+export function getFavorites(): string[] {
+  return readCachedArray(FAV_KEY, favoritesRaw, favoritesSnapshot, (raw, snapshot) => {
+    favoritesRaw = raw;
+    favoritesSnapshot = snapshot;
+  });
+}
 export function toggleFavorite(id: string) {
   const cur = new Set(readArray(FAV_KEY));
   if (cur.has(id)) cur.delete(id); else cur.add(id);
@@ -50,7 +81,12 @@ export function toggleFavorite(id: string) {
 }
 
 // -------- Recentes ----------------------------------------------------------
-export function getRecent(): string[] { return readArray(RECENT_KEY); }
+export function getRecent(): string[] {
+  return readCachedArray(RECENT_KEY, recentRaw, recentSnapshot, (raw, snapshot) => {
+    recentRaw = raw;
+    recentSnapshot = snapshot;
+  });
+}
 export function pushRecent(id: string) {
   const cur = readArray(RECENT_KEY).filter((x) => x !== id);
   cur.unshift(id);
@@ -65,13 +101,29 @@ export interface FocusState {
 }
 export function getFocus(): FocusState | null {
   if (typeof window === "undefined") return null;
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(FOCUS_KEY);
-    if (!raw) return null;
+    raw = localStorage.getItem(FOCUS_KEY);
+    if (raw === focusRaw) return focusSnapshot;
+    if (!raw) {
+      focusRaw = raw;
+      focusSnapshot = null;
+      return focusSnapshot;
+    }
     const p = JSON.parse(raw) as FocusState;
-    if (!Array.isArray(p.queue) || typeof p.index !== "number") return null;
-    return p;
-  } catch { return null; }
+    if (!Array.isArray(p.queue) || typeof p.index !== "number") {
+      focusRaw = raw;
+      focusSnapshot = null;
+      return focusSnapshot;
+    }
+    focusRaw = raw;
+    focusSnapshot = p;
+    return focusSnapshot;
+  } catch {
+    focusRaw = raw;
+    focusSnapshot = null;
+    return focusSnapshot;
+  }
 }
 export function startFocus(queue: string[]) {
   if (queue.length === 0) return;
@@ -97,7 +149,7 @@ export function stopFocus() {
 // -------- Hooks React -------------------------------------------------------
 export function useFavorites(): Set<string> {
   const snap = useSyncExternalStore(subscribe, getFavorites, getFavorites);
-  return new Set(snap);
+  return useMemo(() => new Set(snap), [snap]);
 }
 export function useRecent(): string[] {
   return useSyncExternalStore(subscribe, getRecent, getRecent);
