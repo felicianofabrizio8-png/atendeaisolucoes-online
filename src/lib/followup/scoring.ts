@@ -7,7 +7,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { LeadScoreResult, LeadTemperature } from "./types";
 
-export async function computeLeadScore(leadId: string): Promise<LeadScoreResult> {
+export async function computeLeadScoreFromDb(leadId: string): Promise<LeadScoreResult> {
   try {
     const { data: lead } = await supabaseAdmin
       .from("leads")
