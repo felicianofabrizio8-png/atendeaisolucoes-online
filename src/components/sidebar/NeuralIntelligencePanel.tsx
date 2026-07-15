@@ -16,6 +16,8 @@ import {
   Crown,
   MessageCircle,
   Megaphone,
+  ChevronDown,
+  ChevronUp,
   type LucideIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -483,10 +485,26 @@ function friendlyFeedMessage(j: RecentJob): string {
 
 /* -------------------- Componente principal -------------------- */
 
+const COLLAPSE_KEY = "atendeai.neural.collapsed";
+
 export function NeuralIntelligencePanel() {
   const { user } = useAuth();
   const reducedMotion = useReducedMotion();
   const { data: snap, isLoading, isError } = useRuntimeStatus(!!user);
+
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const v = window.localStorage.getItem(COLLAPSE_KEY);
+    if (v === "1") return true;
+    if (v === "0") return false;
+    // Notebook / tela baixa: iniciar recolhido
+    return typeof window !== "undefined" && window.innerHeight < 780;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
 
   const learningMap = useMemo(() => {
     const m = new Map<string, LearningPerAgent>();
@@ -680,133 +698,162 @@ export function NeuralIntelligencePanel() {
     ? "Online"
     : "Offline";
 
+  const lastEvent = feed[0];
+
   return (
     <MotionConfig reducedMotion="user">
       <div
         role="region"
         aria-label="Central de Inteligência AI"
-        className="relative mx-1.5 my-2 overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-1.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
+        className="relative mx-1.5 my-2 hidden md:block overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-1.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
       >
         {/* Neural background layers */}
         <NeuralBackdrop reducedMotion={!!reducedMotion} active={networkOnline} />
 
         {/* Header */}
-        <div className="relative flex items-center justify-between gap-2 mb-2 pb-2 border-b border-cyan-400/10">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold tracking-[0.08em] text-cyan-50 leading-tight">
+        <div className="relative flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-cyan-400/10">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-semibold tracking-[0.08em] text-cyan-50 leading-tight truncate">
               Central de Inteligência AI
             </div>
             <div className="text-[9px] text-cyan-200/60 mt-0.5 leading-tight truncate">
-              Seu sistema está aprendendo 24/7
+              {collapsed ? statusLabel : "Seu sistema está aprendendo 24/7"}
             </div>
           </div>
           <LiveBadge online={networkOnline} label={statusLabel} />
-        </div>
-
-        <NeuralGraph
-          professor={professor}
-          agents={agentsWithSurge}
-          professorSurge={surge.professor}
-          snap={snap ?? null}
-          reducedMotion={!!reducedMotion}
-        />
-
-        {/* Processando agora */}
-        <div className="relative mt-2 flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-black/40 px-2 py-1.5 backdrop-blur-sm">
-          <motion.span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full shrink-0",
-              anyActive
-                ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.95)]"
-                : "bg-slate-500",
-            )}
-            animate={anyActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
-            transition={{ duration: 1.6, repeat: anyActive ? Infinity : 0 }}
-            aria-hidden
-          />
-          <span className="text-[9.5px] text-cyan-50/95 font-medium">
-            {anyActive ? "Processando agora" : "Sistema em espera"}
-          </span>
-          {snap?.status?.lastHeartbeat?.ts && (
-            <span className="ml-auto text-[8.5px] text-cyan-200/50">
-              {formatRelative(iso(snap.status.lastHeartbeat.ts))}
-            </span>
-          )}
-        </div>
-
-        {/* Terminal futurista */}
-        <div className="relative mt-2">
-          <div className="flex items-center justify-between mb-1 px-0.5">
-            <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.18em] text-cyan-200/75 font-mono">
-              <Activity className="h-2.5 w-2.5" />
-              runtime.log
-            </div>
-            <Link
-              to="/runtime/observability"
-              className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5 font-mono"
-            >
-              ver todos
-              <ArrowRight className="h-2.5 w-2.5" />
-            </Link>
-          </div>
-          <div
-            className="relative overflow-hidden rounded-lg border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.85))] backdrop-blur-sm px-2 py-1.5 min-h-[68px] shadow-[inset_0_0_20px_rgba(56,189,248,0.08),0_0_14px_rgba(56,189,248,0.10)]"
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "Expandir Central" : "Minimizar Central"}
+            title={collapsed ? "Expandir Central" : "Minimizar Central"}
+            className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md border border-cyan-400/25 text-cyan-200/80 hover:text-cyan-100 hover:bg-cyan-400/10 transition-colors"
           >
-            {/* scanlines */}
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.08]"
-              style={{
-                backgroundImage: "repeating-linear-gradient(0deg, transparent 0 2px, rgba(125,211,252,0.6) 2px 3px)",
-              }}
-              aria-hidden
-            />
-            {/* topbar mini */}
-            <div className="pointer-events-none absolute top-1 right-1.5 flex items-center gap-1 opacity-70" aria-hidden>
-              <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.9)]" />
-              <span className="h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.9)]" />
-              <span className="h-1 w-1 rounded-full bg-rose-400 shadow-[0_0_4px_rgba(248,113,113,0.9)]" />
-            </div>
-            {feed.length === 0 ? (
-              <div className="relative font-mono text-[9px] text-cyan-100/50 py-1.5">
-                <span className="text-emerald-300/80">$</span>{" "}
-                <span>runtime --status</span>
-                <div className="text-cyan-100/40 italic mt-0.5">// sistema em espera · nenhuma atividade recente</div>
-              </div>
-            ) : (
-              <ul className="relative space-y-0.5 font-mono" aria-live="polite">
-                <AnimatePresence initial={false}>
-                  {feed.map((e, i) => (
-                    <motion.li
-                      key={`${e.msg}-${e.ts}`}
-                      initial={{ opacity: 0, x: -4 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: i * 0.05, duration: 0.3 }}
-                      className="flex items-center gap-1.5 text-[9.5px] leading-tight"
-                    >
-                      <span className="text-emerald-300/90 shrink-0">›</span>
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full shrink-0",
-                          e.ok
-                            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                            : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]",
-                        )}
-                        aria-hidden
-                      />
-                      <span className="text-cyan-50/95 truncate flex-1">{e.msg}</span>
-                      <span className="text-cyan-200/60 text-[8.5px] shrink-0">{formatRelative(e.ts)}</span>
-                    </motion.li>
-                  ))}
-                </AnimatePresence>
-              </ul>
-            )}
-          </div>
+            {collapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+          </button>
         </div>
+
+        {collapsed ? (
+          <div className="relative flex items-center gap-2 px-1 py-1">
+            <motion.div
+              animate={networkOnline && !reducedMotion ? { scale: [1, 1.12, 1], opacity: [0.85, 1, 0.85] } : { opacity: 0.7 }}
+              transition={{ duration: 2.4, repeat: networkOnline && !reducedMotion ? Infinity : 0, ease: "easeInOut" }}
+              className="h-7 w-7 shrink-0 rounded-full flex items-center justify-center border border-violet-400/50 bg-violet-500/10 shadow-[0_0_12px_rgba(168,85,247,0.55)]"
+              aria-hidden
+            >
+              <Brain className="h-3.5 w-3.5 text-violet-200" />
+            </motion.div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-[9.5px] text-cyan-50/95 font-medium truncate">
+                {anyActive ? "Processando agora" : "Sistema em espera"}
+              </div>
+              <div className="text-[9px] text-cyan-200/60 truncate">
+                {lastEvent ? `${lastEvent.msg} · ${formatRelative(lastEvent.ts)}` : "Nenhuma atividade recente"}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <NeuralGraph
+              professor={professor}
+              agents={agentsWithSurge}
+              professorSurge={surge.professor}
+              snap={snap ?? null}
+              reducedMotion={!!reducedMotion}
+            />
+
+            {/* Processando agora */}
+            <div className="relative mt-1.5 flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-black/40 px-2 py-1 backdrop-blur-sm">
+              <motion.span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full shrink-0",
+                  anyActive
+                    ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.95)]"
+                    : "bg-slate-500",
+                )}
+                animate={anyActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.6 }}
+                transition={{ duration: 1.6, repeat: anyActive ? Infinity : 0 }}
+                aria-hidden
+              />
+              <span className="text-[9.5px] text-cyan-50/95 font-medium">
+                {anyActive ? "Processando agora" : "Sistema em espera"}
+              </span>
+              {snap?.status?.lastHeartbeat?.ts && (
+                <span className="ml-auto text-[8.5px] text-cyan-200/50">
+                  {formatRelative(iso(snap.status.lastHeartbeat.ts))}
+                </span>
+              )}
+            </div>
+
+            {/* Terminal futurista */}
+            <div className="relative mt-1.5">
+              <div className="flex items-center justify-between mb-1 px-0.5">
+                <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-[0.18em] text-cyan-200/75 font-mono">
+                  <Activity className="h-2.5 w-2.5" />
+                  runtime.log
+                </div>
+                <Link
+                  to="/runtime/observability"
+                  className="text-[8.5px] text-cyan-300/80 hover:text-cyan-200 inline-flex items-center gap-0.5 font-mono"
+                >
+                  ver todos
+                  <ArrowRight className="h-2.5 w-2.5" />
+                </Link>
+              </div>
+              <div
+                className="relative overflow-hidden rounded-lg border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.85))] backdrop-blur-sm px-2 py-1.5 max-h-[74px] overflow-y-auto shadow-[inset_0_0_20px_rgba(56,189,248,0.08),0_0_14px_rgba(56,189,248,0.10)]"
+              >
+                {/* scanlines */}
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.08]"
+                  style={{
+                    backgroundImage: "repeating-linear-gradient(0deg, transparent 0 2px, rgba(125,211,252,0.6) 2px 3px)",
+                  }}
+                  aria-hidden
+                />
+                {feed.length === 0 ? (
+                  <div className="relative font-mono text-[9px] text-cyan-100/50 py-1">
+                    <span className="text-emerald-300/80">$</span>{" "}
+                    <span>runtime --status</span>
+                    <div className="text-cyan-100/40 italic mt-0.5">// sistema em espera</div>
+                  </div>
+                ) : (
+                  <ul className="relative space-y-0.5 font-mono" aria-live="polite">
+                    <AnimatePresence initial={false}>
+                      {feed.map((e, i) => (
+                        <motion.li
+                          key={`${e.msg}-${e.ts}`}
+                          initial={{ opacity: 0, x: -4 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.3 }}
+                          className="flex items-center gap-1.5 text-[9.5px] leading-tight"
+                        >
+                          <span className="text-emerald-300/90 shrink-0">›</span>
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full shrink-0",
+                              e.ok
+                                ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                                : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]",
+                            )}
+                            aria-hidden
+                          />
+                          <span className="text-cyan-50/95 truncate flex-1">{e.msg}</span>
+                          <span className="text-cyan-200/60 text-[8.5px] shrink-0">{formatRelative(e.ts)}</span>
+                        </motion.li>
+                      ))}
+                    </AnimatePresence>
+                  </ul>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </MotionConfig>
   );
 }
+
 
 /* -------------------- Live badge -------------------- */
 
@@ -879,20 +926,20 @@ function NeuralBackdrop({ reducedMotion, active }: { reducedMotion: boolean; act
     <>
       {/* Aurora glows */}
       <div
-        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-50 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)" }}
+        className="pointer-events-none absolute -top-20 -left-16 h-52 w-52 rounded-full opacity-25 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.45), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-45 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)" }}
+        className="pointer-events-none absolute -bottom-20 -right-14 h-56 w-56 rounded-full opacity-20 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.45), transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-30 blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.45), transparent 70%)" }}
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full opacity-15 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(45,212,191,0.35), transparent 70%)" }}
       />
       {/* Neon grid */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        className="pointer-events-none absolute inset-0 opacity-[0.14]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(125,211,252,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.7) 1px, transparent 1px)",
