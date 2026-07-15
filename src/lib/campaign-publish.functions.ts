@@ -12,6 +12,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery, isFailure } from "@/lib/outbound/MetaOutboundContract";
+import { assertOutbound } from "@/lib/environment/EnvironmentGuard.server";
 
 const PublishInput = z.object({ campaignId: z.string().uuid() });
 
@@ -35,6 +38,87 @@ function formatGraphError(body: GraphErrorBody, fallback: string): string {
   if (e.fbtrace_id) parts.push(`fbtrace=${e.fbtrace_id}`);
   if (e.error_user_msg) parts.push(`user_msg=${e.error_user_msg}`);
   return parts.join(" ");
+}
+
+// -------------------------------------------------------------------------
+// Fronteira MetaOutbound (Fase B.6.2): TODAS as escritas para Graph passam
+// aqui. Preserva a forma de retorno do graphFetch legado (drop-in), mas em
+// staging (kill switch ON + tenant staging) o postGraph curto-circuita
+// devolvendo simulation — nenhum fetch real acontece.
+//
+// GETs somente-leitura permanecem no graphFetch original (por diretriz).
+// -------------------------------------------------------------------------
+type GraphWriteOk<T> = { ok: true; data: T; status: number; rawText: string; responseHeaders: Record<string, string> };
+type GraphWriteFail = { ok: false; status: number; body: GraphErrorBody; message: string; rawText: string; responseHeaders: Record<string, string> };
+type GraphWriteResult<T> = GraphWriteOk<T> | GraphWriteFail;
+
+async function graphWrite<T>(
+  args: {
+    companyId: string;
+    userId: string;
+    action: string;
+    url: string;
+    method?: "POST" | "DELETE" | "PUT" | "PATCH";
+    headers?: Record<string, string>;
+    body?: BodyInit;
+    logicalPayload?: unknown;
+  },
+): Promise<GraphWriteResult<T>> {
+  const r = await postGraph<T>({
+    companyId: args.companyId,
+    userId: args.userId,
+    action: args.action,
+    url: args.url,
+    method: args.method ?? "POST",
+    headers: args.headers,
+    body: args.body,
+    logicalPayload: args.logicalPayload,
+  });
+
+  if (isSimulation(r)) {
+    // Defesa: o pipeline sempre executa o probe upfront; se um write cair
+    // em simulation aqui, é um bug de guard. Trata como falha suave, sem
+    // fabricar IDs, para que a etapa seja registrada como "não executada".
+    return {
+      ok: false,
+      status: 0,
+      body: { error: { message: "simulated_after_probe_pass" } },
+      message: "simulated_after_probe_pass",
+      rawText: "",
+      responseHeaders: {},
+    };
+  }
+  if (isRealDelivery(r)) {
+    const rawText = typeof r.raw === "string" ? r.raw : JSON.stringify(r.raw ?? null);
+    return {
+      ok: true,
+      data: r.raw as T,
+      status: r.status,
+      rawText,
+      responseHeaders: {},
+    };
+  }
+  // isFailure
+  if (isFailure(r)) {
+    const body = (r.parsedBody ?? {}) as GraphErrorBody;
+    return {
+      ok: false,
+      status: r.status ?? 0,
+      body,
+      message: r.error,
+      rawText: r.rawBody ?? "",
+      responseHeaders: {},
+    };
+  }
+  // Inalcançável — exhaustive.
+  return {
+    ok: false,
+    status: 0,
+    body: {},
+    message: "unknown_outbound_state",
+    rawText: "",
+    responseHeaders: {},
+  };
 }
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -297,6 +381,67 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
+    // ------------------------------------------------------------------
+    // Guard probe (Fase B.6.2): decisão de ambiente ANTES da primeira
+    // mutação (DB ou Graph). Em staging, curto-circuita a publicação
+    // inteira com uma única entrada em environment_simulations descrevendo
+    // as etapas que teriam sido executadas. Não persiste status=publishing,
+    // não sobe imagem, não cria campaign/adset/creative/ad, não fabrica IDs,
+    // não marca active_on_meta, não grava meta_publish_error.
+    // ------------------------------------------------------------------
+    const publishProbe = await assertOutbound({
+      companyId,
+      userId,
+      action: "meta.campaign.publish",
+      targetUrl: `${GRAPH}/${actId}/campaigns`,
+      method: "POST",
+      payload: {
+        campaign_id: campaignId,
+        campaign_name: campaign.name,
+        objective: campaign.objective,
+        goal: campaign.goal,
+        daily_budget_cents: Math.round(Number(campaign.daily_budget) * 100),
+        ad_account_id: actId,
+        page_id: pageId,
+        resume: isResume,
+        steps_planned: [
+          "upload_media/adimages",
+          isResume && resumeMetaCampaignId ? "reuse_campaign" : "create_campaign",
+          isResume && resumeMetaAdsetId ? "reuse_adset" : "create_adset",
+          "create_creative",
+          "create_ad",
+          "activate_campaign",
+          "activate_adset",
+          "activate_ad",
+        ],
+      },
+    });
+    if (!publishProbe.proceed) {
+      console.log("[publishCampaign] simulated (staging) — nenhuma escrita executada", {
+        campaignId,
+        environment: publishProbe.environment,
+        simulationId: publishProbe.simulationId,
+        reason: publishProbe.reason,
+      });
+      return {
+        ok: true as const,
+        simulated: true,
+        externalRequestSent: false,
+        environment: publishProbe.environment,
+        simulationId: publishProbe.simulationId,
+        steps_skipped: [
+          "status=publishing",
+          "upload_media/adimages",
+          "create_campaign",
+          "create_adset",
+          "create_creative",
+          "create_ad",
+          "activate_objects",
+          "persist_meta_ids",
+          "mark_active_on_meta",
+        ],
+      };
+    }
 
     // 4) Marca status=publishing.
     await supabase
@@ -640,33 +785,49 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Upload por bytes via multipart/form-data (filename ASCII simples)
+    // Upload por bytes via multipart/form-data (filename ASCII simples).
+    // ATENÇÃO: o FormData é passado bit-a-bit ao fetch; nenhum Content-Type
+    // manual, boundary gerado pelo runtime, stream não é lido duas vezes.
+    // Em staging (guard ON), o graphWrite curto-circuita e nunca lê imgBlob.
     try {
       const fd = new FormData();
       fd.append("access_token", accessToken);
       fd.append("source", imgBlob, `campaign_${campaignId}.jpg`);
-      const upRes = await fetch(`${GRAPH}/${actId}/adimages`, { method: "POST", body: fd });
-      const upText = await upRes.text();
-      const upBody = upText ? (JSON.parse(upText) as { images?: Record<string, { hash: string }> } & GraphErrorBody) : {};
+      const upRes = await graphWrite<{ images?: Record<string, { hash: string }> }>({
+        companyId,
+        userId,
+        action: "meta.campaign.upload_adimages",
+        url: `${GRAPH}/${actId}/adimages`,
+        method: "POST",
+        body: fd,
+        // logicalPayload sanitizado: NUNCA envia o Blob para o SimulationLogger.
+        logicalPayload: {
+          endpoint: `${GRAPH}/${actId}/adimages`,
+          filename: `campaign_${campaignId}.jpg`,
+          content_type: imgContentType,
+          size_bytes: imgSize,
+          campaign_id: campaignId,
+        },
+      });
       if (!upRes.ok) {
-        const errCode = (upBody as GraphErrorBody).error?.code;
+        const errCode = (upRes.body as GraphErrorBody).error?.code;
         const isCapability =
           errCode === 3 || errCode === 10 || errCode === 200 || errCode === 294 ||
-          /capability|permission|not have/i.test((upBody as GraphErrorBody).error?.message ?? "");
+          /capability|permission|not have/i.test((upRes.body as GraphErrorBody).error?.message ?? "");
         console.warn("[publishCampaign] upload_media (bytes) fail", {
-          status: upRes.status, body: upBody, size: imgSize, contentType: imgContentType,
+          status: upRes.status, body: upRes.body, size: imgSize, contentType: imgContentType,
           willFallbackToPictureUrl: isCapability,
         });
         if (!isCapability) {
           return fail(
             "upload_media",
-            formatGraphError(upBody as GraphErrorBody, `HTTP ${upRes.status}`),
-            upBody,
+            formatGraphError(upRes.body, `HTTP ${upRes.status}`),
+            upRes.body,
           );
         }
         // Capability bloqueada: fallback para picture URL no creative.
       } else {
-        const images = (upBody as { images?: Record<string, { hash: string }> }).images ?? {};
+        const images = upRes.data.images ?? {};
         imageHash = Object.values(images)[0]?.hash ?? null;
         console.log("[publishCampaign] upload_media (bytes) ok", {
           imageHash, size: imgSize, contentType: imgContentType, usedUploadByBytes: true,
@@ -677,6 +838,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.error("[publishCampaign] upload_media (bytes) error", { msg });
       return fail("upload_media", `Falha ao enviar bytes para a Meta (${msg}).`);
     }
+
 
     // Pré-check de acessibilidade externa via SIGNED URL (24h).
     // - Bucket product-images é privado: jamais usar URL /object/public/ na Meta.
@@ -770,14 +932,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.log("[publishCampaign] create_campaign payload", {
         campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
       });
-      const campRes = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(campaignPayload),
-        },
-      );
+      const campRes = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: "meta.campaign.create_campaign",
+        url: `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campaignPayload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload },
+      });
       if (!campRes.ok) {
         console.error("[publishCampaign] create_campaign fail", {
           status: campRes.status, message: campRes.message, body: campRes.body,
@@ -1007,14 +1171,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.log("[publishCampaign] adset targeting", targeting);
       console.log("[publishCampaign] create_adset payload", adsetPayload);
 
-      const adsetRes = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(adsetPayload),
-        },
-      );
+      const adsetRes = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: "meta.campaign.create_adset",
+        url: `${GRAPH}/${actId}/adsets?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(adsetPayload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/adsets`, payload: adsetPayload },
+      });
       if (!adsetRes.ok) {
         console.error("[publishCampaign] create_adset fail", {
           status: adsetRes.status, message: adsetRes.message, body: adsetRes.body,
@@ -1224,14 +1390,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
         waLink,
         payload,
       });
-      const res = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
+      const res = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: `meta.campaign.create_creative.${mode}`,
+        url: `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/adcreatives`, mode, payload },
+      });
       return { res, payload };
     }
 
@@ -1416,14 +1584,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       creative_id: creativeId,
     });
     console.log("[publishCampaign] create_ad", { payload: adPayload });
-    const adRes = await graphFetch<{ id: string }>(
-      `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adPayload),
-      },
-    );
+    const adRes = await graphWrite<{ id: string }>({
+      companyId,
+      userId,
+      action: "meta.campaign.create_ad",
+      url: `${GRAPH}/${actId}/ads?access_token=${encodeURIComponent(accessToken)}`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adPayload),
+      logicalPayload: { endpoint: `${GRAPH}/${actId}/ads`, payload: adPayload },
+    });
     if (!adRes.ok) {
       console.error("[publishCampaign] create_ad fail — resposta bruta da Meta", {
         endpoint: `${GRAPH}/${actId}/ads`,
@@ -1500,10 +1670,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const form = new URLSearchParams();
       form.set("status", "ACTIVE");
       form.set("access_token", accessToken);
-      const actRes = await graphFetch<{ success?: boolean }>(`${GRAPH}/${id}`, {
+      const actRes = await graphWrite<{ success?: boolean }>({
+        companyId,
+        userId,
+        action: `meta.campaign.activate.${object}`,
+        url: `${GRAPH}/${id}`,
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
+        logicalPayload: { object, id, status: "ACTIVE" },
       });
       const getRes = await graphFetch<MetaStatusResp>(
         `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
