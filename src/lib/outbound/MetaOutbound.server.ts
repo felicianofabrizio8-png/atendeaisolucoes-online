@@ -63,7 +63,7 @@ export async function postGraph<TRaw = unknown>(
     action: input.action,
     targetUrl: input.url,
     method,
-    payload: input.logicalPayload ?? tryParseBody(input.body),
+    payload: input.logicalPayload ?? tryParseBody(typeof input.body === "string" ? input.body : undefined),
   };
 
   const decision = await assertOutbound(action, input.guardDeps);
