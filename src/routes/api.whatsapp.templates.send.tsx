@@ -111,38 +111,49 @@ export const Route = createFileRoute("/api/whatsapp/templates/send")({
         };
 
         const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
-        let res: Response;
-        try {
-          res = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          });
-        } catch (e) {
-          const err = e instanceof Error ? e.message : "falha de rede";
-          return Response.json({ error: `network: ${err}` }, { status: 502 });
-        }
-
-        const raw = await res.text();
-        let parsed: {
+        const outbound = await postGraph<{
           messages?: Array<{ id: string }>;
           error?: { message?: string; code?: number; type?: string };
-        } = {};
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          /* not json */
+        }>({
+          companyId: ctx.companyId,
+          action: "whatsapp.send.template",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
+          // staging: nenhuma persistência, nenhum consumo real de template.
+          return Response.json({
+            ok: true,
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+          });
         }
-        if (!res.ok) {
-          return Response.json(
-            { error: parsed.error?.message ?? `HTTP ${res.status}` },
-            { status: res.status },
-          );
+
+        if (!isRealDelivery(outbound)) {
+          if (!outbound.externalRequestSent) {
+            return Response.json({ error: `network: ${outbound.error}` }, { status: 502 });
+          }
+          const providerErr = outbound.providerError as
+            | { message?: string; code?: number; type?: string }
+            | null
+            | undefined;
+          const msg = providerErr?.message ?? outbound.error;
+          return Response.json({ error: msg }, { status: outbound.status ?? 502 });
         }
-        const externalId = parsed.messages?.[0]?.id ?? null;
+
+        const externalId = outbound.externalId;
+
         const sentAt = new Date().toISOString();
         await supabaseAdmin.from("messages").insert({
           company_id: ctx.companyId,
