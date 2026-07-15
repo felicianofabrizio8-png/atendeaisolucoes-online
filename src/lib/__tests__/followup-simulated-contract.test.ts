@@ -374,7 +374,15 @@ describe("followup/reactivation — simulação não marca reactivated_at", () =
   });
 
   it("dedupe: se já existe follow_up simulado recente, o lead é pulado sem chamar sendWhatsappText", async () => {
-    tableRows.follow_ups = [{ id: "prev-sim" }];
+    tableRows.follow_ups = [
+      {
+        id: "prev-sim",
+        company_id: "company-1",
+        lead_id: "lead-r",
+        rule_type: "returning_customer",
+        status: "simulated",
+      },
+    ];
     const { runReactivation } = await import("@/lib/followup/reactivation");
     const out = await runReactivation("company-1");
     expect(out.sent).toBe(0);
