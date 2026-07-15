@@ -439,16 +439,24 @@ function HealthPage() {
           className={cn("absolute -top-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-30", t.bg)}
         />
         <div className="relative flex flex-col lg:flex-row lg:items-center gap-6 lg:justify-between">
-          <div className="flex items-start gap-4 min-w-0">
-            <div className={cn("relative h-14 w-14 shrink-0 rounded-2xl flex items-center justify-center ring-1", t.bg, t.ring)}>
-              {status.tone === "ok" ? (
-                <CheckCircle2 className={cn("h-7 w-7", t.text)} />
-              ) : status.tone === "warn" ? (
-                <AlertTriangle className={cn("h-7 w-7", t.text)} />
-              ) : (
-                <XCircle className={cn("h-7 w-7", t.text)} />
-              )}
-              <span className={cn("absolute inset-0 rounded-2xl animate-ping opacity-20", t.bg)} aria-hidden="true" />
+          <div className="flex items-start gap-5 min-w-0">
+            {/* Ring de Health Score */}
+            <div className="relative h-24 w-24 shrink-0" aria-label={`Health score ${healthScore} de 100`}>
+              <svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90">
+                <circle cx="50" cy="50" r="42" className="stroke-muted" strokeWidth="8" fill="none" />
+                <circle
+                  cx="50" cy="50" r="42" fill="none" strokeWidth="8" strokeLinecap="round"
+                  className={cn(t.text)}
+                  stroke="currentColor"
+                  strokeDasharray={2 * Math.PI * 42}
+                  strokeDashoffset={2 * Math.PI * 42 * (1 - healthScore / 100)}
+                  style={{ transition: "stroke-dashoffset 600ms ease" }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={cn("text-2xl font-bold tabular-nums leading-none", t.text)}>{healthScore}</span>
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground mt-0.5">score</span>
+              </div>
             </div>
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-widest text-muted-foreground">Saúde geral do sistema</div>
@@ -456,15 +464,46 @@ function HealthPage() {
                 {status.label}
               </h1>
               <p className="text-sm text-muted-foreground mt-1">{status.sub}</p>
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-muted-foreground">
+                {status.tone === "ok" ? (
+                  <CheckCircle2 className={cn("h-3.5 w-3.5", t.text)} />
+                ) : status.tone === "warn" ? (
+                  <AlertTriangle className={cn("h-3.5 w-3.5", t.text)} />
+                ) : (
+                  <XCircle className={cn("h-3.5 w-3.5", t.text)} />
+                )}
+                <span>{status.label}</span>
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-[11px]">
               {activeIntegrations}/{totalIntegrations} integrações ativas
             </Badge>
-            <Badge variant="outline" className={cn("text-[11px]", alerts.length > 0 && "border-amber-500/40 text-amber-500")}>
-              {alerts.length} alertas
-            </Badge>
+            {(() => {
+              const crit = alerts.filter((a) => a.tone === "crit").length;
+              const warn = alerts.filter((a) => a.tone === "warn").length;
+              const info = alerts.filter((a) => a.tone === "info").length;
+              return (
+                <>
+                  {crit > 0 && (
+                    <Badge variant="outline" className="text-[11px] border-red-500/40 text-red-500">
+                      {crit} crítico{crit > 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                  {warn > 0 && (
+                    <Badge variant="outline" className="text-[11px] border-amber-500/40 text-amber-500">
+                      {warn} atenção
+                    </Badge>
+                  )}
+                  {info > 0 && (
+                    <Badge variant="outline" className="text-[11px] border-sky-500/40 text-sky-500">
+                      {info} informativo{info > 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </>
+              );
+            })()}
             <Badge variant="outline" className="text-[11px]">
               Atualizado {timeAgo(data.generatedAt)}
             </Badge>
