@@ -932,14 +932,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.log("[publishCampaign] create_campaign payload", {
         campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
       });
-      const campRes = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(campaignPayload),
-        },
-      );
+      const campRes = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: "meta.campaign.create_campaign",
+        url: `${GRAPH}/${actId}/campaigns?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campaignPayload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload },
+      });
       if (!campRes.ok) {
         console.error("[publishCampaign] create_campaign fail", {
           status: campRes.status, message: campRes.message, body: campRes.body,
