@@ -33,6 +33,17 @@ export interface OutboundFailure {
   status?: number;
   retryable: boolean;
   providerError?: unknown;
+  /**
+   * Corpo bruto retornado pela Meta, EXATAMENTE como texto recebido no fetch
+   * (antes de qualquer parse/normalização). Presente apenas em falhas HTTP
+   * (externalRequestSent=true). Nunca fabricado em simulação/network error.
+   */
+  rawBody?: string;
+  /**
+   * Corpo parseado quando o rawBody é JSON válido; null caso contrário.
+   * Presente apenas em falhas HTTP.
+   */
+  parsedBody?: unknown;
 }
 
 export type OutboundResult<TRaw = unknown> =
