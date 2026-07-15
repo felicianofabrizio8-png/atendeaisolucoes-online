@@ -5,6 +5,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+
 
 
 interface SendBody {
@@ -211,7 +214,7 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         }
         integrationId = integration.id;
 
-        // Envia via Cloud API
+        // Envia via Cloud API (via MetaOutbound — única fronteira externa)
         const apiUrl = `https://graph.facebook.com/v20.0/${integration.external_account_id}/messages`;
         const sentAt = new Date().toISOString();
         let externalId: string | null = null;
@@ -221,54 +224,73 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           to: recipient,
           textLen: body.text.length,
         });
-        try {
-          const apiRes = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messaging_product: "whatsapp",
-              to: recipient,
-              type: "text",
-              text: { body: body.text },
-            }),
+        const payload = {
+          messaging_product: "whatsapp",
+          to: recipient,
+          type: "text",
+          text: { body: body.text },
+        };
+        const outbound = await postGraph<{
+          messages?: Array<{ id: string }>;
+          error?: { message?: string; code?: number; type?: string };
+        }>({
+          companyId,
+          userId,
+          action: "whatsapp.send.text",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
+          // staging: NÃO persiste mensagem, NÃO atualiza integrations como sucesso.
+          return Response.json({
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            conversationId,
+            leadId,
           });
-          const apiText = await apiRes.text();
-          let apiJson: {
-            messages?: Array<{ id: string }>;
-            error?: { message?: string; code?: number; type?: string };
-          } = {};
-          try {
-            apiJson = JSON.parse(apiText);
-          } catch {
-            /* not json */
-          }
-          if (!apiRes.ok) {
-            const msg = apiJson.error?.message ?? `HTTP ${apiRes.status}`;
-            console.error("[whatsapp send] meta error", {
-              status: apiRes.status,
-              body: apiText.slice(0, 1000),
-              to: recipient,
-              phoneNumberId: integration.external_account_id,
-            });
-            await supabaseAdmin
-              .from("integrations")
-              .update({ last_error: msg })
-              .eq("id", integrationId!);
-            return Response.json(
-              { error: `WhatsApp API: ${msg}`, metaError: apiJson.error ?? null, status: apiRes.status },
-              { status: 502 },
-            );
-          }
-          externalId = apiJson.messages?.[0]?.id ?? null;
-          console.log("[whatsapp send] ok", { externalId, to: recipient });
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "falha de rede";
-          console.error("[whatsapp send] network error", msg);
-          return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
         }
+
+        if (!isRealDelivery(outbound)) {
+          if (!outbound.externalRequestSent) {
+            const msg = outbound.error;
+            console.error("[whatsapp send] network error", msg);
+            return Response.json({ error: `Falha ao enviar: ${msg}` }, { status: 502 });
+          }
+          const providerErr = outbound.providerError as
+            | { message?: string; code?: number; type?: string }
+            | null
+            | undefined;
+          const msg = providerErr?.message ?? outbound.error;
+          console.error("[whatsapp send] meta error", {
+            status: outbound.status,
+            body: (outbound.rawBody ?? "").slice(0, 1000),
+            to: recipient,
+            phoneNumberId: integration.external_account_id,
+          });
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: msg })
+            .eq("id", integrationId!);
+          return Response.json(
+            { error: `WhatsApp API: ${msg}`, metaError: providerErr ?? null, status: outbound.status },
+            { status: 502 },
+          );
+        }
+
+        externalId = outbound.externalId;
+        console.log("[whatsapp send] ok", { externalId, to: recipient });
+
 
         // Persiste mensagem
         const { data: inserted, error: insertErr } = await supabaseAdmin
