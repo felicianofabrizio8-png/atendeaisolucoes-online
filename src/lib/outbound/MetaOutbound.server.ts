@@ -1,0 +1,139 @@
+// MetaOutbound — ÚNICA porta de saída autorizada para escrever na Meta Graph API.
+//
+// Regra arquitetural (a ser enforçada por lint em fase futura):
+//   `fetch("https://graph.facebook.com...")` só é permitido neste arquivo.
+//
+// Todo chamador passa por `postGraph()`, que:
+//   1) invoca o EnvironmentGuard.assertOutbound()
+//   2) se `proceed=false`, devolve OutboundSimulated (nunca faz fetch)
+//   3) se `proceed=true`, executa fetch idêntico ao caminho legado
+//
+// Comportamento em `legacy` (kill switch OFF) e em `production` é bit-a-bit
+// igual ao atual — mesmos headers, mesmo body, mesma URL. Nada muda p/ Solário.
+
+import { assertOutbound, type GuardDeps } from "@/lib/environment/EnvironmentGuard.server";
+import type { OutboundAction } from "@/lib/environment/types";
+import type { OutboundResult } from "./MetaOutboundContract";
+
+export interface PostGraphInput {
+  /** Empresa dona da ação (obrigatório para o guard). */
+  companyId: string;
+  /** Nome semântico da ação (ex.: "whatsapp.send.text", "meta.campaign.publish"). */
+  action: string;
+  /** URL completa Graph API. */
+  url: string;
+  /** Método HTTP. Default POST. */
+  method?: "GET" | "POST" | "DELETE" | "PUT" | "PATCH";
+  /** Headers HTTP (Authorization etc.). */
+  headers?: Record<string, string>;
+  /** Corpo da requisição (JSON ou form-urlencoded string). */
+  body?: string | undefined;
+  /** Payload lógico p/ log (será sanitizado). Se ausente, usa body. */
+  logicalPayload?: unknown;
+  /** Usuário responsável (auth). */
+  userId?: string | null;
+  /** Agente responsável (ex.: "ai-agent", "followup-tick"). */
+  agentId?: string | null;
+  /** Extrai externalId do JSON de resposta (opcional). */
+  extractExternalId?: (json: unknown) => string | null;
+  /** Injeção p/ testes. */
+  guardDeps?: GuardDeps;
+  /** fetch injetável p/ testes. */
+  fetchImpl?: typeof fetch;
+}
+
+function isRetryable(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/** Ponto único de saída para Graph API. */
+export async function postGraph<TRaw = unknown>(
+  input: PostGraphInput,
+): Promise<OutboundResult<TRaw>> {
+  const method = input.method ?? "POST";
+  const action: OutboundAction = {
+    companyId: input.companyId,
+    userId: input.userId ?? null,
+    agentId: input.agentId ?? null,
+    action: input.action,
+    targetUrl: input.url,
+    method,
+    payload: input.logicalPayload ?? tryParseBody(input.body),
+  };
+
+  const decision = await assertOutbound(action, input.guardDeps);
+
+  if (!decision.proceed) {
+    return {
+      success: true,
+      simulated: true,
+      environment: decision.environment,
+      externalRequestSent: false,
+      simulationId: decision.simulationId,
+      would: { url: input.url, method },
+    };
+  }
+
+  // proceed=true → mesmo caminho de sempre.
+  const doFetch = input.fetchImpl ?? fetch;
+  let res: Response;
+  try {
+    res = await doFetch(input.url, {
+      method,
+      headers: input.headers,
+      body: input.body,
+    });
+  } catch (e) {
+    return {
+      success: false,
+      simulated: false,
+      environment: decision.environment === "legacy" ? "legacy" : "production",
+      externalRequestSent: false,
+      error: e instanceof Error ? e.message : "network_error",
+      retryable: true,
+    };
+  }
+
+  const text = await res.text();
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = text;
+  }
+
+  if (!res.ok) {
+    const providerErr = (json as { error?: { message?: string } } | null)?.error;
+    return {
+      success: false,
+      simulated: false,
+      environment: decision.environment === "legacy" ? "legacy" : "production",
+      externalRequestSent: true,
+      error: providerErr?.message ?? `HTTP ${res.status}`,
+      status: res.status,
+      retryable: isRetryable(res.status),
+      providerError: providerErr ?? json,
+    };
+  }
+
+  const externalId = input.extractExternalId ? input.extractExternalId(json) : null;
+  return {
+    success: true,
+    simulated: false,
+    environment: decision.environment === "legacy" ? "legacy" : "production",
+    externalRequestSent: true,
+    externalId,
+    status: res.status,
+    raw: json as TRaw,
+  };
+}
+
+function tryParseBody(body: string | undefined): unknown {
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    // form-urlencoded → devolve como string; sanitizer trata.
+    return { raw: body };
+  }
+}
