@@ -7,6 +7,8 @@
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 import {
   detectObjections,
   detectReadyToClose,
@@ -533,33 +535,48 @@ export async function sendWhatsappText(params: {
   if (!accessTok || !phoneNumberId) return { ok: false, error: "WhatsApp não conectado" };
 
   const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
-  let res: Response;
-  try {
-    res = await fetch(apiUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessTok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: recipient,
-        type: "text",
-        text: { body: params.text },
-      }),
-    });
-  } catch (e) {
-    return { ok: false, error: `network: ${e instanceof Error ? e.message : "erro"}` };
+  const payload = {
+    messaging_product: "whatsapp",
+    to: recipient,
+    type: "text" as const,
+    text: { body: params.text },
+  };
+  const outbound = await postGraph<{
+    messages?: Array<{ id: string }>;
+    error?: { message?: string };
+  }>({
+    companyId: params.companyId,
+    action: "whatsapp.send.text",
+    url: apiUrl,
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessTok}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    logicalPayload: payload,
+    agentId: "ai-agent",
+    extractExternalId: (j) =>
+      (j as { messages?: Array<{ id: string }> })?.messages?.[0]?.id ?? null,
+  });
+
+  // Staging/unknown → simulação. Preserva contrato (ok:true) para não induzir
+  // retry/duplicidade nos consumidores; NÃO persiste mensagem/entrega.
+  if (isSimulation(outbound)) {
+    return { ok: true, externalId: null };
   }
-  const raw = await res.text();
-  let parsed: { messages?: Array<{ id: string }>; error?: { message?: string } } = {};
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    /* */
+
+  if (!isRealDelivery(outbound)) {
+    if (outbound.externalRequestSent) {
+      const providerErr = outbound.providerError as { message?: string } | null | undefined;
+      const raw = outbound.rawBody ?? "";
+      console.error("[AGENT_WHATSAPP_HTTP]", outbound.status, raw.slice(0, 500));
+      return { ok: false, error: providerErr?.message ?? outbound.error };
+    }
+    return { ok: false, error: `network: ${outbound.error}` };
   }
-  if (!res.ok) {
-    console.error("[AGENT_WHATSAPP_HTTP]", res.status, raw.slice(0, 500));
-    return { ok: false, error: parsed.error?.message ?? `HTTP ${res.status}` };
-  }
-  const externalId = parsed.messages?.[0]?.id ?? null;
+
+  const externalId = outbound.externalId;
 
   // Insere mensagem na DB (role=agent, source=ai_agent)
   await supabaseAdmin.from("messages").insert({
