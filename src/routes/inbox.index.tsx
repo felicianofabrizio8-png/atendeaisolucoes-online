@@ -262,18 +262,6 @@ function InboxPage() {
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* noop */ }
   };
 
-  if (view === "cockpit") {
-    return (
-      <div className="flex-1 flex flex-col min-w-0 relative">
-        <div className="absolute top-3 right-4 z-20">
-          <ViewToggle view={view} onChange={changeView} />
-        </div>
-        <OpsCockpit />
-      </div>
-    );
-  }
-
-
   const itemsRaw = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
   const items =
     statusFilter === "coach"
@@ -444,6 +432,17 @@ function InboxPage() {
 
   const hasAnyFilter =
     statusFilter !== "todos" || sourceFilter !== "todos" || !!lossReasonFilter || windowFilter !== "todos";
+
+  if (view === "cockpit") {
+    return (
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        <div className="absolute top-3 right-4 z-20">
+          <ViewToggle view={view} onChange={changeView} />
+        </div>
+        <OpsCockpit />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
