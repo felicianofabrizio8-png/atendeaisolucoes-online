@@ -234,7 +234,10 @@ describe("followup/manual — resposta ao admin discrimina simulação", () => {
       lead_temperature: "morno",
     };
     tableRows.leads = { id: "lead-m", name: "Ana", product: null };
-    tableRows.messages = null; // sem mensagens recentes do agente
+    // Mensagens: agente sem envio recente, lead com mensagem dentro da janela 24h.
+    tableRows.messages = [
+      { role: "lead", at: new Date().toISOString(), conversation_id: "conv-m" },
+    ];
     tableRows.follow_ups = null;
   });
 
