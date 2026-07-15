@@ -1390,14 +1390,16 @@ export const publishCampaign = createServerFn({ method: "POST" })
         waLink,
         payload,
       });
-      const res = await graphFetch<{ id: string }>(
-        `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
+      const res = await graphWrite<{ id: string }>({
+        companyId,
+        userId,
+        action: `meta.campaign.create_creative.${mode}`,
+        url: `${GRAPH}/${actId}/adcreatives?access_token=${encodeURIComponent(accessToken)}`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        logicalPayload: { endpoint: `${GRAPH}/${actId}/adcreatives`, mode, payload },
+      });
       return { res, payload };
     }
 
