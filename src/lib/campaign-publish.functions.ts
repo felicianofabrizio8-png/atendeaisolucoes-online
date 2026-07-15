@@ -785,33 +785,49 @@ export const publishCampaign = createServerFn({ method: "POST" })
     }
 
 
-    // Upload por bytes via multipart/form-data (filename ASCII simples)
+    // Upload por bytes via multipart/form-data (filename ASCII simples).
+    // ATENÇÃO: o FormData é passado bit-a-bit ao fetch; nenhum Content-Type
+    // manual, boundary gerado pelo runtime, stream não é lido duas vezes.
+    // Em staging (guard ON), o graphWrite curto-circuita e nunca lê imgBlob.
     try {
       const fd = new FormData();
       fd.append("access_token", accessToken);
       fd.append("source", imgBlob, `campaign_${campaignId}.jpg`);
-      const upRes = await fetch(`${GRAPH}/${actId}/adimages`, { method: "POST", body: fd });
-      const upText = await upRes.text();
-      const upBody = upText ? (JSON.parse(upText) as { images?: Record<string, { hash: string }> } & GraphErrorBody) : {};
+      const upRes = await graphWrite<{ images?: Record<string, { hash: string }> }>({
+        companyId,
+        userId,
+        action: "meta.campaign.upload_adimages",
+        url: `${GRAPH}/${actId}/adimages`,
+        method: "POST",
+        body: fd,
+        // logicalPayload sanitizado: NUNCA envia o Blob para o SimulationLogger.
+        logicalPayload: {
+          endpoint: `${GRAPH}/${actId}/adimages`,
+          filename: `campaign_${campaignId}.jpg`,
+          content_type: imgContentType,
+          size_bytes: imgSize,
+          campaign_id: campaignId,
+        },
+      });
       if (!upRes.ok) {
-        const errCode = (upBody as GraphErrorBody).error?.code;
+        const errCode = (upRes.body as GraphErrorBody).error?.code;
         const isCapability =
           errCode === 3 || errCode === 10 || errCode === 200 || errCode === 294 ||
-          /capability|permission|not have/i.test((upBody as GraphErrorBody).error?.message ?? "");
+          /capability|permission|not have/i.test((upRes.body as GraphErrorBody).error?.message ?? "");
         console.warn("[publishCampaign] upload_media (bytes) fail", {
-          status: upRes.status, body: upBody, size: imgSize, contentType: imgContentType,
+          status: upRes.status, body: upRes.body, size: imgSize, contentType: imgContentType,
           willFallbackToPictureUrl: isCapability,
         });
         if (!isCapability) {
           return fail(
             "upload_media",
-            formatGraphError(upBody as GraphErrorBody, `HTTP ${upRes.status}`),
-            upBody,
+            formatGraphError(upRes.body, `HTTP ${upRes.status}`),
+            upRes.body,
           );
         }
         // Capability bloqueada: fallback para picture URL no creative.
       } else {
-        const images = (upBody as { images?: Record<string, { hash: string }> }).images ?? {};
+        const images = upRes.data.images ?? {};
         imageHash = Object.values(images)[0]?.hash ?? null;
         console.log("[publishCampaign] upload_media (bytes) ok", {
           imageHash, size: imgSize, contentType: imgContentType, usedUploadByBytes: true,
@@ -822,6 +838,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       console.error("[publishCampaign] upload_media (bytes) error", { msg });
       return fail("upload_media", `Falha ao enviar bytes para a Meta (${msg}).`);
     }
+
 
     // Pré-check de acessibilidade externa via SIGNED URL (24h).
     // - Bucket product-images é privado: jamais usar URL /object/public/ na Meta.
