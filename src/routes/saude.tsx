@@ -263,7 +263,11 @@ function IntegrationCard({ i }: { i: HealthIntegration }) {
   const t = toneStyles[tone];
   const meta = channelMeta(i.channel);
   const Icon = meta.icon;
-  const label = tone === "ok" ? "Operacional" : tone === "warn" ? "Atenção" : "Crítico";
+  const label =
+    tone === "ok" ? "Operacional"
+    : tone === "info" ? "Baixo movimento"
+    : tone === "warn" ? "Atenção"
+    : "Crítico";
   return (
     <div className={cn("relative rounded-2xl border border-border bg-card p-5 overflow-hidden group",
       "hover:border-primary/40 transition-colors")}>
