@@ -393,145 +393,67 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
         });
 
         let externalId: string | null = null;
-        try {
-          const apiRes = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${integration.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          });
-          const apiText = await apiRes.text();
-          let apiJson: MetaAudioResponse = {};
-          try {
-            apiJson = JSON.parse(apiText);
-          } catch {
-            /* */
-          }
-          const err = apiJson.error ?? {};
-          externalId = apiJson.messages?.[0]?.id ?? null;
+        const outbound = await postGraph<MetaAudioResponse>({
+          companyId,
+          userId,
+          action: "whatsapp.send.audio",
+          url: apiUrl,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${integration.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          logicalPayload: payload,
+          extractExternalId: (j) =>
+            (j as MetaAudioResponse)?.messages?.[0]?.id ?? null,
+        });
+
+        if (isSimulation(outbound)) {
+          // Staging: nenhum envio real; áudio já subiu para o bucket (cleanup best-effort).
           console.log("[AUDIO META RESPONSE]", {
-            status: apiRes.status,
-            http_status: apiRes.status,
-            ok: apiRes.ok,
-            body: apiText,
-            parsed_body: apiJson,
-            messages_0_id: externalId,
-            error_message: err.message,
-            error_code: err.code,
-            error_subcode: err.error_subcode,
-            fbtrace_id: err.fbtrace_id,
-            payload,
+            simulated: true,
+            environment: outbound.environment,
+            simulationId: outbound.simulationId,
             phone_number_id: integration.external_account_id,
             to: recipient,
             media_mime: baseMime,
             detected_audio: detectedAudio,
             media_size: file.size,
-            signed_url_status: signedUrlStatus,
-            signed_url_content_type: signedUrlContentType,
-            signed_url_content_length: signedUrlContentLength,
-            signed_url_detected_audio: signedUrlDetectedAudio,
           });
-          if (!([200, 201].includes(apiRes.status)) || !externalId) {
-            const msg = err.message ?? (!externalId ? "Meta não retornou messages[0].id" : `HTTP ${apiRes.status}`);
-            console.error("[AUDIO META RESPONSE]", {
-              accepted_as_sent: false,
-              status: apiRes.status,
-              http_status: apiRes.status,
-              message: err.message,
-              code: err.code,
-              error_subcode: err.error_subcode,
-              fbtrace_id: err.fbtrace_id,
-              body: apiText,
-              parsed_body: apiJson,
-              messages_0_id: externalId,
-              payload,
-              phone_number_id: integration.external_account_id,
-              to: recipient,
-              media_mime: baseMime,
-              detected_audio: detectedAudio,
-              media_size: file.size,
-              signed_url_status: signedUrlStatus,
-              signed_url_content_type: signedUrlContentType,
-              signed_url_content_length: signedUrlContentLength,
-              signed_url_detected_audio: signedUrlDetectedAudio,
-            });
-            await supabaseAdmin.from("error_log").insert({
-              company_id: companyId,
-              user_id: userId,
-              source: "whatsapp.send-audio",
-              severity: "error",
-              message: `meta: ${msg}`,
-              context: {
-                conversation_id: conversationId,
-                lead_phone: recipient,
-                phone_number_id: integration.external_account_id,
-                payload,
-                media_mime: baseMime,
-                detected_audio: detectedAudio,
-                media_size: file.size,
-                signed_url_status: signedUrlStatus,
-                signed_url_content_type: signedUrlContentType,
-                signed_url_content_length: signedUrlContentLength,
-                signed_url_detected_audio: signedUrlDetectedAudio,
-                http_status: apiRes.status,
-                meta_error_message: err.message ?? null,
-                meta_error_code: err.code ?? null,
-                meta_error_subcode: err.error_subcode ?? null,
-                meta_error_type: err.type ?? null,
-                fbtrace_id: err.fbtrace_id ?? null,
-                meta_body: apiText,
-                meta_message_id: externalId,
-              },
-            }).then(() => null, () => null);
-            await supabaseAdmin
-              .from("integrations")
-              .update({ last_error: msg })
-              .eq("id", integration.id);
-            await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
-            return Response.json(
-              {
-                error: FRIENDLY_SEND_ERROR,
-                stage: "meta_api",
-                http_status: apiRes.status,
-                status: apiRes.status,
-                meta_error: err,
-                meta_error_message: err.message ?? null,
-                meta_error_code: err.code ?? null,
-                meta_error_subcode: err.error_subcode ?? null,
-                meta_error_type: err.type ?? null,
-                fbtrace_id: err.fbtrace_id ?? null,
-                meta_body: apiText,
-                meta_message_id: externalId,
-                payload,
-                phone_number_id: integration.external_account_id,
-                to: recipient,
-                media_mime: baseMime,
-                detected_audio: detectedAudio,
-                media_size: file.size,
-                signed_url_status: signedUrlStatus,
-                signed_url_content_type: signedUrlContentType,
-                signed_url_content_length: signedUrlContentLength,
-                signed_url_detected_audio: signedUrlDetectedAudio,
-              },
-              { status: 502 },
-            );
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "falha de rede";
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
+          return Response.json({
+            simulated: true,
+            externalRequestSent: false,
+            simulationId: outbound.simulationId,
+            environment: outbound.environment,
+            conversationId,
+            phone_number_id: integration.external_account_id,
+            to: recipient,
+            media_mime: baseMime,
+            detected_audio: detectedAudio,
+            media_size: file.size,
+          });
+        }
+
+        if (!isRealDelivery(outbound)) {
+          // Falha real: reproduz logging/error_log/cleanup do caminho legado.
+          const isNetwork = !outbound.externalRequestSent;
+          const providerErr = (outbound.providerError as MetaAudioResponse["error"]) ?? {};
+          const status = outbound.status ?? null;
+          const msg = isNetwork
+            ? outbound.error
+            : providerErr.message ?? outbound.error;
+
           console.error("[AUDIO META RESPONSE]", {
             accepted_as_sent: false,
-            network_error: true,
-            message: msg,
-            status: null,
-            http_status: null,
-            body: null,
-            messages_0_id: null,
-            error_message: msg,
-            error_code: null,
-            error_subcode: null,
-            fbtrace_id: null,
+            network_error: isNetwork,
+            status,
+            http_status: status,
+            message: providerErr.message ?? (isNetwork ? msg : null),
+            code: providerErr.code ?? null,
+            error_subcode: providerErr.error_subcode ?? null,
+            fbtrace_id: providerErr.fbtrace_id ?? null,
             payload,
             phone_number_id: integration.external_account_id,
             to: recipient,
@@ -548,7 +470,7 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             user_id: userId,
             source: "whatsapp.send-audio",
             severity: "error",
-            message: `network: ${msg}`,
+            message: isNetwork ? `network: ${msg}` : `meta: ${msg}`,
             context: {
               conversation_id: conversationId,
               lead_phone: recipient,
@@ -561,14 +483,57 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
               signed_url_content_type: signedUrlContentType,
               signed_url_content_length: signedUrlContentLength,
               signed_url_detected_audio: signedUrlDetectedAudio,
+              http_status: status,
+              meta_error_message: providerErr.message ?? null,
+              meta_error_code: providerErr.code ?? null,
+              meta_error_subcode: providerErr.error_subcode ?? null,
+              meta_error_type: providerErr.type ?? null,
+              fbtrace_id: providerErr.fbtrace_id ?? null,
+              meta_body: isNetwork ? null : JSON.stringify(outbound.providerError ?? null),
+              meta_message_id: null,
             },
           }).then(() => null, () => null);
+          if (!isNetwork) {
+            await supabaseAdmin
+              .from("integrations")
+              .update({ last_error: msg })
+              .eq("id", integration.id);
+          }
           await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
+          if (isNetwork) {
+            return Response.json(
+              {
+                error: FRIENDLY_SEND_ERROR,
+                stage: "network",
+                detail: msg,
+                phone_number_id: integration.external_account_id,
+                to: recipient,
+                media_mime: baseMime,
+                detected_audio: detectedAudio,
+                media_size: file.size,
+                signed_url_status: signedUrlStatus,
+                signed_url_content_type: signedUrlContentType,
+                signed_url_content_length: signedUrlContentLength,
+                signed_url_detected_audio: signedUrlDetectedAudio,
+              },
+              { status: 502 },
+            );
+          }
           return Response.json(
             {
               error: FRIENDLY_SEND_ERROR,
-              stage: "network",
-              detail: msg,
+              stage: "meta_api",
+              http_status: status,
+              status,
+              meta_error: providerErr,
+              meta_error_message: providerErr.message ?? null,
+              meta_error_code: providerErr.code ?? null,
+              meta_error_subcode: providerErr.error_subcode ?? null,
+              meta_error_type: providerErr.type ?? null,
+              fbtrace_id: providerErr.fbtrace_id ?? null,
+              meta_body: JSON.stringify(outbound.providerError ?? null),
+              meta_message_id: null,
+              payload,
               phone_number_id: integration.external_account_id,
               to: recipient,
               media_mime: baseMime,
@@ -582,6 +547,68 @@ export const Route = createFileRoute("/api/whatsapp/send-audio")({
             { status: 502 },
           );
         }
+
+        // Sucesso: valida presença do externalId (contrato legado exigia messages[0].id).
+        externalId = outbound.externalId;
+        console.log("[AUDIO META RESPONSE]", {
+          status: outbound.status,
+          http_status: outbound.status,
+          ok: true,
+          parsed_body: outbound.raw,
+          messages_0_id: externalId,
+          payload,
+          phone_number_id: integration.external_account_id,
+          to: recipient,
+          media_mime: baseMime,
+          detected_audio: detectedAudio,
+          media_size: file.size,
+          signed_url_status: signedUrlStatus,
+          signed_url_content_type: signedUrlContentType,
+          signed_url_content_length: signedUrlContentLength,
+          signed_url_detected_audio: signedUrlDetectedAudio,
+        });
+        if (!externalId) {
+          const msg = "Meta não retornou messages[0].id";
+          console.error("[AUDIO META RESPONSE]", { accepted_as_sent: false, message: msg });
+          await supabaseAdmin.from("error_log").insert({
+            company_id: companyId,
+            user_id: userId,
+            source: "whatsapp.send-audio",
+            severity: "error",
+            message: `meta: ${msg}`,
+            context: {
+              conversation_id: conversationId,
+              lead_phone: recipient,
+              phone_number_id: integration.external_account_id,
+              payload,
+              http_status: outbound.status,
+              meta_message_id: null,
+            },
+          }).then(() => null, () => null);
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: msg })
+            .eq("id", integration.id);
+          await supabaseAdmin.storage.from(BUCKET).remove([storagePath]).then(() => null, () => null);
+          return Response.json(
+            {
+              error: FRIENDLY_SEND_ERROR,
+              stage: "meta_api",
+              http_status: outbound.status,
+              status: outbound.status,
+              meta_error: {},
+              meta_message_id: null,
+              payload,
+              phone_number_id: integration.external_account_id,
+              to: recipient,
+              media_mime: baseMime,
+              detected_audio: detectedAudio,
+              media_size: file.size,
+            },
+            { status: 502 },
+          );
+        }
+
 
         const { data: inserted, error: insertErr } = await supabaseAdmin
           .from("messages")
