@@ -566,37 +566,53 @@ function HealthPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {alerts.map((a) => {
-              const ts = toneStyles[a.tone];
-              return (
-                <Card key={a.id} className={cn("p-4 border-l-4",
-                  a.tone === "crit" ? "border-l-red-500" : "border-l-amber-500")}>
-                  <div className="flex items-start gap-3">
-                    <div className={cn("h-8 w-8 shrink-0 rounded-lg flex items-center justify-center", ts.bg)}>
-                      {a.tone === "crit"
-                        ? <XCircle className={cn("h-4 w-4", ts.text)} />
-                        : <AlertTriangle className={cn("h-4 w-4", ts.text)} />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-foreground">{a.title}</span>
-                        <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded", ts.bg, ts.text)}>
-                          {a.tone === "crit" ? "Crítico" : "Atenção"}
-                        </span>
-                        {a.when && (
-                          <span className="text-[11px] text-muted-foreground">· {timeAgo(a.when)}</span>
+            {[...alerts]
+              .sort((a, b) => {
+                const rank: Record<Tone, number> = { crit: 0, warn: 1, info: 2, ok: 3, idle: 4 };
+                return rank[a.tone] - rank[b.tone];
+              })
+              .map((a) => {
+                const ts = toneStyles[a.tone];
+                const borderCls =
+                  a.tone === "crit" ? "border-l-red-500"
+                  : a.tone === "warn" ? "border-l-amber-500"
+                  : "border-l-sky-500";
+                const label =
+                  a.tone === "crit" ? "Crítico"
+                  : a.tone === "warn" ? "Atenção"
+                  : "Informativo";
+                return (
+                  <Card key={a.id} className={cn("p-4 border-l-4", borderCls)}>
+                    <div className="flex items-start gap-3">
+                      <div className={cn("h-8 w-8 shrink-0 rounded-lg flex items-center justify-center", ts.bg)}>
+                        {a.tone === "crit" ? (
+                          <XCircle className={cn("h-4 w-4", ts.text)} />
+                        ) : a.tone === "warn" ? (
+                          <AlertTriangle className={cn("h-4 w-4", ts.text)} />
+                        ) : (
+                          <Info className={cn("h-4 w-4", ts.text)} />
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 break-words">{a.detail}</p>
-                      <p className="text-[11px] text-foreground/80 mt-2 flex items-center gap-1">
-                        <ChevronRight className="h-3 w-3" />
-                        {a.action}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-foreground">{a.title}</span>
+                          <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded", ts.bg, ts.text)}>
+                            {label}
+                          </span>
+                          {a.when && (
+                            <span className="text-[11px] text-muted-foreground">· {timeAgo(a.when)}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 break-words">{a.detail}</p>
+                        <p className="text-[11px] text-foreground/80 mt-2 flex items-center gap-1">
+                          <ChevronRight className="h-3 w-3" />
+                          {a.action}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              );
-            })}
+                  </Card>
+                );
+              })}
           </div>
         )}
       </section>
