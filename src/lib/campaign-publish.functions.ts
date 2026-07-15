@@ -1670,10 +1670,15 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const form = new URLSearchParams();
       form.set("status", "ACTIVE");
       form.set("access_token", accessToken);
-      const actRes = await graphFetch<{ success?: boolean }>(`${GRAPH}/${id}`, {
+      const actRes = await graphWrite<{ success?: boolean }>({
+        companyId,
+        userId,
+        action: `meta.campaign.activate.${object}`,
+        url: `${GRAPH}/${id}`,
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
+        logicalPayload: { object, id, status: "ACTIVE" },
       });
       const getRes = await graphFetch<MetaStatusResp>(
         `${GRAPH}/${id}?fields=id,status,effective_status&access_token=${encodeURIComponent(accessToken)}`,
