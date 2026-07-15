@@ -51,8 +51,16 @@ export function useCoachAlerts() {
     }
     load();
 
+    // Unique channel per hook instance — multiple components (inbox.index +
+    // OpsCockpit) montam este hook em paralelo. Reusar o mesmo nome faria o
+    // Supabase devolver o channel já inscrito e o segundo .on() lançaria
+    // "cannot add postgres_changes callbacks after subscribe()".
+    const uid =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase
-      .channel(`coach_alerts_inbox_${cid}`)
+      .channel(`coach_alerts_inbox_${cid}_${uid}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "coach_alerts", filter: `company_id=eq.${cid}` },
