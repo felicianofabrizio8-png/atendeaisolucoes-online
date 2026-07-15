@@ -174,6 +174,43 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           respText = typeof respJson === "string" ? respJson : JSON.stringify(respJson ?? "");
         }
 
+        const ok = status >= 200 && status < 300;
+        console.log("[whatsapp test-send] response", {
+          status,
+          ok,
+          phoneNumberId,
+          tokenPrefix,
+          body: respText.slice(0, 1000),
+        });
+
+        const metaError = (respJson as {
+          error?: { message?: string; code?: number; type?: string };
+        })?.error;
+
+        const isAuthError =
+          status === 401 ||
+          metaError?.type === "OAuthException" ||
+          metaError?.code === 190 ||
+          metaError?.code === 102;
+
+        if (ok) {
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_synced_at: startedAt, last_error: null })
+            .eq("id", integrationId);
+        } else {
+          const errMsg = metaError?.message ?? `HTTP ${status}`;
+          await supabaseAdmin
+            .from("integrations")
+            .update({ last_error: `teste: ${errMsg}` })
+            .eq("id", integrationId);
+        }
+
+        const friendlyError = isAuthError
+          ? "Token da WhatsApp Cloud API inválido ou expirado. Reconfigure a integração."
+          : ok
+            ? undefined
+            : metaError?.message ?? `HTTP ${status}`;
 
         return Response.json({
           ok,
