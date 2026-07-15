@@ -698,19 +698,6 @@ export function NeuralIntelligencePanel() {
     ? "Online"
     : "Offline";
 
-  return (
-    <MotionConfig reducedMotion="user">
-      <div
-        role="region"
-        aria-label="Central de Inteligência AI"
-        className="relative mx-1.5 my-2 overflow-hidden rounded-2xl border border-cyan-400/25 bg-[radial-gradient(ellipse_at_top,_hsl(224_70%_14%)_0%,_hsl(226_65%_7%)_60%,_hsl(230_75%_4%)_100%)] p-1.5 shadow-[0_0_28px_rgba(56,189,248,0.10),inset_0_1px_0_rgba(148,163,184,0.06)]"
-      >
-        {/* Neural background layers */}
-        <NeuralBackdrop reducedMotion={!!reducedMotion} active={networkOnline} />
-
-        {/* Header */}
-        <div className="relative flex items-center justify-between gap-2 mb-2 pb-2 border-b border-cyan-400/10">
-          <div className="min-w-0">
   const lastEvent = feed[0];
 
   return (
