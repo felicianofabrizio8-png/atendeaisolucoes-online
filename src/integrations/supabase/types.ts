@@ -816,6 +816,7 @@ export type Database = {
       companies: {
         Row: {
           created_at: string
+          environment: string
           id: string
           meta_campaigns_beta: boolean
           name: string
@@ -825,6 +826,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          environment?: string
           id?: string
           meta_campaigns_beta?: boolean
           name: string
@@ -834,6 +836,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          environment?: string
           id?: string
           meta_campaigns_beta?: boolean
           name?: string
@@ -1404,6 +1407,56 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      environment_simulations: {
+        Row: {
+          action: string
+          agent_id: string | null
+          company_id: string
+          created_at: string
+          id: string
+          method: string | null
+          payload_sanitized: Json
+          reason: string
+          simulated_result: Json
+          target_url: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          agent_id?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          method?: string | null
+          payload_sanitized?: Json
+          reason: string
+          simulated_result?: Json
+          target_url?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          agent_id?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          method?: string | null
+          payload_sanitized?: Json
+          reason?: string
+          simulated_result?: Json
+          target_url?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "environment_simulations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -2268,6 +2321,27 @@ export type Database = {
           correlation_id?: string | null
           created_at?: string
           id?: string
+        }
+        Relationships: []
+      }
+      runtime_config: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
         }
         Relationships: []
       }
