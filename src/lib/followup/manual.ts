@@ -173,7 +173,12 @@ export async function runManualFollowup(
       variables: tvars,
       source: "followup_template",
     });
-    const status = tplSend.ok ? "sent" : "failed";
+    const isSimulated = tplSend.ok && tplSend.simulated === true;
+    const status: "sent" | "failed" | "simulated" = !tplSend.ok
+      ? "failed"
+      : isSimulated
+        ? "simulated"
+        : "sent";
     await supabaseAdmin.from("follow_ups").insert({
       company_id: companyId,
       conversation_id: conv.id,
@@ -189,17 +194,28 @@ export async function runManualFollowup(
         via: "template",
         template_name: template.name,
         ...(tplSend.ok
-          ? { external_id: tplSend.externalId }
+          ? isSimulated
+            ? {
+                simulated: true,
+                simulation_id: tplSend.simulationId,
+                external_request_sent: false,
+              }
+            : { external_id: tplSend.externalId }
           : { error: tplSend.error }),
       },
     });
     await writeAudit(
-      tplSend.ok ? "manual_followup_sent" : "manual_followup_failed",
+      !tplSend.ok
+        ? "manual_followup_failed"
+        : isSimulated
+          ? "manual_followup_simulated"
+          : "manual_followup_sent",
       {
         rule,
         via: "template",
         template_name: template.name,
         error: tplSend.ok ? null : tplSend.error,
+        simulated: isSimulated,
       },
     );
     return {
@@ -208,7 +224,9 @@ export async function runManualFollowup(
       generatedMessage: text,
       sendStatus: status,
       sendError: tplSend.ok ? undefined : tplSend.error,
-      externalId: tplSend.ok ? tplSend.externalId : null,
+      externalId: tplSend.ok && !isSimulated ? tplSend.externalId : null,
+      simulated: isSimulated,
+      simulationId: isSimulated ? tplSend.simulationId : null,
       via: "template",
     };
   }
