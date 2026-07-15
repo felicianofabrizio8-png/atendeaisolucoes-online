@@ -145,6 +145,46 @@ export async function runFollowupTickForCompany(
         result.errors.push(`${c.rule} (template): ${tplSend.error}`);
         continue;
       }
+      // Simulação (EnvironmentGuard bloqueou): NÃO conta como envio real.
+      // Persiste follow_up com status='simulated' + metadata.simulated=true
+      // — o candidato entra em safety.canSend e no minHoursBetween,
+      // impedindo reenvio automático imediato sem inflar métricas.
+      if (tplSend.simulated) {
+        await supabaseAdmin.from("follow_ups").insert({
+          company_id: companyId,
+          conversation_id: c.conversationId,
+          lead_id: c.leadId,
+          rule_type: c.rule,
+          attempt_number: attempt,
+          message_text: text,
+          status: "simulated",
+          metadata: {
+            signal: c.signal,
+            simulated: true,
+            simulation_id: tplSend.simulationId,
+            external_request_sent: false,
+            via: "template",
+            template_name: template.name,
+            category: template.category,
+          },
+        });
+        await supabaseAdmin.from("ai_flow_events").insert({
+          company_id: companyId,
+          conversation_id: c.conversationId,
+          lead_id: c.leadId,
+          event_type: "followup_simulated",
+          payload: {
+            rule: c.rule,
+            attempt,
+            signal: c.signal,
+            via: "template",
+            template_name: template.name,
+            simulation_id: tplSend.simulationId,
+          },
+        });
+        result.simulated = (result.simulated ?? 0) + 1;
+        continue;
+      }
       await supabaseAdmin.from("follow_ups").insert({
         company_id: companyId,
         conversation_id: c.conversationId,
