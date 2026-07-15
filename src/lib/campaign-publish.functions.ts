@@ -12,6 +12,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery, isFailure } from "@/lib/outbound/MetaOutboundContract";
+import { assertOutbound } from "@/lib/environment/EnvironmentGuard.server";
 
 const PublishInput = z.object({ campaignId: z.string().uuid() });
 
