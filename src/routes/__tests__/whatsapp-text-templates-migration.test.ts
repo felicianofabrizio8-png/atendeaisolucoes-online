@@ -215,9 +215,9 @@ describe("api.whatsapp.templates.send — migração B.3 (template)", () => {
     };
     tableRows.whatsapp_templates = {
       id: "tpl-1", company_id: "company-1",
-      name: "welcome_solar", language: "pt_BR", category: "UTILITY",
+      name: "welcome_solar", language: "pt_BR", category: "utility",
       status: "approved", meta_template_id: "meta-tpl-1",
-      body: "Olá {{1}}, tudo bem?",
+      components: [{ type: "BODY", text: "Olá {{1}}, tudo bem?" }],
       variables: ["nome"],
     };
     tableRows.leads = {
