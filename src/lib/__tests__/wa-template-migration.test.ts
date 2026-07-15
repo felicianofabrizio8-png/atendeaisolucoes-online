@@ -43,6 +43,15 @@ function makeChain(table: string, row: Row) {
         : [];
     return { data: list[0] ?? null, error: null };
   };
+  chain.then = (cb: (r: { data: Row[]; error: null }) => void) =>
+    cb({
+      data: Array.isArray(chain._row)
+        ? applyFilters(chain._row as Row[])
+        : chain._row
+          ? applyFilters([chain._row])
+          : [],
+      error: null,
+    });
   chain.insert = (r: any) => {
     inserted.push({ table, row: r });
     return { then: (cb: any) => cb({ data: null, error: null }) };
