@@ -527,7 +527,7 @@ function HealthPage() {
             label="Webhooks"
             value={data.lastWebhookAt ? "Recebendo" : "Silencioso"}
             sub={`último ${timeAgo(data.lastWebhookAt)}`}
-            tone={data.lastWebhookAt ? "ok" : "warn"}
+            tone={data.lastWebhookAt ? "ok" : "info"}
             icon={Webhook}
           />
           <Stat
