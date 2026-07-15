@@ -4,7 +4,7 @@
 // Nada de novos endpoints, nada de novas IAs, nada de novos agentes.
 // ============================================================================
 
-import { useMemo, useState, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Play, Star, StarOff, ChevronDown, ChevronRight, Clock,
@@ -22,7 +22,7 @@ import {
 import {
   useFavorites, useRecent, toggleFavorite, startFocus, pushRecent,
 } from "@/lib/inbox-focus";
-import { useCoachAlerts } from "@/hooks/useCoachAlerts";
+import type { CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { getSettings, subscribeSettings } from "@/data/settings";
 
 const ACTION_META: Record<ActionKind, { label: string; icon: typeof Send; tone: string }> = {
@@ -79,13 +79,12 @@ function matchesQuery(it: PrioritizedConversation, q: string): boolean {
   return fields.includes(query);
 }
 
-export function OpsCockpit() {
+export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAlertLite[]> }) {
   const navigate = useNavigate();
   useRepoTick();
   const settings = useSettingsSnap();
   const favorites = useFavorites();
   const recentIds = useRecent();
-  const { alertsByConv } = useCoachAlerts();
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     antigos: true, perdidos: true, arquivados: true,
@@ -102,33 +101,39 @@ export function OpsCockpit() {
     [settings.slaMinutes, alertsByConv, favorites],
   );
 
-  const filtered = query ? ranked.filter((it) => matchesQuery(it, query)) : ranked;
+  const filtered = useMemo(
+    () => (query ? ranked.filter((it) => matchesQuery(it, query)) : ranked),
+    [query, ranked],
+  );
   const dayStats = useMemo(() => computeDayPanel(ranked), [ranked]);
   const myDay = useMemo(() => computeMyDay(ranked), [ranked]);
   const buckets = useMemo(() => groupByTime(filtered), [filtered]);
 
-  const fazerAgora = filtered.slice(0, 8);
-  const favoritos = filtered.filter((it) => it.isFavorite);
-  const recentes = recentIds
-    .map((id) => {
-      const conv = getConversationById(id);
-      const lead = conv ? getLeadById(conv.leadId) : undefined;
-      return conv && lead ? { conv, lead } : null;
-    })
-    .filter((x): x is { conv: NonNullable<ReturnType<typeof getConversationById>>; lead: Lead } => !!x)
-    .slice(0, 10);
+  const fazerAgora = useMemo(() => filtered.slice(0, 8), [filtered]);
+  const favoritos = useMemo(() => filtered.filter((it) => it.isFavorite), [filtered]);
+  const recentes = useMemo(
+    () => recentIds
+      .map((id) => {
+        const conv = getConversationById(id);
+        const lead = conv ? getLeadById(conv.leadId) : undefined;
+        return conv && lead ? { conv, lead } : null;
+      })
+      .filter((x): x is { conv: NonNullable<ReturnType<typeof getConversationById>>; lead: Lead } => !!x)
+      .slice(0, 10),
+    [recentIds],
+  );
 
-  const open = (id: string) => {
+  const open = useCallback((id: string) => {
     pushRecent(id);
     navigate({ to: "/inbox/$conversationId", params: { conversationId: id } });
-  };
+  }, [navigate]);
 
-  const iniciarAtendimento = () => {
+  const iniciarAtendimento = useCallback(() => {
     if (fazerAgora.length === 0) return;
     const queue = fazerAgora.map((it) => it.conv.id);
     startFocus(queue);
     open(queue[0]);
-  };
+  }, [fazerAgora, open]);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col">
