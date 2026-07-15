@@ -16,10 +16,14 @@ const updated: Array<{ table: string; patch: any }> = [];
 const tableRows: Record<string, Row> = {};
 
 function makeChain(table: string, row: Row) {
+  const filters: Array<[string, unknown]> = [];
   const chain: any = {
     _row: row,
     select: () => chain,
-    eq: () => chain,
+    eq: (col: string, val: unknown) => {
+      filters.push([col, val]);
+      return chain;
+    },
     order: () => chain,
     gte: () => chain,
     lte: () => chain,
@@ -29,30 +33,39 @@ function makeChain(table: string, row: Row) {
     not: () => chain,
     or: () => chain,
     limit: () => chain,
-    maybeSingle: async () => ({
-      data: Array.isArray(chain._row) ? chain._row[0] ?? null : chain._row,
+  };
+  const applyFilters = (arr: Row[]) =>
+    arr.filter((r) =>
+      filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v),
+    );
+  chain.maybeSingle = async () => {
+    const list = Array.isArray(chain._row)
+      ? applyFilters(chain._row as Row[])
+      : chain._row
+        ? applyFilters([chain._row])
+        : [];
+    return { data: list[0] ?? null, error: null };
+  };
+  chain.single = chain.maybeSingle;
+  chain.then = (cb: (r: { data: Row[]; error: null }) => void) =>
+    cb({
+      data: Array.isArray(chain._row)
+        ? applyFilters(chain._row as Row[])
+        : chain._row
+          ? applyFilters([chain._row])
+          : [],
       error: null,
-    }),
-    single: async () => ({
-      data: Array.isArray(chain._row) ? chain._row[0] ?? null : chain._row,
-      error: null,
-    }),
-    then: (cb: any) =>
-      cb({
-        data: Array.isArray(chain._row) ? chain._row : chain._row ? [chain._row] : [],
-        error: null,
-      }),
-    insert: (r: any) => {
-      inserted.push({ table, row: r });
-      return {
-        select: () => ({ single: async () => ({ data: { id: "x" }, error: null }) }),
-        then: (cb: any) => cb({ data: null, error: null }),
-      };
-    },
-    update: (patch: any) => {
-      updated.push({ table, patch });
-      return { eq: async () => ({ error: null }) };
-    },
+    });
+  chain.insert = (r: any) => {
+    inserted.push({ table, row: r });
+    return {
+      select: () => ({ single: async () => ({ data: { id: "x" }, error: null }) }),
+      then: (cb: any) => cb({ data: null, error: null }),
+    };
+  };
+  chain.update = (patch: any) => {
+    updated.push({ table, patch });
+    return { eq: async () => ({ error: null }) };
   };
   return chain;
 }
