@@ -3,6 +3,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { renderTemplateBody, type TemplateRow } from "@/lib/wa-templates.server";
+import { postGraph } from "@/lib/outbound/MetaOutbound.server";
+import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+
 
 async function resolveCompany(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
