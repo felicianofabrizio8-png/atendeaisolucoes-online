@@ -26,8 +26,13 @@ export interface PostGraphInput {
   method?: "GET" | "POST" | "DELETE" | "PUT" | "PATCH";
   /** Headers HTTP (Authorization etc.). */
   headers?: Record<string, string>;
-  /** Corpo da requisição (JSON ou form-urlencoded string). */
-  body?: string | undefined;
+  /**
+   * Corpo da requisição. Aceita qualquer BodyInit compatível com o fetch nativo
+   * (string JSON, string form-urlencoded, FormData p/ multipart, Blob, etc.).
+   * Passado ao fetch bit-a-bit; NUNCA re-serializado. Para logs/simulação,
+   * use `logicalPayload` (o body físico não é lido em simulação).
+   */
+  body?: BodyInit | undefined;
   /** Payload lógico p/ log (será sanitizado). Se ausente, usa body. */
   logicalPayload?: unknown;
   /** Usuário responsável (auth). */
