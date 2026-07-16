@@ -148,6 +148,43 @@ async function loadCompanyContext(sb: SB, companyId: string) {
   };
 }
 
+async function loadKnowledgeBase(sb: SB, companyId: string) {
+  const { data } = await sb
+    .from("marketing_knowledge_base")
+    .select(
+      "brand_identity, tone_of_voice, differentiators, products_services, guarantees, cities_served, gifts, commercial_terms, preferred_words, forbidden_words, copy_best_practices, extra_notes",
+    )
+    .eq("company_id", companyId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+function buildKnowledgeBlock(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): string {
+  if (!kb) return "Base de conhecimento da empresa: (ainda não preenchida — use apenas o briefing).";
+  const rows: Array<[string, string | null]> = [
+    ["Identidade da marca", kb.brand_identity],
+    ["Tom de comunicação preferido", kb.tone_of_voice],
+    ["Diferenciais comerciais", kb.differentiators],
+    ["Produtos e serviços", kb.products_services],
+    ["Garantias", kb.guarantees],
+    ["Cidades atendidas", kb.cities_served],
+    ["Brindes", kb.gifts],
+    ["Condições comerciais", kb.commercial_terms],
+    ["Palavras e expressões preferidas", kb.preferred_words],
+    ["Palavras PROIBIDAS (nunca usar)", kb.forbidden_words],
+    ["Boas práticas de copy", kb.copy_best_practices],
+    ["Observações adicionais", kb.extra_notes],
+  ];
+  const filled = rows
+    .filter(([, v]) => v && v.trim().length > 0)
+    .map(([k, v]) => `- ${k}: ${v!.trim()}`)
+    .join("\n");
+  return filled
+    ? `Base de conhecimento da empresa (use como contexto obrigatório em TODOS os textos):\n${filled}`
+    : "Base de conhecimento da empresa: (ainda não preenchida — use apenas o briefing).";
+}
+
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
