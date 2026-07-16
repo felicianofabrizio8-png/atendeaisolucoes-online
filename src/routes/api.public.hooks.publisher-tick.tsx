@@ -24,13 +24,18 @@ export const Route = createFileRoute("/api/public/hooks/publisher-tick")({
       POST: async ({ request }: { request: Request }) => {
         const cid = correlationId();
         const start = Date.now();
-        const expected = process.env.PUBLISHER_TICK_SECRET ?? null;
-        if (!expected) {
-          console.error("[publisher-tick]", { cid, event: "secret_not_configured" });
-          return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
-        }
-        const provided = request.headers.get("x-publisher-tick-secret") ?? "";
-        if (!safeEqualSecret(provided, expected)) {
+        const expectedSecret = process.env.PUBLISHER_TICK_SECRET ?? null;
+        const expectedAnon =
+          process.env.SUPABASE_ANON_KEY ??
+          process.env.SUPABASE_PUBLISHABLE_KEY ??
+          null;
+        const providedSecret = request.headers.get("x-publisher-tick-secret") ?? "";
+        const providedApiKey = request.headers.get("apikey") ?? "";
+        const secretOk =
+          !!expectedSecret && safeEqualSecret(providedSecret, expectedSecret);
+        const apiKeyOk =
+          !!expectedAnon && safeEqualSecret(providedApiKey, expectedAnon);
+        if (!secretOk && !apiKeyOk) {
           console.warn("[publisher-tick]", { cid, event: "auth_failed" });
           return unauthorized();
         }
