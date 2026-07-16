@@ -375,6 +375,32 @@ async function loadPastCampaigns(
   return data ?? [];
 }
 
+function extractRecentAngles(
+  past: Awaited<ReturnType<typeof loadPastCampaigns>>,
+): string[] {
+  const angles: string[] = [];
+  for (const p of past.slice(0, 5)) {
+    const s = (p.strategy ?? {}) as Record<string, unknown>;
+    const a = typeof s.angle === "string" ? s.angle.trim().toLowerCase() : "";
+    if (a) angles.push(a);
+  }
+  return angles;
+}
+
+function buildAngleDiversityBlock(recentAngles: string[]): string {
+  const catalog = STRATEGIC_ANGLES.map((a) => `- ${a}`).join("\n");
+  const recent = recentAngles.length
+    ? recentAngles.map((a, i) => `${i + 1}. "${a}"`).join("\n")
+    : "(nenhum ainda)";
+  const forbidden = recentAngles.slice(0, 3);
+  const forbiddenLine = forbidden.length
+    ? `PROIBIDO repetir qualquer um destes ângulos recentes: ${forbidden
+        .map((a) => `"${a}"`)
+        .join(", ")}. Escolha OUTRO ângulo do catálogo.`
+    : "Ainda não há ângulo recente — escolha livremente do catálogo o mais adequado ao briefing.";
+  return `Catálogo de ângulos estratégicos disponíveis:\n${catalog}\n\nÂngulos usados nas últimas campanhas (mais recente primeiro):\n${recent}\n\n${forbiddenLine}`;
+}
+
 function buildPastCampaignsBlock(
   past: Awaited<ReturnType<typeof loadPastCampaigns>>,
 ): string {
@@ -385,14 +411,15 @@ function buildPastCampaignsBlock(
     const s = (p.strategy ?? {}) as Record<string, unknown>;
     const objective = (s.objective as string) ?? p.objective ?? "-";
     const intent = (s.intent as string) ?? "-";
+    const angle = (s.angle as string) ?? "-";
     const cta = (s.cta as string) ?? "-";
     const titles = [p.story_title, p.feed_title, p.reel_title, p.whatsapp_title]
       .filter(Boolean)
       .map((t) => `"${t}"`)
       .join(" | ");
-    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos usados: ${titles || "-"}`;
+    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] ângulo=${angle} · intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos: ${titles || "-"}`;
   });
-  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
+  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos, ângulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
 }
 
 
