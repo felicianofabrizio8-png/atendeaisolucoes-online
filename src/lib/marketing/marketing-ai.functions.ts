@@ -364,6 +364,13 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
 
     const mediaIds = data.media_ids ?? [];
     const mediaDetails = await validateMedia(supabase, companyId, mediaIds);
+    const productMediaRefs = data.product_media_refs ?? [];
+    const productMediaDetails = await validateProductMediaRefs(
+      supabase,
+      companyId,
+      productMediaRefs,
+    );
+
 
     const promotion = data.promotion_id
       ? await loadPromotion(supabase, companyId, data.promotion_id)
