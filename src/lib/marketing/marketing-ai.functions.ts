@@ -442,6 +442,33 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       type: "object",
       additionalProperties: false,
       properties: {
+        strategy: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            objective: { type: "string" },
+            audience: { type: "string" },
+            benefit: { type: "string" },
+            differential: { type: "string" },
+            objections: { type: "array", items: { type: "string" } },
+            emotion: { type: "string" },
+            cta: { type: "string" },
+            intent: {
+              type: "string",
+              enum: ["marca", "orcamento", "relacionamento", "venda"],
+            },
+          },
+          required: [
+            "objective",
+            "audience",
+            "benefit",
+            "differential",
+            "objections",
+            "emotion",
+            "cta",
+            "intent",
+          ],
+        },
         story: {
           type: "object",
           additionalProperties: false,
@@ -483,7 +510,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
           required: ["title", "body", "cta_text"],
         },
       },
-      required: ["story", "feed", "reel", "whatsapp"],
+      required: ["strategy", "story", "feed", "reel", "whatsapp"],
     };
 
     const payload = {
