@@ -56,6 +56,10 @@ function MarketingPage() {
         <TabsContent value="library" className="mt-4">
           <MarketingLibrary companyId={companyId} />
         </TabsContent>
+        <TabsContent value="knowledge" className="mt-4">
+          <MarketingKnowledgeBase companyId={companyId} />
+        </TabsContent>
+        </TabsContent>
         <TabsContent value="promotions" className="mt-4">
           <MarketingPromotions companyId={companyId} />
         </TabsContent>
