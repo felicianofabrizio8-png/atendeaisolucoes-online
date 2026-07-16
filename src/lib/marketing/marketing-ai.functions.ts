@@ -325,7 +325,7 @@ function computeKbVersion(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): st
 }
 
 function computeStrategyId(strategy: z.infer<typeof StrategySchema>): string {
-  const seed = `${strategy.intent}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
+  const seed = `${strategy.intent}|${strategy.angle}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
     .toLowerCase()
     .normalize("NFKD");
   return createHash("sha256").update(seed).digest("hex").slice(0, 10);
