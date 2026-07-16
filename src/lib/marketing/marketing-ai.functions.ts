@@ -90,7 +90,7 @@ async function loadPromotion(sb: SB, companyId: string, id: string) {
 async function loadProduct(sb: SB, companyId: string, id: string) {
   const { data, error } = await sb
     .from("products")
-    .select("id, name, description, price, categories, active")
+    .select("id, name, description, price, category, active")
     .eq("id", id)
     .eq("company_id", companyId)
     .maybeSingle();
