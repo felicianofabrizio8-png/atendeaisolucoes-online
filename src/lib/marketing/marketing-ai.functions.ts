@@ -210,6 +210,84 @@ function buildKnowledgeBlock(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>):
 }
 
 
+function computeKbVersion(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): string {
+  if (!kb) return "empty";
+  const payload = JSON.stringify(kb);
+  return createHash("sha256").update(payload).digest("hex").slice(0, 12);
+}
+
+function computeStrategyId(strategy: z.infer<typeof StrategySchema>): string {
+  const seed = `${strategy.intent}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
+    .toLowerCase()
+    .normalize("NFKD");
+  return createHash("sha256").update(seed).digest("hex").slice(0, 10);
+}
+
+async function loadPastCampaigns(
+  sb: SB,
+  companyId: string,
+  filters: { promotionId: string | null; productId: string | null },
+) {
+  // Busca as 8 memórias mais recentes, priorizando mesmo produto/promoção.
+  const orClauses: string[] = [];
+  if (filters.promotionId) orClauses.push(`promotion_id.eq.${filters.promotionId}`);
+  if (filters.productId) orClauses.push(`product_id.eq.${filters.productId}`);
+  let query = sb
+    .from("marketing_campaign_memory")
+    .select(
+      "id, created_at, strategy_id, objective, audience, tone, strategy, story_title, feed_title, reel_title, whatsapp_title, product_id, promotion_id",
+    )
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+  if (orClauses.length > 0) {
+    // Preferência por matches, mas ainda retorna outras se não houver bastante.
+    const { data: matched } = await sb
+      .from("marketing_campaign_memory")
+      .select(
+        "id, created_at, strategy_id, objective, audience, tone, strategy, story_title, feed_title, reel_title, whatsapp_title, product_id, promotion_id",
+      )
+      .eq("company_id", companyId)
+      .or(orClauses.join(","))
+      .order("created_at", { ascending: false })
+      .limit(6);
+    const { data: recent } = await query;
+    const seen = new Set<string>();
+    const merged: NonNullable<typeof matched> = [];
+    for (const r of [...(matched ?? []), ...(recent ?? [])]) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        merged.push(r);
+      }
+      if (merged.length >= 8) break;
+    }
+    return merged;
+  }
+  const { data } = await query;
+  return data ?? [];
+}
+
+function buildPastCampaignsBlock(
+  past: Awaited<ReturnType<typeof loadPastCampaigns>>,
+): string {
+  if (!past.length) {
+    return "Histórico de campanhas anteriores desta empresa: (nenhuma ainda — esta é a primeira).";
+  }
+  const lines = past.map((p, i) => {
+    const s = (p.strategy ?? {}) as Record<string, unknown>;
+    const objective = (s.objective as string) ?? p.objective ?? "-";
+    const intent = (s.intent as string) ?? "-";
+    const cta = (s.cta as string) ?? "-";
+    const titles = [p.story_title, p.feed_title, p.reel_title, p.whatsapp_title]
+      .filter(Boolean)
+      .map((t) => `"${t}"`)
+      .join(" | ");
+    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos usados: ${titles || "-"}`;
+  });
+  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
+}
+
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
