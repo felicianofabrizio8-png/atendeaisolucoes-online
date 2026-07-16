@@ -903,7 +903,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         channel: "instagram" as MarketingContentChannel,
         format: "reel" as MarketingContentFormat,
         title: bundle.reel.title,
-        body: bundle.reel.body,
+        body: reelBodyComposed,
         hashtags: bundle.reel.hashtags,
         cta_text: null,
         cta_destination: null,
