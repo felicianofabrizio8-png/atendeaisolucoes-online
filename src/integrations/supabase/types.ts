@@ -3836,6 +3836,7 @@ export type Database = {
         }
       }
       get_hook_secret: { Args: { _name: string }; Returns: string }
+      get_publisher_tick_secret: { Args: never; Returns: string }
       get_storage_usage_bytes: {
         Args: { _company_id: string }
         Returns: number
