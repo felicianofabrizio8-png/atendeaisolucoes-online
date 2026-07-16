@@ -852,6 +852,11 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         product_id: p.product_id,
         image_path: p.image_path,
       })),
+      chosen_angle: bundle.strategy.angle,
+      angle_repeated_recent: angleRepeatedRecent,
+      recent_angles: recentAngles.slice(0, 5),
+      product_focus_locked: productLockActive,
+      reel_format: bundle.reel.script.format,
     };
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
