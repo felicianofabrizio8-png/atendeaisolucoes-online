@@ -69,9 +69,18 @@ export async function apiListMedia(): Promise<MarketingMediaRow[]> {
   const res = await listMarketingMedia();
   return (res.media ?? []) as unknown as MarketingMediaRow[];
 }
-export async function apiRegisterMedia(
-  args: Parameters<typeof registerMarketingMedia>[0] extends { data: infer D } ? D : never,
-): Promise<MarketingMediaRow> {
+export async function apiRegisterMedia(args: {
+  storage_path: string;
+  media_type: "image" | "video";
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  duration_seconds?: number | null;
+  title?: string | null;
+  description?: string | null;
+  tags?: string[];
+}): Promise<MarketingMediaRow> {
   return (await registerMarketingMedia({ data: args })) as unknown as MarketingMediaRow;
 }
 export async function apiUpdateMedia(args: {
