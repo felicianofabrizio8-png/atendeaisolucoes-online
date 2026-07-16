@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { HttpAudit } from "@/lib/audit/HttpAudit.server";
+import { assertOutbound, type GuardDeps } from "@/lib/environment/EnvironmentGuard.server";
 import {
   MetaDisconnectRepository,
   type LocalIntegrationRow,
@@ -23,6 +24,8 @@ export interface DisconnectContext {
   companyId: string;
   userId: string;
   integrationId: string;
+  /** Injeção do EnvironmentGuard para testes. */
+  guardDeps?: GuardDeps;
 }
 
 export class MetaDisconnectService {
