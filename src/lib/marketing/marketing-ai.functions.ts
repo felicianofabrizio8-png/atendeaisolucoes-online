@@ -803,6 +803,43 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     }
     const bundle = BundleSchema.parse(parsed);
 
+    // Compõe uma versão legível do roteiro do Reel — sempre incluída no body
+    // para que o humano aprove com todos os elementos cinematográficos à vista.
+    const reelScriptText = (() => {
+      const s = bundle.reel.script;
+      const header = `🎬 Roteiro cinematográfico — formato: ${s.format === "video_based" ? "baseado em vídeo real" : "slideshow de fotos"} · duração total: ${s.total_duration_seconds}s
+🎵 Música sugerida: ${s.music_suggestion}
+🎯 Gancho (3s iniciais): ${s.hook_summary}`;
+      const scenes = s.scenes
+        .map((sc) => {
+          const bits = [
+            `Cena ${sc.scene} · ${sc.duration_seconds}s`,
+            `  📺 Mídia: ${sc.media_reference || "-"}`,
+            `  🎞️ Enquadramento: ${sc.framing}`,
+            `  🎥 Câmera: ${sc.camera_movement}`,
+            `  ✂️ Corte: ${sc.cut_style}`,
+            sc.on_screen_text ? `  🅰️ Texto em tela: "${sc.on_screen_text}"` : "",
+            sc.silence
+              ? `  🤫 Momento de silêncio proposital`
+              : sc.voiceover
+                ? `  🎙️ Narração: "${sc.voiceover}"`
+                : "",
+          ].filter(Boolean);
+          return bits.join("\n");
+        })
+        .join("\n\n");
+      const footer = `CTA final na tela: "${s.final_cta_overlay}"`;
+      return `${header}\n\n${scenes}\n\n${footer}`;
+    })();
+    const reelBodyComposed = `${bundle.reel.body.trim()}\n\n──────────\n${reelScriptText}`;
+
+    // Guarda-diversidade: se por algum motivo o ângulo escolhido coincidir
+    // com um dos 3 mais recentes, registramos o aviso no snapshot (não bloqueia
+    // a geração — a diretriz principal já foi passada no prompt).
+    const chosenAngle = bundle.strategy.angle.trim().toLowerCase();
+    const angleRepeatedRecent = recentAngles.slice(0, 3).includes(chosenAngle);
+
+
     // Persistência atômica: 4 registros ou nenhum.
     const promptSnapshot = {
       tone: data.tone,
