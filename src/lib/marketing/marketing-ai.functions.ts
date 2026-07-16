@@ -407,10 +407,32 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 # VARIAÇÃO
 Seed desta geração: ${variationSeed}. Varie abertura, CTA, estrutura, argumentos e organização em relação a gerações anteriores.
 
-# AUTOVALIDAÇÃO ANTES DE RESPONDER
-Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida.
+# HISTÓRICO INTERNO (aprendizado com campanhas passadas desta empresa)
+${pastBlock}
+Use este histórico APENAS como referência estratégica: identifique padrões que funcionaram, evite repetir os mesmos títulos/CTAs/ângulos, mas gere textos totalmente inéditos. NUNCA copie trechos das campanhas anteriores.
 
-Devolva os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+# AUTOVALIDAÇÃO ANTES DE RESPONDER
+Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida; (f) nada copiado do histórico.
+
+Devolva o objeto \`strategy\` (planejamento interno) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+
+    const usr = `Briefing desta campanha:
+
+## Promoção
+${promoBlock}
+
+## Produto
+${productBlock}
+
+## Mídias
+${mediaBlock}
+
+## Público-alvo
+${data.audience ?? "clientes locais interessados"}
+
+## Instruções extras
+${data.extra_instructions ?? "-"}
+
 
     const usr = `Briefing desta campanha:
 
