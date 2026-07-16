@@ -1,5 +1,7 @@
 // POST /api/public/hooks/publisher-tick
-// Cron-friendly. Requer header x-publisher-tick-secret === PUBLISHER_TICK_SECRET.
+// Autenticação via header x-publisher-tick-secret comparado (timing-safe) contra o
+// segredo armazenado no Vault (Option A: Vault é a ÚNICA fonte de verdade).
+// O runtime NÃO possui cópia própria — busca sob demanda via RPC service_role.
 // Sem PII na resposta. Lock técnico impede execução concorrente no mesmo isolate.
 
 import { createFileRoute } from "@tanstack/react-router";
@@ -18,22 +20,31 @@ function methodNotAllowed() {
   });
 }
 
+async function loadVaultSecret(): Promise<string | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin.rpc("get_publisher_tick_secret");
+  if (error) return null;
+  const v = typeof data === "string" ? data.trim() : "";
+  return v.length > 0 ? v : null;
+}
+
 export const Route = createFileRoute("/api/public/hooks/publisher-tick")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
         const cid = correlationId();
         const start = Date.now();
-        const expected = process.env.PUBLISHER_TICK_SECRET ?? null;
+        const expected = await loadVaultSecret();
         if (!expected) {
-          console.error("[publisher-tick]", { cid, event: "secret_not_configured" });
+          console.error("[publisher-tick]", { cid, event: "vault_secret_unavailable" });
           return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
         }
         const provided = request.headers.get("x-publisher-tick-secret") ?? "";
-        if (!safeEqualSecret(provided, expected)) {
+        if (!provided || !safeEqualSecret(provided, expected)) {
           console.warn("[publisher-tick]", { cid, event: "auth_failed" });
           return unauthorized();
         }
+
         const rl = rateLimit("publisher-tick:global", RATE_MAX_PER_MIN, 60_000);
         if (!rl.allowed) {
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
