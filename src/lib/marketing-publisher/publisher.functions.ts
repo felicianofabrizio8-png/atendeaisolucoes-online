@@ -18,7 +18,7 @@ export const listMarketingPublications = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(50);
     if (r.error) throw new Error(r.error.message);
-    return { publications: (r.data ?? []) as unknown[] };
+    return { publications: (r.data ?? []) as Record<string, unknown>[] };
   });
 
 export const getPublisherStats = createServerFn({ method: "GET" })
