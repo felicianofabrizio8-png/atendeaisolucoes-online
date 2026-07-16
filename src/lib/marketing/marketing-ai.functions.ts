@@ -408,20 +408,33 @@ Preço: ${product.price ?? "-"}
 Categoria: ${product.category ?? "-"}`
       : "Sem produto específico associado.";
 
-    const mediaBlock = mediaDetails.length
-      ? `Mídias selecionadas (${mediaDetails.length}) — use APENAS estas como base visual:\n` +
-        mediaDetails
-          .map((m, i) => {
-            const tags = (m.tags ?? []).filter(Boolean).join(", ");
-            return `${i + 1}. [${m.media_type}] ${m.title ?? "(sem título)"}${
-              m.description ? ` — ${m.description}` : ""
-            }${tags ? ` [tags: ${tags}]` : ""}`;
-          })
-          .join("\n")
+    const mediaLines: string[] = [];
+    mediaDetails.forEach((m) => {
+      const tags = (m.tags ?? []).filter(Boolean).join(", ");
+      mediaLines.push(
+        `[MARKETING · ${m.media_type}] ${m.title ?? "(sem título)"}${
+          m.description ? ` — ${m.description}` : ""
+        }${tags ? ` [tags: ${tags}]` : ""}`,
+      );
+    });
+    productMediaDetails.forEach((p) => {
+      mediaLines.push(
+        `[PRODUTO · image] ${p.product_name}${
+          p.category ? ` — categoria: ${p.category}` : ""
+        } (referência oficial do catálogo, sem duplicação)`,
+      );
+    });
+    const totalMedia = mediaLines.length;
+    const mediaBlock = totalMedia
+      ? `Mídias selecionadas (${totalMedia}) — use APENAS estas como base visual. Fotos com origem PRODUTO são imagens oficiais do catálogo; trate-as como material visual real disponível:\n` +
+        mediaLines.map((l, i) => `${i + 1}. ${l}`).join("\n")
       : "Sem mídias selecionadas.";
 
     const hasVideo = mediaDetails.some((m) => m.media_type === "video");
-    const hasImage = mediaDetails.some((m) => m.media_type === "image");
+    const hasImage =
+      mediaDetails.some((m) => m.media_type === "image") ||
+      productMediaDetails.length > 0;
+
     const reelHint = hasVideo
       ? "Você tem vídeo(s) disponível(is): descreva um roteiro que use as cenas reais informadas."
       : hasImage
