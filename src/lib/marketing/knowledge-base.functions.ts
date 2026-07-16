@@ -50,7 +50,7 @@ export const getMarketingKnowledgeBase = createServerFn({ method: "GET" })
     const { companyId, supabase } = await loadCompanyId(context);
     const { data, error } = await supabase
       .from("marketing_knowledge_base")
-      .select(FIELDS.join(","))
+      .select("*")
       .eq("company_id", companyId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -59,7 +59,7 @@ export const getMarketingKnowledgeBase = createServerFn({ method: "GET" })
     const { data: created, error: insErr } = await supabase
       .from("marketing_knowledge_base")
       .insert({ company_id: companyId })
-      .select(FIELDS.join(","))
+      .select("*")
       .single();
     if (insErr) throw new Error(insErr.message);
     return { kb: created };
@@ -89,7 +89,7 @@ export const upsertMarketingKnowledgeBase = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_knowledge_base")
       .upsert(payload, { onConflict: "company_id" })
-      .select(FIELDS.join(","))
+      .select("*")
       .single();
     if (error) throw new Error(error.message);
     return { kb: row };
