@@ -12,6 +12,7 @@ export default defineConfig({
       "src/lib/outbound/__tests__/**/*.test.ts",
       "src/lib/__tests__/**/*.test.ts",
       "src/lib/meta-disconnect/__tests__/**/*.test.ts",
+      "src/lib/marketing-publisher/__tests__/**/*.test.ts",
       "src/routes/__tests__/**/*.test.ts",
     ],
     environment: "node",
