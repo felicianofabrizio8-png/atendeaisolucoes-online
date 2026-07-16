@@ -9,6 +9,7 @@ import { MarketingPromotions } from "@/components/marketing/MarketingPromotions"
 import { MarketingGenerator } from "@/components/marketing/MarketingGenerator";
 import { MarketingApprovals } from "@/components/marketing/MarketingApprovals";
 import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
+import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 
 export const Route = createFileRoute("/marketing")({
   component: MarketingPage,
