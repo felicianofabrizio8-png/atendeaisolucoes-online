@@ -31,9 +31,7 @@ const InputSchema = z.object({
   extra_instructions: z.string().trim().max(1000).optional().nullable(),
 });
 
-interface GenerateResult {
-  contents: MarketingContentRow[];
-}
+
 
 // Schema JSON estrito para a resposta da IA — validado em runtime.
 const BundleSchema = z.object({
