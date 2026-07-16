@@ -21,6 +21,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as IaRouteImport } from './routes/ia'
@@ -152,6 +153,11 @@ const OrcamentosRoute = OrcamentosRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -596,6 +602,7 @@ export interface FileRoutesByFullPath {
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -688,6 +695,7 @@ export interface FileRoutesByTo {
   '/executivo': typeof ExecutivoRoute
   '/ia': typeof IaRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -782,6 +790,7 @@ export interface FileRoutesById {
   '/ia': typeof IaRoute
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -877,6 +886,7 @@ export interface FileRouteTypes {
     | '/ia'
     | '/inbox'
     | '/login'
+    | '/marketing'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -969,6 +979,7 @@ export interface FileRouteTypes {
     | '/executivo'
     | '/ia'
     | '/login'
+    | '/marketing'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -1062,6 +1073,7 @@ export interface FileRouteTypes {
     | '/ia'
     | '/inbox'
     | '/login'
+    | '/marketing'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -1156,6 +1168,7 @@ export interface RootRouteChildren {
   IaRoute: typeof IaRoute
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
+  MarketingRoute: typeof MarketingRoute
   OnboardingRoute: typeof OnboardingRouteWithChildren
   OrcamentosRoute: typeof OrcamentosRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
@@ -1307,6 +1320,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1914,6 +1934,7 @@ const rootRouteChildren: RootRouteChildren = {
   IaRoute: IaRoute,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
+  MarketingRoute: MarketingRoute,
   OnboardingRoute: OnboardingRouteWithChildren,
   OrcamentosRoute: OrcamentosRoute,
   PrivacidadeRoute: PrivacidadeRoute,

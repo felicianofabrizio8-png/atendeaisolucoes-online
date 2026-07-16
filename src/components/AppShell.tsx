@@ -42,8 +42,9 @@ type NavItem = {
     | "/configuracoes"
     | "/ia"
     | "/campanhas"
-    | "/saude"
     | "/criativos"
+    | "/marketing"
+    | "/saude"
     | "/onboarding"
     | "/runtime/observability";
   label: string;
