@@ -334,7 +334,7 @@ export const setMarketingContentStatus = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => SetStatusSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
-    const patch: Record<string, unknown> = { status: data.status };
+    const patch: Database["public"]["Tables"]["marketing_contents"]["Update"] = { status: data.status };
     if (data.status === "approved") {
       patch.approved_by = userId;
       patch.approved_at = new Date().toISOString();
