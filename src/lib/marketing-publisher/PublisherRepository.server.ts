@@ -44,7 +44,7 @@ function toRow(r: DbRow): PublicationRow {
     format: r.format as PublicationFormat,
     status: r.status as PublicationStatus,
     platform_post_id: r.platform_post_id,
-    platform_response: r.platform_response,
+    platform_response: (r.platform_response ?? null) as Record<string, unknown> | null,
     error_code: r.error_code,
     error_message: r.error_message,
     retry_count: r.retry_count,
