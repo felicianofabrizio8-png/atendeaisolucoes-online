@@ -152,6 +152,7 @@ export async function apiGenerateContent(input: {
   promotion_id?: string | null;
   product_id?: string | null;
   media_ids?: string[];
+  product_media_refs?: Array<{ product_id: string; image_path: string }>;
   tone?: "amigável" | "profissional" | "descontraído" | "urgente";
   audience?: string | null;
   extra_instructions?: string | null;
