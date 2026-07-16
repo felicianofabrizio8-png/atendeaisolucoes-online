@@ -49,6 +49,7 @@ export interface MetaDisconnectGraphCallCtx {
   companyId: string;
   userId?: string | null;
   guardDeps?: GuardDeps;
+  fetchImpl?: typeof fetch;
 }
 
 export class MetaDisconnectGraph {
