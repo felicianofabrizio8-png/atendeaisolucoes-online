@@ -310,6 +310,12 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
     const brand = await loadCompanyContext(supabase, companyId);
     const kb = await loadKnowledgeBase(supabase, companyId);
     const knowledgeBlock = buildKnowledgeBlock(kb);
+    const kbVersion = computeKbVersion(kb);
+    const pastCampaigns = await loadPastCampaigns(supabase, companyId, {
+      promotionId: data.promotion_id ?? null,
+      productId: data.product_id ?? null,
+    });
+    const pastBlock = buildPastCampaignsBlock(pastCampaigns);
 
     // Prompt estruturado — o modelo produz UM único objeto com os 4 formatos.
     const promoBlock = promotion
