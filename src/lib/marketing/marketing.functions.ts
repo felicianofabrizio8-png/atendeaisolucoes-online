@@ -151,7 +151,7 @@ export const updateMarketingMedia = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => UpdateMediaSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
-    const patch: Record<string, unknown> = {};
+    const patch: Database["public"]["Tables"]["marketing_media"]["Update"] = {};
     if (data.title !== undefined) patch.title = data.title;
     if (data.description !== undefined) patch.description = data.description;
     if (data.tags !== undefined) patch.tags = data.tags;
