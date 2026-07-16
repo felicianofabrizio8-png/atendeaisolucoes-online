@@ -99,17 +99,59 @@ async function validateProductMediaRefs(
 
 
 
+// Catálogo de ângulos estratégicos disponíveis (usado para diversidade).
+const STRATEGIC_ANGLES = [
+  "pronta entrega",
+  "instalação rápida",
+  "valorização do imóvel",
+  "lazer em família",
+  "férias",
+  "segurança das crianças",
+  "economia comparada ao clube",
+  "parcelamento",
+  "garantia",
+  "qualidade da fábrica",
+  "atendimento consultivo",
+  "transformação do quintal",
+  "qualidade de vida",
+  "investimento",
+] as const;
+
 // Schema JSON estrito para a resposta da IA — validado em runtime.
 const StrategySchema = z.object({
+  angle: z.string().trim().min(1).max(80),
   objective: z.string().trim().max(300),
   audience: z.string().trim().max(300),
   benefit: z.string().trim().max(300),
   differential: z.string().trim().max(300),
+  objection_broken: z.string().trim().max(300),
   objections: z.array(z.string().trim().max(200)).max(6).default([]),
   emotion: z.string().trim().max(120),
   cta: z.string().trim().max(200),
   intent: z.enum(["marca", "orcamento", "relacionamento", "venda"]),
 });
+
+const ReelSceneSchema = z.object({
+  scene: z.number().int().min(1).max(20),
+  duration_seconds: z.number().min(0.5).max(30),
+  media_reference: z.string().trim().max(200),
+  framing: z.string().trim().max(200),
+  camera_movement: z.string().trim().max(200),
+  cut_style: z.string().trim().max(120),
+  on_screen_text: z.string().trim().max(200),
+  voiceover: z.string().trim().max(400),
+  silence: z.boolean().default(false),
+});
+
+const ReelScriptSchema = z.object({
+  format: z.enum(["video_based", "slideshow"]),
+  total_duration_seconds: z.number().min(5).max(90),
+  hook_summary: z.string().trim().max(300),
+  music_suggestion: z.string().trim().max(200),
+  scenes: z.array(ReelSceneSchema).min(2).max(12),
+  final_cta_overlay: z.string().trim().max(200),
+});
+
 const BundleSchema = z.object({
   strategy: StrategySchema,
   story: z.object({
@@ -124,8 +166,9 @@ const BundleSchema = z.object({
   }),
   reel: z.object({
     title: z.string().trim().max(120),
-    body: z.string().trim().min(1).max(2500),
+    body: z.string().trim().min(1).max(4000),
     hashtags: z.array(z.string().trim().max(60)).max(15).default([]),
+    script: ReelScriptSchema,
   }),
   whatsapp: z.object({
     title: z.string().trim().max(120),
@@ -282,7 +325,7 @@ function computeKbVersion(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): st
 }
 
 function computeStrategyId(strategy: z.infer<typeof StrategySchema>): string {
-  const seed = `${strategy.intent}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
+  const seed = `${strategy.intent}|${strategy.angle}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
     .toLowerCase()
     .normalize("NFKD");
   return createHash("sha256").update(seed).digest("hex").slice(0, 10);
@@ -332,6 +375,32 @@ async function loadPastCampaigns(
   return data ?? [];
 }
 
+function extractRecentAngles(
+  past: Awaited<ReturnType<typeof loadPastCampaigns>>,
+): string[] {
+  const angles: string[] = [];
+  for (const p of past.slice(0, 5)) {
+    const s = (p.strategy ?? {}) as Record<string, unknown>;
+    const a = typeof s.angle === "string" ? s.angle.trim().toLowerCase() : "";
+    if (a) angles.push(a);
+  }
+  return angles;
+}
+
+function buildAngleDiversityBlock(recentAngles: string[]): string {
+  const catalog = STRATEGIC_ANGLES.map((a) => `- ${a}`).join("\n");
+  const recent = recentAngles.length
+    ? recentAngles.map((a, i) => `${i + 1}. "${a}"`).join("\n")
+    : "(nenhum ainda)";
+  const forbidden = recentAngles.slice(0, 3);
+  const forbiddenLine = forbidden.length
+    ? `PROIBIDO repetir qualquer um destes ângulos recentes: ${forbidden
+        .map((a) => `"${a}"`)
+        .join(", ")}. Escolha OUTRO ângulo do catálogo.`
+    : "Ainda não há ângulo recente — escolha livremente do catálogo o mais adequado ao briefing.";
+  return `Catálogo de ângulos estratégicos disponíveis:\n${catalog}\n\nÂngulos usados nas últimas campanhas (mais recente primeiro):\n${recent}\n\n${forbiddenLine}`;
+}
+
 function buildPastCampaignsBlock(
   past: Awaited<ReturnType<typeof loadPastCampaigns>>,
 ): string {
@@ -342,14 +411,15 @@ function buildPastCampaignsBlock(
     const s = (p.strategy ?? {}) as Record<string, unknown>;
     const objective = (s.objective as string) ?? p.objective ?? "-";
     const intent = (s.intent as string) ?? "-";
+    const angle = (s.angle as string) ?? "-";
     const cta = (s.cta as string) ?? "-";
     const titles = [p.story_title, p.feed_title, p.reel_title, p.whatsapp_title]
       .filter(Boolean)
       .map((t) => `"${t}"`)
       .join(" | ");
-    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos usados: ${titles || "-"}`;
+    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] ângulo=${angle} · intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos: ${titles || "-"}`;
   });
-  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
+  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos, ângulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
 }
 
 
@@ -388,6 +458,9 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       productId: data.product_id ?? null,
     });
     const pastBlock = buildPastCampaignsBlock(pastCampaigns);
+    const recentAngles = extractRecentAngles(pastCampaigns);
+    const angleBlock = buildAngleDiversityBlock(recentAngles);
+    const productLockActive = Boolean(product && promotion);
 
     // Prompt estruturado — o modelo produz UM único objeto com os 4 formatos.
     const promoBlock = promotion
@@ -435,34 +508,51 @@ Categoria: ${product.category ?? "-"}`
       mediaDetails.some((m) => m.media_type === "image") ||
       productMediaDetails.length > 0;
 
+    const reelFormat: "video_based" | "slideshow" = hasVideo
+      ? "video_based"
+      : "slideshow";
     const reelHint = hasVideo
-      ? "Você tem vídeo(s) disponível(is): descreva um roteiro que use as cenas reais informadas."
+      ? "Você tem vídeo(s) real(is) selecionado(s). USE-OS como base principal do roteiro. Referencie cada cena descrevendo o vídeo real (por título/tag) — nunca invente cenas inexistentes. Combine com fotos disponíveis se ajudar a contar a história."
       : hasImage
-        ? "NÃO há vídeo — apenas fotos. Monte o roteiro do Reel como sequência de fotos com movimento (zoom, pan, transições), sem inventar cenas filmadas."
+        ? "NÃO há vídeo — apenas fotos (incluindo fotos oficiais de PRODUTO, quando houver). Monte o roteiro em formato SLIDESHOW: cada cena corresponde a uma foto real com movimento simulado (zoom-in, zoom-out, pan lateral, tilt, dolly, parallax). Nunca invente cenas filmadas."
         : "Nenhuma mídia foi selecionada — descreva um roteiro genérico baseado em movimento e transições, sem inventar cenas específicas.";
 
     // Seed para incentivar variação entre gerações consecutivas.
     const variationSeed = Math.random().toString(36).slice(2, 10);
 
-    const sys = `Você é um ESTRATEGISTA de marketing digital sênior brasileiro, atuando como consultor da empresa "${brand.companyName}". Você não é apenas um copywriter: antes de escrever, você planeja a campanha.
+    const productLockBlock = productLockActive && product
+      ? `# TRAVA DE FOCO NO PRODUTO (obrigatória)
+A promoção está vinculada ao produto "${product.name}". Toda a campanha (Story, Feed, Reel, WhatsApp) DEVE permanecer focada exclusivamente nesse produto. É PROIBIDO citar, comparar ou sugerir outros modelos, tamanhos, linhas ou produtos da empresa, salvo se estiver explicitamente pedido nas instruções extras.`
+      : "";
+
+    const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira especializada em marketing para PISCINAS, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
 
 ${knowledgeBlock}
 
-# ETAPA 1 — PLANEJAMENTO INTERNO (obrigatório, não aparece na saída)
-Antes de gerar qualquer texto, defina mentalmente:
-- objetivo da campanha (marca, orçamento, relacionamento ou venda);
-- público-alvo específico;
-- principal benefício ao cliente;
-- principal diferencial da empresa (da base de conhecimento);
-- objeções prováveis a reduzir;
-- emoção predominante desejada;
-- melhor CTA para a intenção definida.
+# ETAPA 1 — DIREÇÃO ESTRATÉGICA (obrigatória, precede qualquer texto)
+Como Diretor de Criação, decida DELIBERADAMENTE para esta campanha:
+1. **ÂNGULO principal de venda** (obrigatório escolher UM do catálogo abaixo, respeitando a diversidade histórica);
+2. **EMOÇÃO** que deseja despertar (ex.: aconchego familiar, orgulho, alívio financeiro, alegria das crianças, sensação de conquista, tranquilidade, pertencimento);
+3. **DIFERENCIAL** da empresa que sustenta o ângulo (extraído da Base de Conhecimento — não invente);
+4. **OBJEÇÃO principal a quebrar** (ex.: "é caro", "vai dar trabalho", "não vou usar tanto", "medo de manutenção", "prazo longo");
+5. **CTA de maior conversão** para a intenção definida (não confunda CTA de marca com CTA de venda);
+6. **INTENÇÃO** (marca, orcamento, relacionamento ou venda).
+
+# DIVERSIDADE ESTRATÉGICA DE ÂNGULOS
+${angleBlock}
+Regras absolutas:
+- Escolha o ângulo ANTES de escrever qualquer conteúdo.
+- Um único ângulo domina toda a campanha (os 4 formatos exploram o mesmo).
+- NUNCA repita automaticamente o ângulo das últimas campanhas.
+- Se todos os ângulos do catálogo já foram usados recentemente, escolha o menos frequente.
+
+${productLockBlock}
 
 # ETAPA 2 — GERAÇÃO DOS 4 FORMATOS
-Os 4 formatos (Story, Feed, Reel, WhatsApp) fazem parte da MESMA campanha e devem conversar entre si:
-- Story desperta interesse;
-- Feed aprofunda o argumento;
-- Reel demonstra;
+Os 4 formatos (Story, Feed, Reel, WhatsApp) fazem parte da MESMA campanha, exploram o MESMO ângulo escolhido e devem conversar entre si:
+- Story desperta interesse pelo ângulo;
+- Feed aprofunda o argumento e quebra a objeção;
+- Reel demonstra visualmente o ângulo com um roteiro cinematográfico;
 - WhatsApp converte com abordagem individual.
 NÃO gere quatro peças independentes.
 
@@ -484,9 +574,16 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 "Transforme seu quintal em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
 
 # ESTILO POR FORMATO
-- FEED: escreva como um consultor experiente. Priorize benefícios reais, diferenciais verdadeiros, atendimento consultivo, linguagem humana. Emojis com parcimônia. Até 3 CTAs.
-- STORY: texto curto, leitura rápida, 1 a 3 frases, CTA forte, pouquíssimo texto.
-- REEL: roteiro baseado APENAS nas mídias reais disponíveis (${reelHint}). Estrutura: gancho nos 3s iniciais → desenvolvimento → CTA final. Nunca sugira cenas inexistentes.
+- FEED: consultor experiente. Priorize benefícios reais, diferenciais verdadeiros, atendimento consultivo, linguagem humana. Emojis com parcimônia. Até 3 CTAs. Quebre a objeção definida.
+- STORY: texto curto, 1 a 3 frases, CTA forte, pouquíssimo texto. Reforça o ângulo.
+- REEL — ROTEIRO CINEMATOGRÁFICO COMPLETO (obrigatório): você é o diretor deste Reel. Formato desta geração: **${reelFormat}** (${reelHint}). Devolva no objeto \`reel.script\`:
+  · \`format\`: "${reelFormat}";
+  · \`total_duration_seconds\`: duração total entre 15 e 60s;
+  · \`hook_summary\`: descrição do gancho dos 3 primeiros segundos;
+  · \`music_suggestion\`: estilo musical/ritmo sugerido (ex.: "lo-fi acústico, BPM 90, sensação de aconchego familiar") — nunca cite marcas ou faixas com direitos;
+  · \`scenes\`: sequência de 3 a 8 cenas numeradas, cada uma com \`duration_seconds\`, \`media_reference\` (referência textual à mídia real usada — vídeo ou foto do bloco de mídias; se não houver mídia, escreva "sem mídia"), \`framing\` (ex.: close, plano médio, plano geral, contra-plongée, drone), \`camera_movement\` (ex.: dolly-in lento, pan lateral, zoom-in suave, static, tilt-up), \`cut_style\` (ex.: corte seco, match-cut, cross-dissolve, whip-pan), \`on_screen_text\` (texto curto que aparece sobreposto, ou "" se não houver), \`voiceover\` (narração daquela cena, ou "" se não houver), \`silence\` (true se a cena for de silêncio proposital, sem narração e sem música dominante);
+  · \`final_cta_overlay\`: texto de CTA visual da cena final.
+  Coloque também em \`reel.body\` uma versão em texto legível do mesmo roteiro (cena por cena, para o humano aprovar). E use \`reel.title\` como título curto do vídeo.
 - WHATSAPP: mensagem individual, conversacional, sem cara de disparo em massa. Foco em relacionamento. NÃO inclua telefone no corpo.
 
 # VARIAÇÃO
@@ -497,9 +594,10 @@ ${pastBlock}
 Use este histórico APENAS como referência estratégica: identifique padrões que funcionaram, evite repetir os mesmos títulos/CTAs/ângulos, mas gere textos totalmente inéditos. NUNCA copie trechos das campanhas anteriores.
 
 # AUTOVALIDAÇÃO ANTES DE RESPONDER
-Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida; (f) nada copiado do histórico.
+Confira: (a) escolheu UM ângulo do catálogo e ele NÃO está entre os últimos usados; (b) coerência com a base de conhecimento; (c) zero informação inventada; (d) os 4 formatos formam uma campanha coerente em torno do ângulo; (e) linguagem natural; (f) nenhuma frase genérica proibida; (g) nada copiado do histórico; (h) o Reel tem roteiro cinematográfico completo com cenas, enquadramentos e cortes; (i) se há trava de produto, nenhum outro modelo/produto foi citado.
 
-Devolva o objeto \`strategy\` (planejamento interno) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+Devolva o objeto \`strategy\` (direção interna) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+
 
 
 
@@ -531,10 +629,12 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
           type: "object",
           additionalProperties: false,
           properties: {
+            angle: { type: "string" },
             objective: { type: "string" },
             audience: { type: "string" },
             benefit: { type: "string" },
             differential: { type: "string" },
+            objection_broken: { type: "string" },
             objections: { type: "array", items: { type: "string" } },
             emotion: { type: "string" },
             cta: { type: "string" },
@@ -544,10 +644,12 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
             },
           },
           required: [
+            "angle",
             "objective",
             "audience",
             "benefit",
             "differential",
+            "objection_broken",
             "objections",
             "emotion",
             "cta",
@@ -581,8 +683,56 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
             title: { type: "string" },
             body: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
+            script: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                format: { type: "string", enum: ["video_based", "slideshow"] },
+                total_duration_seconds: { type: "number" },
+                hook_summary: { type: "string" },
+                music_suggestion: { type: "string" },
+                scenes: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      scene: { type: "number" },
+                      duration_seconds: { type: "number" },
+                      media_reference: { type: "string" },
+                      framing: { type: "string" },
+                      camera_movement: { type: "string" },
+                      cut_style: { type: "string" },
+                      on_screen_text: { type: "string" },
+                      voiceover: { type: "string" },
+                      silence: { type: "boolean" },
+                    },
+                    required: [
+                      "scene",
+                      "duration_seconds",
+                      "media_reference",
+                      "framing",
+                      "camera_movement",
+                      "cut_style",
+                      "on_screen_text",
+                      "voiceover",
+                      "silence",
+                    ],
+                  },
+                },
+                final_cta_overlay: { type: "string" },
+              },
+              required: [
+                "format",
+                "total_duration_seconds",
+                "hook_summary",
+                "music_suggestion",
+                "scenes",
+                "final_cta_overlay",
+              ],
+            },
           },
-          required: ["title", "body", "hashtags"],
+          required: ["title", "body", "hashtags", "script"],
         },
         whatsapp: {
           type: "object",
@@ -653,6 +803,43 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     }
     const bundle = BundleSchema.parse(parsed);
 
+    // Compõe uma versão legível do roteiro do Reel — sempre incluída no body
+    // para que o humano aprove com todos os elementos cinematográficos à vista.
+    const reelScriptText = (() => {
+      const s = bundle.reel.script;
+      const header = `🎬 Roteiro cinematográfico — formato: ${s.format === "video_based" ? "baseado em vídeo real" : "slideshow de fotos"} · duração total: ${s.total_duration_seconds}s
+🎵 Música sugerida: ${s.music_suggestion}
+🎯 Gancho (3s iniciais): ${s.hook_summary}`;
+      const scenes = s.scenes
+        .map((sc) => {
+          const bits = [
+            `Cena ${sc.scene} · ${sc.duration_seconds}s`,
+            `  📺 Mídia: ${sc.media_reference || "-"}`,
+            `  🎞️ Enquadramento: ${sc.framing}`,
+            `  🎥 Câmera: ${sc.camera_movement}`,
+            `  ✂️ Corte: ${sc.cut_style}`,
+            sc.on_screen_text ? `  🅰️ Texto em tela: "${sc.on_screen_text}"` : "",
+            sc.silence
+              ? `  🤫 Momento de silêncio proposital`
+              : sc.voiceover
+                ? `  🎙️ Narração: "${sc.voiceover}"`
+                : "",
+          ].filter(Boolean);
+          return bits.join("\n");
+        })
+        .join("\n\n");
+      const footer = `CTA final na tela: "${s.final_cta_overlay}"`;
+      return `${header}\n\n${scenes}\n\n${footer}`;
+    })();
+    const reelBodyComposed = `${bundle.reel.body.trim()}\n\n──────────\n${reelScriptText}`;
+
+    // Guarda-diversidade: se por algum motivo o ângulo escolhido coincidir
+    // com um dos 3 mais recentes, registramos o aviso no snapshot (não bloqueia
+    // a geração — a diretriz principal já foi passada no prompt).
+    const chosenAngle = bundle.strategy.angle.trim().toLowerCase();
+    const angleRepeatedRecent = recentAngles.slice(0, 3).includes(chosenAngle);
+
+
     // Persistência atômica: 4 registros ou nenhum.
     const promptSnapshot = {
       tone: data.tone,
@@ -665,6 +852,11 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         product_id: p.product_id,
         image_path: p.image_path,
       })),
+      chosen_angle: bundle.strategy.angle,
+      angle_repeated_recent: angleRepeatedRecent,
+      recent_angles: recentAngles.slice(0, 5),
+      product_focus_locked: productLockActive,
+      reel_format: bundle.reel.script.format,
     };
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
@@ -711,7 +903,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         channel: "instagram" as MarketingContentChannel,
         format: "reel" as MarketingContentFormat,
         title: bundle.reel.title,
-        body: bundle.reel.body,
+        body: reelBodyComposed,
         hashtags: bundle.reel.hashtags,
         cta_text: null,
         cta_destination: null,
@@ -767,7 +959,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         feed_title: bundle.feed.title,
         feed_body: bundle.feed.body,
         reel_title: bundle.reel.title,
-        reel_body: bundle.reel.body,
+        reel_body: reelBodyComposed,
         whatsapp_title: bundle.whatsapp.title,
         whatsapp_body: bundle.whatsapp.body,
         media_ids: mediaIds,
