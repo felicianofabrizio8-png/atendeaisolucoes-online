@@ -292,7 +292,7 @@ export const updateMarketingContent = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => ContentUpdateSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
-    const patch: Record<string, unknown> = {};
+    const patch: Database["public"]["Tables"]["marketing_contents"]["Update"] = {};
     if (data.title !== undefined) patch.title = data.title;
     if (data.body !== undefined) patch.body = data.body;
     if (data.hashtags !== undefined) patch.hashtags = data.hashtags;
