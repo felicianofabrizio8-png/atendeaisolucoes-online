@@ -12,7 +12,6 @@ import type { Database } from "@/integrations/supabase/types";
 import type {
   MarketingContentChannel,
   MarketingContentFormat,
-  MarketingContentRow,
 } from "./marketing.types";
 
 type SB = SupabaseClient<Database>;
