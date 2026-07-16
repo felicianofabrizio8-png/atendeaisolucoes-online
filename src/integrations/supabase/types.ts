@@ -1866,6 +1866,100 @@ export type Database = {
           },
         ]
       }
+      marketing_campaign_memory: {
+        Row: {
+          audience: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          feed_body: string | null
+          feed_title: string | null
+          id: string
+          kb_version: string | null
+          media_ids: string[]
+          objective: string | null
+          product_id: string | null
+          promotion_id: string | null
+          reel_body: string | null
+          reel_title: string | null
+          story_body: string | null
+          story_title: string | null
+          strategy: Json
+          strategy_id: string
+          tone: string | null
+          whatsapp_body: string | null
+          whatsapp_title: string | null
+        }
+        Insert: {
+          audience?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          feed_body?: string | null
+          feed_title?: string | null
+          id?: string
+          kb_version?: string | null
+          media_ids?: string[]
+          objective?: string | null
+          product_id?: string | null
+          promotion_id?: string | null
+          reel_body?: string | null
+          reel_title?: string | null
+          story_body?: string | null
+          story_title?: string | null
+          strategy?: Json
+          strategy_id: string
+          tone?: string | null
+          whatsapp_body?: string | null
+          whatsapp_title?: string | null
+        }
+        Update: {
+          audience?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          feed_body?: string | null
+          feed_title?: string | null
+          id?: string
+          kb_version?: string | null
+          media_ids?: string[]
+          objective?: string | null
+          product_id?: string | null
+          promotion_id?: string | null
+          reel_body?: string | null
+          reel_title?: string | null
+          story_body?: string | null
+          story_title?: string | null
+          strategy?: Json
+          strategy_id?: string
+          tone?: string | null
+          whatsapp_body?: string | null
+          whatsapp_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_campaign_memory_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_campaign_memory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_campaign_memory_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_contents: {
         Row: {
           ai_model: string | null
