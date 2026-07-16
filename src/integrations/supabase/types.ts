@@ -1963,6 +1963,74 @@ export type Database = {
           },
         ]
       }
+      marketing_knowledge_base: {
+        Row: {
+          brand_identity: string
+          cities_served: string
+          commercial_terms: string
+          company_id: string
+          copy_best_practices: string
+          created_at: string
+          differentiators: string
+          extra_notes: string
+          forbidden_words: string
+          gifts: string
+          guarantees: string
+          id: string
+          preferred_words: string
+          products_services: string
+          tone_of_voice: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          brand_identity?: string
+          cities_served?: string
+          commercial_terms?: string
+          company_id: string
+          copy_best_practices?: string
+          created_at?: string
+          differentiators?: string
+          extra_notes?: string
+          forbidden_words?: string
+          gifts?: string
+          guarantees?: string
+          id?: string
+          preferred_words?: string
+          products_services?: string
+          tone_of_voice?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          brand_identity?: string
+          cities_served?: string
+          commercial_terms?: string
+          company_id?: string
+          copy_best_practices?: string
+          created_at?: string
+          differentiators?: string
+          extra_notes?: string
+          forbidden_words?: string
+          gifts?: string
+          guarantees?: string
+          id?: string
+          preferred_words?: string
+          products_services?: string
+          tone_of_voice?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_knowledge_base_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_media: {
         Row: {
           active: boolean
