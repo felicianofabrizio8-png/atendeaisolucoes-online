@@ -1866,6 +1866,307 @@ export type Database = {
           },
         ]
       }
+      marketing_contents: {
+        Row: {
+          ai_model: string | null
+          ai_prompt: Json | null
+          ai_raw_output: Json | null
+          approved_at: string | null
+          approved_by: string | null
+          body: string
+          channel: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id: string
+          created_at: string
+          created_by: string | null
+          cta_destination: string | null
+          cta_text: string | null
+          format: Database["public"]["Enums"]["marketing_content_format"]
+          hashtags: string[]
+          id: string
+          media_ids: string[]
+          product_id: string | null
+          promotion_id: string | null
+          rejection_reason: string | null
+          status: Database["public"]["Enums"]["marketing_content_status"]
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_model?: string | null
+          ai_prompt?: Json | null
+          ai_raw_output?: Json | null
+          approved_at?: string | null
+          approved_by?: string | null
+          body: string
+          channel: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          cta_destination?: string | null
+          cta_text?: string | null
+          format: Database["public"]["Enums"]["marketing_content_format"]
+          hashtags?: string[]
+          id?: string
+          media_ids?: string[]
+          product_id?: string | null
+          promotion_id?: string | null
+          rejection_reason?: string | null
+          status?: Database["public"]["Enums"]["marketing_content_status"]
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_model?: string | null
+          ai_prompt?: Json | null
+          ai_raw_output?: Json | null
+          approved_at?: string | null
+          approved_by?: string | null
+          body?: string
+          channel?: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          cta_destination?: string | null
+          cta_text?: string | null
+          format?: Database["public"]["Enums"]["marketing_content_format"]
+          hashtags?: string[]
+          id?: string
+          media_ids?: string[]
+          product_id?: string | null
+          promotion_id?: string | null
+          rejection_reason?: string | null
+          status?: Database["public"]["Enums"]["marketing_content_status"]
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_contents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_contents_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_contents_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_media: {
+        Row: {
+          active: boolean
+          company_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          duration_seconds: number | null
+          height: number | null
+          id: string
+          media_type: Database["public"]["Enums"]["marketing_media_type"]
+          mime_type: string | null
+          size_bytes: number | null
+          storage_path: string
+          tags: string[]
+          title: string | null
+          updated_at: string
+          width: number | null
+        }
+        Insert: {
+          active?: boolean
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          height?: number | null
+          id?: string
+          media_type: Database["public"]["Enums"]["marketing_media_type"]
+          mime_type?: string | null
+          size_bytes?: number | null
+          storage_path: string
+          tags?: string[]
+          title?: string | null
+          updated_at?: string
+          width?: number | null
+        }
+        Update: {
+          active?: boolean
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          height?: number | null
+          id?: string
+          media_type?: Database["public"]["Enums"]["marketing_media_type"]
+          mime_type?: string | null
+          size_bytes?: number | null
+          storage_path?: string
+          tags?: string[]
+          title?: string | null
+          updated_at?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_media_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_promotions: {
+        Row: {
+          company_id: string
+          cover_media_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          discount_percent: number | null
+          ends_at: string | null
+          id: string
+          price_original: number | null
+          price_promo: number | null
+          product_id: string | null
+          starts_at: string | null
+          status: Database["public"]["Enums"]["marketing_promotion_status"]
+          title: string
+          updated_at: string
+          whatsapp_cta_text: string | null
+          whatsapp_destination: string | null
+        }
+        Insert: {
+          company_id: string
+          cover_media_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          ends_at?: string | null
+          id?: string
+          price_original?: number | null
+          price_promo?: number | null
+          product_id?: string | null
+          starts_at?: string | null
+          status?: Database["public"]["Enums"]["marketing_promotion_status"]
+          title: string
+          updated_at?: string
+          whatsapp_cta_text?: string | null
+          whatsapp_destination?: string | null
+        }
+        Update: {
+          company_id?: string
+          cover_media_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          ends_at?: string | null
+          id?: string
+          price_original?: number | null
+          price_promo?: number | null
+          product_id?: string | null
+          starts_at?: string | null
+          status?: Database["public"]["Enums"]["marketing_promotion_status"]
+          title?: string
+          updated_at?: string
+          whatsapp_cta_text?: string | null
+          whatsapp_destination?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_promotions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_promotions_cover_media_id_fkey"
+            columns: ["cover_media_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_promotions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_schedule: {
+        Row: {
+          channel: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id: string
+          content_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          scheduled_at: string
+          status: Database["public"]["Enums"]["marketing_schedule_status"]
+          updated_at: string
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id: string
+          content_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          scheduled_at: string
+          status?: Database["public"]["Enums"]["marketing_schedule_status"]
+          updated_at?: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["marketing_content_channel"]
+          company_id?: string
+          content_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          scheduled_at?: string
+          status?: Database["public"]["Enums"]["marketing_schedule_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_schedule_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_schedule_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_contents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           at: string
@@ -3401,6 +3702,17 @@ export type Database = {
         | "frio"
         | "fechado"
         | "perdido"
+      marketing_content_channel: "instagram" | "facebook" | "whatsapp"
+      marketing_content_format: "story" | "feed" | "reel" | "whatsapp_cta"
+      marketing_content_status:
+        | "draft"
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "archived"
+      marketing_media_type: "image" | "video"
+      marketing_promotion_status: "draft" | "active" | "paused" | "ended"
+      marketing_schedule_status: "planned" | "published" | "cancelled"
       message_role: "lead" | "agent" | "system"
       onboarding_status: "pending" | "in_progress" | "completed" | "paused"
       quote_status:
@@ -3571,6 +3883,18 @@ export const Constants = {
         "fechado",
         "perdido",
       ],
+      marketing_content_channel: ["instagram", "facebook", "whatsapp"],
+      marketing_content_format: ["story", "feed", "reel", "whatsapp_cta"],
+      marketing_content_status: [
+        "draft",
+        "pending",
+        "approved",
+        "rejected",
+        "archived",
+      ],
+      marketing_media_type: ["image", "video"],
+      marketing_promotion_status: ["draft", "active", "paused", "ended"],
+      marketing_schedule_status: ["planned", "published", "cancelled"],
       message_role: ["lead", "agent", "system"],
       onboarding_status: ["pending", "in_progress", "completed", "paused"],
       quote_status: [
