@@ -404,5 +404,5 @@ Regras dos 4 formatos:
       .insert(rowsToInsert)
       .select("*");
     if (error) throw new Error(error.message);
-    return { contents: (inserted ?? []) as MarketingContentRow[] };
+    return { contents: inserted ?? [] };
   });
