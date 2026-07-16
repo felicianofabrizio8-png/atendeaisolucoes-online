@@ -536,12 +536,13 @@ export class MetaPublisher {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const p = await admin
       .from("meta_pages")
-      .select("page_id, page_access_token, ig_business_account_id, active")
+      .select("page_id, page_access_token, ig_business_account_id, active, updated_at")
       .eq("company_id", companyId)
       .eq("page_id", fbPageId)
       .eq("active", true)
-      .maybeSingle();
-    const row = p.data as
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const row = (p.data?.[0] ?? null) as
       | { page_id: string; page_access_token: string; ig_business_account_id: string | null }
       | null;
     if (!row) {
