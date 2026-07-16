@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { HttpAudit } from "@/lib/audit/HttpAudit.server";
+import { assertOutbound, type GuardDeps } from "@/lib/environment/EnvironmentGuard.server";
 import {
   MetaDisconnectRepository,
   type LocalIntegrationRow,
@@ -23,6 +24,8 @@ export interface DisconnectContext {
   companyId: string;
   userId: string;
   integrationId: string;
+  /** Injeção do EnvironmentGuard para testes. */
+  guardDeps?: GuardDeps;
 }
 
 export class MetaDisconnectService {
@@ -116,6 +119,81 @@ export class MetaDisconnectService {
     const steps: DisconnectStep[] = [];
     const manuals: string[] = [];
 
+    // 0) SHORT-CIRCUIT DE STAGING/UNKNOWN
+    //
+    // Antes de QUALQUER mutação (local ou remota), consultamos o
+    // EnvironmentGuard. Se o tenant não é production e o guard está ligado,
+    // a desconexão inteira vira uma simulação: não marcamos disconnecting,
+    // não chamamos Graph, não desassociamos páginas e não chamamos finalize.
+    // O tenant simulado permanece intacto para novos testes.
+    const guardProbe = await assertOutbound(
+      {
+        companyId: ctx.companyId,
+        userId: ctx.userId,
+        agentId: "meta-disconnect",
+        action: "meta.disconnect.probe",
+        targetUrl: null,
+        method: "DELETE",
+        payload: { integrationId: ctx.integrationId, channel: integration.channel },
+      },
+      ctx.guardDeps,
+    );
+    if (!guardProbe.proceed) {
+      const skippedCode = "simulated_environment_guard";
+      steps.push({
+        step: "local.mark_disconnecting",
+        status: "skipped",
+        code: skippedCode,
+        detail: `env=${guardProbe.environment}`,
+      });
+      // relata páginas que teriam sido desinscritas, sem tocar em Graph nem no banco
+      const pages = await this.repo.loadMetaPages(ctx.integrationId, ctx.companyId);
+      for (let i = 0; i < pages.length; i++) {
+        steps.push({
+          step: "graph.page.unsubscribe",
+          status: "skipped",
+          code: skippedCode,
+        });
+      }
+      if (integration.channel !== "whatsapp" && integration.access_token) {
+        steps.push({
+          step: "graph.user.revoke_permissions",
+          status: "skipped",
+          code: skippedCode,
+        });
+      }
+      if (integration.channel === "whatsapp") {
+        const s = this.graph.wabaManualNotice();
+        steps.push(s);
+        if (s.detail) manuals.push(s.detail);
+      }
+      steps.push({
+        step: "local.detach_meta_pages",
+        status: "skipped",
+        code: skippedCode,
+      });
+      steps.push({
+        step: "local.finalize",
+        status: "skipped",
+        code: skippedCode,
+      });
+
+      const finishedAt = new Date();
+      const report: DisconnectReport = {
+        integrationId: integration.id,
+        status: "disconnected", // status agregado do relatório; nada foi mudado
+        alreadyDisconnected: false,
+        steps,
+        manualActionsRequired: manuals,
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+      };
+      // Nota: NÃO gravamos HttpAudit em short-circuit para preservar o
+      // contrato "nada mudou" no tenant simulado.
+      return { ok: true, report };
+    }
+
     // 1) marca disconnecting (idempotente)
     try {
       await this.repo.markDisconnecting(ctx.integrationId, ctx.companyId);
@@ -128,6 +206,12 @@ export class MetaDisconnectService {
       });
     }
 
+    const graphCtx = {
+      companyId: ctx.companyId,
+      userId: ctx.userId,
+      guardDeps: ctx.guardDeps,
+    };
+
     // 2) unsubscribe páginas (Facebook / Instagram)
     const pages = await this.repo.loadMetaPages(ctx.integrationId, ctx.companyId);
     for (const p of pages) {
@@ -135,7 +219,7 @@ export class MetaDisconnectService {
         steps.push({ step: "graph.page.unsubscribe", status: "skipped", code: "no_token" });
         continue;
       }
-      const step = await this.graph.unsubscribePage(p.page_id, p.page_access_token);
+      const step = await this.graph.unsubscribePage(graphCtx, p.page_id, p.page_access_token);
       steps.push(step);
     }
 
@@ -145,6 +229,7 @@ export class MetaDisconnectService {
         (meta.user_id as string | undefined) ?? (meta.fb_user_id as string | undefined) ?? null;
       if (externalUserId) {
         const step = await this.graph.revokeUserPermissions(
+          graphCtx,
           externalUserId,
           integration.access_token,
         );

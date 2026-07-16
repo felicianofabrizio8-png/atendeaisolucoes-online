@@ -152,3 +152,17 @@ function tryParseBody(body: string | undefined): unknown {
     return { raw: body };
   }
 }
+
+/**
+ * Wrapper aditivo para DELETE na Graph API. Delega a `postGraph` sem alterar
+ * seu comportamento — apenas fixa `method: "DELETE"`. Existe para tornar
+ * explícito o intent nas chamadas de desconexão (subscribed_apps, permissions).
+ *
+ * Contrato idêntico a `postGraph`: mesma decisão do guard, mesma simulação,
+ * mesmo shape `OutboundResult`. NUNCA fabrica sucesso em simulação.
+ */
+export async function deleteGraph<TRaw = unknown>(
+  input: Omit<PostGraphInput, "method">,
+): Promise<OutboundResult<TRaw>> {
+  return postGraph<TRaw>({ ...input, method: "DELETE" });
+}
