@@ -1664,6 +1664,7 @@ export type Database = {
           has_access_token: boolean
           has_webhook_secret: boolean
           id: string
+          is_primary_publisher: boolean
           last_error: string | null
           last_synced_at: string | null
           token_expires_at: string | null
@@ -1683,6 +1684,7 @@ export type Database = {
           has_access_token?: boolean
           has_webhook_secret?: boolean
           id?: string
+          is_primary_publisher?: boolean
           last_error?: string | null
           last_synced_at?: string | null
           token_expires_at?: string | null
@@ -1702,6 +1704,7 @@ export type Database = {
           has_access_token?: boolean
           has_webhook_secret?: boolean
           id?: string
+          is_primary_publisher?: boolean
           last_error?: string | null
           last_synced_at?: string | null
           token_expires_at?: string | null
@@ -3651,6 +3654,7 @@ export type Database = {
           has_access_token: boolean | null
           has_webhook_secret: boolean | null
           id: string | null
+          is_primary_publisher: boolean | null
           last_error: string | null
           last_synced_at: string | null
           token_expires_at: string | null
@@ -3667,6 +3671,7 @@ export type Database = {
           has_access_token?: boolean | null
           has_webhook_secret?: boolean | null
           id?: string | null
+          is_primary_publisher?: boolean | null
           last_error?: string | null
           last_synced_at?: string | null
           token_expires_at?: string | null
@@ -3683,6 +3688,7 @@ export type Database = {
           has_access_token?: boolean | null
           has_webhook_secret?: boolean | null
           id?: string | null
+          is_primary_publisher?: boolean | null
           last_error?: string | null
           last_synced_at?: string | null
           token_expires_at?: string | null
