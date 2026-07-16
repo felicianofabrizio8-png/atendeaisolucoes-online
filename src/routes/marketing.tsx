@@ -44,6 +44,7 @@ function MarketingPage() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="library">Biblioteca</TabsTrigger>
+          <TabsTrigger value="knowledge">Base de Conhecimento</TabsTrigger>
           <TabsTrigger value="promotions">Promoções</TabsTrigger>
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
           <TabsTrigger value="approvals">Aprovação</TabsTrigger>
