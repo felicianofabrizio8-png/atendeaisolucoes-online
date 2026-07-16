@@ -9,6 +9,7 @@ import { MarketingPromotions } from "@/components/marketing/MarketingPromotions"
 import { MarketingGenerator } from "@/components/marketing/MarketingGenerator";
 import { MarketingApprovals } from "@/components/marketing/MarketingApprovals";
 import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
+import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 
 export const Route = createFileRoute("/marketing")({
   component: MarketingPage,
@@ -43,6 +44,7 @@ function MarketingPage() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="library">Biblioteca</TabsTrigger>
+          <TabsTrigger value="knowledge">Base de Conhecimento</TabsTrigger>
           <TabsTrigger value="promotions">Promoções</TabsTrigger>
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
           <TabsTrigger value="approvals">Aprovação</TabsTrigger>
@@ -53,6 +55,9 @@ function MarketingPage() {
         </TabsContent>
         <TabsContent value="library" className="mt-4">
           <MarketingLibrary companyId={companyId} />
+        </TabsContent>
+        <TabsContent value="knowledge" className="mt-4">
+          <MarketingKnowledgeBase companyId={companyId} />
         </TabsContent>
         <TabsContent value="promotions" className="mt-4">
           <MarketingPromotions companyId={companyId} />

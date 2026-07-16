@@ -148,6 +148,43 @@ async function loadCompanyContext(sb: SB, companyId: string) {
   };
 }
 
+async function loadKnowledgeBase(sb: SB, companyId: string) {
+  const { data } = await sb
+    .from("marketing_knowledge_base")
+    .select(
+      "brand_identity, tone_of_voice, differentiators, products_services, guarantees, cities_served, gifts, commercial_terms, preferred_words, forbidden_words, copy_best_practices, extra_notes",
+    )
+    .eq("company_id", companyId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+function buildKnowledgeBlock(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): string {
+  if (!kb) return "Base de conhecimento da empresa: (ainda não preenchida — use apenas o briefing).";
+  const rows: Array<[string, string | null]> = [
+    ["Identidade da marca", kb.brand_identity],
+    ["Tom de comunicação preferido", kb.tone_of_voice],
+    ["Diferenciais comerciais", kb.differentiators],
+    ["Produtos e serviços", kb.products_services],
+    ["Garantias", kb.guarantees],
+    ["Cidades atendidas", kb.cities_served],
+    ["Brindes", kb.gifts],
+    ["Condições comerciais", kb.commercial_terms],
+    ["Palavras e expressões preferidas", kb.preferred_words],
+    ["Palavras PROIBIDAS (nunca usar)", kb.forbidden_words],
+    ["Boas práticas de copy", kb.copy_best_practices],
+    ["Observações adicionais", kb.extra_notes],
+  ];
+  const filled = rows
+    .filter(([, v]) => v && v.trim().length > 0)
+    .map(([k, v]) => `- ${k}: ${v!.trim()}`)
+    .join("\n");
+  return filled
+    ? `Base de conhecimento da empresa (use como contexto obrigatório em TODOS os textos):\n${filled}`
+    : "Base de conhecimento da empresa: (ainda não preenchida — use apenas o briefing).";
+}
+
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
@@ -168,6 +205,8 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       : null;
 
     const brand = await loadCompanyContext(supabase, companyId);
+    const kb = await loadKnowledgeBase(supabase, companyId);
+    const knowledgeBlock = buildKnowledgeBlock(kb);
 
     // Prompt estruturado — o modelo produz UM único objeto com os 4 formatos.
     const promoBlock = promotion
@@ -190,11 +229,22 @@ Categoria: ${product.category ?? "-"}`
 
     const sys = `Você é um copywriter sênior de marketing digital brasileiro para pequenas e médias empresas.
 Gere conteúdos ORIGINAIS em português do Brasil, tom ${data.tone ?? "amigável"}, sem promessas irreais,
-sem inventar preços, condições, dados ou números de WhatsApp. Se um dado não estiver no briefing, NÃO invente.
+sem inventar preços, condições, dados ou números de WhatsApp. Se um dado não estiver no briefing OU na base de conhecimento, NÃO invente.
 Empresa: ${brand.companyName}.
+
+${knowledgeBlock}
+
+REGRAS OBRIGATÓRIAS a partir da base de conhecimento:
+- Reflita a identidade da marca e o tom de comunicação em todos os textos.
+- Use as palavras/expressões preferidas quando fizer sentido natural.
+- NUNCA use nenhuma das palavras proibidas listadas.
+- Respeite as garantias, diferenciais, cidades atendidas, brindes e condições comerciais informados — não contradiga, não amplie.
+- Aplique as boas práticas de copy indicadas.
+- Se a base de conhecimento estiver vazia, gere conteúdo neutro, sem inventar atributos da empresa.
+
 Você DEVE devolver os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`.`;
 
-    const usr = `Briefing:
+    const usr = `Briefing da geração:
 ${promoBlock}
 
 ${productBlock}
@@ -207,6 +257,7 @@ Regras dos 4 formatos:
 - feed: legenda de Feed (Instagram/Facebook), pode ter emojis, quebras de linha, e até 3 CTAs.
 - reel: roteiro curto de Reel/vídeo vertical, com abertura em 3 segundos, meio e CTA final.
 - whatsapp: mensagem curta para envio no WhatsApp com CTA claro. NÃO inclua telefone no corpo.`;
+
 
     const bundleJsonSchema = {
       type: "object",

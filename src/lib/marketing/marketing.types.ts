@@ -98,3 +98,23 @@ export interface GeneratedContentBundle {
   reel: { title: string; body: string; hashtags: string[] };
   whatsapp: { title: string; body: string; cta_text: string };
 }
+
+export interface MarketingKnowledgeBaseRow {
+  id: string;
+  company_id: string;
+  brand_identity: string;
+  tone_of_voice: string;
+  differentiators: string;
+  products_services: string;
+  guarantees: string;
+  cities_served: string;
+  gifts: string;
+  commercial_terms: string;
+  preferred_words: string;
+  forbidden_words: string;
+  copy_best_practices: string;
+  extra_notes: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
