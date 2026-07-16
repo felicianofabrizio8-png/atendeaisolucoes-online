@@ -90,7 +90,7 @@ describe("Marketing AI — Bundle schema", () => {
 describe("Marketing AI — Schedule input contract", () => {
   it("aceita agendamento válido", () => {
     const ok = ScheduleInputSchema.parse({
-      content_id: "11111111-1111-1111-1111-111111111111",
+      content_id: "11111111-1111-4111-8111-111111111111",
       channel: "instagram",
       scheduled_at: new Date().toISOString(),
     });
@@ -110,7 +110,7 @@ describe("Marketing AI — Schedule input contract", () => {
   it("rejeita canal desconhecido", () => {
     expect(() =>
       ScheduleInputSchema.parse({
-        content_id: "11111111-1111-1111-1111-111111111111",
+        content_id: "11111111-1111-4111-8111-111111111111",
         channel: "tiktok" as unknown as "instagram",
         scheduled_at: new Date().toISOString(),
       }),
@@ -120,7 +120,7 @@ describe("Marketing AI — Schedule input contract", () => {
   it("rejeita data mal formatada", () => {
     expect(() =>
       ScheduleInputSchema.parse({
-        content_id: "11111111-1111-1111-1111-111111111111",
+        content_id: "11111111-1111-4111-8111-111111111111",
         channel: "instagram",
         scheduled_at: "amanhã 10h",
       }),
