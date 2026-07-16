@@ -42,8 +42,9 @@ type NavItem = {
     | "/configuracoes"
     | "/ia"
     | "/campanhas"
-    | "/saude"
     | "/criativos"
+    | "/marketing"
+    | "/saude"
     | "/onboarding"
     | "/runtime/observability";
   label: string;
@@ -60,6 +61,7 @@ const nav: NavItem[] = [
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/campanhas", label: "Campanhas", icon: Megaphone },
   { to: "/criativos", label: "Criativos IA", icon: Sparkles },
+  { to: "/marketing", label: "Marketing IA", icon: Sparkles },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
