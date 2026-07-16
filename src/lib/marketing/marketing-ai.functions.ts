@@ -658,5 +658,36 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       .insert(rowsToInsert)
       .select("*");
     if (error) throw new Error(error.message);
+
+    // Learning loop (Fase de aprendizado contínuo):
+    // grava a memória histórica desta campanha. Falhas aqui não devem
+    // derrubar a geração — o loop é auxiliar, não crítico.
+    try {
+      const strategyId = computeStrategyId(bundle.strategy);
+      await supabase.from("marketing_campaign_memory").insert({
+        company_id: companyId,
+        promotion_id: data.promotion_id ?? null,
+        product_id: data.product_id ?? null,
+        strategy_id: strategyId,
+        objective: bundle.strategy.objective,
+        audience: bundle.strategy.audience,
+        tone: data.tone ?? null,
+        strategy: bundle.strategy as unknown as Database["public"]["Tables"]["marketing_campaign_memory"]["Insert"]["strategy"],
+        story_title: bundle.story.title,
+        story_body: bundle.story.body,
+        feed_title: bundle.feed.title,
+        feed_body: bundle.feed.body,
+        reel_title: bundle.reel.title,
+        reel_body: bundle.reel.body,
+        whatsapp_title: bundle.whatsapp.title,
+        whatsapp_body: bundle.whatsapp.body,
+        media_ids: mediaIds,
+        kb_version: kbVersion,
+        created_by: userId,
+      });
+    } catch {
+      // silencia — memória histórica é best-effort nesta fase.
+    }
+
     return { contents: inserted ?? [] };
   });
