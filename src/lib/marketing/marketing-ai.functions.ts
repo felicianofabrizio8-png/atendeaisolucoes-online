@@ -661,6 +661,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       promotion_id: data.promotion_id ?? null,
       product_id: data.product_id ?? null,
       media_ids: mediaIds,
+      product_media_refs: productMediaDetails.map((p) => ({
+        product_id: p.product_id,
+        image_path: p.image_path,
+      })),
     };
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
