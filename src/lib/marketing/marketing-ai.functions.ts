@@ -97,10 +97,16 @@ async function loadProduct(sb: SB, companyId: string, id: string) {
 }
 
 async function validateMedia(sb: SB, companyId: string, ids: string[]) {
-  if (!ids.length) return;
+  if (!ids.length) return [] as Array<{
+    id: string;
+    media_type: string;
+    title: string | null;
+    description: string | null;
+    tags: string[] | null;
+  }>;
   const { data, error } = await sb
     .from("marketing_media")
-    .select("id")
+    .select("id, media_type, title, description, tags")
     .in("id", ids)
     .eq("company_id", companyId);
   if (error) throw new Error(error.message);
@@ -108,6 +114,13 @@ async function validateMedia(sb: SB, companyId: string, ids: string[]) {
   for (const id of ids) {
     if (!found.has(id)) throw new Error(`Mídia ${id} não pertence à empresa.`);
   }
+  return (data ?? []) as Array<{
+    id: string;
+    media_type: string;
+    title: string | null;
+    description: string | null;
+    tags: string[] | null;
+  }>;
 }
 
 async function loadCompanyContext(sb: SB, companyId: string) {
