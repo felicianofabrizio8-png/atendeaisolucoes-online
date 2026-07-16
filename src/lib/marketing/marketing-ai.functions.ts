@@ -6,6 +6,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "crypto";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
@@ -34,7 +35,18 @@ const InputSchema = z.object({
 
 
 // Schema JSON estrito para a resposta da IA — validado em runtime.
+const StrategySchema = z.object({
+  objective: z.string().trim().max(300),
+  audience: z.string().trim().max(300),
+  benefit: z.string().trim().max(300),
+  differential: z.string().trim().max(300),
+  objections: z.array(z.string().trim().max(200)).max(6).default([]),
+  emotion: z.string().trim().max(120),
+  cta: z.string().trim().max(200),
+  intent: z.enum(["marca", "orcamento", "relacionamento", "venda"]),
+});
 const BundleSchema = z.object({
+  strategy: StrategySchema,
   story: z.object({
     title: z.string().trim().max(120),
     body: z.string().trim().min(1).max(1500),
@@ -198,6 +210,84 @@ function buildKnowledgeBlock(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>):
 }
 
 
+function computeKbVersion(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>): string {
+  if (!kb) return "empty";
+  const payload = JSON.stringify(kb);
+  return createHash("sha256").update(payload).digest("hex").slice(0, 12);
+}
+
+function computeStrategyId(strategy: z.infer<typeof StrategySchema>): string {
+  const seed = `${strategy.intent}|${strategy.objective}|${strategy.emotion}|${strategy.cta}`
+    .toLowerCase()
+    .normalize("NFKD");
+  return createHash("sha256").update(seed).digest("hex").slice(0, 10);
+}
+
+async function loadPastCampaigns(
+  sb: SB,
+  companyId: string,
+  filters: { promotionId: string | null; productId: string | null },
+) {
+  // Busca as 8 memórias mais recentes, priorizando mesmo produto/promoção.
+  const orClauses: string[] = [];
+  if (filters.promotionId) orClauses.push(`promotion_id.eq.${filters.promotionId}`);
+  if (filters.productId) orClauses.push(`product_id.eq.${filters.productId}`);
+  let query = sb
+    .from("marketing_campaign_memory")
+    .select(
+      "id, created_at, strategy_id, objective, audience, tone, strategy, story_title, feed_title, reel_title, whatsapp_title, product_id, promotion_id",
+    )
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+  if (orClauses.length > 0) {
+    // Preferência por matches, mas ainda retorna outras se não houver bastante.
+    const { data: matched } = await sb
+      .from("marketing_campaign_memory")
+      .select(
+        "id, created_at, strategy_id, objective, audience, tone, strategy, story_title, feed_title, reel_title, whatsapp_title, product_id, promotion_id",
+      )
+      .eq("company_id", companyId)
+      .or(orClauses.join(","))
+      .order("created_at", { ascending: false })
+      .limit(6);
+    const { data: recent } = await query;
+    const seen = new Set<string>();
+    const merged: NonNullable<typeof matched> = [];
+    for (const r of [...(matched ?? []), ...(recent ?? [])]) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        merged.push(r);
+      }
+      if (merged.length >= 8) break;
+    }
+    return merged;
+  }
+  const { data } = await query;
+  return data ?? [];
+}
+
+function buildPastCampaignsBlock(
+  past: Awaited<ReturnType<typeof loadPastCampaigns>>,
+): string {
+  if (!past.length) {
+    return "Histórico de campanhas anteriores desta empresa: (nenhuma ainda — esta é a primeira).";
+  }
+  const lines = past.map((p, i) => {
+    const s = (p.strategy ?? {}) as Record<string, unknown>;
+    const objective = (s.objective as string) ?? p.objective ?? "-";
+    const intent = (s.intent as string) ?? "-";
+    const cta = (s.cta as string) ?? "-";
+    const titles = [p.story_title, p.feed_title, p.reel_title, p.whatsapp_title]
+      .filter(Boolean)
+      .map((t) => `"${t}"`)
+      .join(" | ");
+    return `${i + 1}. [${new Date(p.created_at).toISOString().slice(0, 10)}] intenção=${intent} · objetivo=${objective} · cta=${cta} · títulos usados: ${titles || "-"}`;
+  });
+  return `Referências estratégicas de campanhas passadas (APENAS para evitar repetição — NÃO copie textos, títulos ou CTAs; varie abertura, ângulo e estrutura):\n${lines.join("\n")}`;
+}
+
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
@@ -220,6 +310,12 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
     const brand = await loadCompanyContext(supabase, companyId);
     const kb = await loadKnowledgeBase(supabase, companyId);
     const knowledgeBlock = buildKnowledgeBlock(kb);
+    const kbVersion = computeKbVersion(kb);
+    const pastCampaigns = await loadPastCampaigns(supabase, companyId, {
+      promotionId: data.promotion_id ?? null,
+      productId: data.product_id ?? null,
+    });
+    const pastBlock = buildPastCampaignsBlock(pastCampaigns);
 
     // Prompt estruturado — o modelo produz UM único objeto com os 4 formatos.
     const promoBlock = promotion
@@ -311,10 +407,16 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 # VARIAÇÃO
 Seed desta geração: ${variationSeed}. Varie abertura, CTA, estrutura, argumentos e organização em relação a gerações anteriores.
 
-# AUTOVALIDAÇÃO ANTES DE RESPONDER
-Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida.
+# HISTÓRICO INTERNO (aprendizado com campanhas passadas desta empresa)
+${pastBlock}
+Use este histórico APENAS como referência estratégica: identifique padrões que funcionaram, evite repetir os mesmos títulos/CTAs/ângulos, mas gere textos totalmente inéditos. NUNCA copie trechos das campanhas anteriores.
 
-Devolva os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+# AUTOVALIDAÇÃO ANTES DE RESPONDER
+Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida; (f) nada copiado do histórico.
+
+Devolva o objeto \`strategy\` (planejamento interno) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+
+
 
     const usr = `Briefing desta campanha:
 
@@ -340,6 +442,33 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       type: "object",
       additionalProperties: false,
       properties: {
+        strategy: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            objective: { type: "string" },
+            audience: { type: "string" },
+            benefit: { type: "string" },
+            differential: { type: "string" },
+            objections: { type: "array", items: { type: "string" } },
+            emotion: { type: "string" },
+            cta: { type: "string" },
+            intent: {
+              type: "string",
+              enum: ["marca", "orcamento", "relacionamento", "venda"],
+            },
+          },
+          required: [
+            "objective",
+            "audience",
+            "benefit",
+            "differential",
+            "objections",
+            "emotion",
+            "cta",
+            "intent",
+          ],
+        },
         story: {
           type: "object",
           additionalProperties: false,
@@ -381,7 +510,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
           required: ["title", "body", "cta_text"],
         },
       },
-      required: ["story", "feed", "reel", "whatsapp"],
+      required: ["strategy", "story", "feed", "reel", "whatsapp"],
     };
 
     const payload = {
@@ -529,5 +658,36 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       .insert(rowsToInsert)
       .select("*");
     if (error) throw new Error(error.message);
+
+    // Learning loop (Fase de aprendizado contínuo):
+    // grava a memória histórica desta campanha. Falhas aqui não devem
+    // derrubar a geração — o loop é auxiliar, não crítico.
+    try {
+      const strategyId = computeStrategyId(bundle.strategy);
+      await supabase.from("marketing_campaign_memory").insert({
+        company_id: companyId,
+        promotion_id: data.promotion_id ?? null,
+        product_id: data.product_id ?? null,
+        strategy_id: strategyId,
+        objective: bundle.strategy.objective,
+        audience: bundle.strategy.audience,
+        tone: data.tone ?? null,
+        strategy: bundle.strategy as unknown as Database["public"]["Tables"]["marketing_campaign_memory"]["Insert"]["strategy"],
+        story_title: bundle.story.title,
+        story_body: bundle.story.body,
+        feed_title: bundle.feed.title,
+        feed_body: bundle.feed.body,
+        reel_title: bundle.reel.title,
+        reel_body: bundle.reel.body,
+        whatsapp_title: bundle.whatsapp.title,
+        whatsapp_body: bundle.whatsapp.body,
+        media_ids: mediaIds,
+        kb_version: kbVersion,
+        created_by: userId,
+      });
+    } catch {
+      // silencia — memória histórica é best-effort nesta fase.
+    }
+
     return { contents: inserted ?? [] };
   });
