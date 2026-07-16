@@ -2275,6 +2275,97 @@ export type Database = {
           },
         ]
       }
+      marketing_publications: {
+        Row: {
+          attempt_log: Json
+          available_at: string
+          channel: string
+          company_id: string
+          content_id: string
+          created_at: string
+          created_by: string | null
+          error_code: string | null
+          error_message: string | null
+          format: string
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          platform_post_id: string | null
+          platform_response: Json | null
+          published_at: string | null
+          retry_count: number
+          schedule_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_log?: Json
+          available_at?: string
+          channel: string
+          company_id: string
+          content_id: string
+          created_at?: string
+          created_by?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          format: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          platform_post_id?: string | null
+          platform_response?: Json | null
+          published_at?: string | null
+          retry_count?: number
+          schedule_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_log?: Json
+          available_at?: string
+          channel?: string
+          company_id?: string
+          content_id?: string
+          created_at?: string
+          created_by?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          format?: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          platform_post_id?: string | null
+          platform_response?: Json | null
+          published_at?: string | null
+          retry_count?: number
+          schedule_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_publications_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_publications_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_publications_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: true
+            referencedRelation: "marketing_schedule"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_schedule: {
         Row: {
           channel: Database["public"]["Enums"]["marketing_content_channel"]
@@ -3874,7 +3965,13 @@ export type Database = {
         | "archived"
       marketing_media_type: "image" | "video"
       marketing_promotion_status: "draft" | "active" | "paused" | "ended"
-      marketing_schedule_status: "planned" | "published" | "cancelled"
+      marketing_schedule_status:
+        | "planned"
+        | "published"
+        | "cancelled"
+        | "queued"
+        | "publishing"
+        | "failed"
       message_role: "lead" | "agent" | "system"
       onboarding_status: "pending" | "in_progress" | "completed" | "paused"
       quote_status:
@@ -4056,7 +4153,14 @@ export const Constants = {
       ],
       marketing_media_type: ["image", "video"],
       marketing_promotion_status: ["draft", "active", "paused", "ended"],
-      marketing_schedule_status: ["planned", "published", "cancelled"],
+      marketing_schedule_status: [
+        "planned",
+        "published",
+        "cancelled",
+        "queued",
+        "publishing",
+        "failed",
+      ],
       message_role: ["lead", "agent", "system"],
       onboarding_status: ["pending", "in_progress", "completed", "paused"],
       quote_status: [

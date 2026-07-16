@@ -11,7 +11,13 @@ export type MarketingContentStatus =
   | "archived";
 export type MarketingContentChannel = "instagram" | "facebook" | "whatsapp";
 export type MarketingContentFormat = "story" | "feed" | "reel" | "whatsapp_cta";
-export type MarketingScheduleStatus = "planned" | "published" | "cancelled";
+export type MarketingScheduleStatus =
+  | "planned"
+  | "queued"
+  | "publishing"
+  | "published"
+  | "failed"
+  | "cancelled";
 
 export interface MarketingMediaRow {
   id: string;
