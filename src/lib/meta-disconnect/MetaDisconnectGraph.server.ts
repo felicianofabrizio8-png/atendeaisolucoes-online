@@ -69,6 +69,7 @@ export class MetaDisconnectGraph {
       // logicalPayload sanitizado: sem token, apenas metadado.
       logicalPayload: { pageId: `${pageId.slice(0, 4)}…` },
       guardDeps: ctx.guardDeps,
+      fetchImpl: ctx.fetchImpl,
     });
     return toStep("graph.page.unsubscribe", r);
   }
@@ -96,6 +97,7 @@ export class MetaDisconnectGraph {
       url,
       logicalPayload: { externalUserId: `${externalUserId.slice(0, 4)}…` },
       guardDeps: ctx.guardDeps,
+      fetchImpl: ctx.fetchImpl,
     });
     return toStep("graph.user.revoke_permissions", r);
   }
