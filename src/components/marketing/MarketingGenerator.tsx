@@ -59,7 +59,7 @@ export function MarketingGenerator({ companyId, onGenerated }: Props) {
         media_ids: marketingIds,
         tone,
         audience: audience.trim() || null,
-        extra_instructions: extra.trim() || null,
+        extra_instructions: extraFinal || null,
       });
       setLastResult(contents);
       toast.success("4 conteúdos gerados como rascunho. Revise em Aprovação.");
