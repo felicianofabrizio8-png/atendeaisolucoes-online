@@ -24,6 +24,15 @@ const InputSchema = z.object({
   promotion_id: z.string().uuid().optional().nullable(),
   product_id: z.string().uuid().optional().nullable(),
   media_ids: z.array(z.string().uuid()).max(10).optional(),
+  product_media_refs: z
+    .array(
+      z.object({
+        product_id: z.string().uuid(),
+        image_path: z.string().min(1).max(500),
+      }),
+    )
+    .max(10)
+    .optional(),
   tone: z
     .enum(["amigável", "profissional", "descontraído", "urgente"])
     .optional()
@@ -31,6 +40,62 @@ const InputSchema = z.object({
   audience: z.string().trim().max(300).optional().nullable(),
   extra_instructions: z.string().trim().max(1000).optional().nullable(),
 });
+
+async function validateProductMediaRefs(
+  sb: SB,
+  companyId: string,
+  refs: Array<{ product_id: string; image_path: string }>,
+): Promise<
+  Array<{
+    product_id: string;
+    product_name: string;
+    category: string | null;
+    image_path: string;
+  }>
+> {
+  if (!refs.length) return [];
+  const productIds = Array.from(new Set(refs.map((r) => r.product_id)));
+  const { data, error } = await sb
+    .from("products")
+    .select("id, name, category, images")
+    .in("id", productIds)
+    .eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+  const byId = new Map(
+    (data ?? []).map((p) => [
+      p.id,
+      {
+        name: p.name as string,
+        category: (p.category as string | null) ?? null,
+        images: Array.isArray(p.images)
+          ? (p.images.filter((x) => typeof x === "string") as string[])
+          : [],
+      },
+    ]),
+  );
+  const out: Array<{
+    product_id: string;
+    product_name: string;
+    category: string | null;
+    image_path: string;
+  }> = [];
+  for (const ref of refs) {
+    const p = byId.get(ref.product_id);
+    if (!p) throw new Error(`Produto ${ref.product_id} não pertence à empresa.`);
+    if (!p.images.includes(ref.image_path)) {
+      throw new Error(
+        `Imagem não pertence ao produto ${p.name}.`,
+      );
+    }
+    out.push({
+      product_id: ref.product_id,
+      product_name: p.name,
+      category: p.category,
+      image_path: ref.image_path,
+    });
+  }
+  return out;
+}
 
 
 
