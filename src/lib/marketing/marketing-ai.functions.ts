@@ -154,7 +154,7 @@ async function loadCompanyContext(sb: SB, companyId: string) {
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
-  .handler(async ({ data, context }): Promise<GenerateResult> => {
+  .handler(async ({ data, context }) => {
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("LOVABLE_API_KEY não configurada.");
 
