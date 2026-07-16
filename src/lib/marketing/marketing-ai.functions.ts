@@ -34,7 +34,18 @@ const InputSchema = z.object({
 
 
 // Schema JSON estrito para a resposta da IA — validado em runtime.
+const StrategySchema = z.object({
+  objective: z.string().trim().max(300),
+  audience: z.string().trim().max(300),
+  benefit: z.string().trim().max(300),
+  differential: z.string().trim().max(300),
+  objections: z.array(z.string().trim().max(200)).max(6).default([]),
+  emotion: z.string().trim().max(120),
+  cta: z.string().trim().max(200),
+  intent: z.enum(["marca", "orcamento", "relacionamento", "venda"]),
+});
 const BundleSchema = z.object({
+  strategy: StrategySchema,
   story: z.object({
     title: z.string().trim().max(120),
     body: z.string().trim().min(1).max(1500),
