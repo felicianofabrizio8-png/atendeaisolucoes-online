@@ -458,6 +458,9 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       productId: data.product_id ?? null,
     });
     const pastBlock = buildPastCampaignsBlock(pastCampaigns);
+    const recentAngles = extractRecentAngles(pastCampaigns);
+    const angleBlock = buildAngleDiversityBlock(recentAngles);
+    const productLockActive = Boolean(product && promotion);
 
     // Prompt estruturado — o modelo produz UM único objeto com os 4 formatos.
     const promoBlock = promotion
