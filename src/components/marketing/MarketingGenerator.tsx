@@ -127,17 +127,23 @@ export function MarketingGenerator({ companyId, onGenerated }: Props) {
         <div className="text-sm font-semibold">
           Mídias associadas (opcional) —
           <span className="text-muted-foreground font-normal ml-1">
-            {selectedMedia.length} selecionada(s)
+            {selection.length} selecionada(s)
+            {productSelections.length > 0
+              ? ` (${marketingIds.length} MKT + ${productSelections.length} produto)`
+              : ""}
           </span>
         </div>
         <MarketingLibrary
           companyId={companyId}
           selectable
-          selectedIds={selectedMedia}
-          onToggleSelect={(id) =>
-            setSelectedMedia((prev) =>
-              prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-            )
+          selected={selection}
+          onToggleSelect={(sel) =>
+            setSelection((prev) => {
+              const k = selectionKey(sel);
+              return prev.some((p) => selectionKey(p) === k)
+                ? prev.filter((p) => !sameSelection(p, sel))
+                : [...prev, sel];
+            })
           }
         />
       </div>
