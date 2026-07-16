@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import type {
   MarketingContentRow,
 } from "@/lib/marketing/marketing.types";
 import { MarketingLibrary } from "./MarketingLibrary";
+import type { MediaSelection } from "@/lib/marketing/media-selection";
+import { sameSelection, selectionKey } from "@/lib/marketing/media-selection";
 
 interface Props {
   companyId: string;
@@ -26,7 +28,7 @@ export function MarketingGenerator({ companyId, onGenerated }: Props) {
   const [tone, setTone] = useState<"amigável" | "profissional" | "descontraído" | "urgente">("amigável");
   const [audience, setAudience] = useState("");
   const [extra, setExtra] = useState("");
-  const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
+  const [selection, setSelection] = useState<MediaSelection[]>([]);
   const [generating, setGenerating] = useState(false);
   const [lastResult, setLastResult] = useState<MarketingContentRow[]>([]);
 
@@ -34,12 +36,27 @@ export function MarketingGenerator({ companyId, onGenerated }: Props) {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
+  const marketingIds = useMemo(
+    () => selection.filter((s) => s.origin === "marketing").map((s) => (s as { id: string }).id),
+    [selection],
+  );
+  const productSelections = useMemo(
+    () => selection.filter((s): s is Extract<MediaSelection, { origin: "product" }> => s.origin === "product"),
+    [selection],
+  );
+
   async function generate() {
-    setGenerating(true);
+    setGenerating (true);
     try {
+      const productHint = productSelections.length
+        ? `Referências visuais de produtos: ${Array.from(
+            new Set(productSelections.map((p) => p.productName)),
+          ).join(", ")}.`
+        : "";
+      const extraFinal = [extra.trim(), productHint].filter(Boolean).join("\n");
       const contents = await apiGenerateContent({
         promotion_id: promotionId || null,
-        media_ids: selectedMedia,
+        media_ids: marketingIds,
         tone,
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
