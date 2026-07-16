@@ -80,6 +80,14 @@ export function MarketingApprovals({ companyId }: Props) {
 
   async function schedule() {
     if (!scheduleFor || !scheduleAt) return;
+    if (scheduleChannel === "instagram") {
+      const target = rows.find((r) => r.id === scheduleFor);
+      const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
+      if (mediaCount === 0) {
+        toast.error("Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.");
+        return;
+      }
+    }
     setBusy(true);
     try {
       await apiScheduleContent({

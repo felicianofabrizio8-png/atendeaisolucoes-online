@@ -373,7 +373,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     const { companyId, userId, supabase } = await loadCompany(context);
     const { data: content, error: cErr } = await supabase
       .from("marketing_contents")
-      .select("id, company_id, status")
+      .select("id, company_id, status, media_ids")
       .eq("id", data.content_id)
       .maybeSingle();
     if (cErr) throw new Error(cErr.message);
@@ -384,6 +384,16 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
       throw new Error(
         "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
       );
+    }
+    // Instagram (feed/reel/story) exige ao menos uma mídia associada.
+    // WhatsApp CTA e demais canais permanecem sem essa exigência.
+    if (data.channel === "instagram") {
+      const mediaCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
+      if (mediaCount === 0) {
+        throw new Error(
+          "Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.",
+        );
+      }
     }
     const { data: row, error } = await supabase
       .from("marketing_schedule")
