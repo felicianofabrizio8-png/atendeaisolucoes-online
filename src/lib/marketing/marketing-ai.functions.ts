@@ -97,10 +97,16 @@ async function loadProduct(sb: SB, companyId: string, id: string) {
 }
 
 async function validateMedia(sb: SB, companyId: string, ids: string[]) {
-  if (!ids.length) return;
+  if (!ids.length) return [] as Array<{
+    id: string;
+    media_type: string;
+    title: string | null;
+    description: string | null;
+    tags: string[] | null;
+  }>;
   const { data, error } = await sb
     .from("marketing_media")
-    .select("id")
+    .select("id, media_type, title, description, tags")
     .in("id", ids)
     .eq("company_id", companyId);
   if (error) throw new Error(error.message);
@@ -108,6 +114,13 @@ async function validateMedia(sb: SB, companyId: string, ids: string[]) {
   for (const id of ids) {
     if (!found.has(id)) throw new Error(`Mídia ${id} não pertence à empresa.`);
   }
+  return (data ?? []) as Array<{
+    id: string;
+    media_type: string;
+    title: string | null;
+    description: string | null;
+    tags: string[] | null;
+  }>;
 }
 
 async function loadCompanyContext(sb: SB, companyId: string) {
@@ -195,7 +208,7 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
     const { companyId, userId, supabase } = await loadCompany(context);
 
     const mediaIds = data.media_ids ?? [];
-    await validateMedia(supabase, companyId, mediaIds);
+    const mediaDetails = await validateMedia(supabase, companyId, mediaIds);
 
     const promotion = data.promotion_id
       ? await loadPromotion(supabase, companyId, data.promotion_id)
@@ -227,36 +240,100 @@ Preço: ${product.price ?? "-"}
 Categoria: ${product.category ?? "-"}`
       : "Sem produto específico associado.";
 
-    const sys = `Você é um copywriter sênior de marketing digital brasileiro para pequenas e médias empresas.
-Gere conteúdos ORIGINAIS em português do Brasil, tom ${data.tone ?? "amigável"}, sem promessas irreais,
-sem inventar preços, condições, dados ou números de WhatsApp. Se um dado não estiver no briefing OU na base de conhecimento, NÃO invente.
-Empresa: ${brand.companyName}.
+    const mediaBlock = mediaDetails.length
+      ? `Mídias selecionadas (${mediaDetails.length}) — use APENAS estas como base visual:\n` +
+        mediaDetails
+          .map((m, i) => {
+            const tags = (m.tags ?? []).filter(Boolean).join(", ");
+            return `${i + 1}. [${m.media_type}] ${m.title ?? "(sem título)"}${
+              m.description ? ` — ${m.description}` : ""
+            }${tags ? ` [tags: ${tags}]` : ""}`;
+          })
+          .join("\n")
+      : "Sem mídias selecionadas.";
+
+    const hasVideo = mediaDetails.some((m) => m.media_type === "video");
+    const hasImage = mediaDetails.some((m) => m.media_type === "image");
+    const reelHint = hasVideo
+      ? "Você tem vídeo(s) disponível(is): descreva um roteiro que use as cenas reais informadas."
+      : hasImage
+        ? "NÃO há vídeo — apenas fotos. Monte o roteiro do Reel como sequência de fotos com movimento (zoom, pan, transições), sem inventar cenas filmadas."
+        : "Nenhuma mídia foi selecionada — descreva um roteiro genérico baseado em movimento e transições, sem inventar cenas específicas.";
+
+    // Seed para incentivar variação entre gerações consecutivas.
+    const variationSeed = Math.random().toString(36).slice(2, 10);
+
+    const sys = `Você é um ESTRATEGISTA de marketing digital sênior brasileiro, atuando como consultor da empresa "${brand.companyName}". Você não é apenas um copywriter: antes de escrever, você planeja a campanha.
 
 ${knowledgeBlock}
 
-REGRAS OBRIGATÓRIAS a partir da base de conhecimento:
-- Reflita a identidade da marca e o tom de comunicação em todos os textos.
-- Use as palavras/expressões preferidas quando fizer sentido natural.
-- NUNCA use nenhuma das palavras proibidas listadas.
-- Respeite as garantias, diferenciais, cidades atendidas, brindes e condições comerciais informados — não contradiga, não amplie.
-- Aplique as boas práticas de copy indicadas.
-- Se a base de conhecimento estiver vazia, gere conteúdo neutro, sem inventar atributos da empresa.
+# ETAPA 1 — PLANEJAMENTO INTERNO (obrigatório, não aparece na saída)
+Antes de gerar qualquer texto, defina mentalmente:
+- objetivo da campanha (marca, orçamento, relacionamento ou venda);
+- público-alvo específico;
+- principal benefício ao cliente;
+- principal diferencial da empresa (da base de conhecimento);
+- objeções prováveis a reduzir;
+- emoção predominante desejada;
+- melhor CTA para a intenção definida.
 
-Você DEVE devolver os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`.`;
+# ETAPA 2 — GERAÇÃO DOS 4 FORMATOS
+Os 4 formatos (Story, Feed, Reel, WhatsApp) fazem parte da MESMA campanha e devem conversar entre si:
+- Story desperta interesse;
+- Feed aprofunda o argumento;
+- Reel demonstra;
+- WhatsApp converte com abordagem individual.
+NÃO gere quatro peças independentes.
 
-    const usr = `Briefing da geração:
+# ORDEM DE CONTEXTO (nesta prioridade)
+1. Base de Conhecimento  2. Promoção  3. Produto  4. Mídias selecionadas  5. Instruções extras.
+Nunca use apenas a promoção como fonte.
+
+# INFORMAÇÕES QUE VOCÊ NUNCA PODE INVENTAR
+Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoque, prazos, cidades atendidas, formas de pagamento e serviços SÓ podem aparecer se estiverem explicitamente na Promoção ou na Base de Conhecimento. Se não estiverem, omita.
+
+# REGRAS DA BASE DE CONHECIMENTO
+- Reflita identidade e tom em todos os textos.
+- Use palavras/expressões preferidas quando fizerem sentido natural.
+- NUNCA use nenhuma das palavras proibidas.
+- Não contradiga nem amplie garantias, diferenciais, cidades, brindes ou condições.
+- Se a base estiver vazia, gere conteúdo neutro sem inventar atributos.
+
+# LINGUAGEM PROIBIDA (frases genéricas — NÃO use nem variações próximas)
+"Transforme seu quintal em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
+
+# ESTILO POR FORMATO
+- FEED: escreva como um consultor experiente. Priorize benefícios reais, diferenciais verdadeiros, atendimento consultivo, linguagem humana. Emojis com parcimônia. Até 3 CTAs.
+- STORY: texto curto, leitura rápida, 1 a 3 frases, CTA forte, pouquíssimo texto.
+- REEL: roteiro baseado APENAS nas mídias reais disponíveis (${reelHint}). Estrutura: gancho nos 3s iniciais → desenvolvimento → CTA final. Nunca sugira cenas inexistentes.
+- WHATSAPP: mensagem individual, conversacional, sem cara de disparo em massa. Foco em relacionamento. NÃO inclua telefone no corpo.
+
+# VARIAÇÃO
+Seed desta geração: ${variationSeed}. Varie abertura, CTA, estrutura, argumentos e organização em relação a gerações anteriores.
+
+# AUTOVALIDAÇÃO ANTES DE RESPONDER
+Confira: (a) coerência com a base de conhecimento; (b) zero informação inventada; (c) os 4 formatos formam uma campanha coerente; (d) linguagem natural; (e) nenhuma frase genérica proibida.
+
+Devolva os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+
+    const usr = `Briefing desta campanha:
+
+## Promoção
 ${promoBlock}
 
+## Produto
 ${productBlock}
 
-Público-alvo: ${data.audience ?? "clientes locais interessados"}
-Instruções extras: ${data.extra_instructions ?? "-"}
+## Mídias
+${mediaBlock}
 
-Regras dos 4 formatos:
-- story: legenda curta e impactante para Story (Instagram/Facebook), 1 a 3 frases.
-- feed: legenda de Feed (Instagram/Facebook), pode ter emojis, quebras de linha, e até 3 CTAs.
-- reel: roteiro curto de Reel/vídeo vertical, com abertura em 3 segundos, meio e CTA final.
-- whatsapp: mensagem curta para envio no WhatsApp com CTA claro. NÃO inclua telefone no corpo.`;
+## Público-alvo
+${data.audience ?? "clientes locais interessados"}
+
+## Instruções extras
+${data.extra_instructions ?? "-"}
+
+Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados fora da promoção e da base de conhecimento; NÃO use as frases proibidas; os 4 formatos são uma única campanha.`;
 
 
     const bundleJsonSchema = {
