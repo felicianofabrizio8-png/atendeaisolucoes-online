@@ -76,12 +76,8 @@ export class MetaPublisher {
       return this.fail("no_media", "Instagram exige ao menos uma mídia.", false);
     }
     const pageCtx = await this.loadInstagramContext(input.companyId);
-    if (!pageCtx) {
-      return this.fail(
-        "meta_page_missing",
-        "Nenhuma página Meta ativa com Instagram Business associada.",
-        false,
-      );
+    if (!pageCtx.ok) {
+      return this.fail(pageCtx.code, pageCtx.message, false);
     }
 
     const { igUserId, pageAccessToken } = pageCtx;
@@ -235,8 +231,8 @@ export class MetaPublisher {
     caption: string,
   ): Promise<PublishOutcome> {
     const pageCtx = await this.loadFacebookContext(input.companyId);
-    if (!pageCtx) {
-      return this.fail("meta_page_missing", "Nenhuma página Facebook ativa.", false);
+    if (!pageCtx.ok) {
+      return this.fail(pageCtx.code, pageCtx.message, false);
     }
     const { pageId, pageAccessToken } = pageCtx;
 
@@ -454,39 +450,161 @@ export class MetaPublisher {
     return null;
   }
 
-  private async loadInstagramContext(
+  private async loadPrimaryIntegration(
     companyId: string,
-  ): Promise<{ igUserId: string; pageAccessToken: string } | null> {
+    channel: "instagram" | "facebook",
+  ): Promise<
+    | { ok: true; row: { id: string; external_account_id: string | null; account_metadata: Record<string, unknown>; token_expires_at: string | null } }
+    | { ok: false; code: string; message: string }
+  > {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
-      .from("meta_pages")
-      .select("ig_business_account_id, page_access_token, active")
+      .from("integrations")
+      .select("id, external_account_id, account_metadata, token_expires_at, active")
       .eq("company_id", companyId)
+      .eq("channel", channel)
       .eq("active", true)
-      .not("ig_business_account_id", "is", null)
-      .not("page_access_token", "is", null)
+      .eq("is_primary_publisher", true);
+    const rows = (r.data ?? []) as Array<{
+      id: string;
+      external_account_id: string | null;
+      account_metadata: Record<string, unknown> | null;
+      token_expires_at: string | null;
+      active: boolean;
+    }>;
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        code: "no_primary_integration",
+        message: `Nenhuma integração ${channel} marcada como principal (is_primary_publisher). Marque exatamente uma antes de publicar.`,
+      };
+    }
+    if (rows.length > 1) {
+      return {
+        ok: false,
+        code: "multiple_primary_integrations",
+        message: `Existem ${rows.length} integrações ${channel} marcadas como principais. Mantenha apenas uma.`,
+      };
+    }
+    const row = rows[0];
+    if (row.token_expires_at) {
+      const exp = new Date(row.token_expires_at).getTime();
+      if (Number.isFinite(exp) && exp < Date.now()) {
+        return {
+          ok: false,
+          code: "token_expired",
+          message: "Token da integração principal expirou. Reconecte a conta Meta.",
+        };
+      }
+    }
+    return {
+      ok: true,
+      row: {
+        id: row.id,
+        external_account_id: row.external_account_id,
+        account_metadata: row.account_metadata ?? {},
+        token_expires_at: row.token_expires_at,
+      },
+    };
+  }
+
+  private async loadInstagramContext(
+    companyId: string,
+  ): Promise<
+    | { ok: true; igUserId: string; pageAccessToken: string; pageId: string }
+    | { ok: false; code: string; message: string }
+  > {
+    const primary = await this.loadPrimaryIntegration(companyId, "instagram");
+    if (!primary.ok) return primary;
+    const meta = primary.row.account_metadata;
+    const igUserId = typeof meta.ig_business_account_id === "string" ? meta.ig_business_account_id : null;
+    const fbPageId = typeof meta.fb_page_id === "string" ? meta.fb_page_id : null;
+    if (!igUserId) {
+      return {
+        ok: false,
+        code: "ig_business_missing",
+        message: "Integração principal do Instagram não tem ig_business_account_id resolvido.",
+      };
+    }
+    if (!fbPageId) {
+      return {
+        ok: false,
+        code: "fb_page_missing",
+        message: "Integração principal do Instagram não tem Página do Facebook vinculada (fb_page_id).",
+      };
+    }
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    const p = await admin
+      .from("meta_pages")
+      .select("page_id, page_access_token, ig_business_account_id, active, updated_at")
+      .eq("company_id", companyId)
+      .eq("page_id", fbPageId)
+      .eq("active", true)
+      .order("updated_at", { ascending: false })
       .limit(1);
-    const row = r.data?.[0] as
-      | { ig_business_account_id: string; page_access_token: string }
-      | undefined;
-    if (!row) return null;
-    return { igUserId: row.ig_business_account_id, pageAccessToken: row.page_access_token };
+    const row = (p.data?.[0] ?? null) as
+      | { page_id: string; page_access_token: string; ig_business_account_id: string | null }
+      | null;
+    if (!row) {
+      return {
+        ok: false,
+        code: "meta_page_not_found",
+        message: `Página Meta ativa (page_id=${fbPageId}) não encontrada em meta_pages.`,
+      };
+    }
+    if (!row.page_access_token) {
+      return { ok: false, code: "page_access_token_missing", message: "Página sem page_access_token." };
+    }
+    if (row.ig_business_account_id && row.ig_business_account_id !== igUserId) {
+      return {
+        ok: false,
+        code: "ig_mismatch",
+        message: "ig_business_account_id da integração principal difere do registrado em meta_pages.",
+      };
+    }
+    return { ok: true, igUserId, pageAccessToken: row.page_access_token, pageId: row.page_id };
   }
 
   private async loadFacebookContext(
     companyId: string,
-  ): Promise<{ pageId: string; pageAccessToken: string } | null> {
+  ): Promise<
+    | { ok: true; pageId: string; pageAccessToken: string }
+    | { ok: false; code: string; message: string }
+  > {
+    const primary = await this.loadPrimaryIntegration(companyId, "facebook");
+    if (!primary.ok) return primary;
+    const meta = primary.row.account_metadata;
+    const pageId =
+      (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
+      primary.row.external_account_id;
+    if (!pageId) {
+      return {
+        ok: false,
+        code: "fb_page_missing",
+        message: "Integração principal do Facebook sem page_id.",
+      };
+    }
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
-    const r = await admin
+    const p = await admin
       .from("meta_pages")
-      .select("page_id, page_access_token, active")
+      .select("page_id, page_access_token, active, updated_at")
       .eq("company_id", companyId)
+      .eq("page_id", pageId)
       .eq("active", true)
-      .not("page_access_token", "is", null)
+      .order("updated_at", { ascending: false })
       .limit(1);
-    const row = r.data?.[0] as { page_id: string; page_access_token: string } | undefined;
-    if (!row) return null;
-    return { pageId: row.page_id, pageAccessToken: row.page_access_token };
+    const row = (p.data?.[0] ?? null) as { page_id: string; page_access_token: string } | null;
+    if (!row) {
+      return {
+        ok: false,
+        code: "meta_page_not_found",
+        message: `Página Meta ativa (page_id=${pageId}) não encontrada em meta_pages.`,
+      };
+    }
+    if (!row.page_access_token) {
+      return { ok: false, code: "page_access_token_missing", message: "Página sem page_access_token." };
+    }
+    return { ok: true, pageId: row.page_id, pageAccessToken: row.page_access_token };
   }
 
   private buildCaption(content: ContentPayload): string {
