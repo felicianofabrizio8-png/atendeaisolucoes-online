@@ -188,7 +188,7 @@ Destino WhatsApp preferido: ${promotion.whatsapp_destination ?? brand.defaultWha
       ? `Produto: ${product.name}
 Descrição: ${product.description ?? "-"}
 Preço: ${product.price ?? "-"}
-Categorias: ${(product.categories ?? []).join(", ") || "-"}`
+Categoria: ${product.category ?? "-"}`
       : "Sem produto específico associado.";
 
     const sys = `Você é um copywriter sênior de marketing digital brasileiro para pequenas e médias empresas.
