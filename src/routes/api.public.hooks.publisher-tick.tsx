@@ -45,7 +45,7 @@ export const Route = createFileRoute("/api/public/hooks/publisher-tick")({
           const { PublisherAgent } = await import("@/lib/marketing-publisher/PublisherAgent.server");
           const agent = new PublisherAgent();
           const result = await agent.tick(`publisher:${cid}`);
-          console.info("[publisher-tick]", { cid, event: "ok", ms: Date.now() - start, ...result });
+          console.info("[publisher-tick]", { cid, event: "ok", tickMs: Date.now() - start, ...result });
           return Response.json({ ok: true, ...result });
         } catch (e) {
           console.error("[publisher-tick]", {

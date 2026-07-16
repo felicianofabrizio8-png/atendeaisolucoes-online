@@ -41,8 +41,8 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
     setLoading(true);
     try {
       const [s, p] = await Promise.all([getPublisherStats(), listMarketingPublications()]);
-      setStats(s);
-      setPubs(p.publications);
+      setStats(s as PublisherStats & { scheduled: number });
+      setPubs(p.publications as PublicationRow[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao carregar publicações.");
     } finally {
@@ -57,7 +57,7 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
   async function onRetry(id: string) {
     setRetrying(id);
     try {
-      const r = await retryPublication({ data: { id } });
+      const r = (await retryPublication({ data: { id } })) as { ok: boolean };
       if (r.ok) toast.success("Publicação reencaminhada para a fila.");
       else toast.error("Não foi possível reprocessar (só publicações com falha).");
       await refresh();

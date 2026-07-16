@@ -96,6 +96,7 @@ import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whats
 import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
 import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
+import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
@@ -568,6 +569,12 @@ const ApiPublicHooksRuntimeTickRoute =
     path: '/api/public/hooks/runtime-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksPublisherTickRoute =
+  ApiPublicHooksPublisherTickRouteImport.update({
+    id: '/api/public/hooks/publisher-tick',
+    path: '/api/public/hooks/publisher-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksFollowupTickRoute =
   ApiPublicHooksFollowupTickRouteImport.update({
     id: '/api/public/hooks/followup-tick',
@@ -680,6 +687,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
@@ -773,6 +781,7 @@ export interface FileRoutesByTo {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
@@ -868,6 +877,7 @@ export interface FileRoutesById {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
@@ -964,6 +974,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
@@ -1057,6 +1068,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
@@ -1151,6 +1163,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
@@ -1242,6 +1255,7 @@ export interface RootRouteChildren {
   ApiExecutiveConversationIntelligenceJobRoute: typeof ApiExecutiveConversationIntelligenceJobRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
+  ApiPublicHooksPublisherTickRoute: typeof ApiPublicHooksPublisherTickRoute
   ApiPublicHooksRuntimeTickRoute: typeof ApiPublicHooksRuntimeTickRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappTemplatesListRoute: typeof ApiWhatsappTemplatesListRoute
@@ -1868,6 +1882,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksRuntimeTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/publisher-tick': {
+      id: '/api/public/hooks/publisher-tick'
+      path: '/api/public/hooks/publisher-tick'
+      fullPath: '/api/public/hooks/publisher-tick'
+      preLoaderRoute: typeof ApiPublicHooksPublisherTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/followup-tick': {
       id: '/api/public/hooks/followup-tick'
       path: '/api/public/hooks/followup-tick'
@@ -2010,6 +2031,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiExecutiveConversationIntelligenceJobRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
+  ApiPublicHooksPublisherTickRoute: ApiPublicHooksPublisherTickRoute,
   ApiPublicHooksRuntimeTickRoute: ApiPublicHooksRuntimeTickRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappTemplatesListRoute: ApiWhatsappTemplatesListRoute,

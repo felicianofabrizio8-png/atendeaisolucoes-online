@@ -28,7 +28,7 @@ export interface PublicationRow {
   format: PublicationFormat;
   status: PublicationStatus;
   platform_post_id: string | null;
-  platform_response: unknown;
+  platform_response: Record<string, unknown> | null;
   error_code: string | null;
   error_message: string | null;
   retry_count: number;
