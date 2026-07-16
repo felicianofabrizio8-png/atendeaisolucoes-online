@@ -99,17 +99,59 @@ async function validateProductMediaRefs(
 
 
 
+// Catálogo de ângulos estratégicos disponíveis (usado para diversidade).
+const STRATEGIC_ANGLES = [
+  "pronta entrega",
+  "instalação rápida",
+  "valorização do imóvel",
+  "lazer em família",
+  "férias",
+  "segurança das crianças",
+  "economia comparada ao clube",
+  "parcelamento",
+  "garantia",
+  "qualidade da fábrica",
+  "atendimento consultivo",
+  "transformação do quintal",
+  "qualidade de vida",
+  "investimento",
+] as const;
+
 // Schema JSON estrito para a resposta da IA — validado em runtime.
 const StrategySchema = z.object({
+  angle: z.string().trim().min(1).max(80),
   objective: z.string().trim().max(300),
   audience: z.string().trim().max(300),
   benefit: z.string().trim().max(300),
   differential: z.string().trim().max(300),
+  objection_broken: z.string().trim().max(300),
   objections: z.array(z.string().trim().max(200)).max(6).default([]),
   emotion: z.string().trim().max(120),
   cta: z.string().trim().max(200),
   intent: z.enum(["marca", "orcamento", "relacionamento", "venda"]),
 });
+
+const ReelSceneSchema = z.object({
+  scene: z.number().int().min(1).max(20),
+  duration_seconds: z.number().min(0.5).max(30),
+  media_reference: z.string().trim().max(200),
+  framing: z.string().trim().max(200),
+  camera_movement: z.string().trim().max(200),
+  cut_style: z.string().trim().max(120),
+  on_screen_text: z.string().trim().max(200),
+  voiceover: z.string().trim().max(400),
+  silence: z.boolean().default(false),
+});
+
+const ReelScriptSchema = z.object({
+  format: z.enum(["video_based", "slideshow"]),
+  total_duration_seconds: z.number().min(5).max(90),
+  hook_summary: z.string().trim().max(300),
+  music_suggestion: z.string().trim().max(200),
+  scenes: z.array(ReelSceneSchema).min(2).max(12),
+  final_cta_overlay: z.string().trim().max(200),
+});
+
 const BundleSchema = z.object({
   strategy: StrategySchema,
   story: z.object({
@@ -124,8 +166,9 @@ const BundleSchema = z.object({
   }),
   reel: z.object({
     title: z.string().trim().max(120),
-    body: z.string().trim().min(1).max(2500),
+    body: z.string().trim().min(1).max(4000),
     hashtags: z.array(z.string().trim().max(60)).max(15).default([]),
+    script: ReelScriptSchema,
   }),
   whatsapp: z.object({
     title: z.string().trim().max(120),
