@@ -959,7 +959,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         feed_title: bundle.feed.title,
         feed_body: bundle.feed.body,
         reel_title: bundle.reel.title,
-        reel_body: bundle.reel.body,
+        reel_body: reelBodyComposed,
         whatsapp_title: bundle.whatsapp.title,
         whatsapp_body: bundle.whatsapp.body,
         media_ids: mediaIds,
