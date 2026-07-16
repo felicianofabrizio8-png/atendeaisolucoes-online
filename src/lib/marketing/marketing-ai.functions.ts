@@ -416,22 +416,6 @@ Confira: (a) coerência com a base de conhecimento; (b) zero informação invent
 
 Devolva o objeto \`strategy\` (planejamento interno) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
 
-    const usr = `Briefing desta campanha:
-
-## Promoção
-${promoBlock}
-
-## Produto
-${productBlock}
-
-## Mídias
-${mediaBlock}
-
-## Público-alvo
-${data.audience ?? "clientes locais interessados"}
-
-## Instruções extras
-${data.extra_instructions ?? "-"}
 
 
     const usr = `Briefing desta campanha:
