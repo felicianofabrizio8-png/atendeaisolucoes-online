@@ -48,18 +48,17 @@ export function MarketingGenerator({ companyId, onGenerated }: Props) {
   async function generate() {
     setGenerating (true);
     try {
-      const productHint = productSelections.length
-        ? `Referências visuais de produtos: ${Array.from(
-            new Set(productSelections.map((p) => p.productName)),
-          ).join(", ")}.`
-        : "";
-      const extraFinal = [extra.trim(), productHint].filter(Boolean).join("\n");
+      const productRefs = productSelections.map((p) => ({
+        product_id: p.productId,
+        image_path: p.imagePath,
+      }));
       const contents = await apiGenerateContent({
         promotion_id: promotionId || null,
         media_ids: marketingIds,
+        product_media_refs: productRefs,
         tone,
         audience: audience.trim() || null,
-        extra_instructions: extraFinal || null,
+        extra_instructions: extra.trim() || null,
       });
       setLastResult(contents);
       toast.success("4 conteúdos gerados como rascunho. Revise em Aprovação.");

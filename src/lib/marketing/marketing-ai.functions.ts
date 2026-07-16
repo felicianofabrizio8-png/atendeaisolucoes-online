@@ -24,6 +24,15 @@ const InputSchema = z.object({
   promotion_id: z.string().uuid().optional().nullable(),
   product_id: z.string().uuid().optional().nullable(),
   media_ids: z.array(z.string().uuid()).max(10).optional(),
+  product_media_refs: z
+    .array(
+      z.object({
+        product_id: z.string().uuid(),
+        image_path: z.string().min(1).max(500),
+      }),
+    )
+    .max(10)
+    .optional(),
   tone: z
     .enum(["amigável", "profissional", "descontraído", "urgente"])
     .optional()
@@ -31,6 +40,62 @@ const InputSchema = z.object({
   audience: z.string().trim().max(300).optional().nullable(),
   extra_instructions: z.string().trim().max(1000).optional().nullable(),
 });
+
+async function validateProductMediaRefs(
+  sb: SB,
+  companyId: string,
+  refs: Array<{ product_id: string; image_path: string }>,
+): Promise<
+  Array<{
+    product_id: string;
+    product_name: string;
+    category: string | null;
+    image_path: string;
+  }>
+> {
+  if (!refs.length) return [];
+  const productIds = Array.from(new Set(refs.map((r) => r.product_id)));
+  const { data, error } = await sb
+    .from("products")
+    .select("id, name, category, images")
+    .in("id", productIds)
+    .eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+  const byId = new Map(
+    (data ?? []).map((p) => [
+      p.id,
+      {
+        name: p.name as string,
+        category: (p.category as string | null) ?? null,
+        images: Array.isArray(p.images)
+          ? (p.images.filter((x) => typeof x === "string") as string[])
+          : [],
+      },
+    ]),
+  );
+  const out: Array<{
+    product_id: string;
+    product_name: string;
+    category: string | null;
+    image_path: string;
+  }> = [];
+  for (const ref of refs) {
+    const p = byId.get(ref.product_id);
+    if (!p) throw new Error(`Produto ${ref.product_id} não pertence à empresa.`);
+    if (!p.images.includes(ref.image_path)) {
+      throw new Error(
+        `Imagem não pertence ao produto ${p.name}.`,
+      );
+    }
+    out.push({
+      product_id: ref.product_id,
+      product_name: p.name,
+      category: p.category,
+      image_path: ref.image_path,
+    });
+  }
+  return out;
+}
 
 
 
@@ -299,6 +364,13 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
 
     const mediaIds = data.media_ids ?? [];
     const mediaDetails = await validateMedia(supabase, companyId, mediaIds);
+    const productMediaRefs = data.product_media_refs ?? [];
+    const productMediaDetails = await validateProductMediaRefs(
+      supabase,
+      companyId,
+      productMediaRefs,
+    );
+
 
     const promotion = data.promotion_id
       ? await loadPromotion(supabase, companyId, data.promotion_id)
@@ -336,20 +408,33 @@ Preço: ${product.price ?? "-"}
 Categoria: ${product.category ?? "-"}`
       : "Sem produto específico associado.";
 
-    const mediaBlock = mediaDetails.length
-      ? `Mídias selecionadas (${mediaDetails.length}) — use APENAS estas como base visual:\n` +
-        mediaDetails
-          .map((m, i) => {
-            const tags = (m.tags ?? []).filter(Boolean).join(", ");
-            return `${i + 1}. [${m.media_type}] ${m.title ?? "(sem título)"}${
-              m.description ? ` — ${m.description}` : ""
-            }${tags ? ` [tags: ${tags}]` : ""}`;
-          })
-          .join("\n")
+    const mediaLines: string[] = [];
+    mediaDetails.forEach((m) => {
+      const tags = (m.tags ?? []).filter(Boolean).join(", ");
+      mediaLines.push(
+        `[MARKETING · ${m.media_type}] ${m.title ?? "(sem título)"}${
+          m.description ? ` — ${m.description}` : ""
+        }${tags ? ` [tags: ${tags}]` : ""}`,
+      );
+    });
+    productMediaDetails.forEach((p) => {
+      mediaLines.push(
+        `[PRODUTO · image] ${p.product_name}${
+          p.category ? ` — categoria: ${p.category}` : ""
+        } (referência oficial do catálogo, sem duplicação)`,
+      );
+    });
+    const totalMedia = mediaLines.length;
+    const mediaBlock = totalMedia
+      ? `Mídias selecionadas (${totalMedia}) — use APENAS estas como base visual. Fotos com origem PRODUTO são imagens oficiais do catálogo; trate-as como material visual real disponível:\n` +
+        mediaLines.map((l, i) => `${i + 1}. ${l}`).join("\n")
       : "Sem mídias selecionadas.";
 
     const hasVideo = mediaDetails.some((m) => m.media_type === "video");
-    const hasImage = mediaDetails.some((m) => m.media_type === "image");
+    const hasImage =
+      mediaDetails.some((m) => m.media_type === "image") ||
+      productMediaDetails.length > 0;
+
     const reelHint = hasVideo
       ? "Você tem vídeo(s) disponível(is): descreva um roteiro que use as cenas reais informadas."
       : hasImage
@@ -576,6 +661,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       promotion_id: data.promotion_id ?? null,
       product_id: data.product_id ?? null,
       media_ids: mediaIds,
+      product_media_refs: productMediaDetails.map((p) => ({
+        product_id: p.product_id,
+        image_path: p.image_path,
+      })),
     };
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
