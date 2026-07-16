@@ -10,6 +10,7 @@ import { MarketingGenerator } from "@/components/marketing/MarketingGenerator";
 import { MarketingApprovals } from "@/components/marketing/MarketingApprovals";
 import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
 import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
+import { MarketingPublisherDashboard } from "@/components/marketing/MarketingPublisherDashboard";
 
 export const Route = createFileRoute("/marketing")({
   component: MarketingPage,
@@ -49,6 +50,7 @@ function MarketingPage() {
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
           <TabsTrigger value="approvals">Aprovação</TabsTrigger>
           <TabsTrigger value="schedule">Calendário</TabsTrigger>
+          <TabsTrigger value="publisher">Publicação</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4">
           <MarketingDashboard companyId={companyId} />
@@ -70,6 +72,9 @@ function MarketingPage() {
         </TabsContent>
         <TabsContent value="schedule" className="mt-4">
           <MarketingSchedule companyId={companyId} />
+        </TabsContent>
+        <TabsContent value="publisher" className="mt-4">
+          <MarketingPublisherDashboard companyId={companyId} />
         </TabsContent>
       </Tabs>
     </div>
