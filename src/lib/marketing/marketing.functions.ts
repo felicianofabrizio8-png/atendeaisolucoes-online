@@ -484,7 +484,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     // integração principal. Validamos aqui (leitura do snapshot persistido),
     // sem chamar a Meta.
     if (data.channel === "facebook") {
-      const readiness = await assertFacebookPublishAllowed(supabase, companyId);
+      const readiness = await assertFacebookPublishAllowed(supabase);
       if (!readiness.ok) {
         throw new Error(readiness.message);
       }
