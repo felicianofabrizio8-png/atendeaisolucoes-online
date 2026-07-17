@@ -20,6 +20,7 @@ import {
   type AudioFiltersState,
 } from "./audio-library/AudioFilters";
 import { AudioUploadDialog } from "./audio-library/AudioUploadDialog";
+import { filtersToQuery } from "./audio-library/audio-ui-helpers";
 import { useAudioPlayer } from "./audio-library/useAudioPlayer";
 
 interface Props {
