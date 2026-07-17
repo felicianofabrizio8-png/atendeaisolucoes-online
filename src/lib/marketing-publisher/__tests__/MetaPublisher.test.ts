@@ -155,18 +155,22 @@ vi.mock("@/integrations/supabase/client.server", () => ({
   },
 }));
 
-// postGraph mock: sucesso simples com id "META_OK".
+// postGraph mock: sucesso "real" (não simulado) com externalId derivado.
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
   postGraph: vi.fn(async (opts: any) => {
+    const raw = { id: "META_OK", post_id: "PAGE_POST" };
     const extract = opts.extractExternalId as ((j: unknown) => string | null) | undefined;
-    const raw = { id: "CONTAINER_OR_POST" };
     return {
-      ok: true as const,
-      status: 200,
+      success: true,
+      simulated: false,
+      environment: "production",
+      externalRequestSent: true,
       externalId: extract ? extract(raw) : null,
+      status: 200,
       raw,
     };
   }),
+  deleteGraph: vi.fn(),
 }));
 
 // Simulate URL accessibility: any URL is reachable in these tests.
