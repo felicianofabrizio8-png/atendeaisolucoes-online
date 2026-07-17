@@ -198,14 +198,7 @@ export function MarketingApprovals({ companyId }: Props) {
                 void setStatus(c, "rejected", reason);
               }}
               onMarkPending={() => void setStatus(c, "pending")}
-              onSchedule={() => {
-                if (c.status !== "approved") {
-                  toast.error("Apenas conteúdos aprovados podem ser agendados.");
-                  return;
-                }
-                setScheduleFor(c.id);
-                setScheduleChannel(c.channel);
-              }}
+              onSchedule={() => openSchedule(c)}
               busy={busy}
             />
           ))}
