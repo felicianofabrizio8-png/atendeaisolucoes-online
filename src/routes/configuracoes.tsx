@@ -1872,6 +1872,10 @@ function MetaIntegrationSection() {
     setError(null);
     setInfo(null);
     setSavingPageId(page.id);
+    const intent =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default"
+        : "default";
     try {
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("meta-connect", {
@@ -1899,14 +1903,63 @@ function MetaIntegrationSection() {
       const webhookLabel = result?.webhook_subscribed
         ? " · Webhook ativo"
         : " · Webhook não confirmado";
-      setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
-      console.log("META_TOKEN_SAVED", { page_id: page.id, ig: result?.page?.ig_username });
+
+      // Validação extra do fluxo Facebook Page publishing: confirma escopos
+      // necessários no token do usuário (pages_manage_posts + pages_read_engagement)
+      // e que page_id realmente pertence ao token retornado.
+      if (intent === "facebook_page") {
+        try {
+          const GRAPH = "https://graph.facebook.com/v25.0";
+          const tok = encodeURIComponent(shortToken);
+          const dbg = await fetch(
+            `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
+          );
+          const dbgJson = (await dbg.json()) as {
+            data?: { scopes?: string[] };
+          };
+          const scopes = dbgJson.data?.scopes ?? [];
+          const hasPost = scopes.includes("pages_manage_posts");
+          const hasRead = scopes.includes("pages_read_engagement");
+          console.log("META_FB_PAGE_PUBLISH_VALIDATION", {
+            page_id: page.id,
+            hasPost,
+            hasRead,
+            granted_scopes: scopes,
+          });
+          if (!hasPost || !hasRead) {
+            setError(
+              `Página conectada, mas faltam permissões para publicar: ${
+                !hasPost ? "pages_manage_posts" : ""
+              }${!hasPost && !hasRead ? " + " : ""}${
+                !hasRead ? "pages_read_engagement" : ""
+              }. Refaça "Conectar publicação do Facebook" e marque essas permissões no dialog.`,
+            );
+          } else {
+            setInfo(
+              `✅ Facebook pronto para publicar: ${savedName}${igLabel}${webhookLabel}`,
+            );
+          }
+        } catch (e) {
+          console.warn("META_FB_PAGE_PUBLISH_VALIDATION_FAIL", e);
+          setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
+        }
+      } else {
+        setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
+      }
+      console.log("META_TOKEN_SAVED", {
+        page_id: page.id,
+        ig: result?.page?.ig_username,
+        intent,
+      });
       setAvailable((prev) => prev.filter((p) => p.id !== page.id));
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao salvar página");
     } finally {
       setSavingPageId(null);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("META_OAUTH_INTENT");
+      }
     }
   };
 
