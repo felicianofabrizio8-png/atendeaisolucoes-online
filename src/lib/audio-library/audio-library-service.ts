@@ -139,6 +139,13 @@ export async function createAudioWithUpload(
         commercial_use_confirmed: true,
         commercial_rights_notes: input.commercialRightsNotes ?? null,
         sha256,
+        marketing_objectives: input.marketingObjectives ?? [],
+        brand_styles: input.brandStyles ?? [],
+        seasons: input.seasons ?? [],
+        target_audiences: input.targetAudiences ?? [],
+        best_video_durations: input.bestVideoDurations ?? [],
+        preferred_start_second: input.preferredStartSecond ?? null,
+        preferred_end_second: input.preferredEndSecond ?? null,
       },
     });
     return res.audio;
