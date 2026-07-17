@@ -3540,6 +3540,217 @@ export type Database = {
         }
         Relationships: []
       }
+      video_library: {
+        Row: {
+          audio_codec: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          duration_seconds: number
+          file_path: string
+          file_size_bytes: number | null
+          height: number
+          id: string
+          is_active: boolean
+          mime_type: string
+          name: string
+          render_job_id: string | null
+          source_audio_id: string | null
+          source_image_id: string | null
+          source_type: string
+          thumbnail_path: string | null
+          updated_at: string
+          video_codec: string | null
+          video_format: string
+          width: number
+        }
+        Insert: {
+          audio_codec?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          duration_seconds: number
+          file_path: string
+          file_size_bytes?: number | null
+          height: number
+          id?: string
+          is_active?: boolean
+          mime_type?: string
+          name: string
+          render_job_id?: string | null
+          source_audio_id?: string | null
+          source_image_id?: string | null
+          source_type?: string
+          thumbnail_path?: string | null
+          updated_at?: string
+          video_codec?: string | null
+          video_format: string
+          width: number
+        }
+        Update: {
+          audio_codec?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          duration_seconds?: number
+          file_path?: string
+          file_size_bytes?: number | null
+          height?: number
+          id?: string
+          is_active?: boolean
+          mime_type?: string
+          name?: string
+          render_job_id?: string | null
+          source_audio_id?: string | null
+          source_image_id?: string | null
+          source_type?: string
+          thumbnail_path?: string | null
+          updated_at?: string
+          video_codec?: string | null
+          video_format?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_vl_render_job"
+            columns: ["render_job_id"]
+            isOneToOne: true
+            referencedRelation: "video_render_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_library_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_library_source_audio_id_fkey"
+            columns: ["source_audio_id"]
+            isOneToOne: false
+            referencedRelation: "audio_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_library_source_image_id_fkey"
+            columns: ["source_image_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_media"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_render_jobs: {
+        Row: {
+          attempt_count: number
+          audio_id: string
+          audio_start_second: number
+          available_at: string
+          company_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          duration_seconds: number
+          error_code: string | null
+          error_message_sanitized: string | null
+          failed_at: string | null
+          id: string
+          image_id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          output_video_id: string | null
+          progress: number
+          started_at: string | null
+          status: string
+          updated_at: string
+          video_format: string
+        }
+        Insert: {
+          attempt_count?: number
+          audio_id: string
+          audio_start_second: number
+          available_at?: string
+          company_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_seconds: number
+          error_code?: string | null
+          error_message_sanitized?: string | null
+          failed_at?: string | null
+          id?: string
+          image_id: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          output_video_id?: string | null
+          progress?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          video_format: string
+        }
+        Update: {
+          attempt_count?: number
+          audio_id?: string
+          audio_start_second?: number
+          available_at?: string
+          company_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_seconds?: number
+          error_code?: string | null
+          error_message_sanitized?: string | null
+          failed_at?: string | null
+          id?: string
+          image_id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          output_video_id?: string | null
+          progress?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          video_format?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_vrj_output_video"
+            columns: ["output_video_id"]
+            isOneToOne: false
+            referencedRelation: "video_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_render_jobs_audio_id_fkey"
+            columns: ["audio_id"]
+            isOneToOne: false
+            referencedRelation: "audio_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_render_jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_render_jobs_image_id_fkey"
+            columns: ["image_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_media"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visits: {
         Row: {
           address: string | null
@@ -3870,6 +4081,40 @@ export type Database = {
           job: Database["public"]["Tables"]["agent_jobs"]["Row"]
           reason: string
         }[]
+      }
+      claim_render_job: {
+        Args: { _lock_seconds?: number; _worker_id: string }
+        Returns: {
+          attempt_count: number
+          audio_id: string
+          audio_start_second: number
+          available_at: string
+          company_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          duration_seconds: number
+          error_code: string | null
+          error_message_sanitized: string | null
+          failed_at: string | null
+          id: string
+          image_id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          output_video_id: string | null
+          progress: number
+          started_at: string | null
+          status: string
+          updated_at: string
+          video_format: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "video_render_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       cleanup_executive_knowledge: { Args: never; Returns: number }
       cleanup_scientific_memory: { Args: never; Returns: number }
