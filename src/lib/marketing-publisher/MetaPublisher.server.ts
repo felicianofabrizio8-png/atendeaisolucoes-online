@@ -460,11 +460,20 @@ export class MetaPublisher {
         .maybeSingle();
       if (!prod.data) continue;
       const imgs = Array.isArray(prod.data.images) ? (prod.data.images as string[]) : [];
-      if (!imgs.includes(ref.image_path)) continue;
-      const clean = ref.image_path.replace(/^\/+/, "");
+      // Aceita match por URL absoluta OU path relativo (retrocompatível com
+      // conteúdos antigos, onde ai_prompt.image_path pode ser qualquer um dos dois).
+      const refPath = extractProductImagePath(ref.image_path);
+      const matched = imgs.some((img) => {
+        const p = extractProductImagePath(img);
+        return (p !== null && refPath !== null && p === refPath) || img === ref.image_path;
+      });
+      if (!matched) continue;
+      if (!refPath) continue; // URL inválida / bucket errado / host inesperado
+      const firstSegment = refPath.split("/")[0];
+      if (firstSegment !== content.companyId) continue; // guard multi-tenant
       const signed = await admin.storage
         .from("product-images")
-        .createSignedUrl(clean, 60 * 60);
+        .createSignedUrl(refPath, 60 * 60);
       const url = signed?.data?.signedUrl as string | undefined;
       if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
     }
