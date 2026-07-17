@@ -460,11 +460,20 @@ export class MetaPublisher {
         .maybeSingle();
       if (!prod.data) continue;
       const imgs = Array.isArray(prod.data.images) ? (prod.data.images as string[]) : [];
-      if (!imgs.includes(ref.image_path)) continue;
-      const clean = ref.image_path.replace(/^\/+/, "");
+      // Aceita match por URL absoluta OU path relativo (retrocompatível com
+      // conteúdos antigos, onde ai_prompt.image_path pode ser qualquer um dos dois).
+      const refPath = extractProductImagePath(ref.image_path);
+      const matched = imgs.some((img) => {
+        const p = extractProductImagePath(img);
+        return (p !== null && refPath !== null && p === refPath) || img === ref.image_path;
+      });
+      if (!matched) continue;
+      if (!refPath) continue; // URL inválida / bucket errado / host inesperado
+      const firstSegment = refPath.split("/")[0];
+      if (firstSegment !== content.companyId) continue; // guard multi-tenant
       const signed = await admin.storage
         .from("product-images")
-        .createSignedUrl(clean, 60 * 60);
+        .createSignedUrl(refPath, 60 * 60);
       const url = signed?.data?.signedUrl as string | undefined;
       if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
     }
@@ -722,4 +731,55 @@ function sanitize(raw: unknown): unknown {
     if (/token|secret/i.test(k)) delete clone[k];
   }
   return clone;
+}
+
+/**
+ * Normaliza `image_path` de product_media_refs para um path relativo ao bucket
+ * `product-images`. Aceita:
+ *   - path relativo: "company_id/arquivo.jpg" (com ou sem barras iniciais);
+ *   - URL absoluta pública: "https://<project>.supabase.co/storage/v1/object/public/product-images/company_id/arquivo.jpg";
+ *   - URL absoluta assinada: ".../storage/v1/object/sign/product-images/...".
+ *
+ * Retorna null quando:
+ *   - URL de outro bucket;
+ *   - host inesperado (não é *.supabase.co / *.supabase.in);
+ *   - não é possível extrair um path válido.
+ *
+ * Nunca retorna a URL absoluta — createSignedUrl exige path relativo.
+ */
+export function extractProductImagePath(input: string): string | null {
+  if (typeof input !== "string" || input.trim() === "") return null;
+  const trimmed = input.trim();
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    // Path relativo. Remove barras iniciais e valida que não escapa do bucket.
+    const clean = trimmed.replace(/^\/+/, "");
+    if (clean === "" || clean.includes("..")) return null;
+    try {
+      return decodeURIComponent(clean);
+    } catch {
+      return clean;
+    }
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  // Aceita hosts Supabase Storage conhecidos.
+  if (!/\.supabase\.(co|in)$/i.test(parsed.hostname)) return null;
+
+  const marker = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/product-images\//;
+  const match = parsed.pathname.match(marker);
+  if (!match) return null;
+
+  const rest = parsed.pathname.slice(match.index! + match[0].length);
+  if (!rest || rest.includes("..")) return null;
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return rest;
+  }
 }

@@ -417,6 +417,153 @@ describe("MetaPublisher — Instagram media resolution", () => {
   });
 });
 
+// ---- Instagram / product_media_refs: URL vs path relativo --------------
+
+describe("MetaPublisher — product_media_refs path/URL handling", () => {
+  const PUBLIC_URL = `https://ubnlvxkjemzhvmulowhj.supabase.co/storage/v1/object/public/product-images/${COMPANY}/prod-1/foto.jpg`;
+
+  it("publica quando image_path é URL pública absoluta e products.images guarda URL", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [PUBLIC_URL] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: PUBLIC_URL }] },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    const sign = state.storageSigns.find((s) => s.bucket === "product-images");
+    expect(sign).toBeDefined();
+    // Regra crítica: createSignedUrl recebe apenas path relativo, não URL absoluta.
+    expect(sign!.path).toBe(`${COMPANY}/prod-1/foto.jpg`);
+    expect(sign!.path.startsWith("http")).toBe(false);
+    expect(state.mediaInserts).toHaveLength(0);
+  });
+
+  it("publica quando image_path é URL com caracteres codificados", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    const encoded = `https://ubnlvxkjemzhvmulowhj.supabase.co/storage/v1/object/public/product-images/${COMPANY}/prod-1/foto%20com%20espa%C3%A7o.jpg`;
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [encoded] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: encoded }] },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    const sign = state.storageSigns.find((s) => s.bucket === "product-images");
+    expect(sign!.path).toBe(`${COMPANY}/prod-1/foto com espaço.jpg`);
+  });
+
+  it("bloqueia URL de outro bucket como no_media", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    const badBucket = `https://ubnlvxkjemzhvmulowhj.supabase.co/storage/v1/object/public/marketing-media/${COMPANY}/x.jpg`;
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [badBucket] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: badBucket }] },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("no_media");
+    expect(state.storageSigns.some((s) => s.bucket === "product-images")).toBe(false);
+  });
+
+  it("bloqueia URL de host inesperado como no_media", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    const evil = `https://evil.example.com/storage/v1/object/public/product-images/${COMPANY}/x.jpg`;
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [evil] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: evil }] },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("no_media");
+  });
+
+  it("bloqueia quando path pertence a outro company_id (guard multi-tenant)", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    const otherTenant = "outra-empresa/prod-1/foto.jpg";
+    // O produto existe no tenant correto, mas o path aponta para outro tenant.
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [otherTenant] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: otherTenant }] },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("no_media");
+    expect(state.storageSigns.some((s) => s.bucket === "product-images")).toBe(false);
+  });
+
+  it("continua funcionando com path relativo (retrocompat)", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.products.push({
+      id: "prod-1",
+      company_id: COMPANY,
+      images: [`${COMPANY}/prod-1/foto.jpg`],
+    });
+    seedApprovedContent({
+      ai_prompt: {
+        product_media_refs: [{ product_id: "prod-1", image_path: `${COMPANY}/prod-1/foto.jpg` }],
+      },
+    });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    const sign = state.storageSigns.find((s) => s.bucket === "product-images");
+    expect(sign!.path).toBe(`${COMPANY}/prod-1/foto.jpg`);
+    expect(state.mediaInserts).toHaveLength(0);
+  });
+
+  it("retorna no_media quando signed URL é inacessível", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.products.push({ id: "prod-1", company_id: COMPANY, images: [PUBLIC_URL] });
+    seedApprovedContent({
+      ai_prompt: { product_media_refs: [{ product_id: "prod-1", image_path: PUBLIC_URL }] },
+    });
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 404 })) as any;
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("no_media");
+  });
+});
+
 // Restaura fetch ao final do módulo.
 afterAll(() => {
   globalThis.fetch = originalFetch;
