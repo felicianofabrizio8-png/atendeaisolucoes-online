@@ -112,6 +112,32 @@ const zRecommended = z
   .array(z.enum(AUDIO_RECOMMENDED_FOR as [string, ...string[]]))
   .default([]);
 
+// Novos metadados (fase de enriquecimento) — todos opcionais, default [].
+const zMarketingObjectives = z
+  .array(z.enum(AUDIO_MARKETING_OBJECTIVES as [string, ...string[]]))
+  .default([]);
+const zBrandStyles = z
+  .array(z.enum(AUDIO_BRAND_STYLES as [string, ...string[]]))
+  .default([]);
+const zSeasons = z
+  .array(z.enum(AUDIO_SEASONS as [string, ...string[]]))
+  .default([]);
+const zTargetAudiences = z
+  .array(z.enum(AUDIO_TARGET_AUDIENCES as [string, ...string[]]))
+  .default([]);
+// integer[] com whitelist estrita.
+const zVideoDurations = z
+  .array(
+    z
+      .number()
+      .int()
+      .refine((n) => (AUDIO_VIDEO_DURATIONS as number[]).includes(n), {
+        message: "invalid_video_duration",
+      }),
+  )
+  .default([]);
+const zNullableInt = z.number().int().nullable().optional();
+
 const createSchema = z.object({
   file_path: z.string().min(1),
   name: z.string().trim().min(1).max(200),
@@ -133,6 +159,14 @@ const createSchema = z.object({
     .regex(/^[a-f0-9]{64}$/i)
     .optional()
     .nullable(),
+  // novos — todos opcionais no payload; default [] / null.
+  marketing_objectives: zMarketingObjectives.optional(),
+  brand_styles: zBrandStyles.optional(),
+  seasons: zSeasons.optional(),
+  target_audiences: zTargetAudiences.optional(),
+  best_video_durations: zVideoDurations.optional(),
+  preferred_start_second: zNullableInt,
+  preferred_end_second: zNullableInt,
 });
 
 const updateSchema = z.object({
@@ -147,6 +181,15 @@ const updateSchema = z.object({
   source: zNullableStr.optional(),
   commercial_rights_notes: zNullableStr.optional(),
   is_active: z.boolean().optional(),
+  // novos — undefined = não altera; array vazio = limpa; null = limpa para
+  // preferred_*_second (ambos precisam ser informados juntos).
+  marketing_objectives: zMarketingObjectives.optional(),
+  brand_styles: zBrandStyles.optional(),
+  seasons: zSeasons.optional(),
+  target_audiences: zTargetAudiences.optional(),
+  best_video_durations: zVideoDurations.optional(),
+  preferred_start_second: zNullableInt,
+  preferred_end_second: zNullableInt,
 });
 
 const idSchema = z.object({ id: z.string().uuid() });
@@ -158,6 +201,20 @@ const listSchema = z
     energy: zEnergy,
     recommended_for: z
       .enum(AUDIO_RECOMMENDED_FOR as [string, ...string[]])
+      .nullish(),
+    // filtros novos — todos opcionais, aplicados no servidor via .contains().
+    marketing_objective: z
+      .enum(AUDIO_MARKETING_OBJECTIVES as [string, ...string[]])
+      .nullish(),
+    brand_style: z.enum(AUDIO_BRAND_STYLES as [string, ...string[]]).nullish(),
+    season: z.enum(AUDIO_SEASONS as [string, ...string[]]).nullish(),
+    target_audience: z
+      .enum(AUDIO_TARGET_AUDIENCES as [string, ...string[]])
+      .nullish(),
+    best_video_duration: z
+      .number()
+      .int()
+      .refine((n) => (AUDIO_VIDEO_DURATIONS as number[]).includes(n))
       .nullish(),
     search: zNullableStr.optional(),
     active_only: z.boolean().optional(),
@@ -189,6 +246,21 @@ export const listAudios = createServerFn({ method: "GET" })
     if (data?.energy) query = query.eq("energy", data.energy);
     if (data?.recommended_for) {
       query = query.contains("recommended_for", [data.recommended_for]);
+    }
+    if (data?.marketing_objective) {
+      query = query.contains("marketing_objectives", [data.marketing_objective]);
+    }
+    if (data?.brand_style) {
+      query = query.contains("brand_styles", [data.brand_style]);
+    }
+    if (data?.season) {
+      query = query.contains("seasons", [data.season]);
+    }
+    if (data?.target_audience) {
+      query = query.contains("target_audiences", [data.target_audience]);
+    }
+    if (data?.best_video_duration != null) {
+      query = query.contains("best_video_durations", [data.best_video_duration]);
     }
     if (data?.search) {
       const term = data.search.replace(/[%_]/g, "\\$&");
