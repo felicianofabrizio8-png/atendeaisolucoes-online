@@ -387,12 +387,29 @@ export class MetaPublisher {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_contents")
-      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status")
+      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt")
       .eq("id", id)
       .eq("company_id", companyId)
       .maybeSingle();
     if (!r.data) return null;
     if (r.data.status !== "approved") return null;
+    const prompt =
+      r.data.ai_prompt && typeof r.data.ai_prompt === "object"
+        ? (r.data.ai_prompt as { product_media_refs?: unknown })
+        : null;
+    const refsRaw = Array.isArray(prompt?.product_media_refs)
+      ? (prompt!.product_media_refs as unknown[])
+      : [];
+    const product_media_refs = refsRaw
+      .map((it) => {
+        if (!it || typeof it !== "object") return null;
+        const o = it as Record<string, unknown>;
+        const pid = typeof o.product_id === "string" ? o.product_id : null;
+        const path = typeof o.image_path === "string" ? o.image_path : null;
+        if (!pid || !path) return null;
+        return { product_id: pid, image_path: path };
+      })
+      .filter((v): v is { product_id: string; image_path: string } => v !== null);
     return {
       companyId: r.data.company_id,
       contentId: r.data.id,
@@ -401,6 +418,7 @@ export class MetaPublisher {
       cta_destination: r.data.cta_destination ?? null,
       media_ids: Array.isArray(r.data.media_ids) ? r.data.media_ids : [],
       product_id: r.data.product_id ?? null,
+      product_media_refs,
     };
   }
 
