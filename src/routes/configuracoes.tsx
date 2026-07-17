@@ -1420,8 +1420,10 @@ declare global {
 interface MetaBusinessConfig {
   appId: string;
   businessConfigId: string;
+  pageLoginConfigId: string;
   hasAppId: boolean;
   hasBusinessConfigId: boolean;
+  hasPageLoginConfigId: boolean;
 }
 
 async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
@@ -1768,7 +1770,10 @@ function MetaIntegrationSection() {
     return () => window.removeEventListener("message", onMessage);
   }, [loadPagesFromToken, exchangeCodeForToken]);
 
-  const onConnect = async () => {
+  // intent="facebook_page" usa uma Login Configuration dedicada (com
+  // pages_manage_posts + pages_read_engagement) exclusivamente para habilitar
+  // publicação em Página Facebook. NÃO altera o fluxo padrão (Instagram/Ads).
+  const onConnect = async (intent: "default" | "facebook_page" = "default") => {
     setError(null);
     setInfo(null);
     setAvailable([]);
@@ -1782,6 +1787,11 @@ function MetaIntegrationSection() {
           "Configure META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
         );
       }
+      if (intent === "facebook_page" && !config.hasPageLoginConfigId) {
+        throw new Error(
+          "META_PAGE_LOGIN_CONFIG_ID ausente no servidor. Cadastre a Configuration do Facebook Login for Business (com pages_manage_posts).",
+        );
+      }
 
       if (typeof window !== "undefined") {
         // Limpa qualquer sessão antiga (token do app anterior)
@@ -1789,17 +1799,23 @@ function MetaIntegrationSection() {
         window.localStorage.removeItem("META_OAUTH_TOKEN");
         const state = crypto.randomUUID();
         window.sessionStorage.setItem("META_OAUTH_STATE", state);
+        window.sessionStorage.setItem("META_OAUTH_INTENT", intent);
 
-        // auth_type=reauthenticate força a Meta a pedir login/senha de novo,
-        // descartando qualquer sessão Facebook ativa do app antigo.
+        // Escolhe qual Login Configuration usar. Facebook Page publishing
+        // usa uma config dedicada; default preserva o comportamento atual
+        // (Instagram/Ads via businessConfigId).
+        const chosenConfigId =
+          intent === "facebook_page"
+            ? config.pageLoginConfigId
+            : config.businessConfigId;
         const useBusinessConfig =
-          !!config.hasBusinessConfigId && !!config.businessConfigId;
+          intent === "facebook_page"
+            ? !!config.hasPageLoginConfigId && !!config.pageLoginConfigId
+            : !!config.hasBusinessConfigId && !!config.businessConfigId;
         console.log("META_OAUTH_LOGIN_MODE", {
+          intent,
           mode: useBusinessConfig ? "business_config" : "classic_scope",
-        });
-        console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
-        console.log("META_CONFIG_ID_USED", {
-          config_id: useBusinessConfig ? config.businessConfigId : null,
+          config_id: useBusinessConfig ? chosenConfigId : null,
         });
 
         console.log("META_OAUTH_REDIRECT_URI_USED", { redirect_uri: REDIRECT_URI });
@@ -1814,10 +1830,11 @@ function MetaIntegrationSection() {
         // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
         // Fallback manual (sem config_id) mantém o OAuth clássico com scope=.
         const oauthUrl = useBusinessConfig
-          ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
+          ? `${base}&config_id=${encodeURIComponent(chosenConfigId)}`
           : `${base}&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
         console.log("META_OAUTH_URL", {
+          intent,
           url: oauthUrl,
           app_id: config.appId,
           mode: useBusinessConfig ? "business_config" : "classic_scope",
@@ -1855,6 +1872,10 @@ function MetaIntegrationSection() {
     setError(null);
     setInfo(null);
     setSavingPageId(page.id);
+    const intent =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default"
+        : "default";
     try {
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("meta-connect", {
@@ -1882,14 +1903,63 @@ function MetaIntegrationSection() {
       const webhookLabel = result?.webhook_subscribed
         ? " · Webhook ativo"
         : " · Webhook não confirmado";
-      setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
-      console.log("META_TOKEN_SAVED", { page_id: page.id, ig: result?.page?.ig_username });
+
+      // Validação extra do fluxo Facebook Page publishing: confirma escopos
+      // necessários no token do usuário (pages_manage_posts + pages_read_engagement)
+      // e que page_id realmente pertence ao token retornado.
+      if (intent === "facebook_page") {
+        try {
+          const GRAPH = "https://graph.facebook.com/v25.0";
+          const tok = encodeURIComponent(shortToken);
+          const dbg = await fetch(
+            `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
+          );
+          const dbgJson = (await dbg.json()) as {
+            data?: { scopes?: string[] };
+          };
+          const scopes = dbgJson.data?.scopes ?? [];
+          const hasPost = scopes.includes("pages_manage_posts");
+          const hasRead = scopes.includes("pages_read_engagement");
+          console.log("META_FB_PAGE_PUBLISH_VALIDATION", {
+            page_id: page.id,
+            hasPost,
+            hasRead,
+            granted_scopes: scopes,
+          });
+          if (!hasPost || !hasRead) {
+            setError(
+              `Página conectada, mas faltam permissões para publicar: ${
+                !hasPost ? "pages_manage_posts" : ""
+              }${!hasPost && !hasRead ? " + " : ""}${
+                !hasRead ? "pages_read_engagement" : ""
+              }. Refaça "Conectar publicação do Facebook" e marque essas permissões no dialog.`,
+            );
+          } else {
+            setInfo(
+              `✅ Facebook pronto para publicar: ${savedName}${igLabel}${webhookLabel}`,
+            );
+          }
+        } catch (e) {
+          console.warn("META_FB_PAGE_PUBLISH_VALIDATION_FAIL", e);
+          setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
+        }
+      } else {
+        setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
+      }
+      console.log("META_TOKEN_SAVED", {
+        page_id: page.id,
+        ig: result?.page?.ig_username,
+        intent,
+      });
       setAvailable((prev) => prev.filter((p) => p.id !== page.id));
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao salvar página");
     } finally {
       setSavingPageId(null);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("META_OAUTH_INTENT");
+      }
     }
   };
 
@@ -2042,18 +2112,37 @@ function MetaIntegrationSection() {
         </div>
       )}
 
-      <button
-        onClick={onConnect}
-        disabled={connecting}
-        className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
-      >
-        {connecting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Plug className="h-3.5 w-3.5" />
-        )}
-        {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onConnect("default")}
+          disabled={connecting}
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {connecting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plug className="h-3.5 w-3.5" />
+          )}
+          {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
+        </button>
+        <button
+          onClick={() => onConnect("facebook_page")}
+          disabled={connecting || !metaConfig?.hasPageLoginConfigId}
+          title={
+            metaConfig?.hasPageLoginConfigId
+              ? "Fluxo dedicado: solicita pages_manage_posts + pages_read_engagement para publicar na Página."
+              : "Defina META_PAGE_LOGIN_CONFIG_ID para habilitar."
+          }
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-emerald-600 text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {connecting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plug className="h-3.5 w-3.5" />
+          )}
+          Conectar publicação do Facebook
+        </button>
+      </div>
 
       <div className="mt-3">
         <button
