@@ -599,41 +599,88 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Resolve target channel. Facebook Page publishing intent SEMPRE cria/atualiza
+    // uma integração dedicada channel='facebook' e a marca como principal, mesmo
+    // que a Página tenha Instagram vinculado. A integração Instagram existente
+    // permanece intacta (upsert por (company_id, channel, external_account_id)).
+    const targetChannel: "facebook" | "instagram" = isFacebookPageIntent
+      ? "facebook"
+      : (igId ? "instagram" : "facebook");
+
+    // Se intent=facebook_page, validar scopes obrigatórios antes de gravar.
+    if (isFacebookPageIntent) {
+      const scopes = userCheck.scopes ?? [];
+      const hasPost = scopes.includes("pages_manage_posts");
+      const hasRead = scopes.includes("pages_read_engagement");
+      console.log("META_FB_PAGE_SCOPES_CHECK", {
+        page_id: page.id,
+        hasPost,
+        hasRead,
+        granted_scopes: scopes,
+      });
+      if (!hasPost || !hasRead) {
+        return json(
+          {
+            ok: false,
+            error:
+              "Permissões insuficientes para publicar no Facebook: " +
+              `${!hasPost ? "pages_manage_posts" : ""}${!hasPost && !hasRead ? " + " : ""}${!hasRead ? "pages_read_engagement" : ""}`.trim() +
+              ". Refaça a conexão via 'Conectar publicação do Facebook' e aceite essas permissões.",
+            missing_scopes: [
+              !hasPost ? "pages_manage_posts" : null,
+              !hasRead ? "pages_read_engagement" : null,
+            ].filter(Boolean),
+          },
+          400,
+        );
+      }
+    }
+
     const { data: existingInteg } = await sb
       .from("integrations")
       .select("account_metadata")
       .eq("company_id", companyId)
-      .eq("channel", igId ? "instagram" : "facebook")
+      .eq("channel", targetChannel)
       .eq("external_account_id", page.id)
       .maybeSingle();
     const existingMeta = (existingInteg?.account_metadata ?? {}) as Record<string, unknown>;
-    const { data: integ, error: integErr } = await sb
+    const upsertRow: Record<string, unknown> = {
+      company_id: companyId,
+      channel: targetChannel,
+      display_name: pageName,
+      external_account_id: page.id,
+      access_token: longUserToken,
+      token_expires_at: userTokenExpiresAt,
+      active: true,
+      account_metadata: {
+        ...existingMeta,
+        mode: "page",
+        fb_page_id: page.id,
+        ig_business_account_id: igId,
+        ig_username: igUsername,
+        token_type: userCheck.type ?? "USER",
+        granted_scopes: userCheck.scopes ?? [],
+      },
+      last_error: null,
+      last_synced_at: new Date().toISOString(),
+    };
+    if (isFacebookPageIntent) {
+      // Índice único parcial garante 1 primary por (company_id, channel) ativo.
+      upsertRow.is_primary_publisher = true;
+    }
+    const { data: integ, error: integErr, count: integCount } = await sb
       .from("integrations")
-      .upsert(
-        {
-          company_id: companyId,
-          channel: igId ? "instagram" : "facebook",
-          display_name: pageName,
-          external_account_id: page.id,
-          access_token: longUserToken,
-          token_expires_at: userTokenExpiresAt,
-          active: true,
-          account_metadata: {
-            ...existingMeta,
-            mode: "page",
-            fb_page_id: page.id,
-            ig_business_account_id: igId,
-            ig_username: igUsername,
-            token_type: userCheck.type ?? "USER",
-            granted_scopes: userCheck.scopes ?? [],
-          },
-          last_error: null,
-          last_synced_at: new Date().toISOString(),
-        },
-        { onConflict: "company_id,channel,external_account_id" },
-      )
+      .upsert(upsertRow, { onConflict: "company_id,channel,external_account_id", count: "exact" })
       .select("id")
       .maybeSingle();
+    console.log("META_INTEG_UPSERT", {
+      page_id: page.id,
+      channel: targetChannel,
+      is_primary_publisher: !!upsertRow.is_primary_publisher,
+      integration_id: integ?.id ?? null,
+      rows: integCount ?? null,
+    });
+
 
 
 
