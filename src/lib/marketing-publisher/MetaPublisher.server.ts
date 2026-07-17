@@ -632,17 +632,39 @@ export class MetaPublisher {
     | { ok: true; pageId: string; pageAccessToken: string }
     | { ok: false; code: string; message: string }
   > {
+    // 1) Preferir integração principal channel='facebook' quando existir.
     const primary = await this.loadPrimaryIntegration(companyId, "facebook");
-    if (!primary.ok) return primary;
-    const meta = primary.row.account_metadata;
-    const pageId =
-      (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
-      primary.row.external_account_id;
+    let pageId: string | null = null;
+    if (primary.ok) {
+      const meta = primary.row.account_metadata;
+      pageId =
+        (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
+        primary.row.external_account_id;
+    } else if (primary.code === "no_primary_integration") {
+      // 2) Fallback controlado: integração principal do Instagram desde que
+      //    contenha fb_page_id válido; loadPrimaryIntegration já valida
+      //    is_primary_publisher=true, active=true, company_id e expiração.
+      const igPrimary = await this.loadPrimaryIntegration(companyId, "instagram");
+      if (!igPrimary.ok) {
+        return {
+          ok: false,
+          code: "no_primary_integration",
+          message:
+            "Nenhuma integração Facebook principal encontrada e fallback via Instagram indisponível.",
+        };
+      }
+      const meta = igPrimary.row.account_metadata;
+      pageId = typeof meta.fb_page_id === "string" ? meta.fb_page_id : null;
+    } else {
+      // multiple_primary_integrations, token_expired etc. — propagar erro.
+      return primary;
+    }
     if (!pageId) {
       return {
         ok: false,
         code: "fb_page_missing",
-        message: "Integração principal do Facebook sem page_id.",
+        message:
+          "Integração principal (Facebook, ou Instagram usado como fallback) sem fb_page_id.",
       };
     }
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
