@@ -4,17 +4,27 @@
 
 import {
   AUDIO_ALLOWED_MIME_TYPES,
+  AUDIO_BRAND_STYLES,
   AUDIO_CATEGORIES,
   AUDIO_ENERGIES,
+  AUDIO_MARKETING_OBJECTIVES,
   AUDIO_MAX_FILE_BYTES,
   AUDIO_MOODS,
   AUDIO_RECOMMENDED_FOR,
+  AUDIO_SEASONS,
+  AUDIO_TARGET_AUDIENCES,
+  AUDIO_VIDEO_DURATIONS,
   AUDIO_VOCAL_TYPES,
+  type AudioBrandStyle,
   type AudioCategory,
   type AudioEnergy,
+  type AudioMarketingObjective,
   type AudioMimeType,
   type AudioMood,
   type AudioRecommendedFor,
+  type AudioSeason,
+  type AudioTargetAudience,
+  type AudioVideoDuration,
   type AudioVocalType,
 } from "./audio-library.types";
 
