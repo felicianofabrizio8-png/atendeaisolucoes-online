@@ -1,8 +1,8 @@
 {
   "name": "atendeai-render-worker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Render Engine worker for Atende Aí — consumes video_render_jobs and produces MP4 with FFmpeg.",
+  "description": "Render Engine worker for Atende Aí — consumes /api/public/render/* bridge and produces MP4 with FFmpeg.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -11,9 +11,7 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsx": "^4.19.0",
