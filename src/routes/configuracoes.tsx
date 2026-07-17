@@ -1590,27 +1590,20 @@ function MetaIntegrationSection() {
     // Readiness OAuth: exigir escopos mínimos para intent=facebook_page ANTES
     // de listar páginas — evita mensagem genérica "nenhuma página encontrada"
     // quando na verdade faltou pages_show_list na Configuration do Meta.
-    const FB_PAGE_REQUIRED = [
-      "pages_show_list",
-      "pages_read_engagement",
-      "pages_manage_posts",
-    ];
-    if (intent === "facebook_page" && grantedScopes.length > 0) {
-      const missing = FB_PAGE_REQUIRED.filter((s) => !grantedScopes.includes(s));
-      if (missing.length > 0) {
-        console.error("META_FB_PAGE_SCOPES_MISSING", {
-          intent,
-          missing,
-          granted: grantedScopes,
-        });
-        setAvailable([]);
-        setInfo(null);
-        setError(
-          `Permissões faltando na Configuration do Facebook Login: ${missing.join(", ")}. ` +
-            `Ajuste a Login Configuration no Meta Developers para incluir essas permissões e clique novamente em "Conectar publicação do Facebook".`,
-        );
-        return;
-      }
+    const { evaluateFacebookPageReadiness, formatMissingScopesMessage } = await import(
+      "@/lib/meta-oauth/facebookPageReadiness"
+    );
+    const readiness = evaluateFacebookPageReadiness(grantedScopes, intent);
+    if (!readiness.ok) {
+      console.error("META_FB_PAGE_SCOPES_MISSING", {
+        intent,
+        missing: readiness.missing,
+        granted: grantedScopes,
+      });
+      setAvailable([]);
+      setInfo(null);
+      setError(formatMissingScopesMessage(readiness.missing));
+      return;
     }
 
     // /me
