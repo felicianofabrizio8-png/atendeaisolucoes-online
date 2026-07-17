@@ -45,8 +45,9 @@ export function AudioLibrary({ companyId }: Props) {
   async function reload() {
     setLoading(true);
     try {
+      const query = filtersToQuery(filters);
       const [list, q] = await Promise.all([
-        listAudioLibrary({ activeOnly: false }),
+        listAudioLibrary({ ...query, activeOnly: false }),
         getAudioLibraryQuota().catch(() => null),
       ]);
       setRows(list);
