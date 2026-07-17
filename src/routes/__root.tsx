@@ -117,10 +117,12 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthGate />
+        <Toaster position="top-right" richColors closeButton />
       </AuthProvider>
     </QueryClientProvider>
   );
 }
+
 
 const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/callback"];
 
