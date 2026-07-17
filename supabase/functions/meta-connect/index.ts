@@ -502,6 +502,10 @@ Deno.serve(async (req) => {
     if (!page?.id || !page?.access_token) {
       return json({ ok: false, error: "page required" }, 400);
     }
+    const intent = typeof payload.intent === "string" ? payload.intent : "default";
+    const isFacebookPageIntent = intent === "facebook_page";
+    console.log("META_CONNECT_INTENT", { page_id: page.id, intent, isFacebookPageIntent });
+
 
     // Troca por long-lived user token (60 dias)
     const longLived = await exchangeForLongLivedUserToken(shortToken);
