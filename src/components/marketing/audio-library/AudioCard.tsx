@@ -90,6 +90,8 @@ export function AudioCard({
         </div>
       ) : null}
 
+      <EnrichmentMeta row={row} />
+
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{formatDuration(row.duration_seconds)}</span>
         <span>{formatDate(row.created_at)}</span>
