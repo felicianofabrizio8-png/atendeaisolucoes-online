@@ -122,3 +122,125 @@ describe("sanitizeRecommendedForList", () => {
     expect(sanitizeRecommendedForList(null)).toEqual([]);
   });
 });
+
+// ============================================================================
+// Fase de enriquecimento — sanitizers dos novos metadados + intervalo preferido.
+// ============================================================================
+
+import {
+  sanitizeMarketingObjectiveList,
+  sanitizeBrandStyleList,
+  sanitizeSeasonList,
+  sanitizeTargetAudienceList,
+  sanitizeVideoDurationList,
+  validatePreferredRange,
+} from "../audio-library-validation";
+
+describe("sanitizeMarketingObjectiveList", () => {
+  it("aceita valores válidos e remove duplicados preservando ordem", () => {
+    expect(
+      sanitizeMarketingObjectiveList(["vendas", "engajamento", "vendas"]),
+    ).toEqual(["vendas", "engajamento"]);
+  });
+  it("rejeita valores desconhecidos e não-string", () => {
+    expect(
+      sanitizeMarketingObjectiveList(["vendas", "hackear", 42, null]),
+    ).toEqual(["vendas"]);
+  });
+  it("retorna [] para input não-array", () => {
+    expect(sanitizeMarketingObjectiveList(undefined)).toEqual([]);
+    expect(sanitizeMarketingObjectiveList("vendas")).toEqual([]);
+  });
+});
+
+describe("sanitizeBrandStyleList", () => {
+  it("filtra apenas whitelisted", () => {
+    const out = sanitizeBrandStyleList(["moderno", "xxx", "moderno"]);
+    expect(out).toEqual(["moderno"]);
+  });
+});
+
+describe("sanitizeSeasonList", () => {
+  it("colapsa para ['todas'] quando 'todas' está presente", () => {
+    expect(sanitizeSeasonList(["verao", "todas", "inverno"])).toEqual(["todas"]);
+  });
+  it("mantém múltiplas estações sem 'todas'", () => {
+    expect(sanitizeSeasonList(["verao", "inverno", "verao"])).toEqual([
+      "verao",
+      "inverno",
+    ]);
+  });
+});
+
+describe("sanitizeTargetAudienceList", () => {
+  it("filtra whitelisted e deduplica", () => {
+    const out = sanitizeTargetAudienceList([
+      "familia",
+      "familia",
+      "publico_invalido",
+    ]);
+    expect(out).toEqual(["familia"]);
+  });
+});
+
+describe("sanitizeVideoDurationList", () => {
+  it("aceita numbers e coerce strings numéricas válidas", () => {
+    expect(sanitizeVideoDurationList([15, "30", 15, 999])).toEqual([15, 30]);
+  });
+  it("rejeita valores fora da whitelist", () => {
+    expect(sanitizeVideoDurationList([7, 100])).toEqual([]);
+  });
+  it("retorna [] para input não-array", () => {
+    expect(sanitizeVideoDurationList(null)).toEqual([]);
+  });
+});
+
+describe("validatePreferredRange", () => {
+  it("aceita ambos nulos", () => {
+    const r = validatePreferredRange({ start: null, end: null });
+    expect(r).toEqual({ ok: true, start: null, end: null });
+  });
+  it("rejeita start sem end", () => {
+    const r = validatePreferredRange({ start: 5, end: null });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("start_only");
+  });
+  it("rejeita end sem start", () => {
+    const r = validatePreferredRange({ start: null, end: 10 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("end_only");
+  });
+  it("rejeita start negativo", () => {
+    const r = validatePreferredRange({ start: -1, end: 5 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("start_negative");
+  });
+  it("rejeita end <= start", () => {
+    const r = validatePreferredRange({ start: 10, end: 10 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("end_not_greater_than_start");
+  });
+  it("rejeita não-inteiros", () => {
+    const r = validatePreferredRange({ start: 1.5, end: 5 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("not_integer");
+  });
+  it("rejeita start > duration", () => {
+    const r = validatePreferredRange({ start: 100, end: 105, durationSeconds: 60 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("start_out_of_duration");
+  });
+  it("rejeita end > duration", () => {
+    const r = validatePreferredRange({ start: 10, end: 70, durationSeconds: 60 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("end_out_of_duration");
+  });
+  it("aceita intervalo válido dentro da duração", () => {
+    const r = validatePreferredRange({ start: 10, end: 40, durationSeconds: 60 });
+    expect(r).toEqual({ ok: true, start: 10, end: 40 });
+  });
+  it("aceita intervalo válido sem duração informada", () => {
+    const r = validatePreferredRange({ start: 0, end: 30 });
+    expect(r.ok).toBe(true);
+  });
+});
