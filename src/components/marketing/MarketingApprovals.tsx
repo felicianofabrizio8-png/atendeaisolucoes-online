@@ -30,6 +30,7 @@ export function MarketingApprovals({ companyId }: Props) {
   const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook" | "whatsapp">(
     "instagram",
   );
+  const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function refresh() {
