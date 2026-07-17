@@ -12,6 +12,7 @@ import {
   apiScheduleContent,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
+import { validateScheduleForm } from "@/lib/marketing/schedule-form";
 
 interface Props {
   companyId: string;
@@ -29,6 +30,7 @@ export function MarketingApprovals({ companyId }: Props) {
   const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook" | "whatsapp">(
     "instagram",
   );
+  const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function refresh() {
@@ -78,26 +80,74 @@ export function MarketingApprovals({ companyId }: Props) {
     }
   }
 
-  async function schedule() {
-    if (!scheduleFor || !scheduleAt) return;
-    if (scheduleChannel === "instagram") {
-      const target = rows.find((r) => r.id === scheduleFor);
-      const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
-      if (mediaCount === 0) {
-        toast.error("Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.");
-        return;
-      }
+  function openSchedule(row: MarketingContentRow) {
+    if (row.status !== "approved") {
+      toast.error("Apenas conteúdos aprovados podem ser agendados.");
+      return;
     }
+    // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
+    setBusy(false);
+    setScheduleFor(row.id);
+    setScheduleChannel(row.channel);
+    setScheduleAt("");
+    setScheduleAtError(null);
+  }
+
+  function closeSchedule() {
+    setScheduleFor(null);
+    setScheduleAt("");
+    setScheduleAtError(null);
+    setBusy(false);
+  }
+
+  async function schedule() {
+    const target = scheduleFor ? rows.find((r) => r.id === scheduleFor) : null;
+    const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
+    const result = validateScheduleForm({
+      scheduleFor,
+      scheduleAt,
+      channel: scheduleChannel,
+      mediaCount,
+    });
+
+    if (!result.ok) {
+      for (const err of result.errors) {
+        if (err.field === "scheduleAt") setScheduleAtError(err.message);
+        toast.error(err.message);
+      }
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[marketing/schedule] validation failed", {
+          scheduleFor,
+          scheduleAt,
+          channel: scheduleChannel,
+          mediaCount,
+          errors: result.errors.map((e) => ({ field: e.field, message: e.message })),
+        });
+      }
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.info("[marketing/schedule] submitting", {
+        scheduleFor: result.scheduleFor,
+        scheduleAt,
+        iso: result.iso,
+        channel: result.channel,
+      });
+    }
+
+    setScheduleAtError(null);
     setBusy(true);
     try {
       await apiScheduleContent({
-        content_id: scheduleFor,
-        channel: scheduleChannel,
-        scheduled_at: new Date(scheduleAt).toISOString(),
+        content_id: result.scheduleFor,
+        channel: result.channel,
+        scheduled_at: result.iso,
       });
       toast.success("Conteúdo agendado.");
-      setScheduleFor(null);
-      setScheduleAt("");
+      closeSchedule();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao agendar.");
     } finally {
@@ -148,14 +198,7 @@ export function MarketingApprovals({ companyId }: Props) {
                 void setStatus(c, "rejected", reason);
               }}
               onMarkPending={() => void setStatus(c, "pending")}
-              onSchedule={() => {
-                if (c.status !== "approved") {
-                  toast.error("Apenas conteúdos aprovados podem ser agendados.");
-                  return;
-                }
-                setScheduleFor(c.id);
-                setScheduleChannel(c.channel);
-              }}
+              onSchedule={() => openSchedule(c)}
               busy={busy}
             />
           ))}
@@ -179,23 +222,44 @@ export function MarketingApprovals({ companyId }: Props) {
               </select>
             </div>
             <div>
-              <Label>Data e hora</Label>
+              <Label htmlFor="schedule-at-input">Data e hora</Label>
               <Input
+                id="schedule-at-input"
                 type="datetime-local"
                 value={scheduleAt}
-                onChange={(e) => setScheduleAt(e.target.value)}
+                aria-invalid={scheduleAtError ? true : undefined}
+                aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
+                className={
+                  scheduleAtError
+                    ? "border-destructive focus-visible:ring-destructive"
+                    : undefined
+                }
+                onChange={(e) => {
+                  setScheduleAt(e.target.value);
+                  if (scheduleAtError) setScheduleAtError(null);
+                }}
               />
+              {scheduleAtError && (
+                <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
+                  {scheduleAtError}
+                </p>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               Este agendamento é apenas planejamento. Publicação automática não faz parte da Fase 1.
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setScheduleFor(null)} disabled={busy}>
+              <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
                 Cancelar
               </Button>
-              <Button onClick={() => void schedule()} disabled={busy || !scheduleAt}>
+              <Button
+                onClick={() => void schedule()}
+                disabled={busy}
+                aria-disabled={busy}
+                className={busy ? "cursor-not-allowed opacity-70" : undefined}
+              >
                 {busy && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                Agendar
+                {busy ? "Agendando…" : "Agendar"}
               </Button>
             </div>
           </div>
