@@ -373,7 +373,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     const { companyId, userId, supabase } = await loadCompany(context);
     const { data: content, error: cErr } = await supabase
       .from("marketing_contents")
-      .select("id, company_id, status, media_ids")
+      .select("id, company_id, status, media_ids, ai_prompt")
       .eq("id", data.content_id)
       .maybeSingle();
     if (cErr) throw new Error(cErr.message);
@@ -386,12 +386,20 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
       );
     }
     // Instagram (feed/reel/story) exige ao menos uma mídia associada.
-    // WhatsApp CTA e demais canais permanecem sem essa exigência.
+    // Mídia válida = marketing_media (media_ids) OU imagem de produto reutilizada
+    // via ai_prompt.product_media_refs. WhatsApp CTA fica fora dessa regra.
     if (data.channel === "instagram") {
-      const mediaCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
-      if (mediaCount === 0) {
+      const marketingCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
+      const promptObj =
+        content.ai_prompt && typeof content.ai_prompt === "object"
+          ? (content.ai_prompt as { product_media_refs?: unknown })
+          : null;
+      const productRefs = Array.isArray(promptObj?.product_media_refs)
+        ? (promptObj!.product_media_refs as unknown[])
+        : [];
+      if (marketingCount === 0 && productRefs.length === 0) {
         throw new Error(
-          "Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.",
+          "Selecione ao menos uma imagem ou vídeo (biblioteca ou produto) antes de agendar para o Instagram.",
         );
       }
     }

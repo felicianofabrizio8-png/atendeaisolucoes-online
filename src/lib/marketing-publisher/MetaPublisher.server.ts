@@ -34,6 +34,7 @@ interface ContentPayload {
   cta_destination: string | null;
   media_ids: string[];
   product_id: string | null;
+  product_media_refs: Array<{ product_id: string; image_path: string }>;
 }
 
 interface ResolvedMedia {
@@ -386,12 +387,29 @@ export class MetaPublisher {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_contents")
-      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status")
+      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt")
       .eq("id", id)
       .eq("company_id", companyId)
       .maybeSingle();
     if (!r.data) return null;
     if (r.data.status !== "approved") return null;
+    const prompt =
+      r.data.ai_prompt && typeof r.data.ai_prompt === "object"
+        ? (r.data.ai_prompt as { product_media_refs?: unknown })
+        : null;
+    const refsRaw = Array.isArray(prompt?.product_media_refs)
+      ? (prompt!.product_media_refs as unknown[])
+      : [];
+    const product_media_refs = refsRaw
+      .map((it) => {
+        if (!it || typeof it !== "object") return null;
+        const o = it as Record<string, unknown>;
+        const pid = typeof o.product_id === "string" ? o.product_id : null;
+        const path = typeof o.image_path === "string" ? o.image_path : null;
+        if (!pid || !path) return null;
+        return { product_id: pid, image_path: path };
+      })
+      .filter((v): v is { product_id: string; image_path: string } => v !== null);
     return {
       companyId: r.data.company_id,
       contentId: r.data.id,
@@ -400,6 +418,7 @@ export class MetaPublisher {
       cta_destination: r.data.cta_destination ?? null,
       media_ids: Array.isArray(r.data.media_ids) ? r.data.media_ids : [],
       product_id: r.data.product_id ?? null,
+      product_media_refs,
     };
   }
 
@@ -409,7 +428,7 @@ export class MetaPublisher {
       storage: { from: (b: string) => any };
     };
 
-    // 1) Preferir marketing_media da lista.
+    // 1) Preferir marketing_media da lista (biblioteca de marketing).
     if (content.media_ids.length > 0) {
       const r = await admin
         .from("marketing_media")
@@ -425,16 +444,38 @@ export class MetaPublisher {
           .from("marketing-media")
           .createSignedUrl(m.storage_path, 60 * 60);
         const url = signed?.data?.signedUrl as string | undefined;
-        if (url) return { url, type: m.media_type };
+        if (url && (await this.isUrlAccessible(url))) return { url, type: m.media_type };
       }
     }
 
-    // 2) Fallback: primeira imagem do produto.
+    // 2) product_media_refs — imagens de produto reutilizadas sem duplicar arquivo.
+    //    Não copiamos nada para marketing_media; assinamos direto no bucket
+    //    product-images, respeitando o mesmo company_id.
+    for (const ref of content.product_media_refs) {
+      const prod = await admin
+        .from("products")
+        .select("id, company_id, images")
+        .eq("id", ref.product_id)
+        .eq("company_id", content.companyId)
+        .maybeSingle();
+      if (!prod.data) continue;
+      const imgs = Array.isArray(prod.data.images) ? (prod.data.images as string[]) : [];
+      if (!imgs.includes(ref.image_path)) continue;
+      const clean = ref.image_path.replace(/^\/+/, "");
+      const signed = await admin.storage
+        .from("product-images")
+        .createSignedUrl(clean, 60 * 60);
+      const url = signed?.data?.signedUrl as string | undefined;
+      if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
+    }
+
+    // 3) Fallback antigo: primeira imagem do produto vinculado ao conteúdo.
     if (content.product_id) {
       const r = await admin
         .from("products")
         .select("images")
         .eq("id", content.product_id)
+        .eq("company_id", content.companyId)
         .maybeSingle();
       const imgs = (r.data?.images ?? []) as string[];
       if (imgs.length > 0) {
@@ -444,10 +485,30 @@ export class MetaPublisher {
           .from("product-images")
           .createSignedUrl(clean, 60 * 60);
         const url = signed?.data?.signedUrl as string | undefined;
-        if (url) return { url, type: "image" };
+        if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
       }
     }
     return null;
+  }
+
+  /**
+   * Verifica se uma URL assinada está acessível antes de entregá-la à Meta.
+   * A Meta baixa a URL do lado dela — se estiver quebrada, o erro só aparece
+   * lá no fluxo de container, sem contexto claro. Um HEAD curto evita isso.
+   */
+  private async isUrlAccessible(url: string): Promise<boolean> {
+    try {
+      const r = await fetch(url, { method: "HEAD" });
+      if (r.ok) return true;
+      // Alguns provedores respondem 405 a HEAD; tentamos GET com Range.
+      if (r.status === 405) {
+        const g = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" } });
+        return g.ok || g.status === 206;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   private async loadPrimaryIntegration(
@@ -571,17 +632,39 @@ export class MetaPublisher {
     | { ok: true; pageId: string; pageAccessToken: string }
     | { ok: false; code: string; message: string }
   > {
+    // 1) Preferir integração principal channel='facebook' quando existir.
     const primary = await this.loadPrimaryIntegration(companyId, "facebook");
-    if (!primary.ok) return primary;
-    const meta = primary.row.account_metadata;
-    const pageId =
-      (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
-      primary.row.external_account_id;
+    let pageId: string | null = null;
+    if (primary.ok) {
+      const meta = primary.row.account_metadata;
+      pageId =
+        (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
+        primary.row.external_account_id;
+    } else if (primary.code === "no_primary_integration") {
+      // 2) Fallback controlado: integração principal do Instagram desde que
+      //    contenha fb_page_id válido; loadPrimaryIntegration já valida
+      //    is_primary_publisher=true, active=true, company_id e expiração.
+      const igPrimary = await this.loadPrimaryIntegration(companyId, "instagram");
+      if (!igPrimary.ok) {
+        return {
+          ok: false,
+          code: "no_primary_integration",
+          message:
+            "Nenhuma integração Facebook principal encontrada e fallback via Instagram indisponível.",
+        };
+      }
+      const meta = igPrimary.row.account_metadata;
+      pageId = typeof meta.fb_page_id === "string" ? meta.fb_page_id : null;
+    } else {
+      // multiple_primary_integrations, token_expired etc. — propagar erro.
+      return primary;
+    }
     if (!pageId) {
       return {
         ok: false,
         code: "fb_page_missing",
-        message: "Integração principal do Facebook sem page_id.",
+        message:
+          "Integração principal (Facebook, ou Instagram usado como fallback) sem fb_page_id.",
       };
     }
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
