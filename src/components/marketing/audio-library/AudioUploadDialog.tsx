@@ -14,16 +14,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AUDIO_BRAND_STYLES,
   AUDIO_CATEGORIES,
   AUDIO_ENERGIES,
+  AUDIO_MARKETING_OBJECTIVES,
   AUDIO_MOODS,
   AUDIO_RECOMMENDED_FOR,
+  AUDIO_SEASONS,
+  AUDIO_TARGET_AUDIENCES,
+  AUDIO_VIDEO_DURATIONS,
   AUDIO_VOCAL_TYPES,
+  type AudioBrandStyle,
   type AudioCategory,
   type AudioEnergy,
+  type AudioMarketingObjective,
   type AudioMood,
   type AudioQuotaInfo,
   type AudioRecommendedFor,
+  type AudioSeason,
+  type AudioTargetAudience,
+  type AudioVideoDuration,
   type AudioVocalType,
 } from "@/lib/audio-library/audio-library.types";
 import {
@@ -33,12 +43,19 @@ import {
 import { validateAudioFile } from "@/lib/audio-library/audio-library-validation";
 import { logAudioEvent } from "./audio-observability";
 import { EnumSelect } from "./EnumSelect";
+import { MultiChipSelect } from "./MultiChipSelect";
+import {
+  applySeasonToggle,
+  formatSeconds,
+  toggleInArray,
+  validateClientPreferredRange,
+} from "./audio-ui-helpers";
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds || !Number.isFinite(seconds)) return "—";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+function parseSecondsInput(v: string): number | null {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? Math.floor(n) : null;
 }
 
 export function AudioUploadDialog({
@@ -62,14 +79,26 @@ export function AudioUploadDialog({
   const [energy, setEnergy] = useState<AudioEnergy | "">("");
   const [vocalType, setVocalType] = useState<AudioVocalType | "">("");
   const [recommendedFor, setRecommendedFor] = useState<AudioRecommendedFor[]>([]);
+  const [marketingObjectives, setMarketingObjectives] = useState<
+    AudioMarketingObjective[]
+  >([]);
+  const [brandStyles, setBrandStyles] = useState<AudioBrandStyle[]>([]);
+  const [seasons, setSeasons] = useState<AudioSeason[]>([]);
+  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>(
+    [],
+  );
+  const [bestVideoDurations, setBestVideoDurations] = useState<
+    AudioVideoDuration[]
+  >([]);
+  const [startSec, setStartSec] = useState<string>("");
+  const [endSec, setEndSec] = useState<string>("");
   const [source, setSource] = useState("");
   const [rightsNotes, setRightsNotes] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [duration, setDuration] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const quotaReached =
-    quota?.limit != null && quota.used >= quota.limit;
+  const quotaReached = quota?.limit != null && quota.used >= quota.limit;
 
   function reset() {
     setFile(null);
@@ -80,6 +109,13 @@ export function AudioUploadDialog({
     setEnergy("");
     setVocalType("");
     setRecommendedFor([]);
+    setMarketingObjectives([]);
+    setBrandStyles([]);
+    setSeasons([]);
+    setTargetAudiences([]);
+    setBestVideoDurations([]);
+    setStartSec("");
+    setEndSec("");
     setSource("");
     setRightsNotes("");
     setConfirmed(false);
@@ -118,21 +154,9 @@ export function AudioUploadDialog({
     }
   }
 
-  function toggleRecommended(value: AudioRecommendedFor) {
-    setRecommendedFor((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
-    );
-  }
-
   async function handleSubmit() {
-    if (!file) {
-      toast.error("Selecione o arquivo de áudio");
-      return;
-    }
-    if (!name.trim()) {
-      toast.error("Informe um nome");
-      return;
-    }
+    if (!file) return toast.error("Selecione o arquivo de áudio");
+    if (!name.trim()) return toast.error("Informe um nome");
     const check = validateAudioFile({
       mimeType: file.type,
       sizeBytes: file.size,
@@ -151,16 +175,21 @@ export function AudioUploadDialog({
       return;
     }
     if (quotaReached) {
-      toast.error(
+      return toast.error(
         `Limite do plano ${quota?.tier} atingido (${quota?.used}/${quota?.limit}).`,
       );
-      return;
     }
-    setSaving(true);
-    logAudioEvent("upload_started", {
-      size_bytes: file.size,
-      mime: file.type,
+    const startVal = parseSecondsInput(startSec);
+    const endVal = parseSecondsInput(endSec);
+    const rangeCheck = validateClientPreferredRange({
+      start: startVal,
+      end: endVal,
+      durationSeconds: duration,
     });
+    if (!rangeCheck.ok) return toast.error(rangeCheck.message);
+
+    setSaving(true);
+    logAudioEvent("upload_started", { size_bytes: file.size, mime: file.type });
     try {
       const row = await createAudioWithUpload({
         companyId,
@@ -176,6 +205,13 @@ export function AudioUploadDialog({
         commercialUseConfirmed: confirmed,
         commercialRightsNotes: rightsNotes.trim() || null,
         durationSeconds: duration,
+        marketingObjectives,
+        brandStyles,
+        seasons,
+        targetAudiences,
+        bestVideoDurations,
+        preferredStartSecond: rangeCheck.result.start,
+        preferredEndSecond: rangeCheck.result.end,
       });
       logAudioEvent("upload_completed", { audio_id: row.id });
       toast.success("Música adicionada à biblioteca");
@@ -188,13 +224,9 @@ export function AudioUploadDialog({
         toast.error(e.message);
       } else {
         const msg = e instanceof Error ? e.message : "Falha no upload";
-        // Erro traduzido de quota vindo do servidor.
         const quotaMatch = msg.match(/^quota_exceeded:([^:]+):(\d+):(.+)$/);
-        if (quotaMatch) {
-          toast.error(quotaMatch[3]);
-        } else {
-          toast.error(msg);
-        }
+        if (quotaMatch) toast.error(quotaMatch[3]);
+        else toast.error(msg);
         logAudioEvent("upload_failed", { error: msg });
       }
     } finally {
@@ -236,7 +268,7 @@ export function AudioUploadDialog({
             {file ? (
               <p className="text-xs text-muted-foreground mt-1">
                 {file.name} — {(file.size / (1024 * 1024)).toFixed(2)} MB
-                {duration ? ` — ${formatDuration(duration)}` : ""}
+                {duration ? ` — ${formatSeconds(duration)}` : ""}
               </p>
             ) : null}
           </div>
@@ -292,22 +324,74 @@ export function AudioUploadDialog({
             />
           </div>
 
-          <div>
-            <Label>Usos recomendados</Label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {AUDIO_RECOMMENDED_FOR.map((v) => {
-                const active = recommendedFor.includes(v);
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => toggleRecommended(v)}
-                    className={`text-xs px-2 py-1 rounded border ${active ? "bg-primary text-primary-foreground border-primary" : "bg-background"}`}
-                  >
-                    {v}
-                  </button>
-                );
-              })}
+          <MultiChipSelect
+            label="Usos recomendados"
+            value={recommendedFor}
+            options={AUDIO_RECOMMENDED_FOR}
+            onToggle={(v) => setRecommendedFor((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Objetivos de marketing"
+            value={marketingObjectives}
+            options={AUDIO_MARKETING_OBJECTIVES}
+            onToggle={(v) => setMarketingObjectives((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Estilos de marca"
+            value={brandStyles}
+            options={AUDIO_BRAND_STYLES}
+            onToggle={(v) => setBrandStyles((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Estações"
+            helperText='Selecionar "todas" limpa as demais estações.'
+            value={seasons}
+            options={AUDIO_SEASONS}
+            onToggle={(v) => setSeasons((p) => applySeasonToggle(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Públicos-alvo"
+            value={targetAudiences}
+            options={AUDIO_TARGET_AUDIENCES}
+            onToggle={(v) => setTargetAudiences((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect<AudioVideoDuration>
+            label="Durações recomendadas de vídeo"
+            value={bestVideoDurations}
+            options={AUDIO_VIDEO_DURATIONS}
+            onToggle={(v) => setBestVideoDurations((p) => toggleInArray(p, v))}
+            renderLabel={(n) => `${n}s`}
+          />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <Label htmlFor="pref-start">Trecho preferido — início (s)</Label>
+              <Input
+                id="pref-start"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={startSec}
+                onChange={(e) => setStartSec(e.target.value)}
+                placeholder="ex.: 22"
+              />
+            </div>
+            <div>
+              <Label htmlFor="pref-end">Trecho preferido — fim (s)</Label>
+              <Input
+                id="pref-end"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={endSec}
+                onChange={(e) => setEndSec(e.target.value)}
+                placeholder="ex.: 37"
+              />
             </div>
           </div>
 
