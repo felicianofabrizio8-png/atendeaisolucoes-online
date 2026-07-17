@@ -7,7 +7,7 @@
 // bloqueio, e quando é chamado retornamos success/simulation para observar
 // o resultado sem tocar na Meta.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
 // ---- Mocks --------------------------------------------------------------
 
