@@ -167,6 +167,11 @@ export function MarketingApprovals({ companyId }: Props) {
       return;
     }
 
+    if (result.channel === "facebook" && fbReadiness && !fbReadiness.ok) {
+      toast.error(fbReadiness.message);
+      return;
+    }
+
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.info("[marketing/schedule] submitting", {
