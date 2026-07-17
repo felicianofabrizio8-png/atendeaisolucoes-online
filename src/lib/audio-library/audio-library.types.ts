@@ -118,6 +118,7 @@ export interface AudioLibraryRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  sha256: string | null;
 }
 
 /** Filtros para consultas na biblioteca (usado pela camada de serviço). */
@@ -128,4 +129,39 @@ export interface AudioLibraryQuery {
   recommendedFor?: AudioRecommendedFor | null;
   activeOnly?: boolean;
   search?: string | null;
+}
+
+// ============================================================================
+// Quota / plano — Fase de arquitetura (sem cobrança).
+// ============================================================================
+
+export type AudioPlanTier = "starter" | "pro" | "enterprise";
+
+export const AUDIO_PLAN_TIERS: AudioPlanTier[] = ["starter", "pro", "enterprise"];
+
+/**
+ * Limite de músicas por empresa em cada plano. `null` = ilimitado.
+ * Ajustável em um único lugar — camadas de UI e servidor consomem daqui.
+ */
+export const AUDIO_LIBRARY_LIMITS: Record<AudioPlanTier, number | null> = {
+  starter: 20,
+  pro: 200,
+  enterprise: null,
+};
+
+export interface AudioQuotaInfo {
+  tier: AudioPlanTier;
+  limit: number | null; // null = ilimitado
+  used: number;
+  remaining: number | null; // null = ilimitado
+}
+
+/** Descoberta pura da quota — reutilizada em server e cliente. */
+export function computeAudioQuota(
+  tier: AudioPlanTier,
+  used: number,
+): AudioQuotaInfo {
+  const limit = AUDIO_LIBRARY_LIMITS[tier];
+  const remaining = limit == null ? null : Math.max(0, limit - used);
+  return { tier, limit, used, remaining };
 }

@@ -294,6 +294,7 @@ export type Database = {
           name: string
           original_filename: string | null
           recommended_for: string[]
+          sha256: string | null
           source: string | null
           updated_at: string
           vocal_type: string | null
@@ -317,6 +318,7 @@ export type Database = {
           name: string
           original_filename?: string | null
           recommended_for?: string[]
+          sha256?: string | null
           source?: string | null
           updated_at?: string
           vocal_type?: string | null
@@ -340,6 +342,7 @@ export type Database = {
           name?: string
           original_filename?: string | null
           recommended_for?: string[]
+          sha256?: string | null
           source?: string | null
           updated_at?: string
           vocal_type?: string | null
@@ -900,6 +903,7 @@ export type Database = {
           id: string
           meta_campaigns_beta: boolean
           name: string
+          plan_tier: string
           slug: string | null
           storage_quota_mb: number
           updated_at: string
@@ -910,6 +914,7 @@ export type Database = {
           id?: string
           meta_campaigns_beta?: boolean
           name: string
+          plan_tier?: string
           slug?: string | null
           storage_quota_mb?: number
           updated_at?: string
@@ -920,6 +925,7 @@ export type Database = {
           id?: string
           meta_campaigns_beta?: boolean
           name?: string
+          plan_tier?: string
           slug?: string | null
           storage_quota_mb?: number
           updated_at?: string
