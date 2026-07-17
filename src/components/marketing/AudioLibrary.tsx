@@ -62,29 +62,26 @@ export function AudioLibrary({ companyId }: Props) {
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  }, [
+    companyId,
+    filters.category,
+    filters.mood,
+    filters.energy,
+    filters.recommendedFor,
+    filters.marketingObjective,
+    filters.brandStyle,
+    filters.season,
+    filters.targetAudience,
+    filters.bestVideoDuration,
+  ]);
 
+  // `search` fica no cliente para digitação instantânea; demais filtros
+  // recarregam do servidor via `filtersToQuery`.
   const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (
-        filters.search &&
-        !r.name.toLowerCase().includes(filters.search.toLowerCase())
-      ) {
-        return false;
-      }
-      if (filters.category !== "all" && r.category !== filters.category)
-        return false;
-      if (filters.mood !== "all" && r.mood !== filters.mood) return false;
-      if (filters.energy !== "all" && r.energy !== filters.energy) return false;
-      if (
-        filters.recommendedFor !== "all" &&
-        !r.recommended_for.includes(filters.recommendedFor)
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [rows, filters]);
+    if (!filters.search) return rows;
+    const needle = filters.search.toLowerCase();
+    return rows.filter((r) => r.name.toLowerCase().includes(needle));
+  }, [rows, filters.search]);
 
   async function handleToggleActive(row: AudioLibraryRow, active: boolean) {
     try {
