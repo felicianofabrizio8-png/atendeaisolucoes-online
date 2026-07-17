@@ -13,16 +13,27 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import {
   extractCompanyIdFromAudioPath,
+  sanitizeBrandStyleList,
+  sanitizeMarketingObjectiveList,
   sanitizeRecommendedForList,
+  sanitizeSeasonList,
+  sanitizeTargetAudienceList,
+  sanitizeVideoDurationList,
   validateAudioFile,
+  validatePreferredRange,
 } from "./audio-library-validation";
 import {
+  AUDIO_BRAND_STYLES,
   AUDIO_CATEGORIES,
   AUDIO_ENERGIES,
+  AUDIO_MARKETING_OBJECTIVES,
   AUDIO_MOODS,
-  AUDIO_RECOMMENDED_FOR,
-  AUDIO_VOCAL_TYPES,
   AUDIO_PLAN_TIERS,
+  AUDIO_RECOMMENDED_FOR,
+  AUDIO_SEASONS,
+  AUDIO_TARGET_AUDIENCES,
+  AUDIO_VIDEO_DURATIONS,
+  AUDIO_VOCAL_TYPES,
   computeAudioQuota,
   type AudioLibraryRow,
   type AudioPlanTier,
@@ -101,6 +112,32 @@ const zRecommended = z
   .array(z.enum(AUDIO_RECOMMENDED_FOR as [string, ...string[]]))
   .default([]);
 
+// Novos metadados (fase de enriquecimento) — todos opcionais, default [].
+const zMarketingObjectives = z
+  .array(z.enum(AUDIO_MARKETING_OBJECTIVES as [string, ...string[]]))
+  .default([]);
+const zBrandStyles = z
+  .array(z.enum(AUDIO_BRAND_STYLES as [string, ...string[]]))
+  .default([]);
+const zSeasons = z
+  .array(z.enum(AUDIO_SEASONS as [string, ...string[]]))
+  .default([]);
+const zTargetAudiences = z
+  .array(z.enum(AUDIO_TARGET_AUDIENCES as [string, ...string[]]))
+  .default([]);
+// integer[] com whitelist estrita.
+const zVideoDurations = z
+  .array(
+    z
+      .number()
+      .int()
+      .refine((n) => (AUDIO_VIDEO_DURATIONS as number[]).includes(n), {
+        message: "invalid_video_duration",
+      }),
+  )
+  .default([]);
+const zNullableInt = z.number().int().nullable().optional();
+
 const createSchema = z.object({
   file_path: z.string().min(1),
   name: z.string().trim().min(1).max(200),
@@ -122,6 +159,14 @@ const createSchema = z.object({
     .regex(/^[a-f0-9]{64}$/i)
     .optional()
     .nullable(),
+  // novos — todos opcionais no payload; default [] / null.
+  marketing_objectives: zMarketingObjectives.optional(),
+  brand_styles: zBrandStyles.optional(),
+  seasons: zSeasons.optional(),
+  target_audiences: zTargetAudiences.optional(),
+  best_video_durations: zVideoDurations.optional(),
+  preferred_start_second: zNullableInt,
+  preferred_end_second: zNullableInt,
 });
 
 const updateSchema = z.object({
@@ -136,6 +181,15 @@ const updateSchema = z.object({
   source: zNullableStr.optional(),
   commercial_rights_notes: zNullableStr.optional(),
   is_active: z.boolean().optional(),
+  // novos — undefined = não altera; array vazio = limpa; null = limpa para
+  // preferred_*_second (ambos precisam ser informados juntos).
+  marketing_objectives: zMarketingObjectives.optional(),
+  brand_styles: zBrandStyles.optional(),
+  seasons: zSeasons.optional(),
+  target_audiences: zTargetAudiences.optional(),
+  best_video_durations: zVideoDurations.optional(),
+  preferred_start_second: zNullableInt,
+  preferred_end_second: zNullableInt,
 });
 
 const idSchema = z.object({ id: z.string().uuid() });
@@ -147,6 +201,20 @@ const listSchema = z
     energy: zEnergy,
     recommended_for: z
       .enum(AUDIO_RECOMMENDED_FOR as [string, ...string[]])
+      .nullish(),
+    // filtros novos — todos opcionais, aplicados no servidor via .contains().
+    marketing_objective: z
+      .enum(AUDIO_MARKETING_OBJECTIVES as [string, ...string[]])
+      .nullish(),
+    brand_style: z.enum(AUDIO_BRAND_STYLES as [string, ...string[]]).nullish(),
+    season: z.enum(AUDIO_SEASONS as [string, ...string[]]).nullish(),
+    target_audience: z
+      .enum(AUDIO_TARGET_AUDIENCES as [string, ...string[]])
+      .nullish(),
+    best_video_duration: z
+      .number()
+      .int()
+      .refine((n) => (AUDIO_VIDEO_DURATIONS as number[]).includes(n))
       .nullish(),
     search: zNullableStr.optional(),
     active_only: z.boolean().optional(),
@@ -178,6 +246,21 @@ export const listAudios = createServerFn({ method: "GET" })
     if (data?.energy) query = query.eq("energy", data.energy);
     if (data?.recommended_for) {
       query = query.contains("recommended_for", [data.recommended_for]);
+    }
+    if (data?.marketing_objective) {
+      query = query.contains("marketing_objectives", [data.marketing_objective]);
+    }
+    if (data?.brand_style) {
+      query = query.contains("brand_styles", [data.brand_style]);
+    }
+    if (data?.season) {
+      query = query.contains("seasons", [data.season]);
+    }
+    if (data?.target_audience) {
+      query = query.contains("target_audiences", [data.target_audience]);
+    }
+    if (data?.best_video_duration != null) {
+      query = query.contains("best_video_durations", [data.best_video_duration]);
     }
     if (data?.search) {
       const term = data.search.replace(/[%_]/g, "\\$&");
@@ -314,6 +397,17 @@ export const createAudio = createServerFn({ method: "POST" })
       );
     }
 
+    // Trecho preferido: validação server-side (bloqueia antes do banco).
+    const rangeRes = validatePreferredRange({
+      start: data.preferred_start_second,
+      end: data.preferred_end_second,
+      durationSeconds: data.duration_seconds ?? null,
+    });
+    if (!rangeRes.ok) {
+      await cleanupUpload("invalid_preferred_range");
+      throw new Error(`invalid_preferred_range:${rangeRes.reason}`);
+    }
+
     const payload = {
       company_id: ctx.companyId,
       created_by: ctx.userId,
@@ -334,6 +428,15 @@ export const createAudio = createServerFn({ method: "POST" })
       commercial_rights_notes: data.commercial_rights_notes,
       is_active: true,
       sha256: data.sha256 ?? null,
+      marketing_objectives: sanitizeMarketingObjectiveList(
+        data.marketing_objectives,
+      ),
+      brand_styles: sanitizeBrandStyleList(data.brand_styles),
+      seasons: sanitizeSeasonList(data.seasons),
+      target_audiences: sanitizeTargetAudienceList(data.target_audiences),
+      best_video_durations: sanitizeVideoDurationList(data.best_video_durations),
+      preferred_start_second: rangeRes.start,
+      preferred_end_second: rangeRes.end,
     };
 
     const { data: row, error } = await ctx.supabase
@@ -383,6 +486,53 @@ export const updateAudio = createServerFn({ method: "POST" })
       patch.commercial_rights_notes = data.commercial_rights_notes;
     }
     if (data.is_active !== undefined) patch.is_active = data.is_active;
+    if (data.marketing_objectives !== undefined) {
+      patch.marketing_objectives = sanitizeMarketingObjectiveList(
+        data.marketing_objectives,
+      );
+    }
+    if (data.brand_styles !== undefined) {
+      patch.brand_styles = sanitizeBrandStyleList(data.brand_styles);
+    }
+    if (data.seasons !== undefined) {
+      patch.seasons = sanitizeSeasonList(data.seasons);
+    }
+    if (data.target_audiences !== undefined) {
+      patch.target_audiences = sanitizeTargetAudienceList(data.target_audiences);
+    }
+    if (data.best_video_durations !== undefined) {
+      patch.best_video_durations = sanitizeVideoDurationList(
+        data.best_video_durations,
+      );
+    }
+    // Trecho preferido: se qualquer um dos dois campos veio na requisição
+    // (mesmo null), tratamos como uma alteração explícita e validamos contra a
+    // duration_seconds atual no banco.
+    if (
+      data.preferred_start_second !== undefined ||
+      data.preferred_end_second !== undefined
+    ) {
+      const { data: current, error: fetchErr } = await ctx.supabase
+        .from("audio_library")
+        .select("duration_seconds")
+        .eq("id", data.id)
+        .eq("company_id", ctx.companyId)
+        .maybeSingle();
+      if (fetchErr) throw new Error(fetchErr.message);
+      if (!current) throw new Error("audio_not_found");
+      const rangeRes = validatePreferredRange({
+        start: data.preferred_start_second ?? null,
+        end: data.preferred_end_second ?? null,
+        durationSeconds:
+          (current as { duration_seconds: number | null }).duration_seconds ??
+          null,
+      });
+      if (!rangeRes.ok) {
+        throw new Error(`invalid_preferred_range:${rangeRes.reason}`);
+      }
+      patch.preferred_start_second = rangeRes.start;
+      patch.preferred_end_second = rangeRes.end;
+    }
 
     const { data: row, error } = await ctx.supabase
       .from("audio_library")

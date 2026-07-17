@@ -276,6 +276,8 @@ export type Database = {
       }
       audio_library: {
         Row: {
+          best_video_durations: number[]
+          brand_styles: string[]
           category: string | null
           commercial_rights_notes: string | null
           commercial_use_confirmed: boolean
@@ -289,17 +291,24 @@ export type Database = {
           file_size_bytes: number | null
           id: string
           is_active: boolean
+          marketing_objectives: string[]
           mime_type: string
           mood: string | null
           name: string
           original_filename: string | null
+          preferred_end_second: number | null
+          preferred_start_second: number | null
           recommended_for: string[]
+          seasons: string[]
           sha256: string | null
           source: string | null
+          target_audiences: string[]
           updated_at: string
           vocal_type: string | null
         }
         Insert: {
+          best_video_durations?: number[]
+          brand_styles?: string[]
           category?: string | null
           commercial_rights_notes?: string | null
           commercial_use_confirmed?: boolean
@@ -313,17 +322,24 @@ export type Database = {
           file_size_bytes?: number | null
           id?: string
           is_active?: boolean
+          marketing_objectives?: string[]
           mime_type: string
           mood?: string | null
           name: string
           original_filename?: string | null
+          preferred_end_second?: number | null
+          preferred_start_second?: number | null
           recommended_for?: string[]
+          seasons?: string[]
           sha256?: string | null
           source?: string | null
+          target_audiences?: string[]
           updated_at?: string
           vocal_type?: string | null
         }
         Update: {
+          best_video_durations?: number[]
+          brand_styles?: string[]
           category?: string | null
           commercial_rights_notes?: string | null
           commercial_use_confirmed?: boolean
@@ -337,13 +353,18 @@ export type Database = {
           file_size_bytes?: number | null
           id?: string
           is_active?: boolean
+          marketing_objectives?: string[]
           mime_type?: string
           mood?: string | null
           name?: string
           original_filename?: string | null
+          preferred_end_second?: number | null
+          preferred_start_second?: number | null
           recommended_for?: string[]
+          seasons?: string[]
           sha256?: string | null
           source?: string | null
+          target_audiences?: string[]
           updated_at?: string
           vocal_type?: string | null
         }
