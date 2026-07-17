@@ -1810,7 +1810,7 @@ function MetaIntegrationSection() {
           `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
           `&response_type=code` +
           `&state=${encodeURIComponent(state)}` +
-          `&auth_type=reauthenticate`;
+          `&auth_type=rerequest`;
         // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
         // Fallback manual (sem config_id) mantém o OAuth clássico com scope=.
         const oauthUrl = useBusinessConfig
