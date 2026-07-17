@@ -732,3 +732,54 @@ function sanitize(raw: unknown): unknown {
   }
   return clone;
 }
+
+/**
+ * Normaliza `image_path` de product_media_refs para um path relativo ao bucket
+ * `product-images`. Aceita:
+ *   - path relativo: "company_id/arquivo.jpg" (com ou sem barras iniciais);
+ *   - URL absoluta pública: "https://<project>.supabase.co/storage/v1/object/public/product-images/company_id/arquivo.jpg";
+ *   - URL absoluta assinada: ".../storage/v1/object/sign/product-images/...".
+ *
+ * Retorna null quando:
+ *   - URL de outro bucket;
+ *   - host inesperado (não é *.supabase.co / *.supabase.in);
+ *   - não é possível extrair um path válido.
+ *
+ * Nunca retorna a URL absoluta — createSignedUrl exige path relativo.
+ */
+export function extractProductImagePath(input: string): string | null {
+  if (typeof input !== "string" || input.trim() === "") return null;
+  const trimmed = input.trim();
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    // Path relativo. Remove barras iniciais e valida que não escapa do bucket.
+    const clean = trimmed.replace(/^\/+/, "");
+    if (clean === "" || clean.includes("..")) return null;
+    try {
+      return decodeURIComponent(clean);
+    } catch {
+      return clean;
+    }
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  // Aceita hosts Supabase Storage conhecidos.
+  if (!/\.supabase\.(co|in)$/i.test(parsed.hostname)) return null;
+
+  const marker = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/product-images\//;
+  const match = parsed.pathname.match(marker);
+  if (!match) return null;
+
+  const rest = parsed.pathname.slice(match.index! + match[0].length);
+  if (!rest || rest.includes("..")) return null;
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return rest;
+  }
+}
