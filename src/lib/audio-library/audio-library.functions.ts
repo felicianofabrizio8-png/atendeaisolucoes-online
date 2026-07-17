@@ -22,7 +22,11 @@ import {
   AUDIO_MOODS,
   AUDIO_RECOMMENDED_FOR,
   AUDIO_VOCAL_TYPES,
+  AUDIO_PLAN_TIERS,
+  computeAudioQuota,
   type AudioLibraryRow,
+  type AudioPlanTier,
+  type AudioQuotaInfo,
 } from "./audio-library.types";
 
 type SB = SupabaseClient<Database>;
@@ -61,6 +65,26 @@ function logEvent(event: string, payload: Record<string, unknown>) {
   }
 }
 
+async function loadQuota(ctx: Ctx): Promise<AudioQuotaInfo> {
+  const sb = ctx.supabase as unknown as SupabaseClient;
+  const { data: company, error: compErr } = await sb
+    .from("companies")
+    .select("plan_tier")
+    .eq("id", ctx.companyId)
+    .maybeSingle();
+  if (compErr) throw new Error(compErr.message);
+  const rawTier = (company as { plan_tier?: string } | null)?.plan_tier ?? "starter";
+  const tier: AudioPlanTier = (AUDIO_PLAN_TIERS as string[]).includes(rawTier)
+    ? (rawTier as AudioPlanTier)
+    : "starter";
+  const { count, error: countErr } = await ctx.supabase
+    .from("audio_library")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", ctx.companyId);
+  if (countErr) throw new Error(countErr.message);
+  return computeAudioQuota(tier, count ?? 0);
+}
+
 // ============================================================================
 // Schemas
 // ============================================================================
@@ -93,6 +117,11 @@ const createSchema = z.object({
   source: zNullableStr,
   commercial_use_confirmed: z.literal(true),
   commercial_rights_notes: zNullableStr,
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i)
+    .optional()
+    .nullable(),
 });
 
 const updateSchema = z.object({
@@ -125,6 +154,10 @@ const listSchema = z
   .partial()
   .optional();
 
+const sha256Schema = z.object({
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+});
+
 // ============================================================================
 // listAudios
 // ============================================================================
@@ -156,8 +189,52 @@ export const listAudios = createServerFn({ method: "GET" })
   });
 
 // ============================================================================
+// getAudioQuota — retorna tier + limite + uso atual.
+// ============================================================================
+
+export const getAudioQuota = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const ctx = await loadCompany(context);
+    const quota = await loadQuota(ctx);
+    return { quota };
+  });
+
+// ============================================================================
+// checkAudioDuplicate — verifica se o sha256 já existe para a empresa antes
+// do upload; permite rejeitar cedo sem gastar banda enviando o arquivo.
+// ============================================================================
+
+export const checkAudioDuplicate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => sha256Schema.parse(input))
+  .handler(async ({ data, context }) => {
+    const ctx = await loadCompany(context);
+    const { data: row, error } = await ctx.supabase
+      .from("audio_library")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id, name")
+      .eq("company_id", ctx.companyId)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .eq("sha256" as any, data.sha256)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (row) {
+      logEvent("upload_duplicate_detected", {
+        stage: "pre_upload",
+        existing_id: (row as { id: string }).id,
+      });
+      return {
+        duplicate: true as const,
+        existing: row as { id: string; name: string },
+      };
+    }
+    return { duplicate: false as const };
+  });
+
+// ============================================================================
 // createAudio — assume que o arquivo já foi enviado ao storage pelo cliente.
-// Valida path prefix + mime + tamanho antes de gravar o registro.
+// Valida path prefix + mime + tamanho + quota + duplicidade antes de gravar.
 // ============================================================================
 
 export const createAudio = createServerFn({ method: "POST" })
@@ -165,6 +242,14 @@ export const createAudio = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => createSchema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
+
+    async function cleanupUpload(reason: string) {
+      try {
+        await ctx.supabase.storage.from(BUCKET).remove([data.file_path]);
+      } catch (e) {
+        logEvent("cleanup_failed", { reason, error: (e as Error).message });
+      }
+    }
 
     // Defesa em profundidade: path deve começar pelo companyId do usuário.
     const pathCompany = extractCompanyIdFromAudioPath(data.file_path);
@@ -175,12 +260,7 @@ export const createAudio = createServerFn({ method: "POST" })
         stage: "create",
         path_prefix: pathCompany,
       });
-      // Best-effort cleanup do arquivo estranho antes de rejeitar.
-      try {
-        await ctx.supabase.storage.from(BUCKET).remove([data.file_path]);
-      } catch {
-        /* ignore */
-      }
+      await cleanupUpload("cross_tenant");
       throw new Error("Caminho de arquivo inválido para esta empresa.");
     }
 
@@ -190,16 +270,48 @@ export const createAudio = createServerFn({ method: "POST" })
       commercialUseConfirmed: data.commercial_use_confirmed,
     });
     if (!validation.ok) {
-      try {
-        await ctx.supabase.storage.from(BUCKET).remove([data.file_path]);
-      } catch {
-        /* ignore */
-      }
+      await cleanupUpload("invalid_file");
       logEvent("upload_rejected", {
         reason: validation.reason,
         mime: data.mime_type,
       });
       throw new Error(`Arquivo inválido: ${validation.reason}`);
+    }
+
+    // Dedupe por hash (defesa em profundidade — o índice único garante).
+    if (data.sha256) {
+      const { data: existing, error: dupErr } = await ctx.supabase
+        .from("audio_library")
+        .select("id")
+        .eq("company_id", ctx.companyId)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .eq("sha256" as any, data.sha256)
+        .maybeSingle();
+      if (dupErr) throw new Error(dupErr.message);
+      if (existing) {
+        await cleanupUpload("duplicate");
+        logEvent("upload_duplicate_detected", {
+          stage: "create",
+          existing_id: (existing as { id: string }).id,
+        });
+        throw new Error(
+          `duplicate:${(existing as { id: string }).id}:Este arquivo já existe na sua biblioteca.`,
+        );
+      }
+    }
+
+    // Verificação de quota (limite de músicas por empresa).
+    const quota = await loadQuota(ctx);
+    if (quota.limit != null && quota.used >= quota.limit) {
+      await cleanupUpload("quota_exceeded");
+      logEvent("upload_quota_exceeded", {
+        tier: quota.tier,
+        limit: quota.limit,
+        used: quota.used,
+      });
+      throw new Error(
+        `quota_exceeded:${quota.tier}:${quota.limit}:Limite de músicas do plano ${quota.tier} atingido (${quota.used}/${quota.limit}).`,
+      );
     }
 
     const payload = {
@@ -221,6 +333,7 @@ export const createAudio = createServerFn({ method: "POST" })
       commercial_use_confirmed: true,
       commercial_rights_notes: data.commercial_rights_notes,
       is_active: true,
+      sha256: data.sha256 ?? null,
     };
 
     const { data: row, error } = await ctx.supabase
@@ -230,11 +343,10 @@ export const createAudio = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) {
-      // Se falhar a gravação, remove o arquivo para evitar órfão.
-      try {
-        await ctx.supabase.storage.from(BUCKET).remove([data.file_path]);
-      } catch {
-        /* ignore */
+      await cleanupUpload("db_error");
+      // Índice único de sha256: código 23505.
+      if ((error as { code?: string }).code === "23505") {
+        throw new Error("Este arquivo já existe na sua biblioteca.");
       }
       throw new Error(error.message);
     }
@@ -242,6 +354,7 @@ export const createAudio = createServerFn({ method: "POST" })
       audio_id: (row as { id: string }).id,
       size_bytes: data.file_size_bytes,
       mime: data.mime_type,
+      has_sha256: !!data.sha256,
     });
     return { audio: row as unknown as AudioLibraryRow };
   });
@@ -373,5 +486,6 @@ export const getAudioSignedUrl = createServerFn({ method: "POST" })
     return {
       signed_url: signed.signedUrl,
       expires_at: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString(),
+      ttl_seconds: SIGNED_URL_TTL_SECONDS,
     };
   });
