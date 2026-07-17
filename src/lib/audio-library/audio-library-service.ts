@@ -173,6 +173,11 @@ export async function listAudioLibrary(
       mood: query.mood ?? undefined,
       energy: query.energy ?? undefined,
       recommended_for: query.recommendedFor ?? undefined,
+      marketing_objective: query.marketingObjective ?? undefined,
+      brand_style: query.brandStyle ?? undefined,
+      season: query.season ?? undefined,
+      target_audience: query.targetAudience ?? undefined,
+      best_video_duration: query.bestVideoDuration ?? undefined,
       search: query.search ?? undefined,
       active_only: query.activeOnly ?? undefined,
     },
@@ -192,6 +197,13 @@ export async function updateAudioMetadata(input: {
   source?: string | null;
   commercialRightsNotes?: string | null;
   isActive?: boolean;
+  marketingObjectives?: AudioMarketingObjective[];
+  brandStyles?: AudioBrandStyle[];
+  seasons?: AudioSeason[];
+  targetAudiences?: AudioTargetAudience[];
+  bestVideoDurations?: AudioVideoDuration[];
+  preferredStartSecond?: number | null;
+  preferredEndSecond?: number | null;
 }): Promise<AudioLibraryRow> {
   const res = await updateAudio({
     data: {
@@ -206,6 +218,13 @@ export async function updateAudioMetadata(input: {
       source: input.source,
       commercial_rights_notes: input.commercialRightsNotes,
       is_active: input.isActive,
+      marketing_objectives: input.marketingObjectives,
+      brand_styles: input.brandStyles,
+      seasons: input.seasons,
+      target_audiences: input.targetAudiences,
+      best_video_durations: input.bestVideoDurations,
+      preferred_start_second: input.preferredStartSecond,
+      preferred_end_second: input.preferredEndSecond,
     },
   });
   return res.audio;
