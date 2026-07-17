@@ -122,6 +122,7 @@ export function AudioLibrary({ companyId }: Props) {
       <AudioFilters
         value={filters}
         onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
+        onClear={() => setFilters(emptyAudioFilters)}
       />
 
       {loading ? (
