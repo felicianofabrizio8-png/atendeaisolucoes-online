@@ -178,3 +178,9 @@ export async function apiScheduleContent(input: {
 export async function apiCancelSchedule(id: string) {
   return cancelMarketingSchedule({ data: { id } });
 }
+
+// ------- Facebook publish readiness -------
+export async function apiFacebookPublishReadiness() {
+  return getFacebookPublishReadiness();
+}
+
