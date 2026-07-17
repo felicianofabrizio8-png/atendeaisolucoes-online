@@ -486,6 +486,53 @@ export const updateAudio = createServerFn({ method: "POST" })
       patch.commercial_rights_notes = data.commercial_rights_notes;
     }
     if (data.is_active !== undefined) patch.is_active = data.is_active;
+    if (data.marketing_objectives !== undefined) {
+      patch.marketing_objectives = sanitizeMarketingObjectiveList(
+        data.marketing_objectives,
+      );
+    }
+    if (data.brand_styles !== undefined) {
+      patch.brand_styles = sanitizeBrandStyleList(data.brand_styles);
+    }
+    if (data.seasons !== undefined) {
+      patch.seasons = sanitizeSeasonList(data.seasons);
+    }
+    if (data.target_audiences !== undefined) {
+      patch.target_audiences = sanitizeTargetAudienceList(data.target_audiences);
+    }
+    if (data.best_video_durations !== undefined) {
+      patch.best_video_durations = sanitizeVideoDurationList(
+        data.best_video_durations,
+      );
+    }
+    // Trecho preferido: se qualquer um dos dois campos veio na requisição
+    // (mesmo null), tratamos como uma alteração explícita e validamos contra a
+    // duration_seconds atual no banco.
+    if (
+      data.preferred_start_second !== undefined ||
+      data.preferred_end_second !== undefined
+    ) {
+      const { data: current, error: fetchErr } = await ctx.supabase
+        .from("audio_library")
+        .select("duration_seconds")
+        .eq("id", data.id)
+        .eq("company_id", ctx.companyId)
+        .maybeSingle();
+      if (fetchErr) throw new Error(fetchErr.message);
+      if (!current) throw new Error("audio_not_found");
+      const rangeRes = validatePreferredRange({
+        start: data.preferred_start_second ?? null,
+        end: data.preferred_end_second ?? null,
+        durationSeconds:
+          (current as { duration_seconds: number | null }).duration_seconds ??
+          null,
+      });
+      if (!rangeRes.ok) {
+        throw new Error(`invalid_preferred_range:${rangeRes.reason}`);
+      }
+      patch.preferred_start_second = rangeRes.start;
+      patch.preferred_end_second = rangeRes.end;
+    }
 
     const { data: row, error } = await ctx.supabase
       .from("audio_library")
