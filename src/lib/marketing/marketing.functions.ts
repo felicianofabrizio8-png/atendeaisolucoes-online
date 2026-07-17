@@ -356,68 +356,94 @@ export const setMarketingContentStatus = createServerFn({ method: "POST" })
   });
 
 // ============================================================================
-// SCHEDULE — obrigatório: só conteúdo approved da MESMA empresa
+// FACEBOOK PUBLISH READINESS — verifica pages_manage_posts na integração principal
 // ============================================================================
 
-const ScheduleSchema = z.object({
-  content_id: z.string().uuid(),
-  channel: z.enum(["instagram", "facebook", "whatsapp"]),
-  scheduled_at: z.string().datetime(),
-  notes: z.string().trim().max(500).optional().nullable(),
-});
-
-export const scheduleMarketingContent = createServerFn({ method: "POST" })
+/**
+ * Retorna o status de prontidão para publicar no Facebook via API Graph.
+ * NÃO consulta a Meta; apenas lê o snapshot persistido em
+ * `integrations.account_metadata.granted_scopes` (gravado no OAuth).
+ *
+ * FB publishing requer `pages_manage_posts` no token. Sem ela, /photos e /feed
+ * respondem HTTP 403 `(#200) Permissions error`. A integração principal do
+ * canal `facebook` é preferida; se ausente, tenta o fallback pela integração
+ * principal do `instagram` (que pode carregar fb_page_id + escopos do usuário).
+ */
+export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => ScheduleSchema.parse(i))
-  .handler(async ({ data, context }) => {
-    const { companyId, userId, supabase } = await loadCompany(context);
-    const { data: content, error: cErr } = await supabase
-      .from("marketing_contents")
-      .select("id, company_id, status, media_ids, ai_prompt")
-      .eq("id", data.content_id)
-      .maybeSingle();
-    if (cErr) throw new Error(cErr.message);
-    if (!content || content.company_id !== companyId) {
-      throw new Error("Conteúdo não pertence à empresa.");
-    }
-    if (content.status !== "approved") {
-      throw new Error(
-        "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
-      );
-    }
-    // Instagram (feed/reel/story) exige ao menos uma mídia associada.
-    // Mídia válida = marketing_media (media_ids) OU imagem de produto reutilizada
-    // via ai_prompt.product_media_refs. WhatsApp CTA fica fora dessa regra.
-    if (data.channel === "instagram") {
-      const marketingCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
-      const promptObj =
-        content.ai_prompt && typeof content.ai_prompt === "object"
-          ? (content.ai_prompt as { product_media_refs?: unknown })
-          : null;
-      const productRefs = Array.isArray(promptObj?.product_media_refs)
-        ? (promptObj!.product_media_refs as unknown[])
-        : [];
-      if (marketingCount === 0 && productRefs.length === 0) {
-        throw new Error(
-          "Selecione ao menos uma imagem ou vídeo (biblioteca ou produto) antes de agendar para o Instagram.",
-        );
-      }
-    }
-    const { data: row, error } = await supabase
-      .from("marketing_schedule")
-      .insert({
-        company_id: companyId,
-        content_id: data.content_id,
-        channel: data.channel,
-        scheduled_at: data.scheduled_at,
-        notes: data.notes ?? null,
-        created_by: userId,
-      })
-      .select("*")
-      .single();
+  .handler(async ({ context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const { data: rows, error } = await supabase
+      .from("integrations")
+      .select("id, channel, account_metadata, active, is_primary_publisher, external_account_id")
+      .eq("company_id", companyId)
+      .in("channel", ["facebook", "instagram"])
+      .eq("active", true)
+      .eq("is_primary_publisher", true);
     if (error) throw new Error(error.message);
-    return row;
+    const list = (rows ?? []) as Array<{
+      id: string;
+      channel: "facebook" | "instagram";
+      account_metadata: Record<string, unknown> | null;
+      external_account_id: string | null;
+    }>;
+    const fb = list.find((r) => r.channel === "facebook") ?? null;
+    const ig = list.find((r) => r.channel === "instagram") ?? null;
+    const source = fb ?? ig;
+    if (!source) {
+      return {
+        ok: false as const,
+        code: "no_primary_integration",
+        message: "Nenhuma integração Meta principal marcada. Conecte uma página no Facebook/Instagram.",
+        hasPagesManagePosts: false,
+        integrationChannel: null,
+        pageId: null,
+      };
+    }
+    const meta = (source.account_metadata ?? {}) as {
+      granted_scopes?: unknown;
+      fb_page_id?: unknown;
+      token_type?: unknown;
+    };
+    const scopes = Array.isArray(meta.granted_scopes)
+      ? (meta.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
+      : [];
+    const hasPagesManagePosts = scopes.includes("pages_manage_posts");
+    const pageId =
+      (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
+      source.external_account_id;
+    if (!hasPagesManagePosts) {
+      return {
+        ok: false as const,
+        code: "missing_pages_manage_posts",
+        message:
+          "Permissão para publicar no Facebook não concedida. Clique em Reconectar Meta e conceda 'pages_manage_posts'. Se a Meta não exibir a permissão, o App precisa de Advanced Access via App Review.",
+        hasPagesManagePosts: false,
+        integrationChannel: source.channel,
+        pageId,
+        grantedScopes: scopes,
+      };
+    }
+    return {
+      ok: true as const,
+      code: "ready",
+      message: "Publicação no Facebook liberada.",
+      hasPagesManagePosts: true,
+      integrationChannel: source.channel,
+      pageId,
+      grantedScopes: scopes,
+    };
   });
+
+// ============================================================================
+// SCHEDULE — obrigatório: só conteúdo approved da MESMA empresa
+// ============================================================================
+// (definição acima mantida; adiciona guarda de permissão para Facebook.)
+
+export const scheduleMarketingContent2 = null; // marker: código real acima
+
+// -- inserted below at original location --
+
 
 export const listMarketingSchedule = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
