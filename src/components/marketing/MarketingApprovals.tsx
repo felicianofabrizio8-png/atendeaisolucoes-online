@@ -33,6 +33,36 @@ export function MarketingApprovals({ companyId }: Props) {
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fbReadiness, setFbReadiness] = useState<
+    | null
+    | {
+        ok: boolean;
+        code: string;
+        message: string;
+        hasPagesManagePosts: boolean;
+        integrationChannel: string | null;
+        pageId: string | null;
+      }
+  >(null);
+  const [fbReadinessLoading, setFbReadinessLoading] = useState(false);
+
+  async function refreshFbReadiness() {
+    setFbReadinessLoading(true);
+    try {
+      const r = await apiFacebookPublishReadiness();
+      setFbReadiness(r as typeof fbReadiness);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[marketing] fb readiness fetch failed", e);
+      setFbReadiness(null);
+    } finally {
+      setFbReadinessLoading(false);
+    }
+  }
+  useEffect(() => {
+    void refreshFbReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   async function refresh() {
     setLoading(true);
