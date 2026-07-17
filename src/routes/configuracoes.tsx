@@ -1420,8 +1420,10 @@ declare global {
 interface MetaBusinessConfig {
   appId: string;
   businessConfigId: string;
+  pageLoginConfigId: string;
   hasAppId: boolean;
   hasBusinessConfigId: boolean;
+  hasPageLoginConfigId: boolean;
 }
 
 async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
