@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
+import { formatPreferredRange, splitWithMore } from "./audio-ui-helpers";
 
 function formatDuration(seconds: number | null): string {
   if (!seconds || !Number.isFinite(seconds)) return "—";
