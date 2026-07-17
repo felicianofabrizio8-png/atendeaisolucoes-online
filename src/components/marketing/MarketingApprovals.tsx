@@ -12,6 +12,7 @@ import {
   apiScheduleContent,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
+import { validateScheduleForm } from "@/lib/marketing/schedule-form";
 
 interface Props {
   companyId: string;
