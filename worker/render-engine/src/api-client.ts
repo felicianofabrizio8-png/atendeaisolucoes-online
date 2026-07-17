@@ -178,7 +178,7 @@ export async function uploadSignedUrl(
         "content-type": contentType,
         "x-upsert": "false",
       },
-      body: bytes,
+      body: new Uint8Array(bytes),
       redirect: "error",
       signal: ac.signal,
     });
