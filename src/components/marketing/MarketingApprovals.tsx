@@ -222,23 +222,44 @@ export function MarketingApprovals({ companyId }: Props) {
               </select>
             </div>
             <div>
-              <Label>Data e hora</Label>
+              <Label htmlFor="schedule-at-input">Data e hora</Label>
               <Input
+                id="schedule-at-input"
                 type="datetime-local"
                 value={scheduleAt}
-                onChange={(e) => setScheduleAt(e.target.value)}
+                aria-invalid={scheduleAtError ? true : undefined}
+                aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
+                className={
+                  scheduleAtError
+                    ? "border-destructive focus-visible:ring-destructive"
+                    : undefined
+                }
+                onChange={(e) => {
+                  setScheduleAt(e.target.value);
+                  if (scheduleAtError) setScheduleAtError(null);
+                }}
               />
+              {scheduleAtError && (
+                <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
+                  {scheduleAtError}
+                </p>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               Este agendamento é apenas planejamento. Publicação automática não faz parte da Fase 1.
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setScheduleFor(null)} disabled={busy}>
+              <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
                 Cancelar
               </Button>
-              <Button onClick={() => void schedule()} disabled={busy || !scheduleAt}>
+              <Button
+                onClick={() => void schedule()}
+                disabled={busy}
+                aria-disabled={busy}
+                className={busy ? "cursor-not-allowed opacity-70" : undefined}
+              >
                 {busy && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                Agendar
+                {busy ? "Agendando…" : "Agendar"}
               </Button>
             </div>
           </div>
