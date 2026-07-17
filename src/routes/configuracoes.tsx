@@ -1561,7 +1561,13 @@ function MetaIntegrationSection() {
     const tok = encodeURIComponent(accessToken);
     const GRAPH = "https://graph.facebook.com/v25.0";
 
+    const intent =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default"
+        : "default";
+
     // /debug_token — escopos concedidos
+    let grantedScopes: string[] = [];
     try {
       const debugRes = await fetch(
         `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
@@ -1570,14 +1576,41 @@ function MetaIntegrationSection() {
       const debugData =
         (debugJson as { data?: { scopes?: string[]; granular_scopes?: unknown; app_id?: string } })
           ?.data ?? {};
+      grantedScopes = Array.isArray(debugData.scopes) ? debugData.scopes : [];
       console.log("META_TOKEN_SCOPES", {
         app_id: debugData.app_id ?? null,
-        scopes: debugData.scopes ?? null,
+        scopes: grantedScopes,
         granular_scopes: debugData.granular_scopes ?? null,
         raw: debugJson,
       });
     } catch (e) {
       console.warn("META_TOKEN_DEBUG_FAIL", e);
+    }
+
+    // Readiness OAuth: exigir escopos mínimos para intent=facebook_page ANTES
+    // de listar páginas — evita mensagem genérica "nenhuma página encontrada"
+    // quando na verdade faltou pages_show_list na Configuration do Meta.
+    const FB_PAGE_REQUIRED = [
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts",
+    ];
+    if (intent === "facebook_page" && grantedScopes.length > 0) {
+      const missing = FB_PAGE_REQUIRED.filter((s) => !grantedScopes.includes(s));
+      if (missing.length > 0) {
+        console.error("META_FB_PAGE_SCOPES_MISSING", {
+          intent,
+          missing,
+          granted: grantedScopes,
+        });
+        setAvailable([]);
+        setInfo(null);
+        setError(
+          `Permissões faltando na Configuration do Facebook Login: ${missing.join(", ")}. ` +
+            `Ajuste a Login Configuration no Meta Developers para incluir essas permissões e clique novamente em "Conectar publicação do Facebook".`,
+        );
+        return;
+      }
     }
 
     // /me
@@ -1617,13 +1650,20 @@ function MetaIntegrationSection() {
       `&limit=100&access_token=${tok}`;
     const accountsRes = await fetch(accountsUrl);
     const accountsJson = (await accountsRes.json()) as Record<string, unknown>;
+    const errObj = (accountsJson as { error?: { code?: number; message?: string } }).error;
+    const root = accountsJson as { data?: unknown[] };
+    const pageCount = Array.isArray(root.data) ? root.data.length : 0;
     console.log("META_ME_ACCOUNTS_RESPONSE", {
       status: accountsRes.status,
       ok: accountsRes.ok,
+      error_code: errObj?.code ?? null,
+      error_message: errObj?.message ?? null,
+      page_count: pageCount,
+      granted_scopes: grantedScopes,
+      intent,
       payload: accountsJson,
     });
 
-    const errObj = (accountsJson as { error?: { message?: string } }).error;
     if (errObj) {
       console.error("META_ME_ACCOUNTS_ERROR_FULL", accountsJson);
       throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
@@ -1636,8 +1676,7 @@ function MetaIntegrationSection() {
       instagram_business_account?: { id?: string; username?: string };
       connected_whatsapp_business_account?: { id?: string };
     };
-    const root = accountsJson as { data?: RawPage[] };
-    const accounts: RawPage[] = Array.isArray(root.data) ? root.data : [];
+    const accounts: RawPage[] = Array.isArray(root.data) ? (root.data as RawPage[]) : [];
 
     console.log("META_PAGES_DETAIL", accounts.map((p) => ({
       id: p.id,
@@ -1658,10 +1697,12 @@ function MetaIntegrationSection() {
     setAvailable(list);
 
     if (list.length === 0) {
-      setInfo(
-        "Login Meta conectado, mas nenhuma página Facebook foi encontrada. Veja o console (META_ME_ACCOUNTS_RESPONSE) para resposta completa da Meta.",
+      setInfo(null);
+      setError(
+        "Nenhuma Página foi retornada pela Meta. Confirme que pages_show_list foi concedida na Configuration e que sua conta administra a Página desejada.",
       );
     } else {
+      setError(null);
       setInfo(`Login Meta conectado. ${list.length} página(s) disponível(is) para conexão.`);
     }
   }, []);
