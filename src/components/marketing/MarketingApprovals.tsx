@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, Loader2, Send, Calendar } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Send, Calendar, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiListContents,
   apiUpdateContent,
   apiSetContentStatus,
   apiScheduleContent,
+  apiFacebookPublishReadiness,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
@@ -32,6 +33,36 @@ export function MarketingApprovals({ companyId }: Props) {
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fbReadiness, setFbReadiness] = useState<
+    | null
+    | {
+        ok: boolean;
+        code: string;
+        message: string;
+        hasPagesManagePosts: boolean;
+        integrationChannel: string | null;
+        pageId: string | null;
+      }
+  >(null);
+  const [fbReadinessLoading, setFbReadinessLoading] = useState(false);
+
+  async function refreshFbReadiness() {
+    setFbReadinessLoading(true);
+    try {
+      const r = await apiFacebookPublishReadiness();
+      setFbReadiness(r as typeof fbReadiness);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[marketing] fb readiness fetch failed", e);
+      setFbReadiness(null);
+    } finally {
+      setFbReadinessLoading(false);
+    }
+  }
+  useEffect(() => {
+    void refreshFbReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   async function refresh() {
     setLoading(true);
@@ -181,6 +212,35 @@ export function MarketingApprovals({ companyId }: Props) {
           Recarregar
         </Button>
       </div>
+
+      {fbReadiness && !fbReadiness.ok ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <div className="flex-1 space-y-1">
+            <div className="font-semibold">Publicação no Facebook bloqueada</div>
+            <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
+            <div className="text-[11px] text-muted-foreground">
+              Código: <code>{fbReadiness.code}</code>
+              {fbReadiness.integrationChannel ? ` · integração: ${fbReadiness.integrationChannel}` : ""}
+              {fbReadiness.pageId ? ` · page_id: ${fbReadiness.pageId}` : ""}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              window.location.href = "/configuracoes#meta";
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar Meta
+          </Button>
+        </div>
+      ) : null}
+
+
 
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">

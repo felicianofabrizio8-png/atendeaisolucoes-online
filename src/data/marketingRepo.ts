@@ -18,6 +18,7 @@ import {
   scheduleMarketingContent,
   listMarketingSchedule,
   cancelMarketingSchedule,
+  getFacebookPublishReadiness,
 } from "@/lib/marketing/marketing.functions";
 import { generateMarketingContent } from "@/lib/marketing/marketing-ai.functions";
 import type {
@@ -177,3 +178,9 @@ export async function apiScheduleContent(input: {
 export async function apiCancelSchedule(id: string) {
   return cancelMarketingSchedule({ data: { id } });
 }
+
+// ------- Facebook publish readiness -------
+export async function apiFacebookPublishReadiness() {
+  return getFacebookPublishReadiness();
+}
+
