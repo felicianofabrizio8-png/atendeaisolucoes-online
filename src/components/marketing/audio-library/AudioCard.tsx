@@ -127,3 +127,58 @@ export function AudioCard({
     </article>
   );
 }
+
+function MetaLine({
+  label,
+  items,
+  max = 2,
+}: {
+  label: string;
+  items: readonly string[];
+  max?: number;
+}) {
+  if (items.length === 0) return null;
+  const { visible, extra } = splitWithMore(items, max);
+  return (
+    <p className="text-[11px] text-muted-foreground truncate">
+      <span className="font-medium text-foreground">{label}:</span>{" "}
+      {visible.join(", ")}
+      {extra > 0 ? ` +${extra}` : ""}
+    </p>
+  );
+}
+
+function EnrichmentMeta({ row }: { row: AudioLibraryRow }) {
+  const range = formatPreferredRange(
+    row.preferred_start_second,
+    row.preferred_end_second,
+  );
+  const hasAny =
+    row.marketing_objectives.length > 0 ||
+    row.brand_styles.length > 0 ||
+    row.target_audiences.length > 0 ||
+    row.best_video_durations.length > 0 ||
+    range != null;
+  if (!hasAny) return null;
+  return (
+    <div className="space-y-0.5">
+      <MetaLine label="Objetivos" items={row.marketing_objectives} />
+      <MetaLine label="Estilo" items={row.brand_styles} />
+      <MetaLine
+        label="Público"
+        items={row.target_audiences}
+        max={1}
+      />
+      <MetaLine
+        label="Durações"
+        items={row.best_video_durations.map((n) => `${n}s`)}
+        max={3}
+      />
+      {range ? (
+        <p className="text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Trecho:</span> {range}
+        </p>
+      ) : null}
+    </div>
+  );
+}
