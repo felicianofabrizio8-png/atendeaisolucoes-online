@@ -2059,18 +2059,37 @@ function MetaIntegrationSection() {
         </div>
       )}
 
-      <button
-        onClick={onConnect}
-        disabled={connecting}
-        className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
-      >
-        {connecting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Plug className="h-3.5 w-3.5" />
-        )}
-        {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onConnect("default")}
+          disabled={connecting}
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-[#1877F2] text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {connecting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plug className="h-3.5 w-3.5" />
+          )}
+          {pages.length > 0 ? "Conectar outra página" : "Conectar Instagram / Facebook"}
+        </button>
+        <button
+          onClick={() => onConnect("facebook_page")}
+          disabled={connecting || !metaConfig?.hasPageLoginConfigId}
+          title={
+            metaConfig?.hasPageLoginConfigId
+              ? "Fluxo dedicado: solicita pages_manage_posts + pages_read_engagement para publicar na Página."
+              : "Defina META_PAGE_LOGIN_CONFIG_ID para habilitar."
+          }
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-emerald-600 text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {connecting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plug className="h-3.5 w-3.5" />
+          )}
+          Conectar publicação do Facebook
+        </button>
+      </div>
 
       <div className="mt-3">
         <button
