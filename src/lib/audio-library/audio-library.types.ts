@@ -85,6 +85,85 @@ export const AUDIO_RECOMMENDED_FOR: AudioRecommendedFor[] = [
   "data_comemorativa",
 ];
 
+// ============================================================================
+// Novos metadados (fase de enriquecimento — sem IA ainda).
+// Todos opcionais no banco (default array vazio ou null). Ordem preservada
+// nos arrays de UI para exibição estável.
+// ============================================================================
+
+export type AudioMarketingObjective =
+  | "venda"
+  | "institucional"
+  | "promocao"
+  | "lancamento"
+  | "relacionamento"
+  | "branding"
+  | "engajamento";
+
+export const AUDIO_MARKETING_OBJECTIVES: AudioMarketingObjective[] = [
+  "venda",
+  "institucional",
+  "promocao",
+  "lancamento",
+  "relacionamento",
+  "branding",
+  "engajamento",
+];
+
+export type AudioBrandStyle =
+  | "premium"
+  | "moderno"
+  | "elegante"
+  | "sofisticado"
+  | "divertido"
+  | "popular"
+  | "minimalista"
+  | "tropical";
+
+export const AUDIO_BRAND_STYLES: AudioBrandStyle[] = [
+  "premium",
+  "moderno",
+  "elegante",
+  "sofisticado",
+  "divertido",
+  "popular",
+  "minimalista",
+  "tropical",
+];
+
+export type AudioSeason = "verao" | "inverno" | "primavera" | "outono" | "todas";
+
+export const AUDIO_SEASONS: AudioSeason[] = [
+  "verao",
+  "inverno",
+  "primavera",
+  "outono",
+  "todas",
+];
+
+export type AudioTargetAudience =
+  | "familia"
+  | "casal"
+  | "criancas"
+  | "luxo"
+  | "residencial"
+  | "comercial"
+  | "jovens";
+
+export const AUDIO_TARGET_AUDIENCES: AudioTargetAudience[] = [
+  "familia",
+  "casal",
+  "criancas",
+  "luxo",
+  "residencial",
+  "comercial",
+  "jovens",
+];
+
+export type AudioVideoDuration = 8 | 10 | 15 | 30 | 60;
+
+export const AUDIO_VIDEO_DURATIONS: AudioVideoDuration[] = [8, 10, 15, 30, 60];
+
 export const AUDIO_ALLOWED_MIME_TYPES = [
   "audio/mpeg",
   "audio/mp3",
@@ -119,6 +198,14 @@ export interface AudioLibraryRow {
   created_at: string;
   updated_at: string;
   sha256: string | null;
+  // Fase de enriquecimento — todos opcionais / arrays vazios por default.
+  marketing_objectives: AudioMarketingObjective[];
+  brand_styles: AudioBrandStyle[];
+  seasons: AudioSeason[];
+  target_audiences: AudioTargetAudience[];
+  best_video_durations: AudioVideoDuration[];
+  preferred_start_second: number | null;
+  preferred_end_second: number | null;
 }
 
 /** Filtros para consultas na biblioteca (usado pela camada de serviço). */
@@ -127,6 +214,11 @@ export interface AudioLibraryQuery {
   mood?: AudioMood | null;
   energy?: AudioEnergy | null;
   recommendedFor?: AudioRecommendedFor | null;
+  marketingObjective?: AudioMarketingObjective | null;
+  brandStyle?: AudioBrandStyle | null;
+  season?: AudioSeason | null;
+  targetAudience?: AudioTargetAudience | null;
+  bestVideoDuration?: AudioVideoDuration | null;
   activeOnly?: boolean;
   search?: string | null;
 }
