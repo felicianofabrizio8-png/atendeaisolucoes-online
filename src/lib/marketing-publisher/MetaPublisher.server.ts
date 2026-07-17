@@ -428,7 +428,7 @@ export class MetaPublisher {
       storage: { from: (b: string) => any };
     };
 
-    // 1) Preferir marketing_media da lista.
+    // 1) Preferir marketing_media da lista (biblioteca de marketing).
     if (content.media_ids.length > 0) {
       const r = await admin
         .from("marketing_media")
@@ -444,16 +444,38 @@ export class MetaPublisher {
           .from("marketing-media")
           .createSignedUrl(m.storage_path, 60 * 60);
         const url = signed?.data?.signedUrl as string | undefined;
-        if (url) return { url, type: m.media_type };
+        if (url && (await this.isUrlAccessible(url))) return { url, type: m.media_type };
       }
     }
 
-    // 2) Fallback: primeira imagem do produto.
+    // 2) product_media_refs — imagens de produto reutilizadas sem duplicar arquivo.
+    //    Não copiamos nada para marketing_media; assinamos direto no bucket
+    //    product-images, respeitando o mesmo company_id.
+    for (const ref of content.product_media_refs) {
+      const prod = await admin
+        .from("products")
+        .select("id, company_id, images")
+        .eq("id", ref.product_id)
+        .eq("company_id", content.companyId)
+        .maybeSingle();
+      if (!prod.data) continue;
+      const imgs = Array.isArray(prod.data.images) ? (prod.data.images as string[]) : [];
+      if (!imgs.includes(ref.image_path)) continue;
+      const clean = ref.image_path.replace(/^\/+/, "");
+      const signed = await admin.storage
+        .from("product-images")
+        .createSignedUrl(clean, 60 * 60);
+      const url = signed?.data?.signedUrl as string | undefined;
+      if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
+    }
+
+    // 3) Fallback antigo: primeira imagem do produto vinculado ao conteúdo.
     if (content.product_id) {
       const r = await admin
         .from("products")
         .select("images")
         .eq("id", content.product_id)
+        .eq("company_id", content.companyId)
         .maybeSingle();
       const imgs = (r.data?.images ?? []) as string[];
       if (imgs.length > 0) {
@@ -463,10 +485,30 @@ export class MetaPublisher {
           .from("product-images")
           .createSignedUrl(clean, 60 * 60);
         const url = signed?.data?.signedUrl as string | undefined;
-        if (url) return { url, type: "image" };
+        if (url && (await this.isUrlAccessible(url))) return { url, type: "image" };
       }
     }
     return null;
+  }
+
+  /**
+   * Verifica se uma URL assinada está acessível antes de entregá-la à Meta.
+   * A Meta baixa a URL do lado dela — se estiver quebrada, o erro só aparece
+   * lá no fluxo de container, sem contexto claro. Um HEAD curto evita isso.
+   */
+  private async isUrlAccessible(url: string): Promise<boolean> {
+    try {
+      const r = await fetch(url, { method: "HEAD" });
+      if (r.ok) return true;
+      // Alguns provedores respondem 405 a HEAD; tentamos GET com Range.
+      if (r.status === 405) {
+        const g = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" } });
+        return g.ok || g.status === 206;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   private async loadPrimaryIntegration(
