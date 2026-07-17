@@ -139,17 +139,17 @@ import {
 describe("sanitizeMarketingObjectiveList", () => {
   it("aceita valores válidos e remove duplicados preservando ordem", () => {
     expect(
-      sanitizeMarketingObjectiveList(["vendas", "engajamento", "vendas"]),
-    ).toEqual(["vendas", "engajamento"]);
+      sanitizeMarketingObjectiveList(["venda", "engajamento", "venda"]),
+    ).toEqual(["venda", "engajamento"]);
   });
   it("rejeita valores desconhecidos e não-string", () => {
     expect(
-      sanitizeMarketingObjectiveList(["vendas", "hackear", 42, null]),
-    ).toEqual(["vendas"]);
+      sanitizeMarketingObjectiveList(["venda", "hackear", 42, null]),
+    ).toEqual(["venda"]);
   });
   it("retorna [] para input não-array", () => {
     expect(sanitizeMarketingObjectiveList(undefined)).toEqual([]);
-    expect(sanitizeMarketingObjectiveList("vendas")).toEqual([]);
+    expect(sanitizeMarketingObjectiveList("venda")).toEqual([]);
   });
 });
 
