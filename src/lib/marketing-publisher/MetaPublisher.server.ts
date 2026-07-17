@@ -34,6 +34,7 @@ interface ContentPayload {
   cta_destination: string | null;
   media_ids: string[];
   product_id: string | null;
+  product_media_refs: Array<{ product_id: string; image_path: string }>;
 }
 
 interface ResolvedMedia {
