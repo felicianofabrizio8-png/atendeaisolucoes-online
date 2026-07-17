@@ -369,24 +369,24 @@ export const setMarketingContentStatus = createServerFn({ method: "POST" })
  * canal `facebook` é preferida; se ausente, tenta o fallback pela integração
  * principal do `instagram` (que pode carregar fb_page_id + escopos do usuário).
  */
+type ReadinessRow = {
+  channel: "facebook" | "instagram";
+  granted_scopes: unknown;
+  external_account_id: string | null;
+  fb_page_id: string | null;
+};
+
+async function fetchReadinessRows(sb: SB): Promise<ReadinessRow[]> {
+  const { data, error } = await sb.rpc("get_facebook_publish_readiness");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ReadinessRow[];
+}
+
 export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { companyId, supabase } = await loadCompany(context);
-    const { data: rows, error } = await supabase
-      .from("integrations")
-      .select("id, channel, account_metadata, active, is_primary_publisher, external_account_id")
-      .eq("company_id", companyId)
-      .in("channel", ["facebook", "instagram"])
-      .eq("active", true)
-      .eq("is_primary_publisher", true);
-    if (error) throw new Error(error.message);
-    const list = (rows ?? []) as Array<{
-      id: string;
-      channel: "facebook" | "instagram";
-      account_metadata: Record<string, unknown> | null;
-      external_account_id: string | null;
-    }>;
+    const { supabase } = await loadCompany(context);
+    const list = await fetchReadinessRows(supabase);
     const fb = list.find((r) => r.channel === "facebook") ?? null;
     const ig = list.find((r) => r.channel === "instagram") ?? null;
     const source = fb ?? ig;
@@ -400,18 +400,11 @@ export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
         pageId: null,
       };
     }
-    const meta = (source.account_metadata ?? {}) as {
-      granted_scopes?: unknown;
-      fb_page_id?: unknown;
-      token_type?: unknown;
-    };
-    const scopes = Array.isArray(meta.granted_scopes)
-      ? (meta.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
+    const scopes = Array.isArray(source.granted_scopes)
+      ? (source.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
       : [];
     const hasPagesManagePosts = scopes.includes("pages_manage_posts");
-    const pageId =
-      (typeof meta.fb_page_id === "string" ? meta.fb_page_id : null) ??
-      source.external_account_id;
+    const pageId = source.fb_page_id ?? source.external_account_id;
     if (!hasPagesManagePosts) {
       return {
         ok: false as const,
@@ -491,7 +484,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     // integração principal. Validamos aqui (leitura do snapshot persistido),
     // sem chamar a Meta.
     if (data.channel === "facebook") {
-      const readiness = await assertFacebookPublishAllowed(supabase, companyId);
+      const readiness = await assertFacebookPublishAllowed(supabase);
       if (!readiness.ok) {
         throw new Error(readiness.message);
       }
@@ -518,21 +511,16 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
  */
 export async function assertFacebookPublishAllowed(
   sb: SB,
-  companyId: string,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
-  const { data, error } = await sb
-    .from("integrations")
-    .select("channel, account_metadata, external_account_id")
-    .eq("company_id", companyId)
-    .in("channel", ["facebook", "instagram"])
-    .eq("active", true)
-    .eq("is_primary_publisher", true);
-  if (error) return { ok: false, code: "query_error", message: error.message };
-  const list = (data ?? []) as Array<{
-    channel: "facebook" | "instagram";
-    account_metadata: Record<string, unknown> | null;
-  }>;
-  const source = list.find((r) => r.channel === "facebook") ?? list.find((r) => r.channel === "instagram");
+  let list: ReadinessRow[];
+  try {
+    list = await fetchReadinessRows(sb);
+  } catch (e) {
+    return { ok: false, code: "query_error", message: (e as Error).message };
+  }
+  const source =
+    list.find((r) => r.channel === "facebook") ??
+    list.find((r) => r.channel === "instagram");
   if (!source) {
     return {
       ok: false,
@@ -540,9 +528,8 @@ export async function assertFacebookPublishAllowed(
       message: "Nenhuma integração Meta principal marcada. Conecte a página do Facebook antes de agendar.",
     };
   }
-  const meta = (source.account_metadata ?? {}) as { granted_scopes?: unknown };
-  const scopes = Array.isArray(meta.granted_scopes)
-    ? (meta.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
+  const scopes = Array.isArray(source.granted_scopes)
+    ? (source.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
     : [];
   if (!scopes.includes("pages_manage_posts")) {
     return {

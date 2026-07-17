@@ -3835,6 +3835,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_facebook_publish_readiness: {
+        Args: never
+        Returns: {
+          channel: string
+          external_account_id: string
+          fb_page_id: string
+          granted_scopes: Json
+        }[]
+      }
       get_hook_secret: { Args: { _name: string }; Returns: string }
       get_publisher_tick_secret: { Args: never; Returns: string }
       get_storage_usage_bytes: {
