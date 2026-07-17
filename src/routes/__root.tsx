@@ -5,8 +5,11 @@ import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { installGlobalErrorHandlers } from "@/lib/audit";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
+
+
 
 
 function NotFoundComponent() {
