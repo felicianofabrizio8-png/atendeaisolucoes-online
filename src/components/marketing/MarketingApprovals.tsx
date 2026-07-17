@@ -213,6 +213,35 @@ export function MarketingApprovals({ companyId }: Props) {
         </Button>
       </div>
 
+      {fbReadiness && !fbReadiness.ok ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <div className="flex-1 space-y-1">
+            <div className="font-semibold">Publicação no Facebook bloqueada</div>
+            <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
+            <div className="text-[11px] text-muted-foreground">
+              Código: <code>{fbReadiness.code}</code>
+              {fbReadiness.integrationChannel ? ` · integração: ${fbReadiness.integrationChannel}` : ""}
+              {fbReadiness.pageId ? ` · page_id: ${fbReadiness.pageId}` : ""}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              window.location.href = "/configuracoes#meta";
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar Meta
+          </Button>
+        </div>
+      ) : null}
+
+
+
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
