@@ -95,6 +95,10 @@ import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whats
 import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whatsapp.templates.send'
 import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
+import { Route as ApiPublicRenderProgressRouteImport } from './routes/api.public.render.progress'
+import { Route as ApiPublicRenderFailRouteImport } from './routes/api.public.render.fail'
+import { Route as ApiPublicRenderCompleteRouteImport } from './routes/api.public.render.complete'
+import { Route as ApiPublicRenderClaimRouteImport } from './routes/api.public.render.claim'
 import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
 import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
@@ -563,6 +567,26 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicRenderProgressRoute = ApiPublicRenderProgressRouteImport.update({
+  id: '/api/public/render/progress',
+  path: '/api/public/render/progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderFailRoute = ApiPublicRenderFailRouteImport.update({
+  id: '/api/public/render/fail',
+  path: '/api/public/render/fail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderCompleteRoute = ApiPublicRenderCompleteRouteImport.update({
+  id: '/api/public/render/complete',
+  path: '/api/public/render/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderClaimRoute = ApiPublicRenderClaimRouteImport.update({
+  id: '/api/public/render/claim',
+  path: '/api/public/render/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksRuntimeTickRoute =
   ApiPublicHooksRuntimeTickRouteImport.update({
     id: '/api/public/hooks/runtime-tick',
@@ -689,6 +713,10 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
+  '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
+  '/api/public/render/complete': typeof ApiPublicRenderCompleteRoute
+  '/api/public/render/fail': typeof ApiPublicRenderFailRoute
+  '/api/public/render/progress': typeof ApiPublicRenderProgressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -783,6 +811,10 @@ export interface FileRoutesByTo {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
+  '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
+  '/api/public/render/complete': typeof ApiPublicRenderCompleteRoute
+  '/api/public/render/fail': typeof ApiPublicRenderFailRoute
+  '/api/public/render/progress': typeof ApiPublicRenderProgressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -879,6 +911,10 @@ export interface FileRoutesById {
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
+  '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
+  '/api/public/render/complete': typeof ApiPublicRenderCompleteRoute
+  '/api/public/render/fail': typeof ApiPublicRenderFailRoute
+  '/api/public/render/progress': typeof ApiPublicRenderProgressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/templates/list': typeof ApiWhatsappTemplatesListRoute
   '/api/whatsapp/templates/send': typeof ApiWhatsappTemplatesSendRoute
@@ -976,6 +1012,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
+    | '/api/public/render/claim'
+    | '/api/public/render/complete'
+    | '/api/public/render/fail'
+    | '/api/public/render/progress'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1070,6 +1110,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
+    | '/api/public/render/claim'
+    | '/api/public/render/complete'
+    | '/api/public/render/fail'
+    | '/api/public/render/progress'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1165,6 +1209,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/followup-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
+    | '/api/public/render/claim'
+    | '/api/public/render/complete'
+    | '/api/public/render/fail'
+    | '/api/public/render/progress'
     | '/api/public/whatsapp/webhook'
     | '/api/whatsapp/templates/list'
     | '/api/whatsapp/templates/send'
@@ -1257,6 +1305,10 @@ export interface RootRouteChildren {
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
   ApiPublicHooksPublisherTickRoute: typeof ApiPublicHooksPublisherTickRoute
   ApiPublicHooksRuntimeTickRoute: typeof ApiPublicHooksRuntimeTickRoute
+  ApiPublicRenderClaimRoute: typeof ApiPublicRenderClaimRoute
+  ApiPublicRenderCompleteRoute: typeof ApiPublicRenderCompleteRoute
+  ApiPublicRenderFailRoute: typeof ApiPublicRenderFailRoute
+  ApiPublicRenderProgressRoute: typeof ApiPublicRenderProgressRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappTemplatesListRoute: typeof ApiWhatsappTemplatesListRoute
   ApiWhatsappTemplatesSendRoute: typeof ApiWhatsappTemplatesSendRoute
@@ -1875,6 +1927,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/render/progress': {
+      id: '/api/public/render/progress'
+      path: '/api/public/render/progress'
+      fullPath: '/api/public/render/progress'
+      preLoaderRoute: typeof ApiPublicRenderProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/fail': {
+      id: '/api/public/render/fail'
+      path: '/api/public/render/fail'
+      fullPath: '/api/public/render/fail'
+      preLoaderRoute: typeof ApiPublicRenderFailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/complete': {
+      id: '/api/public/render/complete'
+      path: '/api/public/render/complete'
+      fullPath: '/api/public/render/complete'
+      preLoaderRoute: typeof ApiPublicRenderCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/claim': {
+      id: '/api/public/render/claim'
+      path: '/api/public/render/claim'
+      fullPath: '/api/public/render/claim'
+      preLoaderRoute: typeof ApiPublicRenderClaimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/runtime-tick': {
       id: '/api/public/hooks/runtime-tick'
       path: '/api/public/hooks/runtime-tick'
@@ -2033,6 +2113,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
   ApiPublicHooksPublisherTickRoute: ApiPublicHooksPublisherTickRoute,
   ApiPublicHooksRuntimeTickRoute: ApiPublicHooksRuntimeTickRoute,
+  ApiPublicRenderClaimRoute: ApiPublicRenderClaimRoute,
+  ApiPublicRenderCompleteRoute: ApiPublicRenderCompleteRoute,
+  ApiPublicRenderFailRoute: ApiPublicRenderFailRoute,
+  ApiPublicRenderProgressRoute: ApiPublicRenderProgressRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappTemplatesListRoute: ApiWhatsappTemplatesListRoute,
   ApiWhatsappTemplatesSendRoute: ApiWhatsappTemplatesSendRoute,
@@ -2042,13 +2126,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
