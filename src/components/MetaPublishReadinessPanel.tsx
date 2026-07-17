@@ -447,7 +447,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         `&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}` +
         `&response_type=code` +
         `&state=${encodeURIComponent(state)}` +
-        `&auth_type=reauthenticate`;
+        `&auth_type=rerequest`;
       const oauthUrl = config.hasBusinessConfigId && config.businessConfigId
         ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
         : `${base}&scope=${encodeURIComponent(META_REQUIRED_SCOPES)}`;
