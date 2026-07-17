@@ -511,21 +511,16 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
  */
 export async function assertFacebookPublishAllowed(
   sb: SB,
-  companyId: string,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
-  const { data, error } = await sb
-    .from("integrations")
-    .select("channel, account_metadata, external_account_id")
-    .eq("company_id", companyId)
-    .in("channel", ["facebook", "instagram"])
-    .eq("active", true)
-    .eq("is_primary_publisher", true);
-  if (error) return { ok: false, code: "query_error", message: error.message };
-  const list = (data ?? []) as Array<{
-    channel: "facebook" | "instagram";
-    account_metadata: Record<string, unknown> | null;
-  }>;
-  const source = list.find((r) => r.channel === "facebook") ?? list.find((r) => r.channel === "instagram");
+  let list: ReadinessRow[];
+  try {
+    list = await fetchReadinessRows(sb);
+  } catch (e) {
+    return { ok: false, code: "query_error", message: (e as Error).message };
+  }
+  const source =
+    list.find((r) => r.channel === "facebook") ??
+    list.find((r) => r.channel === "instagram");
   if (!source) {
     return {
       ok: false,
@@ -533,9 +528,8 @@ export async function assertFacebookPublishAllowed(
       message: "Nenhuma integração Meta principal marcada. Conecte a página do Facebook antes de agendar.",
     };
   }
-  const meta = (source.account_metadata ?? {}) as { granted_scopes?: unknown };
-  const scopes = Array.isArray(meta.granted_scopes)
-    ? (meta.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
+  const scopes = Array.isArray(source.granted_scopes)
+    ? (source.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
     : [];
   if (!scopes.includes("pages_manage_posts")) {
     return {
