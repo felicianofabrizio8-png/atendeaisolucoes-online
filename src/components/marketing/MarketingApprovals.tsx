@@ -102,7 +102,15 @@ export function MarketingApprovals({ companyId }: Props) {
 
   async function schedule() {
     const target = scheduleFor ? rows.find((r) => r.id === scheduleFor) : null;
-    const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
+    const marketingCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
+    const promptObj =
+      target && target.ai_prompt && typeof target.ai_prompt === "object"
+        ? (target.ai_prompt as { product_media_refs?: unknown })
+        : null;
+    const productRefsCount = Array.isArray(promptObj?.product_media_refs)
+      ? (promptObj!.product_media_refs as unknown[]).length
+      : 0;
+    const mediaCount = marketingCount + productRefsCount;
     const result = validateScheduleForm({
       scheduleFor,
       scheduleAt,
