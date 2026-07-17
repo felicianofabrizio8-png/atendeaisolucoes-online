@@ -13,20 +13,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AUDIO_BRAND_STYLES,
   AUDIO_CATEGORIES,
   AUDIO_ENERGIES,
+  AUDIO_MARKETING_OBJECTIVES,
   AUDIO_MOODS,
   AUDIO_RECOMMENDED_FOR,
+  AUDIO_SEASONS,
+  AUDIO_TARGET_AUDIENCES,
+  AUDIO_VIDEO_DURATIONS,
   AUDIO_VOCAL_TYPES,
+  type AudioBrandStyle,
   type AudioCategory,
   type AudioEnergy,
   type AudioLibraryRow,
+  type AudioMarketingObjective,
   type AudioMood,
   type AudioRecommendedFor,
+  type AudioSeason,
+  type AudioTargetAudience,
+  type AudioVideoDuration,
   type AudioVocalType,
 } from "@/lib/audio-library/audio-library.types";
 import { updateAudioMetadata } from "@/lib/audio-library/audio-library-service";
 import { EnumSelect } from "./EnumSelect";
+import { MultiChipSelect } from "./MultiChipSelect";
+import {
+  applySeasonToggle,
+  toggleInArray,
+  validateClientPreferredRange,
+} from "./audio-ui-helpers";
+
+function parseSecondsInput(v: string): number | null {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? Math.floor(n) : null;
+}
 
 export function AudioEditDialog({
   row,
@@ -44,6 +67,19 @@ export function AudioEditDialog({
   const [energy, setEnergy] = useState<AudioEnergy | "">("");
   const [vocalType, setVocalType] = useState<AudioVocalType | "">("");
   const [recommendedFor, setRecommendedFor] = useState<AudioRecommendedFor[]>([]);
+  const [marketingObjectives, setMarketingObjectives] = useState<
+    AudioMarketingObjective[]
+  >([]);
+  const [brandStyles, setBrandStyles] = useState<AudioBrandStyle[]>([]);
+  const [seasons, setSeasons] = useState<AudioSeason[]>([]);
+  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>(
+    [],
+  );
+  const [bestVideoDurations, setBestVideoDurations] = useState<
+    AudioVideoDuration[]
+  >([]);
+  const [startSec, setStartSec] = useState<string>("");
+  const [endSec, setEndSec] = useState<string>("");
   const [source, setSource] = useState("");
   const [rightsNotes, setRightsNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -57,15 +93,20 @@ export function AudioEditDialog({
     setEnergy((row.energy as AudioEnergy | null) ?? "");
     setVocalType((row.vocal_type as AudioVocalType | null) ?? "");
     setRecommendedFor(row.recommended_for as AudioRecommendedFor[]);
+    setMarketingObjectives(row.marketing_objectives ?? []);
+    setBrandStyles(row.brand_styles ?? []);
+    setSeasons(row.seasons ?? []);
+    setTargetAudiences(row.target_audiences ?? []);
+    setBestVideoDurations(row.best_video_durations ?? []);
+    setStartSec(
+      row.preferred_start_second != null ? String(row.preferred_start_second) : "",
+    );
+    setEndSec(
+      row.preferred_end_second != null ? String(row.preferred_end_second) : "",
+    );
     setSource(row.source ?? "");
     setRightsNotes(row.commercial_rights_notes ?? "");
   }, [row]);
-
-  function toggleRecommended(value: AudioRecommendedFor) {
-    setRecommendedFor((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
-    );
-  }
 
   async function handleSave() {
     if (!row) return;
@@ -73,6 +114,15 @@ export function AudioEditDialog({
       toast.error("Informe um nome");
       return;
     }
+    const startVal = parseSecondsInput(startSec);
+    const endVal = parseSecondsInput(endSec);
+    const rangeCheck = validateClientPreferredRange({
+      start: startVal,
+      end: endVal,
+      durationSeconds: row.duration_seconds,
+    });
+    if (!rangeCheck.ok) return toast.error(rangeCheck.message);
+
     setSaving(true);
     try {
       await updateAudioMetadata({
@@ -86,6 +136,13 @@ export function AudioEditDialog({
         recommendedFor,
         source: source.trim() || null,
         commercialRightsNotes: rightsNotes.trim() || null,
+        marketingObjectives,
+        brandStyles,
+        seasons,
+        targetAudiences,
+        bestVideoDurations,
+        preferredStartSecond: rangeCheck.result.start,
+        preferredEndSecond: rangeCheck.result.end,
       });
       toast.success("Áudio atualizado");
       onClose();
@@ -151,24 +208,78 @@ export function AudioEditDialog({
               onChange={(v) => setVocalType((v as AudioVocalType) || "")}
             />
           </div>
-          <div>
-            <Label>Usos recomendados</Label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {AUDIO_RECOMMENDED_FOR.map((v) => {
-                const active = recommendedFor.includes(v);
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => toggleRecommended(v)}
-                    className={`text-xs px-2 py-1 rounded border ${active ? "bg-primary text-primary-foreground border-primary" : "bg-background"}`}
-                  >
-                    {v}
-                  </button>
-                );
-              })}
+
+          <MultiChipSelect
+            label="Usos recomendados"
+            value={recommendedFor}
+            options={AUDIO_RECOMMENDED_FOR}
+            onToggle={(v) => setRecommendedFor((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Objetivos de marketing"
+            value={marketingObjectives}
+            options={AUDIO_MARKETING_OBJECTIVES}
+            onToggle={(v) => setMarketingObjectives((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Estilos de marca"
+            value={brandStyles}
+            options={AUDIO_BRAND_STYLES}
+            onToggle={(v) => setBrandStyles((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Estações"
+            helperText='Selecionar "todas" limpa as demais estações.'
+            value={seasons}
+            options={AUDIO_SEASONS}
+            onToggle={(v) => setSeasons((p) => applySeasonToggle(p, v))}
+          />
+
+          <MultiChipSelect
+            label="Públicos-alvo"
+            value={targetAudiences}
+            options={AUDIO_TARGET_AUDIENCES}
+            onToggle={(v) => setTargetAudiences((p) => toggleInArray(p, v))}
+          />
+
+          <MultiChipSelect<AudioVideoDuration>
+            label="Durações recomendadas de vídeo"
+            value={bestVideoDurations}
+            options={AUDIO_VIDEO_DURATIONS}
+            onToggle={(v) => setBestVideoDurations((p) => toggleInArray(p, v))}
+            renderLabel={(n) => `${n}s`}
+          />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <Label htmlFor="edit-pref-start">
+                Trecho preferido — início (s)
+              </Label>
+              <Input
+                id="edit-pref-start"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={startSec}
+                onChange={(e) => setStartSec(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-pref-end">Trecho preferido — fim (s)</Label>
+              <Input
+                id="edit-pref-end"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={endSec}
+                onChange={(e) => setEndSec(e.target.value)}
+              />
             </div>
           </div>
+
           <div>
             <Label>Observações sobre direitos comerciais</Label>
             <Textarea
