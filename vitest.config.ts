@@ -16,6 +16,7 @@ export default defineConfig({
       "src/lib/meta-oauth/__tests__/**/*.test.ts",
       "src/lib/audio-library/__tests__/**/*.test.ts",
       "src/components/marketing/audio-library/__tests__/**/*.test.ts",
+      "src/lib/render-engine/__tests__/**/*.test.ts",
       "src/routes/__tests__/**/*.test.ts",
     ],
     environment: "node",
