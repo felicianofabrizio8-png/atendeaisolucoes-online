@@ -397,6 +397,17 @@ export const createAudio = createServerFn({ method: "POST" })
       );
     }
 
+    // Trecho preferido: validação server-side (bloqueia antes do banco).
+    const rangeRes = validatePreferredRange({
+      start: data.preferred_start_second,
+      end: data.preferred_end_second,
+      durationSeconds: data.duration_seconds ?? null,
+    });
+    if (!rangeRes.ok) {
+      await cleanupUpload("invalid_preferred_range");
+      throw new Error(`invalid_preferred_range:${rangeRes.reason}`);
+    }
+
     const payload = {
       company_id: ctx.companyId,
       created_by: ctx.userId,
@@ -417,6 +428,15 @@ export const createAudio = createServerFn({ method: "POST" })
       commercial_rights_notes: data.commercial_rights_notes,
       is_active: true,
       sha256: data.sha256 ?? null,
+      marketing_objectives: sanitizeMarketingObjectiveList(
+        data.marketing_objectives,
+      ),
+      brand_styles: sanitizeBrandStyleList(data.brand_styles),
+      seasons: sanitizeSeasonList(data.seasons),
+      target_audiences: sanitizeTargetAudienceList(data.target_audiences),
+      best_video_durations: sanitizeVideoDurationList(data.best_video_durations),
+      preferred_start_second: rangeRes.start,
+      preferred_end_second: rangeRes.end,
     };
 
     const { data: row, error } = await ctx.supabase
