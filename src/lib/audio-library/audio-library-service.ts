@@ -18,13 +18,18 @@ import {
 } from "./audio-library-validation";
 import { computeFileSha256 } from "./audio-hash";
 import type {
+  AudioBrandStyle,
   AudioCategory,
   AudioEnergy,
   AudioLibraryQuery,
   AudioLibraryRow,
+  AudioMarketingObjective,
   AudioMood,
   AudioQuotaInfo,
   AudioRecommendedFor,
+  AudioSeason,
+  AudioTargetAudience,
+  AudioVideoDuration,
   AudioVocalType,
 } from "./audio-library.types";
 
@@ -44,6 +49,13 @@ export interface CreateAudioInput {
   commercialUseConfirmed: boolean;
   commercialRightsNotes?: string | null;
   durationSeconds?: number | null;
+  marketingObjectives?: AudioMarketingObjective[];
+  brandStyles?: AudioBrandStyle[];
+  seasons?: AudioSeason[];
+  targetAudiences?: AudioTargetAudience[];
+  bestVideoDurations?: AudioVideoDuration[];
+  preferredStartSecond?: number | null;
+  preferredEndSecond?: number | null;
 }
 
 export interface SignedAudioUrl {
