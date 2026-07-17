@@ -5,8 +5,11 @@ import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { installGlobalErrorHandlers } from "@/lib/audit";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
+
+
 
 
 function NotFoundComponent() {
@@ -114,10 +117,12 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthGate />
+        <Toaster position="top-right" richColors closeButton />
       </AuthProvider>
     </QueryClientProvider>
   );
 }
+
 
 const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/callback"];
 
