@@ -80,26 +80,74 @@ export function MarketingApprovals({ companyId }: Props) {
     }
   }
 
-  async function schedule() {
-    if (!scheduleFor || !scheduleAt) return;
-    if (scheduleChannel === "instagram") {
-      const target = rows.find((r) => r.id === scheduleFor);
-      const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
-      if (mediaCount === 0) {
-        toast.error("Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.");
-        return;
-      }
+  function openSchedule(row: MarketingContentRow) {
+    if (row.status !== "approved") {
+      toast.error("Apenas conteúdos aprovados podem ser agendados.");
+      return;
     }
+    // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
+    setBusy(false);
+    setScheduleFor(row.id);
+    setScheduleChannel(row.channel);
+    setScheduleAt("");
+    setScheduleAtError(null);
+  }
+
+  function closeSchedule() {
+    setScheduleFor(null);
+    setScheduleAt("");
+    setScheduleAtError(null);
+    setBusy(false);
+  }
+
+  async function schedule() {
+    const target = scheduleFor ? rows.find((r) => r.id === scheduleFor) : null;
+    const mediaCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
+    const result = validateScheduleForm({
+      scheduleFor,
+      scheduleAt,
+      channel: scheduleChannel,
+      mediaCount,
+    });
+
+    if (!result.ok) {
+      for (const err of result.errors) {
+        if (err.field === "scheduleAt") setScheduleAtError(err.message);
+        toast.error(err.message);
+      }
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[marketing/schedule] validation failed", {
+          scheduleFor,
+          scheduleAt,
+          channel: scheduleChannel,
+          mediaCount,
+          errors: result.errors.map((e) => ({ field: e.field, message: e.message })),
+        });
+      }
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.info("[marketing/schedule] submitting", {
+        scheduleFor: result.scheduleFor,
+        scheduleAt,
+        iso: result.iso,
+        channel: result.channel,
+      });
+    }
+
+    setScheduleAtError(null);
     setBusy(true);
     try {
       await apiScheduleContent({
-        content_id: scheduleFor,
-        channel: scheduleChannel,
-        scheduled_at: new Date(scheduleAt).toISOString(),
+        content_id: result.scheduleFor,
+        channel: result.channel,
+        scheduled_at: result.iso,
       });
       toast.success("Conteúdo agendado.");
-      setScheduleFor(null);
-      setScheduleAt("");
+      closeSchedule();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao agendar.");
     } finally {
