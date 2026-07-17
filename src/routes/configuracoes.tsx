@@ -1881,6 +1881,7 @@ function MetaIntegrationSection() {
       const { data, error } = await supabase.functions.invoke("meta-connect", {
         body: {
           mode: "connect_page",
+          intent,
           shortLivedToken: shortToken,
           page: {
             id: page.id,
@@ -1891,6 +1892,7 @@ function MetaIntegrationSection() {
           },
         },
       });
+
       if (error) throw error;
       const result = data as {
         page?: { name?: string; ig_username?: string | null };
