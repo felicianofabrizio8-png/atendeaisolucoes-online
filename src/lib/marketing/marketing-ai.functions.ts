@@ -254,11 +254,11 @@ async function loadCompanyContext(sb: SB, companyId: string) {
     .select("ai_agent_name, greeting_message, signature")
     .eq("company_id", companyId)
     .maybeSingle();
-  // Tenta buscar o WhatsApp configurado; se existir, sugere como destino padrão.
+  // Tenta buscar o WhatsApp configurado via view segura, sem acesso direto à
+  // tabela `integrations` (que contém tokens e não deve ser legível pelo app).
   const { data: waIntegration } = await sb
-    .from("integrations")
+    .from("integrations_safe")
     .select("external_account_id, account_metadata")
-    .eq("company_id", companyId)
     .eq("channel", "whatsapp")
     .eq("active", true)
     .limit(1)
