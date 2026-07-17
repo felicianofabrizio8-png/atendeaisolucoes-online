@@ -1770,7 +1770,10 @@ function MetaIntegrationSection() {
     return () => window.removeEventListener("message", onMessage);
   }, [loadPagesFromToken, exchangeCodeForToken]);
 
-  const onConnect = async () => {
+  // intent="facebook_page" usa uma Login Configuration dedicada (com
+  // pages_manage_posts + pages_read_engagement) exclusivamente para habilitar
+  // publicação em Página Facebook. NÃO altera o fluxo padrão (Instagram/Ads).
+  const onConnect = async (intent: "default" | "facebook_page" = "default") => {
     setError(null);
     setInfo(null);
     setAvailable([]);
@@ -1784,6 +1787,11 @@ function MetaIntegrationSection() {
           "Configure META_APP_ID no projeto antes de conectar (App ID do Meta for Developers).",
         );
       }
+      if (intent === "facebook_page" && !config.hasPageLoginConfigId) {
+        throw new Error(
+          "META_PAGE_LOGIN_CONFIG_ID ausente no servidor. Cadastre a Configuration do Facebook Login for Business (com pages_manage_posts).",
+        );
+      }
 
       if (typeof window !== "undefined") {
         // Limpa qualquer sessão antiga (token do app anterior)
@@ -1791,17 +1799,23 @@ function MetaIntegrationSection() {
         window.localStorage.removeItem("META_OAUTH_TOKEN");
         const state = crypto.randomUUID();
         window.sessionStorage.setItem("META_OAUTH_STATE", state);
+        window.sessionStorage.setItem("META_OAUTH_INTENT", intent);
 
-        // auth_type=reauthenticate força a Meta a pedir login/senha de novo,
-        // descartando qualquer sessão Facebook ativa do app antigo.
+        // Escolhe qual Login Configuration usar. Facebook Page publishing
+        // usa uma config dedicada; default preserva o comportamento atual
+        // (Instagram/Ads via businessConfigId).
+        const chosenConfigId =
+          intent === "facebook_page"
+            ? config.pageLoginConfigId
+            : config.businessConfigId;
         const useBusinessConfig =
-          !!config.hasBusinessConfigId && !!config.businessConfigId;
+          intent === "facebook_page"
+            ? !!config.hasPageLoginConfigId && !!config.pageLoginConfigId
+            : !!config.hasBusinessConfigId && !!config.businessConfigId;
         console.log("META_OAUTH_LOGIN_MODE", {
+          intent,
           mode: useBusinessConfig ? "business_config" : "classic_scope",
-        });
-        console.log("META_BUSINESS_CONFIG_ID_PRESENT", { present: useBusinessConfig });
-        console.log("META_CONFIG_ID_USED", {
-          config_id: useBusinessConfig ? config.businessConfigId : null,
+          config_id: useBusinessConfig ? chosenConfigId : null,
         });
 
         console.log("META_OAUTH_REDIRECT_URI_USED", { redirect_uri: REDIRECT_URI });
@@ -1816,10 +1830,11 @@ function MetaIntegrationSection() {
         // Facebook Login for Business: escopos vêm da Login Configuration no painel Meta.
         // Fallback manual (sem config_id) mantém o OAuth clássico com scope=.
         const oauthUrl = useBusinessConfig
-          ? `${base}&config_id=${encodeURIComponent(config.businessConfigId)}`
+          ? `${base}&config_id=${encodeURIComponent(chosenConfigId)}`
           : `${base}&scope=${encodeURIComponent(REQUIRED_SCOPES)}`;
 
         console.log("META_OAUTH_URL", {
+          intent,
           url: oauthUrl,
           app_id: config.appId,
           mode: useBusinessConfig ? "business_config" : "classic_scope",
