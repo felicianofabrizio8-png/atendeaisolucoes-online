@@ -9,8 +9,8 @@ import {
 
 describe("render.validation — schema", () => {
   const valid = {
-    image_id: "11111111-1111-1111-1111-111111111111",
-    audio_id: "22222222-2222-2222-2222-222222222222",
+    image_id: "11111111-1111-4111-a111-111111111111",
+    audio_id: "22222222-2222-4222-a222-222222222222",
     video_format: "story" as const,
     audio_start_second: 0,
     duration_seconds: 15,
