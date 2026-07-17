@@ -438,11 +438,123 @@ export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
 // ============================================================================
 // SCHEDULE — obrigatório: só conteúdo approved da MESMA empresa
 // ============================================================================
-// (definição acima mantida; adiciona guarda de permissão para Facebook.)
 
-export const scheduleMarketingContent2 = null; // marker: código real acima
+const ScheduleSchema = z.object({
+  content_id: z.string().uuid(),
+  channel: z.enum(["instagram", "facebook", "whatsapp"]),
+  scheduled_at: z.string().datetime(),
+  notes: z.string().trim().max(500).optional().nullable(),
+});
 
-// -- inserted below at original location --
+/**
+ * Guarda multi-tenant server-side: exige aprovação, mídia (IG/FB feed/reel/story)
+ * e — para Facebook — o escopo `pages_manage_posts` na integração principal.
+ * Sem essa permissão a Meta responde 403 `(#200) Permissions error` no publish.
+ */
+export const scheduleMarketingContent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => ScheduleSchema.parse(i))
+  .handler(async ({ data, context }) => {
+    const { companyId, userId, supabase } = await loadCompany(context);
+    const { data: content, error: cErr } = await supabase
+      .from("marketing_contents")
+      .select("id, company_id, status, media_ids, ai_prompt")
+      .eq("id", data.content_id)
+      .maybeSingle();
+    if (cErr) throw new Error(cErr.message);
+    if (!content || content.company_id !== companyId) {
+      throw new Error("Conteúdo não pertence à empresa.");
+    }
+    if (content.status !== "approved") {
+      throw new Error(
+        "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
+      );
+    }
+    // IG/FB feed/reel/story exigem mídia associada (marketing_media OR product_media_refs).
+    if (data.channel === "instagram" || data.channel === "facebook") {
+      const marketingCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
+      const promptObj =
+        content.ai_prompt && typeof content.ai_prompt === "object"
+          ? (content.ai_prompt as { product_media_refs?: unknown })
+          : null;
+      const productRefs = Array.isArray(promptObj?.product_media_refs)
+        ? (promptObj!.product_media_refs as unknown[])
+        : [];
+      if (marketingCount === 0 && productRefs.length === 0) {
+        const canal = data.channel === "instagram" ? "Instagram" : "Facebook";
+        throw new Error(
+          `Selecione ao menos uma imagem ou vídeo (biblioteca ou produto) antes de agendar para o ${canal}.`,
+        );
+      }
+    }
+    // Guard: publicar no Facebook exige `pages_manage_posts` no token da
+    // integração principal. Validamos aqui (leitura do snapshot persistido),
+    // sem chamar a Meta.
+    if (data.channel === "facebook") {
+      const readiness = await assertFacebookPublishAllowed(supabase, companyId);
+      if (!readiness.ok) {
+        throw new Error(readiness.message);
+      }
+    }
+    const { data: row, error } = await supabase
+      .from("marketing_schedule")
+      .insert({
+        company_id: companyId,
+        content_id: data.content_id,
+        channel: data.channel,
+        scheduled_at: data.scheduled_at,
+        notes: data.notes ?? null,
+        created_by: userId,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+/**
+ * Helper puro (server-side) que lê a integração principal e decide se o
+ * canal Facebook está apto a publicar. Exportado para permitir testes.
+ */
+export async function assertFacebookPublishAllowed(
+  sb: SB,
+  companyId: string,
+): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
+  const { data, error } = await sb
+    .from("integrations")
+    .select("channel, account_metadata, external_account_id")
+    .eq("company_id", companyId)
+    .in("channel", ["facebook", "instagram"])
+    .eq("active", true)
+    .eq("is_primary_publisher", true);
+  if (error) return { ok: false, code: "query_error", message: error.message };
+  const list = (data ?? []) as Array<{
+    channel: "facebook" | "instagram";
+    account_metadata: Record<string, unknown> | null;
+  }>;
+  const source = list.find((r) => r.channel === "facebook") ?? list.find((r) => r.channel === "instagram");
+  if (!source) {
+    return {
+      ok: false,
+      code: "no_primary_integration",
+      message: "Nenhuma integração Meta principal marcada. Conecte a página do Facebook antes de agendar.",
+    };
+  }
+  const meta = (source.account_metadata ?? {}) as { granted_scopes?: unknown };
+  const scopes = Array.isArray(meta.granted_scopes)
+    ? (meta.granted_scopes as unknown[]).filter((s): s is string => typeof s === "string")
+    : [];
+  if (!scopes.includes("pages_manage_posts")) {
+    return {
+      ok: false,
+      code: "missing_pages_manage_posts",
+      message:
+        "Permissão para publicar no Facebook não concedida (pages_manage_posts ausente). Vá em Marketing → Reconectar Meta e conceda a permissão. Se ela não aparecer, o App precisa de Advanced Access via App Review da Meta.",
+    };
+  }
+  return { ok: true };
+}
+
 
 
 export const listMarketingSchedule = createServerFn({ method: "GET" })
