@@ -274,6 +274,86 @@ export type Database = {
         }
         Relationships: []
       }
+      audio_library: {
+        Row: {
+          category: string | null
+          commercial_rights_notes: string | null
+          commercial_use_confirmed: boolean
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          duration_seconds: number | null
+          energy: string | null
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          is_active: boolean
+          mime_type: string
+          mood: string | null
+          name: string
+          original_filename: string | null
+          recommended_for: string[]
+          source: string | null
+          updated_at: string
+          vocal_type: string | null
+        }
+        Insert: {
+          category?: string | null
+          commercial_rights_notes?: string | null
+          commercial_use_confirmed?: boolean
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          energy?: string | null
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          mime_type: string
+          mood?: string | null
+          name: string
+          original_filename?: string | null
+          recommended_for?: string[]
+          source?: string | null
+          updated_at?: string
+          vocal_type?: string | null
+        }
+        Update: {
+          category?: string | null
+          commercial_rights_notes?: string | null
+          commercial_use_confirmed?: boolean
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          energy?: string | null
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          mime_type?: string
+          mood?: string | null
+          name?: string
+          original_filename?: string | null
+          recommended_for?: string[]
+          source?: string | null
+          updated_at?: string
+          vocal_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_library_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string

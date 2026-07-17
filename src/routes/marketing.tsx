@@ -11,6 +11,7 @@ import { MarketingApprovals } from "@/components/marketing/MarketingApprovals";
 import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
 import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 import { MarketingPublisherDashboard } from "@/components/marketing/MarketingPublisherDashboard";
+import { AudioLibrary } from "@/components/marketing/AudioLibrary";
 
 export const Route = createFileRoute("/marketing")({
   component: MarketingPage,
@@ -45,6 +46,7 @@ function MarketingPage() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="library">Biblioteca</TabsTrigger>
+          <TabsTrigger value="audio">Áudios</TabsTrigger>
           <TabsTrigger value="knowledge">Base de Conhecimento</TabsTrigger>
           <TabsTrigger value="promotions">Promoções</TabsTrigger>
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
@@ -57,6 +59,9 @@ function MarketingPage() {
         </TabsContent>
         <TabsContent value="library" className="mt-4">
           <MarketingLibrary companyId={companyId} />
+        </TabsContent>
+        <TabsContent value="audio" className="mt-4">
+          <AudioLibrary companyId={companyId} />
         </TabsContent>
         <TabsContent value="knowledge" className="mt-4">
           <MarketingKnowledgeBase companyId={companyId} />
