@@ -168,7 +168,11 @@ vi.mock("@/integrations/supabase/client.server", () => ({
 // postGraph mock: sucesso "real" (não simulado) com externalId derivado.
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
   postGraph: vi.fn(async (opts: any) => {
-    const raw = { id: "META_OK", post_id: "PAGE_POST" };
+    const isContainerStatus =
+      typeof opts.action === "string" && opts.action.includes("container_status");
+    const raw = isContainerStatus
+      ? { status_code: "FINISHED" }
+      : { id: "META_OK", post_id: "PAGE_POST" };
     const extract = opts.extractExternalId as ((j: unknown) => string | null) | undefined;
     return {
       success: true,
