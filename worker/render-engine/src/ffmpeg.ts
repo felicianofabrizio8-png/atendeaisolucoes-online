@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { log } from "./logger.js";
 import { truncateStream } from "./telemetry.js";
