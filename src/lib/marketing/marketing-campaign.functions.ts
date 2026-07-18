@@ -158,9 +158,14 @@ async function assertPrimaryAudio(
   }
 }
 
+type ImageForRender =
+  | { source: "marketing_media"; image_id: string }
+  | { source: "product_image"; product_id: string; product_image_path: string };
+
 /**
  * Enfileira um render job para a campanha, ou reaproveita se já existir e
- * ainda não terminou em falha permanente. Retorna o job_id efetivo.
+ * ainda não terminou em falha permanente. Aceita imagem da biblioteca de
+ * marketing ou imagem de produto (fatia 1.1).
  */
 async function ensureCampaignJob(
   supabase: SB,
@@ -168,7 +173,7 @@ async function ensureCampaignJob(
     companyId: string;
     userId: string;
     role: CampaignRoleFeedStory;
-    imageIdForRender: string; // marketing_media.id (necessário — worker só entende marketing_media hoje)
+    image: ImageForRender;
     audioId: string;
     audioStart: number;
     duration: number;
@@ -187,17 +192,31 @@ async function ensureCampaignJob(
     // Falhou/cancelado → cria novo (retry).
   }
 
+  const basePayload = {
+    company_id: args.companyId,
+    created_by: args.userId,
+    audio_id: args.audioId,
+    video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role],
+    audio_start_second: args.audioStart,
+    duration_seconds: args.duration,
+  };
+  const insertPayload =
+    args.image.source === "marketing_media"
+      ? {
+          ...basePayload,
+          image_source: "marketing_media" as const,
+          image_id: args.image.image_id,
+        }
+      : {
+          ...basePayload,
+          image_source: "product_image" as const,
+          product_id: args.image.product_id,
+          product_image_path: args.image.product_image_path,
+        };
+
   const { data: inserted, error } = await supabase
     .from("video_render_jobs")
-    .insert({
-      company_id: args.companyId,
-      created_by: args.userId,
-      image_id: args.imageIdForRender,
-      audio_id: args.audioId,
-      video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role],
-      audio_start_second: args.audioStart,
-      duration_seconds: args.duration,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
   if (error || !inserted) throw new Error(error?.message ?? "job_insert_failed");
