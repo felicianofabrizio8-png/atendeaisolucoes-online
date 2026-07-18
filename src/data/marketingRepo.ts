@@ -189,14 +189,33 @@ export async function apiFacebookPublishReadiness() {
   return getFacebookPublishReadiness();
 }
 
-// ------- Campaign (Fase C.1) -------
+// ------- Campaign (Fase C.1 / C.2) -------
 export type CampaignPrimaryImage =
   | { origin: "marketing"; media_id: string }
   | { origin: "product"; product_id: string; image_path: string };
 
+export interface FocalPointInput {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** Item da lista de imagens da campanha (fase C.2). */
+export type CampaignImageInput =
+  | { origin: "marketing"; media_id: string; focal_point?: FocalPointInput | null }
+  | {
+      origin: "product";
+      product_id: string;
+      image_path: string;
+      focal_point?: FocalPointInput | null;
+    };
+
 export async function apiGenerateCampaign(input: {
   promotion_id?: string | null;
-  primary_image: CampaignPrimaryImage;
+  /** Legado — se ausente, use `images`. */
+  primary_image?: CampaignPrimaryImage;
+  /** Novo — lista ordenada; primeira é a principal. */
+  images?: CampaignImageInput[];
   primary_audio_id: string;
   audio_start_second?: number;
   duration_seconds?: 8 | 10 | 15 | 30 | 60;
