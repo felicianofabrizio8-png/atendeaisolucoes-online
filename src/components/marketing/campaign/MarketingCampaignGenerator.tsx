@@ -65,7 +65,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  const [needsMarketingMedia, setNeedsMarketingMedia] = useState(false);
+  
   const [renderStatus, setRenderStatus] = useState<Awaited<
     ReturnType<typeof apiGetCampaignRenderStatus>
   > | null>(null);
