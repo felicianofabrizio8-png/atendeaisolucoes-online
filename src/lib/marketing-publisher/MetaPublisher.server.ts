@@ -462,7 +462,7 @@ export class MetaPublisher {
             .from("video-library")
             .createSignedUrl(vr.file_path, 60 * 60);
           const url = signed?.data?.signedUrl as string | undefined;
-          if (url && (await this.isUrlAccessible(url))) {
+          if (url && (await this.isUrlAccessible(url, "video/mp4"))) {
             return { url, type: "video" };
           }
         }
@@ -487,7 +487,9 @@ export class MetaPublisher {
           .from("marketing-media")
           .createSignedUrl(m.storage_path, 60 * 60);
         const url = signed?.data?.signedUrl as string | undefined;
-        if (url && (await this.isUrlAccessible(url))) return { url, type: m.media_type };
+          if (url && (await this.isUrlAccessible(url, m.media_type === "video" ? "video/" : undefined))) {
+            return { url, type: m.media_type };
+          }
       }
     }
 
@@ -548,19 +550,24 @@ export class MetaPublisher {
    * A Meta baixa a URL do lado dela — se estiver quebrada, o erro só aparece
    * lá no fluxo de container, sem contexto claro. Um HEAD curto evita isso.
    */
-  private async isUrlAccessible(url: string): Promise<boolean> {
+  private async isUrlAccessible(url: string, expectedContentTypePrefix?: string): Promise<boolean> {
     try {
       const r = await fetch(url, { method: "HEAD" });
-      if (r.ok) return true;
+      if (r.ok) return this.matchesContentType(r.headers.get("content-type"), expectedContentTypePrefix);
       // Alguns provedores respondem 405 a HEAD; tentamos GET com Range.
       if (r.status === 405) {
         const g = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" } });
-        return g.ok || g.status === 206;
+        return (g.ok || g.status === 206) && this.matchesContentType(g.headers.get("content-type"), expectedContentTypePrefix);
       }
       return false;
     } catch {
       return false;
     }
+  }
+
+  private matchesContentType(actual: string | null, expectedPrefix?: string): boolean {
+    if (!expectedPrefix) return true;
+    return typeof actual === "string" && actual.toLowerCase().startsWith(expectedPrefix.toLowerCase());
   }
 
   private async loadPrimaryIntegration(

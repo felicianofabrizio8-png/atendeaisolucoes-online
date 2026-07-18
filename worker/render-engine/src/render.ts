@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises"
 import path from "node:path";
 import { log } from "./logger.js";
 import { renderStaticImageVideo } from "./ffmpeg.js";
-import { ffprobe } from "./ffprobe.js";
+import { analyzeVolume, ffprobe } from "./ffprobe.js";
+import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
 import {
   type ClaimedJob,
@@ -12,8 +13,6 @@ import {
   reportProgress,
   uploadSignedUrl,
 } from "./api-client.js";
-
-const DURATION_TOLERANCE = 0.25;
 
 export function sanitizeError(msg: string): string {
   return msg
@@ -61,11 +60,20 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
     // 2. Render
     stage = "rendering";
     await reportProgress(cfg, job.id, "rendering", 30);
+    const audioStartSecond = Number(job.audioStartSecond);
+    const durationSeconds = Number(job.durationSeconds);
+    if (!Number.isFinite(audioStartSecond) || audioStartSecond < 0) {
+      throw new Error("audio_offset_invalid");
+    }
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      throw new Error("audio_duration_invalid");
+    }
+
     await renderStaticImageVideo({
       imageFilePath: imageLocal,
       audioFilePath: audioLocal,
-      audioStartSecond: Number(job.audioStartSecond),
-      durationSeconds: Number(job.durationSeconds),
+      audioStartSecond,
+      durationSeconds,
       width: job.width,
       height: job.height,
       outputFilePath: outputLocal,
@@ -77,21 +85,33 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
     stage = "validating";
     await reportProgress(cfg, job.id, "validating", 70);
     const probe = await ffprobe(outputLocal, 15_000);
+    const volume = await analyzeVolume(outputLocal, 15_000);
     log.info("ffprobe_validation_completed", {
       job_id: job.id,
       width: probe.width, height: probe.height,
-      duration: probe.duration, video_codec: probe.videoCodec, audio_codec: probe.audioCodec,
+      duration: probe.duration,
+      video_duration: probe.videoDuration,
+      audio_duration: probe.audioDuration,
+      video_codec: probe.videoCodec,
+      audio_codec: probe.audioCodec,
+      audio_sample_rate: probe.sampleRate,
+      audio_channels: probe.channels,
+      audio_channel_layout: probe.channelLayout,
+      audio_bit_rate: probe.audioBitRate,
+      audio_start_time: probe.audioStartTime,
+      audio_disposition_default: probe.audioDispositionDefault,
+      mean_volume_db: volume.meanVolumeDb,
+      max_volume_db: volume.maxVolumeDb,
     });
-    if (probe.width !== job.width || probe.height !== job.height) {
-      throw new Error(`output_dimensions_mismatch:${probe.width}x${probe.height}`);
-    }
-    if (Math.abs(probe.duration - job.durationSeconds) > DURATION_TOLERANCE) {
-      throw new Error(`output_duration_out_of_tolerance:${probe.duration}`);
-    }
-    if (probe.videoCodec !== "h264") throw new Error(`bad_video_codec:${probe.videoCodec}`);
-    if (probe.audioCodec !== "aac") throw new Error(`bad_audio_codec:${probe.audioCodec}`);
-    if (probe.pixFmt && probe.pixFmt !== "yuv420p") {
-      throw new Error(`bad_pix_fmt:${probe.pixFmt}`);
+    const validationCode = validateRenderedMedia({
+      probe,
+      volume,
+      expectedWidth: job.width,
+      expectedHeight: job.height,
+      expectedDurationSeconds: durationSeconds,
+    });
+    if (validationCode) {
+      throw new Error(validationCode);
     }
 
     // 4. Upload

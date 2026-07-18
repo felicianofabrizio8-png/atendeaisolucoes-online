@@ -24,12 +24,16 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
   const vf =
     `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
     `crop=${width}:${height},` +
+    `setsar=1,` +
+    `setparams=range=tv,` +
     `format=yuv420p`;
 
   const args = [
     "-y",
     "-loop", "1", "-framerate", "30", "-i", imageFilePath,
     "-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath,
+    "-map", "0:v:0",
+    "-map", "1:a:0",
     "-vf", vf,
     "-c:v", "libx264",
     "-profile:v", "high",
@@ -37,15 +41,20 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
     "-crf", "20",
     "-r", "30",
     "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
-    "-shortest",
+    "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "192k", "-ar", "48000", "-ac", "2",
     "-movflags", "+faststart",
     "-t", String(durationSeconds),
     outputFilePath,
   ];
 
   await new Promise<void>((resolve, reject) => {
-    log.info("ffmpeg_started", { width, height, durationSeconds });
+    log.info("ffmpeg_started", {
+      width,
+      height,
+      audioStartSecond,
+      durationSeconds,
+      args: sanitizeFfmpegArgs(args, { imageFilePath, audioFilePath, outputFilePath }),
+    });
     const started = Date.now();
     const p = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderrTail = "";
@@ -70,5 +79,17 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
         resolve();
       }
     });
+  });
+}
+
+function sanitizeFfmpegArgs(
+  args: string[],
+  paths: { imageFilePath: string; audioFilePath: string; outputFilePath: string },
+): string[] {
+  return args.map((arg) => {
+    if (arg === paths.imageFilePath) return "[image_file]";
+    if (arg === paths.audioFilePath) return "[audio_file]";
+    if (arg === paths.outputFilePath) return "[output_file]";
+    return arg;
   });
 }
