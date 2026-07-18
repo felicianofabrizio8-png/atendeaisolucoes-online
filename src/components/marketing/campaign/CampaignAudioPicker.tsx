@@ -167,7 +167,7 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
         >
           {filtered.map((a) => {
             const sel = a.id === selectedId;
-            const isPlaying = player.currentId === a.id && player.playing;
+            const isPlaying = player.activeId === a.id && player.isPlaying;
             const fav = favorites.has(a.id);
             return (
               <li key={a.id}>
@@ -186,7 +186,9 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
                     size="icon"
                     variant={isPlaying ? "default" : "outline"}
                     className="h-8 w-8 shrink-0"
-                    onClick={() => player.toggle(a)}
+                    onClick={() => {
+                      void player.toggle(a.id);
+                    }}
                     aria-label={isPlaying ? "Pausar" : "Ouvir"}
                     title={isPlaying ? "Pausar" : "Ouvir"}
                   >
