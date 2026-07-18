@@ -14,8 +14,6 @@ import {
   uploadSignedUrl,
 } from "./api-client.js";
 
-const DURATION_TOLERANCE = 0.25;
-
 export function sanitizeError(msg: string): string {
   return msg
     .replace(/(Bearer\s+)[^\s]+/gi, "$1[redacted]")

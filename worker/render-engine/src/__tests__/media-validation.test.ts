@@ -62,15 +62,15 @@ describe("render worker media validation", () => {
         audioFilePath: audio,
         audioStartSecond: 0,
         durationSeconds: 1,
-        width: 108,
-        height: 135,
+        width: 216,
+        height: 270,
         outputFilePath: output,
         timeoutMs: 30_000,
       });
 
       const probe = await ffprobe(output, 10_000);
       const volume = await analyzeVolume(output, 10_000);
-      expect(validateRenderedMedia({ probe, volume, expectedWidth: 108, expectedHeight: 135, expectedDurationSeconds: 1 })).toBeNull();
+      expect(validateRenderedMedia({ probe, volume, expectedWidth: 216, expectedHeight: 270, expectedDurationSeconds: 1 })).toBeNull();
       expect(volume.maxVolumeDb).not.toBeNull();
       expect(volume.maxVolumeDb!).toBeGreaterThan(-50);
       expect(probe.audioDuration).toBeGreaterThan(0.8);
@@ -90,15 +90,15 @@ describe("render worker media validation", () => {
         audioFilePath: audio,
         audioStartSecond: 0,
         durationSeconds: 1,
-        width: 108,
-        height: 192,
+        width: 216,
+        height: 384,
         outputFilePath: output,
         timeoutMs: 30_000,
       });
 
       const probe = await ffprobe(output, 10_000);
       const volume = await analyzeVolume(output, 10_000);
-      expect(validateRenderedMedia({ probe, volume, expectedWidth: 108, expectedHeight: 192, expectedDurationSeconds: 1 })).toBeNull();
+      expect(validateRenderedMedia({ probe, volume, expectedWidth: 216, expectedHeight: 384, expectedDurationSeconds: 1 })).toBeNull();
       expect(probe.audioCodec).toBe("aac");
       expect(probe.sampleRate).toBe(48000);
       expect(probe.channels).toBe(2);
@@ -118,15 +118,15 @@ describe("render worker media validation", () => {
         audioFilePath: audio,
         audioStartSecond: 2,
         durationSeconds: 1,
-        width: 108,
-        height: 135,
+        width: 216,
+        height: 270,
         outputFilePath: output,
         timeoutMs: 30_000,
       });
 
       const probe = await ffprobe(output, 10_000);
       const volume = await analyzeVolume(output, 10_000);
-      expect(validateRenderedMedia({ probe, volume, expectedWidth: 108, expectedHeight: 135, expectedDurationSeconds: 1 })).toBeNull();
+      expect(validateRenderedMedia({ probe, volume, expectedWidth: 216, expectedHeight: 270, expectedDurationSeconds: 1 })).toBeNull();
     });
   });
 
@@ -149,16 +149,19 @@ describe("render worker media validation", () => {
       makeImage(image);
       makeToneAudio(audio);
 
-      await expect(renderStaticImageVideo({
+      await renderStaticImageVideo({
         imageFilePath: image,
         audioFilePath: audio,
         audioStartSecond: 99,
         durationSeconds: 1,
-        width: 108,
-        height: 135,
+        width: 216,
+        height: 270,
         outputFilePath: output,
         timeoutMs: 30_000,
-      })).rejects.toThrow(/ffmpeg_exit_|audio/i);
+      });
+      const probe = await ffprobe(output, 10_000);
+      const volume = await analyzeVolume(output, 10_000);
+      expect(validateRenderedMedia({ probe, volume, expectedWidth: 216, expectedHeight: 270, expectedDurationSeconds: 1 })).not.toBeNull();
     });
   });
 
