@@ -47,7 +47,8 @@ import {
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
 
 type Duration = 8 | 10 | 15 | 30 | 60;
-const MAX_IMAGES = 10;
+// Alinhado com MAX_CAMPAIGN_IMAGES do backend/worker (render.types.ts).
+const MAX_IMAGES = 8;
 
 interface Props {
   companyId: string;
