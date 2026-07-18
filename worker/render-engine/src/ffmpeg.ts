@@ -21,6 +21,11 @@ export interface FfmpegRenderInput {
   timeoutMs: number;
   /** Opcional — quando ausente, aplica crop central (comportamento legado). */
   focalPoint?: FocalPoint | null;
+  /** Observabilidade — não altera parâmetros do FFmpeg. */
+  jobId?: string;
+  /** Observabilidade — quando definido, persiste ffmpeg.stderr.log/stdout.log
+   *  no diretório informado (removido pelo caller junto com o workDir). */
+  debugLogDir?: string;
 }
 
 /**
