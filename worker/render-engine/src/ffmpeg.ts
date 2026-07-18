@@ -102,6 +102,9 @@ export interface SlideshowInput {
   height: number;
   outputFilePath: string;
   timeoutMs: number;
+  /** Observabilidade — não altera parâmetros do FFmpeg. */
+  jobId?: string;
+  debugLogDir?: string;
 }
 
 export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<void> {
