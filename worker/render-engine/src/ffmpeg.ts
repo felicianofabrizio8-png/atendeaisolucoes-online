@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { log } from "./logger.js";
 import { truncateStream } from "./telemetry.js";
@@ -385,27 +387,195 @@ async function runFfmpeg(opts: RunOpts): Promise<void> {
           timeoutTriggered,
           killRequestedByWorker,
         });
-        log.error("ffmpeg_failed", {
-          job_id: jobId,
-          pid,
-          code,
-          signal,
-          elapsed_ms,
-          classified,
-          kill_origin,
-          timeout_triggered: timeoutTriggered,
-          kill_requested_by_worker: killRequestedByWorker,
-          stderr_total_bytes: stderrTrunc.totalBytes,
-          stderr_head: stderrTrunc.head,
-          stderr_tail: stderrTrunc.tail,
-          stderr_truncated: stderrTrunc.truncated,
-          stdout_head: stdoutTrunc.head.slice(0, 512),
-        });
-        reject(new Error(classified));
+
+        // Persist stderr COMPLETO em diretório fora do workDir (que será limpo
+        // pelo caller). Permite inspecionar após a falha, mesmo depois do
+        // finally do render.ts remover o workDir do job.
+        (async () => {
+          const persistDir = path.join(os.tmpdir(), "ffmpeg-failures", `${jobId ?? "no-job"}-${randomUUID().slice(0, 8)}`);
+          let stderrPath: string | null = null;
+          let stdoutPath: string | null = null;
+          try {
+            await mkdir(persistDir, { recursive: true });
+            stderrPath = path.join(persistDir, "ffmpeg.stderr.log");
+            stdoutPath = path.join(persistDir, "ffmpeg.stdout.log");
+            await writeFile(stderrPath, stderrFull);
+            await writeFile(stdoutPath, stdoutFull);
+            log.error("ffmpeg_stderr_persisted", {
+              job_id: jobId,
+              pid,
+              persist_dir: persistDir,
+              stderr_path: stderrPath,
+              stdout_path: stdoutPath,
+              stderr_total_bytes: stderrTrunc.totalBytes,
+              stdout_total_bytes: stdoutTrunc.totalBytes,
+            });
+          } catch (persistErr) {
+            log.error("ffmpeg_stderr_persist_failed", {
+              job_id: jobId,
+              pid,
+              persist_dir: persistDir,
+              message: (persistErr instanceof Error ? persistErr.message : String(persistErr)).slice(0, 300),
+            });
+          }
+
+          log.error("ffmpeg_failed", {
+            job_id: jobId,
+            pid,
+            code,
+            signal,
+            elapsed_ms,
+            classified,
+            kill_origin,
+            timeout_triggered: timeoutTriggered,
+            kill_requested_by_worker: killRequestedByWorker,
+            stderr_total_bytes: stderrTrunc.totalBytes,
+            stderr_head: stderrTrunc.head,
+            stderr_tail: stderrTrunc.tail,
+            stderr_truncated: stderrTrunc.truncated,
+            stdout_head: stdoutTrunc.head.slice(0, 512),
+            stderr_full_path: stderrPath,
+            stdout_full_path: stdoutPath,
+          });
+
+          // Reexecução isolada — mesmos args, mesmos arquivos de entrada
+          // (ainda presentes; workDir só é limpo no finally do render.ts após
+          // o reject deste Promise). Objetivo: distinguir uma falha
+          // determinística (bug/args/entrada) de uma condição ambiental
+          // (OOM/limite de CPU/sinal externo intermitente).
+          try {
+            const isolated = await runFfmpegIsolated({
+              args,
+              timeoutMs,
+              jobId,
+              persistDir,
+              originalPid: pid,
+            });
+            log.error("ffmpeg_isolated_rerun_result", {
+              job_id: jobId,
+              original_pid: pid,
+              ...isolated,
+            });
+          } catch (rerunErr) {
+            log.error("ffmpeg_isolated_rerun_error", {
+              job_id: jobId,
+              original_pid: pid,
+              message: (rerunErr instanceof Error ? rerunErr.message : String(rerunErr)).slice(0, 300),
+            });
+          }
+
+          reject(new Error(classified));
+        })();
       } else {
         log.info("ffmpeg_completed", { job_id: jobId, pid, elapsed_ms });
         resolve();
       }
+    });
+  });
+}
+
+/**
+ * Reexecuta o mesmo comando ffmpeg (args idênticos) em um processo isolado,
+ * fora do pipeline de render. Grava stderr/stdout completos em disco.
+ * Retorna metadados do resultado (não lança em falha do ffmpeg — só lança
+ * em erro de spawn).
+ */
+export interface IsolatedRerunResult {
+  outcome: "success" | "failed";
+  code: number | null;
+  signal: NodeJS.Signals | string | null;
+  classified: string | null;
+  elapsed_ms: number;
+  timeout_triggered: boolean;
+  stderr_total_bytes: number;
+  stdout_total_bytes: number;
+  stderr_head: string;
+  stderr_tail: string;
+  stderr_truncated: boolean;
+  stderr_path: string | null;
+  stdout_path: string | null;
+  isolated_pid: number;
+}
+
+async function runFfmpegIsolated(input: {
+  args: string[];
+  timeoutMs: number;
+  jobId?: string;
+  persistDir: string;
+  originalPid: number;
+}): Promise<IsolatedRerunResult> {
+  const { args, timeoutMs, jobId, persistDir, originalPid } = input;
+  log.error("ffmpeg_isolated_rerun_started", {
+    job_id: jobId,
+    original_pid: originalPid,
+    timeout_ms: timeoutMs,
+    args_count: args.length,
+  });
+
+  return await new Promise<IsolatedRerunResult>((resolve, reject) => {
+    const startedAt = Date.now();
+    const env = { ...process.env, AV_LOG_FORCE_NOCOLOR: "1" };
+    const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"], env });
+    const isoPid = p.pid ?? -1;
+
+    let stderrFull = "";
+    let stdoutFull = "";
+    p.stderr.on("data", (d) => { stderrFull += d.toString(); });
+    p.stdout.on("data", (d) => { stdoutFull += d.toString(); });
+
+    let timeoutTriggered = false;
+    const to = setTimeout(() => {
+      timeoutTriggered = true;
+      try { p.kill("SIGKILL"); } catch { /* noop */ }
+    }, timeoutMs);
+
+    let spawnFailed = false;
+    p.on("error", (e) => {
+      spawnFailed = true;
+      clearTimeout(to);
+      reject(e instanceof Error ? e : new Error(String(e)));
+    });
+
+    p.on("close", async (code, signal) => {
+      if (spawnFailed) return;
+      clearTimeout(to);
+      const elapsed_ms = Date.now() - startedAt;
+      const stderrTrunc = truncateStream(stderrFull);
+      const stdoutTrunc = truncateStream(stdoutFull);
+
+      let stderrPath: string | null = null;
+      let stdoutPath: string | null = null;
+      try {
+        stderrPath = path.join(persistDir, "ffmpeg.isolated.stderr.log");
+        stdoutPath = path.join(persistDir, "ffmpeg.isolated.stdout.log");
+        await writeFile(stderrPath, stderrFull);
+        await writeFile(stdoutPath, stdoutFull);
+      } catch {
+        stderrPath = null;
+        stdoutPath = null;
+      }
+
+      const failed = code !== 0 || (signal !== null && signal !== undefined);
+      const classified = failed
+        ? classifyFfmpegFailure({ code, signal, timeoutTriggered, killRequestedByWorker: timeoutTriggered })
+        : null;
+
+      resolve({
+        outcome: failed ? "failed" : "success",
+        code,
+        signal,
+        classified,
+        elapsed_ms,
+        timeout_triggered: timeoutTriggered,
+        stderr_total_bytes: stderrTrunc.totalBytes,
+        stdout_total_bytes: stdoutTrunc.totalBytes,
+        stderr_head: stderrTrunc.head,
+        stderr_tail: stderrTrunc.tail,
+        stderr_truncated: stderrTrunc.truncated,
+        stderr_path: stderrPath,
+        stdout_path: stdoutPath,
+        isolated_pid: isoPid,
+      });
     });
   });
 }
