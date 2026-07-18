@@ -54,12 +54,20 @@ interface FakeMetaPageRow {
   updated_at: string;
 }
 
+interface FakeVideoRow {
+  id: string;
+  company_id: string;
+  file_path: string;
+  is_active: boolean;
+}
+
 const state = {
   contents: [] as FakeContentRow[],
   media: [] as FakeMediaRow[],
   products: [] as FakeProductRow[],
   integrations: [] as FakeIntegrationRow[],
   metaPages: [] as FakeMetaPageRow[],
+  videos: [] as FakeVideoRow[],
   mediaInserts: [] as unknown[],
   storageSigns: [] as Array<{ bucket: string; path: string }>,
 };
@@ -140,6 +148,8 @@ vi.mock("@/integrations/supabase/client.server", () => ({
           return makeQuery(state.integrations);
         case "meta_pages":
           return makeQuery(state.metaPages);
+        case "video_library":
+          return makeQuery(state.videos);
         default:
           return makeQuery([]);
       }
@@ -158,7 +168,11 @@ vi.mock("@/integrations/supabase/client.server", () => ({
 // postGraph mock: sucesso "real" (não simulado) com externalId derivado.
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
   postGraph: vi.fn(async (opts: any) => {
-    const raw = { id: "META_OK", post_id: "PAGE_POST" };
+    const isContainerStatus =
+      typeof opts.action === "string" && opts.action.includes("container_status");
+    const raw = isContainerStatus
+      ? { status_code: "FINISHED" }
+      : { id: "META_OK", post_id: "PAGE_POST" };
     const extract = opts.extractExternalId as ((j: unknown) => string | null) | undefined;
     return {
       success: true,
@@ -181,6 +195,7 @@ beforeEach(() => {
   state.products = [];
   state.integrations = [];
   state.metaPages = [];
+  state.videos = [];
   state.mediaInserts = [];
   state.storageSigns = [];
   globalThis.fetch = vi.fn(async () => new Response(null, { status: 200 })) as any;
@@ -564,9 +579,128 @@ describe("MetaPublisher — product_media_refs path/URL handling", () => {
   });
 });
 
+// ---- Campanha: preferir vídeo renderizado (com áudio incorporado) --------
+
+describe("MetaPublisher — campaign rendered video preference", () => {
+  it("Instagram Feed usa feed_video_id (video-library) e não a imagem original", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.media.push({
+      id: "img-1",
+      company_id: COMPANY,
+      storage_path: `${COMPANY}/img-1.jpg`,
+      media_type: "image",
+      active: true,
+      deleted_at: null,
+    });
+    state.videos.push({
+      id: "vid-feed",
+      company_id: COMPANY,
+      file_path: `${COMPANY}/vid-feed/video.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent({
+      media_ids: ["img-1"],
+      campaign_role: "feed",
+      feed_video_id: "vid-feed",
+    } as Partial<FakeContentRow> as any);
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    expect(state.storageSigns.some((s) => s.bucket === "video-library" && s.path === `${COMPANY}/vid-feed/video.mp4`)).toBe(true);
+    expect(state.storageSigns.some((s) => s.bucket === "marketing-media")).toBe(false);
+  });
+
+  it("Story usa story_video_id do formato correspondente", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.videos.push({
+      id: "vid-story",
+      company_id: COMPANY,
+      file_path: `${COMPANY}/vid-story/video.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent({
+      media_ids: [],
+      campaign_role: "story",
+      story_video_id: "vid-story",
+    } as Partial<FakeContentRow> as any);
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "story",
+    });
+    expect(r.success).toBe(true);
+    expect(state.storageSigns.some((s) => s.bucket === "video-library" && s.path === `${COMPANY}/vid-story/video.mp4`)).toBe(true);
+  });
+
+  it("Ignora vídeo com file_path fora do tenant (guard multi-tenant)", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.media.push({
+      id: "img-1",
+      company_id: COMPANY,
+      storage_path: `${COMPANY}/img-1.jpg`,
+      media_type: "image",
+      active: true,
+      deleted_at: null,
+    });
+    state.videos.push({
+      id: "vid-evil",
+      company_id: COMPANY,
+      file_path: `other-company/vid/video.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent({
+      media_ids: ["img-1"],
+      campaign_role: "feed",
+      feed_video_id: "vid-evil",
+    } as Partial<FakeContentRow> as any);
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    // Fallback deve ter usado a imagem (marketing-media), não o vídeo comprometido.
+    expect(state.storageSigns.some((s) => s.bucket === "video-library")).toBe(false);
+    expect(state.storageSigns.some((s) => s.bucket === "marketing-media")).toBe(true);
+  });
+
+  it("Sem feed_video_id/story_video_id, campanhas antigas continuam usando imagem", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.media.push({
+      id: "img-1",
+      company_id: COMPANY,
+      storage_path: `${COMPANY}/img-1.jpg`,
+      media_type: "image",
+      active: true,
+      deleted_at: null,
+    });
+    seedApprovedContent({ media_ids: ["img-1"] });
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+    expect(state.storageSigns.some((s) => s.bucket === "video-library")).toBe(false);
+    expect(state.storageSigns.some((s) => s.bucket === "marketing-media")).toBe(true);
+  });
+});
+
 // Restaura fetch ao final do módulo.
 afterAll(() => {
   globalThis.fetch = originalFetch;
 });
+
 
 

@@ -35,6 +35,9 @@ interface ContentPayload {
   media_ids: string[];
   product_id: string | null;
   product_media_refs: Array<{ product_id: string; image_path: string }>;
+  campaign_role: "feed" | "story" | null;
+  feed_video_id: string | null;
+  story_video_id: string | null;
 }
 
 interface ResolvedMedia {
@@ -50,7 +53,7 @@ export class MetaPublisher {
         return this.fail("content_not_found", "Conteúdo não encontrado.", false);
       }
 
-      const media = await this.resolvePrimaryMedia(content);
+      const media = await this.resolvePrimaryMedia(content, input.format);
       const caption = this.buildCaption(content);
 
       if (input.channel === "instagram") {
@@ -387,7 +390,9 @@ export class MetaPublisher {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_contents")
-      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt")
+      .select(
+        "id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt, campaign_role, feed_video_id, story_video_id",
+      )
       .eq("id", id)
       .eq("company_id", companyId)
       .maybeSingle();
@@ -410,6 +415,7 @@ export class MetaPublisher {
         return { product_id: pid, image_path: path };
       })
       .filter((v): v is { product_id: string; image_path: string } => v !== null);
+    const role = r.data.campaign_role;
     return {
       companyId: r.data.company_id,
       contentId: r.data.id,
@@ -419,14 +425,51 @@ export class MetaPublisher {
       media_ids: Array.isArray(r.data.media_ids) ? r.data.media_ids : [],
       product_id: r.data.product_id ?? null,
       product_media_refs,
+      campaign_role: role === "feed" || role === "story" ? role : null,
+      feed_video_id: r.data.feed_video_id ?? null,
+      story_video_id: r.data.story_video_id ?? null,
     };
   }
 
-  private async resolvePrimaryMedia(content: ContentPayload): Promise<ResolvedMedia | null> {
+
+  private async resolvePrimaryMedia(
+    content: ContentPayload,
+    format: PublicationFormat,
+  ): Promise<ResolvedMedia | null> {
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => any;
       storage: { from: (b: string) => any };
     };
+
+    // 0) Preferir vídeo renderizado da campanha, se existir para o formato-alvo.
+    //    Feed -> feed_video_id (1080x1350). Story/Reel -> story_video_id (1080x1920).
+    const targetVideoId =
+      format === "feed" ? content.feed_video_id : content.story_video_id;
+    if (targetVideoId) {
+      const v = await admin
+        .from("video_library")
+        .select("id, company_id, file_path, is_active")
+        .eq("id", targetVideoId)
+        .eq("company_id", content.companyId)
+        .maybeSingle();
+      const vr = v.data as
+        | { id: string; company_id: string; file_path: string; is_active: boolean }
+        | undefined;
+      if (vr && vr.is_active && typeof vr.file_path === "string") {
+        // Guard multi-tenant: path deve começar com {companyId}/
+        if (vr.file_path.startsWith(`${content.companyId}/`)) {
+          const signed = await admin.storage
+            .from("video-library")
+            .createSignedUrl(vr.file_path, 60 * 60);
+          const url = signed?.data?.signedUrl as string | undefined;
+          if (url && (await this.isUrlAccessible(url))) {
+            return { url, type: "video" };
+          }
+        }
+      }
+    }
+
+
 
     // 1) Preferir marketing_media da lista (biblioteca de marketing).
     if (content.media_ids.length > 0) {
