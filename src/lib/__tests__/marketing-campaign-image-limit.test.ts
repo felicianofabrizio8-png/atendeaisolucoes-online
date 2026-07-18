@@ -70,7 +70,7 @@ describe("Fase C.2.1 — limite de imagens por campanha", () => {
       GenerateCampaignInput.parse({
         primary_image: {
           origin: "marketing",
-          media_id: "cccccccc-cccc-4ccc-cccc-cccccccccccc",
+          media_id: randomUUID(),
         },
         primary_audio_id: AUDIO_ID,
         audio_start_second: 0,
