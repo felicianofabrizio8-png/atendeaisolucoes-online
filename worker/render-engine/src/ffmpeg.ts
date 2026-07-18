@@ -77,7 +77,14 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
     outputFilePath,
   ];
 
-  await runFfmpeg({ args, timeoutMs, sanitizePaths: { imageFilePath, audioFilePath, outputFilePath }, width, height, audioStartSecond, durationSeconds });
+  await runFfmpeg({
+    args,
+    timeoutMs,
+    sanitizePaths: { imageFilePath, audioFilePath, outputFilePath },
+    width, height, audioStartSecond, durationSeconds,
+    jobId: input.jobId,
+    debugLogDir: input.debugLogDir,
+  });
 }
 
 /**
