@@ -11,7 +11,7 @@ export interface ClaimedJob {
     companyId: string;
     workerId: string;
     attemptCount: number;
-    videoFormat: "story" | "reels" | "feed_square";
+    videoFormat: "story" | "reels" | "feed_square" | "feed_4_5";
     audioStartSecond: number;
     durationSeconds: number;
     width: number;
