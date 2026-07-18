@@ -125,10 +125,21 @@ export const Route = createFileRoute("/api/public/render/claim")({
             const imgs = Array.isArray(prod.images)
               ? (prod.images.filter((x) => typeof x === "string") as string[])
               : [];
-            if (!imgs.includes(job.product_image_path)) {
+            const normalizedJobPath = normalizeProductImagePath(job.product_image_path);
+            if (!normalizedJobPath) {
+              return { error: "product_image_path_invalid" };
+            }
+            const matched = imgs.some((img) => {
+              const normalizedStoredPath = normalizeProductImagePath(img);
+              return img === job.product_image_path || normalizedStoredPath === normalizedJobPath;
+            });
+            if (!matched) {
               return { error: "product_image_not_owned" };
             }
-            return { bucket: "product-images", path: job.product_image_path };
+            if (normalizedJobPath.split("/")[0] !== job.company_id) {
+              return { error: "product_image_cross_tenant_path" };
+            }
+            return { bucket: "product-images", path: normalizedJobPath };
           }
 
           const [imgRes, audRes] = await Promise.all([
@@ -221,3 +232,36 @@ export const Route = createFileRoute("/api/public/render/claim")({
     },
   },
 });
+
+function normalizeProductImagePath(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    const clean = trimmed.replace(/^\/+/, "");
+    if (!clean || clean.includes("..")) return null;
+    try {
+      return decodeURIComponent(clean);
+    } catch {
+      return clean;
+    }
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (!/\.supabase\.(co|in)$/i.test(parsed.hostname)) return null;
+  const marker = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/product-images\//;
+  const match = parsed.pathname.match(marker);
+  if (!match) return null;
+  const rest = parsed.pathname.slice(match.index! + match[0].length);
+  if (!rest || rest.includes("..")) return null;
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return rest;
+  }
+}

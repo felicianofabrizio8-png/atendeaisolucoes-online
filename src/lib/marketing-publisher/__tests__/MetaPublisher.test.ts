@@ -198,7 +198,11 @@ beforeEach(() => {
   state.videos = [];
   state.mediaInserts = [];
   state.storageSigns = [];
-  globalThis.fetch = vi.fn(async () => new Response(null, { status: 200 })) as any;
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const contentType = url.includes("/video-library/") ? "video/mp4" : "image/jpeg";
+    return new Response(null, { status: 200, headers: { "content-type": contentType } });
+  }) as any;
 });
 
 import { MetaPublisher } from "../MetaPublisher.server";
@@ -637,6 +641,33 @@ describe("MetaPublisher — campaign rendered video preference", () => {
     });
     expect(r.success).toBe(true);
     expect(state.storageSigns.some((s) => s.bucket === "video-library" && s.path === `${COMPANY}/vid-story/video.mp4`)).toBe(true);
+  });
+
+  it("não envia vídeo ao Publisher quando a signed URL não responde como video/mp4", async () => {
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.videos.push({
+      id: "vid-wrong-type",
+      company_id: COMPANY,
+      file_path: `${COMPANY}/vid-wrong-type/video.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent({
+      campaign_role: "feed",
+      feed_video_id: "vid-wrong-type",
+    } as Partial<FakeContentRow> as any);
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } })) as any;
+
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("no_media");
+    expect(state.storageSigns.some((s) => s.bucket === "video-library" && s.path === `${COMPANY}/vid-wrong-type/video.mp4`)).toBe(true);
   });
 
   it("Ignora vídeo com file_path fora do tenant (guard multi-tenant)", async () => {
