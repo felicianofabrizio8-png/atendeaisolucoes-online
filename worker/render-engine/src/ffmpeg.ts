@@ -579,8 +579,6 @@ async function runFfmpegIsolated(input: {
     });
   });
 }
-  });
-}
 
 /**
  * Classifica a causa de falha do ffmpeg em um código estável.
