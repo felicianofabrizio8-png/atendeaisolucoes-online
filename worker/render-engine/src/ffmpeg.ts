@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { log } from "./logger.js";
+import { truncateStream } from "./telemetry.js";
 
 export interface FocalPoint {
   x: number; // 0..1
