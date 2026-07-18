@@ -73,6 +73,7 @@ export const Route = createFileRoute("/api/public/render/complete")({
                 locked_by: null,
               })
               .eq("id", job.id);
+            await linkVideoToMarketingCampaign(supabaseAdmin, job.id, existing.id);
             console.info("[render-complete]", { cid, event: "render_completed", idempotent: true, job_id: job.id });
             return Response.json({ ok: true, videoId: existing.id, idempotent: true });
           }
@@ -160,6 +161,10 @@ export const Route = createFileRoute("/api/public/render/complete")({
             })
             .eq("id", job.id);
 
+          if (finalVideoId) {
+            await linkVideoToMarketingCampaign(supabaseAdmin, job.id, finalVideoId);
+          }
+
           console.info("[render-complete]", {
             cid,
             event: "render_completed",
@@ -183,3 +188,45 @@ export const Route = createFileRoute("/api/public/render/complete")({
     },
   },
 });
+
+/**
+ * Fase C.1 — Se este job pertence a uma campanha de marketing (Feed 4:5 ou
+ * Story 9:16), grava feed_video_id / story_video_id na linha correspondente.
+ * Best-effort: falhas são apenas logadas para não bloquear a conclusão do render.
+ */
+async function linkVideoToMarketingCampaign(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
+  jobId: string,
+  videoId: string,
+): Promise<void> {
+  try {
+    const { data: feedRow } = await admin
+      .from("marketing_contents")
+      .select("id, feed_video_id")
+      .eq("feed_render_job_id", jobId)
+      .maybeSingle();
+    if (feedRow && !feedRow.feed_video_id) {
+      await admin
+        .from("marketing_contents")
+        .update({ feed_video_id: videoId })
+        .eq("id", feedRow.id);
+      return;
+    }
+    const { data: storyRow } = await admin
+      .from("marketing_contents")
+      .select("id, story_video_id")
+      .eq("story_render_job_id", jobId)
+      .maybeSingle();
+    if (storyRow && !storyRow.story_video_id) {
+      await admin
+        .from("marketing_contents")
+        .update({ story_video_id: videoId })
+        .eq("id", storyRow.id);
+    }
+  } catch (e) {
+    console.warn("[render-complete] link_campaign_failed", {
+      code: e instanceof Error ? e.name : "Error",
+    });
+  }
+}
