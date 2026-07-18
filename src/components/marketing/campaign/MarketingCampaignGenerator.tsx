@@ -158,12 +158,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         extra_instructions: extra.trim() || null,
       });
       setCampaignId(res.campaign_id);
-      setNeedsMarketingMedia(res.needs_marketing_media_for_render);
-      toast.success(
-        res.needs_marketing_media_for_render
-          ? "Campanha criada. Vídeos não enfileirados (imagem é de produto)."
-          : "Campanha criada. Renderização Feed + Story enfileirada.",
-      );
+      setNeedsMarketingMedia(false);
+      toast.success("Campanha criada. Renderização Feed + Story enfileirada.");
       onGenerated?.(res.contents as MarketingContentRow[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
