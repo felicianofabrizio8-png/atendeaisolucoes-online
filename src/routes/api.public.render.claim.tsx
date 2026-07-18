@@ -57,7 +57,10 @@ export const Route = createFileRoute("/api/public/render/claim")({
           const job = rows[0] as {
             id: string;
             company_id: string;
-            image_id: string;
+            image_source: "marketing_media" | "product_image" | string;
+            image_id: string | null;
+            product_id: string | null;
+            product_image_path: string | null;
             audio_id: string;
             video_format: keyof typeof VIDEO_FORMAT_DIMENSIONS;
             audio_start_second: number | string;
@@ -72,19 +75,6 @@ export const Route = createFileRoute("/api/public/render/claim")({
           const dims = VIDEO_FORMAT_DIMENSIONS[job.video_format];
           if (!dims) return internalError();
 
-          // Resolve imagem e áudio (tenant-safe)
-          const [{ data: img, error: imgErr }, { data: aud, error: audErr }] = await Promise.all([
-            supabaseAdmin
-              .from("marketing_media")
-              .select("storage_path, company_id, active, media_type")
-              .eq("id", job.image_id)
-              .maybeSingle(),
-            supabaseAdmin
-              .from("audio_library")
-              .select("file_path, company_id, is_active, duration_seconds")
-              .eq("id", job.audio_id)
-              .maybeSingle(),
-          ]);
           const fail = async (code: string) => {
             await supabaseAdmin
               .from("video_render_jobs")
@@ -100,13 +90,60 @@ export const Route = createFileRoute("/api/public/render/claim")({
             console.error("[render-claim]", { cid, event: "claim_source_invalid", code });
             return internalError();
           };
-          if (imgErr || !img) return fail("source_image_not_found");
+
+          // Resolve imagem (bucket varia conforme origem) + áudio em paralelo.
+          const source = (job.image_source ?? "marketing_media") as
+            | "marketing_media"
+            | "product_image";
+
+          type ResolvedImage = { bucket: string; path: string };
+          async function resolveImage(): Promise<ResolvedImage | { error: string }> {
+            if (source === "marketing_media") {
+              if (!job.image_id) return { error: "source_image_not_found" };
+              const { data: img, error } = await supabaseAdmin
+                .from("marketing_media")
+                .select("storage_path, company_id, active, media_type")
+                .eq("id", job.image_id)
+                .maybeSingle();
+              if (error || !img) return { error: "source_image_not_found" };
+              if (img.company_id !== job.company_id) return { error: "image_cross_tenant" };
+              if (!img.active) return { error: "image_inactive" };
+              if (img.media_type !== "image") return { error: "image_wrong_type" };
+              return { bucket: "marketing-media", path: img.storage_path };
+            }
+            if (!job.product_id || !job.product_image_path) {
+              return { error: "source_product_image_incomplete" };
+            }
+            const { data: prod, error } = await supabaseAdmin
+              .from("products")
+              .select("company_id, active, images")
+              .eq("id", job.product_id)
+              .maybeSingle();
+            if (error || !prod) return { error: "source_product_not_found" };
+            if (prod.company_id !== job.company_id) return { error: "product_cross_tenant" };
+            if (!prod.active) return { error: "product_inactive" };
+            const imgs = Array.isArray(prod.images)
+              ? (prod.images.filter((x) => typeof x === "string") as string[])
+              : [];
+            if (!imgs.includes(job.product_image_path)) {
+              return { error: "product_image_not_owned" };
+            }
+            return { bucket: "product-images", path: job.product_image_path };
+          }
+
+          const [imgRes, audRes] = await Promise.all([
+            resolveImage(),
+            supabaseAdmin
+              .from("audio_library")
+              .select("file_path, company_id, is_active, duration_seconds")
+              .eq("id", job.audio_id)
+              .maybeSingle(),
+          ]);
+          if ("error" in imgRes) return fail(imgRes.error);
+          const { data: aud, error: audErr } = audRes;
           if (audErr || !aud) return fail("source_audio_not_found");
-          if (img.company_id !== job.company_id) return fail("image_cross_tenant");
           if (aud.company_id !== job.company_id) return fail("audio_cross_tenant");
-          if (!img.active) return fail("image_inactive");
           if (!aud.is_active) return fail("audio_inactive");
-          if (img.media_type !== "image") return fail("image_wrong_type");
 
           const audioDuration = Number(aud.duration_seconds ?? 0);
           const dur = Number(job.duration_seconds);
@@ -117,7 +154,7 @@ export const Route = createFileRoute("/api/public/render/claim")({
 
           // Signed URLs de download
           const [dlImg, dlAud] = await Promise.all([
-            supabaseAdmin.storage.from("marketing-media").createSignedUrl(img.storage_path, SIGNED_TTL_SECONDS),
+            supabaseAdmin.storage.from(imgRes.bucket).createSignedUrl(imgRes.path, SIGNED_TTL_SECONDS),
             supabaseAdmin.storage.from("audio-library").createSignedUrl(aud.file_path, SIGNED_TTL_SECONDS),
           ]);
           if (dlImg.error || !dlImg.data?.signedUrl) return fail("image_sign_failed");

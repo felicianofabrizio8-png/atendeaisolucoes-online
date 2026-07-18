@@ -158,9 +158,14 @@ async function assertPrimaryAudio(
   }
 }
 
+type ImageForRender =
+  | { source: "marketing_media"; image_id: string }
+  | { source: "product_image"; product_id: string; product_image_path: string };
+
 /**
  * Enfileira um render job para a campanha, ou reaproveita se já existir e
- * ainda não terminou em falha permanente. Retorna o job_id efetivo.
+ * ainda não terminou em falha permanente. Aceita imagem da biblioteca de
+ * marketing ou imagem de produto (fatia 1.1).
  */
 async function ensureCampaignJob(
   supabase: SB,
@@ -168,7 +173,7 @@ async function ensureCampaignJob(
     companyId: string;
     userId: string;
     role: CampaignRoleFeedStory;
-    imageIdForRender: string; // marketing_media.id (necessário — worker só entende marketing_media hoje)
+    image: ImageForRender;
     audioId: string;
     audioStart: number;
     duration: number;
@@ -187,17 +192,31 @@ async function ensureCampaignJob(
     // Falhou/cancelado → cria novo (retry).
   }
 
+  const basePayload = {
+    company_id: args.companyId,
+    created_by: args.userId,
+    audio_id: args.audioId,
+    video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role],
+    audio_start_second: args.audioStart,
+    duration_seconds: args.duration,
+  };
+  const insertPayload =
+    args.image.source === "marketing_media"
+      ? {
+          ...basePayload,
+          image_source: "marketing_media" as const,
+          image_id: args.image.image_id,
+        }
+      : {
+          ...basePayload,
+          image_source: "product_image" as const,
+          product_id: args.image.product_id,
+          product_image_path: args.image.product_image_path,
+        };
+
   const { data: inserted, error } = await supabase
     .from("video_render_jobs")
-    .insert({
-      company_id: args.companyId,
-      created_by: args.userId,
-      image_id: args.imageIdForRender,
-      audio_id: args.audioId,
-      video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role],
-      audio_start_second: args.audioStart,
-      duration_seconds: args.duration,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
   if (error || !inserted) throw new Error(error?.message ?? "job_insert_failed");
@@ -273,49 +292,48 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
         .update({ ...commonPatch, campaign_role: "story" })
         .eq("id", storyRow.id);
 
-      // 4) Criação de jobs — apenas se a imagem é da marketing_media.
-      //    Produtos são mídia de leitura (bucket product-images); o worker
-      //    atual só lê caminhos de marketing_media. Nesse caso a fatia 1
-      //    não enfileira renders automáticos e a UI exibe orientação para o
-      //    usuário registrar a imagem na Biblioteca de Marketing.
-      let feedJobId: string | null = null;
-      let storyJobId: string | null = null;
-      const needsMarketingMediaForRender = !imageRef.primary_image_media_id;
+      // 4) Enfileira 2 jobs (feed + story) — ambas as origens de imagem
+      //    são suportadas pelo worker (marketing_media e product_image).
+      const imageForRender: ImageForRender = imageRef.primary_image_media_id
+        ? { source: "marketing_media", image_id: imageRef.primary_image_media_id }
+        : {
+            source: "product_image",
+            product_id: imageRef.primary_image_product_ref!.product_id,
+            product_image_path: imageRef.primary_image_product_ref!.image_path,
+          };
 
-      if (imageRef.primary_image_media_id) {
-        const feed = await ensureCampaignJob(supabase, {
-          companyId,
-          userId,
-          role: "feed",
-          imageIdForRender: imageRef.primary_image_media_id,
-          audioId: data.primary_audio_id,
-          audioStart: data.audio_start_second,
-          duration: data.duration_seconds,
-          existingJobId: null,
-        });
-        feedJobId = feed.jobId;
+      const feed = await ensureCampaignJob(supabase, {
+        companyId,
+        userId,
+        role: "feed",
+        image: imageForRender,
+        audioId: data.primary_audio_id,
+        audioStart: data.audio_start_second,
+        duration: data.duration_seconds,
+        existingJobId: null,
+      });
+      const feedJobId = feed.jobId;
 
-        const story = await ensureCampaignJob(supabase, {
-          companyId,
-          userId,
-          role: "story",
-          imageIdForRender: imageRef.primary_image_media_id,
-          audioId: data.primary_audio_id,
-          audioStart: data.audio_start_second,
-          duration: data.duration_seconds,
-          existingJobId: null,
-        });
-        storyJobId = story.jobId;
+      const story = await ensureCampaignJob(supabase, {
+        companyId,
+        userId,
+        role: "story",
+        image: imageForRender,
+        audioId: data.primary_audio_id,
+        audioStart: data.audio_start_second,
+        duration: data.duration_seconds,
+        existingJobId: null,
+      });
+      const storyJobId = story.jobId;
 
-        await supabase
-          .from("marketing_contents")
-          .update({ feed_render_job_id: feedJobId })
-          .eq("id", feedRow.id);
-        await supabase
-          .from("marketing_contents")
-          .update({ story_render_job_id: storyJobId })
-          .eq("id", storyRow.id);
-      }
+      await supabase
+        .from("marketing_contents")
+        .update({ feed_render_job_id: feedJobId })
+        .eq("id", feedRow.id);
+      await supabase
+        .from("marketing_contents")
+        .update({ story_render_job_id: storyJobId })
+        .eq("id", storyRow.id);
 
       // 5) Refaz o fetch das linhas atualizadas para retornar ao cliente.
       const { data: refreshed } = await supabase
@@ -325,14 +343,11 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
 
       return {
         campaign_id: campaignId,
-        // Cast: contents cross the serverFn JSON boundary; MarketingContentRow.ai_prompt
-        // is `unknown` (row can hold any JSON) which doesn't fit the inferred
-        // structural JSON type. Callers still consume MarketingContentRow shape.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         contents: (refreshed ?? contents) as any,
         feed_job_id: feedJobId,
         story_job_id: storyJobId,
-        needs_marketing_media_for_render: needsMarketingMediaForRender,
+        needs_marketing_media_for_render: false,
       };
     },
   );
@@ -410,18 +425,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_audio_id, audio_start_second, duration_seconds, ${roleColumnJob}, ${roleColumnVideo}`,
+        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, ${roleColumnJob}, ${roleColumnVideo}`,
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id)
       .eq("campaign_role", data.role)
       .maybeSingle();
     if (error || !row) throw new Error("campaign_role_not_found");
-    // Type narrowing for dynamic select.
     const r = row as unknown as {
       id: string;
       company_id: string;
       primary_image_media_id: string | null;
+      primary_image_product_ref: { product_id: string; image_path: string } | null;
       primary_audio_id: string | null;
       audio_start_second: number | null;
       duration_seconds: number | null;
@@ -430,18 +445,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       feed_video_id?: string | null;
       story_video_id?: string | null;
     };
-    if (!r.primary_image_media_id || !r.primary_audio_id) {
-      throw new Error("campaign_missing_primary_media");
+    if (!r.primary_audio_id) throw new Error("campaign_missing_primary_audio");
+    if (!r.primary_image_media_id && !r.primary_image_product_ref) {
+      throw new Error("campaign_missing_primary_image");
     }
+
     const existingJobId =
       data.role === "feed" ? r.feed_render_job_id ?? null : r.story_render_job_id ?? null;
     const existingVideoId =
       data.role === "feed" ? r.feed_video_id ?? null : r.story_video_id ?? null;
     if (existingVideoId) {
-      // Já concluído — não recria.
       return { job_id: existingJobId ?? "" };
     }
-    // Se o job atual ainda está queued/processing, retorna-o (não duplica).
     if (existingJobId) {
       const { data: j } = await supabase
         .from("video_render_jobs")
@@ -453,28 +468,30 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       }
     }
 
-    const audioStart = Number(r.audio_start_second ?? 0);
-    const duration = Number(r.duration_seconds ?? 15);
-    const { data: inserted, error: insErr } = await supabase
-      .from("video_render_jobs")
-      .insert({
-        company_id: companyId,
-        created_by: userId,
-        image_id: r.primary_image_media_id,
-        audio_id: r.primary_audio_id,
-        video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[data.role],
-        audio_start_second: audioStart,
-        duration_seconds: duration,
-      })
-      .select("id")
-      .single();
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "job_insert_failed");
+    const image: ImageForRender = r.primary_image_media_id
+      ? { source: "marketing_media", image_id: r.primary_image_media_id }
+      : {
+          source: "product_image",
+          product_id: r.primary_image_product_ref!.product_id,
+          product_image_path: r.primary_image_product_ref!.image_path,
+        };
+
+    const { jobId } = await ensureCampaignJob(supabase, {
+      companyId,
+      userId,
+      role: data.role,
+      image,
+      audioId: r.primary_audio_id,
+      audioStart: Number(r.audio_start_second ?? 0),
+      duration: Number(r.duration_seconds ?? 15),
+      existingJobId: null,
+    });
 
     const patch =
       data.role === "feed"
-        ? { feed_render_job_id: inserted.id }
-        : { story_render_job_id: inserted.id };
+        ? { feed_render_job_id: jobId }
+        : { story_render_job_id: jobId };
     await supabase.from("marketing_contents").update(patch).eq("id", r.id);
 
-    return { job_id: inserted.id };
+    return { job_id: jobId };
   });

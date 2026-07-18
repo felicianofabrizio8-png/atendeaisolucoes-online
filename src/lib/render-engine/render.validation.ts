@@ -1,5 +1,11 @@
 // ============================================================================
 // Render Engine — Validation (frontend-safe, pure functions)
+//
+// A partir da Fatia 1.1, aceita duas origens de imagem:
+//   - marketing_media (image_id UUID)  ← comportamento original
+//   - product_image  (product_id UUID + product_image_path)
+// O contrato antigo `{ image_id }` continua válido e é normalizado para
+// `{ image_source: 'marketing_media', image_id }`.
 // ============================================================================
 
 import { z } from "zod";
@@ -10,8 +16,18 @@ import {
   type VideoFormat,
 } from "./render.types";
 
-export const createRenderJobSchema = z.object({
+const marketingImageSchema = z.object({
+  image_source: z.literal("marketing_media").default("marketing_media"),
   image_id: z.string().uuid(),
+});
+
+const productImageSchema = z.object({
+  image_source: z.literal("product_image"),
+  product_id: z.string().uuid(),
+  product_image_path: z.string().min(1).max(500),
+});
+
+const baseFieldsSchema = z.object({
   audio_id: z.string().uuid(),
   video_format: z.enum(VIDEO_FORMATS),
   audio_start_second: z.number().finite().min(0).max(3600),
@@ -20,6 +36,23 @@ export const createRenderJobSchema = z.object({
     { message: "duration_seconds_not_allowed" },
   ),
 });
+
+/**
+ * Aceita tanto o formato novo (com `image_source`) quanto o legado
+ * (`{ image_id }`), preservando compatibilidade com callers antigos.
+ */
+export const createRenderJobSchema = z.preprocess(
+  (raw) => {
+    if (raw && typeof raw === "object" && !("image_source" in (raw as object))) {
+      return { ...(raw as Record<string, unknown>), image_source: "marketing_media" };
+    }
+    return raw;
+  },
+  z.discriminatedUnion("image_source", [
+    marketingImageSchema.merge(baseFieldsSchema),
+    productImageSchema.merge(baseFieldsSchema),
+  ]),
+);
 export type CreateRenderJobInput = z.infer<typeof createRenderJobSchema>;
 
 export interface RangeCheckInput {

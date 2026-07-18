@@ -184,7 +184,7 @@ export function MarketingLibrary({
       url: urls[`m:${m.id}`] ?? "",
       tags: m.tags ?? [],
       sizeBytes: m.size_bytes,
-      selection: { origin: "marketing", id: m.id },
+      selection: { origin: "marketing", id: m.id, storagePath: m.storage_path },
       raw: m,
     }));
     const products: UnifiedItem[] = productImages.map((p) => {

@@ -65,7 +65,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  const [needsMarketingMedia, setNeedsMarketingMedia] = useState(false);
+  
   const [renderStatus, setRenderStatus] = useState<Awaited<
     ReturnType<typeof apiGetCampaignRenderStatus>
   > | null>(null);
@@ -74,28 +74,45 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
+  const [imageResolveFailed, setImageResolveFailed] = useState(false);
+
   // Resolve URL assinada da imagem selecionada para preview de enquadramento.
   useEffect(() => {
     let cancelled = false;
     async function resolve() {
+      setImageResolveFailed(false);
       if (!image) {
         setImageUrl(null);
         return;
       }
       try {
         if (image.origin === "marketing") {
-          // Fallback: MarketingLibrary não expõe path direto no MediaSelection.
-          // A URL assinada será resolvida server-side no publisher; aqui
-          // usamos o próprio card visual — deixamos preview vazio com aviso.
-          // Uma iteração futura pode encaminhar o path junto do MediaSelection.
-          setImageUrl(null);
+          const path = image.storagePath;
+          if (!path) {
+            if (!cancelled) {
+              setImageUrl(null);
+              setImageResolveFailed(true);
+            }
+            return;
+          }
+          const url = await urlForMarketingPath(path).catch(() => null);
+          if (!cancelled) {
+            setImageUrl(url ?? null);
+            setImageResolveFailed(!url);
+          }
         } else {
-          const url = await urlForMarketingPath(image.imagePath).catch(() => null);
-          const url2 = url ?? (await getSignedImageUrl(image.imagePath).catch(() => null));
-          if (!cancelled) setImageUrl(url2 ?? null);
+          // Imagem de produto vive no bucket product-images.
+          const url = await getSignedImageUrl(image.imagePath).catch(() => null);
+          if (!cancelled) {
+            setImageUrl(url ?? null);
+            setImageResolveFailed(!url);
+          }
         }
       } catch {
-        if (!cancelled) setImageUrl(null);
+        if (!cancelled) {
+          setImageUrl(null);
+          setImageResolveFailed(true);
+        }
       }
     }
     void resolve();
@@ -105,8 +122,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }, [image]);
 
   const canGenerate = useMemo(
-    () => !!image && !!audio && !generating,
-    [image, audio, generating],
+    () => !!image && !!audio && !generating && !imageResolveFailed && !!imageUrl,
+    [image, audio, generating, imageResolveFailed, imageUrl],
   );
 
   const buildPrimaryImage = useCallback((): CampaignPrimaryImage | null => {
@@ -141,12 +158,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         extra_instructions: extra.trim() || null,
       });
       setCampaignId(res.campaign_id);
-      setNeedsMarketingMedia(res.needs_marketing_media_for_render);
-      toast.success(
-        res.needs_marketing_media_for_render
-          ? "Campanha criada. Vídeos não enfileirados (imagem é de produto)."
-          : "Campanha criada. Renderização Feed + Story enfileirada.",
-      );
+      
+      toast.success("Campanha criada. Renderização Feed + Story enfileirada.");
       onGenerated?.(res.contents as MarketingContentRow[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
@@ -317,16 +330,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       {campaignId && (
         <div className="rounded-lg border bg-card p-4 space-y-2">
           <div className="text-sm font-semibold">Campanha gerada</div>
-          {needsMarketingMedia && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
-              <Info className="h-4 w-4 mt-0.5" />
-              <div>
-                Os textos foram criados como rascunho. Para gerar vídeos MP4 automaticamente,
-                cadastre esta imagem na <strong>Biblioteca de Marketing</strong> e regenere.
-              </div>
-            </div>
-          )}
-          {!needsMarketingMedia && renderStatus && (
+          {renderStatus && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <RoleStatus label="Feed 4:5" info={renderStatus.feed} onRetry={() => retry("feed")} />
               <RoleStatus label="Story 9:16" info={renderStatus.story} onRetry={() => retry("story")} />
