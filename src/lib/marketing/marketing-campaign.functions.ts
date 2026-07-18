@@ -292,49 +292,48 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
         .update({ ...commonPatch, campaign_role: "story" })
         .eq("id", storyRow.id);
 
-      // 4) Criação de jobs — apenas se a imagem é da marketing_media.
-      //    Produtos são mídia de leitura (bucket product-images); o worker
-      //    atual só lê caminhos de marketing_media. Nesse caso a fatia 1
-      //    não enfileira renders automáticos e a UI exibe orientação para o
-      //    usuário registrar a imagem na Biblioteca de Marketing.
-      let feedJobId: string | null = null;
-      let storyJobId: string | null = null;
-      const needsMarketingMediaForRender = !imageRef.primary_image_media_id;
+      // 4) Enfileira 2 jobs (feed + story) — ambas as origens de imagem
+      //    são suportadas pelo worker (marketing_media e product_image).
+      const imageForRender: ImageForRender = imageRef.primary_image_media_id
+        ? { source: "marketing_media", image_id: imageRef.primary_image_media_id }
+        : {
+            source: "product_image",
+            product_id: imageRef.primary_image_product_ref!.product_id,
+            product_image_path: imageRef.primary_image_product_ref!.image_path,
+          };
 
-      if (imageRef.primary_image_media_id) {
-        const feed = await ensureCampaignJob(supabase, {
-          companyId,
-          userId,
-          role: "feed",
-          imageIdForRender: imageRef.primary_image_media_id,
-          audioId: data.primary_audio_id,
-          audioStart: data.audio_start_second,
-          duration: data.duration_seconds,
-          existingJobId: null,
-        });
-        feedJobId = feed.jobId;
+      const feed = await ensureCampaignJob(supabase, {
+        companyId,
+        userId,
+        role: "feed",
+        image: imageForRender,
+        audioId: data.primary_audio_id,
+        audioStart: data.audio_start_second,
+        duration: data.duration_seconds,
+        existingJobId: null,
+      });
+      const feedJobId = feed.jobId;
 
-        const story = await ensureCampaignJob(supabase, {
-          companyId,
-          userId,
-          role: "story",
-          imageIdForRender: imageRef.primary_image_media_id,
-          audioId: data.primary_audio_id,
-          audioStart: data.audio_start_second,
-          duration: data.duration_seconds,
-          existingJobId: null,
-        });
-        storyJobId = story.jobId;
+      const story = await ensureCampaignJob(supabase, {
+        companyId,
+        userId,
+        role: "story",
+        image: imageForRender,
+        audioId: data.primary_audio_id,
+        audioStart: data.audio_start_second,
+        duration: data.duration_seconds,
+        existingJobId: null,
+      });
+      const storyJobId = story.jobId;
 
-        await supabase
-          .from("marketing_contents")
-          .update({ feed_render_job_id: feedJobId })
-          .eq("id", feedRow.id);
-        await supabase
-          .from("marketing_contents")
-          .update({ story_render_job_id: storyJobId })
-          .eq("id", storyRow.id);
-      }
+      await supabase
+        .from("marketing_contents")
+        .update({ feed_render_job_id: feedJobId })
+        .eq("id", feedRow.id);
+      await supabase
+        .from("marketing_contents")
+        .update({ story_render_job_id: storyJobId })
+        .eq("id", storyRow.id);
 
       // 5) Refaz o fetch das linhas atualizadas para retornar ao cliente.
       const { data: refreshed } = await supabase
@@ -344,14 +343,11 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
 
       return {
         campaign_id: campaignId,
-        // Cast: contents cross the serverFn JSON boundary; MarketingContentRow.ai_prompt
-        // is `unknown` (row can hold any JSON) which doesn't fit the inferred
-        // structural JSON type. Callers still consume MarketingContentRow shape.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         contents: (refreshed ?? contents) as any,
         feed_job_id: feedJobId,
         story_job_id: storyJobId,
-        needs_marketing_media_for_render: needsMarketingMediaForRender,
+        needs_marketing_media_for_render: false,
       };
     },
   );
