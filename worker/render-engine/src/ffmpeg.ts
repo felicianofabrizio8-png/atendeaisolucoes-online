@@ -159,9 +159,12 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   const xfadeDuration = Math.min(0.6, perSlot / 3); // ~0.5s ou menos
 
   // Cada input roda com -loop 1 -t perSlot (para não terminar antes da hora).
+  // Otimização de memória (hotfix SIGKILL): input framerate=2 reduz frames
+  // raw bufferizados no filter graph em 15x. Cada branch normaliza com
+  // fps=30 antes do xfade para preservar o output final a 30fps.
   const args: string[] = ["-y"];
   for (let i = 0; i < n; i++) {
-    args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "30", "-i", imageFilePaths[i]);
+    args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
 
@@ -173,7 +176,10 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       : `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
         `crop=${width}:${height},` +
         `setsar=1,setparams=range=tv,format=yuv420p`;
-    filterParts.push(`[${i}:v]${vf}[v${i}]`);
+    // fps=30 normaliza timing entre inputs para o xfade (que exige framerate
+    // consistente); vem depois do scale/crop para minimizar frames raw
+    // grandes bufferizados.
+    filterParts.push(`[${i}:v]${vf},fps=30[v${i}]`);
   }
   // Chain: v0 xfade v1 -> vx1; vx1 xfade v2 -> vx2; ...
   let lastLabel = "v0";
@@ -196,13 +202,16 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     "-map", `${n}:a:0`,
     "-c:v", "libx264",
     "-profile:v", "high",
-    "-preset", "medium",
+    "-preset", "veryfast",
     "-crf", "20",
+    "-threads", "2",
     "-r", "30",
     "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "192k", "-ar", "48000", "-ac", "2",
     "-movflags", "+faststart",
+    "-max_muxing_queue_size", "1024",
     "-t", String(durationSeconds),
+
     outputFilePath,
   );
 
