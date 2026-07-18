@@ -82,6 +82,18 @@ export interface MarketingContentRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Fase C.1 — campanha agrupada (Feed 4:5 + Story 9:16)
+  campaign_id?: string | null;
+  campaign_role?: "feed" | "story" | null;
+  primary_image_media_id?: string | null;
+  primary_image_product_ref?: { product_id: string; image_path: string } | null;
+  primary_audio_id?: string | null;
+  audio_start_second?: number | null;
+  duration_seconds?: number | null;
+  feed_render_job_id?: string | null;
+  story_render_job_id?: string | null;
+  feed_video_id?: string | null;
+  story_video_id?: string | null;
 }
 
 export interface MarketingScheduleRow {

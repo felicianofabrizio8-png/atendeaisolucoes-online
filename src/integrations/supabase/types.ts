@@ -2077,21 +2077,32 @@ export type Database = {
           ai_raw_output: Json | null
           approved_at: string | null
           approved_by: string | null
+          audio_start_second: number | null
           body: string
+          campaign_id: string | null
+          campaign_role: string | null
           channel: Database["public"]["Enums"]["marketing_content_channel"]
           company_id: string
           created_at: string
           created_by: string | null
           cta_destination: string | null
           cta_text: string | null
+          duration_seconds: number | null
+          feed_render_job_id: string | null
+          feed_video_id: string | null
           format: Database["public"]["Enums"]["marketing_content_format"]
           hashtags: string[]
           id: string
           media_ids: string[]
+          primary_audio_id: string | null
+          primary_image_media_id: string | null
+          primary_image_product_ref: Json | null
           product_id: string | null
           promotion_id: string | null
           rejection_reason: string | null
           status: Database["public"]["Enums"]["marketing_content_status"]
+          story_render_job_id: string | null
+          story_video_id: string | null
           title: string | null
           updated_at: string
         }
@@ -2101,21 +2112,32 @@ export type Database = {
           ai_raw_output?: Json | null
           approved_at?: string | null
           approved_by?: string | null
+          audio_start_second?: number | null
           body: string
+          campaign_id?: string | null
+          campaign_role?: string | null
           channel: Database["public"]["Enums"]["marketing_content_channel"]
           company_id: string
           created_at?: string
           created_by?: string | null
           cta_destination?: string | null
           cta_text?: string | null
+          duration_seconds?: number | null
+          feed_render_job_id?: string | null
+          feed_video_id?: string | null
           format: Database["public"]["Enums"]["marketing_content_format"]
           hashtags?: string[]
           id?: string
           media_ids?: string[]
+          primary_audio_id?: string | null
+          primary_image_media_id?: string | null
+          primary_image_product_ref?: Json | null
           product_id?: string | null
           promotion_id?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["marketing_content_status"]
+          story_render_job_id?: string | null
+          story_video_id?: string | null
           title?: string | null
           updated_at?: string
         }
@@ -2125,21 +2147,32 @@ export type Database = {
           ai_raw_output?: Json | null
           approved_at?: string | null
           approved_by?: string | null
+          audio_start_second?: number | null
           body?: string
+          campaign_id?: string | null
+          campaign_role?: string | null
           channel?: Database["public"]["Enums"]["marketing_content_channel"]
           company_id?: string
           created_at?: string
           created_by?: string | null
           cta_destination?: string | null
           cta_text?: string | null
+          duration_seconds?: number | null
+          feed_render_job_id?: string | null
+          feed_video_id?: string | null
           format?: Database["public"]["Enums"]["marketing_content_format"]
           hashtags?: string[]
           id?: string
           media_ids?: string[]
+          primary_audio_id?: string | null
+          primary_image_media_id?: string | null
+          primary_image_product_ref?: Json | null
           product_id?: string | null
           promotion_id?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["marketing_content_status"]
+          story_render_job_id?: string | null
+          story_video_id?: string | null
           title?: string | null
           updated_at?: string
         }
@@ -2163,6 +2196,48 @@ export type Database = {
             columns: ["promotion_id"]
             isOneToOne: false
             referencedRelation: "marketing_promotions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_feed_render_job_fkey"
+            columns: ["feed_render_job_id"]
+            isOneToOne: false
+            referencedRelation: "video_render_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_feed_video_fkey"
+            columns: ["feed_video_id"]
+            isOneToOne: false
+            referencedRelation: "video_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_primary_audio_fkey"
+            columns: ["primary_audio_id"]
+            isOneToOne: false
+            referencedRelation: "audio_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_primary_image_media_fkey"
+            columns: ["primary_image_media_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_story_render_job_fkey"
+            columns: ["story_render_job_id"]
+            isOneToOne: false
+            referencedRelation: "video_render_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_story_video_fkey"
+            columns: ["story_video_id"]
+            isOneToOne: false
+            referencedRelation: "video_library"
             referencedColumns: ["id"]
           },
         ]

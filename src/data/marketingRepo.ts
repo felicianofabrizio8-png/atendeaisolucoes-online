@@ -21,6 +21,11 @@ import {
   getFacebookPublishReadiness,
 } from "@/lib/marketing/marketing.functions";
 import { generateMarketingContent } from "@/lib/marketing/marketing-ai.functions";
+import {
+  generateMarketingCampaign,
+  getCampaignRenderStatus,
+  retryCampaignRender,
+} from "@/lib/marketing/marketing-campaign.functions";
 import type {
   MarketingMediaRow,
   MarketingPromotionRow,
@@ -183,4 +188,34 @@ export async function apiCancelSchedule(id: string) {
 export async function apiFacebookPublishReadiness() {
   return getFacebookPublishReadiness();
 }
+
+// ------- Campaign (Fase C.1) -------
+export type CampaignPrimaryImage =
+  | { origin: "marketing"; media_id: string }
+  | { origin: "product"; product_id: string; image_path: string };
+
+export async function apiGenerateCampaign(input: {
+  promotion_id?: string | null;
+  primary_image: CampaignPrimaryImage;
+  primary_audio_id: string;
+  audio_start_second?: number;
+  duration_seconds?: 8 | 10 | 15 | 30 | 60;
+  tone?: "amigável" | "profissional" | "descontraído" | "urgente";
+  audience?: string | null;
+  extra_instructions?: string | null;
+}) {
+  return generateMarketingCampaign({ data: input });
+}
+
+export async function apiGetCampaignRenderStatus(campaign_id: string) {
+  return getCampaignRenderStatus({ data: { campaign_id } });
+}
+
+export async function apiRetryCampaignRender(input: {
+  campaign_id: string;
+  role: "feed" | "story";
+}) {
+  return retryCampaignRender({ data: input });
+}
+
 

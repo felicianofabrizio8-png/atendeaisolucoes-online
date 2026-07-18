@@ -3,7 +3,7 @@
 // Frontend-safe. Compartilhado entre UI e server functions.
 // ============================================================================
 
-export const VIDEO_FORMATS = ["story", "reels", "feed_square"] as const;
+export const VIDEO_FORMATS = ["story", "reels", "feed_square", "feed_4_5"] as const;
 export type VideoFormat = (typeof VIDEO_FORMATS)[number];
 
 export const RENDER_DURATIONS = [8, 10, 15, 30, 60] as const;
@@ -22,6 +22,7 @@ export const VIDEO_FORMAT_DIMENSIONS: Record<VideoFormat, { width: number; heigh
   story: { width: 1080, height: 1920, label: "Story (9:16)" },
   reels: { width: 1080, height: 1920, label: "Reels (9:16)" },
   feed_square: { width: 1080, height: 1080, label: "Feed Quadrado (1:1)" },
+  feed_4_5: { width: 1080, height: 1350, label: "Feed (4:5)" },
 };
 
 export interface RenderJobRow {
