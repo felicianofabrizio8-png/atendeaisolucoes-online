@@ -191,6 +191,7 @@ beforeEach(() => {
   state.products = [];
   state.integrations = [];
   state.metaPages = [];
+  state.videos = [];
   state.mediaInserts = [];
   state.storageSigns = [];
   globalThis.fetch = vi.fn(async () => new Response(null, { status: 200 })) as any;
