@@ -18,11 +18,11 @@ function emit(level: Level, event: string, fields?: Record<string, unknown>) {
 }
 
 function sanitize(o: Record<string, unknown>): Record<string, unknown> {
-  const bad = /(token|secret|password|authorization|signed_?url|apikey)/i;
+  const bad = /(token|secret|password|authorization|signed_?url|apikey|signature|bearer)/i;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) {
     if (bad.test(k)) out[k] = "[redacted]";
-    else if (typeof v === "string" && v.length > 500) out[k] = v.slice(0, 500) + "…";
+    else if (typeof v === "string" && v.length > 4000) out[k] = v.slice(0, 4000) + "…";
     else out[k] = v;
   }
   return out;
