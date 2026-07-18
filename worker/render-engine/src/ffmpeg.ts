@@ -211,8 +211,10 @@ export function buildFocalVideoFilter(
   const scaledH = `ih*max(${width}/iw\\,${height}/ih)*${zoom.toFixed(4)}`;
 
   // offset em coordenadas do quadro escalado; clamp entre 0 e (scaled - crop).
-  const cropX = `clip(${x.toFixed(4)}*iw - ${width}/2, 0, iw - ${width})`;
-  const cropY = `clip(${y.toFixed(4)}*ih - ${height}/2, 0, ih - ${height})`;
+  // Vírgulas dentro de clip(...) precisam ser escapadas dentro de filter_complex
+  // — caso contrário o parser as trata como separador de filtros.
+  const cropX = `clip(${x.toFixed(4)}*iw - ${width}/2\\, 0\\, iw - ${width})`;
+  const cropY = `clip(${y.toFixed(4)}*ih - ${height}/2\\, 0\\, ih - ${height})`;
 
   return (
     `scale=w=${scaledW}:h=${scaledH}:flags=lanczos,` +
