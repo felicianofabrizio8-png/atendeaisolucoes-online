@@ -74,28 +74,45 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
+  const [imageResolveFailed, setImageResolveFailed] = useState(false);
+
   // Resolve URL assinada da imagem selecionada para preview de enquadramento.
   useEffect(() => {
     let cancelled = false;
     async function resolve() {
+      setImageResolveFailed(false);
       if (!image) {
         setImageUrl(null);
         return;
       }
       try {
         if (image.origin === "marketing") {
-          // Fallback: MarketingLibrary não expõe path direto no MediaSelection.
-          // A URL assinada será resolvida server-side no publisher; aqui
-          // usamos o próprio card visual — deixamos preview vazio com aviso.
-          // Uma iteração futura pode encaminhar o path junto do MediaSelection.
-          setImageUrl(null);
+          const path = image.storagePath;
+          if (!path) {
+            if (!cancelled) {
+              setImageUrl(null);
+              setImageResolveFailed(true);
+            }
+            return;
+          }
+          const url = await urlForMarketingPath(path).catch(() => null);
+          if (!cancelled) {
+            setImageUrl(url ?? null);
+            setImageResolveFailed(!url);
+          }
         } else {
-          const url = await urlForMarketingPath(image.imagePath).catch(() => null);
-          const url2 = url ?? (await getSignedImageUrl(image.imagePath).catch(() => null));
-          if (!cancelled) setImageUrl(url2 ?? null);
+          // Imagem de produto vive no bucket product-images.
+          const url = await getSignedImageUrl(image.imagePath).catch(() => null);
+          if (!cancelled) {
+            setImageUrl(url ?? null);
+            setImageResolveFailed(!url);
+          }
         }
       } catch {
-        if (!cancelled) setImageUrl(null);
+        if (!cancelled) {
+          setImageUrl(null);
+          setImageResolveFailed(true);
+        }
       }
     }
     void resolve();
@@ -105,8 +122,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }, [image]);
 
   const canGenerate = useMemo(
-    () => !!image && !!audio && !generating,
-    [image, audio, generating],
+    () => !!image && !!audio && !generating && !imageResolveFailed && !!imageUrl,
+    [image, audio, generating, imageResolveFailed, imageUrl],
   );
 
   const buildPrimaryImage = useCallback((): CampaignPrimaryImage | null => {
