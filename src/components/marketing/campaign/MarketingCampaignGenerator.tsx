@@ -330,16 +330,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       {campaignId && (
         <div className="rounded-lg border bg-card p-4 space-y-2">
           <div className="text-sm font-semibold">Campanha gerada</div>
-          {needsMarketingMedia && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
-              <Info className="h-4 w-4 mt-0.5" />
-              <div>
-                Os textos foram criados como rascunho. Para gerar vídeos MP4 automaticamente,
-                cadastre esta imagem na <strong>Biblioteca de Marketing</strong> e regenere.
-              </div>
-            </div>
-          )}
-          {!needsMarketingMedia && renderStatus && (
+          {renderStatus && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <RoleStatus label="Feed 4:5" info={renderStatus.feed} onRetry={() => retry("feed")} />
               <RoleStatus label="Story 9:16" info={renderStatus.story} onRetry={() => retry("story")} />
