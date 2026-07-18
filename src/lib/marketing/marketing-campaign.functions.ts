@@ -425,18 +425,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_audio_id, audio_start_second, duration_seconds, ${roleColumnJob}, ${roleColumnVideo}`,
+        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, ${roleColumnJob}, ${roleColumnVideo}`,
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id)
       .eq("campaign_role", data.role)
       .maybeSingle();
     if (error || !row) throw new Error("campaign_role_not_found");
-    // Type narrowing for dynamic select.
     const r = row as unknown as {
       id: string;
       company_id: string;
       primary_image_media_id: string | null;
+      primary_image_product_ref: { product_id: string; image_path: string } | null;
       primary_audio_id: string | null;
       audio_start_second: number | null;
       duration_seconds: number | null;
@@ -445,18 +445,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       feed_video_id?: string | null;
       story_video_id?: string | null;
     };
-    if (!r.primary_image_media_id || !r.primary_audio_id) {
-      throw new Error("campaign_missing_primary_media");
+    if (!r.primary_audio_id) throw new Error("campaign_missing_primary_audio");
+    if (!r.primary_image_media_id && !r.primary_image_product_ref) {
+      throw new Error("campaign_missing_primary_image");
     }
+
     const existingJobId =
       data.role === "feed" ? r.feed_render_job_id ?? null : r.story_render_job_id ?? null;
     const existingVideoId =
       data.role === "feed" ? r.feed_video_id ?? null : r.story_video_id ?? null;
     if (existingVideoId) {
-      // Já concluído — não recria.
       return { job_id: existingJobId ?? "" };
     }
-    // Se o job atual ainda está queued/processing, retorna-o (não duplica).
     if (existingJobId) {
       const { data: j } = await supabase
         .from("video_render_jobs")
@@ -468,28 +468,30 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       }
     }
 
-    const audioStart = Number(r.audio_start_second ?? 0);
-    const duration = Number(r.duration_seconds ?? 15);
-    const { data: inserted, error: insErr } = await supabase
-      .from("video_render_jobs")
-      .insert({
-        company_id: companyId,
-        created_by: userId,
-        image_id: r.primary_image_media_id,
-        audio_id: r.primary_audio_id,
-        video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[data.role],
-        audio_start_second: audioStart,
-        duration_seconds: duration,
-      })
-      .select("id")
-      .single();
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "job_insert_failed");
+    const image: ImageForRender = r.primary_image_media_id
+      ? { source: "marketing_media", image_id: r.primary_image_media_id }
+      : {
+          source: "product_image",
+          product_id: r.primary_image_product_ref!.product_id,
+          product_image_path: r.primary_image_product_ref!.image_path,
+        };
+
+    const { jobId } = await ensureCampaignJob(supabase, {
+      companyId,
+      userId,
+      role: data.role,
+      image,
+      audioId: r.primary_audio_id,
+      audioStart: Number(r.audio_start_second ?? 0),
+      duration: Number(r.duration_seconds ?? 15),
+      existingJobId: null,
+    });
 
     const patch =
       data.role === "feed"
-        ? { feed_render_job_id: inserted.id }
-        : { story_render_job_id: inserted.id };
+        ? { feed_render_job_id: jobId }
+        : { story_render_job_id: jobId };
     await supabase.from("marketing_contents").update(patch).eq("id", r.id);
 
-    return { job_id: inserted.id };
+    return { job_id: jobId };
   });
