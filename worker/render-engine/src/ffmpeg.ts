@@ -276,6 +276,140 @@ interface RunOpts {
  *  - ffmpeg_exit_<code>                   → processo encerrou com code != 0 e sem signal
  *  - spawn_error:<msg>                    → falha ao criar o processo
  */
+async function runFfmpeg(opts: RunOpts): Promise<void> {
+  const { args, timeoutMs, jobId, debugLogDir } = opts;
+  const sanitizedArgs = sanitizeFfmpegArgs(args, opts.sanitizePaths, opts.slideshowExtraPaths ?? []);
+
+  await new Promise<void>((resolve, reject) => {
+    const startedAt = Date.now();
+    const startedIso = new Date(startedAt).toISOString();
+    const env = { ...process.env, AV_LOG_FORCE_NOCOLOR: "1" };
+    const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"], env });
+    const pid = p.pid ?? -1;
+
+    log.info("ffmpeg_started", {
+      job_id: jobId,
+      pid,
+      started_at: startedIso,
+      timeout_ms: timeoutMs,
+      width: opts.width,
+      height: opts.height,
+      audio_start_second: opts.audioStartSecond,
+      duration_seconds: opts.durationSeconds,
+      slideshow: opts.slideshow ?? 1,
+      args_count: args.length,
+      args: sanitizedArgs,
+    });
+
+    let stderrFull = "";
+    let stdoutFull = "";
+    const MAX_CAPTURE = 32 * 1024;
+    p.stderr.on("data", (d) => {
+      if (stderrFull.length < MAX_CAPTURE * 4) stderrFull += d.toString();
+    });
+    p.stdout.on("data", (d) => {
+      if (stdoutFull.length < MAX_CAPTURE) stdoutFull += d.toString();
+    });
+
+    let timeoutTriggered = false;
+    let killRequestedByWorker = false;
+    const to = setTimeout(() => {
+      timeoutTriggered = true;
+      killRequestedByWorker = true;
+      log.warn("ffmpeg_timeout_kill_requested", {
+        job_id: jobId,
+        pid,
+        timeout_ms: timeoutMs,
+        elapsed_ms: Date.now() - startedAt,
+      });
+      try { p.kill("SIGKILL"); } catch { /* noop */ }
+    }, timeoutMs);
+
+    let spawnFailed = false;
+    p.on("error", (e) => {
+      spawnFailed = true;
+      clearTimeout(to);
+      log.error("ffmpeg_spawn_error", {
+        job_id: jobId,
+        pid,
+        message: (e instanceof Error ? e.message : String(e)).slice(0, 300),
+      });
+      reject(new Error(`spawn_error:${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`));
+    });
+
+    p.on("exit", (code, signal) => {
+      log.debug("ffmpeg_process_exit", {
+        job_id: jobId,
+        pid,
+        code,
+        signal,
+        elapsed_ms: Date.now() - startedAt,
+        timeout_triggered: timeoutTriggered,
+        kill_requested_by_worker: killRequestedByWorker,
+      });
+    });
+
+    p.on("close", (code, signal) => {
+      if (spawnFailed) return;
+      clearTimeout(to);
+      const elapsed_ms = Date.now() - startedAt;
+      const stderrTrunc = truncateStream(stderrFull);
+      const stdoutTrunc = truncateStream(stdoutFull);
+
+      const kill_origin: "worker" | "external" | "none" =
+        signal ? (killRequestedByWorker ? "worker" : "external") : "none";
+
+      log.info("ffmpeg_process_close", {
+        job_id: jobId,
+        pid,
+        code,
+        signal,
+        elapsed_ms,
+        timeout_triggered: timeoutTriggered,
+        kill_requested_by_worker: killRequestedByWorker,
+        kill_origin,
+        stderr_total_bytes: stderrTrunc.totalBytes,
+        stdout_total_bytes: stdoutTrunc.totalBytes,
+      });
+
+      if (debugLogDir) {
+        writeFile(path.join(debugLogDir, "ffmpeg.stderr.log"), stderrFull).catch(() => {});
+        writeFile(path.join(debugLogDir, "ffmpeg.stdout.log"), stdoutFull).catch(() => {});
+      }
+
+      const failed = code !== 0 || (signal !== null && signal !== undefined);
+      if (failed) {
+        const classified = classifyFfmpegFailure({
+          code,
+          signal,
+          timeoutTriggered,
+          killRequestedByWorker,
+        });
+        log.error("ffmpeg_failed", {
+          job_id: jobId,
+          pid,
+          code,
+          signal,
+          elapsed_ms,
+          classified,
+          kill_origin,
+          timeout_triggered: timeoutTriggered,
+          kill_requested_by_worker: killRequestedByWorker,
+          stderr_total_bytes: stderrTrunc.totalBytes,
+          stderr_head: stderrTrunc.head,
+          stderr_tail: stderrTrunc.tail,
+          stderr_truncated: stderrTrunc.truncated,
+          stdout_head: stdoutTrunc.head.slice(0, 512),
+        });
+        reject(new Error(classified));
+      } else {
+        log.info("ffmpeg_completed", { job_id: jobId, pid, elapsed_ms });
+        resolve();
+      }
+    });
+  });
+}
+
 /**
  * Classifica a causa de falha do ffmpeg em um código estável.
  *
