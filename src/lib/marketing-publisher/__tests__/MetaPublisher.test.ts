@@ -54,12 +54,20 @@ interface FakeMetaPageRow {
   updated_at: string;
 }
 
+interface FakeVideoRow {
+  id: string;
+  company_id: string;
+  file_path: string;
+  is_active: boolean;
+}
+
 const state = {
   contents: [] as FakeContentRow[],
   media: [] as FakeMediaRow[],
   products: [] as FakeProductRow[],
   integrations: [] as FakeIntegrationRow[],
   metaPages: [] as FakeMetaPageRow[],
+  videos: [] as FakeVideoRow[],
   mediaInserts: [] as unknown[],
   storageSigns: [] as Array<{ bucket: string; path: string }>,
 };
