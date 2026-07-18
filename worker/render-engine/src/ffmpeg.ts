@@ -276,14 +276,6 @@ interface RunOpts {
  *  - ffmpeg_exit_<code>                   → processo encerrou com code != 0 e sem signal
  *  - spawn_error:<msg>                    → falha ao criar o processo
  */
-...
-        const classified = classifyFfmpegFailure({
-          code,
-          signal,
-          timeoutTriggered,
-          killRequestedByWorker,
-        });
-...
 /**
  * Classifica a causa de falha do ffmpeg em um código estável.
  *
