@@ -53,7 +53,7 @@ export class MetaPublisher {
         return this.fail("content_not_found", "Conteúdo não encontrado.", false);
       }
 
-      const media = await this.resolvePrimaryMedia(content);
+      const media = await this.resolvePrimaryMedia(content, input.format);
       const caption = this.buildCaption(content);
 
       if (input.channel === "instagram") {
