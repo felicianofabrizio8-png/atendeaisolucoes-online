@@ -202,6 +202,8 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     slideshowExtraPaths: imageFilePaths.slice(1),
     width, height, audioStartSecond, durationSeconds,
     slideshow: n,
+    jobId: input.jobId,
+    debugLogDir: input.debugLogDir,
   });
 }
 
