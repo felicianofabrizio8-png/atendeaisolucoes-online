@@ -7,7 +7,6 @@ import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
 import {
   type ClaimedJob,
-  downloadSignedUrl,
   downloadSignedUrlWithMeta,
   reportComplete,
   reportFail,
