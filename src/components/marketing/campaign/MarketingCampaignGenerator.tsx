@@ -158,7 +158,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         extra_instructions: extra.trim() || null,
       });
       setCampaignId(res.campaign_id);
-      setNeedsMarketingMedia(false);
+      
       toast.success("Campanha criada. Renderização Feed + Story enfileirada.");
       onGenerated?.(res.contents as MarketingContentRow[]);
     } catch (e) {
