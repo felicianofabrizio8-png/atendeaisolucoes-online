@@ -162,7 +162,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       const idx = cur.findIndex((s) => sameSelection(s.selection, sel));
       if (idx >= 0) return cur.filter((_, i) => i !== idx);
       if (cur.length >= MAX_IMAGES) {
-        toast.error(`Máximo de ${MAX_IMAGES} imagens por campanha.`);
+        toast.error(`Você pode adicionar até ${MAX_IMAGES} imagens por campanha.`);
         return cur;
       }
       return [...cur, { selection: sel, focal: null, previewUrl: null, loading: false, failed: false }];
