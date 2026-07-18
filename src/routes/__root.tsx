@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { installGlobalErrorHandlers } from "@/lib/audit";
 import { Toaster } from "@/components/ui/sonner";
+import { CampaignRenderTrackerProvider } from "@/lib/marketing/useCampaignRenderTracker";
 
 import appCss from "../styles.css?url";
 
@@ -116,8 +117,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AuthGate />
-        <Toaster position="top-right" richColors closeButton />
+        <CampaignRenderTrackerProvider>
+          <AuthGate />
+          <Toaster position="top-right" richColors closeButton />
+        </CampaignRenderTrackerProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
