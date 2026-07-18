@@ -86,8 +86,8 @@ describe("stress · resolução final 1080x1920 · 15s", () => {
         expect(probe.audioCodec).toBe("aac");
         expect(probe.width).toBe(1080);
         expect(probe.height).toBe(1920);
-        expect(probe.durationSeconds).toBeGreaterThan(14);
-        expect(probe.durationSeconds).toBeLessThan(16);
+        expect(probe.duration).toBeGreaterThan(14);
+        expect(probe.duration).toBeLessThan(16);
 
         const vol = await analyzeVolume(out, 20_000);
         expect(vol.meanVolumeDb).toBeGreaterThan(-40);
@@ -137,8 +137,8 @@ describe("stress · resolução final 1080x1920 · 15s", () => {
         expect(probe.audioCodec).toBe("aac");
         expect(probe.width).toBe(1080);
         expect(probe.height).toBe(1920);
-        expect(probe.durationSeconds).toBeGreaterThan(14);
-        expect(probe.durationSeconds).toBeLessThan(16);
+        expect(probe.duration).toBeGreaterThan(14);
+        expect(probe.duration).toBeLessThan(16);
 
         const vol = await analyzeVolume(out, 20_000);
         expect(vol.meanVolumeDb).toBeGreaterThan(-40);
