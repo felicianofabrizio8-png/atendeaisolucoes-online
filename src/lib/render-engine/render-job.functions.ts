@@ -33,16 +33,33 @@ export const createRenderJob = createServerFn({ method: "POST" })
     if (profErr || !prof?.company_id) throw new Error("company_not_found");
     const companyId = prof.company_id;
 
-    // Imagem: mesma empresa, ativa, tipo image
-    const { data: img, error: imgErr } = await supabase
-      .from("marketing_media")
-      .select("id, company_id, media_type, active")
-      .eq("id", data.image_id)
-      .maybeSingle();
-    if (imgErr || !img) throw new Error("image_not_found");
-    if (img.company_id !== companyId) throw new Error("image_cross_tenant");
-    if (!img.active) throw new Error("image_inactive");
-    if (img.media_type !== "image") throw new Error("image_wrong_type");
+    // Imagem — a origem determina onde validar o ownership.
+    if (data.image_source === "marketing_media") {
+      const { data: img, error: imgErr } = await supabase
+        .from("marketing_media")
+        .select("id, company_id, media_type, active")
+        .eq("id", data.image_id)
+        .maybeSingle();
+      if (imgErr || !img) throw new Error("image_not_found");
+      if (img.company_id !== companyId) throw new Error("image_cross_tenant");
+      if (!img.active) throw new Error("image_inactive");
+      if (img.media_type !== "image") throw new Error("image_wrong_type");
+    } else {
+      const { data: prod, error: prodErr } = await supabase
+        .from("products")
+        .select("id, company_id, active, images")
+        .eq("id", data.product_id)
+        .maybeSingle();
+      if (prodErr || !prod) throw new Error("product_not_found");
+      if (prod.company_id !== companyId) throw new Error("product_cross_tenant");
+      if (!prod.active) throw new Error("product_inactive");
+      const imgs = Array.isArray(prod.images)
+        ? (prod.images.filter((x) => typeof x === "string") as string[])
+        : [];
+      if (!imgs.includes(data.product_image_path)) {
+        throw new Error("product_image_not_owned");
+      }
+    }
 
     // Áudio: mesma empresa, ativo, com duração conhecida
     const { data: aud, error: audErr } = await supabase
@@ -72,17 +89,33 @@ export const createRenderJob = createServerFn({ method: "POST" })
       throw new Error("too_many_active_jobs");
     }
 
+    const insertPayload =
+      data.image_source === "marketing_media"
+        ? {
+            company_id: companyId,
+            created_by: userId,
+            image_source: "marketing_media" as const,
+            image_id: data.image_id,
+            audio_id: data.audio_id,
+            video_format: data.video_format,
+            audio_start_second: data.audio_start_second,
+            duration_seconds: data.duration_seconds,
+          }
+        : {
+            company_id: companyId,
+            created_by: userId,
+            image_source: "product_image" as const,
+            product_id: data.product_id,
+            product_image_path: data.product_image_path,
+            audio_id: data.audio_id,
+            video_format: data.video_format,
+            audio_start_second: data.audio_start_second,
+            duration_seconds: data.duration_seconds,
+          };
+
     const { data: inserted, error: insErr } = await supabase
       .from("video_render_jobs")
-      .insert({
-        company_id: companyId,
-        created_by: userId,
-        image_id: data.image_id,
-        audio_id: data.audio_id,
-        video_format: data.video_format,
-        audio_start_second: data.audio_start_second,
-        duration_seconds: data.duration_seconds,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "job_insert_failed");
