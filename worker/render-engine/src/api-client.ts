@@ -5,6 +5,20 @@
 
 import type { WorkerConfig } from "./config.js";
 
+export interface FocalPointDto {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface SequenceItemDto {
+  position: number;
+  primary: boolean;
+  imageDownloadUrl: string;
+  focalPoint?: FocalPointDto | null;
+  durationHint?: number;
+}
+
 export interface ClaimedJob {
   job: {
     id: string;
@@ -17,7 +31,13 @@ export interface ClaimedJob {
     width: number;
     height: number;
   };
-  source: { imageDownloadUrl: string; audioDownloadUrl: string };
+  source: {
+    imageDownloadUrl: string;
+    audioDownloadUrl: string;
+    // Fase C.2 — opcionais e retrocompatíveis.
+    focalPoint?: FocalPointDto | null;
+    imageSequence?: SequenceItemDto[] | null;
+  };
   output: { videoId: string; uploadUrl: string; filePath: string };
   expiresAt: string;
 }
@@ -171,7 +191,6 @@ export async function uploadSignedUrl(
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    // Supabase Storage createSignedUploadUrl usa método PUT com o token embutido na URL.
     const res = await fetch(url, {
       method: "PUT",
       headers: {

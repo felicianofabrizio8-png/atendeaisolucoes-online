@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { log } from "./logger.js";
-import { renderStaticImageVideo } from "./ffmpeg.js";
+import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint } from "./ffmpeg.js";
 import { analyzeVolume, ffprobe } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
@@ -31,30 +31,57 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
 
   await mkdir(cfg.tmpDir, { recursive: true }).catch(() => {});
   const workDir = await mkdtemp(path.join(cfg.tmpDir, `job-${job.id.slice(0, 8)}-`));
-  const imageLocal = path.join(workDir, "in-image");
   const audioLocal = path.join(workDir, "in-audio");
   const outputLocal = path.join(workDir, "out.mp4");
 
   let stage: string = "downloading_sources";
   try {
+    const sequence = Array.isArray(source.imageSequence) && source.imageSequence.length > 0
+      ? source.imageSequence
+      : null;
+    const useSlideshow = !!sequence && sequence.length > 1;
+
     log.info("bridge_claim_received", {
       job_id: job.id,
       company_id: job.companyId,
       video_format: job.videoFormat,
       duration_seconds: job.durationSeconds,
       attempt: job.attemptCount,
+      images_count: sequence?.length ?? 1,
+      slideshow: useSlideshow,
+      has_focal_point: !!source.focalPoint,
     });
 
     // 1. Download
     log.info("signed_source_download_started", { job_id: job.id });
     await reportProgress(cfg, job.id, "downloading_sources", 10);
-    const [imgBuf, audBuf] = await Promise.all([
-      downloadSignedUrl(source.imageDownloadUrl, cfg.httpTimeoutMs),
-      downloadSignedUrl(source.audioDownloadUrl, cfg.httpTimeoutMs),
-    ]);
-    await writeFile(imageLocal, Buffer.from(imgBuf));
+
+    const imageDownloads: string[] = [];
+    const focalPoints: Array<FocalPoint | null> = [];
+
+    if (sequence) {
+      // Ordena por position; garantia extra caso o servidor não venha ordenado.
+      const ordered = [...sequence].sort((a, b) => a.position - b.position);
+      const bufs = await Promise.all(
+        ordered.map((s) => downloadSignedUrl(s.imageDownloadUrl, cfg.httpTimeoutMs)),
+      );
+      for (let i = 0; i < ordered.length; i++) {
+        const p = path.join(workDir, `in-image-${i}`);
+        await writeFile(p, Buffer.from(bufs[i]));
+        imageDownloads.push(p);
+        focalPoints.push((ordered[i].focalPoint as FocalPoint | null) ?? null);
+      }
+    } else {
+      // Legado: 1 imagem apenas.
+      const imgLocal = path.join(workDir, "in-image-0");
+      const imgBuf = await downloadSignedUrl(source.imageDownloadUrl, cfg.httpTimeoutMs);
+      await writeFile(imgLocal, Buffer.from(imgBuf));
+      imageDownloads.push(imgLocal);
+      focalPoints.push((source.focalPoint as FocalPoint | null) ?? null);
+    }
+    const audBuf = await downloadSignedUrl(source.audioDownloadUrl, cfg.httpTimeoutMs);
     await writeFile(audioLocal, Buffer.from(audBuf));
-    log.info("signed_source_download_completed", { job_id: job.id });
+    log.info("signed_source_download_completed", { job_id: job.id, images: imageDownloads.length });
     await reportProgress(cfg, job.id, "downloading_sources", 25);
 
     // 2. Render
@@ -69,16 +96,31 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       throw new Error("audio_duration_invalid");
     }
 
-    await renderStaticImageVideo({
-      imageFilePath: imageLocal,
-      audioFilePath: audioLocal,
-      audioStartSecond,
-      durationSeconds,
-      width: job.width,
-      height: job.height,
-      outputFilePath: outputLocal,
-      timeoutMs: cfg.ffmpegTimeoutMs,
-    });
+    if (useSlideshow) {
+      await renderSlideshowWithAudio({
+        imageFilePaths: imageDownloads,
+        focalPoints,
+        audioFilePath: audioLocal,
+        audioStartSecond,
+        durationSeconds,
+        width: job.width,
+        height: job.height,
+        outputFilePath: outputLocal,
+        timeoutMs: cfg.ffmpegTimeoutMs,
+      });
+    } else {
+      await renderStaticImageVideo({
+        imageFilePath: imageDownloads[0],
+        audioFilePath: audioLocal,
+        audioStartSecond,
+        durationSeconds,
+        width: job.width,
+        height: job.height,
+        outputFilePath: outputLocal,
+        timeoutMs: cfg.ffmpegTimeoutMs,
+        focalPoint: focalPoints[0] ?? null,
+      });
+    }
     await reportProgress(cfg, job.id, "rendering", 65);
 
     // 3. Validate

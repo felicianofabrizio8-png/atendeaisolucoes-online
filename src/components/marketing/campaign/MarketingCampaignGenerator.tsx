@@ -1,51 +1,65 @@
-// Gerador de Campanha (Fase C.1).
+// Gerador de Campanha (Fase C.2).
 //
-// Fluxo:
-//   1. Selecionar 1 imagem (marketing ou produto) via MarketingLibrary (modo
-//      seleção única — clique substitui a atual).
-//   2. Selecionar 1 áudio via CampaignAudioPicker.
-//   3. Definir duração (8/10/15/30/60s) e start_second do áudio.
-//   4. Informar tom/público/instruções extras.
-//   5. Gerar campanha → cria 4 rascunhos vinculados por campaign_id e
-//      enfileira 2 render jobs (Feed 4:5 + Story 9:16) quando a imagem é
-//      da Biblioteca de Marketing.
-//   6. Polling de status a cada 5s para exibir progresso Feed/Story.
+// Evoluções vs. C.1:
+// - Múltiplas imagens (ordenáveis) via CampaignImageList.
+// - Focal point real por imagem via FocalPointEditor (aplicado no render).
+// - Progresso desacoplado da tela via useCampaignRenderTracker (o polling
+//   segue rodando mesmo se o usuário navegar de aba).
+// - Barra de ação sticky (visível o tempo todo em mobile e desktop).
+// - Preview WYSIWYG do focal point sobre Feed 4:5 e Story 9:16.
 //
-// Não gera vídeo para imagens de produto (bucket product-images ainda não é
-// suportado pelo worker de render); nesses casos a UI informa e o usuário
-// pode aprovar/agendar os textos normalmente.
+// Retrocompatível: se apenas 1 imagem for selecionada, o backend continua
+// enviando `primary_image` no payload legado; caso contrário envia `images`.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, AlertTriangle, Info } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiListPromotions,
   apiGenerateCampaign,
-  apiGetCampaignRenderStatus,
   apiRetryCampaignRender,
   urlForMarketingPath,
-  type CampaignPrimaryImage,
+  type CampaignImageInput,
+  type FocalPointInput,
 } from "@/data/marketingRepo";
 import { getSignedImageUrl } from "@/lib/storage";
-import type {
-  MarketingPromotionRow,
-  MarketingContentRow,
-} from "@/lib/marketing/marketing.types";
+import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { MarketingLibrary } from "../MarketingLibrary";
-import type { MediaSelection } from "@/lib/marketing/media-selection";
+import {
+  type MediaSelection,
+  selectionKey,
+  sameSelection,
+} from "@/lib/marketing/media-selection";
 import { CampaignAudioPicker } from "./CampaignAudioPicker";
 import { CampaignFramingPreview } from "./CampaignFramingPreview";
+import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
+import { FocalPointEditor } from "./FocalPointEditor";
+import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
+import { CampaignRenderProgress } from "./CampaignRenderProgress";
+import {
+  useCampaignRenderTracker,
+  useTrackedCampaign,
+} from "@/lib/marketing/useCampaignRenderTracker";
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
 
 type Duration = 8 | 10 | 15 | 30 | 60;
+const MAX_IMAGES = 10;
 
 interface Props {
   companyId: string;
   onGenerated?: (contents: MarketingContentRow[]) => void;
+}
+
+interface Slot {
+  selection: MediaSelection;
+  focal: FocalPointInput | null;
+  previewUrl: string | null;
+  loading: boolean;
+  failed: boolean;
 }
 
 export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
@@ -56,8 +70,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [audience, setAudience] = useState("");
   const [extra, setExtra] = useState("");
 
-  const [image, setImage] = useState<MediaSelection | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
 
   const [audio, setAudio] = useState<AudioLibraryRow | null>(null);
   const [audioStart, setAudioStart] = useState<number>(0);
@@ -65,81 +79,136 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  
-  const [renderStatus, setRenderStatus] = useState<Awaited<
-    ReturnType<typeof apiGetCampaignRenderStatus>
-  > | null>(null);
+
+  const { trackCampaign } = useCampaignRenderTracker();
+  const tracked = useTrackedCampaign(campaignId);
 
   useEffect(() => {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
-  const [imageResolveFailed, setImageResolveFailed] = useState(false);
-
-  // Resolve URL assinada da imagem selecionada para preview de enquadramento.
+  // Resolve preview URL para cada slot novo.
   useEffect(() => {
     let cancelled = false;
-    async function resolve() {
-      setImageResolveFailed(false);
-      if (!image) {
-        setImageUrl(null);
-        return;
-      }
-      try {
-        if (image.origin === "marketing") {
-          const path = image.storagePath;
-          if (!path) {
-            if (!cancelled) {
-              setImageUrl(null);
-              setImageResolveFailed(true);
-            }
-            return;
+    slots.forEach((slot, idx) => {
+      if (slot.previewUrl || slot.loading || slot.failed) return;
+      setSlots((cur) => cur.map((s, i) => (i === idx ? { ...s, loading: true } : s)));
+      (async () => {
+        try {
+          let url: string | null = null;
+          if (slot.selection.origin === "marketing" && slot.selection.storagePath) {
+            url = await urlForMarketingPath(slot.selection.storagePath).catch(() => null);
+          } else if (slot.selection.origin === "product") {
+            url = await getSignedImageUrl(slot.selection.imagePath).catch(() => null);
           }
-          const url = await urlForMarketingPath(path).catch(() => null);
-          if (!cancelled) {
-            setImageUrl(url ?? null);
-            setImageResolveFailed(!url);
-          }
-        } else {
-          // Imagem de produto vive no bucket product-images.
-          const url = await getSignedImageUrl(image.imagePath).catch(() => null);
-          if (!cancelled) {
-            setImageUrl(url ?? null);
-            setImageResolveFailed(!url);
-          }
+          if (cancelled) return;
+          setSlots((cur) =>
+            cur.map((s) =>
+              sameSelection(s.selection, slot.selection)
+                ? { ...s, previewUrl: url, loading: false, failed: !url }
+                : s,
+            ),
+          );
+        } catch {
+          if (cancelled) return;
+          setSlots((cur) =>
+            cur.map((s) =>
+              sameSelection(s.selection, slot.selection)
+                ? { ...s, previewUrl: null, loading: false, failed: true }
+                : s,
+            ),
+          );
         }
-      } catch {
-        if (!cancelled) {
-          setImageUrl(null);
-          setImageResolveFailed(true);
-        }
-      }
-    }
-    void resolve();
+      })();
+    });
     return () => {
       cancelled = true;
     };
-  }, [image]);
+  }, [slots]);
 
-  const canGenerate = useMemo(
-    () => !!image && !!audio && !generating && !imageResolveFailed && !!imageUrl,
-    [image, audio, generating, imageResolveFailed, imageUrl],
+  const selectedMediaSelections = useMemo(() => slots.map((s) => s.selection), [slots]);
+
+  const items: CampaignImageItem[] = useMemo(
+    () =>
+      slots.map((s) => {
+        const key = selectionKey(s.selection);
+        if (s.selection.origin === "marketing") {
+          return {
+            key,
+            origin: "marketing",
+            media_id: s.selection.id,
+            storagePath: s.selection.storagePath,
+            previewUrl: s.previewUrl,
+            loadingPreview: s.loading,
+            focal_point: s.focal,
+          };
+        }
+        return {
+          key,
+          origin: "product",
+          product_id: s.selection.productId,
+          image_path: s.selection.imagePath,
+          previewUrl: s.previewUrl,
+          loadingPreview: s.loading,
+          focal_point: s.focal,
+        };
+      }),
+    [slots],
   );
 
-  const buildPrimaryImage = useCallback((): CampaignPrimaryImage | null => {
-    if (!image) return null;
-    if (image.origin === "marketing") return { origin: "marketing", media_id: image.id };
-    return {
-      origin: "product",
-      product_id: image.productId,
-      image_path: image.imagePath,
-    };
-  }, [image]);
+  const toggleSelection = useCallback((sel: MediaSelection) => {
+    setSlots((cur) => {
+      const idx = cur.findIndex((s) => sameSelection(s.selection, sel));
+      if (idx >= 0) return cur.filter((_, i) => i !== idx);
+      if (cur.length >= MAX_IMAGES) {
+        toast.error(`Máximo de ${MAX_IMAGES} imagens por campanha.`);
+        return cur;
+      }
+      return [...cur, { selection: sel, focal: null, previewUrl: null, loading: false, failed: false }];
+    });
+  }, []);
+
+  const reorder = useCallback((next: CampaignImageItem[]) => {
+    setSlots((cur) => {
+      const byKey = new Map(cur.map((s) => [selectionKey(s.selection), s]));
+      return next.map((n) => byKey.get(n.key)!).filter(Boolean);
+    });
+  }, []);
+
+  const removeByKey = useCallback(
+    (key: string) => setSlots((cur) => cur.filter((s) => selectionKey(s.selection) !== key)),
+    [],
+  );
+
+  const makePrimary = useCallback((key: string) => {
+    setSlots((cur) => {
+      const idx = cur.findIndex((s) => selectionKey(s.selection) === key);
+      if (idx <= 0) return cur;
+      const next = [...cur];
+      const [moved] = next.splice(idx, 1);
+      next.unshift(moved);
+      return next;
+    });
+  }, []);
+
+  const saveFocal = useCallback((key: string, focal: FocalPointInput | null) => {
+    setSlots((cur) =>
+      cur.map((s) => (selectionKey(s.selection) === key ? { ...s, focal } : s)),
+    );
+    setEditingKey(null);
+  }, []);
+
+  const editingSlot = useMemo(
+    () => (editingKey ? slots.find((s) => selectionKey(s.selection) === editingKey) ?? null : null),
+    [editingKey, slots],
+  );
+
+  const primarySlot = slots[0] ?? null;
+  const canGenerate =
+    slots.length > 0 && !!audio && !generating && slots.every((s) => !!s.previewUrl);
 
   async function generate() {
-    const primary = buildPrimaryImage();
-    if (!primary || !audio) return;
-    // Validação client-side: start + duração ≤ áudio.duration
+    if (!audio || slots.length === 0) return;
     const audioDur = Number(audio.duration_seconds ?? 0);
     if (audioStart + duration > audioDur + 0.001) {
       toast.error("O trecho do áudio excede sua duração total.");
@@ -147,9 +216,19 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     }
     setGenerating(true);
     try {
+      const images: CampaignImageInput[] = slots.map((s) =>
+        s.selection.origin === "marketing"
+          ? { origin: "marketing", media_id: s.selection.id, focal_point: s.focal ?? null }
+          : {
+              origin: "product",
+              product_id: s.selection.productId,
+              image_path: s.selection.imagePath,
+              focal_point: s.focal ?? null,
+            },
+      );
       const res = await apiGenerateCampaign({
         promotion_id: promotionId || null,
-        primary_image: primary,
+        images,
         primary_audio_id: audio.id,
         audio_start_second: audioStart,
         duration_seconds: duration,
@@ -158,8 +237,10 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         extra_instructions: extra.trim() || null,
       });
       setCampaignId(res.campaign_id);
-      
-      toast.success("Campanha criada. Renderização Feed + Story enfileirada.");
+      trackCampaign(res.campaign_id);
+      toast.success("Campanha criada.", {
+        description: "Você pode continuar navegando — avisaremos quando o vídeo estiver pronto.",
+      });
       onGenerated?.(res.contents as MarketingContentRow[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
@@ -168,42 +249,11 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     }
   }
 
-  // Polling de status enquanto houver render pendente.
-  const pollRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!campaignId) return;
-    let cancelled = false;
-    async function tick() {
-      try {
-        const s = await apiGetCampaignRenderStatus(campaignId!);
-        if (cancelled) return;
-        setRenderStatus(s);
-        const feedDone = !!s.feed.video_id || s.feed.job?.status === "failed";
-        const storyDone = !!s.story.video_id || s.story.job?.status === "failed";
-        const noJobs = !s.feed.job_id && !s.story.job_id;
-        if (feedDone && storyDone) return;
-        if (noJobs) return;
-        pollRef.current = window.setTimeout(tick, 5000);
-      } catch {
-        // silencioso — próximo tick tenta de novo
-        if (!cancelled) pollRef.current = window.setTimeout(tick, 8000);
-      }
-    }
-    void tick();
-    return () => {
-      cancelled = true;
-      if (pollRef.current) window.clearTimeout(pollRef.current);
-    };
-  }, [campaignId]);
-
-  async function retry(role: "feed" | "story") {
+  async function handleRetry(role: "feed" | "story") {
     if (!campaignId) return;
     try {
       await apiRetryCampaignRender({ campaign_id: campaignId, role });
       toast.info("Novo render enfileirado.");
-      // dispara re-poll imediato
-      const s = await apiGetCampaignRenderStatus(campaignId);
-      setRenderStatus(s);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao reenfileirar.");
     }
@@ -211,7 +261,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Contexto da campanha */}
+      {/* Contexto */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -262,25 +312,48 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         </div>
       </div>
 
-      {/* Imagem única */}
+      {/* Imagens da campanha */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="flex items-baseline justify-between">
-          <div className="text-sm font-semibold">Imagem principal da campanha</div>
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold">
+            Imagens da campanha ({slots.length}/{MAX_IMAGES})
+          </div>
           <div className="text-xs text-muted-foreground">
-            {image ? "1 selecionada" : "Selecione 1 imagem"}
+            Arraste para reordenar · a 1ª é a principal
           </div>
         </div>
+        <CampaignImageList
+          items={items}
+          onReorder={reorder}
+          onRemove={removeByKey}
+          onMakePrimary={makePrimary}
+          onEditFocal={(key) => setEditingKey(key)}
+        />
+        {primarySlot && (
+          <div className="pt-2">
+            <div className="text-xs font-medium text-muted-foreground mb-1">
+              Prévia do enquadramento (imagem principal)
+            </div>
+            <CampaignFramingPreview
+              imageUrl={primarySlot.previewUrl}
+              focalPoint={primarySlot.focal}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Biblioteca (seleção) */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="text-sm font-semibold">Escolher da biblioteca</div>
         <MarketingLibrary
           companyId={companyId}
           selectable
-          selected={image ? [image] : []}
-          // Seleção única: sempre substitui a anterior
-          onToggleSelect={(sel) => setImage((cur) => (cur && sameKey(cur, sel) ? null : sel))}
+          selected={selectedMediaSelections}
+          onToggleSelect={toggleSelection}
         />
-        <CampaignFramingPreview imageUrl={imageUrl} />
       </div>
 
-      {/* Áudio único */}
+      {/* Áudio */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="text-sm font-semibold">Áudio da campanha</div>
         <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
@@ -314,9 +387,28 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         )}
       </div>
 
-      {/* Ação */}
-      <div className="flex justify-end">
-        <Button onClick={generate} disabled={!canGenerate} size="lg">
+      {/* Progresso da renderização (global) */}
+      {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
+
+      {/* Editor de focal point */}
+      <FocalPointEditor
+        open={!!editingSlot}
+        imageUrl={editingSlot?.previewUrl ?? null}
+        initialFocal={editingSlot?.focal ?? null}
+        onCancel={() => setEditingKey(null)}
+        onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
+      />
+
+      {/* Sticky action */}
+      <CampaignStickyActionBar>
+        <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
+          {slots.length === 0
+            ? "Selecione ao menos 1 imagem"
+            : !audio
+              ? "Selecione um áudio"
+              : `${slots.length} imagem(ns) · ${duration}s`}
+        </div>
+        <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
           {generating ? (
             <Loader2 className="h-4 w-4 animate-spin mr-1" />
           ) : (
@@ -324,75 +416,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           )}
           Gerar campanha (Feed + Story)
         </Button>
-      </div>
-
-      {/* Status de render */}
-      {campaignId && (
-        <div className="rounded-lg border bg-card p-4 space-y-2">
-          <div className="text-sm font-semibold">Campanha gerada</div>
-          {renderStatus && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <RoleStatus label="Feed 4:5" info={renderStatus.feed} onRetry={() => retry("feed")} />
-              <RoleStatus label="Story 9:16" info={renderStatus.story} onRetry={() => retry("story")} />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function sameKey(a: MediaSelection, b: MediaSelection): boolean {
-  if (a.origin !== b.origin) return false;
-  if (a.origin === "marketing" && b.origin === "marketing") return a.id === b.id;
-  if (a.origin === "product" && b.origin === "product")
-    return a.productId === b.productId && a.imagePath === b.imagePath;
-  return false;
-}
-
-function RoleStatus({
-  label,
-  info,
-  onRetry,
-}: {
-  label: string;
-  info: {
-    job: { status: string; progress: number | null; error_code: string | null } | null | undefined;
-    video_id: string | null;
-  };
-  onRetry: () => void;
-}) {
-  const status = info.video_id ? "completed" : info.job?.status ?? "pending";
-  const progress = info.job?.progress ?? 0;
-  const failed = status === "failed";
-  return (
-    <div className="rounded-md border p-3 space-y-1">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-muted-foreground">{status}</div>
-      </div>
-      {!info.video_id && !failed && (
-        <div className="h-1.5 rounded bg-muted overflow-hidden">
-          <div
-            className="h-full bg-primary transition-all"
-            style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }}
-          />
-        </div>
-      )}
-      {info.video_id && (
-        <div className="text-xs text-emerald-600 dark:text-emerald-400">Vídeo pronto</div>
-      )}
-      {failed && (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 text-xs text-destructive">
-            <AlertTriangle className="h-3 w-3" />
-            {info.job?.error_code ?? "erro"}
-          </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retentar
-          </Button>
-        </div>
-      )}
+      </CampaignStickyActionBar>
     </div>
   );
 }

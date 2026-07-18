@@ -3733,8 +3733,10 @@ export type Database = {
           error_code: string | null
           error_message_sanitized: string | null
           failed_at: string | null
+          focal_point: Json | null
           id: string
           image_id: string | null
+          image_sequence: Json | null
           image_source: string
           locked_at: string | null
           locked_by: string | null
@@ -3761,8 +3763,10 @@ export type Database = {
           error_code?: string | null
           error_message_sanitized?: string | null
           failed_at?: string | null
+          focal_point?: Json | null
           id?: string
           image_id?: string | null
+          image_sequence?: Json | null
           image_source?: string
           locked_at?: string | null
           locked_by?: string | null
@@ -3789,8 +3793,10 @@ export type Database = {
           error_code?: string | null
           error_message_sanitized?: string | null
           failed_at?: string | null
+          focal_point?: Json | null
           id?: string
           image_id?: string | null
+          image_sequence?: Json | null
           image_source?: string
           locked_at?: string | null
           locked_by?: string | null
@@ -4188,8 +4194,10 @@ export type Database = {
           error_code: string | null
           error_message_sanitized: string | null
           failed_at: string | null
+          focal_point: Json | null
           id: string
           image_id: string | null
+          image_sequence: Json | null
           image_source: string
           locked_at: string | null
           locked_by: string | null
