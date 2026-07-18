@@ -2,17 +2,20 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises"
 import path from "node:path";
 import { log } from "./logger.js";
 import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint } from "./ffmpeg.js";
-import { analyzeVolume, ffprobe } from "./ffprobe.js";
+import { analyzeVolume, ffprobe, ffprobeInput } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
 import {
   type ClaimedJob,
   downloadSignedUrl,
+  downloadSignedUrlWithMeta,
   reportComplete,
   reportFail,
   reportProgress,
   uploadSignedUrl,
 } from "./api-client.js";
+import { fingerprintFile, memorySnapshot, redactUrl, validateAudioRange } from "./telemetry.js";
+import { setActiveJobId } from "./runtime-state.js";
 
 export function sanitizeError(msg: string): string {
   return msg
