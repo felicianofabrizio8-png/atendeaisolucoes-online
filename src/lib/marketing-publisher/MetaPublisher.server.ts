@@ -390,7 +390,9 @@ export class MetaPublisher {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_contents")
-      .select("id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt")
+      .select(
+        "id, company_id, body, hashtags, cta_destination, media_ids, product_id, status, ai_prompt, campaign_role, feed_video_id, story_video_id",
+      )
       .eq("id", id)
       .eq("company_id", companyId)
       .maybeSingle();
@@ -413,6 +415,7 @@ export class MetaPublisher {
         return { product_id: pid, image_path: path };
       })
       .filter((v): v is { product_id: string; image_path: string } => v !== null);
+    const role = r.data.campaign_role;
     return {
       companyId: r.data.company_id,
       contentId: r.data.id,
@@ -422,8 +425,12 @@ export class MetaPublisher {
       media_ids: Array.isArray(r.data.media_ids) ? r.data.media_ids : [],
       product_id: r.data.product_id ?? null,
       product_media_refs,
+      campaign_role: role === "feed" || role === "story" ? role : null,
+      feed_video_id: r.data.feed_video_id ?? null,
+      story_video_id: r.data.story_video_id ?? null,
     };
   }
+
 
   private async resolvePrimaryMedia(content: ContentPayload): Promise<ResolvedMedia | null> {
     const admin = supabaseAdmin as unknown as {
