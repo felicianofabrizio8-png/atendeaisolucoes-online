@@ -7,13 +7,14 @@ import { describe, it, expect } from "vitest";
 import { GenerateCampaignInput } from "@/lib/marketing/marketing-campaign.functions";
 import { MAX_CAMPAIGN_IMAGES } from "@/lib/render-engine/render.types";
 
-const AUDIO_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+import { randomUUID } from "node:crypto";
 
-function media(i: number) {
-  const hex = i.toString(16).padStart(2, "0");
+const AUDIO_ID = randomUUID();
+
+function media(_i: number) {
   return {
     origin: "marketing" as const,
-    media_id: `bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbb${hex}`,
+    media_id: randomUUID(),
   };
 }
 
