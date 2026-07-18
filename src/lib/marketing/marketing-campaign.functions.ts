@@ -78,7 +78,7 @@ const CampaignImageSchema = z
     }
   });
 
-const GenerateCampaignInput = z
+export const GenerateCampaignInput = z
   .object({
     promotion_id: z.string().uuid().nullable().optional(),
     // Legado (mantido):

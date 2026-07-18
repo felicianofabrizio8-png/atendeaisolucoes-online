@@ -47,7 +47,8 @@ import {
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
 
 type Duration = 8 | 10 | 15 | 30 | 60;
-const MAX_IMAGES = 10;
+// Alinhado com MAX_CAMPAIGN_IMAGES do backend/worker (render.types.ts).
+const MAX_IMAGES = 8;
 
 interface Props {
   companyId: string;
@@ -161,7 +162,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       const idx = cur.findIndex((s) => sameSelection(s.selection, sel));
       if (idx >= 0) return cur.filter((_, i) => i !== idx);
       if (cur.length >= MAX_IMAGES) {
-        toast.error(`Máximo de ${MAX_IMAGES} imagens por campanha.`);
+        toast.error(`Você pode adicionar até ${MAX_IMAGES} imagens por campanha.`);
         return cur;
       }
       return [...cur, { selection: sel, focal: null, previewUrl: null, loading: false, failed: false }];
