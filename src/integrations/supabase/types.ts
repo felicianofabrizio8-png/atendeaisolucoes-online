@@ -3734,11 +3734,14 @@ export type Database = {
           error_message_sanitized: string | null
           failed_at: string | null
           id: string
-          image_id: string
+          image_id: string | null
+          image_source: string
           locked_at: string | null
           locked_by: string | null
           max_attempts: number
           output_video_id: string | null
+          product_id: string | null
+          product_image_path: string | null
           progress: number
           started_at: string | null
           status: string
@@ -3759,11 +3762,14 @@ export type Database = {
           error_message_sanitized?: string | null
           failed_at?: string | null
           id?: string
-          image_id: string
+          image_id?: string | null
+          image_source?: string
           locked_at?: string | null
           locked_by?: string | null
           max_attempts?: number
           output_video_id?: string | null
+          product_id?: string | null
+          product_image_path?: string | null
           progress?: number
           started_at?: string | null
           status?: string
@@ -3784,11 +3790,14 @@ export type Database = {
           error_message_sanitized?: string | null
           failed_at?: string | null
           id?: string
-          image_id?: string
+          image_id?: string | null
+          image_source?: string
           locked_at?: string | null
           locked_by?: string | null
           max_attempts?: number
           output_video_id?: string | null
+          product_id?: string | null
+          product_image_path?: string | null
           progress?: number
           started_at?: string | null
           status?: string
@@ -3822,6 +3831,13 @@ export type Database = {
             columns: ["image_id"]
             isOneToOne: false
             referencedRelation: "marketing_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_render_jobs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -4173,11 +4189,14 @@ export type Database = {
           error_message_sanitized: string | null
           failed_at: string | null
           id: string
-          image_id: string
+          image_id: string | null
+          image_source: string
           locked_at: string | null
           locked_by: string | null
           max_attempts: number
           output_video_id: string | null
+          product_id: string | null
+          product_image_path: string | null
           progress: number
           started_at: string | null
           status: string
