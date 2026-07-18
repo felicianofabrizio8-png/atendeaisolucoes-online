@@ -78,7 +78,12 @@ export async function analyzeVolume(filePath: string, timeoutMs: number): Promis
     "-f", "null",
     "-",
   ];
-  const raw = await runCollect("ffmpeg", args, timeoutMs, true);
+  let raw = "";
+  try {
+    raw = await runCollect("ffmpeg", args, timeoutMs, true);
+  } catch (error) {
+    return { meanVolumeDb: null, maxVolumeDb: null };
+  }
   const mean = raw.match(/mean_volume:\s*(-?[0-9.]+) dB/);
   const max = raw.match(/max_volume:\s*(-?[0-9.]+) dB/);
   return {

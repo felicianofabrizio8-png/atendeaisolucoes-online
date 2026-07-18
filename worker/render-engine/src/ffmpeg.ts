@@ -24,6 +24,8 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
   const vf =
     `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
     `crop=${width}:${height},` +
+    `setsar=1,` +
+    `setparams=range=tv,` +
     `format=yuv420p`;
 
   const args = [
