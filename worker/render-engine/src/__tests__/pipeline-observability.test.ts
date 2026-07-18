@@ -104,29 +104,87 @@ describe("telemetry.memorySnapshot", () => {
 });
 
 describe("classifyFfmpegFailure", () => {
-  it("timeout tem prioridade sobre signal", () => {
-    expect(classifyFfmpegFailure({ code: null, signal: "SIGKILL", timeoutTriggered: true }))
-      .toBe("ffmpeg_timeout");
+  it("timeout tem prioridade sobre signal (mesmo com kill_by_worker=true)", () => {
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: "SIGKILL",
+        timeoutTriggered: true,
+        killRequestedByWorker: true,
+      }),
+    ).toBe("ffmpeg_timeout");
   });
-  it("mapeia SIGKILL corretamente", () => {
-    expect(classifyFfmpegFailure({ code: null, signal: "SIGKILL", timeoutTriggered: false }))
-      .toBe("ffmpeg_signal_SIGKILL");
+
+  it("SIGKILL sem timeout e sem kill_by_worker → kill externo (OOM/plataforma)", () => {
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: "SIGKILL",
+        timeoutTriggered: false,
+        killRequestedByWorker: false,
+      }),
+    ).toBe("ffmpeg_killed_external_SIGKILL");
   });
-  it("mapeia SIGTERM corretamente", () => {
-    expect(classifyFfmpegFailure({ code: null, signal: "SIGTERM", timeoutTriggered: false }))
-      .toBe("ffmpeg_signal_SIGTERM");
+
+  it("SIGKILL com kill_by_worker=true fora do timeout → kill interno (defensivo)", () => {
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: "SIGKILL",
+        timeoutTriggered: false,
+        killRequestedByWorker: true,
+      }),
+    ).toBe("ffmpeg_killed_by_worker_SIGKILL");
   });
-  it("mapeia SIGSEGV corretamente", () => {
-    expect(classifyFfmpegFailure({ code: null, signal: "SIGSEGV", timeoutTriggered: false }))
-      .toBe("ffmpeg_signal_SIGSEGV");
+
+  it("SIGTERM externo (Railway shutdown/preempt) é classificado como externo", () => {
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: "SIGTERM",
+        timeoutTriggered: false,
+        killRequestedByWorker: false,
+      }),
+    ).toBe("ffmpeg_killed_external_SIGTERM");
   });
+
+  it("SIGSEGV é sempre externo (falha do próprio ffmpeg/libx264)", () => {
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: "SIGSEGV",
+        timeoutTriggered: false,
+        killRequestedByWorker: false,
+      }),
+    ).toBe("ffmpeg_killed_external_SIGSEGV");
+  });
+
   it("exit code diferente de zero sem signal", () => {
-    expect(classifyFfmpegFailure({ code: 1, signal: null, timeoutTriggered: false }))
-      .toBe("ffmpeg_exit_1");
+    expect(
+      classifyFfmpegFailure({
+        code: 1,
+        signal: null,
+        timeoutTriggered: false,
+        killRequestedByWorker: false,
+      }),
+    ).toBe("ffmpeg_exit_1");
   });
+
   it("code=null e sem signal cai em ffmpeg_exit_null", () => {
-    expect(classifyFfmpegFailure({ code: null, signal: null, timeoutTriggered: false }))
-      .toBe("ffmpeg_exit_null");
+    expect(
+      classifyFfmpegFailure({
+        code: null,
+        signal: null,
+        timeoutTriggered: false,
+        killRequestedByWorker: false,
+      }),
+    ).toBe("ffmpeg_exit_null");
+  });
+
+  it("killRequestedByWorker ausente é tratado como não-worker (externo)", () => {
+    expect(
+      classifyFfmpegFailure({ code: null, signal: "SIGKILL", timeoutTriggered: false }),
+    ).toBe("ffmpeg_killed_external_SIGKILL");
   });
 });
 
