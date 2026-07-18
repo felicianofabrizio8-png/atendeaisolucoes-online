@@ -35,6 +35,9 @@ interface ContentPayload {
   media_ids: string[];
   product_id: string | null;
   product_media_refs: Array<{ product_id: string; image_path: string }>;
+  campaign_role: "feed" | "story" | null;
+  feed_video_id: string | null;
+  story_video_id: string | null;
 }
 
 interface ResolvedMedia {
