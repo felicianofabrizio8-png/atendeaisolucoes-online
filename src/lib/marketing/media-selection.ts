@@ -6,7 +6,7 @@
 // duplicating files or requiring schema changes to marketing_media.
 
 export type MediaSelection =
-  | { origin: "marketing"; id: string }
+  | { origin: "marketing"; id: string; storagePath?: string }
   | { origin: "product"; productId: string; productName: string; imagePath: string };
 
 export function selectionKey(sel: MediaSelection): string {
