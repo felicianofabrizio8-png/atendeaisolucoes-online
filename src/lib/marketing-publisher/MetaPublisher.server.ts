@@ -432,11 +432,44 @@ export class MetaPublisher {
   }
 
 
-  private async resolvePrimaryMedia(content: ContentPayload): Promise<ResolvedMedia | null> {
+  private async resolvePrimaryMedia(
+    content: ContentPayload,
+    format: PublicationFormat,
+  ): Promise<ResolvedMedia | null> {
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => any;
       storage: { from: (b: string) => any };
     };
+
+    // 0) Preferir vídeo renderizado da campanha, se existir para o formato-alvo.
+    //    Feed -> feed_video_id (1080x1350). Story/Reel -> story_video_id (1080x1920).
+    const targetVideoId =
+      format === "feed" ? content.feed_video_id : content.story_video_id;
+    if (targetVideoId) {
+      const v = await admin
+        .from("video_library")
+        .select("id, company_id, file_path, is_active")
+        .eq("id", targetVideoId)
+        .eq("company_id", content.companyId)
+        .maybeSingle();
+      const vr = v.data as
+        | { id: string; company_id: string; file_path: string; is_active: boolean }
+        | undefined;
+      if (vr && vr.is_active && typeof vr.file_path === "string") {
+        // Guard multi-tenant: path deve começar com {companyId}/
+        if (vr.file_path.startsWith(`${content.companyId}/`)) {
+          const signed = await admin.storage
+            .from("video-library")
+            .createSignedUrl(vr.file_path, 60 * 60);
+          const url = signed?.data?.signedUrl as string | undefined;
+          if (url && (await this.isUrlAccessible(url))) {
+            return { url, type: "video" };
+          }
+        }
+      }
+    }
+
+
 
     // 1) Preferir marketing_media da lista (biblioteca de marketing).
     if (content.media_ids.length > 0) {
