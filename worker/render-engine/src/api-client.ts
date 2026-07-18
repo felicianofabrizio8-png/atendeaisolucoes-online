@@ -182,6 +182,58 @@ export async function downloadSignedUrl(url: string, timeoutMs: number): Promise
   }
 }
 
+export interface SignedDownloadMeta {
+  status: number;
+  contentType: string | null;
+  contentLength: number | null;
+  downloadedBytes: number;
+  elapsedMs: number;
+  redirected: boolean;
+  finalHost: string;
+  finalPathname: string;
+}
+
+/**
+ * Download com telemetria completa. Nunca loga a URL/token: retorna apenas
+ * metadados sanitizados que o chamador pode registrar.
+ */
+export async function downloadSignedUrlWithMeta(
+  url: string,
+  timeoutMs: number,
+): Promise<{ bytes: ArrayBuffer; meta: SignedDownloadMeta }> {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  const started = Date.now();
+  try {
+    const res = await fetch(url, { method: "GET", redirect: "follow", signal: ac.signal });
+    if (!res.ok) throw new Error(`download_http_${res.status}`);
+    const bytes = await res.arrayBuffer();
+    let finalHost = "invalid";
+    let finalPathname = "";
+    try {
+      const u = new URL(res.url || url);
+      finalHost = u.host;
+      finalPathname = u.pathname;
+    } catch { /* noop */ }
+    const cl = res.headers.get("content-length");
+    return {
+      bytes,
+      meta: {
+        status: res.status,
+        contentType: res.headers.get("content-type"),
+        contentLength: cl ? Number(cl) : null,
+        downloadedBytes: bytes.byteLength,
+        elapsedMs: Date.now() - started,
+        redirected: !!res.redirected,
+        finalHost,
+        finalPathname,
+      },
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function uploadSignedUrl(
   url: string,
   bytes: Buffer,

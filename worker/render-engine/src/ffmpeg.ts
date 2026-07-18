@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { log } from "./logger.js";
+import { truncateStream } from "./telemetry.js";
 
 export interface FocalPoint {
   x: number; // 0..1
@@ -18,6 +21,11 @@ export interface FfmpegRenderInput {
   timeoutMs: number;
   /** Opcional — quando ausente, aplica crop central (comportamento legado). */
   focalPoint?: FocalPoint | null;
+  /** Observabilidade — não altera parâmetros do FFmpeg. */
+  jobId?: string;
+  /** Observabilidade — quando definido, persiste ffmpeg.stderr.log/stdout.log
+   *  no diretório informado (removido pelo caller junto com o workDir). */
+  debugLogDir?: string;
 }
 
 /**
@@ -69,7 +77,14 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
     outputFilePath,
   ];
 
-  await runFfmpeg({ args, timeoutMs, sanitizePaths: { imageFilePath, audioFilePath, outputFilePath }, width, height, audioStartSecond, durationSeconds });
+  await runFfmpeg({
+    args,
+    timeoutMs,
+    sanitizePaths: { imageFilePath, audioFilePath, outputFilePath },
+    width, height, audioStartSecond, durationSeconds,
+    jobId: input.jobId,
+    debugLogDir: input.debugLogDir,
+  });
 }
 
 /**
@@ -87,6 +102,9 @@ export interface SlideshowInput {
   height: number;
   outputFilePath: string;
   timeoutMs: number;
+  /** Observabilidade — não altera parâmetros do FFmpeg. */
+  jobId?: string;
+  debugLogDir?: string;
 }
 
 export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<void> {
@@ -116,6 +134,8 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       outputFilePath,
       timeoutMs,
       focalPoint: focalPoints[0] ?? null,
+      jobId: input.jobId,
+      debugLogDir: input.debugLogDir,
     });
     return;
   }
@@ -182,6 +202,8 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     slideshowExtraPaths: imageFilePaths.slice(1),
     width, height, audioStartSecond, durationSeconds,
     slideshow: n,
+    jobId: input.jobId,
+    debugLogDir: input.debugLogDir,
   });
 }
 
@@ -233,43 +255,155 @@ interface RunOpts {
   audioStartSecond: number;
   durationSeconds: number;
   slideshow?: number;
+  jobId?: string;
+  debugLogDir?: string;
 }
 
+/**
+ * Executa o ffmpeg preservando 100% dos argumentos. Só adiciona
+ * observabilidade: PID, exit code, signal, timeout, memória de stderr/stdout.
+ *
+ * Erros são classificados em códigos distintos:
+ *  - ffmpeg_timeout           → worker matou o processo por atingir timeoutMs
+ *  - ffmpeg_signal_<SIG>      → processo encerrado por sinal externo (SIGKILL,
+ *                                SIGTERM, SIGSEGV, SIGABRT, ...)
+ *  - ffmpeg_exit_<code>       → processo encerrou com code != 0 e sem signal
+ *  - spawn_error:<msg>        → falha ao criar o processo
+ */
 async function runFfmpeg(opts: RunOpts): Promise<void> {
-  const { args, timeoutMs } = opts;
+  const { args, timeoutMs, jobId, debugLogDir } = opts;
+  const sanitizedArgs = sanitizeFfmpegArgs(args, opts.sanitizePaths, opts.slideshowExtraPaths ?? []);
+
   await new Promise<void>((resolve, reject) => {
+    const startedAt = Date.now();
+    const startedIso = new Date(startedAt).toISOString();
+    const env = { ...process.env, AV_LOG_FORCE_NOCOLOR: "1" };
+    const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"], env });
+    const pid = p.pid ?? -1;
+
     log.info("ffmpeg_started", {
+      job_id: jobId,
+      pid,
+      started_at: startedIso,
+      timeout_ms: timeoutMs,
       width: opts.width,
       height: opts.height,
-      audioStartSecond: opts.audioStartSecond,
-      durationSeconds: opts.durationSeconds,
+      audio_start_second: opts.audioStartSecond,
+      duration_seconds: opts.durationSeconds,
       slideshow: opts.slideshow ?? 1,
-      args: sanitizeFfmpegArgs(args, opts.sanitizePaths, opts.slideshowExtraPaths ?? []),
+      args_count: args.length,
+      args: sanitizedArgs,
     });
-    const started = Date.now();
-    const p = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
-    let stderrTail = "";
+
+    let stderrFull = "";
+    let stdoutFull = "";
+    const MAX_CAPTURE = 32 * 1024; // 32 KB por stream — evita OOM em stderr enorme
     p.stderr.on("data", (d) => {
-      const s = d.toString();
-      stderrTail = (stderrTail + s).slice(-2000);
+      if (stderrFull.length < MAX_CAPTURE * 4) stderrFull += d.toString();
     });
+    p.stdout.on("data", (d) => {
+      if (stdoutFull.length < MAX_CAPTURE) stdoutFull += d.toString();
+    });
+
+    let timeoutTriggered = false;
+    let killRequestedByWorker = false;
     const to = setTimeout(() => {
-      p.kill("SIGKILL");
-      reject(new Error("ffmpeg_timeout"));
+      timeoutTriggered = true;
+      killRequestedByWorker = true;
+      try { p.kill("SIGKILL"); } catch { /* noop */ }
     }, timeoutMs);
-    p.on("error", (e) => { clearTimeout(to); reject(e); });
-    p.on("close", (code) => {
+
+    let spawnFailed = false;
+    p.on("error", (e) => {
+      spawnFailed = true;
       clearTimeout(to);
-      const elapsed_ms = Date.now() - started;
-      if (code !== 0) {
-        log.error("ffmpeg_failed", { code, elapsed_ms, tail: stderrTail.slice(-500) });
-        reject(new Error(`ffmpeg_exit_${code}`));
+      log.error("ffmpeg_spawn_error", {
+        job_id: jobId,
+        pid,
+        message: (e instanceof Error ? e.message : String(e)).slice(0, 300),
+      });
+      reject(new Error(`spawn_error:${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`));
+    });
+
+    p.on("exit", (code, signal) => {
+      log.debug("ffmpeg_process_exit", {
+        job_id: jobId,
+        pid,
+        code,
+        signal,
+        elapsed_ms: Date.now() - startedAt,
+        timeout_triggered: timeoutTriggered,
+        kill_requested_by_worker: killRequestedByWorker,
+      });
+    });
+
+    p.on("close", (code, signal) => {
+      if (spawnFailed) return;
+      clearTimeout(to);
+      const elapsed_ms = Date.now() - startedAt;
+      const stderrTrunc = truncateStream(stderrFull);
+      const stdoutTrunc = truncateStream(stdoutFull);
+
+      log.info("ffmpeg_process_close", {
+        job_id: jobId,
+        pid,
+        code,
+        signal,
+        elapsed_ms,
+        timeout_triggered: timeoutTriggered,
+        kill_requested_by_worker: killRequestedByWorker,
+        stderr_total_bytes: stderrTrunc.totalBytes,
+        stdout_total_bytes: stdoutTrunc.totalBytes,
+      });
+
+      // Persistir opcionalmente stderr/stdout no workDir para inspeção.
+      // Não fazemos await — best effort, e a promise principal continua.
+      if (debugLogDir) {
+        writeFile(path.join(debugLogDir, "ffmpeg.stderr.log"), stderrFull).catch(() => {});
+        writeFile(path.join(debugLogDir, "ffmpeg.stdout.log"), stdoutFull).catch(() => {});
+      }
+
+      const failed = code !== 0 || (signal !== null && signal !== undefined);
+      if (failed) {
+        const classified = classifyFfmpegFailure({ code, signal, timeoutTriggered });
+        log.error("ffmpeg_failed", {
+          job_id: jobId,
+          pid,
+          code,
+          signal,
+          elapsed_ms,
+          classified,
+          timeout_triggered: timeoutTriggered,
+          kill_requested_by_worker: killRequestedByWorker,
+          stderr_total_bytes: stderrTrunc.totalBytes,
+          stderr_head: stderrTrunc.head,
+          stderr_tail: stderrTrunc.tail,
+          stderr_truncated: stderrTrunc.truncated,
+          stdout_head: stdoutTrunc.head.slice(0, 512),
+        });
+        reject(new Error(classified));
       } else {
-        log.info("ffmpeg_completed", { elapsed_ms });
+        log.info("ffmpeg_completed", { job_id: jobId, pid, elapsed_ms });
         resolve();
       }
     });
   });
+}
+
+/**
+ * Classifica a causa de falha do ffmpeg em um código estável.
+ * Mantém a compatibilidade com o handler antigo `ffmpeg_timeout` /
+ * `ffmpeg_exit_<code>` e adiciona a categoria de sinal externo.
+ */
+export function classifyFfmpegFailure(input: {
+  code: number | null;
+  signal: NodeJS.Signals | string | null;
+  timeoutTriggered: boolean;
+}): string {
+  if (input.timeoutTriggered) return "ffmpeg_timeout";
+  if (input.signal) return `ffmpeg_signal_${input.signal}`;
+  if (input.code !== null && input.code !== undefined) return `ffmpeg_exit_${input.code}`;
+  return "ffmpeg_exit_null";
 }
 
 function sanitizeFfmpegArgs(

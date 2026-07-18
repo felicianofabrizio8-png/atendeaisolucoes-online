@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { log, setLogLevel } from "./logger.js";
 import { claimJob, RenderApiError } from "./api-client.js";
 import { processClaim } from "./render.js";
+import { getActiveJobId } from "./runtime-state.js";
 
 async function main() {
   const cfg = loadConfig();
@@ -9,6 +10,7 @@ async function main() {
 
   log.info("worker_started", {
     worker_id: cfg.workerId,
+    pid: process.pid,
     poll_interval_ms: cfg.pollIntervalMs,
     render_api_url_host: safeHost(cfg.renderApiUrl),
   });
@@ -17,10 +19,35 @@ async function main() {
   const shutdown = (sig: string) => {
     if (stopping) return;
     stopping = true;
+    log.info("worker_signal_received", {
+      signal: sig,
+      pid: process.pid,
+      uptime_seconds: Math.round(process.uptime()),
+      active_job_id: getActiveJobId(),
+    });
     log.info("worker_shutdown", { signal: sig });
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  process.on("uncaughtException", (err) => {
+    log.error("worker_uncaught_exception", {
+      pid: process.pid,
+      uptime_seconds: Math.round(process.uptime()),
+      active_job_id: getActiveJobId(),
+      message: (err instanceof Error ? err.message : String(err)).slice(0, 500),
+      stack: err instanceof Error && err.stack ? err.stack.slice(0, 1000) : null,
+    });
+  });
+  process.on("unhandledRejection", (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    log.error("worker_unhandled_rejection", {
+      pid: process.pid,
+      uptime_seconds: Math.round(process.uptime()),
+      active_job_id: getActiveJobId(),
+      message: msg.slice(0, 500),
+    });
+  });
 
   while (!stopping) {
     try {
