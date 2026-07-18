@@ -134,6 +134,8 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       outputFilePath,
       timeoutMs,
       focalPoint: focalPoints[0] ?? null,
+      jobId: input.jobId,
+      debugLogDir: input.debugLogDir,
     });
     return;
   }
