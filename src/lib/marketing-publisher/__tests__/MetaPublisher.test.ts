@@ -148,6 +148,8 @@ vi.mock("@/integrations/supabase/client.server", () => ({
           return makeQuery(state.integrations);
         case "meta_pages":
           return makeQuery(state.metaPages);
+        case "video_library":
+          return makeQuery(state.videos);
         default:
           return makeQuery([]);
       }
