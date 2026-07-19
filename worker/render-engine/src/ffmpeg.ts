@@ -253,6 +253,9 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
+  if (watermark) {
+    args.push("-i", watermark.logoFilePath);
+  }
 
   // filter_complex: aplica scale+crop (com focal) em cada input, depois xfade em cadeia
   const filterParts: string[] = [];
@@ -262,22 +265,47 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       : `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
         `crop=${width}:${height},` +
         `setsar=1,setparams=range=tv,format=yuv420p`;
-    // fps=30 normaliza timing entre inputs para o xfade (que exige framerate
-    // consistente); vem depois do scale/crop para minimizar frames raw
-    // grandes bufferizados.
     filterParts.push(`[${i}:v]${vf},fps=30[v${i}]`);
   }
-  // Chain: v0 xfade v1 -> vx1; vx1 xfade v2 -> vx2; ...
+  // Chain xfade: v0+v1→vx1; vx1+v2→vx2; ...
+  // Se houver watermark, o último label do xfade será "vxfaded"; caso
+  // contrário, será "vout" para preservar o mapeamento existente.
+  const finalXfadeLabel = watermark ? "vxfaded" : "vout";
   let lastLabel = "v0";
   for (let i = 1; i < n; i++) {
     const offset = perSlot * i - xfadeDuration;
-    const nextLabel = i === n - 1 ? "vout" : `vx${i}`;
+    const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
       `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(
         3,
       )}:offset=${offset.toFixed(3)}[${nextLabel}]`,
     );
     lastLabel = nextLabel;
+  }
+
+  if (watermark) {
+    const opacity = Math.max(0, Math.min(1, watermark.opacity));
+    const widthRatio = Math.max(0.05, Math.min(0.4, watermark.maxWidthRatio));
+    const marginRatio = Math.max(0, Math.min(0.15, watermark.safeMarginRatio));
+    const logoW = Math.round(width * widthRatio);
+    const margin = Math.round(Math.min(width, height) * marginRatio);
+    const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
+      "top-left":      { x: `${margin}`,       y: `${margin}` },
+      "top-center":    { x: `(W-w)/2`,         y: `${margin}` },
+      "top-right":     { x: `W-w-${margin}`,   y: `${margin}` },
+      "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}` },
+      "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}` },
+      "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}` },
+      "center":        { x: `(W-w)/2`,         y: `(H-h)/2` },
+    };
+    const { x, y } = posMap[watermark.position];
+    // O índice do input da logo é `n + 1` (n imagens + 1 áudio).
+    const logoInputIdx = n + 1;
+    filterParts.push(
+      `[${logoInputIdx}:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
+        `colorchannelmixer=aa=${opacity.toFixed(3)}[logo]`,
+    );
+    filterParts.push(`[vxfaded][logo]overlay=${x}:${y}:format=auto[vout]`);
   }
 
   const filterComplex = filterParts.join(";");
