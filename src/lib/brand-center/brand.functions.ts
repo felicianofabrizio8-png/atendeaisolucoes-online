@@ -1,35 +1,50 @@
 /**
- * Server function: getBrandContext.
+ * Server functions PÚBLICAS do Brand Center (contrato de consumo).
  *
- * Consumidores futuros (Marketing IA, PDFs, Landing Pages, etc.) devem
- * chamar SOMENTE esta função — nunca acessar as tabelas brand_* diretamente.
+ * - `getBrandContext`: contrato estável consumido por outros módulos.
+ * - `getBrandAssetAccess`: acesso temporário (signed URL) a um asset ativo.
+ *   TTL sob controle do servidor; nunca persistimos a URL.
  *
- * Fase 1: função autenticada; a empresa é derivada do usuário via
- * `current_company_id()` (RLS). Nesta fase não há tela de configuração,
- * portanto a maioria das empresas receberá o BrandContext em modo fallback
- * com defaults neutros.
+ * Nenhuma dessas funções está integrada a Marketing IA, Render Engine ou
+ * qualquer consumidor nesta fase — apenas expõe a superfície segura.
  */
 
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveBrandContext } from "./brand-resolver";
-import type { BrandContext, BrandResolverInput } from "./brand.types";
+import { BrandRepository, loadBrandResolverInput } from "./brand.repository";
+import type { BrandAssetType, BrandContext } from "./brand.types";
+
+type AuthCtx = { supabase: SupabaseClient<Database>; userId: string };
+
+/** TTL permitido para signed URLs de asset (60s .. 1h). */
+export const BRAND_ASSET_ACCESS_MIN_TTL = 60;
+export const BRAND_ASSET_ACCESS_MAX_TTL = 60 * 60;
+export const BRAND_ASSET_ACCESS_DEFAULT_TTL = 300;
+
+async function currentCompanyId(ctx: AuthCtx): Promise<string | null> {
+  const { data, error } = await ctx.supabase
+    .from("profiles")
+    .select("company_id")
+    .eq("id", ctx.userId)
+    .maybeSingle();
+  if (error) throw new Error(`brand_public_profile:${error.message}`);
+  return data?.company_id ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// getBrandContext
+// ---------------------------------------------------------------------------
 
 export const getBrandContext = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<BrandContext> => {
-    const { supabase } = context;
-
-    // Descobre a empresa do usuário autenticado via profile (respeita RLS).
-    const { data: profileRow, error: profileErr } = await supabase
-      .from("profiles")
-      .select("company_id")
-      .maybeSingle();
-    if (profileErr) throw profileErr;
-
-    const companyId = profileRow?.company_id ?? null;
+    const auth = context as AuthCtx;
+    const companyId = await currentCompanyId(auth);
     if (!companyId) {
-      // Sem empresa: retorna contexto totalmente em fallback.
       return resolveBrandContext({
         companyId: "",
         profile: null,
@@ -37,90 +52,76 @@ export const getBrandContext = createServerFn({ method: "GET" })
         assets: [],
       });
     }
+    const input = await loadBrandResolverInput(auth.supabase, companyId);
+    return resolveBrandContext(input);
+  });
 
-    // 1) Perfil ativo (pode não existir).
-    const { data: brandProfile } = await supabase
-      .from("brand_profiles")
-      .select("id, visual_style, active_version_id")
-      .eq("company_id", companyId)
-      .eq("status", "active")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+// ---------------------------------------------------------------------------
+// getBrandAssetAccess
+// ---------------------------------------------------------------------------
 
-    // 2) Versão ativa (published tem prioridade sobre draft).
-    let versionRow: BrandResolverInput["version"] = null;
-    if (brandProfile) {
-      // Tenta primeiro a versão explicitamente ativa.
-      if (brandProfile.active_version_id) {
-        const { data: v } = await supabase
-          .from("brand_versions")
-          .select("id, status, colors, typography, tokens")
-          .eq("id", brandProfile.active_version_id)
-          .eq("company_id", companyId)
-          .maybeSingle();
-        if (v && v.status === "published") {
-          versionRow = {
-            id: v.id,
-            status: "published",
-            colors: v.colors,
-            typography: v.typography,
-            tokens: v.tokens,
-          };
-        }
-      }
-      // Fallback: última publicada do perfil.
-      if (!versionRow) {
-        const { data: v } = await supabase
-          .from("brand_versions")
-          .select("id, status, colors, typography, tokens")
-          .eq("profile_id", brandProfile.id)
-          .eq("company_id", companyId)
-          .eq("status", "published")
-          .order("published_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (v) {
-          versionRow = {
-            id: v.id,
-            status: "published",
-            colors: v.colors,
-            typography: v.typography,
-            tokens: v.tokens,
-          };
-        }
-      }
-    }
+const GetBrandAssetAccessSchema = z
+  .object({
+    assetId: z.string().uuid(),
+    ttlSeconds: z
+      .number()
+      .int()
+      .min(BRAND_ASSET_ACCESS_MIN_TTL)
+      .max(BRAND_ASSET_ACCESS_MAX_TTL)
+      .optional(),
+  })
+  .strict();
 
-    // 3) Assets ativos do perfil.
-    let assets: BrandResolverInput["assets"] = [];
-    if (brandProfile) {
-      const { data: rows } = await supabase
-        .from("brand_assets")
-        .select(
-          "id, asset_type, storage_bucket, storage_path, mime_type, width, height",
-        )
-        .eq("company_id", companyId)
-        .eq("profile_id", brandProfile.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
-      assets = (rows ?? []).map((a) => ({
-        id: a.id,
-        type: a.asset_type,
-        storageBucket: a.storage_bucket,
-        storagePath: a.storage_path,
-        mimeType: a.mime_type,
-        width: a.width,
-        height: a.height,
-      }));
-    }
+export interface BrandAssetAccess {
+  assetId: string;
+  assetType: BrandAssetType;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  expiresAt: string;
+  signedUrl: string;
+}
 
-    return resolveBrandContext({
+export const getBrandAssetAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => GetBrandAssetAccessSchema.parse(data))
+  .handler(async ({ data, context }): Promise<BrandAssetAccess> => {
+    const auth = context as AuthCtx;
+    const companyId = await currentCompanyId(auth);
+    if (!companyId) throw new Error("brand_asset_access_no_company");
+
+    const asset = await BrandRepository.getAssetById(
+      auth.supabase,
+      data.assetId,
       companyId,
-      profile: brandProfile
-        ? { id: brandProfile.id, visualStyle: brandProfile.visual_style }
-        : null,
-      version: versionRow,
-      assets,
-    });
+    );
+    if (!asset) throw new Error("brand_asset_access_not_found");
+    if (!asset.isActive) throw new Error("brand_asset_access_inactive");
+
+    // Defesa em profundidade: mesmo com RLS + repo filtrando por company,
+    // rechecamos o storage_path pertence ao tenant atual.
+    if (!asset.storagePath.startsWith(`${companyId}/`)) {
+      throw new Error("brand_asset_access_cross_tenant");
+    }
+
+    const ttl = data.ttlSeconds ?? BRAND_ASSET_ACCESS_DEFAULT_TTL;
+
+    const { data: signed, error } = await auth.supabase.storage
+      .from(asset.storageBucket)
+      .createSignedUrl(asset.storagePath, ttl);
+    if (error || !signed?.signedUrl) {
+      // Nunca inclui a URL nos erros.
+      throw new Error(`brand_asset_access_sign_failed:${error?.message ?? "unknown"}`);
+    }
+
+    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    return {
+      assetId: asset.id,
+      assetType: asset.assetType,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      expiresAt,
+      signedUrl: signed.signedUrl,
+    };
   });
