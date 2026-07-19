@@ -147,7 +147,7 @@ export async function composeBrandLayers(
         svg,
         width,
         height,
-        fontBuffers,
+        fontFiles,
         outPath: path.join(workDir, "brand-outro-card.png"),
       });
     } catch (err) {
