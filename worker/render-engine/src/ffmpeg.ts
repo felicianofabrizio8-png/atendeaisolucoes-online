@@ -423,8 +423,9 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     },
     slideshowExtraPaths: [
       ...imageFilePaths.slice(1),
-      ...(watermark ? [watermark.logoFilePath] : []),
+      ...(watermark ? extractBrandPaths(watermark) : []),
     ],
+
     width, height, audioStartSecond, durationSeconds,
     slideshow: n,
     jobId: input.jobId,
