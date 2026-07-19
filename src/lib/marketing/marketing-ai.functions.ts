@@ -14,6 +14,11 @@ import type {
   MarketingContentChannel,
   MarketingContentFormat,
 } from "./marketing.types";
+import {
+  buildBrandPromptBlock,
+  loadMarketingBrandContext,
+  sanitizeBrandContextForPersistence,
+} from "./brand-context-adapter";
 
 type SB = SupabaseClient<Database>;
 
@@ -450,6 +455,10 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       : null;
 
     const brand = await loadCompanyContext(supabase, companyId);
+    // Brand Center (Fase 3): identidade visual publicada consumida via adapter.
+    // Signed URL da logo é efêmera — nunca é persistida no snapshot.
+    const marketingBrand = await loadMarketingBrandContext(supabase, companyId);
+    const brandPromptBlock = buildBrandPromptBlock(marketingBrand);
     const kb = await loadKnowledgeBase(supabase, companyId);
     const knowledgeBlock = buildKnowledgeBlock(kb);
     const kbVersion = computeKbVersion(kb);
@@ -528,6 +537,8 @@ A promoção está vinculada ao produto "${product.name}". Toda a campanha (Stor
     const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira especializada em marketing para PISCINAS, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
 
 ${knowledgeBlock}
+
+${brandPromptBlock}
 
 # ETAPA 1 — DIREÇÃO ESTRATÉGICA (obrigatória, precede qualquer texto)
 Como Diretor de Criação, decida DELIBERADAMENTE para esta campanha:
@@ -857,7 +868,9 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       recent_angles: recentAngles.slice(0, 5),
       product_focus_locked: productLockActive,
       reel_format: bundle.reel.script.format,
-    };
+      // Brand Center snapshot SEM signed URL — sanitizado no adapter.
+      brand: sanitizeBrandContextForPersistence(marketingBrand),
+    } as unknown as Database["public"]["Tables"]["marketing_contents"]["Insert"]["ai_prompt"];
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
         company_id: companyId,
