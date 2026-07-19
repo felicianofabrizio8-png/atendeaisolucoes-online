@@ -414,7 +414,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const v = variants[variant];
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes de salvar."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
 
     // upload base64 -> storage
     try {
@@ -457,7 +457,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const v = variants[variant];
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
     setScoring(true);
     try {
       const res = await fetch("/api/ai/creative-generator", {
@@ -476,7 +476,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     if (!v) return;
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
     if (config.preserve_product && !confirmed[key]) {
       toast.error("Confirme que o produto gerado corresponde ao produto original antes de usar.");
       return;
