@@ -42,14 +42,48 @@ ffmpeg -y \
 
 ## Deploy no Railway
 
-1. Aponte o Railway para este diretório (`worker/render-engine/`) — o `Dockerfile` é detectado automaticamente.
-2. Em **Variables**, defina as três variáveis obrigatórias:
-   - `RENDER_API_URL` — URL pública estável do Atende Aí, ex.: `https://project--{project-id}.lovable.app`.
-   - `RENDER_WORKER_SECRET` — o **mesmo** valor salvo em Secrets do Atende Aí (nome idêntico).
-   - `WORKER_ID` — identificador legível, ex.: `railway-render-1`.
-3. Recursos recomendados: 1 vCPU, 2 GB RAM, 1 réplica. A fila do backend usa `FOR UPDATE SKIP LOCKED`, então múltiplas réplicas são seguras.
-4. Sem porta pública, sem health check HTTP: é um long-running background worker. Restart policy: `on-failure`.
-5. **Não é necessário** configurar `SUPABASE_URL` nem `SUPABASE_SERVICE_ROLE_KEY`. O worker não fala com o Supabase diretamente.
+> ⚠️ **Root Directory obrigatório.** Este worker vive num subdiretório do
+> monorepo. O serviço Railway PRECISA estar configurado com:
+>
+> - **Root Directory:** `worker/render-engine`
+> - **Dockerfile Path:** `Dockerfile` (relativo ao root directory acima)
+> - **Config File:** `railway.json` (relativo ao root directory) — já
+>   comitado em `worker/render-engine/railway.json`.
+>
+> Sem esse ajuste, o `railway up` envia o repositório inteiro e o build
+> ignora este `Dockerfile`, deixando uma imagem legada em produção.
+
+### Comando de deploy (a partir da raiz do repositório)
+
+```bash
+cd worker/render-engine
+railway status              # confirma serviço vinculado (ex.: feisty-bravery-v2)
+railway up --detach         # sobe SOMENTE este diretório
+```
+
+### Validação pós-deploy (logs obrigatórios)
+
+Nos logs do serviço Railway procure, na ordem:
+
+1. `render_build_signature` — deve aparecer UMA vez no boot, com
+   `build_signature="brand-phase-5b1-v1"` e `brand_composition_enabled=true`.
+2. `brand-phase-5b1-v1` — string presente no log acima e em cada
+   `brand_composition_gate`.
+3. `brand_composition_gate` — dispara a cada job, com `approved` e
+   `reason` (ex.: `approved="true"` / `reason="approved"`).
+
+Se qualquer um desses três eventos não aparecer, o container em execução
+NÃO é a Fase 5.B1 — revisar Root Directory / cache de build.
+
+### Variáveis obrigatórias (Railway → Variables)
+
+- `RENDER_API_URL` — URL pública estável do Atende Aí, ex.: `https://project--{project-id}.lovable.app`.
+- `RENDER_WORKER_SECRET` — o **mesmo** valor salvo em Secrets do Atende Aí.
+- `WORKER_ID` — identificador legível, ex.: `feisty-bravery-v2`.
+
+Recursos recomendados: 1 vCPU, 2 GB RAM, 1 réplica. Sem porta pública,
+sem health check HTTP.
+
 
 ## Variáveis de ambiente
 
