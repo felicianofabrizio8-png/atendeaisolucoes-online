@@ -702,11 +702,15 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       primary_audio_id: string | null;
       audio_start_second: number | null;
       duration_seconds: number | null;
+      title: string | null;
+      body: string | null;
+      cta_text: string | null;
       feed_render_job_id?: string | null;
       story_render_job_id?: string | null;
       feed_video_id?: string | null;
       story_video_id?: string | null;
     };
+
     if (!r.primary_audio_id) throw new Error("campaign_missing_primary_audio");
     if (!r.primary_image_media_id && !r.primary_image_product_ref) {
       throw new Error("campaign_missing_primary_image");
