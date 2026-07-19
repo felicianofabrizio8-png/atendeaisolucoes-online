@@ -429,8 +429,8 @@ function BrandCenterPage() {
               {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar rascunho
             </button>
-            <button type="button" onClick={handlePublish} disabled={busy !== null || !draftVersionId}
-              className={cn("inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm hover:opacity-90", (busy !== null || !draftVersionId) && "opacity-50")}>
+            <button type="button" onClick={handlePublish} disabled={busy !== null || loading}
+              className={cn("inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm hover:opacity-90", (busy !== null || loading) && "opacity-50")}>
               {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Publicar versão
             </button>
