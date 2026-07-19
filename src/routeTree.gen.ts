@@ -38,6 +38,7 @@ import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
+import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
 import { Route as ApiSystemHealthRouteImport } from './routes/api.system-health'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
@@ -265,6 +266,12 @@ const ConfiguracoesRespostasRapidasRoute =
   ConfiguracoesRespostasRapidasRouteImport.update({
     id: '/configuracoes_/respostas-rapidas',
     path: '/configuracoes/respostas-rapidas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesIdentidadeVisualRoute =
+  ConfiguracoesIdentidadeVisualRouteImport.update({
+    id: '/configuracoes_/identidade-visual',
+    path: '/configuracoes/identidade-visual',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiSystemHealthRoute = ApiSystemHealthRouteImport.update({
@@ -645,6 +652,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -743,6 +751,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -843,6 +852,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes_/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -944,6 +954,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes/identidade-visual'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -1042,6 +1053,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes/identidade-visual'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -1141,6 +1153,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes_/identidade-visual'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
@@ -1241,6 +1254,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
+  ConfiguracoesIdentidadeVisualRoute: typeof ConfiguracoesIdentidadeVisualRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
   RuntimeObservabilityRoute: typeof RuntimeObservabilityRoute
@@ -1526,6 +1540,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/respostas-rapidas'
       fullPath: '/configuracoes/respostas-rapidas'
       preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes_/identidade-visual': {
+      id: '/configuracoes_/identidade-visual'
+      path: '/configuracoes/identidade-visual'
+      fullPath: '/configuracoes/identidade-visual'
+      preLoaderRoute: typeof ConfiguracoesIdentidadeVisualRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/system-health': {
@@ -2047,6 +2068,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
   ApiSystemHealthRoute: ApiSystemHealthRoute,
+  ConfiguracoesIdentidadeVisualRoute: ConfiguracoesIdentidadeVisualRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
   RuntimeObservabilityRoute: RuntimeObservabilityRoute,
