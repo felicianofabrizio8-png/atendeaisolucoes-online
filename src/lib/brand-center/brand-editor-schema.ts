@@ -172,8 +172,7 @@ export const RegisterBrandAssetSchema = z
     height: z.number().int().positive().nullable(),
     sha256: z
       .string()
-      .regex(/^[a-f0-9]{64}$/i, "sha256 inválido")
-      .nullable(),
+      .regex(/^[a-f0-9]{64}$/i, "sha256 inválido"),
     originalFilename: FILENAME,
   })
   .strict()
