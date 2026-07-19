@@ -4541,6 +4541,14 @@ export type Database = {
           status: string
         }[]
       }
+      publish_brand_version: {
+        Args: { _version_id: string }
+        Returns: {
+          profile_id: string
+          published_at: string
+          version_id: string
+        }[]
+      }
       rate_limit_increment: {
         Args: {
           _bucket: string

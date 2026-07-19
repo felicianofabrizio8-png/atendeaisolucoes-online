@@ -111,6 +111,24 @@ function ConfigPage() {
         </Link>
 
         <Link
+          to="/configuracoes/identidade-visual"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 hover:bg-accent/40 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-md bg-primary/10 grid place-items-center">
+              <SettingsIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">Identidade Visual</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Logo, cores, tipografia e tokens da marca
+              </p>
+            </div>
+          </div>
+          <span className="text-xs text-muted-foreground">→</span>
+        </Link>
+
+        <Link
           to="/configuracoes/respostas-rapidas"
           className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 hover:bg-accent/40 transition-colors"
         >
