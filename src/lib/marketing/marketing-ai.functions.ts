@@ -450,6 +450,10 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       : null;
 
     const brand = await loadCompanyContext(supabase, companyId);
+    // Brand Center (Fase 3): identidade visual publicada consumida via adapter.
+    // Signed URL da logo é efêmera — nunca é persistida no snapshot.
+    const marketingBrand = await loadMarketingBrandContext(supabase, companyId);
+    const brandPromptBlock = buildBrandPromptBlock(marketingBrand);
     const kb = await loadKnowledgeBase(supabase, companyId);
     const knowledgeBlock = buildKnowledgeBlock(kb);
     const kbVersion = computeKbVersion(kb);
