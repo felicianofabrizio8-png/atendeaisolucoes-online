@@ -22,20 +22,34 @@ export type WatermarkPosition =
   | "center";
 
 /**
- * Watermark determinístico da identidade visual (Fase 5.A).
- * O worker recebe a logo baixada em disco + posição/opacidade calculadas
- * server-side. Preserva alpha channel do PNG e usa scale proporcional.
+ * Watermark determinístico da identidade visual (Fase 5.A) + camadas visuais
+ * da Fase 5.B1 (painel inferior com texto e tela final de marca).
+ *
+ * O worker recebe:
+ *   - `logoFilePath`: PNG/SVG rasterizado da logo (opcional se só layers).
+ *   - `bottomPanelPath`: PNG full-frame RGBA com painel + texto (opcional).
+ *   - `outroCardPath`: PNG full-frame RGBA opaco com marca (opcional).
+ *
+ * Todas as camadas preservam alpha channel. Camadas temporais usam
+ * `enable=` para aparecer/desaparecer sem alterar duração total.
  */
 export interface WatermarkInput {
-  logoFilePath: string;
+  /** Path da logo. `null` quando o snapshot só tem texto/outro sem logo. */
+  logoFilePath: string | null;
   position: WatermarkPosition;
   /** Fração do frame para a largura da logo. Ex.: 0.14 = 14% da largura. */
   maxWidthRatio: number;
   /** 0..1. Multiplicado pelo alpha original. */
   opacity: number;
-  /** Fração da menor dimensão do frame para margem de segurança. Ex.: 0.04 = 4%. */
+  /** Fração da menor dimensão do frame para margem de segurança. Ex.: 0.04. */
   safeMarginRatio: number;
+  /** Fase 5.B1 — camadas visuais opcionais. */
+  bottomPanelPath?: string | null;
+  outroCardPath?: string | null;
+  /** Duração da tela final (segundos). Ignorado se `outroCardPath` null. */
+  outroDurationSeconds?: number;
 }
+
 
 export interface FfmpegRenderInput {
   imageFilePath: string;
