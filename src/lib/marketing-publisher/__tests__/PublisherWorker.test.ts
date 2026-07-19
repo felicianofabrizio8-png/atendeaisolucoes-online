@@ -50,10 +50,12 @@ describe("PublisherWorker.tick", () => {
       claimNext: vi.fn(),
       markPublished: vi.fn().mockResolvedValue(undefined),
       markFailedOrRetry: vi.fn(),
+      recoverOrphans: vi.fn().mockResolvedValue(0),
     };
     planner = { materializeDue: vi.fn().mockResolvedValue(0) };
     publisher = { publish: vi.fn() };
   });
+
 
   it("sucesso: marca publicado e conta em `succeeded`", async () => {
     const row = buildRow();
