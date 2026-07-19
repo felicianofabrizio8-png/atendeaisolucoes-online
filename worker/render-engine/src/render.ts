@@ -1,5 +1,29 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// ---------------------------------------------------------------------------
+// HOTFIX OPERACIONAL — Prova de qual código está rodando no container Railway.
+// Estes logs disparam na CARGA do módulo, antes de qualquer lógica de render.
+// Remover apenas após confirmação visual nos logs do Railway.
+// ---------------------------------------------------------------------------
+try {
+  // eslint-disable-next-line no-console
+  console.info({
+    event: "RENDER_BUILD_SIGNATURE",
+    build_signature: "render-phase-5b1-build-001",
+    file: fileURLToPath(import.meta.url),
+    cwd: process.cwd(),
+    node_env: process.env.NODE_ENV ?? null,
+  });
+  // eslint-disable-next-line no-console
+  console.info({
+    event: "RENDER_BUILD_TIMESTAMP",
+    timestamp: new Date().toISOString(),
+  });
+} catch {
+  // Nunca deixar o log de prova quebrar a carga do módulo.
+}
 import { log } from "./logger.js";
 import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint, type WatermarkInput, type WatermarkPosition } from "./ffmpeg.js";
 import { composeBrandLayers } from "./brand-composer.js";
