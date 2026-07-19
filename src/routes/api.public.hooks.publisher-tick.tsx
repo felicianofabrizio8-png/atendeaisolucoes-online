@@ -9,6 +9,10 @@ import { safeEqualSecret, rateLimit, tryAcquireLock, releaseLock, correlationId 
 
 const LOCK_KEY = "publisher-tick:global";
 const RATE_MAX_PER_MIN = 12;
+// TTL do lock do hook: cobre o pior caso do tick (polling Meta + upload).
+// Justificativa detalhada em HookSecurity.DEFAULT_LOCK_TTL_MS.
+const LOCK_TTL_MS = 120_000;
+
 
 function unauthorized() {
   return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
