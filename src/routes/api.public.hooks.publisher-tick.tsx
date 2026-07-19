@@ -53,25 +53,29 @@ export const Route = createFileRoute("/api/public/hooks/publisher-tick")({
         if (!rl.allowed) {
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
         }
-        if (!tryAcquireLock(LOCK_KEY)) {
+        if (!tryAcquireLock(LOCK_KEY, LOCK_TTL_MS)) {
+          console.info("[publisher-tick]", { cid, event: "lock_rejected_active" });
           return Response.json({ ok: true, alreadyRunning: true }, { status: 409 });
         }
+        console.info("[publisher-tick]", { cid, event: "lock_acquired", ttl_ms: LOCK_TTL_MS });
         try {
           const { PublisherAgent } = await import("@/lib/marketing-publisher/PublisherAgent.server");
           const agent = new PublisherAgent();
           const result = await agent.tick(`publisher:${cid}`);
-          console.info("[publisher-tick]", { cid, event: "ok", tickMs: Date.now() - start, ...result });
+          console.info("[publisher-tick]", { cid, event: "tick_completed", tickMs: Date.now() - start, ...result });
           return Response.json({ ok: true, ...result });
         } catch (e) {
           console.error("[publisher-tick]", {
             cid,
-            event: "internal_error",
+            event: "tick_failed",
             code: e instanceof Error ? e.name : "Error",
           });
           return Response.json({ ok: false, error: "internal_error" }, { status: 500 });
         } finally {
           releaseLock(LOCK_KEY);
+          console.info("[publisher-tick]", { cid, event: "lock_released" });
         }
+
       },
       GET: methodNotAllowed,
       PUT: methodNotAllowed,
