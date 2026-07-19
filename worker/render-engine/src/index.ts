@@ -4,16 +4,32 @@ import { claimJob, RenderApiError } from "./api-client.js";
 import { processClaim } from "./render.js";
 import { getActiveJobId } from "./runtime-state.js";
 
+const BUILD_SIGNATURE = "brand-phase-5b1-v1";
+const BUILD_TIMESTAMP = "2026-07-19";
+
 async function main() {
   const cfg = loadConfig();
   setLogLevel(cfg.logLevel);
+
+  // Prova estruturada de qual imagem está rodando. Deve aparecer no boot
+  // do container Railway. Não contém segredos.
+  log.info("render_build_signature", {
+    build_signature: BUILD_SIGNATURE,
+    build_date: BUILD_TIMESTAMP,
+    brand_composition_enabled: true,
+    entrypoint: "dist/index.js",
+    node_version: process.version,
+    pid: process.pid,
+  });
 
   log.info("worker_started", {
     worker_id: cfg.workerId,
     pid: process.pid,
     poll_interval_ms: cfg.pollIntervalMs,
     render_api_url_host: safeHost(cfg.renderApiUrl),
+    build_signature: BUILD_SIGNATURE,
   });
+
 
   let stopping = false;
   const shutdown = (sig: string) => {

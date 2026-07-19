@@ -39,11 +39,14 @@ RUN set -eux; \
     echo "=== IMAGE VERIFICATION (cache-bust=$CACHE_BUST) ==="; \
     ls -la /app/dist/render.js; \
     ls -la /app/assets/fonts/Inter-Regular.ttf /app/assets/fonts/PlayfairDisplay-Bold.ttf; \
-    for s in RENDER_BUILD_SIGNATURE brand_composition_gate brand_composition_started brand_layers_count; do \
-      count=$(grep -c "$s" /app/dist/render.js || true); \
+    for s in render_build_signature brand-phase-5b1-v1 RENDER_BUILD_SIGNATURE brand_composition_gate brand_composition_started brand_layers_count composeBrandLayers; do \
+      count=$(grep -rc "$s" /app/dist/ | awk -F: '{s+=$2} END {print s+0}'); \
       echo "signature[$s]=$count"; \
       test "$count" -ge 1 || { echo "MISSING SIGNATURE: $s"; exit 1; }; \
     done; \
+    ffmpeg_count=$(grep -c "buildBrandOverlayChain" /app/dist/ffmpeg.js || true); \
+    echo "signature[buildBrandOverlayChain]=$ffmpeg_count"; \
+    test "$ffmpeg_count" -ge 1 || { echo "MISSING SIGNATURE: buildBrandOverlayChain (ffmpeg.js)"; exit 1; }; \
     echo "=== IMAGE VERIFICATION OK ==="
 
 # Não roda como root

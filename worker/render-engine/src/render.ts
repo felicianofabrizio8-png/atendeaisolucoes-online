@@ -226,8 +226,23 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let bottomPanelPath: string | null = null;
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
+      const gateApproved = !!(brand && hasContent);
+      const gateReason = !brand
+        ? "no_brand_snapshot"
+        : !brand.enabled
+          ? "brand_disabled"
+          : (brand.schemaVersion ?? 0) < 2
+            ? "schema_version_below_2"
+            : !brand.content
+              ? "no_content_object"
+              : !hasContent
+                ? "content_fields_empty"
+                : "approved";
       log.info("brand_composition_gate", {
         ...baseCtx, stage,
+        build_signature: "brand-phase-5b1-v1",
+        approved: gateApproved,
+        reason: gateReason,
         has_brand: !!brand,
         brand_enabled: !!brand?.enabled,
         schema_version: brand?.schemaVersion ?? null,
@@ -239,6 +254,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         cta_present: !!brand?.content?.ctaText,
         company_name_present: !!brand?.content?.companyName,
       });
+
       if (hasContent) {
         try {
           log.info("brand_composition_started", {
