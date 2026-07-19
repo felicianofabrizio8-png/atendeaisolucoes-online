@@ -1,11 +1,17 @@
 /**
  * Resolver puro do Brand Center.
  *
- * Recebe dados brutos do repositório (ou de um fixture em testes) e produz
- * um `BrandContext` normalizado, seguro, sem signed URLs e com defaults
- * aplicados quando necessário.
+ * Recebe dados brutos do repositório e produz um `BrandContext` normalizado.
+ * NÃO acessa banco, storage ou rede — 100% testável em memória.
  *
- * Esta função NÃO acessa banco, storage ou rede — é testável isoladamente.
+ * Pipeline de uma versão publicada:
+ *   1. `migrateBrandVersionPayload` (schema_version → pass-through ou fallback)
+ *   2. `parseColors/parseTypography/parseTokens` (validação Zod defensiva)
+ *   3. merge com defaults
+ *
+ * Se o schema for desconhecido/futuro (item 1), o resolver ignora a versão
+ * silenciosamente e cai em fallback — jamais tenta interpretar dados
+ * incompatíveis como se fossem válidos.
  */
 
 import {
@@ -15,6 +21,7 @@ import {
   DEFAULT_TYPOGRAPHY,
 } from "./brand-defaults";
 import { parseColors, parseTokens, parseTypography } from "./brand-schema";
+import { migrateBrandVersionPayload } from "./brand-schema-migration";
 import type {
   BrandAssetRef,
   BrandAssetType,
@@ -55,7 +62,6 @@ function normalizeAssets(
       height: a.height,
     };
     all.push(ref);
-    // Primeiro asset ativo de cada tipo vence (ordem estável cabe ao repo).
     if (byType[a.type] === null) byType[a.type] = ref;
   }
 
@@ -63,23 +69,33 @@ function normalizeAssets(
 }
 
 export function resolveBrandContext(input: BrandResolverInput): BrandContext {
-  // Só é "published" quando o repo entregou uma versão publicada;
-  // rascunhos NÃO viram identidade ativa — o contrato entra em fallback.
   const versionStatus = input.version?.status ?? "draft";
-  const isPublished = input.version !== null && versionStatus === "published";
+  const isPublishedCandidate =
+    input.version !== null && versionStatus === "published";
 
-  const parsedColors = isPublished ? parseColors(input.version!.colors) : {};
-  const parsedTypography = isPublished
-    ? parseTypography(input.version!.typography)
-    : {};
-  const parsedTokens = isPublished ? parseTokens(input.version!.tokens) : {};
+  const migrated = isPublishedCandidate
+    ? migrateBrandVersionPayload({
+        schemaVersion: input.version!.schemaVersion ?? 1,
+        colors: input.version!.colors,
+        typography: input.version!.typography,
+        tokens: input.version!.tokens,
+      })
+    : null;
+
+  // schema desconhecido/futuro → cai em fallback completo (defaults).
+  const isPublished = isPublishedCandidate && migrated !== null;
+
+  const parsedColors = migrated ? parseColors(migrated.colors) : {};
+  const parsedTypography = migrated ? parseTypography(migrated.typography) : {};
+  const parsedTokens = migrated ? parseTokens(migrated.tokens) : {};
 
   const colors = { ...DEFAULT_COLORS, ...parsedColors };
   const typography = {
     ...DEFAULT_TYPOGRAPHY,
     ...parsedTypography,
     weights:
-      Array.isArray(parsedTypography.weights) && parsedTypography.weights.length > 0
+      Array.isArray(parsedTypography.weights) &&
+      parsedTypography.weights.length > 0
         ? parsedTypography.weights
         : DEFAULT_TYPOGRAPHY.weights,
   };
