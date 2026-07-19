@@ -521,6 +521,283 @@ export class MetaPublisher {
   }
 
   // ==========================================================================
+  // Facebook Story — Vídeo (fluxo /video_stories resumable, 3 fases)
+  // ==========================================================================
+  //
+  // Endpoint oficial: POST /{PAGE_ID}/video_stories
+  //   Fase 1 (start):  &upload_phase=start  → { video_id, upload_url }
+  //   Fase 2 (upload): POST <upload_url> — host rupload.facebook.com
+  //                    Headers: Authorization: OAuth <PAGE_TOKEN>
+  //                             offset: 0
+  //                             file_size: <bytes>
+  //                    Body: bytes brutos do MP4 (mesmo AAC do render, sem reconversão)
+  //   Fase 3 (finish): &upload_phase=finish&video_id=<X>&video_state=PUBLISHED
+  //                    → { post_id, success }
+  //
+  // Permissões Meta: pages_manage_posts + pages_read_engagement + Advanced
+  // Access no App Review (fora do escopo desta função — validado no OAuth).
+  //
+  // Requisitos técnicos (Meta Reels/Stories, Nov/2024): MP4/MOV, H.264 vídeo +
+  // AAC áudio, ≤ 90s, 9:16 (1080x1920 ideal), ≤ 100 MB, ≤ 30 fps.
+  //
+  // Idempotência: pendingState carrega { video_id, upload_url, upload_completed }.
+  // - video_id ausente         → executa Fase 1 e persiste.
+  // - upload_completed=false   → executa Fase 2 e persiste upload_completed=true.
+  // - upload_completed=true    → pula Fase 2, vai direto para Fase 3.
+  // - platform_post_id em publish() → short-circuit em publish() (não chega aqui).
+  private async publishFacebookStoryVideo(
+    input: PublishInput,
+    media: ResolvedMedia,
+    pageId: string,
+    pageAccessToken: string,
+  ): Promise<PublishOutcome> {
+    const mediaUrlSummary = summarizeMediaUrl(media.url);
+    const pending = (input.pendingState ?? {}) as Record<string, unknown>;
+    let videoId =
+      typeof pending.video_id === "string" && pending.video_id.length > 0
+        ? (pending.video_id as string)
+        : null;
+    let uploadUrl =
+      typeof pending.upload_url === "string" && pending.upload_url.length > 0
+        ? (pending.upload_url as string)
+        : null;
+    let uploadCompleted = pending.upload_completed === true;
+
+    const logStage = (stage: string, extras: Record<string, unknown> = {}) => {
+      console.info("[marketing-publisher] fb_story_video_stage", {
+        stage,
+        channel: "facebook",
+        format: "story",
+        video_id: videoId,
+        upload_completed: uploadCompleted,
+        media_host: mediaUrlSummary.host,
+        media_path: mediaUrlSummary.path,
+        ...extras,
+      });
+    };
+
+    // ---------------- Fase 1: start ---------------------------------------
+    if (!videoId || !uploadUrl) {
+      logStage("start_request");
+      const startBody = new URLSearchParams();
+      startBody.set("upload_phase", "start");
+      startBody.set("access_token", pageAccessToken);
+      const start = await postGraph<{ video_id?: string; upload_url?: string }>({
+        companyId: input.companyId,
+        action: "marketing_publisher.facebook.story.video.start",
+        url: `${GRAPH}/${encodeURIComponent(pageId)}/video_stories`,
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: startBody.toString(),
+        logicalPayload: { upload_phase: "start" },
+        agentId: "marketing-publisher",
+      });
+      if (isSimulation(start)) {
+        return { success: true, simulated: true, platformPostId: null, platformResponse: { simulated: true } };
+      }
+      if (isFailure(start)) {
+        const meta = extractMetaError(start);
+        logMetaFailure({
+          stage: "video_story_start",
+          channel: "facebook",
+          format: "story",
+          endpoint: `/${pageId}/video_stories`,
+          httpStatus: start.status,
+          mediaKind: "video",
+          mediaHost: mediaUrlSummary.host,
+          mediaPath: mediaUrlSummary.path,
+          payloadFields: fieldsPresent(startBody),
+          meta,
+        });
+        return this.fail(
+          `fb_story_video_start_${start.status ?? "network"}`,
+          formatFailureMessage(start.error, meta),
+          start.retryable,
+        );
+      }
+      videoId = start.raw?.video_id ?? null;
+      uploadUrl = start.raw?.upload_url ?? null;
+      if (!videoId || !uploadUrl) {
+        return this.fail(
+          "fb_story_video_no_upload_url",
+          "Meta não retornou video_id/upload_url em upload_phase=start.",
+          false,
+        );
+      }
+      if (input.onPendingUpdate) {
+        try {
+          await input.onPendingUpdate({ video_id: videoId, upload_url: uploadUrl, upload_completed: false });
+        } catch (e) {
+          console.warn("[marketing-publisher] fb_story_pending_save_failed", {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      logStage("start_ok", { has_upload_url: true });
+    } else {
+      logStage("resume_from_pending");
+    }
+
+    // ---------------- Fase 2: upload binário ------------------------------
+    if (!uploadCompleted) {
+      logStage("download_source");
+      let bytes: ArrayBuffer;
+      try {
+        const src = await fetch(media.url);
+        if (!src.ok) {
+          return this.fail(
+            `fb_story_video_source_${src.status}`,
+            `Falha ao baixar MP4 da URL assinada (HTTP ${src.status}).`,
+            src.status >= 500 || src.status === 429,
+          );
+        }
+        const ct = src.headers.get("content-type") ?? "";
+        if (!/^video\//i.test(ct) && ct !== "application/octet-stream") {
+          return this.fail(
+            "fb_story_video_bad_source_type",
+            `URL assinada retornou Content-Type inesperado: ${ct}.`,
+            false,
+          );
+        }
+        bytes = await src.arrayBuffer();
+      } catch (e) {
+        return this.fail(
+          "fb_story_video_source_network",
+          `Falha de rede baixando MP4: ${e instanceof Error ? e.message : "unknown"}.`,
+          true,
+        );
+      }
+      const size = bytes.byteLength;
+      if (size <= 0) {
+        return this.fail("fb_story_video_empty_source", "MP4 baixado tem 0 bytes.", false);
+      }
+      if (size > 100 * 1024 * 1024) {
+        return this.fail(
+          "fb_story_video_too_large",
+          `MP4 excede o limite de 100 MB (${size} bytes).`,
+          false,
+        );
+      }
+      logStage("upload_binary", { size_bytes: size });
+      const upload = await postGraph<{ success?: boolean; h?: string }>({
+        companyId: input.companyId,
+        action: "marketing_publisher.facebook.story.video.upload",
+        url: uploadUrl,
+        method: "POST",
+        headers: {
+          Authorization: `OAuth ${pageAccessToken}`,
+          offset: "0",
+          file_size: String(size),
+        },
+        body: bytes,
+        logicalPayload: { upload_bytes: size, endpoint: "rupload.facebook.com" },
+        agentId: "marketing-publisher",
+      });
+      if (isSimulation(upload)) {
+        return { success: true, simulated: true, platformPostId: null, platformResponse: { simulated: true } };
+      }
+      if (isFailure(upload)) {
+        const meta = extractMetaError(upload);
+        logMetaFailure({
+          stage: "video_story_upload",
+          channel: "facebook",
+          format: "story",
+          endpoint: "rupload.facebook.com/video-upload",
+          httpStatus: upload.status,
+          mediaKind: "video",
+          mediaHost: mediaUrlSummary.host,
+          mediaPath: mediaUrlSummary.path,
+          meta,
+        });
+        return this.fail(
+          `fb_story_video_upload_${upload.status ?? "network"}`,
+          formatFailureMessage(upload.error, meta),
+          upload.retryable,
+        );
+      }
+      uploadCompleted = true;
+      if (input.onPendingUpdate) {
+        try {
+          await input.onPendingUpdate({
+            video_id: videoId,
+            upload_url: uploadUrl,
+            upload_completed: true,
+          });
+        } catch (e) {
+          console.warn("[marketing-publisher] fb_story_pending_save_failed", {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      logStage("upload_ok");
+    } else {
+      logStage("upload_skipped_already_completed");
+    }
+
+    // ---------------- Fase 3: finish (publish) ----------------------------
+    logStage("finish_request");
+    const finishBody = new URLSearchParams();
+    finishBody.set("upload_phase", "finish");
+    finishBody.set("video_id", videoId);
+    finishBody.set("video_state", "PUBLISHED");
+    finishBody.set("access_token", pageAccessToken);
+    const finish = await postGraph<{
+      success?: boolean;
+      post_id?: string;
+      video_id?: string;
+      status?: string;
+    }>({
+      companyId: input.companyId,
+      action: "marketing_publisher.facebook.story.video.finish",
+      url: `${GRAPH}/${encodeURIComponent(pageId)}/video_stories`,
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: finishBody.toString(),
+      logicalPayload: { upload_phase: "finish", video_id: videoId, video_state: "PUBLISHED" },
+      agentId: "marketing-publisher",
+      extractExternalId: (j) => {
+        const x = j as { post_id?: string; video_id?: string } | null;
+        return x?.post_id ?? x?.video_id ?? null;
+      },
+    });
+    if (isSimulation(finish)) {
+      return { success: true, simulated: true, platformPostId: null, platformResponse: { simulated: true } };
+    }
+    if (isFailure(finish)) {
+      const meta = extractMetaError(finish);
+      logMetaFailure({
+        stage: "video_story_finish",
+        channel: "facebook",
+        format: "story",
+        endpoint: `/${pageId}/video_stories`,
+        httpStatus: finish.status,
+        mediaKind: "video",
+        mediaHost: mediaUrlSummary.host,
+        mediaPath: mediaUrlSummary.path,
+        payloadFields: fieldsPresent(finishBody),
+        meta,
+      });
+      // Falhas de finish são geralmente retryable (processing) — o próximo
+      // tick tenta finish novamente com o MESMO video_id (upload_completed=true).
+      return this.fail(
+        `fb_story_video_finish_${finish.status ?? "network"}`,
+        formatFailureMessage(finish.error, meta),
+        finish.retryable,
+      );
+    }
+    const postId = finish.externalId ?? videoId;
+    logStage("finish_ok", { post_id: postId });
+    return {
+      success: true,
+      simulated: false,
+      platformPostId: postId,
+      platformResponse: sanitize({ ...(finish.raw ?? {}), video_id: videoId }),
+    };
+  }
+
+
+
+  // ==========================================================================
   // Loaders (service_role)
   // ==========================================================================
 
