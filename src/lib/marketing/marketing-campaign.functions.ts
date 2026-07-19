@@ -36,6 +36,10 @@ import type {
   RenderImageSequenceItem,
 } from "@/lib/render-engine/render.types";
 import { MAX_CAMPAIGN_IMAGES } from "@/lib/render-engine/render.types";
+import {
+  buildVideoBrandSnapshot,
+  type VideoBrandSnapshot,
+} from "@/lib/render-engine/video-brand-snapshot";
 
 type SB = SupabaseClient<Database>;
 
