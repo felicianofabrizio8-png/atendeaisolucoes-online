@@ -376,7 +376,31 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
         return;
       }
       const url = `data:image/png;base64,${data.b64_json}`;
-      setImages((p) => ({ ...p, [key]: { format, url, generating: false } }));
+      // Fase 4.1 — aplica identidade visual antes de exibir/salvar.
+      setImages((p) => ({ ...p, [key]: { format, url, generating: false, composing: true } }));
+      let finalUrl = url;
+      let brandApplied = false;
+      try {
+        const v = variants?.[variant];
+        const composed = await applyBrandCompositionToDataUrl({
+          dataUrl: url,
+          format,
+          content: {
+            headline: v?.headline ?? config.ad_headline ?? null,
+            subheadline: v?.description ?? config.ad_subtitle ?? null,
+            price: config.promo_price || config.price || null,
+            callToAction: v?.cta ?? config.cta_text ?? null,
+          },
+        });
+        finalUrl = composed.dataUrl;
+        brandApplied = composed.applied;
+        if (!composed.applied && composed.fallbackReason && composed.fallbackReason !== "format_unsupported" && composed.fallbackReason !== "no_brand_published") {
+          toast.warning("Identidade visual não pôde ser aplicada — usando imagem original.");
+        }
+      } catch {
+        // Fallback silencioso: mantém a imagem-base.
+      }
+      setImages((p) => ({ ...p, [key]: { format, url: finalUrl, generating: false, composing: false, brandApplied } }));
     } catch (e: any) {
       toast.error(`Imagem ${FORMAT_META[format].label}: ${e.message}`);
       setImages((p) => { const n = { ...p }; delete n[key]; return n; });
