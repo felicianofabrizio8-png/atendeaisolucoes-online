@@ -285,6 +285,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         height: job.height,
         outputFilePath: outputLocal,
         timeoutMs: cfg.ffmpegTimeoutMs,
+        watermark,
         jobId: job.id,
         debugLogDir: workDir,
       });
@@ -299,6 +300,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         outputFilePath: outputLocal,
         timeoutMs: cfg.ffmpegTimeoutMs,
         focalPoint: focalPoints[0] ?? null,
+        watermark,
         jobId: job.id,
         debugLogDir: workDir,
       });
