@@ -119,97 +119,122 @@ export class MetaPublisher {
     }
 
     const { igUserId, pageAccessToken } = pageCtx;
-
-    // 1) Criar container.
-    // IMPORTANTE (Meta Graph API v18+): publicação de VÍDEO no Feed do Instagram
-    // via /media exige `media_type=REELS` + `share_to_feed=true`. O antigo
-    // `media_type=VIDEO` foi descontinuado e passou a retornar HTTP 400
-    // "Invalid parameter" (container_error_400). REELS + share_to_feed=true
-    // publica o vídeo tanto na aba Reels quanto no Feed principal.
-    // Ref.: https://developers.facebook.com/docs/instagram-platform/content-publishing
-    const containerPayload = new URLSearchParams();
-    containerPayload.set("caption", caption);
-    if (input.format === "story") {
-      containerPayload.set("media_type", "STORIES");
-    } else if (input.format === "reel") {
-      containerPayload.set("media_type", "REELS");
-    }
-
-    if (media.type === "image") {
-      containerPayload.set("image_url", media.url);
-    } else {
-      // Vídeo: `media_type` obrigatório. `feed` → REELS + share_to_feed=true.
-      if (input.format === "feed") {
-        containerPayload.set("media_type", "REELS");
-        containerPayload.set("share_to_feed", "true");
-      }
-      // reel e story já foram setados acima; garantir consistência p/ reel.
-      if (input.format === "reel" && !containerPayload.has("media_type")) {
-        containerPayload.set("media_type", "REELS");
-      }
-      containerPayload.set("video_url", media.url);
-    }
-    containerPayload.set("access_token", pageAccessToken);
-
     const mediaUrlSummary = summarizeMediaUrl(media.url);
-    const createRes = await postGraph<{ id?: string }>({
-      companyId: input.companyId,
-      action: `marketing_publisher.instagram.${input.format}.container`,
-      url: `${GRAPH}/${encodeURIComponent(igUserId)}/media`,
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: containerPayload.toString(),
-      logicalPayload: {
-        format: input.format,
-        media_type: containerPayload.get("media_type"),
-        media_kind: media.type,
-        share_to_feed: containerPayload.get("share_to_feed"),
-        media_host: mediaUrlSummary.host,
-        media_path: mediaUrlSummary.path,
-      },
-      agentId: "marketing-publisher",
-    });
-    if (isSimulation(createRes)) {
-      return {
-        success: true,
-        simulated: true,
-        platformPostId: null,
-        platformResponse: { simulated: true, would: createRes.would },
-      };
-    }
-    if (isFailure(createRes)) {
-      const meta = extractMetaError(createRes);
-      logMetaFailure({
-        stage: "container_create",
+
+    let containerId: string | null = null;
+
+    // Resume: se tentativa anterior já criou container e o polling curto
+    // expirou, reaproveitamos o mesmo container_id em vez de criar outro —
+    // evita publicações duplicadas na Meta.
+    if (input.pendingContainerId) {
+      containerId = input.pendingContainerId;
+      console.info("[marketing-publisher] container_resume", {
         channel: "instagram",
         format: input.format,
-        endpoint: `/${igUserId}/media`,
-        httpStatus: createRes.status,
-        mediaKind: media.type,
-        mediaHost: mediaUrlSummary.host,
-        mediaPath: mediaUrlSummary.path,
-        payloadFields: fieldsPresent(containerPayload),
-        meta,
+        container_id: containerId,
       });
-      return this.fail(
-        `container_error_${createRes.status ?? "network"}`,
-        formatFailureMessage(createRes.error, meta),
-        createRes.retryable,
-      );
+    } else {
+      // 1) Criar container.
+      // IMPORTANTE (Meta Graph API v18+): publicação de VÍDEO no Feed do Instagram
+      // via /media exige `media_type=REELS` + `share_to_feed=true`. O antigo
+      // `media_type=VIDEO` foi descontinuado e passou a retornar HTTP 400
+      // "Invalid parameter" (container_error_400). REELS + share_to_feed=true
+      // publica o vídeo tanto na aba Reels quanto no Feed principal.
+      const containerPayload = new URLSearchParams();
+      containerPayload.set("caption", caption);
+      if (input.format === "story") {
+        containerPayload.set("media_type", "STORIES");
+      } else if (input.format === "reel") {
+        containerPayload.set("media_type", "REELS");
+      }
+
+      if (media.type === "image") {
+        containerPayload.set("image_url", media.url);
+      } else {
+        if (input.format === "feed") {
+          containerPayload.set("media_type", "REELS");
+          containerPayload.set("share_to_feed", "true");
+        }
+        if (input.format === "reel" && !containerPayload.has("media_type")) {
+          containerPayload.set("media_type", "REELS");
+        }
+        containerPayload.set("video_url", media.url);
+      }
+      containerPayload.set("access_token", pageAccessToken);
+
+      const createRes = await postGraph<{ id?: string }>({
+        companyId: input.companyId,
+        action: `marketing_publisher.instagram.${input.format}.container`,
+        url: `${GRAPH}/${encodeURIComponent(igUserId)}/media`,
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: containerPayload.toString(),
+        logicalPayload: {
+          format: input.format,
+          media_type: containerPayload.get("media_type"),
+          media_kind: media.type,
+          share_to_feed: containerPayload.get("share_to_feed"),
+          media_host: mediaUrlSummary.host,
+          media_path: mediaUrlSummary.path,
+        },
+        agentId: "marketing-publisher",
+      });
+      if (isSimulation(createRes)) {
+        return {
+          success: true,
+          simulated: true,
+          platformPostId: null,
+          platformResponse: { simulated: true, would: createRes.would },
+        };
+      }
+      if (isFailure(createRes)) {
+        const meta = extractMetaError(createRes);
+        logMetaFailure({
+          stage: "container_create",
+          channel: "instagram",
+          format: input.format,
+          endpoint: `/${igUserId}/media`,
+          httpStatus: createRes.status,
+          mediaKind: media.type,
+          mediaHost: mediaUrlSummary.host,
+          mediaPath: mediaUrlSummary.path,
+          payloadFields: fieldsPresent(containerPayload),
+          meta,
+        });
+        return this.fail(
+          `container_error_${createRes.status ?? "network"}`,
+          formatFailureMessage(createRes.error, meta),
+          createRes.retryable,
+        );
+      }
+
+      containerId = createRes.raw?.id ?? null;
+      if (!containerId) {
+        return this.fail("no_container_id", "Meta não retornou creation_id.", false);
+      }
+
+      // Persiste o container_id para permitir retomada em caso de timeout de
+      // polling, evitando criação de container duplicado na próxima tentativa.
+      if (media.type === "video" && input.onContainerCreated) {
+        try {
+          await input.onContainerCreated(containerId);
+        } catch (e) {
+          console.warn("[marketing-publisher] save_pending_container_failed", {
+            container_id: containerId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
     }
 
-    const containerId = createRes.raw?.id ?? null;
-    if (!containerId) {
-      return this.fail("no_container_id", "Meta não retornou creation_id.", false);
-    }
-
-    // 2) Se vídeo, aguardar container ficar FINISHED (poll curto).
+    // 2) Se vídeo, aguardar container ficar FINISHED (poll ampliado).
     if (media.type === "video") {
       const ready = await this.pollContainerReady(containerId, pageAccessToken, input.companyId);
       if (!ready.ok) {
         return this.fail(ready.errorCode, ready.errorMessage, ready.retryable);
       }
     }
+
 
     // 3) Publicar.
     const pubBody = new URLSearchParams();
