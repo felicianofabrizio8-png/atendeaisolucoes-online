@@ -204,12 +204,26 @@ export class MetaPublisher {
       };
     }
     if (isFailure(publishRes)) {
+      const meta = extractMetaError(publishRes);
+      logMetaFailure({
+        stage: "publish",
+        channel: "instagram",
+        format: input.format,
+        endpoint: `/${igUserId}/media_publish`,
+        httpStatus: publishRes.status,
+        mediaKind: media.type,
+        mediaHost: mediaUrlSummary.host,
+        mediaPath: mediaUrlSummary.path,
+        payloadFields: fieldsPresent(pubBody),
+        meta,
+      });
       return this.fail(
         `publish_error_${publishRes.status ?? "network"}`,
-        publishRes.error,
+        formatFailureMessage(publishRes.error, meta),
         publishRes.retryable,
       );
     }
+
     return {
       success: true,
       simulated: false,
