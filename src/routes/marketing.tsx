@@ -51,7 +51,6 @@ function MarketingPage() {
           <TabsTrigger value="knowledge">Base de Conhecimento</TabsTrigger>
           <TabsTrigger value="promotions">Promoções</TabsTrigger>
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
-          <TabsTrigger value="video-render">Gerar vídeo</TabsTrigger>
           <TabsTrigger value="videos">Vídeos</TabsTrigger>
           <TabsTrigger value="approvals">Aprovação</TabsTrigger>
           <TabsTrigger value="schedule">Calendário</TabsTrigger>
