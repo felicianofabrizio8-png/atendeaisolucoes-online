@@ -14,6 +14,23 @@ export interface PublishInput {
   contentId: string;
   channel: PublicationChannel;
   format: PublicationFormat;
+  /**
+   * Se a linha de publicação já tem platform_post_id de uma tentativa
+   * anterior bem-sucedida, o publisher NÃO chama a Meta e devolve sucesso
+   * imediato — reconciliação idempotente.
+   */
+  existingPlatformPostId?: string | null;
+  /**
+   * container_id da Meta persistido em tentativa anterior cujo polling curto
+   * expirou. Quando presente, o publisher pula a criação e retoma o polling
+   * do mesmo container (previne containers duplicados no Instagram).
+   */
+  pendingContainerId?: string | null;
+  /**
+   * Callback opcional para persistir o container_id assim que a Meta o
+   * devolve, antes do polling — permite retomada segura entre ticks.
+   */
+  onContainerCreated?: (containerId: string) => Promise<void>;
 }
 
 export interface PublishOutcome {
