@@ -851,6 +851,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                           const key = `${k}-${activeFormat}`;
                           const img = images[key];
                           if (img?.generating) return <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /> Gerando imagem…</div>;
+                          if (img?.composing) return <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /> Aplicando identidade visual…</div>;
                           if (img?.url) return <img src={img.url} alt="" className="max-h-[360px] rounded-md object-contain" />;
                           return (
                             <button onClick={() => generateImage(k, activeFormat)}
