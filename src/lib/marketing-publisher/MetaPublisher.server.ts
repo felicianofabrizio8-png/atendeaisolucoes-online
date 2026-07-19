@@ -64,6 +64,23 @@ interface ResolvedMedia {
 
 export class MetaPublisher {
   async publish(input: PublishInput): Promise<PublishOutcome> {
+    // Reconciliação: publicação já tem ID remoto de tentativa anterior.
+    // Não republicar sob nenhuma hipótese.
+    if (input.existingPlatformPostId) {
+      console.info("[marketing-publisher] reconciliation_skip", {
+        channel: input.channel,
+        format: input.format,
+        platform_post_id: input.existingPlatformPostId,
+        reason: "already_published",
+      });
+      return {
+        success: true,
+        simulated: false,
+        platformPostId: input.existingPlatformPostId,
+        platformResponse: { reconciled: true, reason: "already_published" },
+      };
+    }
+
     try {
       const content = await this.loadContent(input.contentId, input.companyId);
       if (!content) {
