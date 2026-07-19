@@ -14,8 +14,7 @@
 //   - Snapshot fica fixo para o job: retry não muda de versão de marca.
 // ============================================================================
 
-import type { BrandLogoPosition } from "@/lib/brand-center/brand.types";
-import type { MarketingBrandContext } from "@/lib/marketing/brand-context-adapter";
+import type { BrandContext, BrandLogoPosition } from "@/lib/brand-center/brand.types";
 
 export const VIDEO_BRAND_SCHEMA_VERSION = 1 as const;
 
