@@ -12,6 +12,31 @@ export interface FocalPoint {
   zoom: number; // 1..3
 }
 
+export type WatermarkPosition =
+  | "top-left"
+  | "top-right"
+  | "top-center"
+  | "bottom-left"
+  | "bottom-right"
+  | "bottom-center"
+  | "center";
+
+/**
+ * Watermark determinístico da identidade visual (Fase 5.A).
+ * O worker recebe a logo baixada em disco + posição/opacidade calculadas
+ * server-side. Preserva alpha channel do PNG e usa scale proporcional.
+ */
+export interface WatermarkInput {
+  logoFilePath: string;
+  position: WatermarkPosition;
+  /** Fração do frame para a largura da logo. Ex.: 0.14 = 14% da largura. */
+  maxWidthRatio: number;
+  /** 0..1. Multiplicado pelo alpha original. */
+  opacity: number;
+  /** Fração da menor dimensão do frame para margem de segurança. Ex.: 0.04 = 4%. */
+  safeMarginRatio: number;
+}
+
 export interface FfmpegRenderInput {
   imageFilePath: string;
   audioFilePath: string;
@@ -23,6 +48,8 @@ export interface FfmpegRenderInput {
   timeoutMs: number;
   /** Opcional — quando ausente, aplica crop central (comportamento legado). */
   focalPoint?: FocalPoint | null;
+  /** Fase 5.A — quando ausente, renderiza sem watermark. */
+  watermark?: WatermarkInput | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   /** Observabilidade — quando definido, persiste ffmpeg.stderr.log/stdout.log
@@ -50,9 +77,10 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
     outputFilePath,
     timeoutMs,
     focalPoint,
+    watermark,
   } = input;
 
-  const vf = focalPoint
+  const baseVf = focalPoint
     ? buildFocalVideoFilter(width, height, focalPoint)
     : `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
       `crop=${width}:${height},` +
@@ -60,23 +88,7 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
       `setparams=range=tv,` +
       `format=yuv420p`;
 
-  // Otimizações de memória (hotfix SIGKILL externo Railway OOM):
-  //  - `-framerate 2` no still input: reduz frames raw YUV bufferizados
-  //     pelo demuxer/filter graph em 15x. `-r 30` no output mantém 30 fps final.
-  //  - `-preset veryfast`: reduz `ref=1` e `rc-lookahead=10` (vs medium
-  //     `ref=3` `rc-lookahead=40`), economizando ~100MB por thread de encoder
-  //     em 1080p. Diferença visual imperceptível a CRF 20 em imagem estática.
-  //  - `-threads 2`: limita workers do x264. Sem isso, Railway multi-core
-  //     dispara 8-16 threads, cada uma duplicando frame buffers.
-  //  - `-max_muxing_queue_size 1024`: protege o mux contra picos, não afeta
-  //     qualidade.
-  const args = [
-    "-y",
-    "-loop", "1", "-framerate", "2", "-i", imageFilePath,
-    "-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath,
-    "-map", "0:v:0",
-    "-map", "1:a:0",
-    "-vf", vf,
+  const commonEncArgs = [
     "-c:v", "libx264",
     "-profile:v", "high",
     "-preset", "veryfast",
@@ -91,15 +103,85 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
     outputFilePath,
   ];
 
+  let args: string[];
+  if (watermark) {
+    const wm = buildWatermarkGraph(width, height, baseVf, watermark);
+    args = [
+      "-y",
+      "-loop", "1", "-framerate", "2", "-i", imageFilePath,
+      "-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath,
+      "-i", watermark.logoFilePath,
+      "-filter_complex", wm.filterComplex,
+      "-map", `[${wm.videoOutLabel}]`,
+      "-map", "1:a:0",
+      ...commonEncArgs,
+    ];
+  } else {
+    args = [
+      "-y",
+      "-loop", "1", "-framerate", "2", "-i", imageFilePath,
+      "-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath,
+      "-map", "0:v:0",
+      "-map", "1:a:0",
+      "-vf", baseVf,
+      ...commonEncArgs,
+    ];
+  }
 
   await runFfmpeg({
     args,
     timeoutMs,
-    sanitizePaths: { imageFilePath, audioFilePath, outputFilePath },
+    sanitizePaths: {
+      imageFilePath,
+      audioFilePath,
+      outputFilePath,
+    },
+    slideshowExtraPaths: watermark ? [watermark.logoFilePath] : [],
     width, height, audioStartSecond, durationSeconds,
     jobId: input.jobId,
     debugLogDir: input.debugLogDir,
   });
+}
+
+/**
+ * Constrói o grafo de overlay determinístico da watermark.
+ * - Preserva alpha do PNG (format=rgba antes do overlay).
+ * - Escala proporcional (largura = width * maxWidthRatio, altura auto).
+ * - Aplica opacidade multiplicando alpha via `colorchannelmixer=aa=<op>`.
+ * - Posiciona com margem de segurança proporcional à menor dimensão.
+ */
+export function buildWatermarkGraph(
+  width: number,
+  height: number,
+  baseVf: string,
+  wm: WatermarkInput,
+): { filterComplex: string; videoOutLabel: string } {
+  const opacity = Math.max(0, Math.min(1, wm.opacity));
+  const widthRatio = Math.max(0.05, Math.min(0.4, wm.maxWidthRatio));
+  const marginRatio = Math.max(0, Math.min(0.15, wm.safeMarginRatio));
+  const logoW = Math.round(width * widthRatio);
+  const margin = Math.round(Math.min(width, height) * marginRatio);
+
+  // Posicionamento — usa expressões do FFmpeg (W/H = main, w/h = overlay).
+  const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
+    "top-left":      { x: `${margin}`,             y: `${margin}` },
+    "top-center":    { x: `(W-w)/2`,               y: `${margin}` },
+    "top-right":     { x: `W-w-${margin}`,         y: `${margin}` },
+    "bottom-left":   { x: `${margin}`,             y: `H-h-${margin}` },
+    "bottom-center": { x: `(W-w)/2`,               y: `H-h-${margin}` },
+    "bottom-right":  { x: `W-w-${margin}`,         y: `H-h-${margin}` },
+    "center":        { x: `(W-w)/2`,               y: `(H-h)/2` },
+  };
+  const { x, y } = posMap[wm.position];
+
+  // [0:v] → base video pipeline; [2:v] → logo (rgba, resized, opacity).
+  const filterComplex =
+    `[0:v]${baseVf}[vbase];` +
+    `[2:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
+    `colorchannelmixer=aa=${opacity.toFixed(3)}[logo];` +
+    `[vbase][logo]overlay=${x}:${y}:format=auto[vout]`;
+
+  return { filterComplex, videoOutLabel: "vout" };
 }
 
 /**
@@ -117,6 +199,8 @@ export interface SlideshowInput {
   height: number;
   outputFilePath: string;
   timeoutMs: number;
+  /** Fase 5.A — quando ausente, renderiza sem watermark. */
+  watermark?: WatermarkInput | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   debugLogDir?: string;
@@ -133,12 +217,13 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     height,
     outputFilePath,
     timeoutMs,
+    watermark,
   } = input;
 
   const n = imageFilePaths.length;
   if (n === 0) throw new Error("slideshow_no_images");
   if (n === 1) {
-    // Fallback: 1 imagem → pipeline single (com focal opcional).
+    // Fallback: 1 imagem → pipeline single (com focal e watermark opcionais).
     await renderStaticImageVideo({
       imageFilePath: imageFilePaths[0],
       audioFilePath,
@@ -149,6 +234,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       outputFilePath,
       timeoutMs,
       focalPoint: focalPoints[0] ?? null,
+      watermark: watermark ?? null,
       jobId: input.jobId,
       debugLogDir: input.debugLogDir,
     });
@@ -167,6 +253,9 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
+  if (watermark) {
+    args.push("-i", watermark.logoFilePath);
+  }
 
   // filter_complex: aplica scale+crop (com focal) em cada input, depois xfade em cadeia
   const filterParts: string[] = [];
@@ -176,22 +265,47 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       : `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
         `crop=${width}:${height},` +
         `setsar=1,setparams=range=tv,format=yuv420p`;
-    // fps=30 normaliza timing entre inputs para o xfade (que exige framerate
-    // consistente); vem depois do scale/crop para minimizar frames raw
-    // grandes bufferizados.
     filterParts.push(`[${i}:v]${vf},fps=30[v${i}]`);
   }
-  // Chain: v0 xfade v1 -> vx1; vx1 xfade v2 -> vx2; ...
+  // Chain xfade: v0+v1→vx1; vx1+v2→vx2; ...
+  // Se houver watermark, o último label do xfade será "vxfaded"; caso
+  // contrário, será "vout" para preservar o mapeamento existente.
+  const finalXfadeLabel = watermark ? "vxfaded" : "vout";
   let lastLabel = "v0";
   for (let i = 1; i < n; i++) {
     const offset = perSlot * i - xfadeDuration;
-    const nextLabel = i === n - 1 ? "vout" : `vx${i}`;
+    const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
       `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(
         3,
       )}:offset=${offset.toFixed(3)}[${nextLabel}]`,
     );
     lastLabel = nextLabel;
+  }
+
+  if (watermark) {
+    const opacity = Math.max(0, Math.min(1, watermark.opacity));
+    const widthRatio = Math.max(0.05, Math.min(0.4, watermark.maxWidthRatio));
+    const marginRatio = Math.max(0, Math.min(0.15, watermark.safeMarginRatio));
+    const logoW = Math.round(width * widthRatio);
+    const margin = Math.round(Math.min(width, height) * marginRatio);
+    const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
+      "top-left":      { x: `${margin}`,       y: `${margin}` },
+      "top-center":    { x: `(W-w)/2`,         y: `${margin}` },
+      "top-right":     { x: `W-w-${margin}`,   y: `${margin}` },
+      "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}` },
+      "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}` },
+      "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}` },
+      "center":        { x: `(W-w)/2`,         y: `(H-h)/2` },
+    };
+    const { x, y } = posMap[watermark.position];
+    // O índice do input da logo é `n + 1` (n imagens + 1 áudio).
+    const logoInputIdx = n + 1;
+    filterParts.push(
+      `[${logoInputIdx}:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
+        `colorchannelmixer=aa=${opacity.toFixed(3)}[logo]`,
+    );
+    filterParts.push(`[vxfaded][logo]overlay=${x}:${y}:format=auto[vout]`);
   }
 
   const filterComplex = filterParts.join(";");
@@ -223,7 +337,10 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       audioFilePath,
       outputFilePath,
     },
-    slideshowExtraPaths: imageFilePaths.slice(1),
+    slideshowExtraPaths: [
+      ...imageFilePaths.slice(1),
+      ...(watermark ? [watermark.logoFilePath] : []),
+    ],
     width, height, audioStartSecond, durationSeconds,
     slideshow: n,
     jobId: input.jobId,

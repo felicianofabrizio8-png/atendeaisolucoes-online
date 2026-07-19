@@ -119,6 +119,9 @@ export interface RenderJobRow {
   failed_at: string | null;
   image_sequence?: RenderImageSequenceItem[] | null;
   focal_point?: FocalPoint | null;
+  /** Fase 5.A — snapshot imutável da identidade visual (null = sem marca aplicada). */
+  video_brand?: import("./video-brand-snapshot").VideoBrandSnapshot | null;
+  brand_version_id?: string | null;
 }
 
 export interface VideoLibraryRow {

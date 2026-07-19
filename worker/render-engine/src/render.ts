@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { log } from "./logger.js";
-import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint } from "./ffmpeg.js";
+import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint, type WatermarkInput, type WatermarkPosition } from "./ffmpeg.js";
 import { analyzeVolume, ffprobe, ffprobeInput } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
@@ -154,6 +154,53 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       stage,
       images: imageDownloads.length,
     });
+
+    // ---- Fase 5.A: watermark opcional ---------------------------------
+    let watermark: WatermarkInput | null = null;
+    const brand = claim.videoBrand ?? null;
+    if (
+      brand &&
+      brand.enabled &&
+      brand.watermark?.enabled &&
+      brand.logo &&
+      brand.logoDownloadUrl
+    ) {
+      try {
+        const logoLocal = path.join(workDir, "in-logo");
+        const { bytes: logoBuf, meta: logoMeta } = await downloadSignedUrlWithMeta(
+          brand.logoDownloadUrl,
+          cfg.httpTimeoutMs,
+        );
+        await writeFile(logoLocal, Buffer.from(logoBuf));
+        watermark = {
+          logoFilePath: logoLocal,
+          position: brand.tokens.logoPosition as WatermarkPosition,
+          maxWidthRatio: brand.watermark.maxWidthRatio,
+          opacity: brand.watermark.opacity,
+          safeMarginRatio: brand.tokens.logoSafeMargin,
+        };
+        log.info("brand_watermark_prepared", {
+          ...baseCtx,
+          stage,
+          brand_version_id: brand.brandVersionId,
+          asset_id: brand.logo.assetId,
+          position: watermark.position,
+          max_width_ratio: watermark.maxWidthRatio,
+          opacity: watermark.opacity,
+          logo_bytes: logoMeta.downloadedBytes,
+        });
+      } catch (err) {
+        // Falha na logo NÃO deve falhar o job — renderiza sem watermark.
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn("brand_watermark_skipped", {
+          ...baseCtx,
+          stage,
+          reason: sanitizeError(msg),
+        });
+        watermark = null;
+      }
+    }
+
     await reportProgress(cfg, job.id, "downloading_sources", 25);
 
     // --- Probe do áudio de entrada (antes do FFmpeg) --------------------
@@ -238,6 +285,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         height: job.height,
         outputFilePath: outputLocal,
         timeoutMs: cfg.ffmpegTimeoutMs,
+        watermark,
         jobId: job.id,
         debugLogDir: workDir,
       });
@@ -252,6 +300,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         outputFilePath: outputLocal,
         timeoutMs: cfg.ffmpegTimeoutMs,
         focalPoint: focalPoints[0] ?? null,
+        watermark,
         jobId: job.id,
         debugLogDir: workDir,
       });

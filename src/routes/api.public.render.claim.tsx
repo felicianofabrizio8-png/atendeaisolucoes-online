@@ -27,6 +27,10 @@ import {
   type RenderImageSequenceItem,
   type RenderSourceSequenceItem,
 } from "@/lib/render-engine/render.types";
+import {
+  isVideoBrandSnapshot,
+  type VideoBrandSnapshot,
+} from "@/lib/render-engine/video-brand-snapshot";
 
 const SIGNED_TTL_SECONDS = 600;
 
@@ -81,6 +85,8 @@ export const Route = createFileRoute("/api/public/render/claim")({
             status: string;
             image_sequence: RenderImageSequenceItem[] | null;
             focal_point: FocalPoint | null;
+            video_brand: unknown;
+            brand_version_id: string | null;
           };
           if (job.status !== "processing") {
             console.warn("[render-claim]", { cid, event: "claim_status_invalid", status: job.status });
@@ -263,6 +269,65 @@ export const Route = createFileRoute("/api/public/render/claim")({
           if (uplErr || !upl?.signedUrl) return fail("upload_sign_failed");
 
           const expiresAt = new Date(Date.now() + SIGNED_TTL_SECONDS * 1000).toISOString();
+
+          // ---- Fase 5.A: assinar logo da identidade visual, se snapshot presente ----
+          let videoBrandForWorker: (VideoBrandSnapshot & { logoDownloadUrl?: string }) | null =
+            null;
+          const snapshot = isVideoBrandSnapshot(job.video_brand) ? job.video_brand : null;
+          if (snapshot) {
+            // Guarda cross-tenant: brand_version_id do snapshot precisa bater com job
+            if (snapshot.brandVersionId !== (job.brand_version_id ?? "")) {
+              console.warn("[render-claim]", {
+                cid,
+                event: "brand_snapshot_version_mismatch",
+                job_id: job.id,
+              });
+              videoBrandForWorker = null;
+            } else if (snapshot.logo?.assetId) {
+              const { data: asset, error: assetErr } = await supabaseAdmin
+                .from("brand_assets")
+                .select("storage_bucket, storage_path, company_id")
+                .eq("id", snapshot.logo.assetId)
+                .maybeSingle();
+              if (
+                assetErr ||
+                !asset ||
+                asset.company_id !== job.company_id
+              ) {
+                console.warn("[render-claim]", {
+                  cid,
+                  event: "brand_logo_resolve_failed",
+                  job_id: job.id,
+                  code: assetErr?.code ?? "asset_missing_or_cross_tenant",
+                });
+                // Falha na logo → renderiza sem watermark (não falha o job)
+                videoBrandForWorker = { ...snapshot, watermark: { ...snapshot.watermark, enabled: false } };
+              } else {
+                const { data: signedLogo, error: signErr } = await supabaseAdmin.storage
+                  .from(asset.storage_bucket)
+                  .createSignedUrl(asset.storage_path, SIGNED_TTL_SECONDS);
+                if (signErr || !signedLogo?.signedUrl) {
+                  console.warn("[render-claim]", {
+                    cid,
+                    event: "brand_logo_sign_failed",
+                    job_id: job.id,
+                  });
+                  videoBrandForWorker = {
+                    ...snapshot,
+                    watermark: { ...snapshot.watermark, enabled: false },
+                  };
+                } else {
+                  videoBrandForWorker = {
+                    ...snapshot,
+                    logoDownloadUrl: signedLogo.signedUrl,
+                  };
+                }
+              }
+            } else {
+              videoBrandForWorker = snapshot;
+            }
+          }
+
           console.info("[render-claim]", {
             cid,
             event: "render_job_claimed",
@@ -273,6 +338,8 @@ export const Route = createFileRoute("/api/public/render/claim")({
             has_sequence: !!signedSequence,
             sequence_len: signedSequence?.length ?? 0,
             has_focal_point: !!primaryFocal,
+            has_brand: !!videoBrandForWorker,
+            brand_watermark_enabled: !!videoBrandForWorker?.watermark?.enabled,
           });
 
           return Response.json({
@@ -295,6 +362,8 @@ export const Route = createFileRoute("/api/public/render/claim")({
               focalPoint: primaryFocal,
               imageSequence: signedSequence,
             },
+            // Fase 5.A: contrato opcional — workers antigos ignoram.
+            videoBrand: videoBrandForWorker,
             output: {
               videoId,
               uploadUrl: upl.signedUrl,

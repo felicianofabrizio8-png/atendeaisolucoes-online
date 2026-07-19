@@ -16,6 +16,7 @@ import {
   type RenderJobRow,
   type VideoLibraryRow,
 } from "./render.types";
+import { buildVideoBrandSnapshot } from "./video-brand-snapshot";
 
 // --------------------------------------------------------------------- create
 export const createRenderJob = createServerFn({ method: "POST" })
@@ -89,6 +90,41 @@ export const createRenderJob = createServerFn({ method: "POST" })
       throw new Error("too_many_active_jobs");
     }
 
+    // Snapshot de identidade visual (Fase 5.A). Import dinâmico para manter
+    // `.server.ts` fora do bundle client — proteção do TanStack Start.
+    let videoBrandSnapshot: ReturnType<typeof buildVideoBrandSnapshot> = null;
+    try {
+      const { loadBrandContextForCompany } = await import(
+        "@/lib/brand-center/brand-consumer.server"
+      );
+      const brandCtx = await loadBrandContextForCompany(supabase, companyId);
+      videoBrandSnapshot = buildVideoBrandSnapshot({
+        brandContext: brandCtx,
+        videoFormat: data.video_format,
+      });
+    } catch (err) {
+      // Falha ao carregar marca NUNCA derruba a criação do job — cai em fallback.
+      // eslint-disable-next-line no-console
+      console.warn(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          event: "render_job_brand_snapshot_failed",
+          company_id: companyId,
+          error_code: err instanceof Error ? err.message.split(":")[0] : "unknown",
+        }),
+      );
+      videoBrandSnapshot = null;
+    }
+
+    const brandColumns =
+      videoBrandSnapshot !== null
+        ? {
+            brand_version_id: videoBrandSnapshot.brandVersionId,
+            video_brand: videoBrandSnapshot as unknown as Record<string, unknown>,
+          }
+        : {};
+
     const insertPayload =
       data.image_source === "marketing_media"
         ? {
@@ -100,6 +136,7 @@ export const createRenderJob = createServerFn({ method: "POST" })
             video_format: data.video_format,
             audio_start_second: data.audio_start_second,
             duration_seconds: data.duration_seconds,
+            ...brandColumns,
           }
         : {
             company_id: companyId,
@@ -111,11 +148,12 @@ export const createRenderJob = createServerFn({ method: "POST" })
             video_format: data.video_format,
             audio_start_second: data.audio_start_second,
             duration_seconds: data.duration_seconds,
+            ...brandColumns,
           };
 
     const { data: inserted, error: insErr } = await supabase
       .from("video_render_jobs")
-      .insert(insertPayload)
+      .insert(insertPayload as never)
       .select("*")
       .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "job_insert_failed");
