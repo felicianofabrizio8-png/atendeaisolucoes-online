@@ -534,6 +534,20 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       .update({ ...commonPatch, campaign_role: "story" })
       .eq("id", storyRow.id);
 
+    // Fase 5.B1 — nome legal da empresa para a tela final de marca.
+    // Falha aqui é tratada como texto ausente; nunca bloqueia o job.
+    let companyName: string | null = null;
+    try {
+      const { data: companyRow } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("id", companyId)
+        .maybeSingle();
+      companyName = companyRow?.name ?? null;
+    } catch {
+      companyName = null;
+    }
+
     // 4) Enfileira 2 jobs (feed + story).
     const feed = await ensureCampaignJob(supabase, {
       companyId,
@@ -546,6 +560,12 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
+      content: {
+        headline: feedRow.title,
+        supportingText: feedRow.body,
+        ctaText: feedRow.cta_text,
+        companyName,
+      },
     });
     const story = await ensureCampaignJob(supabase, {
       companyId,
@@ -558,7 +578,14 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
+      content: {
+        headline: storyRow.title,
+        supportingText: storyRow.body,
+        ctaText: storyRow.cta_text,
+        companyName,
+      },
     });
+
 
     await supabase
       .from("marketing_contents")
