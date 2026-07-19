@@ -134,9 +134,11 @@ export class PublisherWorker {
       failed,
       retriedLater,
       simulated,
+      recovered,
       ms: Date.now() - start,
     };
   }
+
 
   private async advanceScheduleStatus(scheduleId: string, status: "published" | "failed"): Promise<void> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
