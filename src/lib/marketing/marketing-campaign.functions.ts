@@ -743,6 +743,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
           product_image_path: r.primary_image_product_ref!.image_path,
         };
 
+    let companyNameRetry: string | null = null;
+    try {
+      const { data: companyRow } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("id", companyId)
+        .maybeSingle();
+      companyNameRetry = companyRow?.name ?? null;
+    } catch {
+      companyNameRetry = null;
+    }
+
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -754,7 +766,14 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       audioStart: Number(r.audio_start_second ?? 0),
       duration: Number(r.duration_seconds ?? 15),
       existingJobId: null,
+      content: {
+        headline: r.title,
+        supportingText: r.body,
+        ctaText: r.cta_text,
+        companyName: companyNameRetry,
+      },
     });
+
 
     const patch =
       data.role === "feed"
