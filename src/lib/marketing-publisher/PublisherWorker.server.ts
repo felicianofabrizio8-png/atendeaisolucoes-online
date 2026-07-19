@@ -21,6 +21,7 @@ export interface WorkerTickResult {
   failed: number;
   retriedLater: number;
   simulated: number;
+  recovered: number;
   ms: number;
 }
 
@@ -36,7 +37,13 @@ export class PublisherWorker {
     const maxJobs = Math.max(1, Math.min(10, input.maxJobs ?? 5));
     const lockSeconds = input.lockSeconds ?? 300;
 
+    // 1) Watchdog: devolve publicações órfãs à fila antes de qualquer claim.
+    //    Preserva pending/platform_post_id para permitir retomada idempotente
+    //    (container_resume, reconciliation_skip) já implementada no MetaPublisher.
+    const recovered = await this.repo.recoverOrphans();
+
     const materialized = await this.planner.materializeDue();
+
 
     let claimed = 0;
     let succeeded = 0;
@@ -127,9 +134,11 @@ export class PublisherWorker {
       failed,
       retriedLater,
       simulated,
+      recovered,
       ms: Date.now() - start,
     };
   }
+
 
   private async advanceScheduleStatus(scheduleId: string, status: "published" | "failed"): Promise<void> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
