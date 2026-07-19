@@ -189,10 +189,16 @@ async function measureImageFromDataUrl(
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("blob_read_failed"));
-    reader.readAsDataURL(blob);
-  });
+  if (typeof FileReader !== "undefined") {
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("blob_read_failed"));
+      reader.readAsDataURL(blob);
+    });
+  }
+  // Fallback ambiente Node (testes): usa arrayBuffer + base64.
+  const buf = await blob.arrayBuffer();
+  const b64 = Buffer.from(buf).toString("base64");
+  return `data:${blob.type || "application/octet-stream"};base64,${b64}`;
 }
