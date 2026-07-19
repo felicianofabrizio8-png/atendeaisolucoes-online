@@ -359,15 +359,15 @@ async function rasterizeSvg(params: {
   svg: string;
   width: number;
   height: number;
-  fontBuffers: Buffer[];
+  fontFiles: string[];
   outPath: string;
 }): Promise<string> {
-  const { svg, width, height, fontBuffers, outPath } = params;
+  const { svg, width, height, fontFiles, outPath } = params;
   const resvg = new Resvg(svg, {
     background: "rgba(0,0,0,0)",
     fitTo: { mode: "width", value: width },
     font: {
-      fontBuffers,
+      fontFiles,
       loadSystemFonts: false,
       defaultFontFamily: "Inter",
     },
