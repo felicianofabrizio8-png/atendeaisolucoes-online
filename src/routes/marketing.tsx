@@ -12,7 +12,6 @@ import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
 import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 import { MarketingPublisherDashboard } from "@/components/marketing/MarketingPublisherDashboard";
 import { AudioLibrary } from "@/components/marketing/AudioLibrary";
-import { VideoRenderPanel } from "@/components/marketing/video-render/VideoRenderPanel";
 import { VideoLibraryGrid } from "@/components/marketing/video-render/VideoLibraryGrid";
 
 export const Route = createFileRoute("/marketing")({
@@ -52,7 +51,6 @@ function MarketingPage() {
           <TabsTrigger value="knowledge">Base de Conhecimento</TabsTrigger>
           <TabsTrigger value="promotions">Promoções</TabsTrigger>
           <TabsTrigger value="generator">Gerar com IA</TabsTrigger>
-          <TabsTrigger value="video-render">Gerar vídeo</TabsTrigger>
           <TabsTrigger value="videos">Vídeos</TabsTrigger>
           <TabsTrigger value="approvals">Aprovação</TabsTrigger>
           <TabsTrigger value="schedule">Calendário</TabsTrigger>
@@ -75,9 +73,6 @@ function MarketingPage() {
         </TabsContent>
         <TabsContent value="generator" className="mt-4">
           <MarketingGenerator companyId={companyId} onGenerated={() => setTab("approvals")} />
-        </TabsContent>
-        <TabsContent value="video-render" className="mt-4">
-          <VideoRenderPanel companyId={companyId} />
         </TabsContent>
         <TabsContent value="videos" className="mt-4">
           <VideoLibraryGrid companyId={companyId} />
