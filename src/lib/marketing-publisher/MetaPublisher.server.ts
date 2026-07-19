@@ -14,6 +14,23 @@ export interface PublishInput {
   contentId: string;
   channel: PublicationChannel;
   format: PublicationFormat;
+  /**
+   * Se a linha de publicação já tem platform_post_id de uma tentativa
+   * anterior bem-sucedida, o publisher NÃO chama a Meta e devolve sucesso
+   * imediato — reconciliação idempotente.
+   */
+  existingPlatformPostId?: string | null;
+  /**
+   * container_id da Meta persistido em tentativa anterior cujo polling curto
+   * expirou. Quando presente, o publisher pula a criação e retoma o polling
+   * do mesmo container (previne containers duplicados no Instagram).
+   */
+  pendingContainerId?: string | null;
+  /**
+   * Callback opcional para persistir o container_id assim que a Meta o
+   * devolve, antes do polling — permite retomada segura entre ticks.
+   */
+  onContainerCreated?: (containerId: string) => Promise<void>;
 }
 
 export interface PublishOutcome {
@@ -47,6 +64,23 @@ interface ResolvedMedia {
 
 export class MetaPublisher {
   async publish(input: PublishInput): Promise<PublishOutcome> {
+    // Reconciliação: publicação já tem ID remoto de tentativa anterior.
+    // Não republicar sob nenhuma hipótese.
+    if (input.existingPlatformPostId) {
+      console.info("[marketing-publisher] reconciliation_skip", {
+        channel: input.channel,
+        format: input.format,
+        platform_post_id: input.existingPlatformPostId,
+        reason: "already_published",
+      });
+      return {
+        success: true,
+        simulated: false,
+        platformPostId: input.existingPlatformPostId,
+        platformResponse: { reconciled: true, reason: "already_published" },
+      };
+    }
+
     try {
       const content = await this.loadContent(input.contentId, input.companyId);
       if (!content) {
@@ -85,97 +119,122 @@ export class MetaPublisher {
     }
 
     const { igUserId, pageAccessToken } = pageCtx;
-
-    // 1) Criar container.
-    // IMPORTANTE (Meta Graph API v18+): publicação de VÍDEO no Feed do Instagram
-    // via /media exige `media_type=REELS` + `share_to_feed=true`. O antigo
-    // `media_type=VIDEO` foi descontinuado e passou a retornar HTTP 400
-    // "Invalid parameter" (container_error_400). REELS + share_to_feed=true
-    // publica o vídeo tanto na aba Reels quanto no Feed principal.
-    // Ref.: https://developers.facebook.com/docs/instagram-platform/content-publishing
-    const containerPayload = new URLSearchParams();
-    containerPayload.set("caption", caption);
-    if (input.format === "story") {
-      containerPayload.set("media_type", "STORIES");
-    } else if (input.format === "reel") {
-      containerPayload.set("media_type", "REELS");
-    }
-
-    if (media.type === "image") {
-      containerPayload.set("image_url", media.url);
-    } else {
-      // Vídeo: `media_type` obrigatório. `feed` → REELS + share_to_feed=true.
-      if (input.format === "feed") {
-        containerPayload.set("media_type", "REELS");
-        containerPayload.set("share_to_feed", "true");
-      }
-      // reel e story já foram setados acima; garantir consistência p/ reel.
-      if (input.format === "reel" && !containerPayload.has("media_type")) {
-        containerPayload.set("media_type", "REELS");
-      }
-      containerPayload.set("video_url", media.url);
-    }
-    containerPayload.set("access_token", pageAccessToken);
-
     const mediaUrlSummary = summarizeMediaUrl(media.url);
-    const createRes = await postGraph<{ id?: string }>({
-      companyId: input.companyId,
-      action: `marketing_publisher.instagram.${input.format}.container`,
-      url: `${GRAPH}/${encodeURIComponent(igUserId)}/media`,
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: containerPayload.toString(),
-      logicalPayload: {
-        format: input.format,
-        media_type: containerPayload.get("media_type"),
-        media_kind: media.type,
-        share_to_feed: containerPayload.get("share_to_feed"),
-        media_host: mediaUrlSummary.host,
-        media_path: mediaUrlSummary.path,
-      },
-      agentId: "marketing-publisher",
-    });
-    if (isSimulation(createRes)) {
-      return {
-        success: true,
-        simulated: true,
-        platformPostId: null,
-        platformResponse: { simulated: true, would: createRes.would },
-      };
-    }
-    if (isFailure(createRes)) {
-      const meta = extractMetaError(createRes);
-      logMetaFailure({
-        stage: "container_create",
+
+    let containerId: string | null = null;
+
+    // Resume: se tentativa anterior já criou container e o polling curto
+    // expirou, reaproveitamos o mesmo container_id em vez de criar outro —
+    // evita publicações duplicadas na Meta.
+    if (input.pendingContainerId) {
+      containerId = input.pendingContainerId;
+      console.info("[marketing-publisher] container_resume", {
         channel: "instagram",
         format: input.format,
-        endpoint: `/${igUserId}/media`,
-        httpStatus: createRes.status,
-        mediaKind: media.type,
-        mediaHost: mediaUrlSummary.host,
-        mediaPath: mediaUrlSummary.path,
-        payloadFields: fieldsPresent(containerPayload),
-        meta,
+        container_id: containerId,
       });
-      return this.fail(
-        `container_error_${createRes.status ?? "network"}`,
-        formatFailureMessage(createRes.error, meta),
-        createRes.retryable,
-      );
+    } else {
+      // 1) Criar container.
+      // IMPORTANTE (Meta Graph API v18+): publicação de VÍDEO no Feed do Instagram
+      // via /media exige `media_type=REELS` + `share_to_feed=true`. O antigo
+      // `media_type=VIDEO` foi descontinuado e passou a retornar HTTP 400
+      // "Invalid parameter" (container_error_400). REELS + share_to_feed=true
+      // publica o vídeo tanto na aba Reels quanto no Feed principal.
+      const containerPayload = new URLSearchParams();
+      containerPayload.set("caption", caption);
+      if (input.format === "story") {
+        containerPayload.set("media_type", "STORIES");
+      } else if (input.format === "reel") {
+        containerPayload.set("media_type", "REELS");
+      }
+
+      if (media.type === "image") {
+        containerPayload.set("image_url", media.url);
+      } else {
+        if (input.format === "feed") {
+          containerPayload.set("media_type", "REELS");
+          containerPayload.set("share_to_feed", "true");
+        }
+        if (input.format === "reel" && !containerPayload.has("media_type")) {
+          containerPayload.set("media_type", "REELS");
+        }
+        containerPayload.set("video_url", media.url);
+      }
+      containerPayload.set("access_token", pageAccessToken);
+
+      const createRes = await postGraph<{ id?: string }>({
+        companyId: input.companyId,
+        action: `marketing_publisher.instagram.${input.format}.container`,
+        url: `${GRAPH}/${encodeURIComponent(igUserId)}/media`,
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: containerPayload.toString(),
+        logicalPayload: {
+          format: input.format,
+          media_type: containerPayload.get("media_type"),
+          media_kind: media.type,
+          share_to_feed: containerPayload.get("share_to_feed"),
+          media_host: mediaUrlSummary.host,
+          media_path: mediaUrlSummary.path,
+        },
+        agentId: "marketing-publisher",
+      });
+      if (isSimulation(createRes)) {
+        return {
+          success: true,
+          simulated: true,
+          platformPostId: null,
+          platformResponse: { simulated: true, would: createRes.would },
+        };
+      }
+      if (isFailure(createRes)) {
+        const meta = extractMetaError(createRes);
+        logMetaFailure({
+          stage: "container_create",
+          channel: "instagram",
+          format: input.format,
+          endpoint: `/${igUserId}/media`,
+          httpStatus: createRes.status,
+          mediaKind: media.type,
+          mediaHost: mediaUrlSummary.host,
+          mediaPath: mediaUrlSummary.path,
+          payloadFields: fieldsPresent(containerPayload),
+          meta,
+        });
+        return this.fail(
+          `container_error_${createRes.status ?? "network"}`,
+          formatFailureMessage(createRes.error, meta),
+          createRes.retryable,
+        );
+      }
+
+      containerId = createRes.raw?.id ?? null;
+      if (!containerId) {
+        return this.fail("no_container_id", "Meta não retornou creation_id.", false);
+      }
+
+      // Persiste o container_id para permitir retomada em caso de timeout de
+      // polling, evitando criação de container duplicado na próxima tentativa.
+      if (media.type === "video" && input.onContainerCreated) {
+        try {
+          await input.onContainerCreated(containerId);
+        } catch (e) {
+          console.warn("[marketing-publisher] save_pending_container_failed", {
+            container_id: containerId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
     }
 
-    const containerId = createRes.raw?.id ?? null;
-    if (!containerId) {
-      return this.fail("no_container_id", "Meta não retornou creation_id.", false);
-    }
-
-    // 2) Se vídeo, aguardar container ficar FINISHED (poll curto).
+    // 2) Se vídeo, aguardar container ficar FINISHED (poll ampliado).
     if (media.type === "video") {
       const ready = await this.pollContainerReady(containerId, pageAccessToken, input.companyId);
       if (!ready.ok) {
         return this.fail(ready.errorCode, ready.errorMessage, ready.retryable);
       }
     }
+
 
     // 3) Publicar.
     const pubBody = new URLSearchParams();
@@ -237,8 +296,11 @@ export class MetaPublisher {
     token: string,
     companyId: string,
   ): Promise<{ ok: true } | { ok: false; errorCode: string; errorMessage: string; retryable: boolean }> {
-    const attempts = 6;
-    const delayMs = 4000;
+    // Polling ampliado: 10 tentativas x 5s = ~50s por tick. Combinado com o
+    // resume via pendingContainerId, temos até MAX_RETRIES ticks adicionais
+    // consultando o MESMO container_id — sem criar novos containers na Meta.
+    const attempts = 10;
+    const delayMs = 5000;
     for (let i = 0; i < attempts; i += 1) {
       const r = await postGraph<{ status_code?: string; status?: string }>({
         companyId,
@@ -302,14 +364,24 @@ export class MetaPublisher {
     }
     const { pageId, pageAccessToken } = pageCtx;
 
-    // Story: exige mídia; publica via photo_stories (para foto). Vídeo em story
-    // não suportado nesta fase — reportar erro amigável.
+    // Story do Facebook:
+    // - Foto: fluxo /photos (unpublished) + /photo_stories, suportado.
+    // - Vídeo: requer o fluxo resumable /video_stories (upload_phase=start/finish
+    //   com binário). Não implementado nesta fase — a guarda evita chamada mal
+    //   formada à Meta. Erro NÃO-RETRYABLE para não gastar tentativas nem
+    //   duplicar via cron. A reconciliação por platform_post_id em publish()
+    //   assegura idempotência caso a publicação tenha ocorrido por outro caminho.
     if (input.format === "story") {
       if (!media) return this.fail("no_media", "Story exige mídia.", false);
       if (media.type !== "image") {
+        console.warn("[marketing-publisher] fb_story_video_unsupported", {
+          company_id: input.companyId,
+          content_id: input.contentId,
+          note: "Publique manualmente ou aguarde suporte a video_stories.",
+        });
         return this.fail(
           "unsupported_story_media",
-          "Stories do Facebook nesta fase aceitam apenas foto.",
+          "Stories do Facebook para vídeo ainda não são publicados automaticamente. Use a foto ou publique manualmente. Reprocessar não fará nova tentativa.",
           false,
         );
       }

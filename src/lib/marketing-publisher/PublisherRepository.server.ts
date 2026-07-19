@@ -245,6 +245,24 @@ export class PublisherRepository {
     return { finalStatus: "failed" };
   }
 
+  /**
+   * Persiste o container_id retornado pela Meta durante uma tentativa em curso.
+   * Grava no campo `platform_response.pending.container_id` para que uma
+   * próxima tentativa (após timeout curto de polling) possa retomar o mesmo
+   * container em vez de criar outro — evitando publicações duplicadas.
+   */
+  async savePendingContainer(id: string, containerId: string): Promise<void> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    await admin
+      .from("marketing_publications")
+      .update({
+        platform_response: {
+          pending: { container_id: containerId, saved_at: new Date().toISOString() },
+        },
+      })
+      .eq("id", id);
+  }
+
   async findById(id: string): Promise<PublicationRow | null> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
@@ -257,6 +275,21 @@ export class PublisherRepository {
 
   async resetForRetry(id: string, companyId: string): Promise<PublicationRow | null> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    // Guarda de idempotência: se a publicação já tem platform_post_id, nunca
+    // reprocessar — evita duplicar post na Meta ao clicar em "Reprocessar".
+    const existing = await admin
+      .from("marketing_publications")
+      .select("id, platform_post_id, status")
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (existing.data?.platform_post_id) {
+      console.warn("[marketing-publisher] retry_blocked_already_published", {
+        publication_id: id,
+        platform_post_id: existing.data.platform_post_id,
+      });
+      return null;
+    }
     const r = await admin
       .from("marketing_publications")
       .update({

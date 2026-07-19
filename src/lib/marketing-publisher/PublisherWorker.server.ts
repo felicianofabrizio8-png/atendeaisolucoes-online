@@ -49,11 +49,28 @@ export class PublisherWorker {
       if (!pub) break;
       claimed += 1;
 
+      // Reconciliação/idempotência: se já existe platform_post_id ou containerId
+      // pendente de tentativa anterior, informamos o publisher para evitar
+      // recriar container/duplicar publicação na Meta.
+      const pending =
+        pub.platform_response && typeof pub.platform_response === "object"
+          ? ((pub.platform_response as { pending?: { container_id?: string } }).pending ?? null)
+          : null;
+      const pendingContainerId =
+        pending && typeof pending.container_id === "string" && pending.container_id.length > 0
+          ? pending.container_id
+          : null;
+
       const outcome = await this.publisher.publish({
         companyId: pub.company_id,
         contentId: pub.content_id,
         channel: pub.channel,
         format: pub.format,
+        existingPlatformPostId: pub.platform_post_id,
+        pendingContainerId,
+        onContainerCreated: async (containerId: string) => {
+          await this.repo.savePendingContainer(pub.id, containerId);
+        },
       });
 
       const attempt: AttemptEntry = {
