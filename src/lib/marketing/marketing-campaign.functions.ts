@@ -240,12 +240,23 @@ interface EnsureJobArgs {
   role: CampaignRoleFeedStory;
   primaryImage: ImageOwnershipRef;
   primaryFocalPoint: FocalPoint | null;
-  imageSequence: RenderImageSequenceItem[] | null; // null quando N=1 e sem focal
+  imageSequence: RenderImageSequenceItem[] | null;
   audioId: string;
   audioStart: number;
   duration: number;
   existingJobId: string | null;
+  /**
+   * Fase 5.B1 — textos determinísticos para o Brand Composer do worker.
+   * Todos opcionais; ausente = renderiza sem painel/tela final (só watermark).
+   */
+  content?: {
+    headline?: string | null;
+    supportingText?: string | null;
+    ctaText?: string | null;
+    companyName?: string | null;
+  } | null;
 }
+
 
 /**
  * Constrói as colunas de marca (brand_version_id + video_brand) para o
