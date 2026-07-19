@@ -868,6 +868,8 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       recent_angles: recentAngles.slice(0, 5),
       product_focus_locked: productLockActive,
       reel_format: bundle.reel.script.format,
+      // Brand Center snapshot SEM signed URL — sanitizado no adapter.
+      brand: sanitizeBrandContextForPersistence(marketingBrand),
     };
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
