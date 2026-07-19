@@ -17,7 +17,7 @@
 //     afetadas — o watermark simples continua funcionando.
 // ============================================================================
 
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
@@ -34,15 +34,20 @@ const FONT_FILES = {
   playfairBold: "PlayfairDisplay-Bold.ttf",
 } as const;
 
-let fontBuffersCache: Buffer[] | null = null;
+let fontFilesCache: string[] | null = null;
 
-async function loadFontBuffers(): Promise<Buffer[]> {
-  if (fontBuffersCache) return fontBuffersCache;
-  const buffers = await Promise.all(
-    Object.values(FONT_FILES).map((f) => readFile(path.join(FONTS_DIR, f))),
-  );
-  fontBuffersCache = buffers;
-  return buffers;
+/**
+ * Resolve os caminhos absolutos das fontes empacotadas em ./assets/fonts.
+ * @resvg/resvg-js aceita `fontFiles` (não `fontBuffers`) — carregamos por path
+ * para manter determinismo e evitar dependência de fontes do sistema.
+ */
+async function loadFontFiles(): Promise<string[]> {
+  if (fontFilesCache) return fontFilesCache;
+  const paths = Object.values(FONT_FILES).map((f) => path.join(FONTS_DIR, f));
+  // Valida existência — falha cedo com mensagem clara se o COPY do Dockerfile falhar.
+  await Promise.all(paths.map((p) => access(p)));
+  fontFilesCache = paths;
+  return paths;
 }
 
 export interface BrandLayerPaths {
