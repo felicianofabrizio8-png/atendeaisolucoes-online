@@ -467,6 +467,198 @@ export type Database = {
           },
         ]
       }
+      brand_assets: {
+        Row: {
+          asset_type: string
+          company_id: string
+          created_at: string
+          created_by: string | null
+          file_size_bytes: number | null
+          height: number | null
+          id: string
+          is_active: boolean
+          mime_type: string
+          original_filename: string | null
+          profile_id: string
+          sha256: string | null
+          storage_bucket: string
+          storage_path: string
+          updated_at: string
+          width: number | null
+        }
+        Insert: {
+          asset_type: string
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          file_size_bytes?: number | null
+          height?: number | null
+          id?: string
+          is_active?: boolean
+          mime_type: string
+          original_filename?: string | null
+          profile_id: string
+          sha256?: string | null
+          storage_bucket?: string
+          storage_path: string
+          updated_at?: string
+          width?: number | null
+        }
+        Update: {
+          asset_type?: string
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          file_size_bytes?: number | null
+          height?: number | null
+          id?: string
+          is_active?: boolean
+          mime_type?: string
+          original_filename?: string | null
+          profile_id?: string
+          sha256?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          updated_at?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_assets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_assets_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "brand_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_profiles: {
+        Row: {
+          active_version_id: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string
+          updated_at: string
+          visual_style: string | null
+        }
+        Insert: {
+          active_version_id?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          visual_style?: string | null
+        }
+        Update: {
+          active_version_id?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          visual_style?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_profiles_active_version_fkey"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "brand_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_versions: {
+        Row: {
+          assets: Json
+          colors: Json
+          company_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          profile_id: string
+          published_at: string | null
+          status: string
+          tokens: Json
+          typography: Json
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          assets?: Json
+          colors?: Json
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          profile_id: string
+          published_at?: string | null
+          status?: string
+          tokens?: Json
+          typography?: Json
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          assets?: Json
+          colors?: Json
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          profile_id?: string
+          published_at?: string | null
+          status?: string
+          tokens?: Json
+          typography?: Json
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_versions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_versions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "brand_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_ai_analyses: {
         Row: {
           campaign_id: string
