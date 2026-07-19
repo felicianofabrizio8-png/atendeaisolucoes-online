@@ -399,7 +399,9 @@ async function ensureCampaignJob(
     companyId: args.companyId,
     videoFormat,
     correlationId,
+    content: args.content ?? null,
   });
+
 
   const basePayload = {
     company_id: args.companyId,
