@@ -15,6 +15,7 @@ export default defineConfig({
       "src/lib/marketing-publisher/__tests__/**/*.test.ts",
       "src/lib/meta-oauth/__tests__/**/*.test.ts",
       "src/lib/audio-library/__tests__/**/*.test.ts",
+      "src/lib/brand-center/__tests__/**/*.test.ts",
       "src/components/marketing/audio-library/__tests__/**/*.test.ts",
       "src/lib/render-engine/__tests__/**/*.test.ts",
       "worker/render-engine/src/__tests__/**/*.test.ts",
