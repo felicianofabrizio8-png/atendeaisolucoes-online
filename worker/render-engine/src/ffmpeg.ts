@@ -119,14 +119,17 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
 
   let args: string[];
   if (watermark) {
-    const wm = buildWatermarkGraph(width, height, baseVf, watermark);
+    const chain = buildBrandOverlayChain({
+      width, height, baseVf, wm: watermark,
+      durationSeconds, firstBrandInputIdx: 2,
+    });
     args = [
       "-y",
       "-loop", "1", "-framerate", "2", "-i", imageFilePath,
       "-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath,
-      "-i", watermark.logoFilePath,
-      "-filter_complex", wm.filterComplex,
-      "-map", `[${wm.videoOutLabel}]`,
+      ...chain.inputArgs,
+      "-filter_complex", chain.filterComplex,
+      "-map", `[${chain.videoOutLabel}]`,
       "-map", "1:a:0",
       ...commonEncArgs,
     ];
@@ -145,24 +148,26 @@ export async function renderStaticImageVideo(input: FfmpegRenderInput): Promise<
   await runFfmpeg({
     args,
     timeoutMs,
-    sanitizePaths: {
-      imageFilePath,
-      audioFilePath,
-      outputFilePath,
-    },
-    slideshowExtraPaths: watermark ? [watermark.logoFilePath] : [],
+    sanitizePaths: { imageFilePath, audioFilePath, outputFilePath },
+    slideshowExtraPaths: watermark ? extractBrandPaths(watermark) : [],
     width, height, audioStartSecond, durationSeconds,
     jobId: input.jobId,
     debugLogDir: input.debugLogDir,
   });
 }
 
+/** Extrai paths de brand layers (para sanitização/log). */
+function extractBrandPaths(wm: WatermarkInput): string[] {
+  const out: string[] = [];
+  if (wm.logoFilePath) out.push(wm.logoFilePath);
+  if (wm.bottomPanelPath) out.push(wm.bottomPanelPath);
+  if (wm.outroCardPath) out.push(wm.outroCardPath);
+  return out;
+}
+
 /**
- * Constrói o grafo de overlay determinístico da watermark.
- * - Preserva alpha do PNG (format=rgba antes do overlay).
- * - Escala proporcional (largura = width * maxWidthRatio, altura auto).
- * - Aplica opacidade multiplicando alpha via `colorchannelmixer=aa=<op>`.
- * - Posiciona com margem de segurança proporcional à menor dimensão.
+ * Compat: mantido para testes existentes. Delega para buildBrandOverlayChain
+ * com durationSeconds=0 (comportamento não-temporal).
  */
 export function buildWatermarkGraph(
   width: number,
@@ -170,33 +175,110 @@ export function buildWatermarkGraph(
   baseVf: string,
   wm: WatermarkInput,
 ): { filterComplex: string; videoOutLabel: string } {
+  const chain = buildBrandOverlayChain({
+    width, height, baseVf, wm,
+    durationSeconds: 0, firstBrandInputIdx: 2,
+  });
+  return { filterComplex: chain.filterComplex, videoOutLabel: chain.videoOutLabel };
+}
+
+/**
+ * Cadeia completa de overlays de marca:
+ *   1. baseVf                     → [vbase]
+ *   2. logo (opcional)            → overlay temporal (fase principal)
+ *   3. bottomPanel (opcional)     → overlay temporal (fase principal)
+ *   4. outroCard (opcional)       → overlay temporal (fase outro)
+ *
+ * Semântica temporal:
+ *   - Sem outroCard: todas visíveis o vídeo inteiro.
+ *   - Com outroCard: logo+panel visíveis em t < (dur - outroDur);
+ *     outroCard visível em t >= (dur - outroDur), cobrindo o frame.
+ *
+ * Rótulo final SEMPRE [vout]. `inputArgs` deve ser injetado ANTES de
+ * `-filter_complex` no comando ffmpeg (índices dos inputs de layer).
+ */
+export function buildBrandOverlayChain(params: {
+  width: number;
+  height: number;
+  baseVf: string;
+  wm: WatermarkInput;
+  durationSeconds: number;
+  firstBrandInputIdx: number;
+}): { filterComplex: string; videoOutLabel: string; inputArgs: string[] } {
+  const { width, height, baseVf, wm, durationSeconds, firstBrandInputIdx } = params;
+
   const opacity = Math.max(0, Math.min(1, wm.opacity));
   const widthRatio = Math.max(0.05, Math.min(0.4, wm.maxWidthRatio));
   const marginRatio = Math.max(0, Math.min(0.15, wm.safeMarginRatio));
   const logoW = Math.round(width * widthRatio);
   const margin = Math.round(Math.min(width, height) * marginRatio);
 
-  // Posicionamento — usa expressões do FFmpeg (W/H = main, w/h = overlay).
   const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
-    "top-left":      { x: `${margin}`,             y: `${margin}` },
-    "top-center":    { x: `(W-w)/2`,               y: `${margin}` },
-    "top-right":     { x: `W-w-${margin}`,         y: `${margin}` },
-    "bottom-left":   { x: `${margin}`,             y: `H-h-${margin}` },
-    "bottom-center": { x: `(W-w)/2`,               y: `H-h-${margin}` },
-    "bottom-right":  { x: `W-w-${margin}`,         y: `H-h-${margin}` },
-    "center":        { x: `(W-w)/2`,               y: `(H-h)/2` },
+    "top-left":      { x: `${margin}`,       y: `${margin}` },
+    "top-center":    { x: `(W-w)/2`,         y: `${margin}` },
+    "top-right":     { x: `W-w-${margin}`,   y: `${margin}` },
+    "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}` },
+    "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}` },
+    "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}` },
+    "center":        { x: `(W-w)/2`,         y: `(H-h)/2` },
   };
-  const { x, y } = posMap[wm.position];
+  const { x: logoX, y: logoY } = posMap[wm.position];
 
-  // [0:v] → base video pipeline; [2:v] → logo (rgba, resized, opacity).
-  const filterComplex =
-    `[0:v]${baseVf}[vbase];` +
-    `[2:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
-    `colorchannelmixer=aa=${opacity.toFixed(3)}[logo];` +
-    `[vbase][logo]overlay=${x}:${y}:format=auto[vout]`;
+  const inputArgs: string[] = [];
+  const layerIndex = { logo: -1, panel: -1, outro: -1 };
+  let cursor = firstBrandInputIdx;
+  if (wm.logoFilePath) { inputArgs.push("-i", wm.logoFilePath); layerIndex.logo = cursor++; }
+  if (wm.bottomPanelPath) { inputArgs.push("-i", wm.bottomPanelPath); layerIndex.panel = cursor++; }
+  if (wm.outroCardPath) { inputArgs.push("-i", wm.outroCardPath); layerIndex.outro = cursor++; }
 
-  return { filterComplex, videoOutLabel: "vout" };
+  const outroDur = wm.outroCardPath
+    ? Math.max(0, Math.min(4, Number(wm.outroDurationSeconds ?? 2)))
+    : 0;
+  const outroStart = durationSeconds > 0 && outroDur > 0
+    ? Math.max(0, durationSeconds - outroDur)
+    : null;
+  const enableMain = outroStart !== null ? `:enable='lt(t\\,${outroStart.toFixed(3)})'` : "";
+  const enableOutro = outroStart !== null ? `:enable='gte(t\\,${outroStart.toFixed(3)})'` : "";
+
+  const parts: string[] = [`[0:v]${baseVf}[vbase]`];
+  let prevLabel = "vbase";
+  let step = 0;
+  const nextLbl = () => `vovl${step++}`;
+
+  if (layerIndex.logo >= 0) {
+    parts.push(
+      `[${layerIndex.logo}:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
+        `colorchannelmixer=aa=${opacity.toFixed(3)}[logo]`,
+    );
+    const n = nextLbl();
+    parts.push(`[${prevLabel}][logo]overlay=${logoX}:${logoY}:format=auto${enableMain}[${n}]`);
+    prevLabel = n;
+  }
+  if (layerIndex.panel >= 0) {
+    parts.push(`[${layerIndex.panel}:v]format=rgba[panel]`);
+    const n = nextLbl();
+    parts.push(`[${prevLabel}][panel]overlay=0:0:format=auto${enableMain}[${n}]`);
+    prevLabel = n;
+  }
+  if (layerIndex.outro >= 0) {
+    parts.push(`[${layerIndex.outro}:v]format=rgba[outro]`);
+    const n = nextLbl();
+    parts.push(`[${prevLabel}][outro]overlay=0:0:format=auto${enableOutro}[${n}]`);
+    prevLabel = n;
+  }
+
+  if (prevLabel === "vbase") {
+    parts.push(`[vbase]null[vout]`);
+  } else {
+    parts[parts.length - 1] = parts[parts.length - 1].replace(
+      new RegExp(`\\[${prevLabel}\\]$`),
+      "[vout]",
+    );
+  }
+
+  return { filterComplex: parts.join(";"), videoOutLabel: "vout", inputArgs };
 }
+
 
 /**
  * Renderiza N imagens (1..8) como slideshow com transição xfade + trecho de
