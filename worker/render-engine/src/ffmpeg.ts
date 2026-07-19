@@ -200,12 +200,20 @@ export function buildWatermarkGraph(
 export function buildBrandOverlayChain(params: {
   width: number;
   height: number;
+  /** Ignorado quando `baseInputLabel` presente. */
   baseVf: string;
   wm: WatermarkInput;
   durationSeconds: number;
   firstBrandInputIdx: number;
+  /**
+   * Quando presente, o chain começa desse label (ex.: "vxfaded" no slideshow)
+   * ao invés de gerar `[0:v]baseVf[vbase]`. Usado quando o pipeline já produziu
+   * um frame base por outro caminho.
+   */
+  baseInputLabel?: string;
 }): { filterComplex: string; videoOutLabel: string; inputArgs: string[] } {
-  const { width, height, baseVf, wm, durationSeconds, firstBrandInputIdx } = params;
+  const { width, height, baseVf, wm, durationSeconds, firstBrandInputIdx, baseInputLabel } = params;
+
 
   const opacity = Math.max(0, Math.min(1, wm.opacity));
   const widthRatio = Math.max(0.05, Math.min(0.4, wm.maxWidthRatio));
