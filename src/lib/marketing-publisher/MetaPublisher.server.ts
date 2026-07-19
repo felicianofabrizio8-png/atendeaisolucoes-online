@@ -249,13 +249,23 @@ export class MetaPublisher {
       });
       if (isSimulation(r)) return { ok: true };
       if (isFailure(r)) {
+        const meta = extractMetaError(r);
+        logMetaFailure({
+          stage: "container_status",
+          channel: "instagram",
+          format: "unknown",
+          endpoint: `/${containerId}`,
+          httpStatus: r.status,
+          meta,
+        });
         return {
           ok: false,
           errorCode: `container_status_${r.status ?? "network"}`,
-          errorMessage: r.error,
+          errorMessage: formatFailureMessage(r.error, meta),
           retryable: r.retryable,
         };
       }
+
       const code = r.raw?.status_code;
       if (code === "FINISHED") return { ok: true };
       if (code === "ERROR" || code === "EXPIRED") {
