@@ -378,11 +378,12 @@ export class MetaPublisher {
 
     // Story do Facebook:
     // - Foto: fluxo /photos (unpublished) + /photo_stories, suportado.
-    // - Vídeo: requer o fluxo resumable /video_stories (upload_phase=start/finish
-    //   com binário). Não implementado nesta fase — a guarda evita chamada mal
-    //   formada à Meta. Erro NÃO-RETRYABLE para não gastar tentativas nem
-    //   duplicar via cron. A reconciliação por platform_post_id em publish()
-    //   assegura idempotência caso a publicação tenha ocorrido por outro caminho.
+    // - Vídeo: fluxo oficial /video_stories em 3 fases (start → upload
+    //   binário resumable em rupload.facebook.com → finish). Implementado em
+    //   publishFacebookStoryVideo(). Estado persistido em platform_response.pending
+    //   (video_id, upload_url, upload_completed) para retomada idempotente
+    //   entre ticks/retries — o binário NUNCA é reenviado se upload_completed=true
+    //   e o video_id NUNCA é reusado se platform_post_id já existir.
     if (input.format === "story") {
       if (!media) return this.fail("no_media", "Story exige mídia.", false);
       if (media.type === "video") {
