@@ -63,9 +63,16 @@ function normalizeAssets(
 }
 
 export function resolveBrandContext(input: BrandResolverInput): BrandContext {
-  const parsedColors = parseColors(input.version?.colors);
-  const parsedTypography = parseTypography(input.version?.typography);
-  const parsedTokens = parseTokens(input.version?.tokens);
+  // Só é "published" quando o repo entregou uma versão publicada;
+  // rascunhos NÃO viram identidade ativa — o contrato entra em fallback.
+  const versionStatus = input.version?.status ?? "draft";
+  const isPublished = input.version !== null && versionStatus === "published";
+
+  const parsedColors = isPublished ? parseColors(input.version!.colors) : {};
+  const parsedTypography = isPublished
+    ? parseTypography(input.version!.typography)
+    : {};
+  const parsedTokens = isPublished ? parseTokens(input.version!.tokens) : {};
 
   const colors = { ...DEFAULT_COLORS, ...parsedColors };
   const typography = {
@@ -79,11 +86,6 @@ export function resolveBrandContext(input: BrandResolverInput): BrandContext {
   const tokens = { ...DEFAULT_TOKENS, ...parsedTokens };
 
   const assets = normalizeAssets(input.assets);
-
-  // Só é "published" quando o repo entregou uma versão publicada;
-  // rascunhos NÃO viram identidade ativa.
-  const versionStatus = input.version?.status ?? "draft";
-  const isPublished = input.version !== null && versionStatus === "published";
 
   return {
     companyId: input.companyId,
