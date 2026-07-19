@@ -27,6 +27,10 @@ import {
   type RenderImageSequenceItem,
   type RenderSourceSequenceItem,
 } from "@/lib/render-engine/render.types";
+import {
+  isVideoBrandSnapshot,
+  type VideoBrandSnapshot,
+} from "@/lib/render-engine/video-brand-snapshot";
 
 const SIGNED_TTL_SECONDS = 600;
 
