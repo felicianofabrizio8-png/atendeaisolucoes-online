@@ -821,6 +821,123 @@ function sanitize(raw: unknown): unknown {
   return clone;
 }
 
+// ---------------------------------------------------------------------------
+// Observabilidade estruturada de falhas da Meta.
+// Nunca loga access_token nem a Signed URL completa (host+path apenas).
+// ---------------------------------------------------------------------------
+
+export interface MetaErrorDetail {
+  code: number | null;
+  subcode: number | null;
+  type: string | null;
+  message: string | null;
+  errorUserTitle: string | null;
+  errorUserMsg: string | null;
+  fbtraceId: string | null;
+}
+
+export function extractMetaError(failure: {
+  providerError?: unknown;
+  parsedBody?: unknown;
+  error: string;
+}): MetaErrorDetail {
+  const empty: MetaErrorDetail = {
+    code: null,
+    subcode: null,
+    type: null,
+    message: failure.error ?? null,
+    errorUserTitle: null,
+    errorUserMsg: null,
+    fbtraceId: null,
+  };
+  const src =
+    (failure.providerError && typeof failure.providerError === "object"
+      ? (failure.providerError as Record<string, unknown>)
+      : null) ??
+    (failure.parsedBody && typeof failure.parsedBody === "object"
+      ? ((failure.parsedBody as { error?: Record<string, unknown> }).error ?? null)
+      : null);
+  if (!src) return empty;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+  return {
+    code: num(src.code),
+    subcode: num(src.error_subcode),
+    type: str(src.type),
+    message: str(src.message) ?? empty.message,
+    errorUserTitle: str(src.error_user_title),
+    errorUserMsg: str(src.error_user_msg),
+    fbtraceId: str(src.fbtrace_id),
+  };
+}
+
+export function formatFailureMessage(fallback: string, meta: MetaErrorDetail): string {
+  const parts: string[] = [];
+  if (meta.errorUserMsg) parts.push(meta.errorUserMsg);
+  else if (meta.message) parts.push(meta.message);
+  else parts.push(fallback);
+  const tags: string[] = [];
+  if (meta.code != null) tags.push(`code=${meta.code}`);
+  if (meta.subcode != null) tags.push(`subcode=${meta.subcode}`);
+  if (meta.fbtraceId) tags.push(`fbtrace_id=${meta.fbtraceId}`);
+  if (tags.length > 0) parts.push(`[${tags.join(" ")}]`);
+  return parts.join(" ");
+}
+
+export function summarizeMediaUrl(url: string): { host: string; path: string } {
+  try {
+    const u = new URL(url);
+    return { host: u.host, path: u.pathname };
+  } catch {
+    return { host: "invalid", path: "" };
+  }
+}
+
+export function fieldsPresent(params: URLSearchParams): string[] {
+  const out: string[] = [];
+  params.forEach((_v, k) => {
+    if (k === "access_token") return; // nunca logar token
+    out.push(k);
+  });
+  return out.sort();
+}
+
+export function logMetaFailure(info: {
+  stage: "container_create" | "container_status" | "publish" | string;
+  channel: "instagram" | "facebook";
+  format: string;
+  endpoint: string;
+  httpStatus?: number;
+  mediaKind?: "image" | "video";
+  mediaHost?: string;
+  mediaPath?: string;
+  payloadFields?: string[];
+  meta: MetaErrorDetail;
+}): void {
+  console.error("[marketing-publisher] meta_failure", {
+    stage: info.stage,
+    channel: info.channel,
+    format: info.format,
+    endpoint: info.endpoint,
+    http_status: info.httpStatus ?? null,
+    media_kind: info.mediaKind ?? null,
+    media_host: info.mediaHost ?? null,
+    media_path: info.mediaPath ?? null,
+    payload_fields: info.payloadFields ?? [],
+    meta_code: info.meta.code,
+    meta_subcode: info.meta.subcode,
+    meta_type: info.meta.type,
+    meta_message: info.meta.message,
+    meta_error_user_title: info.meta.errorUserTitle,
+    meta_error_user_msg: info.meta.errorUserMsg,
+    fbtrace_id: info.meta.fbtraceId,
+  });
+}
+
+
+
 /**
  * Normaliza `image_path` de product_media_refs para um path relativo ao bucket
  * `product-images`. Aceita:
