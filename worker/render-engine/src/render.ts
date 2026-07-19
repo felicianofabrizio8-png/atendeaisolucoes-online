@@ -2,6 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises"
 import path from "node:path";
 import { log } from "./logger.js";
 import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint, type WatermarkInput, type WatermarkPosition } from "./ffmpeg.js";
+import { composeBrandLayers } from "./brand-composer.js";
+
 import { analyzeVolume, ffprobe, ffprobeInput } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
 import type { WorkerConfig } from "./config.js";
