@@ -728,10 +728,160 @@ describe("MetaPublisher — campaign rendered video preference", () => {
   });
 });
 
+// ---- Instagram Feed video: REELS + share_to_feed ------------------------
+
+describe("MetaPublisher — Instagram Feed video contract", () => {
+  it("cria container com media_type=REELS e share_to_feed=true (não VIDEO)", async () => {
+    const { postGraph } = await import("@/lib/outbound/MetaOutbound.server");
+    (postGraph as unknown as { mockClear: () => void }).mockClear();
+
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.videos.push({
+      id: "vid-feed",
+      company_id: COMPANY,
+      file_path: `${COMPANY}/marketing/vid-feed.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent({ media_ids: [], ai_prompt: null });
+    state.contents[0] = { ...state.contents[0], feed_video_id: "vid-feed" } as any;
+
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+
+    const calls = (postGraph as unknown as { mock: { calls: any[] } }).mock.calls;
+    const containerCall = calls.find(
+      (c) => typeof c[0]?.action === "string" && c[0].action.endsWith(".feed.container"),
+    );
+    expect(containerCall, "container call must exist").toBeDefined();
+    const params = new URLSearchParams(String(containerCall![0].body));
+    expect(params.get("media_type")).toBe("REELS");
+    expect(params.get("share_to_feed")).toBe("true");
+    expect(params.get("video_url")).toBeTruthy();
+    expect(params.get("media_type")).not.toBe("VIDEO");
+  });
+
+  it("mantém image_url para IG Feed com imagem (não altera fluxo de fotos)", async () => {
+    const { postGraph } = await import("@/lib/outbound/MetaOutbound.server");
+    (postGraph as unknown as { mockClear: () => void }).mockClear();
+
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.media.push({
+      id: "m-img",
+      company_id: COMPANY,
+      storage_path: `${COMPANY}/img.jpg`,
+      media_type: "image",
+      active: true,
+      deleted_at: null,
+    });
+    seedApprovedContent({ media_ids: ["m-img"] });
+
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "feed",
+    });
+    expect(r.success).toBe(true);
+
+    const calls = (postGraph as unknown as { mock: { calls: any[] } }).mock.calls;
+    const containerCall = calls.find(
+      (c) => typeof c[0]?.action === "string" && c[0].action.endsWith(".feed.container"),
+    );
+    const params = new URLSearchParams(String(containerCall![0].body));
+    expect(params.get("image_url")).toBeTruthy();
+    expect(params.get("media_type")).toBeNull();
+    expect(params.get("share_to_feed")).toBeNull();
+  });
+
+  it("Reel de vídeo mantém media_type=REELS sem share_to_feed", async () => {
+    const { postGraph } = await import("@/lib/outbound/MetaOutbound.server");
+    (postGraph as unknown as { mockClear: () => void }).mockClear();
+
+    seedIntegrationIg();
+    seedMetaPage("PAGE-VIA-IG", "IG-USER-1");
+    state.videos.push({
+      id: "vid-story",
+      company_id: COMPANY,
+      file_path: `${COMPANY}/marketing/vid-story.mp4`,
+      is_active: true,
+    });
+    seedApprovedContent();
+    state.contents[0] = { ...state.contents[0], story_video_id: "vid-story" } as any;
+
+    const r = await new MetaPublisher().publish({
+      companyId: COMPANY,
+      contentId: "content-1",
+      channel: "instagram",
+      format: "reel",
+    });
+    expect(r.success).toBe(true);
+
+    const calls = (postGraph as unknown as { mock: { calls: any[] } }).mock.calls;
+    const containerCall = calls.find(
+      (c) => typeof c[0]?.action === "string" && c[0].action.endsWith(".reel.container"),
+    );
+    const params = new URLSearchParams(String(containerCall![0].body));
+    expect(params.get("media_type")).toBe("REELS");
+    expect(params.get("share_to_feed")).toBeNull();
+  });
+});
+
+// ---- Observabilidade / enriquecimento de erros --------------------------
+
+describe("MetaPublisher — Meta error observability", () => {
+  it("extrai code/subcode/error_user_msg/fbtrace_id da falha", async () => {
+    const { extractMetaError, formatFailureMessage } = await import("../MetaPublisher.server");
+    const meta = extractMetaError({
+      error: "Invalid parameter",
+      providerError: {
+        message: "Invalid parameter",
+        type: "OAuthException",
+        code: 100,
+        error_subcode: 2207008,
+        error_user_title: "Não pôde publicar",
+        error_user_msg: "O vídeo não atende aos requisitos.",
+        fbtrace_id: "ABC123",
+      },
+    });
+    expect(meta.code).toBe(100);
+    expect(meta.subcode).toBe(2207008);
+    expect(meta.fbtraceId).toBe("ABC123");
+    expect(meta.errorUserMsg).toBe("O vídeo não atende aos requisitos.");
+    const msg = formatFailureMessage("Invalid parameter", meta);
+    expect(msg).toContain("O vídeo não atende aos requisitos.");
+    expect(msg).toContain("code=100");
+    expect(msg).toContain("subcode=2207008");
+    expect(msg).toContain("fbtrace_id=ABC123");
+  });
+
+  it("nunca inclui access_token em fieldsPresent", async () => {
+    const { fieldsPresent } = await import("../MetaPublisher.server");
+    const p = new URLSearchParams();
+    p.set("caption", "x");
+    p.set("media_type", "REELS");
+    p.set("share_to_feed", "true");
+    p.set("video_url", "https://signed.example/x");
+    p.set("access_token", "SECRET-DO-NOT-LOG");
+    const fields = fieldsPresent(p);
+    expect(fields).not.toContain("access_token");
+    expect(fields).toEqual(
+      expect.arrayContaining(["caption", "media_type", "share_to_feed", "video_url"]),
+    );
+  });
+});
+
 // Restaura fetch ao final do módulo.
 afterAll(() => {
   globalThis.fetch = originalFetch;
 });
+
 
 
 
