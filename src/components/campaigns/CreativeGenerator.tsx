@@ -382,7 +382,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       let brandApplied = false;
       try {
         const v = variants?.[variant];
-        const { applyBrandCompositionToDataUrl } = await import("@/lib/marketing/apply-brand-composition.client");
+        const { applyBrandCompositionToDataUrl } = await import("@/lib/marketing/apply-brand-composition.browser");
         const composed = await applyBrandCompositionToDataUrl({
           dataUrl: url,
           format,
