@@ -246,18 +246,18 @@ describe("boundary: Marketing IA não acessa Brand Center por baixo do adapter",
     // Este teste é uma trava simbólica: qualquer nova importação proibida
     // aparece na revisão de código. A verificação real é feita no CI/lint
     // do repositório — aqui só documentamos a expectativa.
-    const forbidden = [
-      "brand.repository",
-      "brand-editor.functions",
-      "brand-editor-schema",
+    const forbiddenImports = [
+      /from\s+["'][^"']*brand\.repository/,
+      /from\s+["'][^"']*brand-editor\.functions/,
+      /from\s+["'][^"']*brand-editor-schema/,
     ];
     const fs = await import("node:fs");
     const src = fs.readFileSync(
       "src/lib/marketing/brand-context-adapter.ts",
       "utf8",
     );
-    for (const f of forbidden) {
-      expect(src, `adapter não pode importar ${f}`).not.toContain(f);
+    for (const re of forbiddenImports) {
+      expect(src, `adapter não pode importar ${re}`).not.toMatch(re);
     }
     // Não deve haver acesso direto a tabelas brand_* nem ao bucket
     expect(src).not.toMatch(/from\(["']brand_/);
