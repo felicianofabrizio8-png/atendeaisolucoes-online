@@ -10,7 +10,7 @@ import {
   Heart, Tag, Clock, Check, Award, RefreshCw, Download, Package, Search, X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { applyBrandCompositionToDataUrl } from "@/lib/marketing/apply-brand-composition.client";
+
 
 interface ProductRow {
   id: string;
@@ -382,6 +382,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
       let brandApplied = false;
       try {
         const v = variants?.[variant];
+        const { applyBrandCompositionToDataUrl } = await import("@/lib/marketing/apply-brand-composition.browser");
         const composed = await applyBrandCompositionToDataUrl({
           dataUrl: url,
           format,

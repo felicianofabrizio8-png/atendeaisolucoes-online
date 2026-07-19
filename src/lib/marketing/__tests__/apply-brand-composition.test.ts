@@ -1,11 +1,11 @@
 /**
- * Testes do orquestrador Fase 4.1 — apply-brand-composition.client.ts.
+ * Testes do orquestrador Fase 4.1 — apply-brand-composition.browser.ts.
  * Usa injeção de dependências (measureImage/prepare/rasterize) para rodar em
  * ambiente Node sem DOM.
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { applyBrandCompositionToDataUrl } from "@/lib/marketing/apply-brand-composition.client";
+import { applyBrandCompositionToDataUrl } from "@/lib/marketing/apply-brand-composition.browser";
 import type { StaticBrandCompositionPlan } from "@/lib/marketing/static-brand-composer";
 
 const BASE_DATA_URL = "data:image/png;base64,AAAA";

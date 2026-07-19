@@ -25,7 +25,7 @@
  *    (o compositor é determinístico).
  */
 
-import { rasterizeStaticBrandComposition } from "./static-brand-composer.client";
+import { rasterizeStaticBrandComposition } from "./static-brand-composer.browser";
 import type { StaticBrandCompositionSnapshot } from "./static-brand-composer";
 import { prepareBrandComposition as defaultPrepareBrandComposition } from "./static-brand-composer.functions";
 
