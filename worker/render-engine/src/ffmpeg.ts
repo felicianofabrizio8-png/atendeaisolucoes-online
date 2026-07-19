@@ -248,10 +248,17 @@ export function buildBrandOverlayChain(params: {
   const enableMain = outroStart !== null ? `:enable='lt(t\\,${outroStart.toFixed(3)})'` : "";
   const enableOutro = outroStart !== null ? `:enable='gte(t\\,${outroStart.toFixed(3)})'` : "";
 
-  const parts: string[] = [`[0:v]${baseVf}[vbase]`];
-  let prevLabel = "vbase";
+  const parts: string[] = [];
+  let prevLabel: string;
+  if (baseInputLabel) {
+    prevLabel = baseInputLabel;
+  } else {
+    parts.push(`[0:v]${baseVf}[vbase]`);
+    prevLabel = "vbase";
+  }
   let step = 0;
   const nextLbl = () => `vovl${step++}`;
+
 
   if (layerIndex.logo >= 0) {
     parts.push(
