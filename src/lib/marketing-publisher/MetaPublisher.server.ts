@@ -296,8 +296,11 @@ export class MetaPublisher {
     token: string,
     companyId: string,
   ): Promise<{ ok: true } | { ok: false; errorCode: string; errorMessage: string; retryable: boolean }> {
-    const attempts = 6;
-    const delayMs = 4000;
+    // Polling ampliado: 10 tentativas x 5s = ~50s por tick. Combinado com o
+    // resume via pendingContainerId, temos até MAX_RETRIES ticks adicionais
+    // consultando o MESMO container_id — sem criar novos containers na Meta.
+    const attempts = 10;
+    const delayMs = 5000;
     for (let i = 0; i < attempts; i += 1) {
       const r = await postGraph<{ status_code?: string; status?: string }>({
         companyId,
