@@ -62,7 +62,7 @@ export const getBrandContext = createServerFn({ method: "GET" })
         if (v && v.status === "published") {
           versionRow = {
             id: v.id,
-            status: v.status,
+            status: "published",
             colors: v.colors,
             typography: v.typography,
             tokens: v.tokens,
