@@ -21,6 +21,8 @@ export default defineConfig({
       "src/lib/render-engine/__tests__/**/*.test.ts",
       "worker/render-engine/src/__tests__/**/*.test.ts",
       "src/routes/__tests__/**/*.test.ts",
+      "src/lib/runtime/__tests__/**/*.test.ts",
+
     ],
     environment: "node",
     globals: false,
