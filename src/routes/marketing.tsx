@@ -74,9 +74,6 @@ function MarketingPage() {
         <TabsContent value="generator" className="mt-4">
           <MarketingGenerator companyId={companyId} onGenerated={() => setTab("approvals")} />
         </TabsContent>
-        <TabsContent value="video-render" className="mt-4">
-          <VideoRenderPanel companyId={companyId} />
-        </TabsContent>
         <TabsContent value="videos" className="mt-4">
           <VideoLibraryGrid companyId={companyId} />
         </TabsContent>
