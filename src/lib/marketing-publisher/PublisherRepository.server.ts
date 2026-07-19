@@ -252,14 +252,36 @@ export class PublisherRepository {
    * container em vez de criar outro — evitando publicações duplicadas.
    */
   async savePendingContainer(id: string, containerId: string): Promise<void> {
+    await this.savePending(id, { container_id: containerId });
+  }
+
+  /**
+   * Persiste estado pendente arbitrário (merge) em platform_response.pending.
+   * Usado por fluxos multi-fase — ex.: Facebook Story vídeo (video_id,
+   * upload_url, upload_completed). Preserva chaves não sobrescritas.
+   */
+  async savePending(id: string, patch: Record<string, unknown>): Promise<void> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    const cur = await admin
+      .from("marketing_publications")
+      .select("platform_response")
+      .eq("id", id)
+      .maybeSingle();
+    const existing =
+      cur.data?.platform_response && typeof cur.data.platform_response === "object"
+        ? (cur.data.platform_response as Record<string, unknown>)
+        : {};
+    const prevPending =
+      existing.pending && typeof existing.pending === "object"
+        ? (existing.pending as Record<string, unknown>)
+        : {};
+    const merged = {
+      ...existing,
+      pending: { ...prevPending, ...patch, saved_at: new Date().toISOString() },
+    };
     await admin
       .from("marketing_publications")
-      .update({
-        platform_response: {
-          pending: { container_id: containerId, saved_at: new Date().toISOString() },
-        },
-      })
+      .update({ platform_response: merged })
       .eq("id", id);
   }
 
