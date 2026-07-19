@@ -14,6 +14,11 @@ import type {
   MarketingContentChannel,
   MarketingContentFormat,
 } from "./marketing.types";
+import {
+  buildBrandPromptBlock,
+  loadMarketingBrandContext,
+  sanitizeBrandContextForPersistence,
+} from "./brand-context-adapter";
 
 type SB = SupabaseClient<Database>;
 
