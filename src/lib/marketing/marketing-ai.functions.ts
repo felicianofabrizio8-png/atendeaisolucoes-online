@@ -538,6 +538,8 @@ A promoção está vinculada ao produto "${product.name}". Toda a campanha (Stor
 
 ${knowledgeBlock}
 
+${brandPromptBlock}
+
 # ETAPA 1 — DIREÇÃO ESTRATÉGICA (obrigatória, precede qualquer texto)
 Como Diretor de Criação, decida DELIBERADAMENTE para esta campanha:
 1. **ÂNGULO principal de venda** (obrigatório escolher UM do catálogo abaixo, respeitando a diversidade histórica);
