@@ -87,20 +87,37 @@ export class MetaPublisher {
     const { igUserId, pageAccessToken } = pageCtx;
 
     // 1) Criar container.
+    // IMPORTANTE (Meta Graph API v18+): publicação de VÍDEO no Feed do Instagram
+    // via /media exige `media_type=REELS` + `share_to_feed=true`. O antigo
+    // `media_type=VIDEO` foi descontinuado e passou a retornar HTTP 400
+    // "Invalid parameter" (container_error_400). REELS + share_to_feed=true
+    // publica o vídeo tanto na aba Reels quanto no Feed principal.
+    // Ref.: https://developers.facebook.com/docs/instagram-platform/content-publishing
     const containerPayload = new URLSearchParams();
     containerPayload.set("caption", caption);
-    if (input.format === "story") containerPayload.set("media_type", "STORIES");
-    else if (input.format === "reel") containerPayload.set("media_type", "REELS");
+    if (input.format === "story") {
+      containerPayload.set("media_type", "STORIES");
+    } else if (input.format === "reel") {
+      containerPayload.set("media_type", "REELS");
+    }
 
     if (media.type === "image") {
       containerPayload.set("image_url", media.url);
     } else {
-      // Video: exige media_type (VIDEO/REELS/STORIES) e video_url
-      if (input.format === "feed") containerPayload.set("media_type", "VIDEO");
+      // Vídeo: `media_type` obrigatório. `feed` → REELS + share_to_feed=true.
+      if (input.format === "feed") {
+        containerPayload.set("media_type", "REELS");
+        containerPayload.set("share_to_feed", "true");
+      }
+      // reel e story já foram setados acima; garantir consistência p/ reel.
+      if (input.format === "reel" && !containerPayload.has("media_type")) {
+        containerPayload.set("media_type", "REELS");
+      }
       containerPayload.set("video_url", media.url);
     }
     containerPayload.set("access_token", pageAccessToken);
 
+    const mediaUrlSummary = summarizeMediaUrl(media.url);
     const createRes = await postGraph<{ id?: string }>({
       companyId: input.companyId,
       action: `marketing_publisher.instagram.${input.format}.container`,
@@ -108,7 +125,14 @@ export class MetaPublisher {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: containerPayload.toString(),
-      logicalPayload: { format: input.format, media_type: media.type },
+      logicalPayload: {
+        format: input.format,
+        media_type: containerPayload.get("media_type"),
+        media_kind: media.type,
+        share_to_feed: containerPayload.get("share_to_feed"),
+        media_host: mediaUrlSummary.host,
+        media_path: mediaUrlSummary.path,
+      },
       agentId: "marketing-publisher",
     });
     if (isSimulation(createRes)) {
@@ -120,12 +144,26 @@ export class MetaPublisher {
       };
     }
     if (isFailure(createRes)) {
+      const meta = extractMetaError(createRes);
+      logMetaFailure({
+        stage: "container_create",
+        channel: "instagram",
+        format: input.format,
+        endpoint: `/${igUserId}/media`,
+        httpStatus: createRes.status,
+        mediaKind: media.type,
+        mediaHost: mediaUrlSummary.host,
+        mediaPath: mediaUrlSummary.path,
+        payloadFields: fieldsPresent(containerPayload),
+        meta,
+      });
       return this.fail(
         `container_error_${createRes.status ?? "network"}`,
-        createRes.error,
+        formatFailureMessage(createRes.error, meta),
         createRes.retryable,
       );
     }
+
     const containerId = createRes.raw?.id ?? null;
     if (!containerId) {
       return this.fail("no_container_id", "Meta não retornou creation_id.", false);
@@ -166,12 +204,26 @@ export class MetaPublisher {
       };
     }
     if (isFailure(publishRes)) {
+      const meta = extractMetaError(publishRes);
+      logMetaFailure({
+        stage: "publish",
+        channel: "instagram",
+        format: input.format,
+        endpoint: `/${igUserId}/media_publish`,
+        httpStatus: publishRes.status,
+        mediaKind: media.type,
+        mediaHost: mediaUrlSummary.host,
+        mediaPath: mediaUrlSummary.path,
+        payloadFields: fieldsPresent(pubBody),
+        meta,
+      });
       return this.fail(
         `publish_error_${publishRes.status ?? "network"}`,
-        publishRes.error,
+        formatFailureMessage(publishRes.error, meta),
         publishRes.retryable,
       );
     }
+
     return {
       success: true,
       simulated: false,
@@ -197,13 +249,23 @@ export class MetaPublisher {
       });
       if (isSimulation(r)) return { ok: true };
       if (isFailure(r)) {
+        const meta = extractMetaError(r);
+        logMetaFailure({
+          stage: "container_status",
+          channel: "instagram",
+          format: "unknown",
+          endpoint: `/${containerId}`,
+          httpStatus: r.status,
+          meta,
+        });
         return {
           ok: false,
           errorCode: `container_status_${r.status ?? "network"}`,
-          errorMessage: r.error,
+          errorMessage: formatFailureMessage(r.error, meta),
           retryable: r.retryable,
         };
       }
+
       const code = r.raw?.status_code;
       if (code === "FINISHED") return { ok: true };
       if (code === "ERROR" || code === "EXPIRED") {
@@ -782,6 +844,123 @@ function sanitize(raw: unknown): unknown {
   }
   return clone;
 }
+
+// ---------------------------------------------------------------------------
+// Observabilidade estruturada de falhas da Meta.
+// Nunca loga access_token nem a Signed URL completa (host+path apenas).
+// ---------------------------------------------------------------------------
+
+export interface MetaErrorDetail {
+  code: number | null;
+  subcode: number | null;
+  type: string | null;
+  message: string | null;
+  errorUserTitle: string | null;
+  errorUserMsg: string | null;
+  fbtraceId: string | null;
+}
+
+export function extractMetaError(failure: {
+  providerError?: unknown;
+  parsedBody?: unknown;
+  error: string;
+}): MetaErrorDetail {
+  const empty: MetaErrorDetail = {
+    code: null,
+    subcode: null,
+    type: null,
+    message: failure.error ?? null,
+    errorUserTitle: null,
+    errorUserMsg: null,
+    fbtraceId: null,
+  };
+  const src =
+    (failure.providerError && typeof failure.providerError === "object"
+      ? (failure.providerError as Record<string, unknown>)
+      : null) ??
+    (failure.parsedBody && typeof failure.parsedBody === "object"
+      ? ((failure.parsedBody as { error?: Record<string, unknown> }).error ?? null)
+      : null);
+  if (!src) return empty;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+  return {
+    code: num(src.code),
+    subcode: num(src.error_subcode),
+    type: str(src.type),
+    message: str(src.message) ?? empty.message,
+    errorUserTitle: str(src.error_user_title),
+    errorUserMsg: str(src.error_user_msg),
+    fbtraceId: str(src.fbtrace_id),
+  };
+}
+
+export function formatFailureMessage(fallback: string, meta: MetaErrorDetail): string {
+  const parts: string[] = [];
+  if (meta.errorUserMsg) parts.push(meta.errorUserMsg);
+  else if (meta.message) parts.push(meta.message);
+  else parts.push(fallback);
+  const tags: string[] = [];
+  if (meta.code != null) tags.push(`code=${meta.code}`);
+  if (meta.subcode != null) tags.push(`subcode=${meta.subcode}`);
+  if (meta.fbtraceId) tags.push(`fbtrace_id=${meta.fbtraceId}`);
+  if (tags.length > 0) parts.push(`[${tags.join(" ")}]`);
+  return parts.join(" ");
+}
+
+export function summarizeMediaUrl(url: string): { host: string; path: string } {
+  try {
+    const u = new URL(url);
+    return { host: u.host, path: u.pathname };
+  } catch {
+    return { host: "invalid", path: "" };
+  }
+}
+
+export function fieldsPresent(params: URLSearchParams): string[] {
+  const out: string[] = [];
+  params.forEach((_v, k) => {
+    if (k === "access_token") return; // nunca logar token
+    out.push(k);
+  });
+  return out.sort();
+}
+
+export function logMetaFailure(info: {
+  stage: "container_create" | "container_status" | "publish" | string;
+  channel: "instagram" | "facebook";
+  format: string;
+  endpoint: string;
+  httpStatus?: number;
+  mediaKind?: "image" | "video";
+  mediaHost?: string;
+  mediaPath?: string;
+  payloadFields?: string[];
+  meta: MetaErrorDetail;
+}): void {
+  console.error("[marketing-publisher] meta_failure", {
+    stage: info.stage,
+    channel: info.channel,
+    format: info.format,
+    endpoint: info.endpoint,
+    http_status: info.httpStatus ?? null,
+    media_kind: info.mediaKind ?? null,
+    media_host: info.mediaHost ?? null,
+    media_path: info.mediaPath ?? null,
+    payload_fields: info.payloadFields ?? [],
+    meta_code: info.meta.code,
+    meta_subcode: info.meta.subcode,
+    meta_type: info.meta.type,
+    meta_message: info.meta.message,
+    meta_error_user_title: info.meta.errorUserTitle,
+    meta_error_user_msg: info.meta.errorUserMsg,
+    fbtrace_id: info.meta.fbtraceId,
+  });
+}
+
+
 
 /**
  * Normaliza `image_path` de product_media_refs para um path relativo ao bucket
