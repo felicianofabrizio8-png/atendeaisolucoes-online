@@ -274,11 +274,18 @@ async function prepareMarketingVideoBrandColumns(params: {
   companyId: string;
   videoFormat: VideoFormat;
   correlationId: string;
+  /** Fase 5.B1 — textos determinísticos que alimentam o Brand Composer. */
+  content?: {
+    headline?: string | null;
+    supportingText?: string | null;
+    ctaText?: string | null;
+    companyName?: string | null;
+  } | null;
 }): Promise<
   | { brand_version_id: string; video_brand: VideoBrandSnapshot }
   | Record<string, never>
 > {
-  const { supabase, companyId, videoFormat, correlationId } = params;
+  const { supabase, companyId, videoFormat, correlationId, content } = params;
   // eslint-disable-next-line no-console
   console.info(
     JSON.stringify({
@@ -288,6 +295,7 @@ async function prepareMarketingVideoBrandColumns(params: {
       company_id: companyId,
       correlation_id: correlationId,
       video_format: videoFormat,
+      has_content: !!(content?.headline || content?.ctaText || content?.companyName),
     }),
   );
   try {
@@ -313,7 +321,9 @@ async function prepareMarketingVideoBrandColumns(params: {
     const snapshot = buildVideoBrandSnapshot({
       brandContext: brandCtx,
       videoFormat,
+      content: content ?? null,
     });
+
     // eslint-disable-next-line no-console
     console.info(
       JSON.stringify({
