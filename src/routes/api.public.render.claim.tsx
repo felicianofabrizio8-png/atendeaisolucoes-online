@@ -85,6 +85,8 @@ export const Route = createFileRoute("/api/public/render/claim")({
             status: string;
             image_sequence: RenderImageSequenceItem[] | null;
             focal_point: FocalPoint | null;
+            video_brand: unknown;
+            brand_version_id: string | null;
           };
           if (job.status !== "processing") {
             console.warn("[render-claim]", { cid, event: "claim_status_invalid", status: job.status });
