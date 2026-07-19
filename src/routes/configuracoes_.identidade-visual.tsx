@@ -171,34 +171,60 @@ function BrandCenterPage() {
     );
   }
 
+  const persistDraft = async (): Promise<string> => {
+    const res = await saveBrandDraft({
+      data: {
+        name: name.trim(),
+        description: description.trim() || null,
+        visualStyle: visualStyle.trim() || null,
+        colors, typography, tokens,
+      },
+    });
+    setDraftVersionId(res.versionId);
+    return res.versionId;
+  };
+
   const handleSaveDraft = async () => {
     setBusy("save"); setErr(null); setOk(null);
     try {
-      const res = await saveBrandDraft({
-        data: {
-          name: name.trim(),
-          description: description.trim() || null,
-          visualStyle: visualStyle.trim() || null,
-          colors, typography, tokens,
-        },
-      });
-      setDraftVersionId(res.versionId);
+      await persistDraft();
       setOk("Rascunho salvo.");
+      toast.success("Rascunho salvo.");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao salvar rascunho");
+      const msg = e instanceof Error ? e.message : "Falha ao salvar rascunho";
+      console.error("[brand-center] saveBrandDraft error", e);
+      setErr(msg);
+      toast.error(msg);
     } finally { setBusy(null); }
   };
 
   const handlePublish = async () => {
-    if (!draftVersionId) { setErr("Salve o rascunho antes de publicar."); return; }
-    if (!confirm("Publicar esta versão? A anterior será arquivada.")) return;
     setBusy("publish"); setErr(null); setOk(null);
     try {
-      await publishBrandVersion({ data: { versionId: draftVersionId } });
-      setOk("Versão publicada.");
+      // Auto-salva o rascunho com o estado atual do formulário antes de publicar.
+      // Isso evita que o botão fique bloqueado por !draftVersionId e garante que
+      // a versão publicada reflita exatamente o que está na tela.
+      const versionId = await persistDraft();
+      console.info("[brand-center] publishing versionId", versionId);
+      const result = await publishBrandVersion({ data: { versionId } });
+      console.info("[brand-center] publish result", result);
+      setOk("Versão publicada com sucesso.");
+      toast.success("Identidade visual publicada.");
       await reload();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao publicar");
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error("[brand-center] publishBrandVersion error", e);
+      // Traduz erros conhecidos da RPC para mensagens claras.
+      const friendly =
+        raw.includes("brand_publish_forbidden") ? "Sem permissão para publicar (é necessário perfil de admin)."
+        : raw.includes("brand_version_not_draft") ? "Esta versão já foi publicada. Edite e salve um novo rascunho."
+        : raw.includes("brand_version_not_found") ? "Rascunho não encontrado. Recarregue a página."
+        : raw.includes("brand_publish_no_company") ? "Sua sessão não está vinculada a uma empresa."
+        : raw.includes("brand_version_cross_tenant") ? "Rascunho pertence a outra empresa."
+        : raw.includes("Unauthorized") ? "Sessão expirada. Faça login novamente."
+        : `Falha ao publicar: ${raw}`;
+      setErr(friendly);
+      toast.error(friendly);
     } finally { setBusy(null); }
   };
 
