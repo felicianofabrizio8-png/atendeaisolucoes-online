@@ -240,12 +240,23 @@ interface EnsureJobArgs {
   role: CampaignRoleFeedStory;
   primaryImage: ImageOwnershipRef;
   primaryFocalPoint: FocalPoint | null;
-  imageSequence: RenderImageSequenceItem[] | null; // null quando N=1 e sem focal
+  imageSequence: RenderImageSequenceItem[] | null;
   audioId: string;
   audioStart: number;
   duration: number;
   existingJobId: string | null;
+  /**
+   * Fase 5.B1 — textos determinísticos para o Brand Composer do worker.
+   * Todos opcionais; ausente = renderiza sem painel/tela final (só watermark).
+   */
+  content?: {
+    headline?: string | null;
+    supportingText?: string | null;
+    ctaText?: string | null;
+    companyName?: string | null;
+  } | null;
 }
+
 
 /**
  * Constrói as colunas de marca (brand_version_id + video_brand) para o
@@ -263,11 +274,18 @@ async function prepareMarketingVideoBrandColumns(params: {
   companyId: string;
   videoFormat: VideoFormat;
   correlationId: string;
+  /** Fase 5.B1 — textos determinísticos que alimentam o Brand Composer. */
+  content?: {
+    headline?: string | null;
+    supportingText?: string | null;
+    ctaText?: string | null;
+    companyName?: string | null;
+  } | null;
 }): Promise<
   | { brand_version_id: string; video_brand: VideoBrandSnapshot }
   | Record<string, never>
 > {
-  const { supabase, companyId, videoFormat, correlationId } = params;
+  const { supabase, companyId, videoFormat, correlationId, content } = params;
   // eslint-disable-next-line no-console
   console.info(
     JSON.stringify({
@@ -277,6 +295,7 @@ async function prepareMarketingVideoBrandColumns(params: {
       company_id: companyId,
       correlation_id: correlationId,
       video_format: videoFormat,
+      has_content: !!(content?.headline || content?.ctaText || content?.companyName),
     }),
   );
   try {
@@ -302,7 +321,9 @@ async function prepareMarketingVideoBrandColumns(params: {
     const snapshot = buildVideoBrandSnapshot({
       brandContext: brandCtx,
       videoFormat,
+      content: content ?? null,
     });
+
     // eslint-disable-next-line no-console
     console.info(
       JSON.stringify({
@@ -378,7 +399,9 @@ async function ensureCampaignJob(
     companyId: args.companyId,
     videoFormat,
     correlationId,
+    content: args.content ?? null,
   });
+
 
   const basePayload = {
     company_id: args.companyId,
@@ -511,6 +534,20 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       .update({ ...commonPatch, campaign_role: "story" })
       .eq("id", storyRow.id);
 
+    // Fase 5.B1 — nome legal da empresa para a tela final de marca.
+    // Falha aqui é tratada como texto ausente; nunca bloqueia o job.
+    let companyName: string | null = null;
+    try {
+      const { data: companyRow } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("id", companyId)
+        .maybeSingle();
+      companyName = companyRow?.name ?? null;
+    } catch {
+      companyName = null;
+    }
+
     // 4) Enfileira 2 jobs (feed + story).
     const feed = await ensureCampaignJob(supabase, {
       companyId,
@@ -523,6 +560,12 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
+      content: {
+        headline: feedRow.title,
+        supportingText: feedRow.body,
+        ctaText: feedRow.cta_text,
+        companyName,
+      },
     });
     const story = await ensureCampaignJob(supabase, {
       companyId,
@@ -535,7 +578,14 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
+      content: {
+        headline: storyRow.title,
+        supportingText: storyRow.body,
+        ctaText: storyRow.cta_text,
+        companyName,
+      },
     });
+
 
     await supabase
       .from("marketing_contents")
@@ -636,13 +686,14 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, ${roleColumnJob}, ${roleColumnVideo}`,
+        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, ${roleColumnJob}, ${roleColumnVideo}`,
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id)
       .eq("campaign_role", data.role)
       .maybeSingle();
     if (error || !row) throw new Error("campaign_role_not_found");
+
     const r = row as unknown as {
       id: string;
       company_id: string;
@@ -651,11 +702,15 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       primary_audio_id: string | null;
       audio_start_second: number | null;
       duration_seconds: number | null;
+      title: string | null;
+      body: string | null;
+      cta_text: string | null;
       feed_render_job_id?: string | null;
       story_render_job_id?: string | null;
       feed_video_id?: string | null;
       story_video_id?: string | null;
     };
+
     if (!r.primary_audio_id) throw new Error("campaign_missing_primary_audio");
     if (!r.primary_image_media_id && !r.primary_image_product_ref) {
       throw new Error("campaign_missing_primary_image");
@@ -688,6 +743,18 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
           product_image_path: r.primary_image_product_ref!.image_path,
         };
 
+    let companyNameRetry: string | null = null;
+    try {
+      const { data: companyRow } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("id", companyId)
+        .maybeSingle();
+      companyNameRetry = companyRow?.name ?? null;
+    } catch {
+      companyNameRetry = null;
+    }
+
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -699,7 +766,14 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       audioStart: Number(r.audio_start_second ?? 0),
       duration: Number(r.duration_seconds ?? 15),
       existingJobId: null,
+      content: {
+        headline: r.title,
+        supportingText: r.body,
+        ctaText: r.cta_text,
+        companyName: companyNameRetry,
+      },
     });
+
 
     const patch =
       data.role === "feed"

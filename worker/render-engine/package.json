@@ -1,23 +1,25 @@
 {
   "name": "atendeai-render-worker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Render Engine worker for Atende Aí — consumes /api/public/render/* bridge and produces MP4 with FFmpeg.",
+  "description": "Render Engine worker for Atende Aí — consumes /api/public/render/* bridge and produces MP4 with FFmpeg + brand identity (Phase 5.B1).",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "vitest": "^4.1.10"
+    "@resvg/resvg-js": "^2.6.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=20.0.0"
