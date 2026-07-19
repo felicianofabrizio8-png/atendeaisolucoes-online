@@ -27,10 +27,22 @@ export interface PublishInput {
    */
   pendingContainerId?: string | null;
   /**
+   * Estado pendente completo (platform_response.pending) persistido em
+   * tentativas anteriores. Fluxos multi-fase (ex.: Facebook Story vídeo)
+   * usam campos além de container_id (video_id, upload_url, upload_completed).
+   */
+  pendingState?: Record<string, unknown> | null;
+  /**
    * Callback opcional para persistir o container_id assim que a Meta o
    * devolve, antes do polling — permite retomada segura entre ticks.
    */
   onContainerCreated?: (containerId: string) => Promise<void>;
+  /**
+   * Persiste um patch arbitrário em platform_response.pending. Usado por
+   * fluxos multi-fase para gravar upload_url / upload_completed / video_id
+   * entre tentativas.
+   */
+  onPendingUpdate?: (patch: Record<string, unknown>) => Promise<void>;
 }
 
 export interface PublishOutcome {
