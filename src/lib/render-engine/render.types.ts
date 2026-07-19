@@ -120,7 +120,7 @@ export interface RenderJobRow {
   image_sequence?: RenderImageSequenceItem[] | null;
   focal_point?: FocalPoint | null;
   /** Fase 5.A — snapshot imutável da identidade visual (null = sem marca aplicada). */
-  video_brand?: unknown | null; // typed as VideoBrandSnapshot via video-brand-snapshot.ts
+  video_brand?: import("./video-brand-snapshot").VideoBrandSnapshot | null;
   brand_version_id?: string | null;
 }
 
