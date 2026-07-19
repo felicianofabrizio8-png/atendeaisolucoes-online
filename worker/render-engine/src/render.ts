@@ -157,51 +157,88 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       images: imageDownloads.length,
     });
 
-    // ---- Fase 5.A: watermark opcional ---------------------------------
+    // ---- Fase 5.A + 5.B1: watermark + brand layers ---------------------
+    // Estratégia:
+    //   1. Se há logo assinada, faz download (watermark clássico).
+    //   2. Se há videoBrand com conteúdo (headline/cta/companyName), gera
+    //      camadas SVG→PNG (painel inferior + tela final) via composer.
+    //   3. Falhas nas camadas nunca fazem o job falhar — o worker segue
+    //      renderizando com o que conseguiu preparar.
     let watermark: WatermarkInput | null = null;
     const brand = claim.videoBrand ?? null;
-    if (
-      brand &&
-      brand.enabled &&
-      brand.watermark?.enabled &&
-      brand.logo &&
-      brand.logoDownloadUrl
-    ) {
-      try {
-        const logoLocal = path.join(workDir, "in-logo");
-        const { bytes: logoBuf, meta: logoMeta } = await downloadSignedUrlWithMeta(
-          brand.logoDownloadUrl,
-          cfg.httpTimeoutMs,
-        );
-        await writeFile(logoLocal, Buffer.from(logoBuf));
+    const hasWatermarkable = !!(brand?.enabled && brand.watermark?.enabled && brand.logo && brand.logoDownloadUrl);
+    const hasContent = !!(brand?.enabled && (brand.content || brand.outro?.enabled));
+
+    if (brand && (hasWatermarkable || hasContent)) {
+      let logoLocal: string | null = null;
+      if (hasWatermarkable) {
+        try {
+          logoLocal = path.join(workDir, "in-logo");
+          const { bytes: logoBuf, meta: logoMeta } = await downloadSignedUrlWithMeta(
+            brand.logoDownloadUrl!,
+            cfg.httpTimeoutMs,
+          );
+          await writeFile(logoLocal, Buffer.from(logoBuf));
+          log.info("brand_watermark_prepared", {
+            ...baseCtx,
+            stage,
+            brand_version_id: brand.brandVersionId,
+            asset_id: brand.logo?.assetId ?? null,
+            position: brand.tokens.logoPosition,
+            max_width_ratio: brand.watermark.maxWidthRatio,
+            opacity: brand.watermark.opacity,
+            logo_bytes: logoMeta.downloadedBytes,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn("brand_watermark_skipped", {
+            ...baseCtx, stage, reason: sanitizeError(msg),
+          });
+          logoLocal = null;
+        }
+      }
+
+      // --- Composer (Fase 5.B1): painel inferior + tela final -----------
+      let bottomPanelPath: string | null = null;
+      let outroCardPath: string | null = null;
+      let outroDurationSeconds = 0;
+      if (hasContent) {
+        try {
+          const layers = await composeBrandLayers({
+            videoBrand: brand,
+            logoLocalPath: logoLocal,
+            logoMimeType: brand.logo?.mimeType ?? null,
+            width: job.width,
+            height: job.height,
+            workDir,
+            jobId: job.id,
+          });
+          bottomPanelPath = layers.bottomPanelPath;
+          outroCardPath = layers.outroCardPath;
+          outroDurationSeconds = layers.outroDurationSeconds;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn("brand_composer_failed", {
+            ...baseCtx, stage, reason: sanitizeError(msg),
+          });
+        }
+      }
+
+      if (logoLocal || bottomPanelPath || outroCardPath) {
         watermark = {
           logoFilePath: logoLocal,
-          position: brand.tokens.logoPosition as WatermarkPosition,
-          maxWidthRatio: brand.watermark.maxWidthRatio,
-          opacity: brand.watermark.opacity,
-          safeMarginRatio: brand.tokens.logoSafeMargin,
+          position: (brand.tokens.logoPosition as WatermarkPosition) ?? "bottom-right",
+          maxWidthRatio: brand.watermark?.maxWidthRatio ?? 0.14,
+          opacity: brand.watermark?.opacity ?? 0.85,
+          safeMarginRatio: brand.tokens.logoSafeMargin ?? 0.04,
+          bottomPanelPath,
+          outroCardPath,
+          outroDurationSeconds,
         };
-        log.info("brand_watermark_prepared", {
-          ...baseCtx,
-          stage,
-          brand_version_id: brand.brandVersionId,
-          asset_id: brand.logo.assetId,
-          position: watermark.position,
-          max_width_ratio: watermark.maxWidthRatio,
-          opacity: watermark.opacity,
-          logo_bytes: logoMeta.downloadedBytes,
-        });
-      } catch (err) {
-        // Falha na logo NÃO deve falhar o job — renderiza sem watermark.
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn("brand_watermark_skipped", {
-          ...baseCtx,
-          stage,
-          reason: sanitizeError(msg),
-        });
-        watermark = null;
       }
     }
+
+
 
     await reportProgress(cfg, job.id, "downloading_sources", 25);
 
