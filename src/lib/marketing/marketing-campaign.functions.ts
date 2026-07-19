@@ -247,6 +247,109 @@ interface EnsureJobArgs {
   existingJobId: string | null;
 }
 
+/**
+ * Constrói as colunas de marca (brand_version_id + video_brand) para o
+ * INSERT em video_render_jobs. Reutiliza os helpers oficiais do Brand Center
+ * (loadBrandContextForCompany + buildVideoBrandSnapshot) — ponto único de
+ * verdade, o mesmo já usado por createRenderJob (Fase 5.A).
+ *
+ * Regras:
+ *  - Empresa sem marca publicada → retorna {} (job segue sem watermark).
+ *  - Falha ao carregar Brand Center → retorna {} e loga (não bloqueia o job).
+ *  - Nunca loga signed URL, sourceUrl, storage_path ou payload completo.
+ */
+async function prepareMarketingVideoBrandColumns(params: {
+  supabase: SB;
+  companyId: string;
+  videoFormat: VideoFormat;
+  correlationId: string;
+}): Promise<
+  | { brand_version_id: string; video_brand: VideoBrandSnapshot }
+  | Record<string, never>
+> {
+  const { supabase, companyId, videoFormat, correlationId } = params;
+  // eslint-disable-next-line no-console
+  console.info(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      level: "info",
+      event: "marketing_render_brand_snapshot_start",
+      company_id: companyId,
+      correlation_id: correlationId,
+      video_format: videoFormat,
+    }),
+  );
+  try {
+    const { loadBrandContextForCompany } = await import(
+      "@/lib/brand-center/brand-consumer.server"
+    );
+    const brandCtx = await loadBrandContextForCompany(supabase, companyId);
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "marketing_render_brand_context_loaded",
+        company_id: companyId,
+        correlation_id: correlationId,
+        is_fallback: brandCtx.isFallback,
+        brand_profile_id: brandCtx.profileId ?? null,
+        brand_version_id: brandCtx.versionId ?? null,
+        status: brandCtx.status,
+        has_logo: Boolean(brandCtx.assets.byType.logo_primary),
+      }),
+    );
+    const snapshot = buildVideoBrandSnapshot({
+      brandContext: brandCtx,
+      videoFormat,
+    });
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "marketing_render_brand_snapshot_built",
+        company_id: companyId,
+        correlation_id: correlationId,
+        has_snapshot: Boolean(snapshot),
+        brand_version_id: snapshot?.brandVersionId ?? null,
+        watermark_enabled: snapshot?.watermark?.enabled ?? false,
+        null_reason: snapshot
+          ? null
+          : brandCtx.isFallback
+            ? "brand_context_is_fallback"
+            : !brandCtx.versionId
+              ? "brand_context_missing_version_id"
+              : "unknown",
+      }),
+    );
+    if (!snapshot) return {};
+    return { brand_version_id: snapshot.brandVersionId, video_brand: snapshot };
+  } catch (err) {
+    const errorName = err instanceof Error ? err.name : "UnknownError";
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const sanitizedMessage = rawMessage
+      .replace(/https?:\/\/\S+/gi, "[url]")
+      .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[jwt]")
+      .slice(0, 240);
+    const errorCode = rawMessage.split(":")[0]?.slice(0, 80) ?? "unknown";
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "marketing_render_brand_snapshot_failed",
+        company_id: companyId,
+        correlation_id: correlationId,
+        error_name: errorName,
+        error_message: sanitizedMessage,
+        error_code: errorCode,
+      }),
+    );
+    return {};
+  }
+}
+
 async function ensureCampaignJob(
   supabase: SB,
   args: EnsureJobArgs,
@@ -262,11 +365,26 @@ async function ensureCampaignJob(
     }
   }
 
+  const videoFormat = CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role];
+  const correlationId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `cid-${Date.now()}`;
+
+  // Snapshot de marca (Fase 5.A) — construído UMA vez por INSERT.
+  // Retry cria um novo job com a versão publicada no momento (regra 5.A).
+  const brandColumns = await prepareMarketingVideoBrandColumns({
+    supabase,
+    companyId: args.companyId,
+    videoFormat,
+    correlationId,
+  });
+
   const basePayload = {
     company_id: args.companyId,
     created_by: args.userId,
     audio_id: args.audioId,
-    video_format: CAMPAIGN_ROLE_TO_VIDEO_FORMAT[args.role],
+    video_format: videoFormat,
     audio_start_second: args.audioStart,
     duration_seconds: args.duration,
     // Campos novos (opcionais)
@@ -276,6 +394,7 @@ async function ensureCampaignJob(
     focal_point: args.primaryFocalPoint as unknown as
       | Database["public"]["Tables"]["video_render_jobs"]["Insert"]["focal_point"]
       | null,
+    ...brandColumns,
   };
   const insertPayload =
     args.primaryImage.source === "marketing_media"
@@ -293,7 +412,7 @@ async function ensureCampaignJob(
 
   const { data: inserted, error } = await supabase
     .from("video_render_jobs")
-    .insert(insertPayload)
+    .insert(insertPayload as never)
     .select("id")
     .single();
   if (error || !inserted) throw new Error(error?.message ?? "job_insert_failed");
