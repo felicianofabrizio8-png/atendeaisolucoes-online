@@ -473,14 +473,14 @@ export type Database = {
           company_id: string
           created_at: string
           created_by: string | null
-          file_size_bytes: number | null
+          file_size_bytes: number
           height: number | null
           id: string
           is_active: boolean
           mime_type: string
           original_filename: string | null
           profile_id: string
-          sha256: string | null
+          sha256: string
           storage_bucket: string
           storage_path: string
           updated_at: string
@@ -491,14 +491,14 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by?: string | null
-          file_size_bytes?: number | null
+          file_size_bytes: number
           height?: number | null
           id?: string
           is_active?: boolean
           mime_type: string
           original_filename?: string | null
           profile_id: string
-          sha256?: string | null
+          sha256: string
           storage_bucket?: string
           storage_path: string
           updated_at?: string
@@ -509,14 +509,14 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by?: string | null
-          file_size_bytes?: number | null
+          file_size_bytes?: number
           height?: number | null
           id?: string
           is_active?: boolean
           mime_type?: string
           original_filename?: string | null
           profile_id?: string
-          sha256?: string | null
+          sha256?: string
           storage_bucket?: string
           storage_path?: string
           updated_at?: string
@@ -604,6 +604,7 @@ export type Database = {
           notes: string | null
           profile_id: string
           published_at: string | null
+          schema_version: number
           status: string
           tokens: Json
           typography: Json
@@ -620,6 +621,7 @@ export type Database = {
           notes?: string | null
           profile_id: string
           published_at?: string | null
+          schema_version?: number
           status?: string
           tokens?: Json
           typography?: Json
@@ -636,6 +638,7 @@ export type Database = {
           notes?: string | null
           profile_id?: string
           published_at?: string | null
+          schema_version?: number
           status?: string
           tokens?: Json
           typography?: Json
@@ -4359,6 +4362,14 @@ export type Database = {
     }
     Functions: {
       ai_agent_maintenance: { Args: never; Returns: undefined }
+      brand_asset_storage_metadata: {
+        Args: { _bucket: string; _path: string }
+        Returns: {
+          exists_flag: boolean
+          mimetype: string
+          size_bytes: number
+        }[]
+      }
       check_storage_quota: {
         Args: { _company_id: string; _new_size: number }
         Returns: boolean

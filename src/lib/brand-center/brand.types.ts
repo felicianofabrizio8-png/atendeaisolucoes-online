@@ -117,6 +117,8 @@ export interface BrandResolverInput {
   version: {
     id: string;
     status: BrandVersionStatus;
+    /** schema_version persistido junto do JSONB. Ausente = legado (=1). */
+    schemaVersion?: number | null;
     colors: unknown;
     typography: unknown;
     tokens: unknown;
