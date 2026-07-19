@@ -216,18 +216,22 @@ export function buildBrandOverlayChain(params: {
 
 
   const opacity = Math.max(0, Math.min(1, wm.opacity));
-  const widthRatio = Math.max(0.05, Math.min(0.4, wm.maxWidthRatio));
+  // Fase 5.B1.1 — logo +40%: aplicamos multiplicador antes do clamp para
+  // preservar o teto de 40% da largura do frame.
+  const widthRatio = Math.max(0.05, Math.min(0.4, wm.maxWidthRatio * 1.4));
   const marginRatio = Math.max(0, Math.min(0.15, wm.safeMarginRatio));
   const logoW = Math.round(width * widthRatio);
   const margin = Math.round(Math.min(width, height) * marginRatio);
+  // Sobe o logo ~40px em posições inferiores para respirar acima do painel.
+  const bottomLift = 40;
 
   const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
     "top-left":      { x: `${margin}`,       y: `${margin}` },
     "top-center":    { x: `(W-w)/2`,         y: `${margin}` },
     "top-right":     { x: `W-w-${margin}`,   y: `${margin}` },
-    "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}` },
-    "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}` },
-    "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}` },
+    "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}-${bottomLift}` },
+    "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}-${bottomLift}` },
+    "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}-${bottomLift}` },
     "center":        { x: `(W-w)/2`,         y: `(H-h)/2` },
   };
   const { x: logoX, y: logoY } = posMap[wm.position];

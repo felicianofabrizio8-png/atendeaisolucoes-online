@@ -240,8 +240,10 @@ export function buildBottomPanelSvg(params: {
   const textInverse = colors.textInverse || "#FFFFFF";
   const accent = colors.accent || primary;
 
-  const headlineSize = Math.round(width * (isVertical ? 0.055 : 0.048));
-  const supportingSize = Math.round(width * 0.032);
+  // Fase 5.B1.1 — refinamento tipográfico: título +20%, subtítulo +15%,
+  // espaçamento entre título e subtítulo ampliado (leading premium).
+  const headlineSize = Math.round(width * (isVertical ? 0.055 : 0.048) * 1.2);
+  const supportingSize = Math.round(width * 0.032 * 1.15);
   const ctaSize = Math.round(width * 0.028);
   const ctaPadX = Math.round(width * 0.035);
   const ctaPadY = Math.round(width * 0.018);
@@ -260,10 +262,11 @@ export function buildBottomPanelSvg(params: {
       return `<tspan x="${padX}" y="${y}">${xmlEscape(line)}</tspan>`;
     })
     .join("");
-  cursorY += headlineLines.length * Math.round(headlineSize * 1.15) + Math.round(headlineSize * 0.2);
+  // Gap ampliado (~0.55x tamanho do headline) entre título e subtítulo.
+  cursorY += headlineLines.length * Math.round(headlineSize * 1.15) + Math.round(headlineSize * 0.55);
 
   const supportingText = supportingLines.length
-    ? `<text x="${padX}" y="${cursorY}" font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.85">${xmlEscape(supportingLines[0])}</text>`
+    ? `<text x="${padX}" y="${cursorY}" font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.9">${xmlEscape(supportingLines[0])}</text>`
     : "";
 
   cursorY += supportingLines.length ? supportingSize + Math.round(width * 0.02) : 0;
@@ -285,11 +288,12 @@ export function buildBottomPanelSvg(params: {
     <defs>
       <linearGradient id="panelGrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${primary}" stop-opacity="0"/>
-        <stop offset="45%" stop-color="${primary}" stop-opacity="0.55"/>
-        <stop offset="100%" stop-color="${primary}" stop-opacity="0.92"/>
+        <stop offset="30%" stop-color="${primary}" stop-opacity="0.55"/>
+        <stop offset="65%" stop-color="${primary}" stop-opacity="0.85"/>
+        <stop offset="100%" stop-color="${primary}" stop-opacity="0.98"/>
       </linearGradient>
     </defs>
-    <rect x="0" y="${panelY - Math.round(panelH * 0.35)}" width="${width}" height="${panelH + Math.round(panelH * 0.35)}" fill="url(#panelGrad)"/>
+    <rect x="0" y="${panelY - Math.round(panelH * 0.5)}" width="${width}" height="${panelH + Math.round(panelH * 0.5)}" fill="url(#panelGrad)"/>
     <text font-family="Playfair Display" font-size="${headlineSize}" font-weight="700" fill="${textInverse}">${headlineTspans}</text>
     ${supportingText}
     ${ctaButton}
