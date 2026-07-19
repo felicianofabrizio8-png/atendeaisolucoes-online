@@ -8,15 +8,29 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const RetrySchema = z.object({ id: z.string().uuid() });
 
+const ListSchema = z
+  .object({
+    scope: z.enum(["operational", "history", "all"]).optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+  })
+  .optional();
+
+// Status considerados operacionais (precisam de acompanhamento).
+// Espelha OPERATIONAL_STATUSES em publication-filters.ts.
+const OPERATIONAL = ["queued", "publishing", "failed", "cancelled"] as const;
+
 export const listMarketingPublications = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((raw) => ListSchema.parse(raw))
+  .handler(async ({ data, context }) => {
     const { supabase } = context as { supabase: any };
-    const r = await supabase
-      .from("marketing_publications")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const scope = data?.scope ?? "operational";
+    const limit = data?.limit ?? (scope === "history" ? 100 : 50);
+    let q = supabase.from("marketing_publications").select("*");
+    if (scope === "operational") q = q.in("status", OPERATIONAL as unknown as string[]);
+    if (scope === "history") q = q.eq("status", "published");
+    q = q.order("created_at", { ascending: false }).limit(limit);
+    const r = await q;
     if (r.error) throw new Error(r.error.message);
     return { publications: r.data ?? [] };
   });
