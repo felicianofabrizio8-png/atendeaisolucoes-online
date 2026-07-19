@@ -12,34 +12,35 @@ const mockChain: any = {};
 const updateCalls: any[] = [];
 let existingRow: { platform_post_id: string | null } | null = null;
 
-vi.mock("@/integrations/supabase/client.server", () => ({
-  supabaseAdmin: {
-    from: (_t: string) => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: existingRow }),
-          }),
-        }),
+vi.mock("@/integrations/supabase/client.server", () => {
+  // Cadeia flexível: cada método encadeável devolve o mesmo proxy, e
+  // maybeSingle() sempre resolve com existingRow (usado tanto para SELECT de
+  // guardas de idempotência quanto para SELECT prévio do merge de pending).
+  const makeChain = () => {
+    const chain: any = {};
+    chain.select = () => chain;
+    chain.eq = () => chain;
+    chain.is = () => chain;
+    chain.in = () => chain;
+    chain.order = () => chain;
+    chain.limit = () => chain;
+    chain.maybeSingle = async () => ({ data: existingRow });
+    return chain;
+  };
+  return {
+    supabaseAdmin: {
+      from: (_t: string) => ({
+        select: () => makeChain(),
+        update: (patch: any) => {
+          updateCalls.push(patch);
+          return makeChain();
+        },
       }),
-      update: (patch: any) => {
-        updateCalls.push(patch);
-        return {
-          eq: () => ({
-            eq: () => ({
-              eq: () => ({
-                select: () => ({
-                  maybeSingle: async () => ({ data: null }),
-                }),
-              }),
-            }),
-          }),
-        };
-      },
-    }),
-    storage: { from: () => mockChain },
-  },
-}));
+      storage: { from: () => mockChain },
+    },
+  };
+});
+
 
 // postGraph mock — spia todas as chamadas para asserções.
 const graphCalls: any[] = [];
