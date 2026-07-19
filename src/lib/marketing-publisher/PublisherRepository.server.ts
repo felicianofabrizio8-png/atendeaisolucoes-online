@@ -122,6 +122,44 @@ export class PublisherRepository {
   }
 
   /**
+   * Watchdog: recupera publicações órfãs presas em 'publishing' há mais
+   * tempo que `staleAfterMs` (default 10min). Devolve-as à fila para nova
+   * tentativa preservando `platform_response.pending`, `platform_post_id`
+   * e `retry_count` — o próprio MetaPublisher decide, no próximo claim,
+   * se retoma via container_id existente ou cria uma nova operação. Não
+   * marca como published, não fabrica IDs Meta, não incrementa retries.
+   *
+   * Só age em linhas que já estão realmente vencidas (locked_at antigo);
+   * publicações em execução legítima permanecem intactas.
+   */
+  async recoverOrphans(staleAfterMs = 10 * 60_000): Promise<number> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    const cutoff = new Date(Date.now() - staleAfterMs).toISOString();
+    const nowIso = new Date().toISOString();
+    const upd = await admin
+      .from("marketing_publications")
+      .update({
+        status: "queued",
+        locked_by: null,
+        locked_at: null,
+        available_at: nowIso,
+      })
+      .eq("status", "publishing")
+      .not("locked_at", "is", null)
+      .lte("locked_at", cutoff)
+      .select("id");
+    const rows = (upd?.data ?? []) as { id: string }[];
+    if (rows.length > 0) {
+      console.warn("[marketing-publisher] orphan_recovered", {
+        count: rows.length,
+        stale_after_ms: staleAfterMs,
+      });
+    }
+    return rows.length;
+  }
+
+
+  /**
    * Claim atômico de UMA publicação vencida.
    * Usa UPDATE com WHERE status='queued' AND available_at<=now() AND locked_by IS NULL,
    * garantido por RETURNING; sem risco de dupla execução no mesmo isolate.
