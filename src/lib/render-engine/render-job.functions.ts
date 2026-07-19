@@ -153,7 +153,7 @@ export const createRenderJob = createServerFn({ method: "POST" })
 
     const { data: inserted, error: insErr } = await supabase
       .from("video_render_jobs")
-      .insert(insertPayload)
+      .insert(insertPayload as never)
       .select("*")
       .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "job_insert_failed");
