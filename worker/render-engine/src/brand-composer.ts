@@ -17,7 +17,7 @@
 //     afetadas — o watermark simples continua funcionando.
 // ============================================================================
 
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
@@ -34,15 +34,20 @@ const FONT_FILES = {
   playfairBold: "PlayfairDisplay-Bold.ttf",
 } as const;
 
-let fontBuffersCache: Buffer[] | null = null;
+let fontFilesCache: string[] | null = null;
 
-async function loadFontBuffers(): Promise<Buffer[]> {
-  if (fontBuffersCache) return fontBuffersCache;
-  const buffers = await Promise.all(
-    Object.values(FONT_FILES).map((f) => readFile(path.join(FONTS_DIR, f))),
-  );
-  fontBuffersCache = buffers;
-  return buffers;
+/**
+ * Resolve os caminhos absolutos das fontes empacotadas em ./assets/fonts.
+ * @resvg/resvg-js aceita `fontFiles` (não `fontBuffers`) — carregamos por path
+ * para manter determinismo e evitar dependência de fontes do sistema.
+ */
+async function loadFontFiles(): Promise<string[]> {
+  if (fontFilesCache) return fontFilesCache;
+  const paths = Object.values(FONT_FILES).map((f) => path.join(FONTS_DIR, f));
+  // Valida existência — falha cedo com mensagem clara se o COPY do Dockerfile falhar.
+  await Promise.all(paths.map((p) => access(p)));
+  fontFilesCache = paths;
+  return paths;
 }
 
 export interface BrandLayerPaths {
@@ -85,9 +90,9 @@ export async function composeBrandLayers(
   const outroEnabled = !!videoBrand.outro?.enabled;
   const outroDurationSeconds = clamp(Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4);
 
-  let fontBuffers: Buffer[] = [];
+  let fontFiles: string[] = [];
   try {
-    fontBuffers = await loadFontBuffers();
+    fontFiles = await loadFontFiles();
   } catch (err) {
     log.warn("brand_composer_fonts_missing", {
       job_id: jobId,
@@ -110,7 +115,7 @@ export async function composeBrandLayers(
         svg,
         width,
         height,
-        fontBuffers,
+        fontFiles,
         outPath: path.join(workDir, "brand-bottom-panel.png"),
       });
     } catch (err) {
@@ -142,7 +147,7 @@ export async function composeBrandLayers(
         svg,
         width,
         height,
-        fontBuffers,
+        fontFiles,
         outPath: path.join(workDir, "brand-outro-card.png"),
       });
     } catch (err) {
@@ -354,15 +359,15 @@ async function rasterizeSvg(params: {
   svg: string;
   width: number;
   height: number;
-  fontBuffers: Buffer[];
+  fontFiles: string[];
   outPath: string;
 }): Promise<string> {
-  const { svg, width, height, fontBuffers, outPath } = params;
+  const { svg, width, height, fontFiles, outPath } = params;
   const resvg = new Resvg(svg, {
     background: "rgba(0,0,0,0)",
     fitTo: { mode: "width", value: width },
     font: {
-      fontBuffers,
+      fontFiles,
       loadSystemFonts: false,
       defaultFontFamily: "Inter",
     },
