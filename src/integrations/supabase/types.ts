@@ -3920,6 +3920,7 @@ export type Database = {
           audio_id: string
           audio_start_second: number
           available_at: string
+          brand_version_id: string | null
           company_id: string
           completed_at: string | null
           created_at: string
@@ -3943,6 +3944,7 @@ export type Database = {
           started_at: string | null
           status: string
           updated_at: string
+          video_brand: Json | null
           video_format: string
         }
         Insert: {
@@ -3950,6 +3952,7 @@ export type Database = {
           audio_id: string
           audio_start_second: number
           available_at?: string
+          brand_version_id?: string | null
           company_id: string
           completed_at?: string | null
           created_at?: string
@@ -3973,6 +3976,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           updated_at?: string
+          video_brand?: Json | null
           video_format: string
         }
         Update: {
@@ -3980,6 +3984,7 @@ export type Database = {
           audio_id?: string
           audio_start_second?: number
           available_at?: string
+          brand_version_id?: string | null
           company_id?: string
           completed_at?: string | null
           created_at?: string
@@ -4003,6 +4008,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           updated_at?: string
+          video_brand?: Json | null
           video_format?: string
         }
         Relationships: [
@@ -4018,6 +4024,13 @@ export type Database = {
             columns: ["audio_id"]
             isOneToOne: false
             referencedRelation: "audio_library"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_render_jobs_brand_version_id_fkey"
+            columns: ["brand_version_id"]
+            isOneToOne: false
+            referencedRelation: "brand_versions"
             referencedColumns: ["id"]
           },
           {
@@ -4389,6 +4402,7 @@ export type Database = {
           audio_id: string
           audio_start_second: number
           available_at: string
+          brand_version_id: string | null
           company_id: string
           completed_at: string | null
           created_at: string
@@ -4412,6 +4426,7 @@ export type Database = {
           started_at: string | null
           status: string
           updated_at: string
+          video_brand: Json | null
           video_format: string
         }[]
         SetofOptions: {
