@@ -47,19 +47,51 @@ export function rateLimit(
 }
 
 // ---------------------------------------------------------------------------
-// Lock técnico (uma execução por chave).
+// Lock técnico (uma execução por chave) — com TTL para evitar vazamento
+// quando a request é abortada antes do finally (ex.: pg_net timeout ~30s
+// enquanto o worker faz polling da Meta). API pública preservada: se o
+// consumidor não informar ttlMs, o default é usado.
 // ---------------------------------------------------------------------------
-const activeLocks = new Set<string>();
+interface LockEntry {
+  acquiredAt: number;
+  expiresAt: number;
+}
+const activeLocks = new Map<string, LockEntry>();
 
-export function tryAcquireLock(key: string): boolean {
-  if (activeLocks.has(key)) return false;
-  activeLocks.add(key);
+// TTL default: 120s. Justificativa: pollContainerReady pode chegar a ~50s,
+// somado a upload/publish; margem conservadora acima do cron minute-based
+// e do timeout do pg_net (~30s) para não bloquear os próximos ticks.
+export const DEFAULT_LOCK_TTL_MS = 120_000;
+
+export function tryAcquireLock(
+  key: string,
+  ttlMs: number = DEFAULT_LOCK_TTL_MS,
+  now: number = Date.now(),
+): boolean {
+  const existing = activeLocks.get(key);
+  if (existing && existing.expiresAt > now) {
+    return false;
+  }
+  if (existing) {
+    // Lock vazado: request anterior morreu antes do finally.
+    console.warn("[hook-security] lock_recovered_expired", {
+      key,
+      age_ms: now - existing.acquiredAt,
+    });
+  }
+  activeLocks.set(key, { acquiredAt: now, expiresAt: now + ttlMs });
   return true;
 }
 
 export function releaseLock(key: string): void {
   activeLocks.delete(key);
 }
+
+/** Uso EXCLUSIVO em testes. */
+export function __resetLocksForTests(): void {
+  activeLocks.clear();
+}
+
 
 // ---------------------------------------------------------------------------
 // Dedupe por chave + TTL em memória.
