@@ -56,6 +56,10 @@ interface VariantImage {
   format: Format;
   url: string; // data: URL ou storage url
   generating?: boolean;
+  /** Aplicando identidade visual (Brand Center Fase 4.1). */
+  composing?: boolean;
+  /** true quando o compositor aplicou identidade sobre a imagem-base. */
+  brandApplied?: boolean;
 }
 
 interface ScoreResult {
