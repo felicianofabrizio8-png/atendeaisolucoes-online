@@ -12,6 +12,31 @@ export interface FocalPoint {
   zoom: number; // 1..3
 }
 
+export type WatermarkPosition =
+  | "top-left"
+  | "top-right"
+  | "top-center"
+  | "bottom-left"
+  | "bottom-right"
+  | "bottom-center"
+  | "center";
+
+/**
+ * Watermark determinístico da identidade visual (Fase 5.A).
+ * O worker recebe a logo baixada em disco + posição/opacidade calculadas
+ * server-side. Preserva alpha channel do PNG e usa scale proporcional.
+ */
+export interface WatermarkInput {
+  logoFilePath: string;
+  position: WatermarkPosition;
+  /** Fração do frame para a largura da logo. Ex.: 0.14 = 14% da largura. */
+  maxWidthRatio: number;
+  /** 0..1. Multiplicado pelo alpha original. */
+  opacity: number;
+  /** Fração da menor dimensão do frame para margem de segurança. Ex.: 0.04 = 4%. */
+  safeMarginRatio: number;
+}
+
 export interface FfmpegRenderInput {
   imageFilePath: string;
   audioFilePath: string;
@@ -23,6 +48,8 @@ export interface FfmpegRenderInput {
   timeoutMs: number;
   /** Opcional — quando ausente, aplica crop central (comportamento legado). */
   focalPoint?: FocalPoint | null;
+  /** Fase 5.A — quando ausente, renderiza sem watermark. */
+  watermark?: WatermarkInput | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   /** Observabilidade — quando definido, persiste ffmpeg.stderr.log/stdout.log
