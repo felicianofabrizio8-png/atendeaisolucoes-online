@@ -92,26 +92,93 @@ export const createRenderJob = createServerFn({ method: "POST" })
 
     // Snapshot de identidade visual (Fase 5.A). Import dinâmico para manter
     // `.server.ts` fora do bundle client — proteção do TanStack Start.
+    // INSTRUMENTAÇÃO: logs estruturados para diagnóstico do bloqueio de watermark.
+    // render_job_id ainda não existe (job não foi inserido) → usamos correlation_id.
     let videoBrandSnapshot: ReturnType<typeof buildVideoBrandSnapshot> = null;
+    const brandCid =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `cid-${Date.now()}`;
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "render_job_brand_snapshot_start",
+        company_id: companyId,
+        correlation_id: brandCid,
+        video_format: data.video_format,
+      }),
+    );
     try {
       const { loadBrandContextForCompany } = await import(
         "@/lib/brand-center/brand-consumer.server"
       );
       const brandCtx = await loadBrandContextForCompany(supabase, companyId);
+      // eslint-disable-next-line no-console
+      console.info(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "render_job_brand_context_loaded",
+          company_id: companyId,
+          correlation_id: brandCid,
+          is_fallback: brandCtx.isFallback,
+          brand_profile_id: brandCtx.profileId ?? null,
+          brand_version_id: brandCtx.versionId ?? null,
+          status: brandCtx.status,
+          has_logo: Boolean(brandCtx.assets.byType.logo_primary),
+          assets_count: brandCtx.assets.all.length,
+        }),
+      );
       videoBrandSnapshot = buildVideoBrandSnapshot({
         brandContext: brandCtx,
         videoFormat: data.video_format,
       });
-    } catch (err) {
-      // Falha ao carregar marca NUNCA derruba a criação do job — cai em fallback.
       // eslint-disable-next-line no-console
-      console.warn(
+      console.info(
         JSON.stringify({
           ts: new Date().toISOString(),
-          level: "warn",
+          level: "info",
+          event: "render_job_brand_snapshot_built",
+          company_id: companyId,
+          correlation_id: brandCid,
+          has_snapshot: Boolean(videoBrandSnapshot),
+          brand_version_id: videoBrandSnapshot?.brandVersionId ?? null,
+          enabled: videoBrandSnapshot?.enabled ?? false,
+          has_logo: Boolean(videoBrandSnapshot?.logo),
+          watermark_enabled: videoBrandSnapshot?.watermark?.enabled ?? false,
+          // Motivo de null (visível quando has_snapshot=false).
+          null_reason: videoBrandSnapshot
+            ? null
+            : brandCtx.isFallback
+              ? "brand_context_is_fallback"
+              : !brandCtx.versionId
+                ? "brand_context_missing_version_id"
+                : "unknown",
+        }),
+      );
+    } catch (err) {
+      // Falha ao carregar marca NUNCA derruba a criação do job — cai em fallback.
+      const errorName = err instanceof Error ? err.name : "UnknownError";
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      // Sanitiza: remove URLs, tokens e paths de storage do message.
+      const sanitizedMessage = rawMessage
+        .replace(/https?:\/\/\S+/gi, "[url]")
+        .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[jwt]")
+        .slice(0, 240);
+      const errorCode = rawMessage.split(":")[0]?.slice(0, 80) ?? "unknown";
+      // eslint-disable-next-line no-console
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
           event: "render_job_brand_snapshot_failed",
           company_id: companyId,
-          error_code: err instanceof Error ? err.message.split(":")[0] : "unknown",
+          correlation_id: brandCid,
+          error_name: errorName,
+          error_message: sanitizedMessage,
+          error_code: errorCode,
         }),
       );
       videoBrandSnapshot = null;
