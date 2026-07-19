@@ -349,11 +349,21 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
-  if (watermark) {
-    args.push("-i", watermark.logoFilePath);
-  }
 
-  // filter_complex: aplica scale+crop (com focal) em cada input, depois xfade em cadeia
+  // Brand layer inputs vêm depois de N imagens + 1 áudio.
+  const brandInputsStart = n + 1;
+  const brandChain = watermark
+    ? buildBrandOverlayChain({
+        width, height,
+        baseVf: "", // não usado quando baseInputLabel presente
+        wm: watermark,
+        durationSeconds,
+        firstBrandInputIdx: brandInputsStart,
+        baseInputLabel: "vxfaded",
+      })
+    : null;
+  if (brandChain) args.push(...brandChain.inputArgs);
+
   const filterParts: string[] = [];
   for (let i = 0; i < n; i++) {
     const vf = focalPoints[i]
@@ -363,45 +373,23 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
         `setsar=1,setparams=range=tv,format=yuv420p`;
     filterParts.push(`[${i}:v]${vf},fps=30[v${i}]`);
   }
-  // Chain xfade: v0+v1→vx1; vx1+v2→vx2; ...
-  // Se houver watermark, o último label do xfade será "vxfaded"; caso
-  // contrário, será "vout" para preservar o mapeamento existente.
-  const finalXfadeLabel = watermark ? "vxfaded" : "vout";
+  // xfade chain: rótulo final é "vxfaded" quando há watermark (encadeado
+  // para o brand chain), caso contrário "vout".
+  const finalXfadeLabel = brandChain ? "vxfaded" : "vout";
   let lastLabel = "v0";
   for (let i = 1; i < n; i++) {
     const offset = perSlot * i - xfadeDuration;
     const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
-      `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(
-        3,
-      )}:offset=${offset.toFixed(3)}[${nextLabel}]`,
+      `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(3)}:` +
+        `offset=${offset.toFixed(3)}[${nextLabel}]`,
     );
     lastLabel = nextLabel;
   }
 
-  if (watermark) {
-    const opacity = Math.max(0, Math.min(1, watermark.opacity));
-    const widthRatio = Math.max(0.05, Math.min(0.4, watermark.maxWidthRatio));
-    const marginRatio = Math.max(0, Math.min(0.15, watermark.safeMarginRatio));
-    const logoW = Math.round(width * widthRatio);
-    const margin = Math.round(Math.min(width, height) * marginRatio);
-    const posMap: Record<WatermarkPosition, { x: string; y: string }> = {
-      "top-left":      { x: `${margin}`,       y: `${margin}` },
-      "top-center":    { x: `(W-w)/2`,         y: `${margin}` },
-      "top-right":     { x: `W-w-${margin}`,   y: `${margin}` },
-      "bottom-left":   { x: `${margin}`,       y: `H-h-${margin}` },
-      "bottom-center": { x: `(W-w)/2`,         y: `H-h-${margin}` },
-      "bottom-right":  { x: `W-w-${margin}`,   y: `H-h-${margin}` },
-      "center":        { x: `(W-w)/2`,         y: `(H-h)/2` },
-    };
-    const { x, y } = posMap[watermark.position];
-    // O índice do input da logo é `n + 1` (n imagens + 1 áudio).
-    const logoInputIdx = n + 1;
-    filterParts.push(
-      `[${logoInputIdx}:v]format=rgba,scale=${logoW}:-1:flags=lanczos,` +
-        `colorchannelmixer=aa=${opacity.toFixed(3)}[logo]`,
-    );
-    filterParts.push(`[vxfaded][logo]overlay=${x}:${y}:format=auto[vout]`);
+  if (brandChain) {
+    // brand chain já inclui [vxfaded]→...→[vout]
+    filterParts.push(brandChain.filterComplex);
   }
 
   const filterComplex = filterParts.join(";");
@@ -421,9 +409,9 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     "-movflags", "+faststart",
     "-max_muxing_queue_size", "1024",
     "-t", String(durationSeconds),
-
     outputFilePath,
   );
+
 
   await runFfmpeg({
     args,
