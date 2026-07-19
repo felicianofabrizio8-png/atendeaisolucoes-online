@@ -385,17 +385,8 @@ export class MetaPublisher {
     //   assegura idempotência caso a publicação tenha ocorrido por outro caminho.
     if (input.format === "story") {
       if (!media) return this.fail("no_media", "Story exige mídia.", false);
-      if (media.type !== "image") {
-        console.warn("[marketing-publisher] fb_story_video_unsupported", {
-          company_id: input.companyId,
-          content_id: input.contentId,
-          note: "Publique manualmente ou aguarde suporte a video_stories.",
-        });
-        return this.fail(
-          "unsupported_story_media",
-          "Stories do Facebook para vídeo ainda não são publicados automaticamente. Use a foto ou publique manualmente. Reprocessar não fará nova tentativa.",
-          false,
-        );
+      if (media.type === "video") {
+        return await this.publishFacebookStoryVideo(input, media, pageId, pageAccessToken);
       }
       // 1) upload foto sem publicar
       const upBody = new URLSearchParams();
