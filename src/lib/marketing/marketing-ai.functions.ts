@@ -870,7 +870,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       reel_format: bundle.reel.script.format,
       // Brand Center snapshot SEM signed URL — sanitizado no adapter.
       brand: sanitizeBrandContextForPersistence(marketingBrand),
-    };
+    } as unknown as Database["public"]["Tables"]["marketing_contents"]["Insert"]["ai_prompt"];
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
         company_id: companyId,
