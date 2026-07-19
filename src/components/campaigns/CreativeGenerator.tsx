@@ -10,6 +10,7 @@ import {
   Heart, Tag, Clock, Check, Award, RefreshCw, Download, Package, Search, X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { applyBrandCompositionToDataUrl } from "@/lib/marketing/apply-brand-composition.client";
 
 interface ProductRow {
   id: string;
@@ -55,6 +56,10 @@ interface VariantImage {
   format: Format;
   url: string; // data: URL ou storage url
   generating?: boolean;
+  /** Aplicando identidade visual (Brand Center Fase 4.1). */
+  composing?: boolean;
+  /** true quando o compositor aplicou identidade sobre a imagem-base. */
+  brandApplied?: boolean;
 }
 
 interface ScoreResult {
@@ -371,7 +376,31 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
         return;
       }
       const url = `data:image/png;base64,${data.b64_json}`;
-      setImages((p) => ({ ...p, [key]: { format, url, generating: false } }));
+      // Fase 4.1 — aplica identidade visual antes de exibir/salvar.
+      setImages((p) => ({ ...p, [key]: { format, url, generating: false, composing: true } }));
+      let finalUrl = url;
+      let brandApplied = false;
+      try {
+        const v = variants?.[variant];
+        const composed = await applyBrandCompositionToDataUrl({
+          dataUrl: url,
+          format,
+          content: {
+            headline: v?.headline ?? config.ad_headline ?? null,
+            subheadline: v?.description ?? config.ad_subtitle ?? null,
+            price: config.promo_price || config.price || null,
+            callToAction: v?.cta ?? config.cta_text ?? null,
+          },
+        });
+        finalUrl = composed.dataUrl;
+        brandApplied = composed.applied;
+        if (!composed.applied && composed.fallbackReason && composed.fallbackReason !== "format_unsupported" && composed.fallbackReason !== "no_brand_published") {
+          toast.warning("Identidade visual não pôde ser aplicada — usando imagem original.");
+        }
+      } catch {
+        // Fallback silencioso: mantém a imagem-base.
+      }
+      setImages((p) => ({ ...p, [key]: { format, url: finalUrl, generating: false, composing: false, brandApplied } }));
     } catch (e: any) {
       toast.error(`Imagem ${FORMAT_META[format].label}: ${e.message}`);
       setImages((p) => { const n = { ...p }; delete n[key]; return n; });
@@ -385,7 +414,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const v = variants[variant];
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes de salvar."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
 
     // upload base64 -> storage
     try {
@@ -428,7 +457,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     const v = variants[variant];
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
     setScoring(true);
     try {
       const res = await fetch("/api/ai/creative-generator", {
@@ -447,7 +476,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
     if (!v) return;
     const key = `${variant}-${activeFormat}`;
     const img = images[key];
-    if (!img?.url) { toast.error("Gere a imagem antes."); return; }
+    if (!img?.url || img.generating || img.composing) { toast.error("Aguarde a geração terminar."); return; }
     if (config.preserve_product && !confirmed[key]) {
       toast.error("Confirme que o produto gerado corresponde ao produto original antes de usar.");
       return;
@@ -822,6 +851,7 @@ export function CreativeGenerator({ companyId, campaignId, onUseInCampaign }: Pr
                           const key = `${k}-${activeFormat}`;
                           const img = images[key];
                           if (img?.generating) return <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /> Gerando imagem…</div>;
+                          if (img?.composing) return <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /> Aplicando identidade visual…</div>;
                           if (img?.url) return <img src={img.url} alt="" className="max-h-[360px] rounded-md object-contain" />;
                           return (
                             <button onClick={() => generateImage(k, activeFormat)}
