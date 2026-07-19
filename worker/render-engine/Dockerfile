@@ -17,6 +17,10 @@ ENV NODE_ENV=production
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 COPY --from=builder /app/dist ./dist
+# Fase 5.B1 — Fontes OFL empacotadas (Inter + Playfair Display) para o Brand Composer.
+# Nunca baixadas em runtime; caminho estável usado por brand-composer.ts.
+COPY assets ./assets
+
 
 # Não roda como root
 RUN useradd -m -u 10001 worker && mkdir -p /tmp/render && chown -R worker:worker /tmp/render
