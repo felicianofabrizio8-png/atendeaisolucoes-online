@@ -217,12 +217,13 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     height,
     outputFilePath,
     timeoutMs,
+    watermark,
   } = input;
 
   const n = imageFilePaths.length;
   if (n === 0) throw new Error("slideshow_no_images");
   if (n === 1) {
-    // Fallback: 1 imagem → pipeline single (com focal opcional).
+    // Fallback: 1 imagem → pipeline single (com focal e watermark opcionais).
     await renderStaticImageVideo({
       imageFilePath: imageFilePaths[0],
       audioFilePath,
@@ -233,6 +234,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
       outputFilePath,
       timeoutMs,
       focalPoint: focalPoints[0] ?? null,
+      watermark: watermark ?? null,
       jobId: input.jobId,
       debugLogDir: input.debugLogDir,
     });
