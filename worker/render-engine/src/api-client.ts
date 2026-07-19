@@ -19,6 +19,51 @@ export interface SequenceItemDto {
   durationHint?: number;
 }
 
+export type LogoPositionDto =
+  | "top-left"
+  | "top-right"
+  | "top-center"
+  | "bottom-left"
+  | "bottom-right"
+  | "bottom-center"
+  | "center";
+
+export interface VideoBrandDto {
+  schemaVersion: 1;
+  brandVersionId: string;
+  enabled: boolean;
+  logo: {
+    assetId: string;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+  } | null;
+  /** Assinada pela bridge a cada claim. TTL curto. Nunca persistir. */
+  logoDownloadUrl?: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    text: string;
+    textInverse: string;
+    background: string;
+  };
+  tokens: {
+    logoPosition: LogoPositionDto;
+    logoSafeMargin: number;
+    overlayOpacity: number;
+    gradientStyle: "none" | "subtle" | "vibrant";
+  };
+  watermark: { enabled: boolean; opacity: number; maxWidthRatio: number };
+  intro: { enabled: false; durationSeconds: number };
+  outro: {
+    enabled: false;
+    durationSeconds: number;
+    headline: string | null;
+    callToAction: string | null;
+  };
+}
+
 export interface ClaimedJob {
   job: {
     id: string;
@@ -38,6 +83,8 @@ export interface ClaimedJob {
     focalPoint?: FocalPointDto | null;
     imageSequence?: SequenceItemDto[] | null;
   };
+  /** Fase 5.A — contrato opcional. Ausente = renderiza sem marca. */
+  videoBrand?: VideoBrandDto | null;
   output: { videoId: string; uploadUrl: string; filePath: string };
   expiresAt: string;
 }
