@@ -364,14 +364,24 @@ export class MetaPublisher {
     }
     const { pageId, pageAccessToken } = pageCtx;
 
-    // Story: exige mídia; publica via photo_stories (para foto). Vídeo em story
-    // não suportado nesta fase — reportar erro amigável.
+    // Story do Facebook:
+    // - Foto: fluxo /photos (unpublished) + /photo_stories, suportado.
+    // - Vídeo: requer o fluxo resumable /video_stories (upload_phase=start/finish
+    //   com binário). Não implementado nesta fase — a guarda evita chamada mal
+    //   formada à Meta. Erro NÃO-RETRYABLE para não gastar tentativas nem
+    //   duplicar via cron. A reconciliação por platform_post_id em publish()
+    //   assegura idempotência caso a publicação tenha ocorrido por outro caminho.
     if (input.format === "story") {
       if (!media) return this.fail("no_media", "Story exige mídia.", false);
       if (media.type !== "image") {
+        console.warn("[marketing-publisher] fb_story_video_unsupported", {
+          company_id: input.companyId,
+          content_id: input.contentId,
+          note: "Publique manualmente ou aguarde suporte a video_stories.",
+        });
         return this.fail(
           "unsupported_story_media",
-          "Stories do Facebook nesta fase aceitam apenas foto.",
+          "Stories do Facebook para vídeo ainda não são publicados automaticamente. Use a foto ou publique manualmente. Reprocessar não fará nova tentativa.",
           false,
         );
       }
