@@ -12,7 +12,6 @@ import { MarketingSchedule } from "@/components/marketing/MarketingSchedule";
 import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 import { MarketingPublisherDashboard } from "@/components/marketing/MarketingPublisherDashboard";
 import { AudioLibrary } from "@/components/marketing/AudioLibrary";
-import { VideoRenderPanel } from "@/components/marketing/video-render/VideoRenderPanel";
 import { VideoLibraryGrid } from "@/components/marketing/video-render/VideoLibraryGrid";
 
 export const Route = createFileRoute("/marketing")({
