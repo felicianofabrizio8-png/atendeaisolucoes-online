@@ -282,14 +282,16 @@ export function buildBrandOverlayChain(params: {
     prevLabel = n;
   }
 
-  if (prevLabel === "vbase") {
-    parts.push(`[vbase]null[vout]`);
+  if (prevLabel === (baseInputLabel ?? "vbase") && step === 0) {
+    // Nenhuma layer aplicada — cadeia degenerada. Passa base direto para vout.
+    parts.push(`[${prevLabel}]null[vout]`);
   } else {
     parts[parts.length - 1] = parts[parts.length - 1].replace(
       new RegExp(`\\[${prevLabel}\\]$`),
       "[vout]",
     );
   }
+
 
   return { filterComplex: parts.join(";"), videoOutLabel: "vout", inputArgs };
 }
