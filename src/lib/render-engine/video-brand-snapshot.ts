@@ -83,39 +83,34 @@ const WATERMARK_WIDTH_DEFAULT_REELS = 0.14;
 const WATERMARK_WIDTH_DEFAULT_FEED = 0.16;
 
 /**
- * Constrói o snapshot a partir do contexto de marca do Marketing IA.
- * Retorna `null` quando a empresa não tem versão publicada — o job será
+ * Constrói o snapshot a partir do BrandContext bruto do Brand Center.
+ * Retorna `null` quando a empresa não tem versão publicada — o job é
  * criado sem `video_brand` e renderizado exatamente como antes.
  *
- * Pura: sem IO. `logoAssetId` deve vir do BrandContext original (é o
- * `assets.byType.logo_primary?.id`, que o adapter descarta ao criar
- * `MarketingBrandContext` — por isso este builder recebe o id à parte).
+ * Pura: sem IO.
  */
 export function buildVideoBrandSnapshot(params: {
-  brandContext: MarketingBrandContext;
-  brandVersionId: string | null;
-  logoAssetId: string | null;
+  brandContext: BrandContext;
   videoFormat: "story" | "reels" | "feed_square" | "feed_4_5";
 }): VideoBrandSnapshot | null {
-  const { brandContext, brandVersionId, logoAssetId, videoFormat } = params;
+  const { brandContext, videoFormat } = params;
 
-  // Sem versão publicada → sem snapshot (fallback: renderiza como antes).
-  if (brandContext.isFallback || !brandVersionId) return null;
+  if (brandContext.isFallback || !brandContext.versionId) return null;
 
   const isVertical = videoFormat === "story" || videoFormat === "reels";
   const defaultWidthRatio = isVertical
     ? WATERMARK_WIDTH_DEFAULT_REELS
     : WATERMARK_WIDTH_DEFAULT_FEED;
 
-  const logo: VideoBrandLogoSnapshot | null =
-    brandContext.logo && logoAssetId
-      ? {
-          assetId: logoAssetId,
-          mimeType: brandContext.logo.mimeType,
-          width: brandContext.logo.width,
-          height: brandContext.logo.height,
-        }
-      : null;
+  const logoAsset = brandContext.assets.byType.logo_primary;
+  const logo: VideoBrandLogoSnapshot | null = logoAsset
+    ? {
+        assetId: logoAsset.id,
+        mimeType: logoAsset.mimeType,
+        width: logoAsset.width,
+        height: logoAsset.height,
+      }
+    : null;
 
   const overlayOpacityClamped = clamp(
     brandContext.tokens.overlayOpacity,
@@ -125,8 +120,8 @@ export function buildVideoBrandSnapshot(params: {
 
   return {
     schemaVersion: VIDEO_BRAND_SCHEMA_VERSION,
-    brandVersionId,
-    enabled: !!logo, // Sem logo, watermark desabilita — cores ficam para 5.B.
+    brandVersionId: brandContext.versionId,
+    enabled: !!logo, // Sem logo, watermark fica off — cores/intro/outro ficam para 5.B.
     logo,
     colors: {
       primary: brandContext.colors.primary,
