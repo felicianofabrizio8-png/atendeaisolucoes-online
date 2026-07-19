@@ -28,8 +28,17 @@ export type LogoPositionDto =
   | "bottom-center"
   | "center";
 
+/** Conteúdo textual determinístico (schemaVersion:2). Todos os campos opcionais. */
+export interface VideoBrandContentDto {
+  headline: string | null;
+  supportingText: string | null;
+  ctaText: string | null;
+  companyName: string | null;
+}
+
 export interface VideoBrandDto {
-  schemaVersion: 1;
+  /** 1 = Fase 5.A (só watermark). 2 = Fase 5.B1 (com content). */
+  schemaVersion: 1 | 2;
   brandVersionId: string;
   enabled: boolean;
   logo: {
@@ -55,13 +64,15 @@ export interface VideoBrandDto {
     gradientStyle: "none" | "subtle" | "vibrant";
   };
   watermark: { enabled: boolean; opacity: number; maxWidthRatio: number };
-  intro: { enabled: false; durationSeconds: number };
+  intro: { enabled: boolean; durationSeconds: number };
   outro: {
-    enabled: false;
+    enabled: boolean;
     durationSeconds: number;
     headline: string | null;
     callToAction: string | null;
   };
+  /** Somente v2. Ausente em snapshots v1 legados. */
+  content?: VideoBrandContentDto;
 }
 
 export interface ClaimedJob {
@@ -79,11 +90,10 @@ export interface ClaimedJob {
   source: {
     imageDownloadUrl: string;
     audioDownloadUrl: string;
-    // Fase C.2 — opcionais e retrocompatíveis.
     focalPoint?: FocalPointDto | null;
     imageSequence?: SequenceItemDto[] | null;
   };
-  /** Fase 5.A — contrato opcional. Ausente = renderiza sem marca. */
+  /** Fase 5.A/5.B1 — contrato opcional. Ausente = renderiza sem marca. */
   videoBrand?: VideoBrandDto | null;
   output: { videoId: string; uploadUrl: string; filePath: string };
   expiresAt: string;
@@ -240,10 +250,6 @@ export interface SignedDownloadMeta {
   finalPathname: string;
 }
 
-/**
- * Download com telemetria completa. Nunca loga a URL/token: retorna apenas
- * metadados sanitizados que o chamador pode registrar.
- */
 export async function downloadSignedUrlWithMeta(
   url: string,
   timeoutMs: number,
