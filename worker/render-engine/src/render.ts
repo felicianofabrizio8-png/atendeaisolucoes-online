@@ -202,8 +202,28 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let bottomPanelPath: string | null = null;
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
+      log.info("brand_composition_gate", {
+        ...baseCtx, stage,
+        has_brand: !!brand,
+        brand_enabled: !!brand?.enabled,
+        schema_version: brand?.schemaVersion ?? null,
+        has_watermarkable: hasWatermarkable,
+        has_content: hasContent,
+        content_present: !!brand?.content,
+        outro_enabled: !!brand?.outro?.enabled,
+        headline_present: !!brand?.content?.headline,
+        cta_present: !!brand?.content?.ctaText,
+        company_name_present: !!brand?.content?.companyName,
+      });
       if (hasContent) {
         try {
+          log.info("brand_composition_started", {
+            ...baseCtx, stage,
+            brand_version_id: brand.brandVersionId,
+            has_logo_local: !!logoLocal,
+            width: job.width,
+            height: job.height,
+          });
           const layers = await composeBrandLayers({
             videoBrand: brand,
             logoLocalPath: logoLocal,
@@ -216,6 +236,20 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath = layers.bottomPanelPath;
           outroCardPath = layers.outroCardPath;
           outroDurationSeconds = layers.outroDurationSeconds;
+          const layersCount =
+            (bottomPanelPath ? 1 : 0) + (outroCardPath ? 1 : 0);
+          log.info("brand_layers_count", {
+            ...baseCtx, stage,
+            layers_count: layersCount,
+            has_bottom_panel: !!bottomPanelPath,
+            has_outro_card: !!outroCardPath,
+            outro_duration_seconds: outroDurationSeconds,
+          });
+          log.info("brand_composition_finished", {
+            ...baseCtx, stage,
+            brand_version_id: brand.brandVersionId,
+            layers_count: layersCount,
+          });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           log.warn("brand_composer_failed", {
