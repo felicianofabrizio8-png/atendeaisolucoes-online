@@ -199,6 +199,8 @@ export interface SlideshowInput {
   height: number;
   outputFilePath: string;
   timeoutMs: number;
+  /** Fase 5.A — quando ausente, renderiza sem watermark. */
+  watermark?: WatermarkInput | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   debugLogDir?: string;
