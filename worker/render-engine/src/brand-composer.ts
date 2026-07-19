@@ -90,9 +90,9 @@ export async function composeBrandLayers(
   const outroEnabled = !!videoBrand.outro?.enabled;
   const outroDurationSeconds = clamp(Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4);
 
-  let fontBuffers: Buffer[] = [];
+  let fontFiles: string[] = [];
   try {
-    fontBuffers = await loadFontBuffers();
+    fontFiles = await loadFontFiles();
   } catch (err) {
     log.warn("brand_composer_fonts_missing", {
       job_id: jobId,
