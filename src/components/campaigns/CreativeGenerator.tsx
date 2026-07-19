@@ -10,7 +10,7 @@ import {
   Heart, Tag, Clock, Check, Award, RefreshCw, Download, Package, Search, X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { applyBrandCompositionToDataUrl } from "@/lib/marketing/apply-brand-composition.client";
+
 
 interface ProductRow {
   id: string;
