@@ -24,6 +24,8 @@ import { Resvg } from "@resvg/resvg-js";
 import { log } from "./logger.js";
 import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
+import { getSceneById, type VideoLayout } from "./scenes.js";
+import { buildSceneOverlaySvg } from "./scene-composer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
