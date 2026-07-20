@@ -132,7 +132,7 @@ export function CampaignVideoEditor({
         headline: headline.trim(),
         subheadline: subheadline.trim() ? subheadline.trim() : null,
         cta: cta.trim() ? cta.trim() : null,
-        layout,
+        layout: layout as unknown as Record<string, unknown>,
         template: layout.template,
       });
       toast.success("Aprovado! Iniciando renderização…");
