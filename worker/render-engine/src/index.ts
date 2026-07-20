@@ -3,9 +3,12 @@ import { log, setLogLevel } from "./logger.js";
 import { claimJob, RenderApiError } from "./api-client.js";
 import { processClaim } from "./render.js";
 import { getActiveJobId } from "./runtime-state.js";
+import { SCENES } from "./scenes.js";
 
-const BUILD_SIGNATURE = "brand-phase-5b1-v1";
-const BUILD_TIMESTAMP = "2026-07-19";
+
+const BUILD_SIGNATURE = "render-scene-template-build-001";
+const BUILD_TIMESTAMP = "2026-07-20";
+
 
 async function main() {
   const cfg = loadConfig();
@@ -17,10 +20,14 @@ async function main() {
     build_signature: BUILD_SIGNATURE,
     build_date: BUILD_TIMESTAMP,
     brand_composition_enabled: true,
+    scene_engine_enabled: true,
+    scene_composer_version: "scene-v1",
+    available_scene_ids: Object.keys(SCENES),
     entrypoint: "dist/index.js",
     node_version: process.version,
     pid: process.pid,
   });
+
 
   log.info("worker_started", {
     worker_id: cfg.workerId,

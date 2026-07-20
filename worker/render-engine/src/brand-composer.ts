@@ -135,7 +135,30 @@ export async function composeBrandLayers(
     const templateId = (videoBrand.content as { template?: string | null } | undefined)?.template ?? null;
     const overlayLayout = (videoBrand.content as { overlayLayout?: unknown } | undefined)?.overlayLayout ?? null;
     const scene = getSceneById(templateId);
-    const useScene = !!(scene && overlayLayout && typeof overlayLayout === "object");
+    const overlayLayoutIsObject = !!overlayLayout && typeof overlayLayout === "object";
+    const overlayLayoutKeys = overlayLayoutIsObject
+      ? Object.keys(overlayLayout as Record<string, unknown>).slice(0, 20)
+      : [];
+    const useScene = !!(scene && overlayLayoutIsObject);
+    const fallbackReason = useScene
+      ? null
+      : !templateId
+        ? "missing_template"
+        : !scene
+          ? "unknown_template"
+          : !overlayLayoutIsObject
+            ? "missing_overlay_layout"
+            : "invalid_snapshot";
+
+    log.info("scene_render_selected", {
+      job_id: jobId,
+      template: templateId,
+      scene_id: scene?.id ?? null,
+      has_overlay_layout: overlayLayoutIsObject,
+      overlay_layout_keys: overlayLayoutKeys,
+      render_mode: useScene ? "scene" : "legacy",
+      fallback_reason: fallbackReason,
+    });
 
     if (useScene && scene) {
       try {
@@ -161,15 +184,24 @@ export async function composeBrandLayers(
           job_id: jobId,
           template: scene.id,
           layer_count: scene.layers.length,
+          render_mode: "scene",
         });
       } catch (err) {
-        log.warn("brand_composer_scene_failed_fallback_legacy", {
+        log.warn("scene_render_fallback", {
           job_id: jobId,
           template: scene.id,
+          reason: "rasterize_failed",
           message: (err instanceof Error ? err.message : String(err)).slice(0, 200),
         });
       }
+    } else {
+      log.warn("scene_render_fallback", {
+        job_id: jobId,
+        template: templateId,
+        reason: fallbackReason,
+      });
     }
+
 
     if (!bottomPanelPath) {
       try {

@@ -193,6 +193,26 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
     const hasWatermarkable = !!(brand?.enabled && brand.watermark?.enabled && brand.logo && brand.logoDownloadUrl);
     const hasContent = !!(brand?.enabled && (brand.content || brand.outro?.enabled));
 
+    // Diagnóstico de template/overlay do snapshot recebido no claim.
+    {
+      const c = brand?.content as
+        | { template?: string | null; overlayLayout?: unknown }
+        | undefined;
+      const olo = c?.overlayLayout;
+      const oloIsObject = !!olo && typeof olo === "object";
+      log.info("claim_snapshot_inspect", {
+        ...baseCtx, stage,
+        has_video_brand: !!brand,
+        schema_version: brand?.schemaVersion ?? null,
+        template: c?.template ?? null,
+        has_overlay_layout: oloIsObject,
+        overlay_layout_keys: oloIsObject
+          ? Object.keys(olo as Record<string, unknown>).slice(0, 20)
+          : [],
+      });
+    }
+
+
     if (brand && (hasWatermarkable || hasContent)) {
       let logoLocal: string | null = null;
       if (hasWatermarkable) {
