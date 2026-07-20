@@ -81,6 +81,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  // Approval-gate: quando existe, renderiza a tela de revisão em vez do
+  // progress. Só limpamos quando o usuário aprova (então o render começa).
+  const [pendingReview, setPendingReview] = useState<{
+    campaignId: string;
+    contents: MarketingContentRow[];
+  } | null>(null);
 
   const { trackCampaign } = useCampaignRenderTracker();
   const tracked = useTrackedCampaign(campaignId);
