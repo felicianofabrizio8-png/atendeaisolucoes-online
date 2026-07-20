@@ -728,6 +728,16 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
             "intent",
           ],
         },
+        image_texts: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            headline: { type: "string" },
+            subheadline: { type: "string" },
+            cta: { type: "string" },
+          },
+          required: ["headline", "subheadline", "cta"],
+        },
         story: {
           type: "object",
           additionalProperties: false,
