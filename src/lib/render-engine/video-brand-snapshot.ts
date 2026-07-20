@@ -81,7 +81,7 @@ export interface VideoBrandContentSnapshot {
    * Layout completo aprovado no editor (posições/tamanhos de logo/textos).
    * Opaco para o snapshot builder — o worker interpreta na próxima fase.
    */
-  overlayLayout?: unknown;
+  overlayLayout?: { [k: string]: unknown } | null;
 }
 
 export interface VideoBrandSnapshot {
