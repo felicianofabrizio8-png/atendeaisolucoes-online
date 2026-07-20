@@ -630,8 +630,9 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       campaign_id: campaignId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       contents: (refreshed ?? contents) as any,
-      feed_job_id: feed.jobId,
-      story_job_id: story.jobId,
+      feed_job_id: master.jobId,
+      story_job_id: master.jobId,
+
       needs_marketing_media_for_render: false,
     };
   });
