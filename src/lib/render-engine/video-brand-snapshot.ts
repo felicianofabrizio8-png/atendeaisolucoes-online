@@ -218,10 +218,10 @@ export function buildVideoBrandSnapshot(params: {
   );
 
   const contentSnap: VideoBrandContentSnapshot = {
-    headline: sanitizeText(content?.headline, HEADLINE_MAX),
-    supportingText: sanitizeText(content?.supportingText, SUPPORTING_MAX),
-    ctaText: sanitizeText(content?.ctaText, CTA_MAX),
-    companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX),
+    headline: sanitizeText(content?.headline, HEADLINE_MAX_CHARS, HEADLINE_MAX_WORDS),
+    supportingText: sanitizeText(content?.supportingText, SUPPORTING_MAX_CHARS, SUPPORTING_MAX_WORDS),
+    ctaText: sanitizeText(content?.ctaText, CTA_MAX_CHARS, CTA_MAX_WORDS),
+    companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX, 6),
   };
 
   const hasAnyText = !!(
