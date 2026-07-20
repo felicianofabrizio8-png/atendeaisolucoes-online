@@ -129,25 +129,69 @@ export async function composeBrandLayers(
 
   let bottomPanelPath: string | null = null;
   if (hasBottomPanel) {
-    try {
-      const svg = buildBottomPanelSvg({
-        width,
-        height,
-        colors: videoBrand.colors,
-        content,
-      });
-      bottomPanelPath = await rasterizeSvg({
-        svg,
-        width,
-        height,
-        fontFiles,
-        outPath: path.join(workDir, "brand-bottom-panel.png"),
-      });
-    } catch (err) {
-      log.warn("brand_composer_bottom_panel_failed", {
-        job_id: jobId,
-        message: (err instanceof Error ? err.message : String(err)).slice(0, 200),
-      });
+    // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
+    // renderiza a CENA completa (full-frame RGBA). Caso contrário, cai no
+    // painel inferior legado para preservar jobs antigos.
+    const templateId = (videoBrand.content as { template?: string | null } | undefined)?.template ?? null;
+    const overlayLayout = (videoBrand.content as { overlayLayout?: unknown } | undefined)?.overlayLayout ?? null;
+    const scene = getSceneById(templateId);
+    const useScene = !!(scene && overlayLayout && typeof overlayLayout === "object");
+
+    if (useScene && scene) {
+      try {
+        const svg = buildSceneOverlaySvg({
+          width,
+          height,
+          scene,
+          layout: overlayLayout as unknown as VideoLayout,
+          content: {
+            headline: content.headline,
+            supportingText: content.supportingText,
+            ctaText: content.ctaText,
+          },
+        });
+        bottomPanelPath = await rasterizeSvg({
+          svg,
+          width,
+          height,
+          fontFiles,
+          outPath: path.join(workDir, "brand-scene-overlay.png"),
+        });
+        log.info("brand_composer_scene_applied", {
+          job_id: jobId,
+          template: scene.id,
+          layer_count: scene.layers.length,
+        });
+      } catch (err) {
+        log.warn("brand_composer_scene_failed_fallback_legacy", {
+          job_id: jobId,
+          template: scene.id,
+          message: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+        });
+      }
+    }
+
+    if (!bottomPanelPath) {
+      try {
+        const svg = buildBottomPanelSvg({
+          width,
+          height,
+          colors: videoBrand.colors,
+          content,
+        });
+        bottomPanelPath = await rasterizeSvg({
+          svg,
+          width,
+          height,
+          fontFiles,
+          outPath: path.join(workDir, "brand-bottom-panel.png"),
+        });
+      } catch (err) {
+        log.warn("brand_composer_bottom_panel_failed", {
+          job_id: jobId,
+          message: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+        });
+      }
     }
   }
 
