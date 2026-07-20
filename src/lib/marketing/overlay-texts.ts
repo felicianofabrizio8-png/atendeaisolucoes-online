@@ -45,7 +45,7 @@ export function isIncomplete(s: string): boolean {
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/g, "");
+    .replace(/[^\p{L}\p{N}]+/gu, "");
   return DANGLING_WORDS.has(last);
 }
 
