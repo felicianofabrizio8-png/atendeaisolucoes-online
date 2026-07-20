@@ -1,208 +1,73 @@
-// Biblioteca de templates do Editor Visual do Vídeo IA.
-// Cada template define um `VideoLayout` inicial e uma "vibe" tipográfica.
-// Escolher um template RESETA o layout para o preset; edições subsequentes
-// permanecem até o usuário trocar de template.
+// ============================================================================
+// Templates — adaptador legado sobre a nova arquitetura de Cenas.
+//
+// A "verdade" agora vive em `scenes/registry.ts` (SceneDefinition). Este
+// arquivo continua exportando `TemplatePreset` porque componentes existentes
+// (TabTemplate, EditorPreview antigo) o consomem. Deriva os campos da cena.
+//
+// Novos consumidores devem preferir `getScene()` / `SCENE_LIST` diretamente.
+// ============================================================================
 
 import type { TemplateId, VideoLayout } from "./layout.types";
+import type { SceneDefinition, TextStyle } from "./scene.types";
+import { getScene, SCENE_LIST } from "./scenes/registry";
 
 export interface TemplatePreset {
   id: TemplateId;
   label: string;
   description: string;
-  /** Fonte usada no preview. */
   titleFontFamily: string;
   subtitleFontFamily: string;
   ctaFontFamily: string;
   titleWeight: number;
   subtitleWeight: number;
-  /** Escala tipográfica base — casa com o brand-composer atual em 1.0. */
   layout: VideoLayout;
-  /** Cor de fundo extra sob o painel (0–1). 0 = usa apenas gradiente. */
   panelDarkness: number;
+  /** Referência à Scene completa (novos consumidores devem usar isto). */
+  scene: SceneDefinition;
 }
 
-const SERIF = '"Playfair Display", Georgia, serif';
-const SANS = 'Inter, "Helvetica Neue", Arial, sans-serif';
-const DISPLAY = '"Playfair Display", Georgia, serif';
+function derivePanelDarkness(scene: SceneDefinition): number {
+  // Heurística: usa a maior opacidade final de camadas escuras no rodapé.
+  let max = 0;
+  for (const layer of scene.layers) {
+    if (layer.kind === "gradient" && layer.y === "bottom") {
+      for (const stop of layer.stops) {
+        // Extrai rgba(0,0,0,X) ou define 0 para outras cores
+        const m = stop.color.match(/rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*([\d.]+)\s*\)/);
+        if (m) max = Math.max(max, Number(m[1]) * 0.4);
+      }
+    }
+    if (layer.kind === "vignette") max = Math.max(max, layer.intensity * 0.3);
+  }
+  return Math.min(0.6, Number(max.toFixed(2)));
+}
 
-function base(): VideoLayout {
+function toPreset(scene: SceneDefinition): TemplatePreset {
+  const t = scene.text;
+  const pickFamily = (style: TextStyle) => style.fontFamily;
   return {
-    template: "moderno",
-    logo: {
-      scale: 1,
-      vAnchor: "top",
-      hAnchor: "center",
-      marginTop: 4,
-      marginBottom: 0,
-      marginLeft: 0,
-      marginRight: 0,
-    },
-    title: { scale: 1, vAnchor: "bottom", align: "left", spacing: 2 },
-    subtitle: { scale: 1, vAnchor: "bottom", align: "left" },
-    cta: { scale: 1, vAnchor: "bottom", align: "left" },
+    id: scene.id,
+    label: scene.label,
+    description: scene.description,
+    titleFontFamily: pickFamily(t.title),
+    subtitleFontFamily: pickFamily(t.subtitle),
+    ctaFontFamily: pickFamily(t.cta),
+    titleWeight: t.title.weight,
+    subtitleWeight: t.subtitle.weight,
+    layout: scene.defaultLayout,
+    panelDarkness: derivePanelDarkness(scene),
+    scene,
   };
 }
 
-export const TEMPLATES: Record<TemplateId, TemplatePreset> = {
-  premium: {
-    id: "premium",
-    label: "Premium",
-    description: "Serif grande centralizado, presença editorial",
-    titleFontFamily: SERIF,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 700,
-    subtitleWeight: 500,
-    panelDarkness: 0.15,
-    layout: {
-      ...base(),
-      template: "premium",
-      logo: { ...base().logo, scale: 1.15 },
-      title: { scale: 1.2, vAnchor: "center", align: "center", spacing: 3 },
-      subtitle: { scale: 1.05, vAnchor: "center", align: "center" },
-      cta: { scale: 1, vAnchor: "bottom", align: "center" },
-    },
-  },
-  moderno: {
-    id: "moderno",
-    label: "Moderno",
-    description: "Sans bold, texto inferior, energia direta",
-    titleFontFamily: SANS,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 800,
-    subtitleWeight: 500,
-    panelDarkness: 0,
-    layout: {
-      ...base(),
-      template: "moderno",
-      logo: { ...base().logo, hAnchor: "right", marginRight: 5, marginTop: 5 },
-    },
-  },
-  elegante: {
-    id: "elegante",
-    label: "Elegante",
-    description: "Serif fino, texto centro-baixo",
-    titleFontFamily: SERIF,
-    subtitleFontFamily: SERIF,
-    ctaFontFamily: SANS,
-    titleWeight: 500,
-    subtitleWeight: 400,
-    panelDarkness: 0.1,
-    layout: {
-      ...base(),
-      template: "elegante",
-      title: { scale: 1.05, vAnchor: "center", align: "center", spacing: 2 },
-      subtitle: { scale: 1, vAnchor: "center", align: "center" },
-      cta: { scale: 0.95, vAnchor: "bottom", align: "center" },
-    },
-  },
-  minimalista: {
-    id: "minimalista",
-    label: "Minimalista",
-    description: "Sans light, texto pequeno inferior",
-    titleFontFamily: SANS,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 300,
-    subtitleWeight: 300,
-    panelDarkness: 0,
-    layout: {
-      ...base(),
-      template: "minimalista",
-      logo: { ...base().logo, scale: 0.85 },
-      title: { scale: 0.85, vAnchor: "bottom", align: "left", spacing: 1 },
-      subtitle: { scale: 0.8, vAnchor: "bottom", align: "left" },
-      cta: { scale: 0.85, vAnchor: "bottom", align: "left" },
-    },
-  },
-  oferta: {
-    id: "oferta",
-    label: "Oferta",
-    description: "Display bold, CTA em destaque",
-    titleFontFamily: DISPLAY,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 900,
-    subtitleWeight: 600,
-    panelDarkness: 0.25,
-    layout: {
-      ...base(),
-      template: "oferta",
-      title: { scale: 1.35, vAnchor: "bottom", align: "left", spacing: 2 },
-      subtitle: { scale: 1.1, vAnchor: "bottom", align: "left" },
-      cta: { scale: 1.2, vAnchor: "bottom", align: "left" },
-    },
-  },
-  institucional: {
-    id: "institucional",
-    label: "Institucional",
-    description: "Sans regular, logo grande no topo",
-    titleFontFamily: SANS,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 600,
-    subtitleWeight: 400,
-    panelDarkness: 0.1,
-    layout: {
-      ...base(),
-      template: "institucional",
-      logo: { ...base().logo, scale: 1.4, marginTop: 6 },
-      title: { scale: 1, vAnchor: "bottom", align: "center", spacing: 2 },
-      subtitle: { scale: 0.95, vAnchor: "bottom", align: "center" },
-      cta: { scale: 1, vAnchor: "bottom", align: "center" },
-    },
-  },
-  black: {
-    id: "black",
-    label: "Black",
-    description: "Alto contraste, painel escuro reforçado",
-    titleFontFamily: DISPLAY,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 900,
-    subtitleWeight: 600,
-    panelDarkness: 0.45,
-    layout: {
-      ...base(),
-      template: "black",
-      title: { scale: 1.25, vAnchor: "bottom", align: "left", spacing: 2 },
-      subtitle: { scale: 1.05, vAnchor: "bottom", align: "left" },
-      cta: { scale: 1.1, vAnchor: "bottom", align: "left" },
-    },
-  },
-  clean: {
-    id: "clean",
-    label: "Clean",
-    description: "Mínimo — só título fino",
-    titleFontFamily: SANS,
-    subtitleFontFamily: SANS,
-    ctaFontFamily: SANS,
-    titleWeight: 400,
-    subtitleWeight: 300,
-    panelDarkness: 0,
-    layout: {
-      ...base(),
-      template: "clean",
-      logo: { ...base().logo, scale: 0.8 },
-      title: { scale: 0.95, vAnchor: "bottom", align: "left", spacing: 1 },
-      subtitle: { scale: 0.85, vAnchor: "bottom", align: "left" },
-      cta: { scale: 0.85, vAnchor: "bottom", align: "left" },
-    },
-  },
-};
+export const TEMPLATE_LIST: TemplatePreset[] = SCENE_LIST.map(toPreset);
 
-export const TEMPLATE_LIST: TemplatePreset[] = [
-  TEMPLATES.premium,
-  TEMPLATES.moderno,
-  TEMPLATES.elegante,
-  TEMPLATES.minimalista,
-  TEMPLATES.oferta,
-  TEMPLATES.institucional,
-  TEMPLATES.black,
-  TEMPLATES.clean,
-];
+const TEMPLATES_MAP: Partial<Record<TemplateId, TemplatePreset>> = {};
+for (const p of TEMPLATE_LIST) TEMPLATES_MAP[p.id] = p;
+
+export const TEMPLATES = TEMPLATES_MAP as Record<TemplateId, TemplatePreset>;
 
 export function getTemplate(id: TemplateId): TemplatePreset {
-  return TEMPLATES[id] ?? TEMPLATES.moderno;
+  return TEMPLATES_MAP[id] ?? toPreset(getScene(id));
 }

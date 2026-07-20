@@ -1,52 +1,65 @@
-// Aba TEMPLATE — biblioteca de 8 presets.
-// Escolher um template reseta o layout para o preset correspondente.
+// ============================================================================
+// Aba TEMPLATE — biblioteca visual de cenas.
+//
+// Renderiza um mini SceneRenderer por template para que a diferença visual
+// entre as cenas (gradiente, molduras, cortes diagonais, etc.) fique óbvia
+// antes de escolher. Extensível: qualquer cena adicionada ao registry
+// aparece aqui automaticamente.
+// ============================================================================
 
 import { Check } from "lucide-react";
-import { TEMPLATE_LIST } from "@/lib/marketing/video-editor/templates";
+import { SCENE_LIST } from "@/lib/marketing/video-editor/scenes/registry";
 import type { TemplateId } from "@/lib/marketing/video-editor/layout.types";
+import { SceneRenderer } from "../SceneRenderer";
 
 interface Props {
   value: TemplateId;
   onChange: (id: TemplateId) => void;
+  /** URL de imagem para as miniaturas (opcional). */
+  sampleImageUrl?: string | null;
+  /** Logo real para as miniaturas (opcional). */
+  sampleLogoUrl?: string | null;
 }
 
-export function TabTemplate({ value, onChange }: Props) {
+export function TabTemplate({
+  value,
+  onChange,
+  sampleImageUrl,
+  sampleLogoUrl,
+}: Props) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {TEMPLATE_LIST.map((t) => {
-        const active = value === t.id;
+    <div className="grid grid-cols-2 gap-3">
+      {SCENE_LIST.map((scene) => {
+        const active = value === scene.id;
         return (
           <button
-            key={t.id}
+            key={scene.id}
             type="button"
-            onClick={() => onChange(t.id)}
-            className={`relative text-left rounded-lg border p-3 transition ${
+            onClick={() => onChange(scene.id)}
+            className={`relative text-left rounded-lg border p-2 transition ${
               active
-                ? "border-primary ring-2 ring-primary/40 bg-primary/5"
-                : "border-border hover:border-primary/50 hover:bg-muted/40"
+                ? "border-primary ring-2 ring-primary/40"
+                : "border-border hover:border-primary/60"
             }`}
           >
             {active && (
-              <span className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary text-primary-foreground grid place-items-center">
+              <span className="absolute top-2 right-2 z-30 h-5 w-5 rounded-full bg-primary text-primary-foreground grid place-items-center">
                 <Check className="h-3 w-3" />
               </span>
             )}
-            <div
-              className="h-16 rounded-md mb-2 flex items-end justify-start p-2"
-              style={{
-                background:
-                  "linear-gradient(160deg, hsl(var(--muted)) 0%, hsl(var(--muted-foreground) / 0.15) 100%)",
-                fontFamily: t.titleFontFamily,
-                fontWeight: t.titleWeight,
-                fontSize: 14,
-                color: "hsl(var(--foreground))",
-              }}
-            >
-              {t.label}
+            <div className="w-full">
+              <SceneRenderer
+                imageUrl={sampleImageUrl ?? null}
+                logoUrl={sampleLogoUrl ?? null}
+                headline="Título"
+                subheadline="Subtítulo elegante"
+                cta="Saiba mais"
+                layout={scene.defaultLayout}
+              />
             </div>
-            <div className="text-sm font-semibold">{t.label}</div>
-            <div className="text-[11px] text-muted-foreground leading-tight">
-              {t.description}
+            <div className="mt-2 text-xs font-semibold">{scene.label}</div>
+            <div className="text-[10.5px] text-muted-foreground leading-tight line-clamp-2">
+              {scene.description}
             </div>
           </button>
         );

@@ -1,12 +1,15 @@
-// Container do Editor Visual do Vídeo IA.
-// Substitui a tela antiga de "aprovar texto" — mesma lógica de backend
-// (regenerateCampaignTexts + approveCampaignAndRender), UX de editor de vídeo.
+// ============================================================================
+// CampaignVideoEditor — Editor Criativo IA (Onda 1).
 //
-// Fluxo:
-//  1) IA já gerou textos (pendingReview → contents).
-//  2) Usuário edita textos/logo/textos/template com preview 9:16 ao vivo.
-//  3) Ao clicar "GERAR VÍDEO", chamamos approveCampaignAndRender enviando
-//     texto aprovado + layout + template. Só então o job é enfileirado.
+// Redesign com preview PROTAGONISTA (ocupa a maior parte da tela) e
+// controles em sidebar à direita. Preparado para futuras evoluções:
+//  - Onda 2: seleção/movimentação direta no preview (canvas overlay).
+//  - Onda 3: templates com efeitos exclusivos (biblioteca de elementos).
+//
+// A logo é consumida automaticamente do Brand Center via `useBrandLogo`.
+// Se a empresa não tiver logo publicada, o preview mostra um placeholder
+// clicável para upload local (session-only, não persiste).
+// ============================================================================
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -24,8 +27,9 @@ import type {
   VideoLayout,
 } from "@/lib/marketing/video-editor/layout.types";
 import { DEFAULT_TEMPLATE } from "@/lib/marketing/video-editor/layout.types";
-import { getTemplate } from "@/lib/marketing/video-editor/templates";
-import { EditorPreview } from "./EditorPreview";
+import { getScene } from "@/lib/marketing/video-editor/scenes/registry";
+import { useBrandLogo } from "@/hooks/useBrandLogo";
+import { SceneRenderer } from "./SceneRenderer";
 import { TabTexto } from "./tabs/TabTexto";
 import { TabLogo } from "./tabs/TabLogo";
 import { TabTextos } from "./tabs/TabTextos";
@@ -35,6 +39,7 @@ interface Props {
   campaignId: string;
   contents: MarketingContentRow[];
   previewImageUrl: string | null;
+  /** Se fornecido, sobrescreve a logo do Brand Center. Default: usa hook. */
   logoUrl?: string | null;
   focalPoint?: FocalPointInput | null;
   onApproved: (jobId: string) => void;
@@ -49,8 +54,8 @@ function readSavedLayout(
     video_template?: TemplateId | null;
   } | null;
   const savedTemplate = (anyRow?.video_template as TemplateId) ?? DEFAULT_TEMPLATE;
-  const preset = getTemplate(savedTemplate);
-  const layout = (anyRow?.video_layout as VideoLayout) ?? preset.layout;
+  const scene = getScene(savedTemplate);
+  const layout = (anyRow?.video_layout as VideoLayout) ?? scene.defaultLayout;
   return { layout, template: savedTemplate };
 }
 
@@ -58,7 +63,7 @@ export function CampaignVideoEditor({
   campaignId,
   contents,
   previewImageUrl,
-  logoUrl,
+  logoUrl: logoUrlOverride,
   focalPoint,
   onApproved,
   onContentsUpdated,
@@ -77,10 +82,14 @@ export function CampaignVideoEditor({
 
   const [regenerating, setRegenerating] = useState(false);
   const [approving, setApproving] = useState(false);
-  const [tab, setTab] = useState("texto");
+  const [tab, setTab] = useState("template");
+  const [showSafeArea, setShowSafeArea] = useState(false);
 
-  // Se `contents` for substituído (após regenerate), sincroniza os campos
-  // de texto — mas preserva o layout que o usuário estava editando.
+  // Logo do Brand Center (com upload local como fallback).
+  const brandLogo = useBrandLogo();
+  const effectiveLogoUrl =
+    logoUrlOverride !== undefined ? logoUrlOverride : brandLogo.logoUrl;
+
   useEffect(() => {
     if (!feedRow) return;
     setHeadline(feedRow.overlay_headline ?? "");
@@ -114,9 +123,9 @@ export function CampaignVideoEditor({
   }
 
   function handleTemplateChange(id: TemplateId) {
-    const preset = getTemplate(id);
-    setLayout({ ...preset.layout, template: id });
-    toast.info(`Template “${preset.label}” aplicado.`);
+    const scene = getScene(id);
+    setLayout({ ...scene.defaultLayout, template: id });
+    toast.info(`Template “${scene.label}” aplicado.`);
   }
 
   async function handleApprove() {
@@ -144,40 +153,78 @@ export function CampaignVideoEditor({
     }
   }
 
+  const sceneLabel = getScene(layout.template).label;
+
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <div className="text-sm font-semibold">Editor de vídeo</div>
-          <div className="text-xs text-muted-foreground">
-            Ajuste texto, logo e template. O vídeo só é gerado ao clicar em “Gerar vídeo”.
+    <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
+      {/* Header */}
+      <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">Editor Criativo IA</div>
+          <div className="text-xs text-muted-foreground truncate">
+            Template atual: <b>{sceneLabel}</b> · edições refletem no preview em tempo real.
           </div>
         </div>
+        <label className="text-xs flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showSafeArea}
+            onChange={(e) => setShowSafeArea(e.target.checked)}
+            className="accent-primary"
+          />
+          Safe area
+        </label>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 p-4">
-        {/* Preview grande 9:16 — ocupa a maior parte da tela */}
-        <div className="lg:sticky lg:top-4 self-start">
-          <div className="mx-auto" style={{ maxWidth: 420 }}>
-            <EditorPreview
+      {/* Corpo: preview protagonista + sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
+        {/* PREVIEW — ocupa a maior parte da tela */}
+        <div className="bg-gradient-to-br from-muted/30 to-muted/60 p-4 sm:p-6 min-h-[560px] flex items-center justify-center">
+          <div
+            className="w-full mx-auto"
+            style={{ maxWidth: "min(100%, 520px)" }}
+          >
+            <SceneRenderer
               imageUrl={previewImageUrl}
-              logoUrl={logoUrl ?? null}
+              logoUrl={effectiveLogoUrl}
+              onRequestLogoUpload={brandLogo.uploadLocal}
               focalPoint={focalPoint ?? null}
               headline={headline}
               subheadline={subheadline || null}
               cta={cta || null}
               layout={layout}
+              showSafeArea={showSafeArea}
+              fill={false}
             />
-            <div className="mt-2 text-center text-[11px] text-muted-foreground">
-              Prévia · 9:16 · atualiza em tempo real
+            <div className="mt-3 text-center text-[11px] text-muted-foreground">
+              Prévia 9:16 · {brandLogo.isPlaceholder && !logoUrlOverride
+                ? "sem logo no Brand Center (clique no placeholder para adicionar)"
+                : brandLogo.isLocalOverride
+                ? "logo local · não persiste"
+                : "logo do Brand Center"}
+              {brandLogo.isLocalOverride && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={brandLogo.clearLocalOverride}
+                  >
+                    remover
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Abas */}
-        <div className="min-w-0">
+        {/* SIDEBAR — controles */}
+        <div className="border-t lg:border-t-0 lg:border-l p-4 min-w-0">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="grid grid-cols-4 w-full">
+              <TabsTrigger value="template" className="gap-1">
+                <LayoutTemplate className="h-3.5 w-3.5" /> Cena
+              </TabsTrigger>
               <TabsTrigger value="texto" className="gap-1">
                 <Type className="h-3.5 w-3.5" /> Texto
               </TabsTrigger>
@@ -185,12 +232,17 @@ export function CampaignVideoEditor({
                 <ImageIcon className="h-3.5 w-3.5" /> Logo
               </TabsTrigger>
               <TabsTrigger value="textos" className="gap-1">
-                <Layers className="h-3.5 w-3.5" /> Textos
-              </TabsTrigger>
-              <TabsTrigger value="template" className="gap-1">
-                <LayoutTemplate className="h-3.5 w-3.5" /> Template
+                <Layers className="h-3.5 w-3.5" /> Layout
               </TabsTrigger>
             </TabsList>
+            <TabsContent value="template" className="pt-4">
+              <TabTemplate
+                value={layout.template}
+                onChange={handleTemplateChange}
+                sampleImageUrl={previewImageUrl}
+                sampleLogoUrl={effectiveLogoUrl}
+              />
+            </TabsContent>
             <TabsContent value="texto" className="pt-4">
               <TabTexto
                 headline={headline}
@@ -213,9 +265,6 @@ export function CampaignVideoEditor({
             </TabsContent>
             <TabsContent value="textos" className="pt-4">
               <TabTextos layout={layout} onChange={setLayout} />
-            </TabsContent>
-            <TabsContent value="template" className="pt-4">
-              <TabTemplate value={layout.template} onChange={handleTemplateChange} />
             </TabsContent>
           </Tabs>
         </div>
