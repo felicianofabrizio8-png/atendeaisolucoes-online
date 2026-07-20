@@ -728,13 +728,16 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       throw new Error("campaign_missing_primary_image");
     }
 
-    // Persistência do texto aprovado (mesmos valores nas duas linhas).
-    const approvedPatch = {
+    // Persistência do texto aprovado + layout/template do editor visual
+    // (mesmos valores nas duas linhas feed/story).
+    const approvedPatch: Record<string, unknown> = {
       overlay_headline: data.headline,
       overlay_subheadline: data.subheadline ?? null,
       overlay_cta: data.cta ?? null,
       overlay_approved_at: new Date().toISOString(),
     };
+    if (data.layout !== undefined) approvedPatch.video_layout = data.layout;
+    if (data.template !== undefined) approvedPatch.video_template = data.template;
     await supabase
       .from("marketing_contents")
       .update(approvedPatch)
