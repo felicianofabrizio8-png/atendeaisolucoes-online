@@ -246,6 +246,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let bottomPanelPath: string | null = null;
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
+      let sceneAppliesLogo = false;
       const gateApproved = !!(brand && hasContent);
       const gateReason = !brand
         ? "no_brand_snapshot"
@@ -296,6 +297,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath = layers.bottomPanelPath;
           outroCardPath = layers.outroCardPath;
           outroDurationSeconds = layers.outroDurationSeconds;
+          sceneAppliesLogo = layers.sceneAppliesLogo;
           const layersCount =
             (bottomPanelPath ? 1 : 0) + (outroCardPath ? 1 : 0);
           log.info("brand_layers_count", {
@@ -304,6 +306,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
             has_bottom_panel: !!bottomPanelPath,
             has_outro_card: !!outroCardPath,
             outro_duration_seconds: outroDurationSeconds,
+            scene_applies_logo: sceneAppliesLogo,
           });
           log.info("brand_composition_finished", {
             ...baseCtx, stage,
@@ -318,9 +321,13 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         }
       }
 
-      if (logoLocal || bottomPanelPath || outroCardPath) {
+      // Quando a cena já embutiu a logo dentro do overlay full-frame, evitamos
+      // duplicar a logo via watermark clássico do FFmpeg.
+      const effectiveLogoForWatermark = sceneAppliesLogo ? null : logoLocal;
+
+      if (effectiveLogoForWatermark || bottomPanelPath || outroCardPath) {
         watermark = {
-          logoFilePath: logoLocal,
+          logoFilePath: effectiveLogoForWatermark,
           position: (brand.tokens.logoPosition as WatermarkPosition) ?? "bottom-right",
           maxWidthRatio: brand.watermark?.maxWidthRatio ?? 0.14,
           opacity: brand.watermark?.opacity ?? 0.85,
