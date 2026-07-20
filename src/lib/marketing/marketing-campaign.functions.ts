@@ -779,6 +779,23 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       companyNameRetry = null;
     }
 
+    const retryResolved = resolveOverlayContentFromRow(
+      r as unknown as MarketingRowOverlaySource,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "overlay_content_source",
+        campaign_id: data.campaign_id,
+        role: data.role,
+        retry: true,
+        overlay_fields: retryResolved.telemetry.overlay_fields,
+        legacy_fallback: retryResolved.telemetry.legacy_fallback,
+      }),
+    );
+
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -790,12 +807,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       audioStart: Number(r.audio_start_second ?? 0),
       duration: Number(r.duration_seconds ?? 15),
       existingJobId: null,
-      content: {
-        headline: r.title,
-        supportingText: r.body,
-        ctaText: r.cta_text,
-        companyName: companyNameRetry,
-      },
+      content: { ...retryResolved.content, companyName: companyNameRetry },
     });
 
 
