@@ -80,12 +80,34 @@ export async function composeBrandLayers(
 ): Promise<BrandLayerPaths> {
   const { videoBrand, logoLocalPath, logoMimeType, width, height, workDir, jobId } = input;
 
-  const content = videoBrand.content ?? {
+  // Fase M2 — o snapshot já traz overlay_* validados (28/45/40 chars); ainda
+  // assim aplicamos um guard defensivo para snapshots legados (v1) que caíram
+  // no outro.headline/callToAction do contrato antigo.
+  const rawContent = videoBrand.content ?? {
     headline: videoBrand.outro?.headline ?? null,
     supportingText: null,
     ctaText: videoBrand.outro?.callToAction ?? null,
     companyName: null,
   };
+  const guarded = guardOverlayContent(rawContent);
+  const content = guarded.content;
+  if (guarded.reasons.length > 0) {
+    log.warn("overlay_content_fallback_applied", {
+      job_id: jobId,
+      reasons: guarded.reasons,
+      schema_version: videoBrand.schemaVersion ?? null,
+    });
+  }
+  log.info("overlay_content_validated", {
+    job_id: jobId,
+    schema_version: videoBrand.schemaVersion ?? null,
+    headline_length: content.headline?.length ?? 0,
+    headline_words: content.headline ? countWords(content.headline) : 0,
+    subheadline_length: content.supportingText?.length ?? 0,
+    subheadline_words: content.supportingText ? countWords(content.supportingText) : 0,
+    cta_length: content.ctaText?.length ?? 0,
+    limits: OVERLAY_LIMITS,
+  });
 
   const hasBottomPanel = !!(content.headline || content.supportingText || content.ctaText);
   const outroEnabled = !!videoBrand.outro?.enabled;
