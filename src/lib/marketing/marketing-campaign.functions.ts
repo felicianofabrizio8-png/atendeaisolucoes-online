@@ -552,15 +552,16 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       companyName = null;
     }
 
-    // 4) Enfileira 2 jobs (feed + story).
-    // Fase M2 — o Render Engine consome exclusivamente `overlay_*`. Legendas
-    // (title/body/cta_text) ficam apenas em `marketing_contents` para a
-    // publicação; nunca são enviadas ao worker quando os overlays existem.
-    const feedResolved = resolveOverlayContentFromRow(
-      feedRow as unknown as MarketingRowOverlaySource,
-    );
+    // 4) Fase M3 — enfileira UM ÚNICO job master 9:16 (video_format=story,
+    //    1080x1920). Feed e Story compartilharão o mesmo MP4.
+    //    O overlay usado é o do Story (canal principal); Feed reutiliza o
+    //    mesmo vídeo. Ambos os campos overlay_* das duas linhas continuam
+    //    intactos no banco para eventual crop 4:5 futuro.
     const storyResolved = resolveOverlayContentFromRow(
       storyRow as unknown as MarketingRowOverlaySource,
+    );
+    const feedResolved = resolveOverlayContentFromRow(
+      feedRow as unknown as MarketingRowOverlaySource,
     );
     // eslint-disable-next-line no-console
     console.info(
@@ -569,31 +570,31 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
         level: "info",
         event: "overlay_content_source",
         campaign_id: campaignId,
-        feed: {
-          overlay_fields: feedResolved.telemetry.overlay_fields,
-          legacy_fallback: feedResolved.telemetry.legacy_fallback,
-        },
+        master_source: "story",
         story: {
           overlay_fields: storyResolved.telemetry.overlay_fields,
           legacy_fallback: storyResolved.telemetry.legacy_fallback,
         },
+        feed: {
+          overlay_fields: feedResolved.telemetry.overlay_fields,
+          legacy_fallback: feedResolved.telemetry.legacy_fallback,
+        },
       }),
     );
 
-    const feed = await ensureCampaignJob(supabase, {
-      companyId,
-      userId,
-      role: "feed",
-      primaryImage: primary.ref,
-      primaryFocalPoint: primary.focalPoint,
-      imageSequence: sequence,
-      audioId: data.primary_audio_id,
-      audioStart: data.audio_start_second,
-      duration: data.duration_seconds,
-      existingJobId: null,
-      content: { ...feedResolved.content, companyName },
-    });
-    const story = await ensureCampaignJob(supabase, {
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "campaign_master_render_requested",
+        campaign_id: campaignId,
+        company_id: companyId,
+        video_format: "story",
+      }),
+    );
+
+    const master = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story",
@@ -607,15 +608,18 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       content: { ...storyResolved.content, companyName },
     });
 
-
+    // Vincula o MESMO job master aos dois papéis. Publisher continua lendo
+    // feed_video_id/story_video_id — ambos serão preenchidos pelo linker
+    // quando o job concluir (link-campaign-video.ts).
     await supabase
       .from("marketing_contents")
-      .update({ feed_render_job_id: feed.jobId })
+      .update({ feed_render_job_id: master.jobId })
       .eq("id", feedRow.id);
     await supabase
       .from("marketing_contents")
-      .update({ story_render_job_id: story.jobId })
+      .update({ story_render_job_id: master.jobId })
       .eq("id", storyRow.id);
+
 
     const { data: refreshed } = await supabase
       .from("marketing_contents")
