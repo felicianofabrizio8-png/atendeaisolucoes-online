@@ -37,9 +37,9 @@ COPY assets ./assets
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     echo "=== IMAGE VERIFICATION (cache-bust=$CACHE_BUST) ==="; \
-    ls -la /app/dist/render.js; \
+    ls -la /app/dist/render.js /app/dist/scenes.js /app/dist/scene-composer.js /app/dist/brand-composer.js; \
     ls -la /app/assets/fonts/Inter-Regular.ttf /app/assets/fonts/PlayfairDisplay-Bold.ttf; \
-    for s in render_build_signature brand-phase-5b1-v1 RENDER_BUILD_SIGNATURE brand_composition_gate brand_composition_started brand_layers_count composeBrandLayers; do \
+    for s in render_build_signature render-scene-template-build-001 scene_engine_enabled available_scene_ids brand_composition_gate composeBrandLayers buildSceneOverlaySvg scene_render_selected claim_snapshot_inspect getSceneById; do \
       count=$(grep -rc "$s" /app/dist/ | awk -F: '{s+=$2} END {print s+0}'); \
       echo "signature[$s]=$count"; \
       test "$count" -ge 1 || { echo "MISSING SIGNATURE: $s"; exit 1; }; \
@@ -48,6 +48,7 @@ RUN set -eux; \
     echo "signature[buildBrandOverlayChain]=$ffmpeg_count"; \
     test "$ffmpeg_count" -ge 1 || { echo "MISSING SIGNATURE: buildBrandOverlayChain (ffmpeg.js)"; exit 1; }; \
     echo "=== IMAGE VERIFICATION OK ==="
+
 
 # Não roda como root
 RUN useradd -m -u 10001 worker && mkdir -p /tmp/render && chown -R worker:worker /tmp/render
