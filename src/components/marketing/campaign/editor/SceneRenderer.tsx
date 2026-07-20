@@ -272,7 +272,9 @@ export function SceneRenderer({
         onUpload={onRequestLogoUpload}
       />
 
-      {/* Bloco de textos */}
+      {/* Bloco de textos — ordem visual: título → subtítulo → CTA.
+          A ordem é sequencial (sem flexbox `order`) para bater 1:1 com o
+          worker (`scene-composer.ts`). */}
       <div
         className="absolute inset-0 flex flex-col text-white pointer-events-none"
         style={{
@@ -282,12 +284,7 @@ export function SceneRenderer({
           zIndex: 20,
         }}
       >
-        {cta ? (
-          <div style={{ order: layout.cta.vAnchor === "top" ? -2 : 0 }}>
-            {renderTextNode(cta, scene.text.cta, ctaSize, layout.cta.align)}
-          </div>
-        ) : null}
-        <div style={{ order: -1 }}>
+        <div>
           {renderTextNode(
             headline || null,
             scene.text.title,
@@ -299,6 +296,7 @@ export function SceneRenderer({
         {subheadline
           ? renderTextNode(subheadline, scene.text.subtitle, subSize, layout.subtitle.align)
           : null}
+        {cta ? renderTextNode(cta, scene.text.cta, ctaSize, layout.cta.align) : null}
       </div>
 
       {/* Guias de safe area (opcional) */}

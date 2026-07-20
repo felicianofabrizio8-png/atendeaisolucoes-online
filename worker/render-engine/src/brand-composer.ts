@@ -60,6 +60,12 @@ export interface BrandLayerPaths {
   outroCardPath: string | null;
   /** Duração da tela final (segundos). */
   outroDurationSeconds: number;
+  /**
+   * Fase M4-render — quando true, o overlay `bottomPanelPath` já contém a
+   * logo (renderizada dentro da cena, respeitando `overlayLayout.logo`).
+   * O caller deve suprimir o watermark clássico para evitar duplicação.
+   */
+  sceneAppliesLogo: boolean;
 }
 
 export interface ComposeBrandLayersInput {
@@ -128,6 +134,7 @@ export async function composeBrandLayers(
   }
 
   let bottomPanelPath: string | null = null;
+  let sceneAppliesLogo = false;
   if (hasBottomPanel) {
     // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
     // renderiza a CENA completa (full-frame RGBA). Caso contrário, cai no
@@ -162,6 +169,25 @@ export async function composeBrandLayers(
 
     if (useScene && scene) {
       try {
+        // Embute a logo (quando disponível) dentro do próprio overlay da cena,
+        // usando o mesmo `LogoLayout` do editor. Isso garante paridade com o
+        // preview e permite suprimir o watermark clássico do FFmpeg.
+        let sceneLogo: { dataUri: string; layout: import("./scenes.js").LogoLayout } | null = null;
+        const overlayLogoLayout =
+          overlayLayoutIsObject && (overlayLayout as { logo?: unknown }).logo &&
+          typeof (overlayLayout as { logo?: unknown }).logo === "object"
+            ? ((overlayLayout as { logo: import("./scenes.js").LogoLayout }).logo)
+            : null;
+        if (logoLocalPath && logoMimeType && overlayLogoLayout) {
+          try {
+            const buf = await readFile(logoLocalPath);
+            sceneLogo = {
+              dataUri: `data:${logoMimeType};base64,${buf.toString("base64")}`,
+              layout: overlayLogoLayout,
+            };
+          } catch { /* segue sem logo no overlay */ }
+        }
+
         const svg = buildSceneOverlaySvg({
           width,
           height,
@@ -172,6 +198,7 @@ export async function composeBrandLayers(
             supportingText: content.supportingText,
             ctaText: content.ctaText,
           },
+          logo: sceneLogo,
         });
         bottomPanelPath = await rasterizeSvg({
           svg,
@@ -180,11 +207,13 @@ export async function composeBrandLayers(
           fontFiles,
           outPath: path.join(workDir, "brand-scene-overlay.png"),
         });
+        sceneAppliesLogo = !!sceneLogo;
         log.info("brand_composer_scene_applied", {
           job_id: jobId,
           template: scene.id,
           layer_count: scene.layers.length,
           render_mode: "scene",
+          scene_applies_logo: sceneAppliesLogo,
         });
       } catch (err) {
         log.warn("scene_render_fallback", {
@@ -268,7 +297,7 @@ export async function composeBrandLayers(
     height,
   });
 
-  return { bottomPanelPath, outroCardPath, outroDurationSeconds };
+  return { bottomPanelPath, outroCardPath, outroDurationSeconds, sceneAppliesLogo };
 }
 
 // ---------------------------------------------------------------------------
