@@ -94,6 +94,15 @@ export interface MarketingContentRow {
   story_render_job_id?: string | null;
   feed_video_id?: string | null;
   story_video_id?: string | null;
+  // Approval-gate — overlay atual/aprovado exibido no vídeo.
+  overlay_headline?: string | null;
+  overlay_subheadline?: string | null;
+  overlay_cta?: string | null;
+  // Snapshot da primeira sugestão da IA — usado pelo botão "Restaurar".
+  overlay_original_headline?: string | null;
+  overlay_original_subheadline?: string | null;
+  overlay_original_cta?: string | null;
+  overlay_approved_at?: string | null;
 }
 
 export interface MarketingScheduleRow {

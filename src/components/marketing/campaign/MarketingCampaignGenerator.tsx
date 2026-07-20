@@ -40,6 +40,7 @@ import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
+import { CampaignTextReview } from "./CampaignTextReview";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -80,6 +81,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  // Approval-gate: quando existe, renderiza a tela de revisão em vez do
+  // progress. Só limpamos quando o usuário aprova (então o render começa).
+  const [pendingReview, setPendingReview] = useState<{
+    campaignId: string;
+    contents: MarketingContentRow[];
+  } | null>(null);
 
   const { trackCampaign } = useCampaignRenderTracker();
   const tracked = useTrackedCampaign(campaignId);
@@ -237,12 +244,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
       });
-      setCampaignId(res.campaign_id);
-      trackCampaign(res.campaign_id);
-      toast.success("Campanha criada.", {
-        description: "Você pode continuar navegando — avisaremos quando o vídeo estiver pronto.",
-      });
-      onGenerated?.(res.contents as MarketingContentRow[]);
+      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
+      // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
+      // ainda não foi enfileirado. Abrimos a tela de revisão.
+      setPendingReview({ campaignId: res.campaign_id, contents: contentsRet });
+      toast.success("Textos sugeridos. Revise antes de gerar o vídeo.");
+      onGenerated?.(contentsRet);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
     } finally {
@@ -387,6 +394,27 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           </div>
         )}
       </div>
+
+      {/* Revisão de texto (approval-gate) — sem job de render ainda */}
+      {pendingReview && !campaignId && (
+        <CampaignTextReview
+          campaignId={pendingReview.campaignId}
+          contents={pendingReview.contents}
+          previewImageUrl={primarySlot?.previewUrl ?? null}
+          focalPoint={primarySlot?.focal ?? null}
+          onContentsUpdated={(fresh) =>
+            setPendingReview((cur) =>
+              cur ? { ...cur, contents: fresh } : cur,
+            )
+          }
+          onApproved={() => {
+            const id = pendingReview.campaignId;
+            setPendingReview(null);
+            setCampaignId(id);
+            trackCampaign(id);
+          }}
+        />
+      )}
 
       {/* Progresso da renderização (global) */}
       {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
