@@ -221,7 +221,7 @@ export function buildVideoBrandSnapshot(params: {
     headline: sanitizeText(content?.headline, HEADLINE_MAX_CHARS, HEADLINE_MAX_WORDS),
     supportingText: sanitizeText(content?.supportingText, SUPPORTING_MAX_CHARS, SUPPORTING_MAX_WORDS),
     ctaText: sanitizeText(content?.ctaText, CTA_MAX_CHARS, CTA_MAX_WORDS),
-    companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX, 6),
+    companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX, 8),
   };
 
   const hasAnyText = !!(
