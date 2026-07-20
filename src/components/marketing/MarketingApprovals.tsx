@@ -480,6 +480,9 @@ function ContentCard({
   onReject,
   onMarkPending,
   onSchedule,
+  onOpenVideoEditor,
+  onViewVideo,
+  tracked,
   busy,
 }: {
   row: MarketingContentRow;
@@ -491,6 +494,9 @@ function ContentCard({
   onReject: () => void;
   onMarkPending: () => void;
   onSchedule: () => void;
+  onOpenVideoEditor: () => void;
+  onViewVideo: () => void;
+  tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(row.title ?? "");
@@ -507,6 +513,16 @@ function ContentCard({
     archived: "bg-muted text-muted-foreground",
   };
 
+  const isVideo = isVideoContent(row);
+  const videoReady = hasRenderedVideo(row);
+  // Considera "renderizando" também o estado global do tracker (recém-aprovado).
+  const trackerRendering =
+    !!tracked && !tracked.done && (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
+  const isRendering = isVideo && !videoReady && (hasPendingRenderJob(row) || trackerRendering);
+  const trackerProgress = tracked
+    ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0)
+    : null;
+
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs">
@@ -517,6 +533,11 @@ function ContentCard({
         <span className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}>
           {row.status}
         </span>
+        {isVideo && (
+          <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">
+            vídeo
+          </span>
+        )}
         {row.ai_model && (
           <span className="text-[10px] text-muted-foreground ml-auto">{row.ai_model}</span>
         )}
@@ -567,6 +588,14 @@ function ContentCard({
       ) : (
         <>
           {row.title && <div className="font-medium text-sm">{row.title}</div>}
+          {isVideo && (row.overlay_headline || row.overlay_subheadline) ? (
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Overlay:</span>{" "}
+              {row.overlay_headline}
+              {row.overlay_subheadline ? ` — ${row.overlay_subheadline}` : ""}
+              {row.overlay_cta ? ` · ${row.overlay_cta}` : ""}
+            </div>
+          ) : null}
           <div className="text-sm whitespace-pre-wrap">{row.body}</div>
           {row.hashtags?.length ? (
             <div className="text-xs text-muted-foreground">
@@ -579,15 +608,62 @@ function ContentCard({
               {row.cta_destination ? ` → ${row.cta_destination}` : ""}
             </div>
           )}
+
+          {isVideo && isRendering && (
+            <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span className="flex-1">
+                Gerando vídeo…
+                {typeof trackerProgress === "number" && trackerProgress > 0
+                  ? ` ${Math.round(trackerProgress)}%`
+                  : ""}
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 justify-end">
-            <Button size="sm" variant="ghost" onClick={onEdit}>
-              Editar
-            </Button>
-            {row.status !== "approved" && (
-              <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-              </Button>
+            {/* Ações específicas de vídeo */}
+            {isVideo ? (
+              <>
+                {videoReady && (
+                  <Button size="sm" variant="outline" onClick={onViewVideo}>
+                    <Play className="h-4 w-4 mr-1" /> Visualizar vídeo
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={videoReady ? "ghost" : "default"}
+                  onClick={onOpenVideoEditor}
+                  disabled={isRendering}
+                  title={
+                    isRendering
+                      ? "Aguarde a renderização terminar"
+                      : "Abrir Editor Visual do Vídeo IA"
+                  }
+                >
+                  <Film className="h-4 w-4 mr-1" />
+                  {videoReady ? "Editar novamente" : "Editar vídeo"}
+                </Button>
+                {/* Aprovar só faz sentido depois do vídeo renderizado */}
+                {videoReady && row.status !== "approved" && (
+                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
+                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" onClick={onEdit}>
+                  Editar
+                </Button>
+                {row.status !== "approved" && (
+                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
+                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+                  </Button>
+                )}
+              </>
             )}
+
             {row.status !== "rejected" && (
               <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
                 <XCircle className="h-4 w-4 mr-1" /> Rejeitar
