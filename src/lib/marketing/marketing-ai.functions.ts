@@ -19,6 +19,10 @@ import {
   loadMarketingBrandContext,
   sanitizeBrandContextForPersistence,
 } from "./brand-context-adapter";
+import {
+  buildRecentSignaturesSet,
+  normalizeOverlayCandidate,
+} from "./overlay-texts";
 
 type SB = SupabaseClient<Database>;
 
