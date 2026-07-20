@@ -103,20 +103,38 @@ const WATERMARK_WIDTH_MAX = 0.18;
 const WATERMARK_WIDTH_DEFAULT_REELS = 0.14;
 const WATERMARK_WIDTH_DEFAULT_FEED = 0.16;
 
-const HEADLINE_MAX = 90;
-const SUPPORTING_MAX = 140;
-const CTA_MAX = 32;
+// Fase M2 — limites duros alinhados ao overlay visual publicado.
+// Nunca truncar palavras. Nunca aplicar reticências. Reduzir por palavras
+// inteiras até caber no limite; se sobrar conectivo solto no final, remover.
+const HEADLINE_MAX_CHARS = 28;
+const HEADLINE_MAX_WORDS = 5;
+const SUPPORTING_MAX_CHARS = 45;
+const SUPPORTING_MAX_WORDS = 8;
+const CTA_MAX_CHARS = 40;
+const CTA_MAX_WORDS = 4;
 const COMPANY_NAME_MAX = 60;
 const OUTRO_DURATION_DEFAULT = 2.0;
 
-/**
- * Sanitiza texto vindo do banco antes de persistir no snapshot:
- * - trim
- * - remove control chars e quebras exageradas
- * - trunca com respeito a whitespace
- * - retorna null quando o resultado é vazio
- */
-function sanitizeText(input: string | null | undefined, max: number): string | null {
+const DANGLING_WORDS = new Set([
+  "e","ou","o","a","os","as","um","uma","uns","umas",
+  "de","do","da","dos","das","em","no","na","nos","nas",
+  "para","pra","por","pelo","pela","pelos","pelas",
+  "com","sem","que","se","ao","aos","à","às",
+]);
+
+function normalizeWord(w: string): string {
+  return w
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function fitWordSafe(
+  input: string | null | undefined,
+  maxWords: number,
+  maxChars: number,
+): string | null {
   if (typeof input !== "string") return null;
   const cleaned = input
     // eslint-disable-next-line no-control-regex
@@ -124,10 +142,35 @@ function sanitizeText(input: string | null | undefined, max: number): string | n
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned) return null;
-  if (cleaned.length <= max) return cleaned;
-  const cut = cleaned.slice(0, max);
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
+  const words = cleaned.split(" ");
+  const picked: string[] = [];
+  for (const w of words) {
+    if (picked.length >= maxWords) break;
+    const cand = picked.length ? `${picked.join(" ")} ${w}` : w;
+    if (cand.length > maxChars) break;
+    picked.push(w);
+  }
+  let out = picked.join(" ").replace(/[,;:\-–—/.]+$/g, "").trim();
+  while (out && DANGLING_WORDS.has(normalizeWord(out.split(" ").pop() ?? ""))) {
+    const p = out.split(" ");
+    p.pop();
+    out = p.join(" ").replace(/[,;:\-–—/.]+$/g, "").trim();
+  }
+  return out || null;
+}
+
+/**
+ * Sanitização defensiva do snapshot. Recebe texto (idealmente já normalizado
+ * pela Fase M1 no `marketing_contents.overlay_*`) e garante que nunca ultrapasse
+ * a área segura visual: reduz por palavras inteiras, remove conectivos soltos,
+ * e retorna null quando o resultado ficaria vazio. Não usa reticências.
+ */
+function sanitizeText(
+  input: string | null | undefined,
+  maxChars: number,
+  maxWords: number,
+): string | null {
+  return fitWordSafe(input, maxWords, maxChars);
 }
 
 /**
