@@ -34,6 +34,10 @@ export interface VideoBrandContentDto {
   supportingText: string | null;
   ctaText: string | null;
   companyName: string | null;
+  /** Fase M4-render — template escolhido no editor visual (nome da cena). */
+  template?: string | null;
+  /** Fase M4-render — layout completo aprovado (posições/escalas). */
+  overlayLayout?: Record<string, unknown> | null;
 }
 
 export interface VideoBrandDto {
