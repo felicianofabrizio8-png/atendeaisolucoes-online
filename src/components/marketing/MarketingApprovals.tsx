@@ -466,6 +466,46 @@ export function MarketingApprovals({ companyId }: Props) {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={!!editorCampaignId}
+        onOpenChange={(o) => {
+          if (!o) closeVideoEditor();
+        }}
+      >
+        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
+          <DialogHeader>
+            <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
+          </DialogHeader>
+          {editorLoading ? (
+            <div className="p-8 text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando editor…
+            </div>
+          ) : editorCampaignId && editorContents.length > 0 ? (
+            <CampaignVideoEditor
+              campaignId={editorCampaignId}
+              contents={editorContents}
+              previewImageUrl={editorPreviewUrl}
+              focalPoint={editorFocalPoint}
+              onContentsUpdated={(fresh) => {
+                setRows((cur) => {
+                  const map = new Map(fresh.map((r) => [r.id, r]));
+                  return cur.map((r) => map.get(r.id) ?? r);
+                });
+              }}
+              onApproved={() => {
+                if (editorCampaignId) trackCampaign(editorCampaignId);
+                closeVideoEditor();
+                void refresh();
+              }}
+            />
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">
+              Campanha não encontrada.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
