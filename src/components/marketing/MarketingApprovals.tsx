@@ -143,9 +143,11 @@ export function MarketingApprovals({ companyId }: Props) {
     const feed = editorContents.find((r) => r.campaign_role === "feed") ?? editorContents[0];
     const prompt =
       feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null
-        ? (feed.ai_prompt as { focal_point?: { x: number; y: number } | null })
+        ? (feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null })
         : null;
-    return prompt?.focal_point ?? null;
+    const fp = prompt?.focal_point;
+    if (!fp) return null;
+    return { x: fp.x, y: fp.y, zoom: fp.zoom ?? 1 };
   }, [editorContents]);
   const [fbReadiness, setFbReadiness] = useState<
     | null
