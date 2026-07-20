@@ -25,6 +25,8 @@ import {
   generateMarketingCampaign,
   getCampaignRenderStatus,
   retryCampaignRender,
+  regenerateCampaignTexts,
+  approveCampaignAndRender,
 } from "@/lib/marketing/marketing-campaign.functions";
 import type {
   MarketingMediaRow,
