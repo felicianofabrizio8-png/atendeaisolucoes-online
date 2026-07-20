@@ -50,7 +50,7 @@ describe("extractPrincipalLengths", () => {
   });
   it("aceita '5 m' e '6 metros'", () => {
     expect(extractPrincipalLengths({ name: "Piscina 5 m" }).has(5)).toBe(true);
-    expect(extractPrincipalLengths({ description: "Comprimento 6 metros" }).has(6)).toBe(true);
+    expect(extractPrincipalLengths({ name: "X", description: "Comprimento 6 metros" }).has(6)).toBe(true);
   });
 });
 
