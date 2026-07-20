@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { parseMeasureQuery, productMatchesMeasure } from "@/lib/product-measure-filter";
+import { productMatches, normalizeSearch } from "@/lib/product-search";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
@@ -56,47 +56,10 @@ function useProducts(): Product[] {
   );
 }
 
-function normalizeSearch(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
+// Filtro compartilhado com a Biblioteca de Produtos do chat — ver
+// `@/lib/product-search`. Alterações devem ser feitas lá para manter as
+// duas superfícies em sincronia.
 
-function productMatches(product: Product, rawQuery: string): boolean {
-  if (!rawQuery.trim()) return true;
-
-  // 1) PRIORIDADE MÁXIMA: filtro exclusivo por medida principal.
-  //    Se o termo for apenas um número (opcionalmente com "m"/"metros"),
-  //    restringe SOMENTE aos produtos cujo comprimento principal (extraído
-  //    de padrões NxM ou "N m/metros" em nome/descrição) case exatamente.
-  //    Preço, litragem, códigos de modelo ("Sol 500") NÃO contam.
-  const measure = parseMeasureQuery(rawQuery);
-  if (measure !== null) {
-    return productMatchesMeasure(
-      { name: product.name, description: product.description },
-      measure,
-    );
-  }
-
-  const q = normalizeSearch(rawQuery);
-  // 2) Filtro determinístico por categoria: se o termo digitado equivale ao
-  //    nome de uma categoria, restringe apenas àquela categoria.
-  const productCat = normalizeSearch(product.category ?? "");
-  const isCategoryQuery = PRODUCT_CATEGORIES.some((cat) => {
-    const nc = normalizeSearch(cat);
-    return nc === q || nc.startsWith(q) || nc.endsWith(q);
-  });
-  if (isCategoryQuery) {
-    return productCat === q || productCat.startsWith(q) || productCat.endsWith(q);
-  }
-
-  // 3) Busca textual comum — sem `price` no haystack.
-  const haystack = normalizeSearch(
-    [product.name, product.category, product.description, product.notes].join(" "),
-  );
-  return haystack.includes(q);
-}
 
 function ProductsPage() {
   const navigate = useNavigate();

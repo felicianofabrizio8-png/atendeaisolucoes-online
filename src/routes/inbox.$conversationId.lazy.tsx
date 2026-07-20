@@ -71,6 +71,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { productMatches } from "@/lib/product-search";
 import {
   buildProductCaption,
   buildProductCardSubtitle,
@@ -2368,16 +2369,10 @@ function ProductsLibraryModal({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const all = listProducts();
-  const filtered = useMemo<Product[]>(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.category ?? "").toLowerCase().includes(q) ||
-        (p.description ?? "").toLowerCase().includes(q),
-    );
-  }, [all, query]);
+  const filtered = useMemo<Product[]>(
+    () => all.filter((p) => productMatches(p, query)),
+    [all, query],
+  );
   const byCategory = useMemo(() => {
     const map = new Map<string, Product[]>();
     for (const p of filtered) {
