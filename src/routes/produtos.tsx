@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { parseMeasureQuery, productMatchesMeasure } from "@/lib/product-measure-filter";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
@@ -64,11 +65,23 @@ function normalizeSearch(text: string): string {
 
 function productMatches(product: Product, rawQuery: string): boolean {
   if (!rawQuery.trim()) return true;
+
+  // 1) PRIORIDADE MÁXIMA: filtro exclusivo por medida principal.
+  //    Se o termo for apenas um número (opcionalmente com "m"/"metros"),
+  //    restringe SOMENTE aos produtos cujo comprimento principal (extraído
+  //    de padrões NxM ou "N m/metros" em nome/descrição) case exatamente.
+  //    Preço, litragem, códigos de modelo ("Sol 500") NÃO contam.
+  const measure = parseMeasureQuery(rawQuery);
+  if (measure !== null) {
+    return productMatchesMeasure(
+      { name: product.name, description: product.description },
+      measure,
+    );
+  }
+
   const q = normalizeSearch(rawQuery);
-  // Filtro determinístico por categoria: se o termo digitado equivale ao nome
-  // de uma categoria (exato, prefixo ou sufixo após normalização), restringe
-  // apenas aos produtos DAQUELA categoria. Sem isso, "6 metros" casaria via
-  // substring em descrições/nomes de outras medidas (ex.: "6x3", "16m²").
+  // 2) Filtro determinístico por categoria: se o termo digitado equivale ao
+  //    nome de uma categoria, restringe apenas àquela categoria.
   const productCat = normalizeSearch(product.category ?? "");
   const isCategoryQuery = PRODUCT_CATEGORIES.some((cat) => {
     const nc = normalizeSearch(cat);
@@ -77,9 +90,8 @@ function productMatches(product: Product, rawQuery: string): boolean {
   if (isCategoryQuery) {
     return productCat === q || productCat.startsWith(q) || productCat.endsWith(q);
   }
-  // Busca textual normal — NÃO inclui `price` no haystack para evitar que
-  // dígitos do preço (ex.: 26.000) façam falso positivo em pesquisas por
-  // medida ("6", "5m", etc.).
+
+  // 3) Busca textual comum — sem `price` no haystack.
   const haystack = normalizeSearch(
     [product.name, product.category, product.description, product.notes].join(" "),
   );
