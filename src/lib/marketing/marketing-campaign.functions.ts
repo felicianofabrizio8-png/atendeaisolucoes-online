@@ -706,23 +706,24 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await resolveCompanyId(supabase, userId);
 
-    const roleColumnJob = data.role === "feed" ? "feed_render_job_id" : "story_render_job_id";
-    const roleColumnVideo = data.role === "feed" ? "feed_video_id" : "story_video_id";
-
-    const { data: row, error } = await supabase
+    // Fase M3 — retry SEMPRE opera sobre o job master (1 vídeo p/ toda campanha).
+    // Independente da role solicitada, buscamos AMBAS as linhas (feed+story) e
+    // reutilizamos qualquer job master já existente. Prevenção de duplicidade:
+    //   1. Se qualquer linha já tem *_video_id → job já concluiu → devolve o id.
+    //   2. Se alguma linha tem job em queued/processing → devolve o mesmo id.
+    //   3. Só cria job novo se todas as referências forem null/failed/cancelled.
+    const { data: rows, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, ${roleColumnJob}, ${roleColumnVideo}`,
+        "id, company_id, campaign_role, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id",
       )
       .eq("company_id", companyId)
-      .eq("campaign_id", data.campaign_id)
-      .eq("campaign_role", data.role)
-      .maybeSingle();
-    if (error || !row) throw new Error("campaign_role_not_found");
-
-    const r = row as unknown as {
+      .eq("campaign_id", data.campaign_id);
+    if (error) throw new Error(error.message);
+    const list = (rows ?? []) as Array<{
       id: string;
       company_id: string;
+      campaign_role: string | null;
       primary_image_media_id: string | null;
       primary_image_product_ref: { product_id: string; image_path: string } | null;
       primary_audio_id: string | null;
@@ -734,42 +735,105 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       overlay_headline: string | null;
       overlay_subheadline: string | null;
       overlay_cta: string | null;
-      feed_render_job_id?: string | null;
-      story_render_job_id?: string | null;
-      feed_video_id?: string | null;
-      story_video_id?: string | null;
-    };
+      feed_render_job_id: string | null;
+      story_render_job_id: string | null;
+      feed_video_id: string | null;
+      story_video_id: string | null;
+    }>;
+    const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
+    const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
+    if (!feedRow && !storyRow) throw new Error("campaign_role_not_found");
 
-    if (!r.primary_audio_id) throw new Error("campaign_missing_primary_audio");
-    if (!r.primary_image_media_id && !r.primary_image_product_ref) {
+    // Fonte canônica de dados de render = linha da story (é o master 9:16).
+    const src = storyRow ?? feedRow!;
+    if (!src.primary_audio_id) throw new Error("campaign_missing_primary_audio");
+    if (!src.primary_image_media_id && !src.primary_image_product_ref) {
       throw new Error("campaign_missing_primary_image");
     }
 
-    const existingJobId =
-      data.role === "feed" ? r.feed_render_job_id ?? null : r.story_render_job_id ?? null;
-    const existingVideoId =
-      data.role === "feed" ? r.feed_video_id ?? null : r.story_video_id ?? null;
-    if (existingVideoId) return { job_id: existingJobId ?? "" };
-    if (existingJobId) {
-      const { data: j } = await supabase
+    // (1) Vídeo já existente → devolve. Se apenas UM lado tem video_id
+    //     (campanha antiga), replicamos no outro se ambos apontam para o
+    //     mesmo job — sem criar novo.
+    const anyVideoId =
+      storyRow?.story_video_id ??
+      feedRow?.feed_video_id ??
+      storyRow?.feed_video_id ??
+      feedRow?.story_video_id ??
+      null;
+    const anyJobIdFromRow = (r: typeof src | null) =>
+      r ? r.story_render_job_id ?? r.feed_render_job_id ?? null : null;
+    if (anyVideoId) {
+      // eslint-disable-next-line no-console
+      console.info(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "campaign_master_render_reused",
+          campaign_id: data.campaign_id,
+          company_id: companyId,
+          reason: "already_completed",
+          video_id: anyVideoId,
+        }),
+      );
+      return { job_id: anyJobIdFromRow(src) ?? "" };
+    }
+
+    // (2) Job ativo (queued/processing) em qualquer coluna → reusa.
+    const candidateJobIds = Array.from(
+      new Set(
+        [
+          storyRow?.story_render_job_id,
+          storyRow?.feed_render_job_id,
+          feedRow?.feed_render_job_id,
+          feedRow?.story_render_job_id,
+        ].filter((x): x is string => typeof x === "string" && x.length > 0),
+      ),
+    );
+    if (candidateJobIds.length > 0) {
+      const { data: js } = await supabase
         .from("video_render_jobs")
         .select("id, status")
-        .eq("id", existingJobId)
-        .maybeSingle();
-      if (j && (j.status === "queued" || j.status === "processing")) {
-        return { job_id: j.id };
+        .in("id", candidateJobIds);
+      const active = (js ?? []).find(
+        (j) => j.status === "queued" || j.status === "processing",
+      );
+      if (active) {
+        // eslint-disable-next-line no-console
+        console.info(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "info",
+            event: "campaign_duplicate_render_prevented",
+            campaign_id: data.campaign_id,
+            company_id: companyId,
+            job_id: active.id,
+            state: active.status,
+          }),
+        );
+        // Reforça o vínculo em ambas as linhas (idempotente).
+        if (feedRow) {
+          await supabase
+            .from("marketing_contents")
+            .update({ feed_render_job_id: active.id })
+            .eq("id", feedRow.id);
+        }
+        if (storyRow) {
+          await supabase
+            .from("marketing_contents")
+            .update({ story_render_job_id: active.id })
+            .eq("id", storyRow.id);
+        }
+        return { job_id: active.id };
       }
     }
 
-    // Retry: reusa apenas a imagem primária + comportamento legado (crop
-    // central). Sequência/focal são propriedades da geração original — se o
-    // usuário quiser mudar, gera uma nova campanha.
-    const image: ImageOwnershipRef = r.primary_image_media_id
-      ? { source: "marketing_media", image_id: r.primary_image_media_id }
+    // (3) Criar novo job master.
+    const image: ImageOwnershipRef = src.primary_image_media_id
+      ? { source: "marketing_media", image_id: src.primary_image_media_id }
       : {
           source: "product_image",
-          product_id: r.primary_image_product_ref!.product_id,
-          product_image_path: r.primary_image_product_ref!.image_path,
+          product_id: src.primary_image_product_ref!.product_id,
+          product_image_path: src.primary_image_product_ref!.image_path,
         };
 
     let companyNameRetry: string | null = null;
@@ -785,17 +849,19 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     }
 
     const retryResolved = resolveOverlayContentFromRow(
-      r as unknown as MarketingRowOverlaySource,
+      src as unknown as MarketingRowOverlaySource,
     );
     // eslint-disable-next-line no-console
     console.info(
       JSON.stringify({
         ts: new Date().toISOString(),
         level: "info",
-        event: "overlay_content_source",
+        event: "campaign_master_render_requested",
         campaign_id: data.campaign_id,
-        role: data.role,
+        company_id: companyId,
+        video_format: "story",
         retry: true,
+        requested_role: data.role,
         overlay_fields: retryResolved.telemetry.overlay_fields,
         legacy_fallback: retryResolved.telemetry.legacy_fallback,
       }),
@@ -804,23 +870,30 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
-      role: data.role,
+      role: "story", // master é sempre 9:16
       primaryImage: image,
       primaryFocalPoint: null,
       imageSequence: null,
-      audioId: r.primary_audio_id,
-      audioStart: Number(r.audio_start_second ?? 0),
-      duration: Number(r.duration_seconds ?? 15),
+      audioId: src.primary_audio_id,
+      audioStart: Number(src.audio_start_second ?? 0),
+      duration: Number(src.duration_seconds ?? 15),
       existingJobId: null,
       content: { ...retryResolved.content, companyName: companyNameRetry },
     });
 
-
-    const patch =
-      data.role === "feed"
-        ? { feed_render_job_id: jobId }
-        : { story_render_job_id: jobId };
-    await supabase.from("marketing_contents").update(patch).eq("id", r.id);
+    if (feedRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ feed_render_job_id: jobId })
+        .eq("id", feedRow.id);
+    }
+    if (storyRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ story_render_job_id: jobId })
+        .eq("id", storyRow.id);
+    }
 
     return { job_id: jobId };
   });
+
