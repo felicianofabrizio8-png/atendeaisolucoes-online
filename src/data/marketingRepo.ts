@@ -251,6 +251,8 @@ export async function apiApproveCampaignAndRender(input: {
   headline: string;
   subheadline?: string | null;
   cta?: string | null;
+  layout?: Record<string, unknown> | null;
+  template?: string | null;
 }) {
   return approveCampaignAndRender({ data: input });
 }

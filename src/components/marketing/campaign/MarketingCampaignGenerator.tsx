@@ -40,7 +40,7 @@ import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
-import { CampaignTextReview } from "./CampaignTextReview";
+import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -397,12 +397,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
       {/* Revisão de texto (approval-gate) — sem job de render ainda */}
       {pendingReview && !campaignId && (
-        <CampaignTextReview
+        <CampaignVideoEditor
           campaignId={pendingReview.campaignId}
           contents={pendingReview.contents}
           previewImageUrl={primarySlot?.previewUrl ?? null}
           focalPoint={primarySlot?.focal ?? null}
-          onContentsUpdated={(fresh) =>
+          onContentsUpdated={(fresh: MarketingContentRow[]) =>
             setPendingReview((cur) =>
               cur ? { ...cur, contents: fresh } : cur,
             )

@@ -689,6 +689,11 @@ const ApproveInput = z.object({
   headline: z.string().trim().min(1).max(80),
   subheadline: z.string().trim().max(120).nullable().optional(),
   cta: z.string().trim().max(60).nullable().optional(),
+  // Fase M4-editor: layout visual + template persistidos junto do texto
+  // aprovado. Nesta rodada o worker ainda não consome; ficam prontos para
+  // a próxima fase ler `video_layout` do content ou `brand_snapshot.overlay_layout`.
+  layout: z.record(z.string(), z.unknown()).nullable().optional(),
+  template: z.string().max(40).nullable().optional(),
 });
 
 export const approveCampaignAndRender = createServerFn({ method: "POST" })
@@ -723,12 +728,17 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       throw new Error("campaign_missing_primary_image");
     }
 
-    // Persistência do texto aprovado (mesmos valores nas duas linhas).
+    // Persistência do texto aprovado + layout/template do editor visual
+    // (mesmos valores nas duas linhas feed/story).
     const approvedPatch = {
       overlay_headline: data.headline,
       overlay_subheadline: data.subheadline ?? null,
       overlay_cta: data.cta ?? null,
       overlay_approved_at: new Date().toISOString(),
+      ...(data.layout !== undefined
+        ? { video_layout: data.layout as unknown as never }
+        : {}),
+      ...(data.template !== undefined ? { video_template: data.template } : {}),
     };
     await supabase
       .from("marketing_contents")

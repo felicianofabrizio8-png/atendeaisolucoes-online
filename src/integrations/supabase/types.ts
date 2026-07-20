@@ -2307,6 +2307,8 @@ export type Database = {
           story_video_id: string | null
           title: string | null
           updated_at: string
+          video_layout: Json | null
+          video_template: string | null
         }
         Insert: {
           ai_model?: string | null
@@ -2349,6 +2351,8 @@ export type Database = {
           story_video_id?: string | null
           title?: string | null
           updated_at?: string
+          video_layout?: Json | null
+          video_template?: string | null
         }
         Update: {
           ai_model?: string | null
@@ -2391,6 +2395,8 @@ export type Database = {
           story_video_id?: string | null
           title?: string | null
           updated_at?: string
+          video_layout?: Json | null
+          video_template?: string | null
         }
         Relationships: [
           {
