@@ -386,6 +386,20 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
+              onOpenVideoEditor={() => void openVideoEditor(c)}
+              onViewVideo={async () => {
+                const idx = await ensureMediaIndex();
+                const vid = c.feed_video_id || c.story_video_id;
+                const media = vid ? idx[vid] : null;
+                if (!media?.storage_path) {
+                  toast.error("Vídeo ainda não disponível.");
+                  return;
+                }
+                const url = await urlForMarketingPath(media.storage_path).catch(() => null);
+                if (url) window.open(url, "_blank", "noopener");
+                else toast.error("Não foi possível abrir o vídeo.");
+              }}
+              tracked={c.campaign_id ? campaigns[c.campaign_id] ?? null : null}
               busy={busy}
             />
           ))}
