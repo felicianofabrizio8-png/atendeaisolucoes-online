@@ -19,6 +19,10 @@ import {
   loadMarketingBrandContext,
   sanitizeBrandContextForPersistence,
 } from "./brand-context-adapter";
+import {
+  buildRecentSignaturesSet,
+  normalizeOverlayCandidate,
+} from "./overlay-texts";
 
 type SB = SupabaseClient<Database>;
 
@@ -159,6 +163,14 @@ const ReelScriptSchema = z.object({
 
 const BundleSchema = z.object({
   strategy: StrategySchema,
+  // Fase M1 — texto visual ÚNICO da campanha (mesmo overlay em Feed e Story).
+  // Limites amplos aqui; a validação estrita/reescrita acontece no helper
+  // `normalizeOverlayCandidate` (nunca truncar, aplicar fallback etc.).
+  image_texts: z.object({
+    headline: z.string().trim().min(1).max(120),
+    subheadline: z.string().trim().max(200).optional().default(""),
+    cta: z.string().trim().max(120).optional().default(""),
+  }),
   story: z.object({
     title: z.string().trim().max(120),
     body: z.string().trim().min(1).max(1500),
@@ -428,6 +440,30 @@ function buildPastCampaignsBlock(
 }
 
 
+
+async function loadRecentOverlays(
+  sb: SB,
+  companyId: string,
+  limit = 30,
+): Promise<Array<{ overlay_headline: string | null; overlay_subheadline: string | null }>> {
+  try {
+    const { data, error } = await sb
+      .from("marketing_contents")
+      .select("overlay_headline, overlay_subheadline")
+      .eq("company_id", companyId)
+      .not("overlay_headline", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    return (data ?? []) as Array<{
+      overlay_headline: string | null;
+      overlay_subheadline: string | null;
+    }>;
+  } catch {
+    return [];
+  }
+}
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
@@ -467,6 +503,20 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       productId: data.product_id ?? null,
     });
     const pastBlock = buildPastCampaignsBlock(pastCampaigns);
+    // Fase M1 — carrega textos visuais recentes para o bloco de diversidade e
+    // para a validação anti-repetição pós-geração. Best-effort; sem histórico
+    // o fluxo segue normalmente.
+    const recentOverlays = await loadRecentOverlays(supabase, companyId, 30);
+    const recentOverlaySignatures = buildRecentSignaturesSet(recentOverlays);
+    const overlayHistoryBlock = recentOverlays.length
+      ? `Textos visuais (overlay) usados nas últimas ${recentOverlays.length} campanhas — NÃO repita nenhum destes headlines nem combinações headline+subtítulo:\n${recentOverlays
+          .slice(0, 15)
+          .map(
+            (r, i) =>
+              `${i + 1}. "${r.overlay_headline}"${r.overlay_subheadline ? ` · "${r.overlay_subheadline}"` : ""}`,
+          )
+          .join("\n")}`
+      : "Ainda não há textos visuais anteriores — você tem liberdade total nesta campanha.";
     const recentAngles = extractRecentAngles(pastCampaigns);
     const angleBlock = buildAngleDiversityBlock(recentAngles);
     const productLockActive = Boolean(product && promotion);
@@ -597,6 +647,17 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
   Coloque também em \`reel.body\` uma versão em texto legível do mesmo roteiro (cena por cena, para o humano aprovar). E use \`reel.title\` como título curto do vídeo.
 - WHATSAPP: mensagem individual, conversacional, sem cara de disparo em massa. Foco em relacionamento. NÃO inclua telefone no corpo.
 
+# TEXTO VISUAL DA CAMPANHA (image_texts) — obrigatório
+Além dos 4 formatos, você produz UM ÚNICO bloco \`image_texts\` que será usado como texto sobreposto na imagem/vídeo. É o MESMO overlay para Feed e Story — não crie versões diferentes.
+Regras rigorosas (leitura em <1s no celular):
+- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Piscina dos sonhos", "Conforto para família", "Qualidade Solário".
+- \`subheadline\`: opcional, no máximo 45 caracteres, entre 3 e 8 palavras, UMA frase curta, complementa o headline SEM repetir literalmente. Deixe vazio se não conseguir cumprir.
+- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça os modelos", "Fale conosco".
+NÃO use nenhuma das frases proibidas. NÃO repita os textos visuais recentes abaixo. Não é uma legenda — é o texto grande da peça visual.
+
+## Textos visuais recentes desta empresa
+${overlayHistoryBlock}
+
 # VARIAÇÃO
 Seed desta geração: ${variationSeed}. Varie abertura, CTA, estrutura, argumentos e organização em relação a gerações anteriores.
 
@@ -605,9 +666,9 @@ ${pastBlock}
 Use este histórico APENAS como referência estratégica: identifique padrões que funcionaram, evite repetir os mesmos títulos/CTAs/ângulos, mas gere textos totalmente inéditos. NUNCA copie trechos das campanhas anteriores.
 
 # AUTOVALIDAÇÃO ANTES DE RESPONDER
-Confira: (a) escolheu UM ângulo do catálogo e ele NÃO está entre os últimos usados; (b) coerência com a base de conhecimento; (c) zero informação inventada; (d) os 4 formatos formam uma campanha coerente em torno do ângulo; (e) linguagem natural; (f) nenhuma frase genérica proibida; (g) nada copiado do histórico; (h) o Reel tem roteiro cinematográfico completo com cenas, enquadramentos e cortes; (i) se há trava de produto, nenhum outro modelo/produto foi citado.
+Confira: (a) escolheu UM ângulo do catálogo e ele NÃO está entre os últimos usados; (b) coerência com a base de conhecimento; (c) zero informação inventada; (d) os 4 formatos formam uma campanha coerente em torno do ângulo; (e) linguagem natural; (f) nenhuma frase genérica proibida; (g) nada copiado do histórico; (h) o Reel tem roteiro cinematográfico completo com cenas, enquadramentos e cortes; (i) se há trava de produto, nenhum outro modelo/produto foi citado; (j) \`image_texts\` respeita rigorosamente os limites de palavras/caracteres e não repete textos visuais recentes.
 
-Devolva o objeto \`strategy\` (direção interna) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+Devolva o objeto \`strategy\` (direção interna) + \`image_texts\` + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
 
 
 
@@ -666,6 +727,16 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
             "cta",
             "intent",
           ],
+        },
+        image_texts: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            headline: { type: "string" },
+            subheadline: { type: "string" },
+            cta: { type: "string" },
+          },
+          required: ["headline", "subheadline", "cta"],
         },
         story: {
           type: "object",
@@ -756,7 +827,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
           required: ["title", "body", "cta_text"],
         },
       },
-      required: ["strategy", "story", "feed", "reel", "whatsapp"],
+      required: ["strategy", "image_texts", "story", "feed", "reel", "whatsapp"],
     };
 
     const payload = {
@@ -851,6 +922,18 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     const angleRepeatedRecent = recentAngles.slice(0, 3).includes(chosenAngle);
 
 
+    // Fase M1 — normaliza image_texts (validação/reescrita/anti-repetição).
+    // Feed e Story recebem EXATAMENTE o mesmo overlay. Legendas ficam intactas.
+    const overlay = normalizeOverlayCandidate(
+      bundle.image_texts,
+      {
+        title: bundle.feed.title,
+        body: bundle.feed.body,
+        cta_text: bundle.whatsapp.cta_text,
+      },
+      recentOverlaySignatures,
+    );
+
     // Persistência atômica: 4 registros ou nenhum.
     const promptSnapshot = {
       tone: data.tone,
@@ -870,6 +953,9 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       reel_format: bundle.reel.script.format,
       // Brand Center snapshot SEM signed URL — sanitizado no adapter.
       brand: sanitizeBrandContextForPersistence(marketingBrand),
+      // Fase M1 — telemetria sanitizada da normalização do overlay.
+      overlay_telemetry: overlay.telemetry,
+      overlay_recent_count: recentOverlays.length,
     } as unknown as Database["public"]["Tables"]["marketing_contents"]["Insert"]["ai_prompt"];
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
@@ -884,6 +970,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         hashtags: bundle.story.hashtags,
         cta_text: null,
         cta_destination: null,
+        // Fase M1 — overlay compartilhado com o Feed.
+        overlay_headline: overlay.overlay_headline,
+        overlay_subheadline: overlay.overlay_subheadline,
+        overlay_cta: overlay.overlay_cta,
         ai_model: DEFAULT_MODEL,
         ai_prompt: promptSnapshot,
         ai_raw_output: bundle.story,
@@ -902,6 +992,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         hashtags: bundle.feed.hashtags,
         cta_text: null,
         cta_destination: null,
+        // Fase M1 — overlay compartilhado com o Story (mesmos valores).
+        overlay_headline: overlay.overlay_headline,
+        overlay_subheadline: overlay.overlay_subheadline,
+        overlay_cta: overlay.overlay_cta,
         ai_model: DEFAULT_MODEL,
         ai_prompt: promptSnapshot,
         ai_raw_output: bundle.feed,
