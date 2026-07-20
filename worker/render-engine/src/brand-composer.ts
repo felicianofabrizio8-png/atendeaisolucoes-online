@@ -60,6 +60,12 @@ export interface BrandLayerPaths {
   outroCardPath: string | null;
   /** Duração da tela final (segundos). */
   outroDurationSeconds: number;
+  /**
+   * Fase M4-render — quando true, o overlay `bottomPanelPath` já contém a
+   * logo (renderizada dentro da cena, respeitando `overlayLayout.logo`).
+   * O caller deve suprimir o watermark clássico para evitar duplicação.
+   */
+  sceneAppliesLogo: boolean;
 }
 
 export interface ComposeBrandLayersInput {
