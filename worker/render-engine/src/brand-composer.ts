@@ -239,7 +239,10 @@ function wrapText(text: string, maxCharsPerLine: number, maxLines: number): stri
       if (current) lines.push(current);
       current = w;
       if (lines.length >= maxLines - 1 && w.length > maxCharsPerLine) {
-        current = w.slice(0, maxCharsPerLine - 1) + "…";
+        // Fase M2 — nunca cortar palavra nem aplicar reticências. Se a última
+        // palavra não cabe, descartamos silenciosamente (guard já garantiu
+        // que o texto cabe; este caminho só ocorre para snapshots v1 legados).
+        current = "";
         break;
       }
     }
