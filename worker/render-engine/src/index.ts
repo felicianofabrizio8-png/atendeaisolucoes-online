@@ -20,10 +20,14 @@ async function main() {
     build_signature: BUILD_SIGNATURE,
     build_date: BUILD_TIMESTAMP,
     brand_composition_enabled: true,
+    scene_engine_enabled: true,
+    scene_composer_version: "scene-v1",
+    available_scene_ids: Object.keys(SCENES),
     entrypoint: "dist/index.js",
     node_version: process.version,
     pid: process.pid,
   });
+
 
   log.info("worker_started", {
     worker_id: cfg.workerId,
