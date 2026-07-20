@@ -65,8 +65,23 @@ function normalizeSearch(text: string): string {
 function productMatches(product: Product, rawQuery: string): boolean {
   if (!rawQuery.trim()) return true;
   const q = normalizeSearch(rawQuery);
+  // Filtro determinístico por categoria: se o termo digitado equivale ao nome
+  // de uma categoria (exato, prefixo ou sufixo após normalização), restringe
+  // apenas aos produtos DAQUELA categoria. Sem isso, "6 metros" casaria via
+  // substring em descrições/nomes de outras medidas (ex.: "6x3", "16m²").
+  const productCat = normalizeSearch(product.category ?? "");
+  const isCategoryQuery = PRODUCT_CATEGORIES.some((cat) => {
+    const nc = normalizeSearch(cat);
+    return nc === q || nc.startsWith(q) || nc.endsWith(q);
+  });
+  if (isCategoryQuery) {
+    return productCat === q || productCat.startsWith(q) || productCat.endsWith(q);
+  }
+  // Busca textual normal — NÃO inclui `price` no haystack para evitar que
+  // dígitos do preço (ex.: 26.000) façam falso positivo em pesquisas por
+  // medida ("6", "5m", etc.).
   const haystack = normalizeSearch(
-    [product.name, product.category, product.description, product.notes, String(product.price)].join(" "),
+    [product.name, product.category, product.description, product.notes].join(" "),
   );
   return haystack.includes(q);
 }
