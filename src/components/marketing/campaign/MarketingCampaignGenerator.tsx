@@ -244,12 +244,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
       });
-      setCampaignId(res.campaign_id);
-      trackCampaign(res.campaign_id);
-      toast.success("Campanha criada.", {
-        description: "Você pode continuar navegando — avisaremos quando o vídeo estiver pronto.",
-      });
-      onGenerated?.(res.contents as MarketingContentRow[]);
+      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
+      // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
+      // ainda não foi enfileirado. Abrimos a tela de revisão.
+      setPendingReview({ campaignId: res.campaign_id, contents: contentsRet });
+      toast.success("Textos sugeridos. Revise antes de gerar o vídeo.");
+      onGenerated?.(contentsRet);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
     } finally {
