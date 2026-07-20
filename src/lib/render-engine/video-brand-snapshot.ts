@@ -70,6 +70,18 @@ export interface VideoBrandContentSnapshot {
   supportingText: string | null;
   ctaText: string | null;
   companyName: string | null;
+  /**
+   * Fase M4 (Editor Criativo IA) — template escolhido no editor visual.
+   * O worker atual ainda usa o composer padrão; este campo é persistido
+   * imutavelmente no job para futuro consumo e para auditoria (garantir que
+   * o vídeo gerado corresponde exatamente à cena aprovada no editor).
+   */
+  template?: string | null;
+  /**
+   * Layout completo aprovado no editor (posições/tamanhos de logo/textos).
+   * Opaco para o snapshot builder — o worker interpreta na próxima fase.
+   */
+  overlayLayout?: Record<string, unknown> | null;
 }
 
 export interface VideoBrandSnapshot {
