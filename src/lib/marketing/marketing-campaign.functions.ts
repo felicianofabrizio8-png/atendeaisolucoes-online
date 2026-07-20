@@ -447,6 +447,13 @@ async function ensureCampaignJob(
 }
 
 // ------------------------------------------------- generateMarketingCampaign
+//
+// Fase "Approval Gate":
+//  - Cria as linhas de marketing_contents (feed+story) com overlays sugeridos
+//    pela IA e persiste também a coluna overlay_original_* (snapshot p/ botão
+//    "Restaurar original").
+//  - NÃO enfileira job de render aqui. O job só é criado após a aprovação
+//    explícita do usuário via `approveCampaignAndRender`.
 
 export const generateMarketingCampaign = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -455,8 +462,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const companyId = await resolveCompanyId(supabase, userId);
 
-    // 1) Ownership de cada imagem (validação paralela seria mais rápida, mas
-    //    manter erro determinístico por posição é mais amigável ao usuário).
+    // 1) Ownership de cada imagem.
     const rawImages = normalizeImages(data);
     const validated: ValidatedImage[] = [];
     for (let i = 0; i < rawImages.length; i++) {
@@ -472,15 +478,8 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
     );
 
     const primary = validated[0];
-    const anyFocal = validated.some((v) => v.focalPoint != null);
-    // Só materializa a sequência quando ela é multi-imagem OU quando alguma
-    // imagem tem focal_point. Isso mantém jobs single-image sem focal_point
-    // com o payload legado — worker novo executa o caminho existente.
-    const sequence: RenderImageSequenceItem[] | null =
-      validated.length > 1 || anyFocal ? validated.map((v) => v.sequenceItem) : null;
 
-    // 2) Reuso da geração IA existente. Mídias enviadas à IA seguem sendo
-    //    apenas as da biblioteca (product_media_refs preserva contrato atual).
+    // 2) Geração dos textos pela IA.
     const media_ids = validated
       .filter((v) => v.ref.source === "marketing_media")
       .map((v) => (v.ref as { source: "marketing_media"; image_id: string }).image_id);
@@ -506,7 +505,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       },
     });
 
-    // 3) Vincula story/feed ao campaign_id.
+    // 3) Vincula story/feed ao campaign_id e grava referências de mídia/áudio.
     const campaignId = crypto.randomUUID();
     const feedRow = contents.find((c) => (c.format as MarketingContentFormat) === "feed");
     const storyRow = contents.find((c) => (c.format as MarketingContentFormat) === "story");
@@ -538,8 +537,217 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       .update({ ...commonPatch, campaign_role: "story" })
       .eq("id", storyRow.id);
 
-    // Fase 5.B1 — nome legal da empresa para a tela final de marca.
-    // Falha aqui é tratada como texto ausente; nunca bloqueia o job.
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "campaign_awaiting_text_approval",
+        campaign_id: campaignId,
+        company_id: companyId,
+      }),
+    );
+
+    const { data: refreshed } = await supabase
+      .from("marketing_contents")
+      .select("*")
+      .in("id", contents.map((c) => c.id));
+
+    return {
+      campaign_id: campaignId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      contents: (refreshed ?? contents) as any,
+      needs_approval: true as const,
+      // Mantido por compat com clientes antigos; render só é enfileirado
+      // após approveCampaignAndRender.
+      feed_job_id: null,
+      story_job_id: null,
+      needs_marketing_media_for_render: false,
+    };
+  });
+
+// ------------------------------------------------- regenerateCampaignTexts
+//
+// Reinvoca a IA para gerar NOVOS overlays (título/subtítulo/CTA) na mesma
+// campanha, mantendo imagens, áudio, música, duração e overlay_original_*
+// intactos. Apenas overlay_headline / overlay_subheadline / overlay_cta são
+// substituídos em ambas as linhas (feed+story).
+
+const RegenerateTextsInput = z.object({ campaign_id: z.string().uuid() });
+
+export const regenerateCampaignTexts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => RegenerateTextsInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+
+    const { data: rows, error } = await supabase
+      .from("marketing_contents")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("campaign_id", data.campaign_id);
+    if (error) throw new Error(error.message);
+    const list = (rows ?? []) as MarketingContentRow[];
+    const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
+    const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
+    if (!feedRow || !storyRow) throw new Error("campaign_not_found");
+    if (feedRow.feed_render_job_id || storyRow.story_render_job_id) {
+      // Campanha já teve texto aprovado e render disparado — regeneração
+      // pós-aprovação exigiria criar nova campanha.
+      throw new Error("campaign_already_approved");
+    }
+
+    // Reaproveita as referências de mídia originais gravadas no prompt.
+    const prompt =
+      (feedRow.ai_prompt as {
+        media_ids?: string[];
+        product_media_refs?: Array<{ product_id: string; image_path: string }>;
+        tone?: "amigável" | "profissional" | "descontraído" | "urgente";
+        audience?: string | null;
+        extra_instructions?: string | null;
+        promotion_id?: string | null;
+      } | null) ?? {};
+
+    const { contents: fresh } = await generateMarketingContent({
+      data: {
+        promotion_id: prompt.promotion_id ?? feedRow.promotion_id ?? null,
+        media_ids: prompt.media_ids ?? [],
+        product_media_refs: prompt.product_media_refs ?? [],
+        tone: prompt.tone ?? "amigável",
+        audience: prompt.audience ?? null,
+        extra_instructions: prompt.extra_instructions ?? null,
+      },
+    });
+
+    const freshFeed = fresh.find(
+      (c) => (c.format as MarketingContentFormat) === "feed",
+    ) as MarketingContentRow | undefined;
+    const freshStory = fresh.find(
+      (c) => (c.format as MarketingContentFormat) === "story",
+    ) as MarketingContentRow | undefined;
+    if (!freshFeed || !freshStory) throw new Error("ai_missing_feed_or_story");
+
+    // Preserva os títulos/corpos originais desta campanha, sobrescreve APENAS
+    // os overlays (o que é visível no vídeo). Legendas não sofrem alteração
+    // aqui, para manter estabilidade do restante do funil.
+    const overlayPatch = {
+      overlay_headline: freshFeed.overlay_headline ?? null,
+      overlay_subheadline: freshFeed.overlay_subheadline ?? null,
+      overlay_cta: freshFeed.overlay_cta ?? null,
+    };
+    await supabase
+      .from("marketing_contents")
+      .update(overlayPatch)
+      .eq("id", feedRow.id);
+    await supabase
+      .from("marketing_contents")
+      .update(overlayPatch)
+      .eq("id", storyRow.id);
+
+    // Remove as linhas efêmeras geradas (não pertencem a nenhuma campanha).
+    try {
+      await supabase
+        .from("marketing_contents")
+        .delete()
+        .in("id", fresh.map((c) => c.id));
+    } catch {
+      /* best-effort — não bloqueia o retorno. */
+    }
+
+    const { data: refreshed } = await supabase
+      .from("marketing_contents")
+      .select("*")
+      .in("id", [feedRow.id, storyRow.id]);
+
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "campaign_texts_regenerated",
+        campaign_id: data.campaign_id,
+        company_id: companyId,
+      }),
+    );
+
+    return {
+      campaign_id: data.campaign_id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      contents: (refreshed ?? []) as any,
+    };
+  });
+
+// ------------------------------------------------- approveCampaignAndRender
+//
+// Persiste os textos APROVADOS pelo usuário e enfileira o job master 9:16.
+// Este é o único ponto onde o Render Engine passa a receber trabalho para
+// esta campanha.
+
+const ApproveInput = z.object({
+  campaign_id: z.string().uuid(),
+  headline: z.string().trim().min(1).max(80),
+  subheadline: z.string().trim().max(120).nullable().optional(),
+  cta: z.string().trim().max(60).nullable().optional(),
+});
+
+export const approveCampaignAndRender = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => ApproveInput.parse(d))
+  .handler(async ({ data, context }): Promise<{ job_id: string }> => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+
+    const { data: rows, error } = await supabase
+      .from("marketing_contents")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("campaign_id", data.campaign_id);
+    if (error) throw new Error(error.message);
+    const list = (rows ?? []) as MarketingContentRow[];
+    const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
+    const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
+    if (!feedRow || !storyRow) throw new Error("campaign_not_found");
+
+    // Idempotência: se já existe job em andamento/concluído, apenas devolve.
+    const existingJobId =
+      storyRow.story_render_job_id ??
+      feedRow.feed_render_job_id ??
+      null;
+    if (existingJobId) {
+      return { job_id: existingJobId };
+    }
+
+    if (!storyRow.primary_audio_id) throw new Error("campaign_missing_primary_audio");
+    if (!storyRow.primary_image_media_id && !storyRow.primary_image_product_ref) {
+      throw new Error("campaign_missing_primary_image");
+    }
+
+    // Persistência do texto aprovado (mesmos valores nas duas linhas).
+    const approvedPatch = {
+      overlay_headline: data.headline,
+      overlay_subheadline: data.subheadline ?? null,
+      overlay_cta: data.cta ?? null,
+      overlay_approved_at: new Date().toISOString(),
+    };
+    await supabase
+      .from("marketing_contents")
+      .update(approvedPatch)
+      .eq("id", feedRow.id);
+    await supabase
+      .from("marketing_contents")
+      .update(approvedPatch)
+      .eq("id", storyRow.id);
+
+    // Master 9:16 (Story) — feed reutiliza o mesmo MP4.
+    const image: ImageOwnershipRef = storyRow.primary_image_media_id
+      ? { source: "marketing_media", image_id: storyRow.primary_image_media_id }
+      : {
+          source: "product_image",
+          product_id: storyRow.primary_image_product_ref!.product_id,
+          product_image_path: storyRow.primary_image_product_ref!.image_path,
+        };
+
     let companyName: string | null = null;
     try {
       const { data: companyRow } = await supabase
@@ -552,35 +760,14 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       companyName = null;
     }
 
-    // 4) Fase M3 — enfileira UM ÚNICO job master 9:16 (video_format=story,
-    //    1080x1920). Feed e Story compartilharão o mesmo MP4.
-    //    O overlay usado é o do Story (canal principal); Feed reutiliza o
-    //    mesmo vídeo. Ambos os campos overlay_* das duas linhas continuam
-    //    intactos no banco para eventual crop 4:5 futuro.
-    const storyResolved = resolveOverlayContentFromRow(
-      storyRow as unknown as MarketingRowOverlaySource,
-    );
-    const feedResolved = resolveOverlayContentFromRow(
-      feedRow as unknown as MarketingRowOverlaySource,
-    );
-    // eslint-disable-next-line no-console
-    console.info(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "overlay_content_source",
-        campaign_id: campaignId,
-        master_source: "story",
-        story: {
-          overlay_fields: storyResolved.telemetry.overlay_fields,
-          legacy_fallback: storyResolved.telemetry.legacy_fallback,
-        },
-        feed: {
-          overlay_fields: feedResolved.telemetry.overlay_fields,
-          legacy_fallback: feedResolved.telemetry.legacy_fallback,
-        },
-      }),
-    );
+    const resolved = resolveOverlayContentFromRow({
+      title: storyRow.title,
+      body: storyRow.body,
+      cta_text: storyRow.cta_text,
+      overlay_headline: data.headline,
+      overlay_subheadline: data.subheadline ?? null,
+      overlay_cta: data.cta ?? null,
+    });
 
     // eslint-disable-next-line no-console
     console.info(
@@ -588,54 +775,41 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
         ts: new Date().toISOString(),
         level: "info",
         event: "campaign_master_render_requested",
-        campaign_id: campaignId,
+        campaign_id: data.campaign_id,
         company_id: companyId,
         video_format: "story",
+        via: "user_approval",
+        overlay_fields: resolved.telemetry.overlay_fields,
+        legacy_fallback: resolved.telemetry.legacy_fallback,
       }),
     );
 
-    const master = await ensureCampaignJob(supabase, {
+    const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story",
-      primaryImage: primary.ref,
-      primaryFocalPoint: primary.focalPoint,
-      imageSequence: sequence,
-      audioId: data.primary_audio_id,
-      audioStart: data.audio_start_second,
-      duration: data.duration_seconds,
+      primaryImage: image,
+      primaryFocalPoint: null,
+      imageSequence: null,
+      audioId: storyRow.primary_audio_id,
+      audioStart: Number(storyRow.audio_start_second ?? 0),
+      duration: Number(storyRow.duration_seconds ?? 15),
       existingJobId: null,
-      content: { ...storyResolved.content, companyName },
+      content: { ...resolved.content, companyName },
     });
 
-    // Vincula o MESMO job master aos dois papéis. Publisher continua lendo
-    // feed_video_id/story_video_id — ambos serão preenchidos pelo linker
-    // quando o job concluir (link-campaign-video.ts).
     await supabase
       .from("marketing_contents")
-      .update({ feed_render_job_id: master.jobId })
+      .update({ feed_render_job_id: jobId })
       .eq("id", feedRow.id);
     await supabase
       .from("marketing_contents")
-      .update({ story_render_job_id: master.jobId })
+      .update({ story_render_job_id: jobId })
       .eq("id", storyRow.id);
 
-
-    const { data: refreshed } = await supabase
-      .from("marketing_contents")
-      .select("*")
-      .in("id", contents.map((c) => c.id));
-
-    return {
-      campaign_id: campaignId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      contents: (refreshed ?? contents) as any,
-      feed_job_id: master.jobId,
-      story_job_id: master.jobId,
-
-      needs_marketing_media_for_render: false,
-    };
+    return { job_id: jobId };
   });
+
 
 // ------------------------------------------------- getCampaignRenderStatus
 
