@@ -264,15 +264,16 @@ export function buildBottomPanelSvg(params: {
   const padX = Math.round(width * 0.06);
   const primary = colors.primary || "#111111";
   const textInverse = colors.textInverse || "#FFFFFF";
-  const accent = colors.accent || primary;
+  // `accent` era usado apenas pelo CTA do painel (removido na Fase M3).
+  void colors.accent;
 
   // Fase 5.B1.1 — refinamento tipográfico: título +20%, subtítulo +15%,
   // espaçamento entre título e subtítulo ampliado (leading premium).
   const headlineSize = Math.round(width * (isVertical ? 0.055 : 0.048) * 1.2);
   const supportingSize = Math.round(width * 0.032 * 1.15);
-  const ctaSize = Math.round(width * 0.028);
-  const ctaPadX = Math.round(width * 0.035);
-  const ctaPadY = Math.round(width * 0.018);
+  // Constantes de CTA mantidas mas não usadas — CTA saiu do painel na Fase M3.
+  const ctaSize = 0, ctaPadX = 0, ctaPadY = 0;
+
 
   const headlineLines = content.headline
     ? wrapText(content.headline, isVertical ? 22 : 26, 2)
@@ -308,17 +309,11 @@ export function buildBottomPanelSvg(params: {
     ? supportingLines.length * Math.round(supportingSize * 1.2) + Math.round(width * 0.02)
     : 0;
 
-  const ctaWidthEstimate = content.ctaText
-    ? Math.round(content.ctaText.length * ctaSize * 0.62) + ctaPadX * 2
-    : 0;
-  const ctaHeight = ctaSize + ctaPadY * 2;
-  const ctaY = panelY + panelH - Math.round(width * 0.06) - ctaHeight;
-  const ctaButton = content.ctaText
-    ? `
-      <rect x="${padX}" y="${ctaY}" width="${ctaWidthEstimate}" height="${ctaHeight}" rx="${Math.round(ctaHeight / 2)}" fill="${accent}"/>
-      <text x="${padX + ctaWidthEstimate / 2}" y="${ctaY + ctaHeight / 2 + Math.round(ctaSize * 0.35)}" font-family="Inter" font-size="${ctaSize}" font-weight="700" fill="${textInverse}" text-anchor="middle">${xmlEscape(content.ctaText)}</text>
-    `
-    : "";
+  // Fase M3 — CTA REMOVIDO do painel inferior. Segundo decisão auditada:
+  // o CTA visual passa a existir apenas na tela final (outro card), evitando
+  // duplicidade e colisão com o HUD do Story/Reels. `content.ctaText` continua
+  // sendo consumido em `buildOutroCardSvg`. Nada mais muda no painel inferior.
+  void ctaSize; void ctaPadX; void ctaPadY; // preservados para retrocompat de imports
 
   // Gradiente do painel: 0 = transparente no topo, opaco no bottom (usa primary).
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -333,9 +328,9 @@ export function buildBottomPanelSvg(params: {
     <rect x="0" y="${panelY - Math.round(panelH * 0.5)}" width="${width}" height="${panelH + Math.round(panelH * 0.5)}" fill="url(#panelGrad)"/>
     <text font-family="Playfair Display" font-size="${headlineSize}" font-weight="700" fill="${textInverse}">${headlineTspans}</text>
     ${supportingText}
-    ${ctaButton}
   </svg>`;
 }
+
 
 export function buildOutroCardSvg(params: {
   width: number;

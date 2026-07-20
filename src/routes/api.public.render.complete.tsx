@@ -190,8 +190,10 @@ export const Route = createFileRoute("/api/public/render/complete")({
 });
 
 /**
- * Fase C.1 — Se este job pertence a uma campanha de marketing (Feed 4:5 ou
- * Story 9:16), grava feed_video_id / story_video_id na linha correspondente.
+ * Fase C.1 + M3 — grava feed_video_id / story_video_id em toda linha de
+ * marketing_contents cujo feed_render_job_id ou story_render_job_id aponte
+ * para este job. Na Fase M3 um único job master pode ser referenciado nas
+ * duas colunas (mesmo MP4 servindo Feed e Story).
  * Best-effort: falhas são apenas logadas para não bloquear a conclusão do render.
  */
 async function linkVideoToMarketingCampaign(
@@ -201,32 +203,21 @@ async function linkVideoToMarketingCampaign(
   videoId: string,
 ): Promise<void> {
   try {
-    const { data: feedRow } = await admin
-      .from("marketing_contents")
-      .select("id, feed_video_id")
-      .eq("feed_render_job_id", jobId)
-      .maybeSingle();
-    if (feedRow && !feedRow.feed_video_id) {
-      await admin
-        .from("marketing_contents")
-        .update({ feed_video_id: videoId })
-        .eq("id", feedRow.id);
-      return;
-    }
-    const { data: storyRow } = await admin
-      .from("marketing_contents")
-      .select("id, story_video_id")
-      .eq("story_render_job_id", jobId)
-      .maybeSingle();
-    if (storyRow && !storyRow.story_video_id) {
-      await admin
-        .from("marketing_contents")
-        .update({ story_video_id: videoId })
-        .eq("id", storyRow.id);
-    }
+    const { linkVideoToMarketingCampaign: linker } = await import(
+      "@/lib/render-engine/link-campaign-video"
+    );
+    const result = await linker(admin, jobId, videoId);
+    console.info("[render-complete]", {
+      event: "campaign_video_ids_linked",
+      job_id: jobId,
+      video_id: videoId,
+      feed_updated: result.feedUpdated.length,
+      story_updated: result.storyUpdated.length,
+    });
   } catch (e) {
     console.warn("[render-complete] link_campaign_failed", {
       code: e instanceof Error ? e.name : "Error",
     });
   }
 }
+
