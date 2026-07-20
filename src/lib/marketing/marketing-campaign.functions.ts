@@ -258,6 +258,8 @@ interface EnsureJobArgs {
     supportingText?: string | null;
     ctaText?: string | null;
     companyName?: string | null;
+    template?: string | null;
+    overlayLayout?: Record<string, unknown> | null;
   } | null;
 }
 
@@ -284,6 +286,8 @@ async function prepareMarketingVideoBrandColumns(params: {
     supportingText?: string | null;
     ctaText?: string | null;
     companyName?: string | null;
+    template?: string | null;
+    overlayLayout?: Record<string, unknown> | null;
   } | null;
 }): Promise<
   | { brand_version_id: string; video_brand: VideoBrandSnapshot }
@@ -714,13 +718,30 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
     if (!feedRow || !storyRow) throw new Error("campaign_not_found");
 
-    // Idempotência: se já existe job em andamento/concluído, apenas devolve.
-    const existingJobId =
+    // Idempotência refinada:
+    //  - Job em andamento (queued/processing/claimed) → devolve o mesmo jobId
+    //    e NÃO sobrescreve as edições (evita corrida com o worker).
+    //  - Job em estado terminal (completed/failed/cancelled) OU inexistente →
+    //    persistimos o texto/layout/template atuais do editor e enfileiramos
+    //    um NOVO job, com snapshot recém-montado a partir do estado editado.
+    const previousJobId =
       storyRow.story_render_job_id ??
       feedRow.feed_render_job_id ??
       null;
-    if (existingJobId) {
-      return { job_id: existingJobId };
+    if (previousJobId) {
+      const { data: prev } = await supabase
+        .from("video_render_jobs")
+        .select("id, status")
+        .eq("id", previousJobId)
+        .maybeSingle();
+      const inFlight =
+        !!prev &&
+        prev.status !== "completed" &&
+        prev.status !== "failed" &&
+        prev.status !== "cancelled";
+      if (inFlight) {
+        return { job_id: previousJobId };
+      }
     }
 
     if (!storyRow.primary_audio_id) throw new Error("campaign_missing_primary_audio");
@@ -729,7 +750,9 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     }
 
     // Persistência do texto aprovado + layout/template do editor visual
-    // (mesmos valores nas duas linhas feed/story).
+    // (mesmos valores nas duas linhas feed/story). Sempre roda antes de
+    // montar o snapshot para garantir que o worker receba exatamente o
+    // que está no editor.
     const approvedPatch = {
       overlay_headline: data.headline,
       overlay_subheadline: data.subheadline ?? null,
@@ -791,6 +814,10 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         via: "user_approval",
         overlay_fields: resolved.telemetry.overlay_fields,
         legacy_fallback: resolved.telemetry.legacy_fallback,
+        template: data.template ?? null,
+        has_layout: data.layout !== undefined && data.layout !== null,
+        previous_job_id: previousJobId,
+        rerender: !!previousJobId,
       }),
     );
 
@@ -804,8 +831,16 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       audioId: storyRow.primary_audio_id,
       audioStart: Number(storyRow.audio_start_second ?? 0),
       duration: Number(storyRow.duration_seconds ?? 15),
+      // Nunca reusa job antigo aqui — se chegamos até este ponto, ou não
+      // havia job, ou o anterior estava em estado terminal. Um novo job
+      // com snapshot atual é criado e re-vinculado abaixo.
       existingJobId: null,
-      content: { ...resolved.content, companyName },
+      content: {
+        ...resolved.content,
+        companyName,
+        template: data.template ?? null,
+        overlayLayout: (data.layout ?? null) as Record<string, unknown> | null,
+      },
     });
 
     await supabase

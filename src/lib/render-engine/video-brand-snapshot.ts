@@ -70,6 +70,18 @@ export interface VideoBrandContentSnapshot {
   supportingText: string | null;
   ctaText: string | null;
   companyName: string | null;
+  /**
+   * Fase M4 (Editor Criativo IA) — template escolhido no editor visual.
+   * O worker atual ainda usa o composer padrão; este campo é persistido
+   * imutavelmente no job para futuro consumo e para auditoria (garantir que
+   * o vídeo gerado corresponde exatamente à cena aprovada no editor).
+   */
+  template?: string | null;
+  /**
+   * Layout completo aprovado no editor (posições/tamanhos de logo/textos).
+   * Opaco para o snapshot builder — o worker interpreta na próxima fase.
+   */
+  overlayLayout?: { [x: string]: {} } | null;
 }
 
 export interface VideoBrandSnapshot {
@@ -190,6 +202,8 @@ export function buildVideoBrandSnapshot(params: {
     supportingText?: string | null;
     ctaText?: string | null;
     companyName?: string | null;
+    template?: string | null;
+    overlayLayout?: Record<string, unknown> | null;
   } | null;
 }): VideoBrandSnapshot | null {
   const { brandContext, videoFormat, content } = params;
@@ -222,6 +236,10 @@ export function buildVideoBrandSnapshot(params: {
     supportingText: sanitizeText(content?.supportingText, SUPPORTING_MAX_CHARS, SUPPORTING_MAX_WORDS),
     ctaText: sanitizeText(content?.ctaText, CTA_MAX_CHARS, CTA_MAX_WORDS),
     companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX, 8),
+    template: typeof content?.template === "string" ? content.template.slice(0, 40) : null,
+    overlayLayout: (content?.overlayLayout ?? null) as
+      | { [x: string]: {} }
+      | null,
   };
 
   const hasAnyText = !!(
