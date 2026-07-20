@@ -286,6 +286,8 @@ async function prepareMarketingVideoBrandColumns(params: {
     supportingText?: string | null;
     ctaText?: string | null;
     companyName?: string | null;
+    template?: string | null;
+    overlayLayout?: Record<string, unknown> | null;
   } | null;
 }): Promise<
   | { brand_version_id: string; video_brand: VideoBrandSnapshot }
