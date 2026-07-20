@@ -297,7 +297,7 @@ export async function composeBrandLayers(
     height,
   });
 
-  return { bottomPanelPath, outroCardPath, outroDurationSeconds };
+  return { bottomPanelPath, outroCardPath, outroDurationSeconds, sceneAppliesLogo };
 }
 
 // ---------------------------------------------------------------------------
