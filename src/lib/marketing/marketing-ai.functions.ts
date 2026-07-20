@@ -827,7 +827,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
           required: ["title", "body", "cta_text"],
         },
       },
-      required: ["strategy", "story", "feed", "reel", "whatsapp"],
+      required: ["strategy", "image_texts", "story", "feed", "reel", "whatsapp"],
     };
 
     const payload = {
