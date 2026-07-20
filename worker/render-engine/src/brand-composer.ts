@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
 import { log } from "./logger.js";
+import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,12 +80,34 @@ export async function composeBrandLayers(
 ): Promise<BrandLayerPaths> {
   const { videoBrand, logoLocalPath, logoMimeType, width, height, workDir, jobId } = input;
 
-  const content = videoBrand.content ?? {
+  // Fase M2 — o snapshot já traz overlay_* validados (28/45/40 chars); ainda
+  // assim aplicamos um guard defensivo para snapshots legados (v1) que caíram
+  // no outro.headline/callToAction do contrato antigo.
+  const rawContent = videoBrand.content ?? {
     headline: videoBrand.outro?.headline ?? null,
     supportingText: null,
     ctaText: videoBrand.outro?.callToAction ?? null,
     companyName: null,
   };
+  const guarded = guardOverlayContent(rawContent);
+  const content = guarded.content;
+  if (guarded.reasons.length > 0) {
+    log.warn("overlay_content_fallback_applied", {
+      job_id: jobId,
+      reasons: guarded.reasons,
+      schema_version: videoBrand.schemaVersion ?? null,
+    });
+  }
+  log.info("overlay_content_validated", {
+    job_id: jobId,
+    schema_version: videoBrand.schemaVersion ?? null,
+    headline_length: content.headline?.length ?? 0,
+    headline_words: content.headline ? countWords(content.headline) : 0,
+    subheadline_length: content.supportingText?.length ?? 0,
+    subheadline_words: content.supportingText ? countWords(content.supportingText) : 0,
+    cta_length: content.ctaText?.length ?? 0,
+    limits: OVERLAY_LIMITS,
+  });
 
   const hasBottomPanel = !!(content.headline || content.supportingText || content.ctaText);
   const outroEnabled = !!videoBrand.outro?.enabled;
@@ -216,7 +239,10 @@ function wrapText(text: string, maxCharsPerLine: number, maxLines: number): stri
       if (current) lines.push(current);
       current = w;
       if (lines.length >= maxLines - 1 && w.length > maxCharsPerLine) {
-        current = w.slice(0, maxCharsPerLine - 1) + "…";
+        // Fase M2 — nunca cortar palavra nem aplicar reticências. Se a última
+        // palavra não cabe, descartamos silenciosamente (guard já garantiu
+        // que o texto cabe; este caminho só ocorre para snapshots v1 legados).
+        current = "";
         break;
       }
     }
@@ -251,8 +277,11 @@ export function buildBottomPanelSvg(params: {
   const headlineLines = content.headline
     ? wrapText(content.headline, isVertical ? 22 : 26, 2)
     : [];
+  // Fase M2 — subtítulo pode ocupar até 2 linhas (guard já limitou a 45 chars
+  // e 8 palavras); wrapText nunca oculta palavras — em último caso apenas
+  // remove a última se não couber, o guard garante que caiba.
   const supportingLines = content.supportingText
-    ? wrapText(content.supportingText, isVertical ? 32 : 40, 1)
+    ? wrapText(content.supportingText, isVertical ? 32 : 40, 2)
     : [];
 
   let cursorY = panelY + Math.round(panelH * 0.32);
@@ -265,11 +294,19 @@ export function buildBottomPanelSvg(params: {
   // Gap ampliado (~0.55x tamanho do headline) entre título e subtítulo.
   cursorY += headlineLines.length * Math.round(headlineSize * 1.15) + Math.round(headlineSize * 0.55);
 
+  const supportingTspans = supportingLines
+    .map((line, i) => {
+      const y = i === 0 ? cursorY : cursorY + i * Math.round(supportingSize * 1.2);
+      return `<tspan x="${padX}" y="${y}">${xmlEscape(line)}</tspan>`;
+    })
+    .join("");
   const supportingText = supportingLines.length
-    ? `<text x="${padX}" y="${cursorY}" font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.9">${xmlEscape(supportingLines[0])}</text>`
+    ? `<text font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.9">${supportingTspans}</text>`
     : "";
 
-  cursorY += supportingLines.length ? supportingSize + Math.round(width * 0.02) : 0;
+  cursorY += supportingLines.length
+    ? supportingLines.length * Math.round(supportingSize * 1.2) + Math.round(width * 0.02)
+    : 0;
 
   const ctaWidthEstimate = content.ctaText
     ? Math.round(content.ctaText.length * ctaSize * 0.62) + ctaPadX * 2

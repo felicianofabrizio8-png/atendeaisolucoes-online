@@ -40,6 +40,10 @@ import {
   buildVideoBrandSnapshot,
   type VideoBrandSnapshot,
 } from "@/lib/render-engine/video-brand-snapshot";
+import {
+  resolveOverlayContentFromRow,
+  type MarketingRowOverlaySource,
+} from "./overlay-content-resolver";
 
 type SB = SupabaseClient<Database>;
 
@@ -549,6 +553,33 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
     }
 
     // 4) Enfileira 2 jobs (feed + story).
+    // Fase M2 — o Render Engine consome exclusivamente `overlay_*`. Legendas
+    // (title/body/cta_text) ficam apenas em `marketing_contents` para a
+    // publicação; nunca são enviadas ao worker quando os overlays existem.
+    const feedResolved = resolveOverlayContentFromRow(
+      feedRow as unknown as MarketingRowOverlaySource,
+    );
+    const storyResolved = resolveOverlayContentFromRow(
+      storyRow as unknown as MarketingRowOverlaySource,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "overlay_content_source",
+        campaign_id: campaignId,
+        feed: {
+          overlay_fields: feedResolved.telemetry.overlay_fields,
+          legacy_fallback: feedResolved.telemetry.legacy_fallback,
+        },
+        story: {
+          overlay_fields: storyResolved.telemetry.overlay_fields,
+          legacy_fallback: storyResolved.telemetry.legacy_fallback,
+        },
+      }),
+    );
+
     const feed = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -560,12 +591,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
-      content: {
-        headline: feedRow.title,
-        supportingText: feedRow.body,
-        ctaText: feedRow.cta_text,
-        companyName,
-      },
+      content: { ...feedResolved.content, companyName },
     });
     const story = await ensureCampaignJob(supabase, {
       companyId,
@@ -578,12 +604,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
-      content: {
-        headline: storyRow.title,
-        supportingText: storyRow.body,
-        ctaText: storyRow.cta_text,
-        companyName,
-      },
+      content: { ...storyResolved.content, companyName },
     });
 
 
@@ -686,7 +707,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, ${roleColumnJob}, ${roleColumnVideo}`,
+        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, ${roleColumnJob}, ${roleColumnVideo}`,
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id)
@@ -705,6 +726,9 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       title: string | null;
       body: string | null;
       cta_text: string | null;
+      overlay_headline: string | null;
+      overlay_subheadline: string | null;
+      overlay_cta: string | null;
       feed_render_job_id?: string | null;
       story_render_job_id?: string | null;
       feed_video_id?: string | null;
@@ -755,6 +779,23 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       companyNameRetry = null;
     }
 
+    const retryResolved = resolveOverlayContentFromRow(
+      r as unknown as MarketingRowOverlaySource,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "overlay_content_source",
+        campaign_id: data.campaign_id,
+        role: data.role,
+        retry: true,
+        overlay_fields: retryResolved.telemetry.overlay_fields,
+        legacy_fallback: retryResolved.telemetry.legacy_fallback,
+      }),
+    );
+
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -766,12 +807,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       audioStart: Number(r.audio_start_second ?? 0),
       duration: Number(r.duration_seconds ?? 15),
       existingJobId: null,
-      content: {
-        headline: r.title,
-        supportingText: r.body,
-        ctaText: r.cta_text,
-        companyName: companyNameRetry,
-      },
+      content: { ...retryResolved.content, companyName: companyNameRetry },
     });
 
 
