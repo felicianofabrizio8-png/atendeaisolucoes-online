@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// resvg-js só está instalado no ambiente do worker (Railway).
+// Testamos apenas os builders de SVG (funções puras), então mockamos o binário.
+vi.mock("@resvg/resvg-js", () => ({ Resvg: class {} }));
+
 import { buildBottomPanelSvg, buildOutroCardSvg } from "../brand-composer";
+
 
 const colors = {
   primary: "#111",
