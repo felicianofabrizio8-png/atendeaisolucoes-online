@@ -2853,11 +2853,15 @@ function ConversationPage() {
   }, [search.quote, conversationId, navigate]);
 
   // Onda 2.2: ao abrir a conversa, garante que temos as últimas ~100 mensagens
-  // em memória (idempotente).
+  // em memória (idempotente). Depende também de `repoMode` para que, quando o
+  // repo transita de "demo" → "remote" após a sessão hidratar, o carregamento
+  // seja disparado sem precisar de F5 (o guard interno em modo demo faz o
+  // primeiro efeito ser no-op silenciosamente).
+  const repoMode = useSyncExternalStore(subscribeRepo, getRepoMode, getRepoMode);
   useEffect(() => {
     if (!conversationId) return;
     void loadConversationRecent(conversationId, 100);
-  }, [conversationId]);
+  }, [conversationId, repoMode]);
 
   // Onda 2.4: paginação de histórico via Virtuoso (`startReached`).
   const olderLoadingRef = useRef(false);
