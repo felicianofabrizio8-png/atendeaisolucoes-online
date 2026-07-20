@@ -4,8 +4,9 @@ import { claimJob, RenderApiError } from "./api-client.js";
 import { processClaim } from "./render.js";
 import { getActiveJobId } from "./runtime-state.js";
 
-const BUILD_SIGNATURE = "brand-phase-5b1-v1";
-const BUILD_TIMESTAMP = "2026-07-19";
+const BUILD_SIGNATURE = "render-scene-template-build-001";
+const BUILD_TIMESTAMP = "2026-07-20";
+
 
 async function main() {
   const cfg = loadConfig();
