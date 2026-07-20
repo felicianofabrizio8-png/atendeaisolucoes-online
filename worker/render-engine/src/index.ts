@@ -6,7 +6,7 @@ import { getActiveJobId } from "./runtime-state.js";
 import { SCENES } from "./scenes.js";
 
 
-const BUILD_SIGNATURE = "render-scene-template-build-001";
+const BUILD_SIGNATURE = "render-scene-logo-parity-build-002";
 const BUILD_TIMESTAMP = "2026-07-20";
 
 
