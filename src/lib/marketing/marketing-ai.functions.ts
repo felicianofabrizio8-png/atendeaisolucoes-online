@@ -647,6 +647,17 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
   Coloque também em \`reel.body\` uma versão em texto legível do mesmo roteiro (cena por cena, para o humano aprovar). E use \`reel.title\` como título curto do vídeo.
 - WHATSAPP: mensagem individual, conversacional, sem cara de disparo em massa. Foco em relacionamento. NÃO inclua telefone no corpo.
 
+# TEXTO VISUAL DA CAMPANHA (image_texts) — obrigatório
+Além dos 4 formatos, você produz UM ÚNICO bloco \`image_texts\` que será usado como texto sobreposto na imagem/vídeo. É o MESMO overlay para Feed e Story — não crie versões diferentes.
+Regras rigorosas (leitura em <1s no celular):
+- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Piscina dos sonhos", "Conforto para família", "Qualidade Solário".
+- \`subheadline\`: opcional, no máximo 45 caracteres, entre 3 e 8 palavras, UMA frase curta, complementa o headline SEM repetir literalmente. Deixe vazio se não conseguir cumprir.
+- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça os modelos", "Fale conosco".
+NÃO use nenhuma das frases proibidas. NÃO repita os textos visuais recentes abaixo. Não é uma legenda — é o texto grande da peça visual.
+
+## Textos visuais recentes desta empresa
+${overlayHistoryBlock}
+
 # VARIAÇÃO
 Seed desta geração: ${variationSeed}. Varie abertura, CTA, estrutura, argumentos e organização em relação a gerações anteriores.
 
@@ -655,9 +666,9 @@ ${pastBlock}
 Use este histórico APENAS como referência estratégica: identifique padrões que funcionaram, evite repetir os mesmos títulos/CTAs/ângulos, mas gere textos totalmente inéditos. NUNCA copie trechos das campanhas anteriores.
 
 # AUTOVALIDAÇÃO ANTES DE RESPONDER
-Confira: (a) escolheu UM ângulo do catálogo e ele NÃO está entre os últimos usados; (b) coerência com a base de conhecimento; (c) zero informação inventada; (d) os 4 formatos formam uma campanha coerente em torno do ângulo; (e) linguagem natural; (f) nenhuma frase genérica proibida; (g) nada copiado do histórico; (h) o Reel tem roteiro cinematográfico completo com cenas, enquadramentos e cortes; (i) se há trava de produto, nenhum outro modelo/produto foi citado.
+Confira: (a) escolheu UM ângulo do catálogo e ele NÃO está entre os últimos usados; (b) coerência com a base de conhecimento; (c) zero informação inventada; (d) os 4 formatos formam uma campanha coerente em torno do ângulo; (e) linguagem natural; (f) nenhuma frase genérica proibida; (g) nada copiado do histórico; (h) o Reel tem roteiro cinematográfico completo com cenas, enquadramentos e cortes; (i) se há trava de produto, nenhum outro modelo/produto foi citado; (j) \`image_texts\` respeita rigorosamente os limites de palavras/caracteres e não repete textos visuais recentes.
 
-Devolva o objeto \`strategy\` (direção interna) + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
+Devolva o objeto \`strategy\` (direção interna) + \`image_texts\` + os 4 formatos em UMA ÚNICA chamada da ferramenta \`generate_marketing_bundle\`. Tom base: ${data.tone ?? "amigável"}.`;
 
 
 
