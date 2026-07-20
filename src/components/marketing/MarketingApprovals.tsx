@@ -1,19 +1,62 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, Loader2, Send, Calendar, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Send,
+  Calendar,
+  AlertTriangle,
+  RefreshCw,
+  Film,
+  Play,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   apiListContents,
+  apiListMedia,
   apiUpdateContent,
   apiSetContentStatus,
   apiScheduleContent,
   apiFacebookPublishReadiness,
+  urlForMarketingPath,
 } from "@/data/marketingRepo";
-import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
+import type {
+  MarketingContentRow,
+  MarketingMediaRow,
+} from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
+import { CampaignVideoEditor } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import {
+  useCampaignRenderTracker,
+  useTrackedCampaign,
+} from "@/lib/marketing/useCampaignRenderTracker";
+
+function isVideoContent(row: MarketingContentRow): boolean {
+  // Conteúdos de vídeo pertencem a uma campanha (feed/story/reel) — o formato
+  // whatsapp_cta é apenas texto e mantém o fluxo antigo.
+  return !!row.campaign_id && row.format !== "whatsapp_cta";
+}
+
+function hasRenderedVideo(row: MarketingContentRow): boolean {
+  return !!(row.feed_video_id || row.story_video_id);
+}
+
+function hasPendingRenderJob(row: MarketingContentRow): boolean {
+  return (
+    !hasRenderedVideo(row) &&
+    !!(row.feed_render_job_id || row.story_render_job_id)
+  );
+}
 
 interface Props {
   companyId: string;
