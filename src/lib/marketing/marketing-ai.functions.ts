@@ -1000,6 +1000,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         overlay_headline: overlay.overlay_headline,
         overlay_subheadline: overlay.overlay_subheadline,
         overlay_cta: overlay.overlay_cta,
+        // Approval-gate — snapshot da 1ª sugestão para "Restaurar original".
+        overlay_original_headline: overlay.overlay_headline,
+        overlay_original_subheadline: overlay.overlay_subheadline,
+        overlay_original_cta: overlay.overlay_cta,
         ai_model: DEFAULT_MODEL,
         ai_prompt: promptSnapshot,
         ai_raw_output: bundle.feed,
