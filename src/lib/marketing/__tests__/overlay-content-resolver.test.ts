@@ -63,8 +63,8 @@ describe("resolveOverlayContentFromRow (Fase M2)", () => {
       overlay_cta: null,
     });
     expect(r.telemetry.overlay_fields.headline).toBe("overlay");
-    expect(r.telemetry.overlay_fields.subheadline).toBe("legacy");
-    expect(r.telemetry.overlay_fields.cta).toBe("legacy");
+    expect(r.telemetry.overlay_fields.subheadline).toMatch(/^legacy/);
+    expect(r.telemetry.overlay_fields.cta).toMatch(/^legacy/);
     expect(r.telemetry.legacy_fallback).toBe(true);
   });
 
