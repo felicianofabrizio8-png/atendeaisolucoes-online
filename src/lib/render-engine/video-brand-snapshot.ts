@@ -236,6 +236,10 @@ export function buildVideoBrandSnapshot(params: {
     supportingText: sanitizeText(content?.supportingText, SUPPORTING_MAX_CHARS, SUPPORTING_MAX_WORDS),
     ctaText: sanitizeText(content?.ctaText, CTA_MAX_CHARS, CTA_MAX_WORDS),
     companyName: sanitizeText(content?.companyName, COMPANY_NAME_MAX, 8),
+    template: typeof content?.template === "string" ? content.template.slice(0, 40) : null,
+    overlayLayout: (content?.overlayLayout ?? null) as
+      | { [x: string]: {} }
+      | null,
   };
 
   const hasAnyText = !!(
