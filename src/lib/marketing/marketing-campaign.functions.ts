@@ -707,7 +707,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: row, error } = await supabase
       .from("marketing_contents")
       .select(
-        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, ${roleColumnJob}, ${roleColumnVideo}`,
+        `id, company_id, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, ${roleColumnJob}, ${roleColumnVideo}`,
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id)
@@ -726,6 +726,9 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       title: string | null;
       body: string | null;
       cta_text: string | null;
+      overlay_headline: string | null;
+      overlay_subheadline: string | null;
+      overlay_cta: string | null;
       feed_render_job_id?: string | null;
       story_render_job_id?: string | null;
       feed_video_id?: string | null;
