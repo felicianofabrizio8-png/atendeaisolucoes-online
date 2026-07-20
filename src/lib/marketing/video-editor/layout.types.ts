@@ -12,7 +12,11 @@ export type TemplateId =
   | "oferta"
   | "institucional"
   | "black"
-  | "clean";
+  | "clean"
+  // Novos templates da Onda 1 do Editor Criativo IA.
+  | "editorial"
+  | "neon"
+  | "split";
 
 export type Anchor = "top" | "center" | "bottom";
 export type Align = "left" | "center" | "right";
