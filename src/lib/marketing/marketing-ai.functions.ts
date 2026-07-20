@@ -970,6 +970,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         hashtags: bundle.story.hashtags,
         cta_text: null,
         cta_destination: null,
+        // Fase M1 — overlay compartilhado com o Feed.
+        overlay_headline: overlay.overlay_headline,
+        overlay_subheadline: overlay.overlay_subheadline,
+        overlay_cta: overlay.overlay_cta,
         ai_model: DEFAULT_MODEL,
         ai_prompt: promptSnapshot,
         ai_raw_output: bundle.story,
@@ -988,6 +992,10 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
         hashtags: bundle.feed.hashtags,
         cta_text: null,
         cta_destination: null,
+        // Fase M1 — overlay compartilhado com o Story (mesmos valores).
+        overlay_headline: overlay.overlay_headline,
+        overlay_subheadline: overlay.overlay_subheadline,
+        overlay_cta: overlay.overlay_cta,
         ai_model: DEFAULT_MODEL,
         ai_prompt: promptSnapshot,
         ai_raw_output: bundle.feed,
