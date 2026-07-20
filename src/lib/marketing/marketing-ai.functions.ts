@@ -503,6 +503,20 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       productId: data.product_id ?? null,
     });
     const pastBlock = buildPastCampaignsBlock(pastCampaigns);
+    // Fase M1 — carrega textos visuais recentes para o bloco de diversidade e
+    // para a validação anti-repetição pós-geração. Best-effort; sem histórico
+    // o fluxo segue normalmente.
+    const recentOverlays = await loadRecentOverlays(supabase, companyId, 30);
+    const recentOverlaySignatures = buildRecentSignaturesSet(recentOverlays);
+    const overlayHistoryBlock = recentOverlays.length
+      ? `Textos visuais (overlay) usados nas últimas ${recentOverlays.length} campanhas — NÃO repita nenhum destes headlines nem combinações headline+subtítulo:\n${recentOverlays
+          .slice(0, 15)
+          .map(
+            (r, i) =>
+              `${i + 1}. "${r.overlay_headline}"${r.overlay_subheadline ? ` · "${r.overlay_subheadline}"` : ""}`,
+          )
+          .join("\n")}`
+      : "Ainda não há textos visuais anteriores — você tem liberdade total nesta campanha.";
     const recentAngles = extractRecentAngles(pastCampaigns);
     const angleBlock = buildAngleDiversityBlock(recentAngles);
     const productLockActive = Boolean(product && promotion);
