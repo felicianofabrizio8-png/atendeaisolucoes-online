@@ -1,19 +1,62 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, Loader2, Send, Calendar, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Send,
+  Calendar,
+  AlertTriangle,
+  RefreshCw,
+  Film,
+  Play,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   apiListContents,
+  apiListMedia,
   apiUpdateContent,
   apiSetContentStatus,
   apiScheduleContent,
   apiFacebookPublishReadiness,
+  urlForMarketingPath,
 } from "@/data/marketingRepo";
-import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
+import type {
+  MarketingContentRow,
+  MarketingMediaRow,
+} from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
+import { CampaignVideoEditor } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import {
+  useCampaignRenderTracker,
+  useTrackedCampaign,
+} from "@/lib/marketing/useCampaignRenderTracker";
+
+function isVideoContent(row: MarketingContentRow): boolean {
+  // Conteúdos de vídeo pertencem a uma campanha (feed/story/reel) — o formato
+  // whatsapp_cta é apenas texto e mantém o fluxo antigo.
+  return !!row.campaign_id && row.format !== "whatsapp_cta";
+}
+
+function hasRenderedVideo(row: MarketingContentRow): boolean {
+  return !!(row.feed_video_id || row.story_video_id);
+}
+
+function hasPendingRenderJob(row: MarketingContentRow): boolean {
+  return (
+    !hasRenderedVideo(row) &&
+    !!(row.feed_render_job_id || row.story_render_job_id)
+  );
+}
 
 interface Props {
   companyId: string;
@@ -33,6 +76,79 @@ export function MarketingApprovals({ companyId }: Props) {
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // ----- Editor Visual do Vídeo -----
+  const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
+  const [editorPreviewUrl, setEditorPreviewUrl] = useState<string | null>(null);
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
+  const { trackCampaign, campaigns } = useCampaignRenderTracker();
+  // Guarda campanhas cujo render completou para auto-refresh.
+  const seenDoneRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let changed = false;
+    for (const [cid, t] of Object.entries(campaigns)) {
+      if (t.done && !seenDoneRef.current.has(cid)) {
+        seenDoneRef.current.add(cid);
+        changed = true;
+      }
+    }
+    if (changed) {
+      void refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns]);
+
+  async function ensureMediaIndex(): Promise<Record<string, MarketingMediaRow>> {
+    if (Object.keys(mediaIndex).length > 0) return mediaIndex;
+    try {
+      const list = await apiListMedia();
+      const idx: Record<string, MarketingMediaRow> = {};
+      for (const m of list) idx[m.id] = m;
+      setMediaIndex(idx);
+      return idx;
+    } catch {
+      return {};
+    }
+  }
+
+  async function openVideoEditor(row: MarketingContentRow) {
+    if (!row.campaign_id) return;
+    setEditorLoading(true);
+    setEditorCampaignId(row.campaign_id);
+    setEditorPreviewUrl(null);
+    try {
+      const idx = await ensureMediaIndex();
+      const mediaId = row.primary_image_media_id ?? row.media_ids?.[0] ?? null;
+      const media = mediaId ? idx[mediaId] : null;
+      if (media?.storage_path) {
+        const url = await urlForMarketingPath(media.storage_path).catch(() => null);
+        setEditorPreviewUrl(url);
+      }
+    } finally {
+      setEditorLoading(false);
+    }
+  }
+
+  function closeVideoEditor() {
+    setEditorCampaignId(null);
+    setEditorPreviewUrl(null);
+  }
+
+  const editorContents = useMemo(
+    () => (editorCampaignId ? rows.filter((r) => r.campaign_id === editorCampaignId) : []),
+    [rows, editorCampaignId],
+  );
+  const editorFocalPoint = useMemo(() => {
+    const feed = editorContents.find((r) => r.campaign_role === "feed") ?? editorContents[0];
+    const prompt =
+      feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null
+        ? (feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null })
+        : null;
+    const fp = prompt?.focal_point;
+    if (!fp) return null;
+    return { x: fp.x, y: fp.y, zoom: fp.zoom ?? 1 };
+  }, [editorContents]);
   const [fbReadiness, setFbReadiness] = useState<
     | null
     | {
@@ -272,6 +388,20 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
+              onOpenVideoEditor={() => void openVideoEditor(c)}
+              onViewVideo={async () => {
+                const idx = await ensureMediaIndex();
+                const vid = c.feed_video_id || c.story_video_id;
+                const media = vid ? idx[vid] : null;
+                if (!media?.storage_path) {
+                  toast.error("Vídeo ainda não disponível.");
+                  return;
+                }
+                const url = await urlForMarketingPath(media.storage_path).catch(() => null);
+                if (url) window.open(url, "_blank", "noopener");
+                else toast.error("Não foi possível abrir o vídeo.");
+              }}
+              tracked={c.campaign_id ? campaigns[c.campaign_id] ?? null : null}
               busy={busy}
             />
           ))}
@@ -338,6 +468,46 @@ export function MarketingApprovals({ companyId }: Props) {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={!!editorCampaignId}
+        onOpenChange={(o) => {
+          if (!o) closeVideoEditor();
+        }}
+      >
+        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
+          <DialogHeader>
+            <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
+          </DialogHeader>
+          {editorLoading ? (
+            <div className="p-8 text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando editor…
+            </div>
+          ) : editorCampaignId && editorContents.length > 0 ? (
+            <CampaignVideoEditor
+              campaignId={editorCampaignId}
+              contents={editorContents}
+              previewImageUrl={editorPreviewUrl}
+              focalPoint={editorFocalPoint}
+              onContentsUpdated={(fresh) => {
+                setRows((cur) => {
+                  const map = new Map(fresh.map((r) => [r.id, r]));
+                  return cur.map((r) => map.get(r.id) ?? r);
+                });
+              }}
+              onApproved={() => {
+                if (editorCampaignId) trackCampaign(editorCampaignId);
+                closeVideoEditor();
+                void refresh();
+              }}
+            />
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">
+              Campanha não encontrada.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -352,6 +522,9 @@ function ContentCard({
   onReject,
   onMarkPending,
   onSchedule,
+  onOpenVideoEditor,
+  onViewVideo,
+  tracked,
   busy,
 }: {
   row: MarketingContentRow;
@@ -363,6 +536,9 @@ function ContentCard({
   onReject: () => void;
   onMarkPending: () => void;
   onSchedule: () => void;
+  onOpenVideoEditor: () => void;
+  onViewVideo: () => void;
+  tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(row.title ?? "");
@@ -379,6 +555,16 @@ function ContentCard({
     archived: "bg-muted text-muted-foreground",
   };
 
+  const isVideo = isVideoContent(row);
+  const videoReady = hasRenderedVideo(row);
+  // Considera "renderizando" também o estado global do tracker (recém-aprovado).
+  const trackerRendering =
+    !!tracked && !tracked.done && (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
+  const isRendering = isVideo && !videoReady && (hasPendingRenderJob(row) || trackerRendering);
+  const trackerProgress = tracked
+    ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0)
+    : null;
+
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs">
@@ -389,6 +575,11 @@ function ContentCard({
         <span className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}>
           {row.status}
         </span>
+        {isVideo && (
+          <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">
+            vídeo
+          </span>
+        )}
         {row.ai_model && (
           <span className="text-[10px] text-muted-foreground ml-auto">{row.ai_model}</span>
         )}
@@ -439,6 +630,14 @@ function ContentCard({
       ) : (
         <>
           {row.title && <div className="font-medium text-sm">{row.title}</div>}
+          {isVideo && (row.overlay_headline || row.overlay_subheadline) ? (
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Overlay:</span>{" "}
+              {row.overlay_headline}
+              {row.overlay_subheadline ? ` — ${row.overlay_subheadline}` : ""}
+              {row.overlay_cta ? ` · ${row.overlay_cta}` : ""}
+            </div>
+          ) : null}
           <div className="text-sm whitespace-pre-wrap">{row.body}</div>
           {row.hashtags?.length ? (
             <div className="text-xs text-muted-foreground">
@@ -451,15 +650,62 @@ function ContentCard({
               {row.cta_destination ? ` → ${row.cta_destination}` : ""}
             </div>
           )}
+
+          {isVideo && isRendering && (
+            <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span className="flex-1">
+                Gerando vídeo…
+                {typeof trackerProgress === "number" && trackerProgress > 0
+                  ? ` ${Math.round(trackerProgress)}%`
+                  : ""}
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 justify-end">
-            <Button size="sm" variant="ghost" onClick={onEdit}>
-              Editar
-            </Button>
-            {row.status !== "approved" && (
-              <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-              </Button>
+            {/* Ações específicas de vídeo */}
+            {isVideo ? (
+              <>
+                {videoReady && (
+                  <Button size="sm" variant="outline" onClick={onViewVideo}>
+                    <Play className="h-4 w-4 mr-1" /> Visualizar vídeo
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={videoReady ? "ghost" : "default"}
+                  onClick={onOpenVideoEditor}
+                  disabled={isRendering}
+                  title={
+                    isRendering
+                      ? "Aguarde a renderização terminar"
+                      : "Abrir Editor Visual do Vídeo IA"
+                  }
+                >
+                  <Film className="h-4 w-4 mr-1" />
+                  {videoReady ? "Editar novamente" : "Editar vídeo"}
+                </Button>
+                {/* Aprovar só faz sentido depois do vídeo renderizado */}
+                {videoReady && row.status !== "approved" && (
+                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
+                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" onClick={onEdit}>
+                  Editar
+                </Button>
+                {row.status !== "approved" && (
+                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
+                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+                  </Button>
+                )}
+              </>
             )}
+
             {row.status !== "rejected" && (
               <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
                 <XCircle className="h-4 w-4 mr-1" /> Rejeitar
