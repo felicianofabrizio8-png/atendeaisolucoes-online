@@ -553,6 +553,33 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
     }
 
     // 4) Enfileira 2 jobs (feed + story).
+    // Fase M2 — o Render Engine consome exclusivamente `overlay_*`. Legendas
+    // (title/body/cta_text) ficam apenas em `marketing_contents` para a
+    // publicação; nunca são enviadas ao worker quando os overlays existem.
+    const feedResolved = resolveOverlayContentFromRow(
+      feedRow as unknown as MarketingRowOverlaySource,
+    );
+    const storyResolved = resolveOverlayContentFromRow(
+      storyRow as unknown as MarketingRowOverlaySource,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "overlay_content_source",
+        campaign_id: campaignId,
+        feed: {
+          overlay_fields: feedResolved.telemetry.overlay_fields,
+          legacy_fallback: feedResolved.telemetry.legacy_fallback,
+        },
+        story: {
+          overlay_fields: storyResolved.telemetry.overlay_fields,
+          legacy_fallback: storyResolved.telemetry.legacy_fallback,
+        },
+      }),
+    );
+
     const feed = await ensureCampaignJob(supabase, {
       companyId,
       userId,
@@ -564,12 +591,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
-      content: {
-        headline: feedRow.title,
-        supportingText: feedRow.body,
-        ctaText: feedRow.cta_text,
-        companyName,
-      },
+      content: { ...feedResolved.content, companyName },
     });
     const story = await ensureCampaignJob(supabase, {
       companyId,
@@ -582,12 +604,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audioStart: data.audio_start_second,
       duration: data.duration_seconds,
       existingJobId: null,
-      content: {
-        headline: storyRow.title,
-        supportingText: storyRow.body,
-        ctaText: storyRow.cta_text,
-        companyName,
-      },
+      content: { ...storyResolved.content, companyName },
     });
 
 
