@@ -274,8 +274,11 @@ export function buildBottomPanelSvg(params: {
   const headlineLines = content.headline
     ? wrapText(content.headline, isVertical ? 22 : 26, 2)
     : [];
+  // Fase M2 — subtítulo pode ocupar até 2 linhas (guard já limitou a 45 chars
+  // e 8 palavras); wrapText nunca oculta palavras — em último caso apenas
+  // remove a última se não couber, o guard garante que caiba.
   const supportingLines = content.supportingText
-    ? wrapText(content.supportingText, isVertical ? 32 : 40, 1)
+    ? wrapText(content.supportingText, isVertical ? 32 : 40, 2)
     : [];
 
   let cursorY = panelY + Math.round(panelH * 0.32);
@@ -288,11 +291,19 @@ export function buildBottomPanelSvg(params: {
   // Gap ampliado (~0.55x tamanho do headline) entre título e subtítulo.
   cursorY += headlineLines.length * Math.round(headlineSize * 1.15) + Math.round(headlineSize * 0.55);
 
+  const supportingTspans = supportingLines
+    .map((line, i) => {
+      const y = i === 0 ? cursorY : cursorY + i * Math.round(supportingSize * 1.2);
+      return `<tspan x="${padX}" y="${y}">${xmlEscape(line)}</tspan>`;
+    })
+    .join("");
   const supportingText = supportingLines.length
-    ? `<text x="${padX}" y="${cursorY}" font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.9">${xmlEscape(supportingLines[0])}</text>`
+    ? `<text font-family="Inter" font-size="${supportingSize}" fill="${textInverse}" opacity="0.9">${supportingTspans}</text>`
     : "";
 
-  cursorY += supportingLines.length ? supportingSize + Math.round(width * 0.02) : 0;
+  cursorY += supportingLines.length
+    ? supportingLines.length * Math.round(supportingSize * 1.2) + Math.round(width * 0.02)
+    : 0;
 
   const ctaWidthEstimate = content.ctaText
     ? Math.round(content.ctaText.length * ctaSize * 0.62) + ctaPadX * 2
