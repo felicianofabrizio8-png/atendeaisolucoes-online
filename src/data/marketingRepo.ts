@@ -240,3 +240,17 @@ export async function apiRetryCampaignRender(input: {
 }
 
 
+
+// ------- Campaign approval-gate (revisar antes de renderizar) -------
+export async function apiRegenerateCampaignTexts(input: { campaign_id: string }) {
+  return regenerateCampaignTexts({ data: input });
+}
+
+export async function apiApproveCampaignAndRender(input: {
+  campaign_id: string;
+  headline: string;
+  subheadline?: string | null;
+  cta?: string | null;
+}) {
+  return approveCampaignAndRender({ data: input });
+}
