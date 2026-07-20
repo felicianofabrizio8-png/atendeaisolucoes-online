@@ -18,6 +18,7 @@
 import type {
   Align,
   Anchor,
+  LogoLayout,
   SceneDefinition,
   SceneLayer,
   TextStyle,
@@ -30,12 +31,21 @@ export interface SceneComposerContent {
   ctaText: string | null;
 }
 
+export interface SceneComposerLogo {
+  /** data URI (data:image/png;base64,...) — embutido no SVG. */
+  dataUri: string;
+  /** Layout do editor (mesmo do LogoSlot). */
+  layout: LogoLayout;
+}
+
 export interface SceneOverlaySvgInput {
   width: number;
   height: number;
   scene: SceneDefinition;
   layout: VideoLayout;
   content: SceneComposerContent;
+  /** Logo do Brand Center — se ausente, nenhum logo é desenhado no overlay. */
+  logo?: SceneComposerLogo | null;
 }
 
 function xmlEscape(s: string): string {
