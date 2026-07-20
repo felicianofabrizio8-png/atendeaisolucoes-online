@@ -395,6 +395,27 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         )}
       </div>
 
+      {/* Revisão de texto (approval-gate) — sem job de render ainda */}
+      {pendingReview && !campaignId && (
+        <CampaignTextReview
+          campaignId={pendingReview.campaignId}
+          contents={pendingReview.contents}
+          previewImageUrl={primarySlot?.previewUrl ?? null}
+          focalPoint={primarySlot?.focal ?? null}
+          onContentsUpdated={(fresh) =>
+            setPendingReview((cur) =>
+              cur ? { ...cur, contents: fresh } : cur,
+            )
+          }
+          onApproved={() => {
+            const id = pendingReview.campaignId;
+            setPendingReview(null);
+            setCampaignId(id);
+            trackCampaign(id);
+          }}
+        />
+      )}
+
       {/* Progresso da renderização (global) */}
       {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
 
