@@ -730,14 +730,16 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
 
     // Persistência do texto aprovado + layout/template do editor visual
     // (mesmos valores nas duas linhas feed/story).
-    const approvedPatch: Record<string, unknown> = {
+    const approvedPatch = {
       overlay_headline: data.headline,
       overlay_subheadline: data.subheadline ?? null,
       overlay_cta: data.cta ?? null,
       overlay_approved_at: new Date().toISOString(),
+      ...(data.layout !== undefined
+        ? { video_layout: data.layout as unknown as never }
+        : {}),
+      ...(data.template !== undefined ? { video_template: data.template } : {}),
     };
-    if (data.layout !== undefined) approvedPatch.video_layout = data.layout;
-    if (data.template !== undefined) approvedPatch.video_template = data.template;
     await supabase
       .from("marketing_contents")
       .update(approvedPatch)
