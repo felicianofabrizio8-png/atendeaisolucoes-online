@@ -40,6 +40,10 @@ import {
   buildVideoBrandSnapshot,
   type VideoBrandSnapshot,
 } from "@/lib/render-engine/video-brand-snapshot";
+import {
+  resolveOverlayContentFromRow,
+  type MarketingRowOverlaySource,
+} from "./overlay-content-resolver";
 
 type SB = SupabaseClient<Database>;
 
