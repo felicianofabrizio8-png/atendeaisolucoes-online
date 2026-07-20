@@ -2289,6 +2289,9 @@ export type Database = {
           hashtags: string[]
           id: string
           media_ids: string[]
+          overlay_cta: string | null
+          overlay_headline: string | null
+          overlay_subheadline: string | null
           primary_audio_id: string | null
           primary_image_media_id: string | null
           primary_image_product_ref: Json | null
@@ -2324,6 +2327,9 @@ export type Database = {
           hashtags?: string[]
           id?: string
           media_ids?: string[]
+          overlay_cta?: string | null
+          overlay_headline?: string | null
+          overlay_subheadline?: string | null
           primary_audio_id?: string | null
           primary_image_media_id?: string | null
           primary_image_product_ref?: Json | null
@@ -2359,6 +2365,9 @@ export type Database = {
           hashtags?: string[]
           id?: string
           media_ids?: string[]
+          overlay_cta?: string | null
+          overlay_headline?: string | null
+          overlay_subheadline?: string | null
           primary_audio_id?: string | null
           primary_image_media_id?: string | null
           primary_image_product_ref?: Json | null
