@@ -40,6 +40,7 @@ import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
+import { CampaignTextReview } from "./CampaignTextReview";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
