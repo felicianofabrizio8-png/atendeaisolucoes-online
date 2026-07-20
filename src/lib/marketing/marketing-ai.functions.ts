@@ -922,6 +922,18 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     const angleRepeatedRecent = recentAngles.slice(0, 3).includes(chosenAngle);
 
 
+    // Fase M1 — normaliza image_texts (validação/reescrita/anti-repetição).
+    // Feed e Story recebem EXATAMENTE o mesmo overlay. Legendas ficam intactas.
+    const overlay = normalizeOverlayCandidate(
+      bundle.image_texts,
+      {
+        title: bundle.feed.title,
+        body: bundle.feed.body,
+        cta_text: bundle.whatsapp.cta_text,
+      },
+      recentOverlaySignatures,
+    );
+
     // Persistência atômica: 4 registros ou nenhum.
     const promptSnapshot = {
       tone: data.tone,
@@ -941,6 +953,9 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       reel_format: bundle.reel.script.format,
       // Brand Center snapshot SEM signed URL — sanitizado no adapter.
       brand: sanitizeBrandContextForPersistence(marketingBrand),
+      // Fase M1 — telemetria sanitizada da normalização do overlay.
+      overlay_telemetry: overlay.telemetry,
+      overlay_recent_count: recentOverlays.length,
     } as unknown as Database["public"]["Tables"]["marketing_contents"]["Insert"]["ai_prompt"];
     const rowsToInsert: Database["public"]["Tables"]["marketing_contents"]["Insert"][] = [
       {
