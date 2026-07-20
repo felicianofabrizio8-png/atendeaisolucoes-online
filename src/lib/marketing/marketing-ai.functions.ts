@@ -163,6 +163,14 @@ const ReelScriptSchema = z.object({
 
 const BundleSchema = z.object({
   strategy: StrategySchema,
+  // Fase M1 — texto visual ÚNICO da campanha (mesmo overlay em Feed e Story).
+  // Limites amplos aqui; a validação estrita/reescrita acontece no helper
+  // `normalizeOverlayCandidate` (nunca truncar, aplicar fallback etc.).
+  image_texts: z.object({
+    headline: z.string().trim().min(1).max(120),
+    subheadline: z.string().trim().max(200).optional().default(""),
+    cta: z.string().trim().max(120).optional().default(""),
+  }),
   story: z.object({
     title: z.string().trim().max(120),
     body: z.string().trim().min(1).max(1500),
