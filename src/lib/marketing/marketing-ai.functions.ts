@@ -440,6 +440,30 @@ function buildPastCampaignsBlock(
 }
 
 
+
+async function loadRecentOverlays(
+  sb: SB,
+  companyId: string,
+  limit = 30,
+): Promise<Array<{ overlay_headline: string | null; overlay_subheadline: string | null }>> {
+  try {
+    const { data, error } = await sb
+      .from("marketing_contents")
+      .select("overlay_headline, overlay_subheadline")
+      .eq("company_id", companyId)
+      .not("overlay_headline", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    return (data ?? []) as Array<{
+      overlay_headline: string | null;
+      overlay_subheadline: string | null;
+    }>;
+  } catch {
+    return [];
+  }
+}
+
 export const generateMarketingContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => InputSchema.parse(i))
