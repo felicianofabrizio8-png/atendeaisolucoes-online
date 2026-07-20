@@ -76,6 +76,77 @@ export function MarketingApprovals({ companyId }: Props) {
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // ----- Editor Visual do Vídeo -----
+  const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
+  const [editorPreviewUrl, setEditorPreviewUrl] = useState<string | null>(null);
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
+  const { trackCampaign, campaigns } = useCampaignRenderTracker();
+  // Guarda campanhas cujo render completou para auto-refresh.
+  const seenDoneRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let changed = false;
+    for (const [cid, t] of Object.entries(campaigns)) {
+      if (t.done && !seenDoneRef.current.has(cid)) {
+        seenDoneRef.current.add(cid);
+        changed = true;
+      }
+    }
+    if (changed) {
+      void refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns]);
+
+  async function ensureMediaIndex(): Promise<Record<string, MarketingMediaRow>> {
+    if (Object.keys(mediaIndex).length > 0) return mediaIndex;
+    try {
+      const list = await apiListMedia();
+      const idx: Record<string, MarketingMediaRow> = {};
+      for (const m of list) idx[m.id] = m;
+      setMediaIndex(idx);
+      return idx;
+    } catch {
+      return {};
+    }
+  }
+
+  async function openVideoEditor(row: MarketingContentRow) {
+    if (!row.campaign_id) return;
+    setEditorLoading(true);
+    setEditorCampaignId(row.campaign_id);
+    setEditorPreviewUrl(null);
+    try {
+      const idx = await ensureMediaIndex();
+      const mediaId = row.primary_image_media_id ?? row.media_ids?.[0] ?? null;
+      const media = mediaId ? idx[mediaId] : null;
+      if (media?.storage_path) {
+        const url = await urlForMarketingPath(media.storage_path).catch(() => null);
+        setEditorPreviewUrl(url);
+      }
+    } finally {
+      setEditorLoading(false);
+    }
+  }
+
+  function closeVideoEditor() {
+    setEditorCampaignId(null);
+    setEditorPreviewUrl(null);
+  }
+
+  const editorContents = useMemo(
+    () => (editorCampaignId ? rows.filter((r) => r.campaign_id === editorCampaignId) : []),
+    [rows, editorCampaignId],
+  );
+  const editorFocalPoint = useMemo(() => {
+    const feed = editorContents.find((r) => r.campaign_role === "feed") ?? editorContents[0];
+    const prompt =
+      feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null
+        ? (feed.ai_prompt as { focal_point?: { x: number; y: number } | null })
+        : null;
+    return prompt?.focal_point ?? null;
+  }, [editorContents]);
   const [fbReadiness, setFbReadiness] = useState<
     | null
     | {
