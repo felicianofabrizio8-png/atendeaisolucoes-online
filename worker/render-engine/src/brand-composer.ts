@@ -264,15 +264,16 @@ export function buildBottomPanelSvg(params: {
   const padX = Math.round(width * 0.06);
   const primary = colors.primary || "#111111";
   const textInverse = colors.textInverse || "#FFFFFF";
-  const accent = colors.accent || primary;
+  // `accent` era usado apenas pelo CTA do painel (removido na Fase M3).
+  void colors.accent;
 
   // Fase 5.B1.1 — refinamento tipográfico: título +20%, subtítulo +15%,
   // espaçamento entre título e subtítulo ampliado (leading premium).
   const headlineSize = Math.round(width * (isVertical ? 0.055 : 0.048) * 1.2);
   const supportingSize = Math.round(width * 0.032 * 1.15);
-  const ctaSize = Math.round(width * 0.028);
-  const ctaPadX = Math.round(width * 0.035);
-  const ctaPadY = Math.round(width * 0.018);
+  // Constantes de CTA mantidas mas não usadas — CTA saiu do painel na Fase M3.
+  const ctaSize = 0, ctaPadX = 0, ctaPadY = 0;
+
 
   const headlineLines = content.headline
     ? wrapText(content.headline, isVertical ? 22 : 26, 2)
