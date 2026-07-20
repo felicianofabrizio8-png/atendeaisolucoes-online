@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
 import { log } from "./logger.js";
+import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
