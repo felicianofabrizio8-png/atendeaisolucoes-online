@@ -234,7 +234,7 @@ function renderPillCta(
 }
 
 export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
-  const { width, height, scene, layout, content } = input;
+  const { width, height, scene, layout, content, logo } = input;
 
   // 1. Camadas de fundo (background → foreground).
   const layersSvg = scene.layers.map((l, i) => renderLayer(l, width, height, i)).join("");
@@ -247,19 +247,19 @@ export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
   const gapPx = (scene.text.gap / 100) * width;
 
   // Renderiza cada bloco separadamente para calcular alturas e depois posicionar.
+  // Ordem visual = a mesma do SceneRenderer.tsx (preview): título → subtítulo → CTA.
   const blocks: RenderedTextBlock[] = [];
   const anchor: Anchor = layout.title.vAnchor;
 
-  // Ordem visual: título → subtítulo → CTA.
   if (content.headline) {
-    blocks.push({
-      ...renderTextBlock(content.headline, scene.text.title, titleSize, layout.title.align, 0, padding.left, padding.right, width, 22, 3),
-    });
+    blocks.push(
+      renderTextBlock(content.headline, scene.text.title, titleSize, layout.title.align, 0, padding.left, padding.right, width, 22, 3),
+    );
   }
   if (content.supportingText) {
-    blocks.push({
-      ...renderTextBlock(content.supportingText, scene.text.subtitle, subSize, layout.subtitle.align, 0, padding.left, padding.right, width, 34, 2),
-    });
+    blocks.push(
+      renderTextBlock(content.supportingText, scene.text.subtitle, subSize, layout.subtitle.align, 0, padding.left, padding.right, width, 34, 2),
+    );
   }
   if (content.ctaText) {
     blocks.push(renderPillCta(content.ctaText, scene.text.cta, ctaSize, layout.cta.align, 0, padding.left, padding.right, width));
@@ -271,14 +271,38 @@ export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
   else if (anchor === "center") cursorY = (height - totalTextH) / 2;
   else cursorY = height - padding.bottom - totalTextH;
 
-  // Aplica cursorY em cada bloco: precisamos regenerar com y correto.
   const positioned: string[] = [];
   let y = cursorY;
   for (let i = 0; i < blocks.length; i++) {
-    // Re-render com y calculado. Simples: envolve o svg do bloco em <g transform="translate(0,y)">.
     positioned.push(`<g transform="translate(0, ${y})">${blocks[i].svg}</g>`);
     y += blocks[i].heightPx + gapPx;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${positioned.join("")}</svg>`;
+  // 3. Logo (opcional) — desenhada em cima das camadas, mas independente do
+  // bloco de textos. Espelha `LogoSlot.tsx`: bounding box definido por
+  // `LogoLayout` (âncoras + margens em % do frame) e `objectFit: contain`.
+  let logoSvg = "";
+  if (logo && logo.dataUri) {
+    const ll = logo.layout;
+    const innerLeft = (Math.max(0, ll.marginLeft) / 100) * width;
+    const innerRight = width - (Math.max(0, ll.marginRight) / 100) * width;
+    const innerTop = (Math.max(0, ll.marginTop) / 100) * height;
+    const innerBottom = height - (Math.max(0, ll.marginBottom) / 100) * height;
+    const boxW = Math.min(0.22 * Math.max(0.1, ll.scale) * width, innerRight - innerLeft);
+    const boxH = Math.min(0.20 * height, innerBottom - innerTop);
+
+    let lx: number;
+    if (ll.hAnchor === "left") lx = innerLeft;
+    else if (ll.hAnchor === "right") lx = innerRight - boxW;
+    else lx = (width - boxW) / 2;
+
+    let ly: number;
+    if (ll.vAnchor === "top") ly = innerTop;
+    else if (ll.vAnchor === "bottom") ly = innerBottom - boxH;
+    else ly = (height - boxH) / 2;
+
+    logoSvg = `<image href="${logo.dataUri}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${logoSvg}${positioned.join("")}</svg>`;
 }
