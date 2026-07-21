@@ -91,7 +91,7 @@ vi.mock("@/lib/coach-rules/coach-rules.repository", () => ({
 // crypto.randomUUID em jsdom moderno já existe; garantimos fallback determinístico
 // nos testes que precisam observar reciclagem do UUID.
 let uuidCounter = 0;
-const originalRandomUUID = crypto.randomUUID?.bind(crypto);
+const originalRandomUUID = crypto.randomUUID.bind(crypto);
 
 beforeEach(() => {
   uuidCounter = 0;
@@ -116,7 +116,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  if (originalRandomUUID) {
+  {
     (crypto.randomUUID as unknown as { mockRestore?: () => void }).mockRestore?.();
   }
 });
@@ -776,6 +776,4 @@ describe("Fase 3.1a · ErrorBanner (sanidade)", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  // Silencia lint: fireEvent import necessário caso um teste futuro precise.
-  void fireEvent;
 });
