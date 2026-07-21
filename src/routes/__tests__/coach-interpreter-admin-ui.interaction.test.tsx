@@ -122,34 +122,19 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Import da rota — depois dos mocks.
+// Import direto do módulo de UI (extraído da rota) — depois dos mocks.
+// A rota de produção NÃO expõe componentes internos; os testes consomem
+// o módulo compartilhado em @/lib/coach-interpreter/admin-console.
 // ---------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const routeModule = await import("../configuracoes_.coach-interpreter");
+const adminConsoleModule = await import("@/lib/coach-interpreter/admin-console");
 const {
-  InterpreterAdminPage,
+  AdminPageBody: InterpreterAdminPage,
   InterpreterShell,
   MessageComposer,
   ChatTimeline,
   ProposalCard,
   ErrorBanner,
-} = routeModule.__test__ as unknown as {
-  InterpreterAdminPage: React.FC;
-  InterpreterShell: React.FC;
-  MessageComposer: React.FC<{ conversationId: string; onSent: () => void }>;
-  ChatTimeline: React.FC<{
-    messages: MessageRow[];
-    conversationId: string;
-    onChanged: () => void;
-  }>;
-  ProposalCard: React.FC<{ proposal: ProposalRow; onChanged: () => void }>;
-  ErrorBanner: React.FC<{
-    title: string;
-    error: import("@/lib/coach-interpreter/errors").SafeInterpreterError;
-    onRetry?: () => void;
-    testId?: string;
-  }>;
-};
+} = adminConsoleModule;
 
 type MessageRow = {
   id: string;
