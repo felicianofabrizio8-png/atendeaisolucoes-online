@@ -5064,6 +5064,17 @@ export type Database = {
         Args: { _cat: Database["public"]["Enums"]["coach_rule_category"] }
         Returns: boolean
       }
+      coach_reserve_user_message: {
+        Args: {
+          _client_request_id: string
+          _content: string
+          _conversation_id: string
+        }
+        Returns: {
+          created: boolean
+          message_id: string
+        }[]
+      }
       coach_validate_scope_ref: {
         Args: {
           _kind: Database["public"]["Enums"]["coach_rule_scope_kind"]

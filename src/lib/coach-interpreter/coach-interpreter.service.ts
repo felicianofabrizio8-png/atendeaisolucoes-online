@@ -1,12 +1,15 @@
 // Coach Interpreter — Service.
 // Puro em relação ao TanStack Start: recebe supabase autenticado do handler,
 // não conhece HTTP nem sessão.
+//
+// Fase 2.b.1 (correção A2): `supabaseAdmin` é carregado via `await import()`
+// dentro do handler para não vazar o módulo server-only na cadeia de bundle
+// dos `*.functions.ts` que importam este arquivo.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { LLMGateway } from "@/lib/llm-gateway/LLMGateway.server";
 import type { LLMProvider } from "@/lib/llm-gateway/LLMProvider";
 import { LovableChatProvider } from "@/lib/llm-gateway/providers/LovableChatProvider";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   CoachInterpreterOutputSchema,
   type CoachInterpreterOutput,
@@ -84,6 +87,40 @@ function countPriorClarifications(sb: SB, conversationId: string): Promise<numbe
   );
 }
 
+/**
+ * Coach Interpreter · Fase 2.b.1 (M4) — decisão determinística.
+ *
+ * Regra: qualquer `ambiguities` ou `missing_information` não vazio força
+ * clarificação, mesmo com `confidence` alto. Confidence baixo, presença
+ * de perguntas do modelo ou ausência de proposals também forçam.
+ * Persiste proposals APENAS quando não há sinal de ambiguidade.
+ */
+export interface CoachInterpreterDecision {
+  kind: "clarification" | "classified" | "proposals";
+  materialAmbiguity: boolean;
+}
+export function decideCoachInterpreterOutcome(
+  out: CoachInterpreterOutput,
+): CoachInterpreterDecision {
+  const materialAmbiguity = out.proposals.some(
+    (p) => p.ambiguities.length > 0 || p.missing_information.length > 0,
+  );
+  const forceClarify =
+    out.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL ||
+    out.clarification_questions.length > 0 ||
+    materialAmbiguity;
+
+  if (forceClarify) {
+    if (out.clarification_questions.length > 0) {
+      return { kind: "clarification", materialAmbiguity };
+    }
+    // Ambiguidade explícita sem perguntas do modelo: não persiste.
+    return { kind: "classified", materialAmbiguity };
+  }
+  if (out.proposals.length === 0) return { kind: "classified", materialAmbiguity: false };
+  return { kind: "proposals", materialAmbiguity: false };
+}
+
 export async function interpretCoachMessage(
   input: InterpretCoachMessageInput,
 ): Promise<InterpretCoachMessageResult> {
@@ -102,6 +139,8 @@ export async function interpretCoachMessage(
       ? input.providers
       : [new LovableChatProvider({ defaultModel: COACH_INTERPRETER_MODEL })];
 
+  // Fase 2.b.1 · A2: dynamic import server-only, nunca em module-scope.
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const gateway = new LLMGateway(supabaseAdmin, {
     providers,
     cacheEnabled: false, // determinismo por conversa; cache aqui pode confundir
@@ -252,17 +291,10 @@ export async function interpretCoachMessage(
 
   const out: CoachInterpreterOutput = validation.data;
 
-  // Clarificação determinística no servidor (evita esconder baixa confiança).
+  const decision = decideCoachInterpreterOutcome(out);
   const priorClarifications = await countPriorClarifications(supabase, conversationId);
-  const materialAmbiguity =
-    out.proposals.some((p) => p.ambiguities.length > 0 && p.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL);
-  const needsClarify =
-    out.clarification_questions.length > 0 &&
-    (out.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL ||
-      materialAmbiguity ||
-      out.proposals.length === 0);
 
-  if (needsClarify) {
+  if (decision.kind === "clarification") {
     if (priorClarifications >= COACH_INTERPRETER_MAX_CLARIFICATIONS) {
       const run = buildRun();
       const msg = await insertAssistantCoachMessage(
@@ -289,6 +321,9 @@ export async function interpretCoachMessage(
       };
     }
     const run = buildRun();
+    const warnings = decision.materialAmbiguity
+      ? [...out.warnings, "material_ambiguity_forced_clarification"]
+      : out.warnings;
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
@@ -298,6 +333,7 @@ export async function interpretCoachMessage(
         intent: out.intent,
         clarification_questions: out.clarification_questions,
         normalized_output: out,
+        material_ambiguity: decision.materialAmbiguity,
       },
       run,
       "clarification_request",
@@ -306,27 +342,35 @@ export async function interpretCoachMessage(
       outcome: {
         kind: "clarification",
         questions: out.clarification_questions,
-        warnings: out.warnings,
+        warnings,
       },
       run,
       assistantMessageId: msg.id,
     };
   }
 
-  // Sem proposals: classifica e não persiste em knowledge/faq/quick_reply/marketing.
-  if (out.proposals.length === 0) {
+  // Sem proposals ou ambiguidade material sem perguntas: classifica e não persiste.
+  if (decision.kind === "classified") {
     const run = buildRun();
+    const warnings = decision.materialAmbiguity
+      ? [...out.warnings, "material_ambiguity_blocked_proposals"]
+      : out.warnings;
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
       conversationId,
       out.reasoning_summary || "Mensagem classificada sem proposta de regra.",
-      { intent: out.intent, warnings: out.warnings, normalized_output: out },
+      {
+        intent: out.intent,
+        warnings,
+        normalized_output: out,
+        material_ambiguity: decision.materialAmbiguity,
+      },
       run,
       "assistant_message",
     );
     return {
-      outcome: { kind: "classified", intent: out.intent, warnings: out.warnings },
+      outcome: { kind: "classified", intent: out.intent, warnings },
       run,
       assistantMessageId: msg.id,
     };

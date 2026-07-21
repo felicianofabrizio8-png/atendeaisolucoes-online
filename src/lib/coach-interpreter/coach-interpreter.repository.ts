@@ -137,6 +137,41 @@ export async function getCoachConversation(
 // ------------------------------------------------------------------
 // Messages
 // ------------------------------------------------------------------
+
+/**
+ * Fase 2.b.1 (A1/A2/M3) — reserva atômica de user_message.
+ *
+ * Delegamos ao RPC `coach_reserve_user_message` (SECURITY DEFINER) que faz
+ * INSERT ... ON CONFLICT DO NOTHING sobre o índice único parcial. Retorna
+ * `{ messageId, created }`. Duas requisições concorrentes com o mesmo
+ * `client_request_id` recebem o mesmo `messageId`; apenas UMA vê
+ * `created=true` e deve seguir para o LLM.
+ *
+ * Erros brutos de unique violation não vazam: são absorvidos pelo próprio
+ * DO NOTHING.
+ */
+export async function reserveUserCoachMessage(
+  sb: SB,
+  conversationId: string,
+  clientRequestId: string,
+  content: string,
+): Promise<{ messageId: string; created: boolean }> {
+  const { data, error } = await sb.rpc(
+    "coach_reserve_user_message" as never,
+    {
+      _conversation_id: conversationId,
+      _client_request_id: clientRequestId,
+      _content: content,
+    } as never,
+  );
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error("coach_reserve_no_row");
+  const r = row as { message_id: string; created: boolean };
+  return { messageId: r.message_id, created: r.created };
+}
+
+// (Mantidos por completude para diagnóstico e para o retryCoachInterpretationFn.)
 export async function findExistingUserMessageByClientRequestId(
   sb: SB,
   conversationId: string,
@@ -153,30 +188,17 @@ export async function findExistingUserMessageByClientRequestId(
   return (data as CoachMessageRow | null) ?? null;
 }
 
-export async function insertUserCoachMessage(
+export async function getCoachMessageById(
   sb: SB,
-  companyId: string,
-  conversationId: string,
-  userId: string,
-  content: string,
-  clientRequestId: string | null,
-): Promise<CoachMessageRow> {
+  messageId: string,
+): Promise<CoachMessageRow | null> {
   const { data, error } = await sb
     .from("coach_messages")
-    .insert({
-      company_id: companyId,
-      conversation_id: conversationId,
-      kind: "user_message",
-      author_user_id: userId,
-      content,
-      payload: {},
-      run: {},
-      client_request_id: clientRequestId,
-    })
     .select("*")
-    .single();
-  if (error) throw new Error(`message_insert_failed: ${error.message}`);
-  return data as CoachMessageRow;
+    .eq("id", messageId)
+    .maybeSingle();
+  if (error) throw new Error(`message_get_failed: ${error.message}`);
+  return (data as CoachMessageRow | null) ?? null;
 }
 
 export async function insertAssistantCoachMessage(

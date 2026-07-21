@@ -23,6 +23,7 @@ export default defineConfig({
       "src/routes/__tests__/**/*.test.ts",
       "src/lib/runtime/__tests__/**/*.test.ts",
       "src/lib/coach-rules/__tests__/**/*.test.ts",
+      "src/lib/coach-interpreter/__tests__/**/*.test.ts",
 
     ],
     environment: "node",

@@ -8,14 +8,14 @@ import {
   confirmCoachProposalViaRpc,
   createCoachConversation,
   discardCoachProposal,
-  findExistingUserMessageByClientRequestId,
   getCoachConversation,
-  insertUserCoachMessage,
   isKillSwitchActive,
   listCoachConversations,
   listCoachMessages,
   listCoachProposals,
+  reserveUserCoachMessage,
   updateCoachProposal,
+  type CoachMessageRow,
 } from "./coach-interpreter.repository";
 import { interpretCoachMessage } from "./coach-interpreter.service";
 import {
@@ -27,6 +27,37 @@ import {
   COACH_INTERPRETER_CHANNELS,
   COACH_INTERPRETER_SCOPES,
 } from "./schema";
+
+/**
+ * Fase 2.b.1 (M3) — códigos estáveis expostos ao cliente para o fluxo
+ * de idempotência. Nunca vazamos mensagens brutas do Postgres.
+ */
+export const COACH_INTERPRETER_SEND_STATUS = {
+  CREATED: "created",
+  DUPLICATE_IN_PROGRESS: "duplicate_in_progress",
+  DUPLICATE_COMPLETED: "duplicate_completed",
+  DUPLICATE_FAILED: "duplicate_failed",
+} as const;
+export type CoachInterpreterSendStatus =
+  (typeof COACH_INTERPRETER_SEND_STATUS)[keyof typeof COACH_INTERPRETER_SEND_STATUS];
+
+function classifyIdempotentState(
+  messages: CoachMessageRow[],
+  userMessageId: string,
+): "in_progress" | "completed" | "failed" {
+  const target = messages.find((m) => m.id === userMessageId);
+  if (!target) return "in_progress";
+  const later = messages.filter(
+    (m) =>
+      m.created_at > target.created_at &&
+      (m.kind === "assistant_message" ||
+        m.kind === "clarification_request" ||
+        m.kind === "error"),
+  );
+  if (later.length === 0) return "in_progress";
+  if (later.some((m) => m.kind === "error")) return "failed";
+  return "completed";
+}
 
 class InterpreterError extends Error {
   constructor(
@@ -135,36 +166,43 @@ export const sendCoachMessageFn = createServerFn({ method: "POST" })
     await ensureFlagOrThrow(context.supabase, companyId);
     const conv = await ensureConversationAccess(context.supabase, data.conversation_id, companyId);
 
-    const existing = await findExistingUserMessageByClientRequestId(
+    // Fase 2.b.1 (A1/M3): reserva atômica via RPC. Duas requisições
+    // concorrentes com o mesmo client_request_id NUNCA disparam duas
+    // chamadas ao LLM — apenas quem obteve created=true prossegue.
+    const reserved = await reserveUserCoachMessage(
       context.supabase,
       conv.id,
       data.client_request_id,
+      data.text,
     );
-    if (existing) {
+
+    if (!reserved.created) {
+      // Perdeu o conflict: retorna estado idempotente estável, sem chamar LLM.
       const messages = await listCoachMessages(context.supabase, conv.id, 200);
       const proposals = await listCoachProposals(context.supabase, conv.id);
+      const state = classifyIdempotentState(messages, reserved.messageId);
+      const statusMap: Record<
+        ReturnType<typeof classifyIdempotentState>,
+        CoachInterpreterSendStatus
+      > = {
+        in_progress: COACH_INTERPRETER_SEND_STATUS.DUPLICATE_IN_PROGRESS,
+        completed: COACH_INTERPRETER_SEND_STATUS.DUPLICATE_COMPLETED,
+        failed: COACH_INTERPRETER_SEND_STATUS.DUPLICATE_FAILED,
+      };
       return {
+        status: statusMap[state],
         idempotent: true,
-        user_message_id: existing.id,
+        user_message_id: reserved.messageId,
         messages,
         proposals,
       };
     }
 
-    const userMessage = await insertUserCoachMessage(
-      context.supabase,
-      companyId,
-      conv.id,
-      context.userId,
-      data.text,
-      data.client_request_id,
-    );
-
     const result = await interpretCoachMessage({
       supabase: context.supabase,
       companyId,
       conversationId: conv.id,
-      userMessageId: userMessage.id,
+      userMessageId: reserved.messageId,
       userMessageText: data.text,
       companyName: data.company_name ?? null,
       companyTone: data.company_tone ?? null,
@@ -173,8 +211,9 @@ export const sendCoachMessageFn = createServerFn({ method: "POST" })
     const messages = await listCoachMessages(context.supabase, conv.id, 200);
     const proposals = await listCoachProposals(context.supabase, conv.id);
     return {
+      status: COACH_INTERPRETER_SEND_STATUS.CREATED,
       idempotent: false,
-      user_message_id: userMessage.id,
+      user_message_id: reserved.messageId,
       outcome: result.outcome,
       run: result.run,
       messages,
