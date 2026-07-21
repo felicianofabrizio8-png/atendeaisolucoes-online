@@ -11,7 +11,7 @@
 //    server function; nunca ativada aqui).
 // ============================================================================
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -36,6 +36,16 @@ import { useAuth } from "@/auth/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { cn } from "@/lib/utils";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   listCoachConversationsFn,
   getCoachConversationFn,
   sendCoachMessageFn,
@@ -45,6 +55,10 @@ import {
   discardCoachProposalFn,
   confirmCoachProposalFn,
 } from "@/lib/coach-interpreter/coach-interpreter.functions";
+import {
+  getSafeInterpreterError,
+  type SafeInterpreterError,
+} from "@/lib/coach-interpreter/errors";
 
 // ------------------------------------------------------------------
 // Labels reaproveitados (server-safe consts vindas do módulo de regras).
