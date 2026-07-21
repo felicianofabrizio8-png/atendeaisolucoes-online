@@ -91,7 +91,7 @@ vi.mock("@/lib/coach-rules/coach-rules.repository", () => ({
 // crypto.randomUUID em jsdom moderno já existe; garantimos fallback determinístico
 // nos testes que precisam observar reciclagem do UUID.
 let uuidCounter = 0;
-const originalRandomUUID = crypto.randomUUID.bind(crypto);
+// crypto.randomUUID vive no jsdom moderno; spy é restaurado em afterEach.
 
 beforeEach(() => {
   uuidCounter = 0;
