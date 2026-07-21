@@ -90,9 +90,7 @@ vi.mock("@/hooks/useIsAdmin", () => ({
 
 // Import após mocks.
 import { CoachPanel } from "@/components/coach/CoachPanel";
-import {
-  FeatureDisabledScreen as InterpreterFeatureDisabledScreen,
-} from "@/lib/coach-interpreter/admin/feature-disabled-screen";
+import { FeatureDisabledScreen as InterpreterFeatureDisabledScreen } from "@/lib/coach-interpreter/admin/feature-disabled-screen";
 import * as adminBarrel from "@/lib/coach-interpreter/admin-console";
 
 // ---------------------------------------------------------------------------
@@ -107,7 +105,6 @@ function renderWithSingleProvider(node: ReactNode) {
 
 beforeEach(() => {
   adminState.isAdmin = false;
-  
 });
 afterEach(() => cleanup());
 

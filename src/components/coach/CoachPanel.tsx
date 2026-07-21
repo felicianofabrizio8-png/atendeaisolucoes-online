@@ -351,9 +351,7 @@ export function CoachPanel({
             </button>
           </div>
           {suggestion.reasoning && (
-            <div className="text-[10px] text-muted-foreground italic">
-              {suggestion.reasoning}
-            </div>
+            <div className="text-[10px] text-muted-foreground italic">{suggestion.reasoning}</div>
           )}
         </div>
       )}
