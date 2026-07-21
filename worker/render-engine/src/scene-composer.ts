@@ -127,7 +127,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
       const stopsXml = layer.stops
         .map((s, i) => {
           const at = typeof s.at === "number" ? s.at : (i / Math.max(1, layer.stops.length - 1)) * 100;
-          return `<stop offset="${at}%" stop-color="${s.color}"/>`;
+          return `<stop offset="${at}%" stop-color="${attr(s.color)}"/>`;
         })
         .join("");
       let rectY = 0, rectH = height;
