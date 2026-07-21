@@ -37,10 +37,7 @@ function makeFakeClient(flags: Flags) {
       calls.push({ table, companyId: currentCompany });
       const enabled = currentCompany ? flags[currentCompany] : undefined;
       return {
-        data:
-          enabled === undefined
-            ? null
-            : { coach_interpreter_enabled: enabled },
+        data: enabled === undefined ? null : { coach_interpreter_enabled: enabled },
         error: null as null,
       };
     });
@@ -113,12 +110,7 @@ describe("Fase 3.3 · Etapa 2A · T2 — sem cache cross-tenant", () => {
 
     expect([r1, r2, r3, r4]).toEqual([true, false, true, false]);
     expect(fromSpy).toHaveBeenCalledTimes(4);
-    expect(calls.map((c) => c.companyId)).toEqual([
-      COMPANY_A,
-      COMPANY_B,
-      COMPANY_A,
-      COMPANY_B,
-    ]);
+    expect(calls.map((c) => c.companyId)).toEqual([COMPANY_A, COMPANY_B, COMPANY_A, COMPANY_B]);
   });
 
   it("flag flip em runtime é refletida imediatamente (sem memoização)", async () => {
