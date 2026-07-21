@@ -71,14 +71,14 @@ const NEAR_BOTTOM_THRESHOLD_PX = 80;
 /** Distância (px) para exibir o botão "Ir para o final". */
 const SHOW_JUMP_BUTTON_THRESHOLD_PX = 200;
 
-/** Exportado para testes de contrato. */
-export function isNearBottom(
+function isNearBottomLocal(
   el: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">,
   thresholdPx = NEAR_BOTTOM_THRESHOLD_PX,
 ): boolean {
   const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
   return distance <= thresholdPx;
 }
+
 
 export function ChatTimeline({
   messages,
