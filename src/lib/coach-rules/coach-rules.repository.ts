@@ -16,22 +16,47 @@ export type CoachRuleVersionRow = Database["public"]["Tables"]["coach_rule_versi
 export type CoachRuleEventRow = Database["public"]["Tables"]["coach_rule_events"]["Row"];
 
 export const COACH_RULE_CATEGORIES: readonly CoachRuleCategory[] = [
-  "identity", "tone", "qualification", "sales", "pricing", "negotiation",
-  "discounts", "payments", "followup", "human_handoff", "prohibitions",
-  "safety", "after_sales", "other",
+  "identity",
+  "tone",
+  "qualification",
+  "sales",
+  "pricing",
+  "negotiation",
+  "discounts",
+  "payments",
+  "followup",
+  "human_handoff",
+  "prohibitions",
+  "safety",
+  "after_sales",
+  "other",
 ] as const;
 
 export const COACH_RULE_TYPES: readonly CoachRuleType[] = [
-  "instruction", "prohibition", "mandatory_action", "mandatory_question",
-  "handoff", "standard_reply", "preference",
+  "instruction",
+  "prohibition",
+  "mandatory_action",
+  "mandatory_question",
+  "handoff",
+  "standard_reply",
+  "preference",
 ] as const;
 
-export const COACH_RULE_SCOPES: readonly CoachRuleScopeKind[] = ["company", "agent", "channel"] as const;
+export const COACH_RULE_SCOPES: readonly CoachRuleScopeKind[] = [
+  "company",
+  "agent",
+  "channel",
+] as const;
 
 export const COACH_CHANNELS = ["whatsapp", "instagram", "facebook", "web", "other"] as const;
 
 export const COACH_CRITICAL_CATEGORIES = new Set<CoachRuleCategory>([
-  "safety", "pricing", "discounts", "payments", "prohibitions", "human_handoff",
+  "safety",
+  "pricing",
+  "discounts",
+  "payments",
+  "prohibitions",
+  "human_handoff",
 ]);
 
 export const COACH_CATEGORY_LABEL: Record<CoachRuleCategory, string> = {
@@ -96,7 +121,10 @@ export async function listCoachRules(): Promise<CoachRuleRow[]> {
 
 export async function getCoachRule(ruleId: string): Promise<CoachRuleRow | null> {
   const { data, error } = await supabase
-    .from("coach_rules").select("*").eq("id", ruleId).maybeSingle();
+    .from("coach_rules")
+    .select("*")
+    .eq("id", ruleId)
+    .maybeSingle();
   if (error) throw error;
   return data;
 }

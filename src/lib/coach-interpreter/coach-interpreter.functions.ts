@@ -18,15 +18,9 @@ import {
   type CoachMessageRow,
 } from "./coach-interpreter.repository";
 import { interpretCoachMessage } from "./coach-interpreter.service";
-import {
-  COACH_INTERPRETER_MAX_INPUT_CHARS,
-  COACH_INTERPRETER_MODEL,
-} from "./types";
+import { COACH_INTERPRETER_MAX_INPUT_CHARS, COACH_INTERPRETER_MODEL } from "./types";
 import { COACH_INTERPRETER_PROMPT_VERSION } from "./prompt/interpreter-prompt.v1";
-import {
-  COACH_INTERPRETER_CHANNELS,
-  COACH_INTERPRETER_SCOPES,
-} from "./schema";
+import { COACH_INTERPRETER_CHANNELS, COACH_INTERPRETER_SCOPES } from "./schema";
 
 /**
  * Fase 2.b.1 (M3) — códigos estáveis expostos ao cliente para o fluxo
@@ -50,9 +44,7 @@ function classifyIdempotentState(
   const later = messages.filter(
     (m) =>
       m.created_at > target.created_at &&
-      (m.kind === "assistant_message" ||
-        m.kind === "clarification_request" ||
-        m.kind === "error"),
+      (m.kind === "assistant_message" || m.kind === "clarification_request" || m.kind === "error"),
   );
   if (later.length === 0) return "in_progress";
   if (later.some((m) => m.kind === "error")) return "failed";
@@ -69,7 +61,10 @@ class InterpreterError extends Error {
   }
 }
 
-async function ensureFlagOrThrow(sb: Parameters<typeof checkCoachInterpreterEnabled>[0], companyId: string) {
+async function ensureFlagOrThrow(
+  sb: Parameters<typeof checkCoachInterpreterEnabled>[0],
+  companyId: string,
+) {
   if (isKillSwitchActive()) {
     throw new InterpreterError("COACH_INTERPRETER_KILLED", "COACH_INTERPRETER_KILLED", 503);
   }
@@ -83,7 +78,11 @@ async function getOwnerCompanyOrThrow(
   sb: Parameters<typeof getCoachConversation>[0],
   userId: string,
 ): Promise<string> {
-  const { data, error } = await sb.from("profiles").select("company_id").eq("id", userId).maybeSingle();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("company_id")
+    .eq("id", userId)
+    .maybeSingle();
   if (error || !data?.company_id) {
     throw new InterpreterError("no_company", "no_company", 403);
   }
@@ -97,7 +96,8 @@ async function ensureConversationAccess(
 ) {
   const conv = await getCoachConversation(sb, conversationId);
   if (!conv) throw new InterpreterError("not_found", "not_found", 404);
-  if (conv.company_id !== companyId) throw new InterpreterError("cross_tenant", "cross_tenant", 403);
+  if (conv.company_id !== companyId)
+    throw new InterpreterError("cross_tenant", "cross_tenant", 403);
   return conv;
 }
 
@@ -136,9 +136,7 @@ export const listCoachConversationsFn = createServerFn({ method: "GET" })
 
 export const getCoachConversationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ conversation_id: z.string().uuid() }).parse(input),
-  )
+  .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
@@ -252,9 +250,7 @@ export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
 
 export const listCoachProposalsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ conversation_id: z.string().uuid() }).parse(input),
-  )
+  .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
@@ -273,9 +269,7 @@ export const updateCoachProposalFn = createServerFn({ method: "POST" })
         instruction: z.string().trim().min(3).max(2000).optional(),
         priority: z.number().int().min(0).max(100).optional(),
         scope_kind: z.enum(COACH_INTERPRETER_SCOPES).optional(),
-        scope_ref: z
-          .object({ channel: z.enum(COACH_INTERPRETER_CHANNELS).optional() })
-          .optional(),
+        scope_ref: z.object({ channel: z.enum(COACH_INTERPRETER_CHANNELS).optional() }).optional(),
       })
       .parse(input),
   )
@@ -289,9 +283,7 @@ export const updateCoachProposalFn = createServerFn({ method: "POST" })
 
 export const discardCoachProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ proposal_id: z.string().uuid() }).parse(input),
-  )
+  .inputValidator((input: unknown) => z.object({ proposal_id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
