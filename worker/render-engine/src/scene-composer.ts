@@ -240,11 +240,11 @@ function renderPillCta(
   // Radius: aceita "999px" (redonda) ou "Xpx" — mapeia para px.
   const raw = style.pill.radius;
   const radius = /^\d+/.test(raw) ? Math.min(parseFloat(raw), pillH / 2) : pillH / 2;
-  const rect = `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${radius}" ry="${radius}" fill="${style.pill.background}"/>`;
-  const ls = style.letterSpacing ? ` letter-spacing="${style.letterSpacing}"` : "";
+  const rect = `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${radius}" ry="${radius}" fill="${attr(style.pill.background)}"/>`;
+  const ls = style.letterSpacing ? ` letter-spacing="${attr(style.letterSpacing)}"` : "";
   const textY = py + padV + sizePx * 0.85;
   const textX = px + pillW / 2;
-  const text = `<text x="${textX}" y="${textY}" font-family="${style.fontFamily}" font-weight="${style.weight}" font-size="${sizePx}" fill="${style.pill.foreground}" text-anchor="middle"${ls}>${xmlEscape(label)}</text>`;
+  const text = `<text x="${textX}" y="${textY}" font-family="${attr(style.fontFamily)}" font-weight="${style.weight}" font-size="${sizePx}" fill="${attr(style.pill.foreground)}" text-anchor="middle"${ls}>${xmlEscape(label)}</text>`;
   return { svg: rect + text, heightPx: pillH + sizePx * 0.2 };
 }
 
