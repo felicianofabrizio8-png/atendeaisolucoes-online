@@ -50,23 +50,21 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 // Supabase client — CoachPanel usa .from(...).select/update e .auth.getSession/.rpc.
-// Só precisamos que as chamadas iniciais de carga não explodam.
+// Mock chainable "self" que responde a qualquer método com uma Promise vazia,
+// mantendo o CoachPanel silencioso durante os testes de integração.
 const { supabaseFromMock, authMock, adminState } = vi.hoisted(() => {
-  const from = () => ({
-    select: () => ({
-      eq: () => ({
-        eq: () => ({
-          order: () => ({
-            order: () => Promise.resolve({ data: [] }),
-            limit: () => Promise.resolve({ data: [] }),
-          }),
-        }),
-      }),
-    }),
-    update: () => ({ eq: () => Promise.resolve({ data: null }) }),
-  });
+  const makeChain = (): unknown => {
+    const target: Record<string, unknown> = {};
+    const proxy: unknown = new Proxy(target, {
+      get(_t, prop) {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve({ data: [] });
+        return () => proxy;
+      },
+    });
+    return proxy;
+  };
   return {
-    supabaseFromMock: Object.assign(from, { calls: 0 }),
+    supabaseFromMock: () => makeChain(),
     authMock: { user: { id: "user-1" }, profile: { company_id: "co-1" }, loading: false },
     adminState: { isAdmin: false },
   };
