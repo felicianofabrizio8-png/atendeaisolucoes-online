@@ -682,20 +682,49 @@ function ChatTimeline({
     onSuccess: onChanged,
   });
 
+  // Auto-scroll para o fim quando novas mensagens chegam.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  const retryError =
+    retryM.error && retryM.variables
+      ? { messageId: retryM.variables, safe: getSafeInterpreterError(retryM.error) }
+      : null;
+
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3" data-testid="chat-timeline">
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3"
+      data-testid="chat-timeline"
+    >
       {messages.length === 0 ? (
         <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
           Nenhuma mensagem ainda. Envie a primeira abaixo.
         </div>
       ) : (
         messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
-            retrying={retryM.isPending && retryM.variables === m.id}
-          />
+          <div key={m.id}>
+            <MessageBubble
+              message={m}
+              onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
+              retrying={retryM.isPending && retryM.variables === m.id}
+            />
+            {retryError && retryError.messageId === m.id && (
+              <div className="mt-2 flex justify-end">
+                <div className="max-w-[85%]">
+                  <ErrorBanner
+                    title="Falha ao reinterpretar"
+                    error={retryError.safe}
+                    onRetry={() => retryM.mutate(m.id)}
+                    testId={`retry-error-${m.id}`}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         ))
       )}
     </div>
