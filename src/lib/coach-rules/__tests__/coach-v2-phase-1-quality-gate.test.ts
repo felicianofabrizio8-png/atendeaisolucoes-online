@@ -222,9 +222,15 @@ describe("Coach V2 · Isolamento do agente (dark implementation)", () => {
       { encoding: "utf8" },
     ).trim();
     const files = out.split("\n").filter(Boolean);
+    // Allow-list explícita e restrita. Adições exigem justificativa
+    // arquitetural (Coach V2 Fase 2.b.1 · isolamento preservado).
     const allowed = new Set([
       "src/lib/coach-rules/coach-rules.repository.ts",
       "src/routes/configuracoes_.regras-coach.tsx",
+      // Coach Interpreter (Fase 2.b) — módulo server-side isolado.
+      "src/lib/coach-interpreter/coach-interpreter.repository.ts",
+      "src/lib/coach-interpreter/coach-interpreter.service.ts",
+      "src/lib/coach-interpreter/coach-interpreter.functions.ts",
     ]);
     for (const f of files) {
       expect(allowed.has(f), `consumidor não autorizado: ${f}`).toBe(true);
