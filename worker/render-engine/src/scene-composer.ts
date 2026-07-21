@@ -316,7 +316,7 @@ export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
     else if (ll.vAnchor === "bottom") ly = innerBottom - boxH;
     else ly = (height - boxH) / 2;
 
-    logoSvg = `<image href="${logo.dataUri}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
+    logoSvg = `<image href="${attr(logo.dataUri)}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${logoSvg}${positioned.join("")}</svg>`;
