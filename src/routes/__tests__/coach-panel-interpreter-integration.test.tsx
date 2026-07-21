@@ -108,8 +108,8 @@ function renderWithSingleProvider(node: ReactNode) {
 }
 
 beforeEach(() => {
-  isAdminMock = false;
-  supabaseFromMock.mockClear();
+  adminState.isAdmin = false;
+  
 });
 afterEach(() => cleanup());
 
@@ -119,7 +119,7 @@ afterEach(() => cleanup());
 
 describe("Fase 3.2 · CoachPanel → Coach Interpreter (abertura e navegação)", () => {
   it("admin: exibe o atalho 'Console' com href para a rota administrativa", () => {
-    isAdminMock = true;
+    adminState.isAdmin = true;
     renderWithSingleProvider(<CoachPanel conversationId="conv-1" />);
 
     const link = screen.getByTestId("coach-panel-open-interpreter");
@@ -129,7 +129,7 @@ describe("Fase 3.2 · CoachPanel → Coach Interpreter (abertura e navegação)"
   });
 
   it("clicar no atalho não impede o botão original 'Analisar' de continuar funcionando", async () => {
-    isAdminMock = true;
+    adminState.isAdmin = true;
     const user = userEvent.setup();
     renderWithSingleProvider(<CoachPanel conversationId="conv-1" />);
 
@@ -149,7 +149,7 @@ describe("Fase 3.2 · CoachPanel → Coach Interpreter (abertura e navegação)"
 
 describe("Fase 3.2 · Guard de admin", () => {
   it("não-admin: NÃO renderiza o atalho 'Console'", () => {
-    isAdminMock = false;
+    adminState.isAdmin = false;
     renderWithSingleProvider(<CoachPanel conversationId="conv-1" />);
 
     expect(screen.queryByTestId("coach-panel-open-interpreter")).not.toBeInTheDocument();
@@ -195,7 +195,7 @@ describe("Fase 3.2 · Lazy loading & higiene arquitetural", () => {
   });
 
   it("CoachPanel não instancia providers próprios (nenhum QueryClientProvider/AuthProvider extra)", () => {
-    isAdminMock = true;
+    adminState.isAdmin = true;
     const { container } = renderWithSingleProvider(<CoachPanel conversationId="conv-1" />);
     // Sanity check: se o CoachPanel duplicasse um QueryClientProvider ou
     // AuthProvider, o teste falharia na montagem por conflito. Chegar até
@@ -204,7 +204,7 @@ describe("Fase 3.2 · Lazy loading & higiene arquitetural", () => {
   });
 
   it("CoachPanel preserva header original ('Coach IA') após integração", () => {
-    isAdminMock = true;
+    adminState.isAdmin = true;
     renderWithSingleProvider(<CoachPanel conversationId="conv-1" />);
     expect(screen.getByText("Coach IA")).toBeInTheDocument();
   });
