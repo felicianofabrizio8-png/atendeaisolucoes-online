@@ -1,7 +1,7 @@
 // Lovable AI Gateway provider — implementação do contrato LLMProvider
 // para uso via LLMGateway (que já centraliza cache/retry/fallback/billing).
 // Não expõe a chave; lê LOVABLE_API_KEY apenas em execute().
-import type { LLMProvider, LLMRequest, LLMResponse } from "./LLMProvider";
+import type { LLMProvider, LLMRequest, LLMResponse } from "../LLMProvider";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
