@@ -1505,10 +1505,23 @@ function formatDateTime(iso: string | null): string {
   }
 }
 
-// Exports p/ testes
+// Exports p/ testes — agrupados em __test__ para não gerar warnings do
+// react-refresh (mistura de exports de componente e não-componente).
 export const __test__ = {
   extractDisabledMessage,
   formatDateTime,
   PROPOSAL_STATUS_LABEL,
   KIND_META,
+  // Componentes internos expostos exclusivamente para a bateria de testes
+  // de interação da Fase 3.1a. NÃO consumir fora de testes.
+  InterpreterAdminPage,
+  InterpreterShell,
+  ConversationsPanel,
+  NewConversationButton,
+  ErrorBanner,
+  MessageComposer,
+  ChatTimeline,
+  ProposalCard,
+  FeatureDisabledScreen,
 };
+
