@@ -395,8 +395,7 @@ describe("Fase 3.1a · Listagem de conversas", () => {
     expect(screen.queryByTestId("conversations-error")).not.toBeInTheDocument();
     // Empty state NÃO coexiste com loading.
     expect(screen.queryByText(/Nenhuma conversa encontrada/i)).not.toBeInTheDocument();
-    // Resolve para não vazar promessa pendente entre testes.
-    void act(async () => {
+    await act(async () => {
       gate.resolve({ conversations: [] });
     });
   });
