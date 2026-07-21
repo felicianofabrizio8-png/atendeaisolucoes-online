@@ -8,14 +8,14 @@ import {
   confirmCoachProposalViaRpc,
   createCoachConversation,
   discardCoachProposal,
-  findExistingUserMessageByClientRequestId,
   getCoachConversation,
-  insertUserCoachMessage,
   isKillSwitchActive,
   listCoachConversations,
   listCoachMessages,
   listCoachProposals,
+  reserveUserCoachMessage,
   updateCoachProposal,
+  type CoachMessageRow,
 } from "./coach-interpreter.repository";
 import { interpretCoachMessage } from "./coach-interpreter.service";
 import {
@@ -27,6 +27,37 @@ import {
   COACH_INTERPRETER_CHANNELS,
   COACH_INTERPRETER_SCOPES,
 } from "./schema";
+
+/**
+ * Fase 2.b.1 (M3) — códigos estáveis expostos ao cliente para o fluxo
+ * de idempotência. Nunca vazamos mensagens brutas do Postgres.
+ */
+export const COACH_INTERPRETER_SEND_STATUS = {
+  CREATED: "created",
+  DUPLICATE_IN_PROGRESS: "duplicate_in_progress",
+  DUPLICATE_COMPLETED: "duplicate_completed",
+  DUPLICATE_FAILED: "duplicate_failed",
+} as const;
+export type CoachInterpreterSendStatus =
+  (typeof COACH_INTERPRETER_SEND_STATUS)[keyof typeof COACH_INTERPRETER_SEND_STATUS];
+
+function classifyIdempotentState(
+  messages: CoachMessageRow[],
+  userMessageId: string,
+): "in_progress" | "completed" | "failed" {
+  const target = messages.find((m) => m.id === userMessageId);
+  if (!target) return "in_progress";
+  const later = messages.filter(
+    (m) =>
+      m.created_at > target.created_at &&
+      (m.kind === "assistant_message" ||
+        m.kind === "clarification_request" ||
+        m.kind === "error"),
+  );
+  if (later.length === 0) return "in_progress";
+  if (later.some((m) => m.kind === "error")) return "failed";
+  return "completed";
+}
 
 class InterpreterError extends Error {
   constructor(
