@@ -275,12 +275,7 @@ describe("Sub-d · Filtros de proposals", () => {
       dateTo: "",
     };
     renderWithClient(
-      <ProposalFilterBar
-        filters={filters}
-        onChange={() => {}}
-        proposals={[]}
-        filteredCount={0}
-      />,
+      <ProposalFilterBar filters={filters} onChange={() => {}} proposals={[]} filteredCount={0} />,
     );
     expect(screen.getByTestId("proposals-header")).toHaveTextContent("Proposals (0)");
   });

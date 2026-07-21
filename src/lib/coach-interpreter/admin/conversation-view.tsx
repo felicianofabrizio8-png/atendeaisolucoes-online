@@ -70,8 +70,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
 
   // Datas normalizadas para o dia local inteiro; intervalo inválido
   // (from > to) simplesmente não filtra (a UI já mostra o alerta).
-  const invalidRange =
-    filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo;
+  const invalidRange = filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo;
   const filteredProposals = proposals.filter((p) => {
     if (filters.category && p.category !== filters.category) return false;
     if (filters.ruleType && p.rule_type !== filters.ruleType) return false;
