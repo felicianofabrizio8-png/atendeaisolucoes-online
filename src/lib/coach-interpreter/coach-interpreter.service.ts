@@ -105,6 +105,8 @@ export async function interpretCoachMessage(
       ? input.providers
       : [new LovableChatProvider({ defaultModel: COACH_INTERPRETER_MODEL })];
 
+  // Fase 2.b.1 · A2: dynamic import server-only, nunca em module-scope.
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const gateway = new LLMGateway(supabaseAdmin, {
     providers,
     cacheEnabled: false, // determinismo por conversa; cache aqui pode confundir
