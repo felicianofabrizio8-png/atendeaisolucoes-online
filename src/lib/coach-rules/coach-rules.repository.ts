@@ -175,9 +175,9 @@ export async function createCoachRuleVersion(input: CreateVersionInput): Promise
     _title: input.title,
     _content: input.content,
     _priority: input.priority ?? 50,
-    _scope_kind: input.scopeKind ?? null,
-    _scope_ref: (input.scopeRef ?? null) as never,
-    _base_version_id: input.baseVersionId ?? null,
+    _scope_kind: input.scopeKind ?? undefined,
+    _scope_ref: (input.scopeRef ?? undefined) as never,
+    _base_version_id: input.baseVersionId ?? undefined,
   });
   if (error) throw error;
   return data as string;
