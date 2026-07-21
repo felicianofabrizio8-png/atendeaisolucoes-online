@@ -1036,6 +1036,344 @@ export type Database = {
           },
         ]
       }
+      coach_rule_conflicts: {
+        Row: {
+          company_id: string
+          conflict_type: string
+          conflicting_version_id: string | null
+          created_at: string
+          details: Json
+          detected_at: string
+          id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string
+          status: string
+          updated_at: string
+          version_id: string
+        }
+        Insert: {
+          company_id: string
+          conflict_type: string
+          conflicting_version_id?: string | null
+          created_at?: string
+          details?: Json
+          detected_at?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id: string
+          status?: string
+          updated_at?: string
+          version_id: string
+        }
+        Update: {
+          company_id?: string
+          conflict_type?: string
+          conflicting_version_id?: string | null
+          created_at?: string
+          details?: Json
+          detected_at?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string
+          status?: string
+          updated_at?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_rule_conflicts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_conflicts_conflicting_version_id_fkey"
+            columns: ["conflicting_version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_conflicts_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_conflicts_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_rule_events: {
+        Row: {
+          actor_user_id: string | null
+          company_id: string
+          created_at: string
+          details: Json
+          event_type: Database["public"]["Enums"]["coach_rule_event_type"]
+          id: string
+          is_self_approval: boolean
+          rule_id: string
+          version_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          company_id: string
+          created_at?: string
+          details?: Json
+          event_type: Database["public"]["Enums"]["coach_rule_event_type"]
+          id?: string
+          is_self_approval?: boolean
+          rule_id: string
+          version_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          company_id?: string
+          created_at?: string
+          details?: Json
+          event_type?: Database["public"]["Enums"]["coach_rule_event_type"]
+          id?: string
+          is_self_approval?: boolean
+          rule_id?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_rule_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_events_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_events_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_rule_versions: {
+        Row: {
+          activated_at: string | null
+          approved_at: string | null
+          approved_by: string | null
+          archived_at: string | null
+          base_version_id: string | null
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          content: string
+          content_hash: string
+          created_at: string
+          created_by: string
+          critical_confirmed: boolean
+          id: string
+          is_self_approval: boolean
+          priority: number
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          rule_id: string
+          rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref: Json
+          status: Database["public"]["Enums"]["coach_rule_version_status"]
+          submitted_at: string | null
+          submitted_by: string | null
+          title: string
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          activated_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
+          base_version_id?: string | null
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          content: string
+          content_hash: string
+          created_at?: string
+          created_by: string
+          critical_confirmed?: boolean
+          id?: string
+          is_self_approval?: boolean
+          priority?: number
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          rule_id: string
+          rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          status?: Database["public"]["Enums"]["coach_rule_version_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          title: string
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          activated_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
+          base_version_id?: string | null
+          category?: Database["public"]["Enums"]["coach_rule_category"]
+          company_id?: string
+          content?: string
+          content_hash?: string
+          created_at?: string
+          created_by?: string
+          critical_confirmed?: boolean
+          id?: string
+          is_self_approval?: boolean
+          priority?: number
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          rule_id?: string
+          rule_type?: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          status?: Database["public"]["Enums"]["coach_rule_version_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          title?: string
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_rule_versions_base_version_id_fkey"
+            columns: ["base_version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_versions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_versions_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_rules: {
+        Row: {
+          activated_at: string | null
+          active_version_id: string | null
+          archived_at: string | null
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          created_at: string
+          created_by: string
+          id: string
+          paused_at: string | null
+          priority: number
+          replaced_at: string | null
+          replaced_by_rule_id: string | null
+          scope_kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref: Json
+          status: Database["public"]["Enums"]["coach_rule_status"]
+          title: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          activated_at?: string | null
+          active_version_id?: string | null
+          archived_at?: string | null
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          paused_at?: string | null
+          priority?: number
+          replaced_at?: string | null
+          replaced_by_rule_id?: string | null
+          scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          status?: Database["public"]["Enums"]["coach_rule_status"]
+          title: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          activated_at?: string | null
+          active_version_id?: string | null
+          archived_at?: string | null
+          category?: Database["public"]["Enums"]["coach_rule_category"]
+          company_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          paused_at?: string | null
+          priority?: number
+          replaced_at?: string | null
+          replaced_by_rule_id?: string | null
+          scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          status?: Database["public"]["Enums"]["coach_rule_status"]
+          title?: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_rules_active_version_fk"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rules_replaced_by_rule_id_fkey"
+            columns: ["replaced_by_rule_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_suggestions: {
         Row: {
           company_id: string
@@ -4401,7 +4739,16 @@ export type Database = {
       }
     }
     Functions: {
+      activate_coach_rule_version: {
+        Args: { _version_id: string }
+        Returns: undefined
+      }
       ai_agent_maintenance: { Args: never; Returns: undefined }
+      approve_coach_rule_version: {
+        Args: { _critical_confirmed?: boolean; _version_id: string }
+        Returns: undefined
+      }
+      archive_coach_rule: { Args: { _rule_id: string }; Returns: undefined }
       brand_asset_storage_metadata: {
         Args: { _bucket: string; _path: string }
         Returns: {
@@ -4466,6 +4813,30 @@ export type Database = {
       cleanup_executive_knowledge: { Args: never; Returns: number }
       cleanup_scientific_memory: { Args: never; Returns: number }
       cleanup_scientific_snapshots: { Args: never; Returns: number }
+      coach_assert_admin: { Args: { _company_id: string }; Returns: undefined }
+      coach_content_hash: {
+        Args: {
+          _category: Database["public"]["Enums"]["coach_rule_category"]
+          _content: string
+          _priority: number
+          _rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          _scope_kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          _scope_ref: Json
+          _title: string
+        }
+        Returns: string
+      }
+      coach_is_critical_category: {
+        Args: { _cat: Database["public"]["Enums"]["coach_rule_category"] }
+        Returns: boolean
+      }
+      coach_validate_scope_ref: {
+        Args: {
+          _kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          _ref: Json
+        }
+        Returns: boolean
+      }
       complete_agent_job: {
         Args: {
           _backoff_seconds?: number
@@ -4501,6 +4872,36 @@ export type Database = {
         }
       }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
+      create_coach_rule_draft: {
+        Args: {
+          _category: Database["public"]["Enums"]["coach_rule_category"]
+          _content: string
+          _priority?: number
+          _rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          _scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          _scope_ref?: Json
+          _title: string
+          _valid_from?: string
+          _valid_until?: string
+        }
+        Returns: {
+          rule_id: string
+          version_id: string
+        }[]
+      }
+      create_coach_rule_version: {
+        Args: {
+          _base_version_id?: string
+          _content: string
+          _priority?: number
+          _rule_id: string
+          _rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          _scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          _scope_ref?: Json
+          _title: string
+        }
+        Returns: string
+      }
       current_company_id: { Args: never; Returns: string }
       dequeue_agent_job: {
         Args: {
@@ -4586,6 +4987,7 @@ export type Database = {
         }
         Returns: string
       }
+      pause_coach_rule: { Args: { _rule_id: string }; Returns: undefined }
       peek_agent_job_status: {
         Args: { _job_id: string }
         Returns: {
@@ -4611,6 +5013,14 @@ export type Database = {
           _window_start: string
         }
         Returns: number
+      }
+      reject_coach_rule_version: {
+        Args: { _reason: string; _version_id: string }
+        Returns: undefined
+      }
+      replace_coach_rule: {
+        Args: { _new_rule_id: string; _old_rule_id: string }
+        Returns: undefined
       }
       runtime_cleanup_expired: {
         Args: never
@@ -4651,6 +5061,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      submit_coach_rule_version: {
+        Args: { _version_id: string }
+        Returns: undefined
+      }
       touch_last_seen: { Args: never; Returns: undefined }
     }
     Enums: {
@@ -4670,6 +5084,51 @@ export type Database = {
         | "instalacao"
         | "manutencao"
       channel: "whatsapp" | "instagram" | "facebook"
+      coach_rule_category:
+        | "identity"
+        | "tone"
+        | "qualification"
+        | "sales"
+        | "pricing"
+        | "negotiation"
+        | "discounts"
+        | "payments"
+        | "followup"
+        | "human_handoff"
+        | "prohibitions"
+        | "safety"
+        | "after_sales"
+        | "other"
+      coach_rule_event_type:
+        | "rule_created"
+        | "version_created"
+        | "version_submitted"
+        | "version_approved"
+        | "version_self_approved"
+        | "version_rejected"
+        | "version_activated"
+        | "rule_paused"
+        | "rule_resumed"
+        | "rule_archived"
+        | "rule_replaced"
+        | "conflict_detected"
+        | "conflict_resolved"
+      coach_rule_scope_kind: "company" | "agent" | "channel"
+      coach_rule_status: "draft" | "active" | "paused" | "archived" | "replaced"
+      coach_rule_type:
+        | "instruction"
+        | "prohibition"
+        | "mandatory_action"
+        | "mandatory_question"
+        | "handoff"
+        | "standard_reply"
+        | "preference"
+      coach_rule_version_status:
+        | "draft"
+        | "pending_approval"
+        | "approved"
+        | "rejected"
+        | "archived"
       lead_status:
         | "novo"
         | "aguardando"
@@ -4856,6 +5315,55 @@ export const Constants = {
         "manutencao",
       ],
       channel: ["whatsapp", "instagram", "facebook"],
+      coach_rule_category: [
+        "identity",
+        "tone",
+        "qualification",
+        "sales",
+        "pricing",
+        "negotiation",
+        "discounts",
+        "payments",
+        "followup",
+        "human_handoff",
+        "prohibitions",
+        "safety",
+        "after_sales",
+        "other",
+      ],
+      coach_rule_event_type: [
+        "rule_created",
+        "version_created",
+        "version_submitted",
+        "version_approved",
+        "version_self_approved",
+        "version_rejected",
+        "version_activated",
+        "rule_paused",
+        "rule_resumed",
+        "rule_archived",
+        "rule_replaced",
+        "conflict_detected",
+        "conflict_resolved",
+      ],
+      coach_rule_scope_kind: ["company", "agent", "channel"],
+      coach_rule_status: ["draft", "active", "paused", "archived", "replaced"],
+      coach_rule_type: [
+        "instruction",
+        "prohibition",
+        "mandatory_action",
+        "mandatory_question",
+        "handoff",
+        "standard_reply",
+        "preference",
+      ],
+      coach_rule_version_status: [
+        "draft",
+        "pending_approval",
+        "approved",
+        "rejected",
+        "archived",
+      ],
       lead_status: [
         "novo",
         "aguardando",

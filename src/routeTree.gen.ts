@@ -38,6 +38,7 @@ import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
+import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configuracoes_.regras-coach'
 import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
 import { Route as ApiSystemHealthRouteImport } from './routes/api.system-health'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
@@ -266,6 +267,12 @@ const ConfiguracoesRespostasRapidasRoute =
   ConfiguracoesRespostasRapidasRouteImport.update({
     id: '/configuracoes_/respostas-rapidas',
     path: '/configuracoes/respostas-rapidas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesRegrasCoachRoute =
+  ConfiguracoesRegrasCoachRouteImport.update({
+    id: '/configuracoes_/regras-coach',
+    path: '/configuracoes/regras-coach',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ConfiguracoesIdentidadeVisualRoute =
@@ -653,6 +660,7 @@ export interface FileRoutesByFullPath {
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -752,6 +760,7 @@ export interface FileRoutesByTo {
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -853,6 +862,7 @@ export interface FileRoutesById {
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
   '/configuracoes_/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes_/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
@@ -955,6 +965,7 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/api/system-health'
     | '/configuracoes/identidade-visual'
+    | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -1054,6 +1065,7 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/api/system-health'
     | '/configuracoes/identidade-visual'
+    | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
@@ -1154,6 +1166,7 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/api/system-health'
     | '/configuracoes_/identidade-visual'
+    | '/configuracoes_/regras-coach'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
@@ -1255,6 +1268,7 @@ export interface RootRouteChildren {
   WhatsappRoute: typeof WhatsappRoute
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
   ConfiguracoesIdentidadeVisualRoute: typeof ConfiguracoesIdentidadeVisualRoute
+  ConfiguracoesRegrasCoachRoute: typeof ConfiguracoesRegrasCoachRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
   RuntimeObservabilityRoute: typeof RuntimeObservabilityRoute
@@ -1540,6 +1554,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/respostas-rapidas'
       fullPath: '/configuracoes/respostas-rapidas'
       preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes_/regras-coach': {
+      id: '/configuracoes_/regras-coach'
+      path: '/configuracoes/regras-coach'
+      fullPath: '/configuracoes/regras-coach'
+      preLoaderRoute: typeof ConfiguracoesRegrasCoachRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes_/identidade-visual': {
@@ -2069,6 +2090,7 @@ const rootRouteChildren: RootRouteChildren = {
   WhatsappRoute: WhatsappRoute,
   ApiSystemHealthRoute: ApiSystemHealthRoute,
   ConfiguracoesIdentidadeVisualRoute: ConfiguracoesIdentidadeVisualRoute,
+  ConfiguracoesRegrasCoachRoute: ConfiguracoesRegrasCoachRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,
   RuntimeObservabilityRoute: RuntimeObservabilityRoute,
@@ -2148,13 +2170,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
