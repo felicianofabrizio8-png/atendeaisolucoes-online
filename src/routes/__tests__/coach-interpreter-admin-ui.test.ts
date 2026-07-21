@@ -1,9 +1,12 @@
 // FASE 3.0 — Testes unitários da UI Administrativa do Coach Interpreter.
 // Escopo: apenas helpers/labels da rota isolada; nenhum acesso a rede/banco.
 import { describe, it, expect } from "vitest";
-import { __test__ } from "../configuracoes_.coach-interpreter";
-
-const { extractDisabledMessage, formatDateTime, PROPOSAL_STATUS_LABEL, KIND_META } = __test__;
+import {
+  extractDisabledMessage,
+  formatDateTime,
+  PROPOSAL_STATUS_LABEL,
+  KIND_META,
+} from "@/lib/coach-interpreter/admin-console";
 
 describe("Coach Interpreter Admin UI — helpers", () => {
   it("detecta COACH_INTERPRETER_DISABLED em Error", () => {
