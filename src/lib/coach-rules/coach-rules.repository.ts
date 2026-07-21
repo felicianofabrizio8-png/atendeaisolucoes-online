@@ -148,8 +148,8 @@ export async function createCoachRuleDraft(
     _priority: input.priority ?? 50,
     _scope_kind: input.scopeKind ?? "company",
     _scope_ref: (input.scopeRef ?? {}) as never,
-    _valid_from: input.validFrom ?? null,
-    _valid_until: input.validUntil ?? null,
+    _valid_from: input.validFrom ?? undefined,
+    _valid_until: input.validUntil ?? undefined,
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
