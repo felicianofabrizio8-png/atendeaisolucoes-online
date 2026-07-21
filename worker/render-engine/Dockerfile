@@ -1,7 +1,7 @@
 # Multi-stage: build TS, run com Node + FFmpeg
 # CACHE_BUST — muda a cada rebuild para invalidar TODA a cadeia de layers.
 # Passe no Railway (build args) ou deixe o valor abaixo forçar cache miss.
-ARG CACHE_BUST=render-scene-logo-parity-build-002-20260720
+ARG CACHE_BUST=render-scene-svg-escape-build-003-20260721
 
 FROM node:20-slim AS builder
 ARG CACHE_BUST
