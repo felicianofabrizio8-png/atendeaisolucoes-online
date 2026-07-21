@@ -11,13 +11,11 @@ import { ArrowLeft, Sparkles } from "lucide-react";
 import { listCoachConversationsFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
 import { getSafeInterpreterError, type SafeInterpreterError } from "@/lib/coach-interpreter/errors";
 import type { ConversationRow } from "./types";
-import {
-  ConversationsPanel,
-  NewConversationButton,
-  sortConversations,
-} from "./conversations-panel";
+import { ConversationsPanel, NewConversationButton } from "./conversations-panel";
 import { ConversationView } from "./conversation-view";
 import { FeatureDisabledScreen } from "./feature-disabled-screen";
+import { sortConversations } from "./helpers";
+
 
 export function InterpreterShell() {
   const listFn = useServerFn(listCoachConversationsFn);
