@@ -190,20 +190,34 @@ export function CoachPanel({
           <Sparkles className="h-4 w-4 text-primary" />
           <div className="text-sm font-semibold">Coach IA</div>
         </div>
-        <button
-          type="button"
-          onClick={runAnalyze}
-          disabled={loadingScan}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
-          title="Analisar esta conversa"
-        >
-          {loadingScan ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCcw className="h-3 w-3" />
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <Link
+              to="/configuracoes_/coach-interpreter"
+              data-testid="coach-panel-open-interpreter"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
+              title="Abrir Console do Coach Interpreter"
+              aria-label="Abrir Console do Coach Interpreter"
+            >
+              <Settings2 className="h-3 w-3" />
+              Console
+            </Link>
           )}
-          Analisar
-        </button>
+          <button
+            type="button"
+            onClick={runAnalyze}
+            disabled={loadingScan}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+            title="Analisar esta conversa"
+          >
+            {loadingScan ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-3 w-3" />
+            )}
+            Analisar
+          </button>
+        </div>
       </div>
 
       {error && (
