@@ -57,6 +57,21 @@ function xmlEscape(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Escapa QUALQUER string usada como valor de atributo SVG.
+ *
+ * Causa raiz do bug "expected space not 'P'": valores como
+ * `fontFamily = '"Playfair Display", Georgia, serif'` contêm aspas duplas
+ * que fecham o atributo prematuramente. O parser do resvg encontra `P`
+ * (de Playfair) onde esperava um espaço/atributo, e falha com
+ * `SVG data parsing failed: invalid attribute`.
+ */
+function attr(s: string | number | undefined | null): string {
+  if (s === undefined || s === null) return "";
+  return xmlEscape(String(s));
+}
+
+
 function wrapText(text: string, maxCharsPerLine: number, maxLines: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -112,7 +127,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
       const stopsXml = layer.stops
         .map((s, i) => {
           const at = typeof s.at === "number" ? s.at : (i / Math.max(1, layer.stops.length - 1)) * 100;
-          return `<stop offset="${at}%" stop-color="${s.color}"/>`;
+          return `<stop offset="${at}%" stop-color="${attr(s.color)}"/>`;
         })
         .join("");
       let rectY = 0, rectH = height;
@@ -130,7 +145,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
       let rectY = 0, rectH = height;
       if (layer.y === "top") { rectY = 0; rectH = ((layer.height ?? 30) / 100) * height; }
       else if (layer.y === "bottom") { rectH = ((layer.height ?? 30) / 100) * height; rectY = height - rectH; }
-      return `<rect x="0" y="${rectY}" width="${width}" height="${rectH}" fill="${layer.color}" opacity="${opacity}"/>`;
+      return `<rect x="0" y="${rectY}" width="${width}" height="${rectH}" fill="${attr(layer.color)}" opacity="${opacity}"/>`;
     }
     case "angular": {
       // Pontos em coord 0..100. Escala para width/height mantendo aspect.
@@ -141,13 +156,13 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
           return `${(x / 100) * width},${(y / 100) * height}`;
         })
         .join(" ");
-      return `<polygon points="${pts}" fill="${layer.color}" opacity="${opacity}"/>`;
+      return `<polygon points="${pts}" fill="${attr(layer.color)}" opacity="${opacity}"/>`;
     }
     case "frame": {
       const inset = ((layer.inset ?? 2) / 100) * width;
       const strokeW = (layer.width / 100) * width;
       const radius = ((layer.radius ?? 0) / 100) * width;
-      return `<rect x="${inset}" y="${inset}" width="${width - inset * 2}" height="${height - inset * 2}" fill="none" stroke="${layer.color}" stroke-width="${strokeW}" rx="${radius}" ry="${radius}" opacity="${opacity}"/>`;
+      return `<rect x="${inset}" y="${inset}" width="${width - inset * 2}" height="${height - inset * 2}" fill="none" stroke="${attr(layer.color)}" stroke-width="${strokeW}" rx="${radius}" ry="${radius}" opacity="${opacity}"/>`;
     }
     case "vignette": {
       const id = `v${index}`;
@@ -185,14 +200,14 @@ function renderTextBlock(
   const anchor = textAnchor(align);
   const x = xForAlign(align, padL, padR, width);
   const color = style.color ?? "#ffffff";
-  const ls = style.letterSpacing ? ` letter-spacing="${style.letterSpacing}"` : "";
+  const ls = style.letterSpacing ? ` letter-spacing="${attr(style.letterSpacing)}"` : "";
   const tspans = lines
     .map((line, i) => {
       const y = cursorY + sizePx + i * lineH;
       return `<tspan x="${x}" y="${y}">${xmlEscape(line)}</tspan>`;
     })
     .join("");
-  const svg = `<text font-family="${style.fontFamily}" font-weight="${style.weight}" font-size="${sizePx}" fill="${color}" text-anchor="${anchor}"${ls}>${tspans}</text>`;
+  const svg = `<text font-family="${attr(style.fontFamily)}" font-weight="${style.weight}" font-size="${sizePx}" fill="${attr(color)}" text-anchor="${anchor}"${ls}>${tspans}</text>`;
   const totalH = sizePx + (lines.length - 1) * lineH + sizePx * 0.15;
   return { svg, heightPx: totalH };
 }
@@ -225,11 +240,11 @@ function renderPillCta(
   // Radius: aceita "999px" (redonda) ou "Xpx" — mapeia para px.
   const raw = style.pill.radius;
   const radius = /^\d+/.test(raw) ? Math.min(parseFloat(raw), pillH / 2) : pillH / 2;
-  const rect = `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${radius}" ry="${radius}" fill="${style.pill.background}"/>`;
-  const ls = style.letterSpacing ? ` letter-spacing="${style.letterSpacing}"` : "";
+  const rect = `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${radius}" ry="${radius}" fill="${attr(style.pill.background)}"/>`;
+  const ls = style.letterSpacing ? ` letter-spacing="${attr(style.letterSpacing)}"` : "";
   const textY = py + padV + sizePx * 0.85;
   const textX = px + pillW / 2;
-  const text = `<text x="${textX}" y="${textY}" font-family="${style.fontFamily}" font-weight="${style.weight}" font-size="${sizePx}" fill="${style.pill.foreground}" text-anchor="middle"${ls}>${xmlEscape(label)}</text>`;
+  const text = `<text x="${textX}" y="${textY}" font-family="${attr(style.fontFamily)}" font-weight="${style.weight}" font-size="${sizePx}" fill="${attr(style.pill.foreground)}" text-anchor="middle"${ls}>${xmlEscape(label)}</text>`;
   return { svg: rect + text, heightPx: pillH + sizePx * 0.2 };
 }
 
@@ -301,7 +316,7 @@ export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
     else if (ll.vAnchor === "bottom") ly = innerBottom - boxH;
     else ly = (height - boxH) / 2;
 
-    logoSvg = `<image href="${logo.dataUri}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
+    logoSvg = `<image href="${attr(logo.dataUri)}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${logoSvg}${positioned.join("")}</svg>`;
