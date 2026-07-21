@@ -23,21 +23,41 @@ export const COACH_INTENTS = [
 export type CoachIntent = (typeof COACH_INTENTS)[number];
 
 export const COACH_INTERPRETER_CATEGORIES = [
-  "identity", "tone", "qualification", "sales", "pricing", "negotiation",
-  "discounts", "payments", "followup", "human_handoff", "prohibitions",
-  "safety", "after_sales", "other",
+  "identity",
+  "tone",
+  "qualification",
+  "sales",
+  "pricing",
+  "negotiation",
+  "discounts",
+  "payments",
+  "followup",
+  "human_handoff",
+  "prohibitions",
+  "safety",
+  "after_sales",
+  "other",
 ] as const;
 
 export const COACH_INTERPRETER_RULE_TYPES = [
-  "instruction", "prohibition", "mandatory_action", "mandatory_question",
-  "handoff", "standard_reply", "preference",
+  "instruction",
+  "prohibition",
+  "mandatory_action",
+  "mandatory_question",
+  "handoff",
+  "standard_reply",
+  "preference",
 ] as const;
 
 // Escopos aceitos NESTA fase (o enum de banco também tem 'agent', mas o
 // Interpreter deve rejeitar 'agent' — apenas company/channel).
 export const COACH_INTERPRETER_SCOPES = ["company", "channel"] as const;
 export const COACH_INTERPRETER_CHANNELS = [
-  "whatsapp", "instagram", "facebook", "web", "other",
+  "whatsapp",
+  "instagram",
+  "facebook",
+  "web",
+  "other",
 ] as const;
 
 export const COACH_RISK_LEVELS = ["low", "medium", "high", "critical"] as const;
@@ -49,10 +69,7 @@ function trimAndClean(input: string): string {
 }
 
 const nonEmptyString = (min: number, max: number) =>
-  z
-    .string()
-    .transform(trimAndClean)
-    .pipe(z.string().min(min).max(max));
+  z.string().transform(trimAndClean).pipe(z.string().min(min).max(max));
 
 const scopeRefSchema = z
   .strictObject({
@@ -68,20 +85,14 @@ export const CoachProposalSchema = z
     scope_kind: z.enum(COACH_INTERPRETER_SCOPES),
     scope_ref: scopeRefSchema,
     priority: z.number().int().min(0).max(100),
-    condition: z
-      .string()
-      .transform(trimAndClean)
-      .pipe(z.string().max(500))
-      .optional()
-      .default(""),
+    condition: z.string().transform(trimAndClean).pipe(z.string().max(500)).optional().default(""),
     instruction: nonEmptyString(3, 2000),
-    rationale: z
-      .string()
-      .transform(trimAndClean)
-      .pipe(z.string().max(1000))
+    rationale: z.string().transform(trimAndClean).pipe(z.string().max(1000)).optional().default(""),
+    examples: z
+      .array(z.string().transform(trimAndClean).pipe(z.string().max(300)))
+      .max(5)
       .optional()
-      .default(""),
-    examples: z.array(z.string().transform(trimAndClean).pipe(z.string().max(300))).max(5).optional().default([]),
+      .default([]),
     confidence: z.number().min(0).max(1),
     risk_level: z.enum(COACH_RISK_LEVELS),
     ambiguities: z.array(z.string().max(300)).max(5).optional().default([]),
@@ -118,10 +129,7 @@ export const CoachInterpreterOutputSchema = z
       .array(z.string().transform(trimAndClean).pipe(z.string().min(3).max(300)))
       .max(3),
     confidence: z.number().min(0).max(1),
-    reasoning_summary: z
-      .string()
-      .transform(trimAndClean)
-      .pipe(z.string().max(600)),
+    reasoning_summary: z.string().transform(trimAndClean).pipe(z.string().max(600)),
     warnings: z.array(z.string().max(300)).max(5),
   })
   .superRefine((out, ctx) => {

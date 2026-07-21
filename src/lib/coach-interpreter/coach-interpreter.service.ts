@@ -62,7 +62,10 @@ export interface InterpretCoachMessageResult {
 function parseJsonSafe(raw: string): unknown | null {
   const t = raw.trim();
   // Strip fences se o modelo teimar em enviá-las.
-  const cleaned = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const cleaned = t
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
   try {
     return JSON.parse(cleaned);
   } catch {
@@ -82,8 +85,8 @@ async function buildHistoryTurns(sb: SB, conversationId: string): Promise<CoachP
 }
 
 function countPriorClarifications(sb: SB, conversationId: string): Promise<number> {
-  return listCoachMessages(sb, conversationId, 200).then((msgs) =>
-    msgs.filter((m) => m.kind === "clarification_request").length,
+  return listCoachMessages(sb, conversationId, 200).then(
+    (msgs) => msgs.filter((m) => m.kind === "clarification_request").length,
   );
 }
 
@@ -210,9 +213,7 @@ export async function interpretCoachMessage(
     raw = await tryOnce(baseMessages);
   } catch (err) {
     const isTimeout = /timeout/i.test(err instanceof Error ? err.message : "");
-    const cls: CoachInterpreterRunMeta["error_class"] = isTimeout
-      ? "timeout"
-      : "provider_failure";
+    const cls: CoachInterpreterRunMeta["error_class"] = isTimeout ? "timeout" : "provider_failure";
     const run = buildRun(cls);
     const msg = await insertAssistantCoachMessage(
       supabase,
@@ -235,9 +236,10 @@ export async function interpretCoachMessage(
 
   if (!validation || !validation.success) {
     // Repair pass — 1 tentativa apenas.
-    const summary = validation && !validation.success
-      ? safeSummarizeZodError(validation.error)
-      : "resposta anterior não era JSON válido";
+    const summary =
+      validation && !validation.success
+        ? safeSummarizeZodError(validation.error)
+        : "resposta anterior não era JSON válido";
     const repairMessages = [
       ...baseMessages,
       { role: "assistant" as const, content: raw.slice(0, 2000) },
@@ -260,7 +262,11 @@ export async function interpretCoachMessage(
         "error",
       );
       return {
-        outcome: { kind: "error", error_class: "provider_failure", message: "provider_repair_failed" },
+        outcome: {
+          kind: "error",
+          error_class: "provider_failure",
+          message: "provider_repair_failed",
+        },
         run,
         assistantMessageId: msg.id,
       };

@@ -66,10 +66,7 @@ export function isKillSwitchActive(): boolean {
   return typeof v === "string" && v.toLowerCase() === "true";
 }
 
-export async function checkCoachInterpreterEnabled(
-  sb: SB,
-  companyId: string,
-): Promise<boolean> {
+export async function checkCoachInterpreterEnabled(sb: SB, companyId: string): Promise<boolean> {
   if (isKillSwitchActive()) return false;
   const { data, error } = await sb
     .from("company_settings")
@@ -107,10 +104,7 @@ export async function createCoachConversation(
   return data as CoachConversationRow;
 }
 
-export async function listCoachConversations(
-  sb: SB,
-  limit = 50,
-): Promise<CoachConversationRow[]> {
+export async function listCoachConversations(sb: SB, limit = 50): Promise<CoachConversationRow[]> {
   const { data, error } = await sb
     .from("coach_conversations")
     .select("*")
@@ -281,10 +275,7 @@ export async function insertCoachProposals(
     model_name: modelName,
     prompt_version: promptVersion,
   }));
-  const { data, error } = await sb
-    .from("coach_rule_proposals")
-    .insert(rows)
-    .select("*");
+  const { data, error } = await sb.from("coach_rule_proposals").insert(rows).select("*");
   if (error) throw new Error(`proposal_insert_failed: ${error.message}`);
   return (data ?? []) as CoachProposalRow[];
 }
@@ -318,10 +309,7 @@ export async function updateCoachProposal(
     status: "edited" as const,
     updated_at: new Date().toISOString(),
   } as unknown as Database["public"]["Tables"]["coach_rule_proposals"]["Update"];
-  const { error } = await sb
-    .from("coach_rule_proposals")
-    .update(update)
-    .eq("id", proposalId);
+  const { error } = await sb.from("coach_rule_proposals").update(update).eq("id", proposalId);
   if (error) throw new Error(`proposal_update_failed: ${error.message}`);
 }
 
@@ -391,6 +379,8 @@ export async function findPotentialDuplicateRules(
   const matchRule = (t: string) => normalizeTitle(t) === norm;
   return {
     ruleIds: (rules ?? []).filter((r) => matchRule(r.title as string)).map((r) => r.id as string),
-    proposalIds: (props ?? []).filter((p) => matchRule(p.title as string)).map((p) => p.id as string),
+    proposalIds: (props ?? [])
+      .filter((p) => matchRule(p.title as string))
+      .map((p) => p.id as string),
   };
 }

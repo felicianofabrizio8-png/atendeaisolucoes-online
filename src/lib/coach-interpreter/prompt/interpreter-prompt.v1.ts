@@ -136,8 +136,5 @@ export function buildCoachInterpreterTurns(
   currentMessage: string,
 ): CoachPromptTurn[] {
   const trimmedHistory = history.slice(-10);
-  return [
-    ...trimmedHistory,
-    { role: "user", content: currentMessage },
-  ];
+  return [...trimmedHistory, { role: "user", content: currentMessage }];
 }

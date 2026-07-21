@@ -38,9 +38,7 @@ describe("Fase 2.b.1 · Migration — hardening", () => {
   const sql = findMigration(/coach_reserve_user_message/);
 
   it("cria RPC coach_reserve_user_message SECURITY DEFINER", () => {
-    expect(sql).toMatch(
-      /CREATE OR REPLACE FUNCTION public\.coach_reserve_user_message\s*\(/,
-    );
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.coach_reserve_user_message\s*\(/);
     expect(sql).toMatch(/SECURITY DEFINER/);
     expect(sql).toMatch(/ON CONFLICT[\s\S]{0,200}DO NOTHING/i);
   });
@@ -71,9 +69,7 @@ describe("Fase 2.b.1 · Migration — hardening", () => {
   });
 
   it("remove CHECK redundante coach_rule_proposals_normalized_output_check", () => {
-    expect(sql).toMatch(
-      /DROP CONSTRAINT IF EXISTS coach_rule_proposals_normalized_output_check/,
-    );
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS coach_rule_proposals_normalized_output_check/);
     // Pré-condição de segurança: só faz DROP se o constraint consolidado existir e estiver validado.
     expect(sql).toMatch(/coach_prop_normalized_output_size/);
     expect(sql).toMatch(/convalidated = true/);
@@ -94,9 +90,7 @@ describe("Fase 2.b.1 · Isolamento server-only (A2)", () => {
     it(`${p} não importa supabaseAdmin no module-scope`, () => {
       const src = readFileSync(join(ROOT, p), "utf8");
       // ES import estático de client.server é proibido nestes arquivos.
-      expect(src).not.toMatch(
-        /^\s*import[^\n]*integrations\/supabase\/client\.server/m,
-      );
+      expect(src).not.toMatch(/^\s*import[^\n]*integrations\/supabase\/client\.server/m);
     });
   }
 
@@ -105,9 +99,7 @@ describe("Fase 2.b.1 · Isolamento server-only (A2)", () => {
       join(ROOT, "src/lib/coach-interpreter/coach-interpreter.service.ts"),
       "utf8",
     );
-    expect(src).toMatch(
-      /await import\(\s*["']@\/integrations\/supabase\/client\.server["']\s*\)/,
-    );
+    expect(src).toMatch(/await import\(\s*["']@\/integrations\/supabase\/client\.server["']\s*\)/);
   });
 
   it("nenhuma server function retorna o admin client", () => {
@@ -247,31 +239,18 @@ describe("Fase 2.b.1 · decideCoachInterpreterOutcome (M4)", () => {
 // ============================================================
 describe("Fase 2.b.1 · Allow-list de isolamento estendida (M2)", () => {
   const src = readFileSync(
-    join(
-      ROOT,
-      "src/lib/coach-rules/__tests__/coach-v2-phase-1-quality-gate.test.ts",
-    ),
+    join(ROOT, "src/lib/coach-rules/__tests__/coach-v2-phase-1-quality-gate.test.ts"),
     "utf8",
   );
 
   it("inclui os 3 arquivos do Coach Interpreter", () => {
-    expect(src).toMatch(
-      /"src\/lib\/coach-interpreter\/coach-interpreter\.repository\.ts"/,
-    );
-    expect(src).toMatch(
-      /"src\/lib\/coach-interpreter\/coach-interpreter\.service\.ts"/,
-    );
-    expect(src).toMatch(
-      /"src\/lib\/coach-interpreter\/coach-interpreter\.functions\.ts"/,
-    );
+    expect(src).toMatch(/"src\/lib\/coach-interpreter\/coach-interpreter\.repository\.ts"/);
+    expect(src).toMatch(/"src\/lib\/coach-interpreter\/coach-interpreter\.service\.ts"/);
+    expect(src).toMatch(/"src\/lib\/coach-interpreter\/coach-interpreter\.functions\.ts"/);
   });
 
   it("mantém os 2 consumidores originais da Fase 1", () => {
-    expect(src).toMatch(
-      /"src\/lib\/coach-rules\/coach-rules\.repository\.ts"/,
-    );
-    expect(src).toMatch(
-      /"src\/routes\/configuracoes_\.regras-coach\.tsx"/,
-    );
+    expect(src).toMatch(/"src\/lib\/coach-rules\/coach-rules\.repository\.ts"/);
+    expect(src).toMatch(/"src\/routes\/configuracoes_\.regras-coach\.tsx"/);
   });
 });

@@ -106,7 +106,10 @@ describe("Coach V2 · Migrations · Fase 1.1a (hardening)", () => {
     for (const rpc of ADMIN_RPCS) {
       const rev = new RegExp(`REVOKE ALL ON FUNCTION public\\.${rpc}\\b[^;]*FROM PUBLIC`, "i");
       const revAnon = new RegExp(`REVOKE ALL ON FUNCTION public\\.${rpc}\\b[^;]*FROM anon`, "i");
-      const grant = new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${rpc}\\b[^;]*TO authenticated`, "i");
+      const grant = new RegExp(
+        `GRANT EXECUTE ON FUNCTION public\\.${rpc}\\b[^;]*TO authenticated`,
+        "i",
+      );
       expect(sql, `REVOKE PUBLIC ${rpc}`).toMatch(rev);
       expect(sql, `REVOKE anon ${rpc}`).toMatch(revAnon);
       expect(sql, `GRANT authenticated ${rpc}`).toMatch(grant);
@@ -114,14 +117,18 @@ describe("Coach V2 · Migrations · Fase 1.1a (hardening)", () => {
   });
 
   it("adiciona UNIQUE (id, company_id) em coach_rules e (id, rule_id, company_id) em coach_rule_versions", () => {
-    expect(sql).toMatch(/coach_rules_id_company_uniq[\s\S]*UNIQUE\s*\(\s*id\s*,\s*company_id\s*\)/i);
+    expect(sql).toMatch(
+      /coach_rules_id_company_uniq[\s\S]*UNIQUE\s*\(\s*id\s*,\s*company_id\s*\)/i,
+    );
     expect(sql).toMatch(
       /coach_rule_versions_id_rule_company_uniq[\s\S]*UNIQUE\s*\(\s*id\s*,\s*rule_id\s*,\s*company_id\s*\)/i,
     );
   });
 
   it("substitui FK simples por FK composta rule_id+company_id", () => {
-    expect(sql).toMatch(/coach_rule_versions_rule_company_fk[\s\S]*FOREIGN KEY \(rule_id, company_id\)/i);
+    expect(sql).toMatch(
+      /coach_rule_versions_rule_company_fk[\s\S]*FOREIGN KEY \(rule_id, company_id\)/i,
+    );
     expect(sql).toMatch(/REFERENCES public\.coach_rules\(id, company_id\)/i);
   });
 
@@ -174,7 +181,9 @@ describe("Coach V2 · Repository · contrato", () => {
   });
 
   it("payload de aprovação transporta critical_confirmed", () => {
-    expect(src).toMatch(/approve_coach_rule_version[\s\S]{0,400}_critical_confirmed:\s*criticalConfirmed/);
+    expect(src).toMatch(
+      /approve_coach_rule_version[\s\S]{0,400}_critical_confirmed:\s*criticalConfirmed/,
+    );
   });
 
   it("leitura de eventos aplica limite de 200", () => {
@@ -182,8 +191,12 @@ describe("Coach V2 · Repository · contrato", () => {
   });
 
   it("ordenação: regras por created_at desc, versões por version_number desc", () => {
-    expect(src).toMatch(/coach_rules[\s\S]{0,300}order\("created_at",\s*\{\s*ascending:\s*false\s*\}\)/);
-    expect(src).toMatch(/coach_rule_versions[\s\S]{0,300}order\("version_number",\s*\{\s*ascending:\s*false\s*\}\)/);
+    expect(src).toMatch(
+      /coach_rules[\s\S]{0,300}order\("created_at",\s*\{\s*ascending:\s*false\s*\}\)/,
+    );
+    expect(src).toMatch(
+      /coach_rule_versions[\s\S]{0,300}order\("version_number",\s*\{\s*ascending:\s*false\s*\}\)/,
+    );
   });
 });
 
@@ -360,8 +373,12 @@ describe("Coach V2 · Estado real do schema", () => {
       `SELECT conname||'::'||pg_get_constraintdef(oid) FROM pg_constraint
         WHERE conname IN ('coach_rule_versions_rule_company_fk','coach_rules_active_version_composite_fk')`,
     );
-    expect(out).toMatch(/coach_rule_versions_rule_company_fk::FOREIGN KEY \(rule_id, company_id\) REFERENCES coach_rules\(id, company_id\)/);
-    expect(out).toMatch(/coach_rules_active_version_composite_fk::FOREIGN KEY \(active_version_id, id, company_id\) REFERENCES coach_rule_versions\(id, rule_id, company_id\)/);
+    expect(out).toMatch(
+      /coach_rule_versions_rule_company_fk::FOREIGN KEY \(rule_id, company_id\) REFERENCES coach_rules\(id, company_id\)/,
+    );
+    expect(out).toMatch(
+      /coach_rules_active_version_composite_fk::FOREIGN KEY \(active_version_id, id, company_id\) REFERENCES coach_rule_versions\(id, rule_id, company_id\)/,
+    );
   });
 
   dbIt("triggers de imutabilidade de company_id nas 3 tabelas", () => {
