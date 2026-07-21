@@ -249,10 +249,7 @@ describe("Fase 3.1b · Risco (indicação textual e acessível)", () => {
 
   it("risco crítico mostra também o aviso textual dedicado (não somente cor)", () => {
     renderWithClient(
-      <ProposalCard
-        proposal={makeProposal({ risk_level: "critical" })}
-        onChanged={() => {}}
-      />,
+      <ProposalCard proposal={makeProposal({ risk_level: "critical" })} onChanged={() => {}} />,
     );
     const notice = screen.getByTestId("critical-notice");
     expect(notice).toHaveAttribute("role", "note");
@@ -351,9 +348,7 @@ describe("Fase 3.1b · Edição (contrato updateCoachProposalFn)", () => {
     // Campos não alterados NÃO viajam.
     expect(payload.data.title).toBeUndefined();
     // Editor fecha em sucesso.
-    await waitFor(() =>
-      expect(screen.queryByTestId("proposal-edit-form")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByTestId("proposal-edit-form")).not.toBeInTheDocument());
     expect(onChanged).toHaveBeenCalled();
   });
 
@@ -381,9 +376,7 @@ describe("Fase 3.1b · Edição (contrato updateCoachProposalFn)", () => {
       "Não prometer prazos fixos",
     );
     expect((screen.getByTestId("edit-scope-kind") as HTMLSelectElement).value).toBe("channel");
-    expect((screen.getByTestId("edit-scope-channel") as HTMLSelectElement).value).toBe(
-      "instagram",
-    );
+    expect((screen.getByTestId("edit-scope-channel") as HTMLSelectElement).value).toBe("instagram");
     expect((screen.getByTestId("edit-priority") as HTMLInputElement).value).toBe("30");
   });
 

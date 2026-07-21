@@ -77,7 +77,9 @@ function readNormalized(raw: unknown): Normalized {
   const asString = (v: unknown): string | undefined =>
     typeof v === "string" && v.trim() ? v : undefined;
   const asStringArray = (v: unknown): string[] | undefined =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : undefined;
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "")
+      : undefined;
   const dupRaw = o.duplicate_warning;
   const duplicate_warning =
     dupRaw && typeof dupRaw === "object"
@@ -227,8 +229,7 @@ export function ProposalCard({
       errors.instruction = "Instrução deve ter entre 3 e 2000 caracteres.";
     if (!Number.isInteger(priority) || priority < 0 || priority > 100)
       errors.priority = "Prioridade deve ser um inteiro entre 0 e 100.";
-    if (scopeKind !== "company" && scopeKind !== "channel")
-      errors.scope = "Escopo inválido.";
+    if (scopeKind !== "company" && scopeKind !== "channel") errors.scope = "Escopo inválido.";
     if (
       scopeKind === "channel" &&
       !COACH_INTERPRETER_CHANNELS.includes(
@@ -306,9 +307,10 @@ export function ProposalCard({
     () => (Array.isArray(proposal.warnings) ? (proposal.warnings as string[]) : []),
     [proposal.warnings],
   );
-  const normalized = useMemo(() => readNormalized(proposal.normalized_output), [
-    proposal.normalized_output,
-  ]);
+  const normalized = useMemo(
+    () => readNormalized(proposal.normalized_output),
+    [proposal.normalized_output],
+  );
   const currentScopeChannel = readScopeChannel(proposal.scope_ref);
   const dupWarn = normalized.duplicate_warning ?? null;
   const isCritical = proposal.risk_level === "critical";
@@ -512,10 +514,7 @@ export function ProposalCard({
             </CollapsibleSection>
           )}
           {normalized.missing_information && normalized.missing_information.length > 0 && (
-            <CollapsibleSection
-              title="Informação faltante"
-              testId="section-missing-information"
-            >
+            <CollapsibleSection title="Informação faltante" testId="section-missing-information">
               <ul className="list-disc pl-4 space-y-0.5">
                 {normalized.missing_information.map((m, i) => (
                   <li key={i} className="whitespace-pre-wrap">
@@ -561,9 +560,7 @@ export function ProposalCard({
                 <span className="font-medium">{dupWarn.title ?? dupWarn.rule_id}</span>
               </div>
             )}
-            {dupWarn.reason && (
-              <div className="text-muted-foreground mt-0.5">{dupWarn.reason}</div>
-            )}
+            {dupWarn.reason && <div className="text-muted-foreground mt-0.5">{dupWarn.reason}</div>}
           </div>
         </div>
       )}
@@ -680,7 +677,8 @@ export function ProposalCard({
                 · Escopo <b>{proposal.scope_kind}</b>
                 {currentScopeChannel ? (
                   <>
-                    {" "}· Canal <b>{currentScopeChannel}</b>
+                    {" "}
+                    · Canal <b>{currentScopeChannel}</b>
                   </>
                 ) : null}{" "}
                 · Prioridade <b>P{proposal.priority}</b>
