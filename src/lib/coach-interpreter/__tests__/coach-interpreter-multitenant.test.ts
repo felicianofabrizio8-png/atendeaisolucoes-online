@@ -13,7 +13,7 @@ import {
   checkCoachInterpreterEnabled,
   isKillSwitchActive,
 } from "@/lib/coach-interpreter/coach-interpreter.repository";
-import { INTERPRETER_ERROR_MESSAGES } from "@/lib/coach-interpreter/errors";
+import { COACH_INTERPRETER_ERROR_CODES } from "@/lib/coach-interpreter/errors";
 
 // ------------------------------------------------------------------
 // Fake Supabase client — reproduz o encadeamento
