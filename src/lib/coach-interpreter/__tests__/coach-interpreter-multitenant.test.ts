@@ -92,7 +92,7 @@ describe("Fase 3.3 · Etapa 2A · T1 — coexistência de flags por tenant", () 
 
   it("mapeamento de erros expõe COACH_INTERPRETER_DISABLED para tenants desligados", () => {
     // ensureFlagOrThrow (server function) traduz enabled=false neste código.
-    expect(INTERPRETER_ERROR_MESSAGES.COACH_INTERPRETER_DISABLED).toBeTruthy();
+    expect(COACH_INTERPRETER_ERROR_CODES.includes("COACH_INTERPRETER_DISABLED")).toBeTruthy();
   });
 });
 
@@ -162,6 +162,6 @@ describe("Fase 3.3 · Etapa 2A · T3 — kill switch global tem precedência", (
   });
 
   it("mapeamento de erros expõe COACH_INTERPRETER_KILLED quando o kill switch está ativo", () => {
-    expect(INTERPRETER_ERROR_MESSAGES.COACH_INTERPRETER_KILLED).toBeTruthy();
+    expect(COACH_INTERPRETER_ERROR_CODES.includes("COACH_INTERPRETER_KILLED")).toBeTruthy();
   });
 });
