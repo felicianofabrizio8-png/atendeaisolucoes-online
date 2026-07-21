@@ -68,6 +68,9 @@ export function CoachPanel({
 }) {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
+  // Fase 3.2 — reutiliza o guard já existente. Não altera permissões,
+  // apenas condiciona a exibição do atalho para o Admin Console.
+  const { isAdmin } = useIsAdmin();
 
   const [alerts, setAlerts] = useState<CoachAlert[]>([]);
   const [suggestion, setSuggestion] = useState<CoachSuggestion | null>(null);
