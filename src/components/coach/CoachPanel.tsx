@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -11,6 +13,7 @@ import {
   RefreshCcw,
   Loader2,
   Flame,
+  Settings2,
 } from "lucide-react";
 
 interface CoachAlert {
@@ -65,6 +68,9 @@ export function CoachPanel({
 }) {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
+  // Fase 3.2 — reutiliza o guard já existente. Não altera permissões,
+  // apenas condiciona a exibição do atalho para o Admin Console.
+  const { isAdmin } = useIsAdmin();
 
   const [alerts, setAlerts] = useState<CoachAlert[]>([]);
   const [suggestion, setSuggestion] = useState<CoachSuggestion | null>(null);
@@ -184,20 +190,34 @@ export function CoachPanel({
           <Sparkles className="h-4 w-4 text-primary" />
           <div className="text-sm font-semibold">Coach IA</div>
         </div>
-        <button
-          type="button"
-          onClick={runAnalyze}
-          disabled={loadingScan}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
-          title="Analisar esta conversa"
-        >
-          {loadingScan ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCcw className="h-3 w-3" />
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <Link
+              to="/configuracoes_/coach-interpreter"
+              data-testid="coach-panel-open-interpreter"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
+              title="Abrir Console do Coach Interpreter"
+              aria-label="Abrir Console do Coach Interpreter"
+            >
+              <Settings2 className="h-3 w-3" />
+              Console
+            </Link>
           )}
-          Analisar
-        </button>
+          <button
+            type="button"
+            onClick={runAnalyze}
+            disabled={loadingScan}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+            title="Analisar esta conversa"
+          >
+            {loadingScan ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-3 w-3" />
+            )}
+            Analisar
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -331,9 +351,7 @@ export function CoachPanel({
             </button>
           </div>
           {suggestion.reasoning && (
-            <div className="text-[10px] text-muted-foreground italic">
-              {suggestion.reasoning}
-            </div>
+            <div className="text-[10px] text-muted-foreground italic">{suggestion.reasoning}</div>
           )}
         </div>
       )}
