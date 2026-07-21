@@ -16,9 +16,11 @@ export { InterpreterShell } from "./admin/interpreter-shell";
 export {
   ConversationsPanel,
   NewConversationButton,
+  sortConversations,
 } from "./admin/conversations-panel";
 export { ConversationView } from "./admin/conversation-view";
-export { ChatTimeline, KIND_META } from "./admin/chat-timeline";
+export { ChatTimeline, KIND_META, isNearBottom } from "./admin/chat-timeline";
+
 export { MessageComposer } from "./admin/message-composer";
 export { ProposalFilterBar } from "./admin/proposal-filters";
 export { ProposalCard } from "./admin/proposal-card";
