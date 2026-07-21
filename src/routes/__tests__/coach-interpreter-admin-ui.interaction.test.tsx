@@ -12,13 +12,7 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act } from "react";
-import {
-  render,
-  screen,
-  cleanup,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, cleanup, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -436,7 +430,11 @@ describe("Fase 3.1a · Composer e idempotência", () => {
     await user.click(screen.getByRole("button", { name: /Enviar/i }));
     await screen.findByTestId("composer-error");
     // Tenta novamente pelo banner (retry).
-    await user.click(within(screen.getByTestId("composer-error")).getByRole("button", { name: /Tentar novamente/i }));
+    await user.click(
+      within(screen.getByTestId("composer-error")).getByRole("button", {
+        name: /Tentar novamente/i,
+      }),
+    );
     await waitFor(() => expect(sendFn).toHaveBeenCalledTimes(2));
     for (const call of sendFn.mock.calls) {
       const arg = call[0] as { data: { client_request_id: string } };
@@ -478,8 +476,9 @@ describe("Fase 3.1a · Composer e idempotência", () => {
     await waitFor(() => expect(ta.value).toBe(""));
     // Após limpeza, novo UUID deve estar impresso no dataset.
     await waitFor(() => {
-      expect((screen.getByTestId("composer-textarea") as HTMLTextAreaElement).dataset.requestId)
-        .not.toBe(firstUuid);
+      expect(
+        (screen.getByTestId("composer-textarea") as HTMLTextAreaElement).dataset.requestId,
+      ).not.toBe(firstUuid);
     });
   });
 
@@ -523,9 +522,7 @@ describe("Fase 3.1a · Retry na timeline", () => {
       makeMessage({ id: "a1", kind: "assistant_message", content: "assistant" }),
       makeMessage({ id: "e1", kind: "error", content: "boom" }),
     ];
-    renderWithClient(
-      <ChatTimeline messages={msgs} conversationId="conv-1" onChanged={() => {}} />,
-    );
+    renderWithClient(<ChatTimeline messages={msgs} conversationId="conv-1" onChanged={() => {}} />);
     const buttons = screen.getAllByRole("button", { name: /Reinterpretar/i });
     expect(buttons).toHaveLength(1);
   });
@@ -559,9 +556,7 @@ describe("Fase 3.1a · Retry na timeline", () => {
       makeMessage({ id: "u1", content: "primeira" }),
       makeMessage({ id: "u2", content: "segunda" }),
     ];
-    renderWithClient(
-      <ChatTimeline messages={msgs} conversationId="conv-1" onChanged={() => {}} />,
-    );
+    renderWithClient(<ChatTimeline messages={msgs} conversationId="conv-1" onChanged={() => {}} />);
     const btns = screen.getAllByRole("button", { name: /Reinterpretar/i });
     await user.click(btns[0]);
     await screen.findByTestId("retry-error-u1");
@@ -588,10 +583,7 @@ describe("Fase 3.1a · Dialog de confirmação", () => {
   it("proposal crítica exige checkbox: ação final permanece bloqueada", async () => {
     const user = userEvent.setup();
     renderWithClient(
-      <ProposalCard
-        proposal={makeProposal({ risk_level: "critical" })}
-        onChanged={() => {}}
-      />,
+      <ProposalCard proposal={makeProposal({ risk_level: "critical" })} onChanged={() => {}} />,
     );
     await user.click(screen.getByTestId("confirm-proposal"));
     await screen.findByTestId("confirm-dialog");
@@ -641,10 +633,7 @@ describe("Fase 3.1a · Dialog de confirmação", () => {
   it("mutation não dispara sem o clique final (só ao abrir o dialog)", async () => {
     const user = userEvent.setup();
     renderWithClient(
-      <ProposalCard
-        proposal={makeProposal({ risk_level: "critical" })}
-        onChanged={() => {}}
-      />,
+      <ProposalCard proposal={makeProposal({ risk_level: "critical" })} onChanged={() => {}} />,
     );
     await user.click(screen.getByTestId("confirm-proposal"));
     await screen.findByTestId("confirm-dialog");
@@ -739,5 +728,4 @@ describe("Fase 3.1a · ErrorBanner (sanidade)", () => {
     await user.click(within(banner).getByRole("button", { name: /Tentar novamente/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
-
 });
