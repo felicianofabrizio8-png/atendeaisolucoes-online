@@ -162,7 +162,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
       const inset = ((layer.inset ?? 2) / 100) * width;
       const strokeW = (layer.width / 100) * width;
       const radius = ((layer.radius ?? 0) / 100) * width;
-      return `<rect x="${inset}" y="${inset}" width="${width - inset * 2}" height="${height - inset * 2}" fill="none" stroke="${layer.color}" stroke-width="${strokeW}" rx="${radius}" ry="${radius}" opacity="${opacity}"/>`;
+      return `<rect x="${inset}" y="${inset}" width="${width - inset * 2}" height="${height - inset * 2}" fill="none" stroke="${attr(layer.color)}" stroke-width="${strokeW}" rx="${radius}" ry="${radius}" opacity="${opacity}"/>`;
     }
     case "vignette": {
       const id = `v${index}`;
