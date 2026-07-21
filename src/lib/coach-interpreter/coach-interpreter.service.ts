@@ -87,6 +87,40 @@ function countPriorClarifications(sb: SB, conversationId: string): Promise<numbe
   );
 }
 
+/**
+ * Coach Interpreter · Fase 2.b.1 (M4) — decisão determinística.
+ *
+ * Regra: qualquer `ambiguities` ou `missing_information` não vazio força
+ * clarificação, mesmo com `confidence` alto. Confidence baixo, presença
+ * de perguntas do modelo ou ausência de proposals também forçam.
+ * Persiste proposals APENAS quando não há sinal de ambiguidade.
+ */
+export interface CoachInterpreterDecision {
+  kind: "clarification" | "classified" | "proposals";
+  materialAmbiguity: boolean;
+}
+export function decideCoachInterpreterOutcome(
+  out: CoachInterpreterOutput,
+): CoachInterpreterDecision {
+  const materialAmbiguity = out.proposals.some(
+    (p) => p.ambiguities.length > 0 || p.missing_information.length > 0,
+  );
+  const forceClarify =
+    out.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL ||
+    out.clarification_questions.length > 0 ||
+    materialAmbiguity;
+
+  if (forceClarify) {
+    if (out.clarification_questions.length > 0) {
+      return { kind: "clarification", materialAmbiguity };
+    }
+    // Ambiguidade explícita sem perguntas do modelo: não persiste.
+    return { kind: "classified", materialAmbiguity };
+  }
+  if (out.proposals.length === 0) return { kind: "classified", materialAmbiguity: false };
+  return { kind: "proposals", materialAmbiguity: false };
+}
+
 export async function interpretCoachMessage(
   input: InterpretCoachMessageInput,
 ): Promise<InterpretCoachMessageResult> {
