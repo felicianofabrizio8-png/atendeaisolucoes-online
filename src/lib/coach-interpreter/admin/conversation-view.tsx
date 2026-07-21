@@ -68,13 +68,18 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const messages = (q.data.messages ?? []) as MessageRow[];
   const proposals = (q.data.proposals ?? []) as ProposalRow[];
 
+  // Datas normalizadas para o dia local inteiro; intervalo inválido
+  // (from > to) simplesmente não filtra (a UI já mostra o alerta).
+  const invalidRange = filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo;
   const filteredProposals = proposals.filter((p) => {
     if (filters.category && p.category !== filters.category) return false;
     if (filters.ruleType && p.rule_type !== filters.ruleType) return false;
     if (filters.status && p.status !== filters.status) return false;
     if (p.confidence < filters.minConfidence) return false;
-    if (filters.dateFrom && p.created_at < filters.dateFrom) return false;
-    if (filters.dateTo && p.created_at > filters.dateTo + "T23:59:59") return false;
+    if (!invalidRange) {
+      if (filters.dateFrom && p.created_at < filters.dateFrom + "T00:00:00") return false;
+      if (filters.dateTo && p.created_at > filters.dateTo + "T23:59:59") return false;
+    }
     if (filters.ownerUser) {
       const owner = messages.find((m) => m.id === p.source_message_id)?.author_user_id ?? "";
       if (!owner.toLowerCase().includes(filters.ownerUser.toLowerCase())) return false;
@@ -106,7 +111,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
       </div>
 
       <aside className="min-h-0 overflow-y-auto p-3">
-        <ProposalFilterBar filters={filters} onChange={setFilters} proposals={proposals} />
+        <ProposalFilterBar
+          filters={filters}
+          onChange={setFilters}
+          proposals={proposals}
+          filteredCount={filteredProposals.length}
+        />
         <div className="mt-3 space-y-3">
           {filteredProposals.length === 0 ? (
             <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
