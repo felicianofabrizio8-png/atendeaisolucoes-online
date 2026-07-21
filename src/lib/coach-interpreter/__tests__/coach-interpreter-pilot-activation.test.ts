@@ -339,7 +339,13 @@ describe("2B · segurança e isolamento", () => {
       expect(t.startsWith("coach_")).toBe(false);
     }
     // Whitelist explícita das tabelas permitidas.
-    const allowed = new Set(["companies", "company_settings", "profiles", "user_roles", "audit_log"]);
+    const allowed = new Set([
+      "companies",
+      "company_settings",
+      "profiles",
+      "user_roles",
+      "audit_log",
+    ]);
     for (const t of touched) expect(allowed.has(t)).toBe(true);
   });
 });

@@ -69,11 +69,7 @@ function buildDeps(sb: SupabaseClient<Database>): PilotActivationDeps {
       return data ? { coach_interpreter_enabled: Boolean(data.coach_interpreter_enabled) } : null;
     },
     async fetchActor(userId) {
-      const { data, error } = await sb
-        .from("profiles")
-        .select("id")
-        .eq("id", userId)
-        .maybeSingle();
+      const { data, error } = await sb.from("profiles").select("id").eq("id", userId).maybeSingle();
       if (error) throw new Error(`fetchActor failed: ${error.code ?? "unknown"}`);
       return data ? { id: data.id as string } : null;
     },

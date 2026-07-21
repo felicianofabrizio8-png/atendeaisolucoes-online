@@ -30,8 +30,7 @@ export const PILOT_COMPANY_ID_SUFFIX = "cbeb48fd";
 export const PILOT_COMPANY_NAME_EXPECTED = "Solário Piscinas";
 const PILOT_COMPANY_NAME_NORMALIZED = normalizeName(PILOT_COMPANY_NAME_EXPECTED);
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // -----------------------------------------------------------------------------
 // Tipos públicos
