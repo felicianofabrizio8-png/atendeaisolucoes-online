@@ -386,7 +386,7 @@ describe("Fase 3.1a · Listagem de conversas", () => {
     expect(screen.getByText(/Nenhuma conversa encontrada/i)).toBeInTheDocument();
   });
 
-  it("estado inicial mostra 'Carregando conversas…' enquanto a promessa pende", () => {
+  it("estado inicial mostra 'Carregando conversas…' enquanto a promessa pende", async () => {
     const gate = deferred<{ conversations: [] }>();
     listFn.mockReturnValueOnce(gate.promise);
     renderWithClient(<InterpreterShell />);
