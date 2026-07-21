@@ -21,20 +21,8 @@ import { PAGE_SIZE } from "./constants";
 import type { ConversationRow } from "./types";
 import { ConversationStatusBadge } from "./status-badges";
 import { ErrorBanner } from "./error-banner";
-import { formatDateTime } from "./helpers";
+import { formatDateTime, sortConversations } from "./helpers";
 
-/**
- * Ordena por `updated_at` desc. Quando ausente, cai em `created_at` desc.
- * Exportado para testes de contrato.
- */
-export function sortConversations(list: ConversationRow[]): ConversationRow[] {
-  return [...list].sort((a, b) => {
-    const av = a.updated_at ?? a.created_at ?? "";
-    const bv = b.updated_at ?? b.created_at ?? "";
-    if (av === bv) return 0;
-    return av < bv ? 1 : -1;
-  });
-}
 
 export function ConversationsPanel({
   conversations,
