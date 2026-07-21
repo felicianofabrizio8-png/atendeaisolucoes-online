@@ -92,19 +92,6 @@ export function ChatTimeline({
   onChanged: () => void;
   scrollBumpToken?: number;
 }) {
-  const retryFn = useServerFn(retryCoachInterpretationFn);
-  const retryM = useMutation({
-    mutationFn: (userMessageId: string) =>
-      retryFn({ data: { conversation_id: conversationId, user_message_id: userMessageId } }),
-    onSuccess: () => {
-      // Retry bem-sucedido → força posicionamento ao fim.
-      forceScrollNextRef.current = true;
-      scrollToBottom("smooth");
-      onChanged();
-    },
-  });
-
-
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const forceScrollNextRef = useRef<boolean>(true); // primeira renderização
   const lastMessageCountRef = useRef<number>(messages.length);
@@ -120,6 +107,19 @@ export function ChatTimeline({
       el.scrollTop = el.scrollHeight;
     }
   }, []);
+
+  const retryFn = useServerFn(retryCoachInterpretationFn);
+  const retryM = useMutation({
+    mutationFn: (userMessageId: string) =>
+      retryFn({ data: { conversation_id: conversationId, user_message_id: userMessageId } }),
+    onSuccess: () => {
+      // Retry bem-sucedido → força posicionamento ao fim.
+      forceScrollNextRef.current = true;
+      scrollToBottom("smooth");
+      onChanged();
+    },
+  });
+
 
 
   // Detecção de scroll do usuário → atualiza visibilidade do botão de salto.
