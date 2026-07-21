@@ -13,11 +13,9 @@
 
 export { AdminPageBody } from "./admin/interpreter-admin-page";
 export { InterpreterShell } from "./admin/interpreter-shell";
-export {
-  ConversationsPanel,
-  NewConversationButton,
-  sortConversations,
-} from "./admin/conversations-panel";
+export { ConversationsPanel, NewConversationButton } from "./admin/conversations-panel";
+export { sortConversations } from "./admin/helpers";
+
 export { ConversationView } from "./admin/conversation-view";
 export { ChatTimeline, KIND_META, isNearBottom } from "./admin/chat-timeline";
 
