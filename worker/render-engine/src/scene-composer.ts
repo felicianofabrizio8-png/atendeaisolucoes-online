@@ -156,7 +156,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
           return `${(x / 100) * width},${(y / 100) * height}`;
         })
         .join(" ");
-      return `<polygon points="${pts}" fill="${layer.color}" opacity="${opacity}"/>`;
+      return `<polygon points="${pts}" fill="${attr(layer.color)}" opacity="${opacity}"/>`;
     }
     case "frame": {
       const inset = ((layer.inset ?? 2) / 100) * width;
