@@ -23,7 +23,6 @@ import { ConversationStatusBadge } from "./status-badges";
 import { ErrorBanner } from "./error-banner";
 import { formatDateTime, sortConversations } from "./helpers";
 
-
 export function ConversationsPanel({
   conversations,
   loading,

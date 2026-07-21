@@ -79,7 +79,6 @@ function isNearBottomLocal(
   return distance <= thresholdPx;
 }
 
-
 export function ChatTimeline({
   messages,
   conversationId,
@@ -120,8 +119,6 @@ export function ChatTimeline({
     },
   });
 
-
-
   // Detecção de scroll do usuário → atualiza visibilidade do botão de salto.
   useEffect(() => {
     const el = scrollRef.current;
@@ -160,7 +157,7 @@ export function ChatTimeline({
     const messageAdded = nextCount > prevCount;
     const lastKind = messages[nextCount - 1]?.kind;
     const forced = forceScrollNextRef.current;
-    const nearBottom = isNearBottom(el);
+    const nearBottom = isNearBottomLocal(el);
 
     // Regras (avaliadas em ordem):
     //  1) Se marcado como "forçar" (abrir conversa, envio, retry, bump) → ao fim.

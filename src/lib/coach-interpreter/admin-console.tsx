@@ -17,7 +17,8 @@ export { ConversationsPanel, NewConversationButton } from "./admin/conversations
 export { sortConversations } from "./admin/helpers";
 
 export { ConversationView } from "./admin/conversation-view";
-export { ChatTimeline, KIND_META, isNearBottom } from "./admin/chat-timeline";
+export { ChatTimeline, KIND_META } from "./admin/chat-timeline";
+export { isNearBottom } from "./admin/helpers";
 
 export { MessageComposer } from "./admin/message-composer";
 export { ProposalFilterBar } from "./admin/proposal-filters";
@@ -32,9 +33,4 @@ export {
   PROPOSAL_STATUS_STYLE,
 } from "./admin/constants";
 export { extractDisabledMessage, formatDateTime } from "./admin/helpers";
-export type {
-  ConversationRow,
-  MessageRow,
-  ProposalRow,
-  ProposalFilters,
-} from "./admin/types";
+export type { ConversationRow, MessageRow, ProposalRow, ProposalFilters } from "./admin/types";

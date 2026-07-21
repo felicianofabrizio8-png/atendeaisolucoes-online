@@ -15,7 +15,6 @@ export function sortConversations(list: ConversationRow[]): ConversationRow[] {
   });
 }
 
-
 /**
  * Retorna label amigável se `err` for uma sinalização de feature flag
  * desligada/kill-switch; caso contrário retorna null.
@@ -43,4 +42,13 @@ export function formatDateTime(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+/** Verdadeiro quando o container está a `thresholdPx` (default 80) do fim. */
+export function isNearBottom(
+  el: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">,
+  thresholdPx = 80,
+): boolean {
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return distance <= thresholdPx;
 }

@@ -16,7 +16,6 @@ import { ConversationView } from "./conversation-view";
 import { FeatureDisabledScreen } from "./feature-disabled-screen";
 import { sortConversations } from "./helpers";
 
-
 export function InterpreterShell() {
   const listFn = useServerFn(listCoachConversationsFn);
   const [selectedId, setSelectedId] = useState<string | null>(null);
