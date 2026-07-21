@@ -1092,6 +1092,7 @@ export type Database = {
       coach_messages: {
         Row: {
           author_user_id: string | null
+          client_request_id: string | null
           company_id: string
           content: string
           conversation_id: string
@@ -1103,6 +1104,7 @@ export type Database = {
         }
         Insert: {
           author_user_id?: string | null
+          client_request_id?: string | null
           company_id: string
           content?: string
           conversation_id: string
@@ -1114,6 +1116,7 @@ export type Database = {
         }
         Update: {
           author_user_id?: string | null
+          client_request_id?: string | null
           company_id?: string
           content?: string
           conversation_id?: string
