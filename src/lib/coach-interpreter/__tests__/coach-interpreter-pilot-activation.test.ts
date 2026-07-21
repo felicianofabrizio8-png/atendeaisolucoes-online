@@ -27,7 +27,7 @@ import {
 } from "@/lib/coach-interpreter/pilot-activation.server";
 
 // UUID que casa com os invariantes do piloto (prefixo 3a7e989c / sufixo cbeb48fd).
-const PILOT_ID = "3a7e989c-1111-4222-8333-444444cbeb48fd";
+const PILOT_ID = "3a7e989c-1111-4222-8333-4444cbeb48fd";
 const NON_PILOT_ID = "11111111-2222-4333-8444-555555555555";
 const ACTOR_ID = "99999999-8888-4777-8666-555555555555";
 
