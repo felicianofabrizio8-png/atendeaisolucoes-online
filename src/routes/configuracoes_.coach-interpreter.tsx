@@ -1114,6 +1114,8 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
   const [instruction, setInstruction] = useState(proposal.instruction);
   const [priority, setPriority] = useState(proposal.priority);
   const [criticalConfirmed, setCriticalConfirmed] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const updateM = useMutation({
     mutationFn: () =>
