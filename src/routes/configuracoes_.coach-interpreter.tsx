@@ -456,10 +456,11 @@ function ConversationsPanel({
 
 function NewConversationButton({
   onCreated,
-  onError,
+  onDisabled,
 }: {
   onCreated: (id: string) => void;
-  onError: (msg: string) => void;
+  /** Disparado quando o backend retorna feature flag desligada / kill-switch. */
+  onDisabled: () => void;
 }) {
   const qc = useQueryClient();
   const createFn = useServerFn(createCoachConversationFn);
@@ -469,22 +470,79 @@ function NewConversationButton({
       qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversations"] });
       if (res?.conversation?.id) onCreated(res.conversation.id);
     },
-    onError: (err) => onError(err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      const safe = getSafeInterpreterError(err);
+      if (safe.disabled || safe.killed) onDisabled();
+    },
   });
+  const safeErr = m.error ? getSafeInterpreterError(m.error) : null;
   return (
-    <button
-      type="button"
-      onClick={() => m.mutate()}
-      disabled={m.isPending}
-      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
-    >
-      {m.isPending ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <MessageSquare className="h-4 w-4" />
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => m.mutate()}
+        disabled={m.isPending}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+      >
+        {m.isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <MessageSquare className="h-4 w-4" />
+        )}
+        Nova conversa
+      </button>
+      {safeErr && !safeErr.disabled && !safeErr.killed && (
+        <span className="text-[11px] text-destructive" data-testid="new-conversation-error">
+          {safeErr.message}
+        </span>
       )}
-      Nova conversa
-    </button>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Error banner reutilizável — sempre lê o contrato SafeInterpreterError,
+// nunca `String(err)` nem `.toString()`. Pode ser usado em qualquer painel
+// (listagem, timeline, composer, retry).
+// ------------------------------------------------------------------
+function ErrorBanner({
+  title,
+  error,
+  onRetry,
+  testId,
+}: {
+  title: string;
+  error: SafeInterpreterError;
+  onRetry?: () => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      data-testid={testId}
+      className="m-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-destructive">{title}</div>
+          <div className="text-foreground mt-0.5 break-words">{error.message}</div>
+          <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+            code: {error.code}
+          </div>
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-[11px] text-primary hover:underline shrink-0"
+          >
+            Tentar novamente
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
