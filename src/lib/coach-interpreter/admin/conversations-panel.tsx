@@ -137,7 +137,7 @@ export function ConversationsPanel({
             className="p-6 text-center text-sm text-muted-foreground"
             data-testid="conversations-empty"
           >
-            Nenhuma conversa por aqui ainda. Crie a primeira no botão acima.
+            Nenhuma conversa encontrada. Crie a primeira no botão acima.
           </div>
         ) : pageRows.length === 0 ? (
           <div
