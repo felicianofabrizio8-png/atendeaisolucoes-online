@@ -1036,6 +1036,103 @@ export type Database = {
           },
         ]
       }
+      coach_conversations: {
+        Row: {
+          closed_at: string | null
+          company_id: string
+          created_at: string
+          id: string
+          last_message_at: string | null
+          meta: Json
+          model_name: string | null
+          owner_user_id: string | null
+          prompt_version: string | null
+          status: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          meta?: Json
+          model_name?: string | null
+          owner_user_id?: string | null
+          prompt_version?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          meta?: Json
+          model_name?: string | null
+          owner_user_id?: string | null
+          prompt_version?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_messages: {
+        Row: {
+          author_user_id: string | null
+          company_id: string
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          run: Json
+        }
+        Insert: {
+          author_user_id?: string | null
+          company_id: string
+          content?: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          payload?: Json
+          run?: Json
+        }
+        Update: {
+          author_user_id?: string | null
+          company_id?: string
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          run?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_messages_conv_fk"
+            columns: ["conversation_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "coach_conversations"
+            referencedColumns: ["id", "company_id"]
+          },
+        ]
+      }
       coach_rule_conflicts: {
         Row: {
           company_id: string
@@ -1165,6 +1262,137 @@ export type Database = {
           {
             foreignKeyName: "coach_rule_events_version_id_fkey"
             columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rule_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_rule_proposals: {
+        Row: {
+          ambiguities: Json
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          condition: string | null
+          confidence: number
+          confirmed_at: string | null
+          confirmed_by: string | null
+          conversation_id: string
+          created_at: string
+          created_rule_id: string | null
+          created_version_id: string | null
+          discarded_at: string | null
+          edit_count: number
+          id: string
+          instruction: string
+          missing_information: Json
+          model_name: string
+          model_provider: string
+          normalized_output: Json
+          priority: number
+          prompt_version: string
+          rationale: string | null
+          risk_level: string
+          rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref: Json
+          source_message_id: string
+          status: string
+          title: string
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          ambiguities?: Json
+          category: Database["public"]["Enums"]["coach_rule_category"]
+          company_id: string
+          condition?: string | null
+          confidence: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          conversation_id: string
+          created_at?: string
+          created_rule_id?: string | null
+          created_version_id?: string | null
+          discarded_at?: string | null
+          edit_count?: number
+          id?: string
+          instruction: string
+          missing_information?: Json
+          model_name: string
+          model_provider: string
+          normalized_output?: Json
+          priority?: number
+          prompt_version: string
+          rationale?: string | null
+          risk_level?: string
+          rule_type: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          source_message_id: string
+          status?: string
+          title: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          ambiguities?: Json
+          category?: Database["public"]["Enums"]["coach_rule_category"]
+          company_id?: string
+          condition?: string | null
+          confidence?: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          conversation_id?: string
+          created_at?: string
+          created_rule_id?: string | null
+          created_version_id?: string | null
+          discarded_at?: string | null
+          edit_count?: number
+          id?: string
+          instruction?: string
+          missing_information?: Json
+          model_name?: string
+          model_provider?: string
+          normalized_output?: Json
+          priority?: number
+          prompt_version?: string
+          rationale?: string | null
+          risk_level?: string
+          rule_type?: Database["public"]["Enums"]["coach_rule_type"]
+          scope_kind?: Database["public"]["Enums"]["coach_rule_scope_kind"]
+          scope_ref?: Json
+          source_message_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_proposals_conv_fk"
+            columns: ["conversation_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "coach_conversations"
+            referencedColumns: ["id", "company_id"]
+          },
+          {
+            foreignKeyName: "coach_proposals_msg_fk"
+            columns: ["source_message_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "coach_messages"
+            referencedColumns: ["id", "company_id"]
+          },
+          {
+            foreignKeyName: "coach_rule_proposals_created_rule_id_fkey"
+            columns: ["created_rule_id"]
+            isOneToOne: false
+            referencedRelation: "coach_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_rule_proposals_created_version_id_fkey"
+            columns: ["created_version_id"]
             isOneToOne: false
             referencedRelation: "coach_rule_versions"
             referencedColumns: ["id"]
@@ -1640,6 +1868,7 @@ export type Database = {
           ai_pilot_mode: boolean
           business_hours_end: string
           business_hours_start: string
+          coach_interpreter_enabled: boolean
           company_id: string
           created_at: string
           default_quote_customer_responsibility: string | null
@@ -1693,6 +1922,7 @@ export type Database = {
           ai_pilot_mode?: boolean
           business_hours_end?: string
           business_hours_start?: string
+          coach_interpreter_enabled?: boolean
           company_id: string
           created_at?: string
           default_quote_customer_responsibility?: string | null
@@ -1746,6 +1976,7 @@ export type Database = {
           ai_pilot_mode?: boolean
           business_hours_end?: string
           business_hours_start?: string
+          coach_interpreter_enabled?: boolean
           company_id?: string
           created_at?: string
           default_quote_customer_responsibility?: string | null
@@ -4870,6 +5101,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      confirm_coach_rule_proposal: {
+        Args: {
+          _critical_confirmed?: boolean
+          _overrides?: Json
+          _proposal_id: string
+        }
+        Returns: {
+          rule_id: string
+          version_id: string
+          was_already_confirmed: boolean
+        }[]
       }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
       create_coach_rule_draft: {
