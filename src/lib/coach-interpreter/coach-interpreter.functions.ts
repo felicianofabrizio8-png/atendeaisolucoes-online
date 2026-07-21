@@ -21,6 +21,24 @@ import { interpretCoachMessage } from "./coach-interpreter.service";
 import { COACH_INTERPRETER_MAX_INPUT_CHARS, COACH_INTERPRETER_MODEL } from "./types";
 import { COACH_INTERPRETER_PROMPT_VERSION } from "./prompt/interpreter-prompt.v1";
 import { COACH_INTERPRETER_CHANNELS, COACH_INTERPRETER_SCOPES } from "./schema";
+import { toSafeInterpreterErrorMessage } from "./errors";
+
+/**
+ * FASE 3.1a — transporte seguro de erros: cada handler colapsa erros
+ * inesperados em códigos estáveis definidos em `errors.ts`. Preserva
+ * `InterpreterError` (que já é estável) e literais conhecidos ("not_found",
+ * "cross_tenant", "no_company"). Nunca vaza mensagens de banco ao cliente.
+ */
+function safeHandler<A, R>(fn: (arg: A) => Promise<R>): (arg: A) => Promise<R> {
+  return async (arg) => {
+    try {
+      return await fn(arg);
+    } catch (err) {
+      if (err instanceof InterpreterError) throw err;
+      throw new Error(toSafeInterpreterErrorMessage(err));
+    }
+  };
+}
 
 /**
  * Fase 2.b.1 (M3) — códigos estáveis expostos ao cliente para o fluxo
@@ -111,7 +129,7 @@ export const createCoachConversationFn = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const conv = await createCoachConversation(
@@ -123,28 +141,28 @@ export const createCoachConversationFn = createServerFn({ method: "POST" })
       COACH_INTERPRETER_MODEL,
     );
     return { conversation: conv };
-  });
+  }));
 
 export const listCoachConversationsFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(safeHandler(async ({ context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const rows = await listCoachConversations(context.supabase, 50);
     return { conversations: rows };
-  });
+  }));
 
 export const getCoachConversationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const conv = await ensureConversationAccess(context.supabase, data.conversation_id, companyId);
     const messages = await listCoachMessages(context.supabase, conv.id, 200);
     const proposals = await listCoachProposals(context.supabase, conv.id);
     return { conversation: conv, messages, proposals };
-  });
+  }));
 
 export const sendCoachMessageFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -159,7 +177,7 @@ export const sendCoachMessageFn = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const conv = await ensureConversationAccess(context.supabase, data.conversation_id, companyId);
@@ -217,7 +235,7 @@ export const sendCoachMessageFn = createServerFn({ method: "POST" })
       messages,
       proposals,
     };
-  });
+  }));
 
 export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -229,7 +247,7 @@ export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const conv = await ensureConversationAccess(context.supabase, data.conversation_id, companyId);
@@ -246,18 +264,18 @@ export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
       userMessageText: target.content,
     });
     return { outcome: result.outcome, run: result.run };
-  });
+  }));
 
 export const listCoachProposalsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     await ensureConversationAccess(context.supabase, data.conversation_id, companyId);
     const rows = await listCoachProposals(context.supabase, data.conversation_id);
     return { proposals: rows };
-  });
+  }));
 
 export const updateCoachProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -273,23 +291,23 @@ export const updateCoachProposalFn = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     const { proposal_id, ...patch } = data;
     await updateCoachProposal(context.supabase, proposal_id, patch);
     return { ok: true };
-  });
+  }));
 
 export const discardCoachProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ proposal_id: z.string().uuid() }).parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
     await discardCoachProposal(context.supabase, data.proposal_id);
     return { ok: true };
-  });
+  }));
 
 export const confirmCoachProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -302,7 +320,7 @@ export const confirmCoachProposalFn = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
+  .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     // A RPC também valida a flag, mas checamos aqui para dar erro estável antes.
     await ensureFlagOrThrow(context.supabase, companyId);
@@ -313,4 +331,4 @@ export const confirmCoachProposalFn = createServerFn({ method: "POST" })
       data.critical_confirmed,
     );
     return out;
-  });
+  }));

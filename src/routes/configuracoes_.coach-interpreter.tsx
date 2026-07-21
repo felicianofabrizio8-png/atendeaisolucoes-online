@@ -11,7 +11,7 @@
 //    server function; nunca ativada aqui).
 // ============================================================================
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -24,7 +24,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
+  
   Pencil,
   Trash2,
   Sparkles,
@@ -36,6 +36,16 @@ import { useAuth } from "@/auth/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { cn } from "@/lib/utils";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   listCoachConversationsFn,
   getCoachConversationFn,
   sendCoachMessageFn,
@@ -45,6 +55,10 @@ import {
   discardCoachProposalFn,
   confirmCoachProposalFn,
 } from "@/lib/coach-interpreter/coach-interpreter.functions";
+import {
+  getSafeInterpreterError,
+  type SafeInterpreterError,
+} from "@/lib/coach-interpreter/errors";
 
 // ------------------------------------------------------------------
 // Labels reaproveitados (server-safe consts vindas do módulo de regras).
@@ -72,41 +86,55 @@ export const Route = createFileRoute("/configuracoes_/coach-interpreter")({
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
-  errorComponent: ({ error, reset }) => (
-    <div className="max-w-2xl mx-auto p-8">
-      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
-        <h2 className="font-semibold text-destructive">Erro ao carregar Coach Interpreter</h2>
-        <p className="text-sm text-muted-foreground mt-1 break-words">
-          {error instanceof Error ? error.message : "Erro desconhecido"}
-        </p>
-        <button
-          type="button"
-          onClick={() => reset()}
-          className="mt-3 text-sm text-primary underline"
-        >
-          Tentar novamente
-        </button>
+  errorComponent: ({ error, reset }) => {
+    const safe = getSafeInterpreterError(error);
+    return (
+      <div className="max-w-2xl mx-auto p-8">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+          <h2 className="font-semibold text-destructive">Erro ao carregar Coach Interpreter</h2>
+          <p className="text-sm text-muted-foreground mt-1 break-words">{safe.message}</p>
+          <p className="text-[11px] text-muted-foreground mt-1 font-mono">code: {safe.code}</p>
+          <button
+            type="button"
+            onClick={() => reset()}
+            className="mt-3 text-sm text-primary underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
       </div>
-    </div>
-  ),
+    );
+  },
 });
 
 // ------------------------------------------------------------------
-// Guard admin — mesma estratégia da tela de Regras do Coach (Fase 1).
+// Guard admin — 3.1a: sem flash. Enquanto (a) auth ainda carrega e user é
+// desconhecido, (b) status de admin está sendo consultado, renderizamos
+// apenas o spinner. O redirect para /login é agendado por useEffect no
+// próximo tick — o spinner cobre esse intervalo.
 // ------------------------------------------------------------------
 function InterpreterAdminPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
 
   useEffect(() => {
-    if (!user) navigate({ to: "/login" });
-  }, [user, navigate]);
+    if (!authLoading && !user) navigate({ to: "/login" });
+  }, [authLoading, user, navigate]);
 
-  if (adminLoading) {
+  // Guard "sem flash": mostra spinner enquanto qualquer sinal de auth/admin
+  // estiver indeterminado. Só decide após ambos concluírem.
+  if (authLoading || !user || adminLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div
+        className="flex items-center justify-center h-full"
+        data-testid="interpreter-guard-loading"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="sr-only">Verificando acesso…</span>
       </div>
     );
   }
@@ -189,12 +217,15 @@ function InterpreterShell() {
     retry: false,
   });
 
-  // Feature flag detection — as server fns lançam COACH_INTERPRETER_DISABLED
-  // quando a flag está desligada. Reconhecemos essa string para renderizar o
-  // estado "recurso desabilitado" sem tocar no backend.
-  const disabledMessage = extractDisabledMessage(listQ.error);
-  if (disabledMessage) {
-    return <FeatureDisabledScreen reason={disabledMessage} />;
+  // Feature flag / erros — passamos qualquer error do listQ pelo helper
+  // seguro `getSafeInterpreterError`, que devolve { code, message, disabled,
+  // killed, ... }. NUNCA usamos `String(err)` ou `.toString()` aqui.
+  const listSafe: SafeInterpreterError | null = listQ.error
+    ? getSafeInterpreterError(listQ.error)
+    : null;
+
+  if (listSafe?.disabled || listSafe?.killed) {
+    return <FeatureDisabledScreen reason={listSafe.message} />;
   }
 
   return (
@@ -216,12 +247,7 @@ function InterpreterShell() {
         </div>
         <NewConversationButton
           onCreated={(id) => setSelectedId(id)}
-          onError={(msg) => {
-            if (extractDisabledMessage({ message: msg })) {
-              // Recarrega listagem para acionar tela de desabilitado.
-              listQ.refetch();
-            }
-          }}
+          onDisabled={() => listQ.refetch()}
         />
       </header>
 
@@ -229,6 +255,7 @@ function InterpreterShell() {
         <ConversationsPanel
           conversations={listQ.data?.conversations ?? []}
           loading={listQ.isLoading}
+          error={listSafe}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onRefresh={() => listQ.refetch()}
@@ -249,20 +276,16 @@ function InterpreterShell() {
 }
 
 // ------------------------------------------------------------------
-// Feature flag disabled screen
+// Feature flag disabled screen (mantido; agora consumido a partir do
+// contrato SafeInterpreterError).
 // ------------------------------------------------------------------
+/**
+ * @deprecated 3.1a — use `getSafeInterpreterError`. Mantido apenas para
+ * compatibilidade com testes existentes que checam labels de flag.
+ */
 function extractDisabledMessage(err: unknown): string | null {
-  if (!err) return null;
-  const msg =
-    typeof err === "string"
-      ? err
-      : err && typeof err === "object" && "message" in err && typeof err.message === "string"
-        ? err.message
-        : "";
-  if (msg.includes("COACH_INTERPRETER_DISABLED"))
-    return "Feature flag desligada para esta empresa.";
-  if (msg.includes("COACH_INTERPRETER_KILLED"))
-    return "Kill-switch ativo (COACH_INTERPRETER_KILLSWITCH=true).";
+  const safe = getSafeInterpreterError(err);
+  if (safe.disabled || safe.killed) return safe.message;
   return null;
 }
 
@@ -301,12 +324,14 @@ const PAGE_SIZE = 15;
 function ConversationsPanel({
   conversations,
   loading,
+  error,
   selectedId,
   onSelect,
   onRefresh,
 }: {
   conversations: ConversationRow[];
   loading: boolean;
+  error: SafeInterpreterError | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
@@ -359,6 +384,13 @@ function ConversationsPanel({
           <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando conversas…
           </div>
+        ) : error ? (
+          <ErrorBanner
+            title="Falha ao carregar conversas"
+            error={error}
+            onRetry={onRefresh}
+            testId="conversations-error"
+          />
         ) : pageRows.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             Nenhuma conversa encontrada.
@@ -424,10 +456,11 @@ function ConversationsPanel({
 
 function NewConversationButton({
   onCreated,
-  onError,
+  onDisabled,
 }: {
   onCreated: (id: string) => void;
-  onError: (msg: string) => void;
+  /** Disparado quando o backend retorna feature flag desligada / kill-switch. */
+  onDisabled: () => void;
 }) {
   const qc = useQueryClient();
   const createFn = useServerFn(createCoachConversationFn);
@@ -437,22 +470,79 @@ function NewConversationButton({
       qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversations"] });
       if (res?.conversation?.id) onCreated(res.conversation.id);
     },
-    onError: (err) => onError(err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      const safe = getSafeInterpreterError(err);
+      if (safe.disabled || safe.killed) onDisabled();
+    },
   });
+  const safeErr = m.error ? getSafeInterpreterError(m.error) : null;
   return (
-    <button
-      type="button"
-      onClick={() => m.mutate()}
-      disabled={m.isPending}
-      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
-    >
-      {m.isPending ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <MessageSquare className="h-4 w-4" />
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => m.mutate()}
+        disabled={m.isPending}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+      >
+        {m.isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <MessageSquare className="h-4 w-4" />
+        )}
+        Nova conversa
+      </button>
+      {safeErr && !safeErr.disabled && !safeErr.killed && (
+        <span className="text-[11px] text-destructive" data-testid="new-conversation-error">
+          {safeErr.message}
+        </span>
       )}
-      Nova conversa
-    </button>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Error banner reutilizável — sempre lê o contrato SafeInterpreterError,
+// nunca `String(err)` nem `.toString()`. Pode ser usado em qualquer painel
+// (listagem, timeline, composer, retry).
+// ------------------------------------------------------------------
+function ErrorBanner({
+  title,
+  error,
+  onRetry,
+  testId,
+}: {
+  title: string;
+  error: SafeInterpreterError;
+  onRetry?: () => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      data-testid={testId}
+      className="m-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-destructive">{title}</div>
+          <div className="text-foreground mt-0.5 break-words">{error.message}</div>
+          <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+            code: {error.code}
+          </div>
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-[11px] text-primary hover:underline shrink-0"
+          >
+            Tentar novamente
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -495,8 +585,8 @@ function ConversationView({ conversationId }: { conversationId: string }) {
     qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversations"] });
   };
 
-  const disabled = extractDisabledMessage(q.error);
-  if (disabled) return <FeatureDisabledScreen reason={disabled} />;
+  const safe = q.error ? getSafeInterpreterError(q.error) : null;
+  if (safe?.disabled || safe?.killed) return <FeatureDisabledScreen reason={safe.message} />;
 
   if (q.isLoading) {
     return (
@@ -505,10 +595,15 @@ function ConversationView({ conversationId }: { conversationId: string }) {
       </div>
     );
   }
-  if (q.error) {
+  if (safe) {
     return (
-      <div className="p-6 text-sm text-destructive">
-        Erro ao carregar: {q.error instanceof Error ? q.error.message : String(q.error)}
+      <div className="p-4">
+        <ErrorBanner
+          title="Erro ao carregar a conversa"
+          error={safe}
+          onRetry={() => q.refetch()}
+          testId="conversation-error"
+        />
       </div>
     );
   }
@@ -587,20 +682,49 @@ function ChatTimeline({
     onSuccess: onChanged,
   });
 
+  // Auto-scroll para o fim quando novas mensagens chegam.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  const retryError =
+    retryM.error && retryM.variables
+      ? { messageId: retryM.variables, safe: getSafeInterpreterError(retryM.error) }
+      : null;
+
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3" data-testid="chat-timeline">
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3"
+      data-testid="chat-timeline"
+    >
       {messages.length === 0 ? (
         <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
           Nenhuma mensagem ainda. Envie a primeira abaixo.
         </div>
       ) : (
         messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
-            retrying={retryM.isPending && retryM.variables === m.id}
-          />
+          <div key={m.id}>
+            <MessageBubble
+              message={m}
+              onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
+              retrying={retryM.isPending && retryM.variables === m.id}
+            />
+            {retryError && retryError.messageId === m.id && (
+              <div className="mt-2 flex justify-end">
+                <div className="max-w-[85%]">
+                  <ErrorBanner
+                    title="Falha ao reinterpretar"
+                    error={retryError.safe}
+                    onRetry={() => retryM.mutate(m.id)}
+                    testId={`retry-error-${m.id}`}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         ))
       )}
     </div>
@@ -704,6 +828,11 @@ function MessageComposer({
   onSent: () => void;
 }) {
   const [text, setText] = useState("");
+  // Idempotência visual: um único client_request_id por "tentativa lógica".
+  // Só reciclamos após uma resposta bem-sucedida do servidor (nova mensagem
+  // do usuário). Se der erro, mantemos o mesmo UUID para que reenviar caia
+  // no caminho idempotente do backend (duplicate_*).
+  const requestIdRef = useRef<string>(crypto.randomUUID());
   const sendFn = useServerFn(sendCoachMessageFn);
   const m = useMutation({
     mutationFn: (payload: string) =>
@@ -711,42 +840,72 @@ function MessageComposer({
         data: {
           conversation_id: conversationId,
           text: payload,
-          client_request_id: crypto.randomUUID(),
+          client_request_id: requestIdRef.current,
         },
       }),
     onSuccess: () => {
       setText("");
+      requestIdRef.current = crypto.randomUUID();
       onSent();
     },
+    // NÃO limpar texto em erro — preservação exigida pela Fase 3.1a.
   });
 
+  const safeErr = m.error ? getSafeInterpreterError(m.error) : null;
+
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed || m.isPending) return;
+    m.mutate(trimmed);
+  };
+
   return (
-    <form
-      className="border-t border-border p-3 flex gap-2 items-end"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const trimmed = text.trim();
-        if (!trimmed || m.isPending) return;
-        m.mutate(trimmed);
-      }}
-    >
-      <textarea
-        aria-label="Mensagem para o Interpreter"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Descreva uma regra ou instrução para o Coach interpretar…"
-        rows={2}
-        className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-      />
-      <button
-        type="submit"
-        disabled={m.isPending || text.trim().length === 0}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+    <div className="border-t border-border">
+      {safeErr && (
+        <ErrorBanner
+          title="Falha ao enviar mensagem"
+          error={safeErr}
+          onRetry={submit}
+          testId="composer-error"
+        />
+      )}
+      <form
+        className="p-3 flex gap-2 items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
       >
-        {m.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        Enviar
-      </button>
-    </form>
+        <textarea
+          aria-label="Mensagem para o Interpreter"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Descreva uma regra ou instrução para o Coach interpretar… (Enter envia, Shift+Enter quebra linha)"
+          rows={2}
+          data-testid="composer-textarea"
+          data-request-id={requestIdRef.current}
+          className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <button
+          type="submit"
+          disabled={m.isPending || text.trim().length === 0}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+        >
+          {m.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          Enviar
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -955,6 +1114,8 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
   const [instruction, setInstruction] = useState(proposal.instruction);
   const [priority, setPriority] = useState(proposal.priority);
   const [criticalConfirmed, setCriticalConfirmed] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const updateM = useMutation({
     mutationFn: () =>
@@ -1174,10 +1335,16 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
               >
                 <Pencil className="h-3 w-3" /> Editar
               </button>
+
+              {/* Confirm — sempre passa por AlertDialog. Dupla confirmação
+                  para risco crítico (checkbox dentro do dialog). */}
               <button
                 type="button"
-                onClick={() => confirmM.mutate()}
-                disabled={confirmM.isPending || (isCritical && !criticalConfirmed)}
+                onClick={() => {
+                  setCriticalConfirmed(false);
+                  setConfirmOpen(true);
+                }}
+                disabled={confirmM.isPending}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded bg-emerald-600 text-white text-xs disabled:opacity-60"
                 data-testid="confirm-proposal"
               >
@@ -1188,9 +1355,11 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
                 )}
                 Confirmar
               </button>
+
+              {/* Discard — dialog dedicado, ação destrutiva. */}
               <button
                 type="button"
-                onClick={() => discardM.mutate()}
+                onClick={() => setDiscardOpen(true)}
                 disabled={discardM.isPending}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded border border-destructive/40 text-destructive text-xs hover:bg-destructive/10 disabled:opacity-60"
                 data-testid="discard-proposal"
@@ -1202,25 +1371,117 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
                 )}
                 Descartar
               </button>
-              {isCritical && (
-                <label className="inline-flex items-center gap-1 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={criticalConfirmed}
-                    onChange={(e) => setCriticalConfirmed(e.target.checked)}
-                  />
-                  Confirmo risco crítico
-                </label>
-              )}
             </>
           )}
         </div>
       )}
 
-      {(confirmM.error || discardM.error || updateM.error) && (
-        <div className="text-[11px] text-destructive">
-          {(confirmM.error ?? discardM.error ?? updateM.error)?.toString()}
-        </div>
+      {/* AlertDialog: Confirmar proposal */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent data-testid="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isCritical ? "Confirmar regra CRÍTICA?" : "Confirmar regra?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="block font-medium text-foreground mb-1">{proposal.title}</span>
+              <span className="block text-xs">
+                Categoria{" "}
+                <b>
+                  {COACH_CATEGORY_LABEL[proposal.category as CoachRuleCategory] ??
+                    proposal.category}
+                </b>{" "}
+                · Tipo{" "}
+                <b>{COACH_TYPE_LABEL[proposal.rule_type as CoachRuleType] ?? proposal.rule_type}</b>{" "}
+                · Escopo <b>{proposal.scope_kind}</b> · Prioridade <b>P{proposal.priority}</b>
+              </span>
+              {isCritical && (
+                <span className="mt-3 block rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">
+                  Esta regra é <b>crítica</b>. Marque o checkbox abaixo para autorizar
+                  explicitamente a confirmação.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {isCritical && (
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={criticalConfirmed}
+                onChange={(e) => setCriticalConfirmed(e.target.checked)}
+                data-testid="critical-checkbox"
+              />
+              Confirmo estar ciente do risco crítico desta regra.
+            </label>
+          )}
+          {confirmM.error && (
+            <ErrorBanner
+              title="Falha ao confirmar"
+              error={getSafeInterpreterError(confirmM.error)}
+              testId="confirm-error"
+            />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmM.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmM.isPending || (isCritical && !criticalConfirmed)}
+              data-testid="confirm-dialog-action"
+              onClick={(e) => {
+                e.preventDefault();
+                confirmM.mutate(undefined, {
+                  onSuccess: () => setConfirmOpen(false),
+                });
+              }}
+            >
+              {confirmM.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog: Descartar proposal */}
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent data-testid="discard-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar esta proposal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A proposal <b>{proposal.title}</b> será marcada como descartada. Esta ação não pode
+              ser desfeita a partir da UI.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {discardM.error && (
+            <ErrorBanner
+              title="Falha ao descartar"
+              error={getSafeInterpreterError(discardM.error)}
+              testId="discard-error"
+            />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discardM.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={discardM.isPending}
+              data-testid="discard-dialog-action"
+              onClick={(e) => {
+                e.preventDefault();
+                discardM.mutate(undefined, {
+                  onSuccess: () => setDiscardOpen(false),
+                });
+              }}
+            >
+              {discardM.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {updateM.error && (
+        <ErrorBanner
+          title="Falha ao salvar edição"
+          error={getSafeInterpreterError(updateM.error)}
+          testId="update-error"
+        />
       )}
     </div>
   );
