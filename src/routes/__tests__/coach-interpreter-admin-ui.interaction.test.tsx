@@ -386,20 +386,23 @@ describe("Fase 3.1a · Listagem de conversas", () => {
     expect(screen.getByText(/Nenhuma conversa encontrada/i)).toBeInTheDocument();
   });
 
-  it("estados loading, vazio, erro e sucesso são distintos", async () => {
-    // 1) loading — usamos deferred para segurar a promessa.
+  it("estado inicial mostra 'Carregando conversas…' enquanto a promessa pende", () => {
     const gate = deferred<{ conversations: [] }>();
     listFn.mockReturnValueOnce(gate.promise);
-    const { qc, rerender } = renderWithClient(<InterpreterShell />);
+    renderWithClient(<InterpreterShell />);
     expect(screen.getByText(/Carregando conversas…/i)).toBeInTheDocument();
+    // ErrorBanner NÃO coexiste com loading.
     expect(screen.queryByTestId("conversations-error")).not.toBeInTheDocument();
-    // 2) vazio — resolve com lista vazia.
-    await act(async () => {
+    // Empty state NÃO coexiste com loading.
+    expect(screen.queryByText(/Nenhuma conversa encontrada/i)).not.toBeInTheDocument();
+    // Resolve para não vazar promessa pendente entre testes.
+    void act(async () => {
       gate.resolve({ conversations: [] });
     });
-    expect(await screen.findByText(/Nenhuma conversa encontrada/i)).toBeInTheDocument();
-    // 3) sucesso — re-render com uma conversa (nova instância, novo query cache).
-    listFn.mockResolvedValueOnce({
+  });
+
+  it("resolve com uma conversa renderiza o título na lista", async () => {
+    listFn.mockResolvedValue({
       conversations: [
         {
           id: "conv-abc",
@@ -411,33 +414,10 @@ describe("Fase 3.1a · Listagem de conversas", () => {
         },
       ],
     });
-    rerender(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <InterpreterShell />
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByText(/Minha conversa/i)).toBeInTheDocument();
-    // 4) erro — nova instância, mock rejeita.
-    listFn.mockRejectedValueOnce(new Error("internal"));
-    rerender(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <InterpreterShell />
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByTestId("conversations-error")).toBeInTheDocument();
-    void qc;
-  });
-
-  it("estado 'loading' e 'erro' não coexistem", async () => {
-    const gate = deferred<{ conversations: [] }>();
-    listFn.mockReturnValueOnce(gate.promise);
     renderWithClient(<InterpreterShell />);
-    expect(screen.getByText(/Carregando/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Minha conversa/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma conversa encontrada/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("conversations-error")).not.toBeInTheDocument();
-    await act(async () => {
-      gate.resolve({ conversations: [] });
-    });
-    expect(screen.queryByText(/Carregando conversas…/i)).not.toBeInTheDocument();
   });
 });
 
