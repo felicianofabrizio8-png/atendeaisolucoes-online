@@ -39,7 +39,7 @@ RUN set -eux; \
     echo "=== IMAGE VERIFICATION (cache-bust=$CACHE_BUST) ==="; \
     ls -la /app/dist/render.js /app/dist/scenes.js /app/dist/scene-composer.js /app/dist/brand-composer.js; \
     ls -la /app/assets/fonts/Inter-Regular.ttf /app/assets/fonts/PlayfairDisplay-Bold.ttf; \
-    for s in render_build_signature render-scene-logo-parity-build-002 scene_engine_enabled available_scene_ids brand_composition_gate composeBrandLayers buildSceneOverlaySvg scene_render_selected claim_snapshot_inspect getSceneById scene_applies_logo; do \
+    for s in render_build_signature render-scene-svg-escape-build-003 scene_engine_enabled available_scene_ids brand_composition_gate composeBrandLayers buildSceneOverlaySvg scene_render_selected claim_snapshot_inspect getSceneById scene_applies_logo; do \
       count=$(grep -rc "$s" /app/dist/ | awk -F: '{s+=$2} END {print s+0}'); \
       echo "signature[$s]=$count"; \
       test "$count" -ge 1 || { echo "MISSING SIGNATURE: $s"; exit 1; }; \
