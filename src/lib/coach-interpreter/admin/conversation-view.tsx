@@ -1,7 +1,7 @@
 // Painel principal quando uma conversa está selecionada:
 // cabeçalho + timeline + composer + coluna de proposals com filtros.
 import { useState } from "react";
-import { useMutation as _unused, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Loader2 } from "lucide-react";
 import { getCoachConversationFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
@@ -22,8 +22,6 @@ import { ErrorBanner } from "./error-banner";
 import { FeatureDisabledScreen } from "./feature-disabled-screen";
 import { formatDateTime } from "./helpers";
 
-// silence import
-void _unused;
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient();
