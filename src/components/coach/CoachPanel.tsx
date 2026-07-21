@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -11,6 +13,7 @@ import {
   RefreshCcw,
   Loader2,
   Flame,
+  Settings2,
 } from "lucide-react";
 
 interface CoachAlert {
