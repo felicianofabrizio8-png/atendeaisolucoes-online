@@ -22,8 +22,31 @@ import {
   type CoachRuleRow, type CoachRuleVersionRow, type CoachRuleScopeRef,
 } from "@/lib/coach-rules/coach-rules.repository";
 
+// Proteção de rota — mesma estratégia usada em `configuracoes_.usuarios.tsx`:
+// - Não existe layout `_authenticated` neste projeto (SPA); a autorização real
+//   é aplicada server-side pelas RPCs SECURITY DEFINER (coach_assert_admin) e
+//   pelas policies RLS (SELECT restrito a company_id = current_company_id()).
+// - O guard client-side abaixo evita renderizar UI/consultas para não-admins,
+//   mas NÃO é a barreira de segurança. A barreira é o banco.
 export const Route = createFileRoute("/configuracoes_/regras-coach")({
   component: RulesPage,
+  errorComponent: ({ error, reset }) => (
+    <div className="max-w-2xl mx-auto p-8">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <h2 className="font-semibold text-destructive">Erro ao carregar Regras do Coach</h2>
+        <p className="text-sm text-muted-foreground mt-1 break-words">
+          {error instanceof Error ? error.message : "Erro desconhecido"}
+        </p>
+        <button
+          type="button"
+          onClick={() => reset()}
+          className="mt-3 text-sm text-primary underline"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  ),
   head: () => ({
     meta: [
       { title: "Regras do Coach — Atende Ai!" },
