@@ -1333,10 +1333,16 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
               >
                 <Pencil className="h-3 w-3" /> Editar
               </button>
+
+              {/* Confirm — sempre passa por AlertDialog. Dupla confirmação
+                  para risco crítico (checkbox dentro do dialog). */}
               <button
                 type="button"
-                onClick={() => confirmM.mutate()}
-                disabled={confirmM.isPending || (isCritical && !criticalConfirmed)}
+                onClick={() => {
+                  setCriticalConfirmed(false);
+                  setConfirmOpen(true);
+                }}
+                disabled={confirmM.isPending}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded bg-emerald-600 text-white text-xs disabled:opacity-60"
                 data-testid="confirm-proposal"
               >
@@ -1347,9 +1353,11 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
                 )}
                 Confirmar
               </button>
+
+              {/* Discard — dialog dedicado, ação destrutiva. */}
               <button
                 type="button"
-                onClick={() => discardM.mutate()}
+                onClick={() => setDiscardOpen(true)}
                 disabled={discardM.isPending}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded border border-destructive/40 text-destructive text-xs hover:bg-destructive/10 disabled:opacity-60"
                 data-testid="discard-proposal"
@@ -1361,25 +1369,117 @@ function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChange
                 )}
                 Descartar
               </button>
-              {isCritical && (
-                <label className="inline-flex items-center gap-1 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={criticalConfirmed}
-                    onChange={(e) => setCriticalConfirmed(e.target.checked)}
-                  />
-                  Confirmo risco crítico
-                </label>
-              )}
             </>
           )}
         </div>
       )}
 
-      {(confirmM.error || discardM.error || updateM.error) && (
-        <div className="text-[11px] text-destructive">
-          {(confirmM.error ?? discardM.error ?? updateM.error)?.toString()}
-        </div>
+      {/* AlertDialog: Confirmar proposal */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent data-testid="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isCritical ? "Confirmar regra CRÍTICA?" : "Confirmar regra?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="block font-medium text-foreground mb-1">{proposal.title}</span>
+              <span className="block text-xs">
+                Categoria{" "}
+                <b>
+                  {COACH_CATEGORY_LABEL[proposal.category as CoachRuleCategory] ??
+                    proposal.category}
+                </b>{" "}
+                · Tipo{" "}
+                <b>{COACH_TYPE_LABEL[proposal.rule_type as CoachRuleType] ?? proposal.rule_type}</b>{" "}
+                · Escopo <b>{proposal.scope_kind}</b> · Prioridade <b>P{proposal.priority}</b>
+              </span>
+              {isCritical && (
+                <span className="mt-3 block rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">
+                  Esta regra é <b>crítica</b>. Marque o checkbox abaixo para autorizar
+                  explicitamente a confirmação.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {isCritical && (
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={criticalConfirmed}
+                onChange={(e) => setCriticalConfirmed(e.target.checked)}
+                data-testid="critical-checkbox"
+              />
+              Confirmo estar ciente do risco crítico desta regra.
+            </label>
+          )}
+          {confirmM.error && (
+            <ErrorBanner
+              title="Falha ao confirmar"
+              error={getSafeInterpreterError(confirmM.error)}
+              testId="confirm-error"
+            />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmM.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmM.isPending || (isCritical && !criticalConfirmed)}
+              data-testid="confirm-dialog-action"
+              onClick={(e) => {
+                e.preventDefault();
+                confirmM.mutate(undefined, {
+                  onSuccess: () => setConfirmOpen(false),
+                });
+              }}
+            >
+              {confirmM.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog: Descartar proposal */}
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent data-testid="discard-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar esta proposal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A proposal <b>{proposal.title}</b> será marcada como descartada. Esta ação não pode
+              ser desfeita a partir da UI.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {discardM.error && (
+            <ErrorBanner
+              title="Falha ao descartar"
+              error={getSafeInterpreterError(discardM.error)}
+              testId="discard-error"
+            />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discardM.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={discardM.isPending}
+              data-testid="discard-dialog-action"
+              onClick={(e) => {
+                e.preventDefault();
+                discardM.mutate(undefined, {
+                  onSuccess: () => setDiscardOpen(false),
+                });
+              }}
+            >
+              {discardM.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {updateM.error && (
+        <ErrorBanner
+          title="Falha ao salvar edição"
+          error={getSafeInterpreterError(updateM.error)}
+          testId="update-error"
+        />
       )}
     </div>
   );
