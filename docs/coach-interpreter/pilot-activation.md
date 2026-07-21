@@ -1,8 +1,14 @@
-# Coach Interpreter — Ativação Piloto (Fase 3.3 · Etapa 2B)
+# Coach Interpreter — Ativação Piloto (Fase 3.3 · Etapa 2B.1)
 
 Mecanismo operacional server-side, **fora da UI**, para habilitar/desabilitar a
 flag `coach_interpreter_enabled` **apenas no tenant piloto aprovado**
-(`3a7e989c…cbeb48fd` · "Solário Piscinas").
+(mascarado como `3a7e989c…cbeb48fd` · "Solário Piscinas").
+
+> A autorização usa **igualdade INTEGRAL do UUID** entre o valor enviado ao
+> script e o valor carregado da variável server-side `COACH_PILOT_COMPANY_ID`.
+> Prefixo, sufixo, nome ou ambiente são apenas defesa em profundidade — nunca
+> autorizam sozinhos. A operação usa **rollback compensatório**; NÃO é uma
+> transação SQL atômica com o `audit_log`.
 
 > Este documento é apenas operacional. **Nenhum comando abaixo foi executado**
 > nesta preparação. Nenhuma flag foi alterada. Nenhum deploy foi feito.
