@@ -20,7 +20,6 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  
   Pencil,
   Trash2,
   Sparkles,
@@ -51,10 +50,7 @@ import {
   discardCoachProposalFn,
   confirmCoachProposalFn,
 } from "@/lib/coach-interpreter/coach-interpreter.functions";
-import {
-  getSafeInterpreterError,
-  type SafeInterpreterError,
-} from "@/lib/coach-interpreter/errors";
+import { getSafeInterpreterError, type SafeInterpreterError } from "@/lib/coach-interpreter/errors";
 
 // ------------------------------------------------------------------
 // Labels reaproveitados (server-safe consts vindas do módulo de regras).
