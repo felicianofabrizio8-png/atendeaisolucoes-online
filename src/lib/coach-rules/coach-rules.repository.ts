@@ -77,10 +77,10 @@ export const COACH_VERSION_STATUS_LABEL: Record<CoachRuleVersionStatus, string> 
   archived: "Arquivada",
 };
 
-export type CoachRuleScopeRef =
-  | Record<string, never>
-  | { agent_id: string }
-  | { channel: (typeof COACH_CHANNELS)[number] };
+export type CoachRuleScopeRef = {
+  agent_id?: string;
+  channel?: (typeof COACH_CHANNELS)[number];
+};
 
 // ------------------------------------------------------------------
 // READS
