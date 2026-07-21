@@ -12,9 +12,7 @@ describe("Coach Interpreter Admin UI — helpers", () => {
   });
 
   it("detecta COACH_INTERPRETER_KILLED em objeto plano", () => {
-    expect(extractDisabledMessage({ message: "COACH_INTERPRETER_KILLED" })).toMatch(
-      /kill-switch/i,
-    );
+    expect(extractDisabledMessage({ message: "COACH_INTERPRETER_KILLED" })).toMatch(/kill-switch/i);
   });
 
   it("retorna null para erros não relacionados a feature flag", () => {

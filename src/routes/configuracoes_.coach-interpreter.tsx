@@ -259,8 +259,10 @@ function extractDisabledMessage(err: unknown): string | null {
       : err && typeof err === "object" && "message" in err && typeof err.message === "string"
         ? err.message
         : "";
-  if (msg.includes("COACH_INTERPRETER_DISABLED")) return "Feature flag desligada para esta empresa.";
-  if (msg.includes("COACH_INTERPRETER_KILLED")) return "Kill-switch ativo (COACH_INTERPRETER_KILLSWITCH=true).";
+  if (msg.includes("COACH_INTERPRETER_DISABLED"))
+    return "Feature flag desligada para esta empresa.";
+  if (msg.includes("COACH_INTERPRETER_KILLED"))
+    return "Kill-switch ativo (COACH_INTERPRETER_KILLSWITCH=true).";
   return null;
 }
 
@@ -544,11 +546,7 @@ function ConversationView({ conversationId }: { conversationId: string }) {
           </div>
         </div>
 
-        <ChatTimeline
-          messages={messages}
-          conversationId={conv.id}
-          onChanged={invalidate}
-        />
+        <ChatTimeline messages={messages} conversationId={conv.id} onChanged={invalidate} />
         <MessageComposer conversationId={conv.id} onSent={invalidate} />
       </div>
 
@@ -600,11 +598,7 @@ function ChatTimeline({
           <MessageBubble
             key={m.id}
             message={m}
-            onRetry={
-              m.kind === "user_message"
-                ? () => retryM.mutate(m.id)
-                : undefined
-            }
+            onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
             retrying={retryM.isPending && retryM.variables === m.id}
           />
         ))
@@ -629,12 +623,7 @@ function MessageBubble({
       className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}
       data-message-kind={message.kind}
     >
-      <div
-        className={cn(
-          "max-w-[85%] rounded-lg border px-3 py-2 text-sm",
-          meta.bubble,
-        )}
-      >
+      <div className={cn("max-w-[85%] rounded-lg border px-3 py-2 text-sm", meta.bubble)}>
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80 mb-1">
           <meta.Icon className="h-3 w-3" />
           {meta.label}
@@ -956,13 +945,7 @@ function ConversationStatusBadge({ status }: { status: string }) {
   );
 }
 
-function ProposalCard({
-  proposal,
-  onChanged,
-}: {
-  proposal: ProposalRow;
-  onChanged: () => void;
-}) {
+function ProposalCard({ proposal, onChanged }: { proposal: ProposalRow; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const updateFn = useServerFn(updateCoachProposalFn);
   const discardFn = useServerFn(discardCoachProposalFn);
@@ -1040,9 +1023,13 @@ function ProposalCard({
             )}
           </div>
           <div className="text-[11px] text-muted-foreground mt-1 flex gap-2 flex-wrap">
-            <span>{COACH_CATEGORY_LABEL[proposal.category as CoachRuleCategory] ?? proposal.category}</span>
+            <span>
+              {COACH_CATEGORY_LABEL[proposal.category as CoachRuleCategory] ?? proposal.category}
+            </span>
             <span>·</span>
-            <span>{COACH_TYPE_LABEL[proposal.rule_type as CoachRuleType] ?? proposal.rule_type}</span>
+            <span>
+              {COACH_TYPE_LABEL[proposal.rule_type as CoachRuleType] ?? proposal.rule_type}
+            </span>
             <span>·</span>
             <span>Escopo {proposal.scope_kind}</span>
             <span>·</span>
@@ -1138,9 +1125,7 @@ function ProposalCard({
               <span className="text-muted-foreground">Regra existente:</span>{" "}
               <span className="font-medium">{dupWarn.title ?? dupWarn.rule_id ?? "—"}</span>
             </div>
-            {dupWarn.reason && (
-              <div className="text-muted-foreground mt-0.5">{dupWarn.reason}</div>
-            )}
+            {dupWarn.reason && <div className="text-muted-foreground mt-0.5">{dupWarn.reason}</div>}
           </div>
         </div>
       )}
