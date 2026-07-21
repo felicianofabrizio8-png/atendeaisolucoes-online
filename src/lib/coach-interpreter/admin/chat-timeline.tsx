@@ -1,11 +1,10 @@
 // Timeline de chat + bubbles + botão "Reinterpretar".
-// Fase 3.1c — Scroll inteligente:
-//  · Ao abrir uma conversa (mudança de conversationId) → posiciona no fim.
-//  · Nova mensagem do usuário (último kind = user_message) → fim.
-//  · Retry bem-sucedido → fim.
-//  · Nova mensagem qualquer → auto-scroll SÓ se o usuário estiver próximo do fim.
-//  · Botão "Ir para o final" aparece quando o usuário está distante.
-//  · Refs estáveis + cleanup de listener; sem loop de render/scroll.
+// Fase 3.1b · Sub-rodada (d):
+//   · Retry por-mensagem com useMutation local — permite paralelismo
+//     e isola loading/erro por message_id.
+//   · aria-live para anúncios de retry.
+//   · Botão retry com min-h suficiente para tap-target.
+// Fase 3.1c — Scroll inteligente preservado (auto-scroll, ir-para-o-fim).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -66,9 +65,7 @@ const DEFAULT_KIND_META: KindMeta = {
   bubble: "bg-muted border-border",
 };
 
-/** Distância (px) até o fim para considerar "próximo do fim". */
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
-/** Distância (px) para exibir o botão "Ir para o final". */
 const SHOW_JUMP_BUTTON_THRESHOLD_PX = 200;
 
 function isNearBottomLocal(
@@ -83,7 +80,6 @@ export function ChatTimeline({
   messages,
   conversationId,
   onChanged,
-  /** Incrementado externamente após envios do composer bem-sucedidos → força scroll ao fim. */
   scrollBumpToken = 0,
 }: {
   messages: MessageRow[];
@@ -92,7 +88,7 @@ export function ChatTimeline({
   scrollBumpToken?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const forceScrollNextRef = useRef<boolean>(true); // primeira renderização
+  const forceScrollNextRef = useRef<boolean>(true);
   const lastMessageCountRef = useRef<number>(messages.length);
   const lastConversationIdRef = useRef<string>(conversationId);
   const [showJumpButton, setShowJumpButton] = useState(false);
@@ -107,19 +103,11 @@ export function ChatTimeline({
     }
   }, []);
 
-  const retryFn = useServerFn(retryCoachInterpretationFn);
-  const retryM = useMutation({
-    mutationFn: (userMessageId: string) =>
-      retryFn({ data: { conversation_id: conversationId, user_message_id: userMessageId } }),
-    onSuccess: () => {
-      // Retry bem-sucedido → força posicionamento ao fim.
-      forceScrollNextRef.current = true;
-      scrollToBottom("smooth");
-      onChanged();
-    },
-  });
+  const forceScrollAndBump = useCallback(() => {
+    forceScrollNextRef.current = true;
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
 
-  // Detecção de scroll do usuário → atualiza visibilidade do botão de salto.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -128,12 +116,10 @@ export function ChatTimeline({
       setShowJumpButton(distance > SHOW_JUMP_BUTTON_THRESHOLD_PX);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    // Estado inicial coerente após primeiro layout.
     onScroll();
     return () => el.removeEventListener("scroll", onScroll);
   }, [conversationId]);
 
-  // Mudança de conversa → sempre posiciona no fim.
   useEffect(() => {
     if (lastConversationIdRef.current !== conversationId) {
       lastConversationIdRef.current = conversationId;
@@ -141,14 +127,12 @@ export function ChatTimeline({
     }
   }, [conversationId]);
 
-  // Bump externo (envio de mensagem do composer) → força scroll ao fim.
   useEffect(() => {
     if (scrollBumpToken > 0) {
       forceScrollNextRef.current = true;
     }
   }, [scrollBumpToken]);
 
-  // Decisão de scroll pós-render — useLayoutEffect evita "flash" de posição.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -159,11 +143,6 @@ export function ChatTimeline({
     const forced = forceScrollNextRef.current;
     const nearBottom = isNearBottomLocal(el);
 
-    // Regras (avaliadas em ordem):
-    //  1) Se marcado como "forçar" (abrir conversa, envio, retry, bump) → ao fim.
-    //  2) Se mensagem nova é do próprio usuário → ao fim (envio local).
-    //  3) Se nova mensagem chegou e o usuário está próximo do fim → ao fim.
-    //  4) Caso contrário (usuário lendo histórico) → NÃO interrompe.
     if (forced) {
       scrollToBottom("auto");
     } else if (messageAdded && lastKind === "user_message") {
@@ -174,15 +153,9 @@ export function ChatTimeline({
 
     forceScrollNextRef.current = false;
     lastMessageCountRef.current = nextCount;
-    // Atualiza visibilidade do botão coerente com o novo conteúdo.
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     setShowJumpButton(distance > SHOW_JUMP_BUTTON_THRESHOLD_PX);
   }, [messages, scrollToBottom]);
-
-  const retryError =
-    retryM.error && retryM.variables
-      ? { messageId: retryM.variables, safe: getSafeInterpreterError(retryM.error) }
-      : null;
 
   return (
     <div className="relative flex-1 min-h-0">
@@ -196,36 +169,27 @@ export function ChatTimeline({
             Nenhuma mensagem ainda. Envie a primeira abaixo.
           </div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id}>
-              <MessageBubble
+          messages.map((m) =>
+            m.kind === "user_message" ? (
+              <UserMessageWithRetry
+                key={m.id}
                 message={m}
-                onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
-                retrying={retryM.isPending && retryM.variables === m.id}
+                conversationId={conversationId}
+                onRetried={() => {
+                  forceScrollAndBump();
+                  onChanged();
+                }}
               />
-              {retryError && retryError.messageId === m.id && (
-                <div className="mt-2 flex justify-end">
-                  <div className="max-w-[85%]">
-                    <ErrorBanner
-                      title="Falha ao reinterpretar"
-                      error={retryError.safe}
-                      onRetry={() => retryM.mutate(m.id)}
-                      testId={`retry-error-${m.id}`}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))
+            ) : (
+              <MessageBubble key={m.id} message={m} />
+            ),
+          )
         )}
       </div>
       {showJumpButton && (
         <button
           type="button"
-          onClick={() => {
-            forceScrollNextRef.current = true;
-            scrollToBottom("smooth");
-          }}
+          onClick={forceScrollAndBump}
           data-testid="chat-jump-to-end"
           aria-label="Ir para o final"
           className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs shadow-sm hover:bg-accent"
@@ -233,6 +197,69 @@ export function ChatTimeline({
           <ArrowDown className="h-3.5 w-3.5" />
           Ir para o final
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Wrapper para mensagens do usuário: instancia uma mutation LOCAL de retry
+ * por-mensagem. Isso garante:
+ *   · loading independente por message_id (paralelismo de reinterpretações);
+ *   · erro isolado — falha em u1 não afeta u2;
+ *   · aria-live announce por mensagem.
+ */
+function UserMessageWithRetry({
+  message,
+  conversationId,
+  onRetried,
+}: {
+  message: MessageRow;
+  conversationId: string;
+  onRetried: () => void;
+}) {
+  const retryFn = useServerFn(retryCoachInterpretationFn);
+  const m = useMutation({
+    mutationFn: () =>
+      retryFn({ data: { conversation_id: conversationId, user_message_id: message.id } }),
+    onSuccess: () => {
+      onRetried();
+    },
+  });
+  const safe = m.error ? getSafeInterpreterError(m.error) : null;
+  return (
+    <div>
+      <MessageBubble
+        message={message}
+        onRetry={() => {
+          if (m.isPending) return;
+          m.mutate();
+        }}
+        retrying={m.isPending}
+      />
+      <div className="sr-only" role="status" aria-live="polite">
+        {m.isPending
+          ? `Reinterpretando mensagem ${message.id.slice(0, 8)}…`
+          : m.isSuccess
+            ? `Reinterpretação concluída para ${message.id.slice(0, 8)}.`
+            : safe
+              ? `Falha ao reinterpretar ${message.id.slice(0, 8)}: ${safe.message}`
+              : ""}
+      </div>
+      {safe && (
+        <div className="mt-2 flex justify-end">
+          <div className="max-w-[85%]">
+            <ErrorBanner
+              title="Falha ao reinterpretar"
+              error={safe}
+              onRetry={() => {
+                if (m.isPending) return;
+                m.mutate();
+              }}
+              testId={`retry-error-${message.id}`}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -269,7 +296,9 @@ function MessageBubble({
               type="button"
               onClick={onRetry}
               disabled={retrying}
-              className="text-[11px] inline-flex items-center gap-1 text-primary hover:underline disabled:opacity-50"
+              aria-label={`Reinterpretar mensagem ${message.id.slice(0, 8)}`}
+              aria-busy={retrying || undefined}
+              className="inline-flex items-center gap-1 min-h-8 px-2 rounded text-[11px] text-primary hover:underline disabled:opacity-50"
             >
               {retrying ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
