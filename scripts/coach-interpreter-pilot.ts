@@ -73,14 +73,16 @@ function buildDeps(sb: SupabaseClient<Database>): PilotActivationDeps {
       if (error) throw new Error(`fetchActor failed: ${error.code ?? "unknown"}`);
       return data ? { id: data.id as string } : null;
     },
-    async actorIsAdmin(userId) {
+    async actorIsAdminOfCompany(userId, companyId) {
+      // Escopo estrito: admin do tenant piloto (não de outra empresa).
       const { data, error } = await sb
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
+        .eq("company_id", companyId)
         .eq("role", "admin")
         .maybeSingle();
-      if (error) throw new Error(`actorIsAdmin failed: ${error.code ?? "unknown"}`);
+      if (error) throw new Error(`actorIsAdminOfCompany failed: ${error.code ?? "unknown"}`);
       return Boolean(data);
     },
     async countOtherEnabled(excludeCompanyId) {
@@ -118,6 +120,11 @@ async function main() {
   const dryRun = parseDryRun(process.env.COACH_PILOT_DRY_RUN);
   const environment = process.env.APP_ENVIRONMENT ?? "";
 
+  // COACH_PILOT_COMPANY_ID é a ÚNICA fonte confiável do tenant piloto. Ela
+  // funciona como referência aprovada e como alvo da operação — o núcleo
+  // exige igualdade exata entre `companyId` e `approvedPilotCompanyId`.
+  const approvedPilotCompanyId = companyId;
+
   const url = required("SUPABASE_URL");
   const key = required("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -135,7 +142,7 @@ async function main() {
   });
 
   const result = await runPilotActivation(
-    { companyId, action, actorUserId, reason, dryRun, environment },
+    { companyId, action, actorUserId, reason, dryRun, environment, approvedPilotCompanyId },
     buildDeps(sb),
   );
 

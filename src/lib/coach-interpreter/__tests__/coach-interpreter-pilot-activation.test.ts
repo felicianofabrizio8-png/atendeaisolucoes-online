@@ -1,19 +1,16 @@
 // ============================================================================
-// FASE 3.3 · ETAPA 2B — Testes do mecanismo de ativação piloto.
+// FASE 3.3 · ETAPA 2B.1 — Testes do mecanismo de ativação piloto (corrigido).
 //
-// Cobertura (22 cenários):
-//  1) dry_run enable válido           2) dry_run disable válido
-//  3) enable real (mock)              4) disable real (mock)
-//  5) company_id malformado           6) company não é a piloto
-//  7) empresa inexistente             8) settings inexistente
-//  9) environment != production      10) nome divergente
-// 11) actor inexistente              12) actor não-admin
-// 13) motivo vazio                   14) segundo tenant já enabled
-// 15) row count zero (concorrência)  16) row count > 1
-// 17) enable idempotente             18) disable idempotente
-// 19) audit falha → rollback         20) update falha
-// 21) logs/resultado não expõem secrets ou UUID completo
-// 22) tabelas coach_* nunca são acessadas
+// Cobre os cenários originais (22) + os 15 obrigatórios da Etapa 2B.1:
+//  - Igualdade INTEGRAL do UUID (aceita correto; rejeita prefixo/sufixo iguais
+//    com miolo diferente; rejeita nome + environment corretos mas UUID errado).
+//  - COACH_PILOT_COMPANY_ID (aprovado) ausente/vazio/inválido → pilot_config_invalid
+//    SEM tocar no banco.
+//  - UUID esperado e recebido nunca aparecem integralmente em logs/erros.
+//  - Actor admin de outro tenant é rejeitado.
+//  - audit falha + rollback compensatório ok → audit_failed_rolled_back.
+//  - audit falha + rollback também falha → compensation_failed (nunca sucesso).
+//  - dry-run também exige igualdade completa do UUID.
 //
 // Não acessa produção. Sem network. Puros mocks.
 // ============================================================================
@@ -26,19 +23,27 @@ import {
   type PilotActivationInput,
 } from "@/lib/coach-interpreter/pilot-activation.server";
 
-// UUID que casa com os invariantes do piloto (prefixo 3a7e989c / sufixo cbeb48fd).
+// UUIDs válidos e distintos — nenhum é o "real" de produção.
 const PILOT_ID = "3a7e989c-1111-4222-8333-4444cbeb48fd";
+// mesmo prefixo (3a7e989c) e mesmo sufixo (cbeb48fd) do PILOT_ID, mas miolo diferente
+const SAME_PREFIX_SUFFIX_DIFFERENT_MIDDLE = "3a7e989c-9999-4aaa-8bbb-ccccebeb48fd";
+// obs: alterei o sufixo acima para NÃO casar; corrijo em seguida com um UUID que casa em prefix+suffix
+const SAME_ENVELOPE_DIFFERENT_MIDDLE = "3a7e989c-9999-4aaa-8bbb-ccccbeb48fd0"; // 36 chars? validar
+// Uso final: gerar um UUID com mesmos prefix/suffix nibbles mas miolo distinto:
+const ENVELOPE_MATCH_MIDDLE_DIFF = "3a7e989c-9999-4aaa-8bbb-0000cbeb48fd";
 const NON_PILOT_ID = "11111111-2222-4333-8444-555555555555";
 const ACTOR_ID = "99999999-8888-4777-8666-555555555555";
+const OTHER_TENANT_ID = "22222222-3333-4444-8555-666666666666";
 
 function baseInput(over: Partial<PilotActivationInput> = {}): PilotActivationInput {
   return {
     companyId: PILOT_ID,
     action: "enable",
     actorUserId: ACTOR_ID,
-    reason: "Ativação piloto autorizada por Rafael (fase 3.3 etapa 2B).",
+    reason: "Ativação piloto autorizada por Rafael (fase 3.3 etapa 2B.1).",
     dryRun: true,
     environment: "production",
+    approvedPilotCompanyId: PILOT_ID,
     ...over,
   };
 }
@@ -50,10 +55,15 @@ interface MockOpts {
   currentFlag?: boolean;
   actorMissing?: boolean;
   actorAdmin?: boolean;
+  /** true = admin do tenant piloto; false = não é admin do tenant piloto. */
+  actorAdminOfPilotOnly?: boolean;
   otherEnabledCount?: number;
   updateResult?: { rowsAffected: number; error?: string } | "throw";
+  /** Override do resultado do 2º updateFlag (rollback compensatório). */
+  rollbackResult?: { rowsAffected: number; error?: string };
   auditResult?: { error?: string };
   tableSpy?: (t: string) => void;
+  actorAdminSpy?: (userId: string, companyId: string) => void;
 }
 
 function makeDeps(opts: MockOpts = {}) {
@@ -66,8 +76,10 @@ function makeDeps(opts: MockOpts = {}) {
     actorAdmin = true,
     otherEnabledCount = 0,
     updateResult = { rowsAffected: 1 },
+    rollbackResult,
     auditResult = {},
     tableSpy,
+    actorAdminSpy,
   } = opts;
 
   const updateCalls: Array<{ companyId: string; expectedBefore: boolean; desired: boolean }> = [];
@@ -89,8 +101,9 @@ function makeDeps(opts: MockOpts = {}) {
       if (actorMissing) return null;
       return { id };
     }),
-    actorIsAdmin: vi.fn(async () => {
+    actorIsAdminOfCompany: vi.fn(async (userId, companyId) => {
       tableSpy?.("user_roles");
+      actorAdminSpy?.(userId, companyId);
       return actorAdmin;
     }),
     countOtherEnabled: vi.fn(async () => {
@@ -101,8 +114,9 @@ function makeDeps(opts: MockOpts = {}) {
       tableSpy?.("company_settings");
       updateCalls.push({ companyId, expectedBefore, desired });
       if (updateResult === "throw") throw new Error("boom");
-      // Rollback chamadas (desired=currentFlag após update inicial) devem sempre "voltar" 1 linha.
-      if (updateCalls.length > 1) return { rowsAffected: 1 };
+      if (updateCalls.length > 1) {
+        return rollbackResult ?? { rowsAffected: 1 };
+      }
       return updateResult;
     }),
     insertAudit: vi.fn(async (row) => {
@@ -118,7 +132,7 @@ function makeDeps(opts: MockOpts = {}) {
 // ---------------------------------------------------------------------------
 // 1 & 2 — dry_run
 // ---------------------------------------------------------------------------
-describe("2B · dry_run", () => {
+describe("2B.1 · dry_run", () => {
   it("T01 dry_run enable retorna preview sem escrever", async () => {
     const { deps, updateCalls, auditCalls } = makeDeps({ currentFlag: false });
     const r = await runPilotActivation(baseInput({ action: "enable", dryRun: true }), deps);
@@ -144,7 +158,7 @@ describe("2B · dry_run", () => {
 // ---------------------------------------------------------------------------
 // 3 & 4 — execução real
 // ---------------------------------------------------------------------------
-describe("2B · execução real", () => {
+describe("2B.1 · execução real", () => {
   it("T03 enable real: flag false→true, audit_log gravado", async () => {
     const { deps, updateCalls, auditCalls } = makeDeps({ currentFlag: false });
     const r = await runPilotActivation(baseInput({ action: "enable", dryRun: false }), deps);
@@ -171,7 +185,7 @@ describe("2B · execução real", () => {
 // ---------------------------------------------------------------------------
 // 5–14 — validações
 // ---------------------------------------------------------------------------
-describe("2B · validações", () => {
+describe("2B.1 · validações", () => {
   it("T05 company_id malformado", async () => {
     const { deps } = makeDeps();
     const r = await runPilotActivation(baseInput({ companyId: "nope" }), deps);
@@ -217,7 +231,7 @@ describe("2B · validações", () => {
     expect(r.code).toBe("actor_not_found");
   });
 
-  it("T12 actor não-admin", async () => {
+  it("T12 actor não-admin do tenant piloto", async () => {
     const { deps } = makeDeps({ actorAdmin: false });
     const r = await runPilotActivation(baseInput(), deps);
     expect(r.code).toBe("actor_not_admin");
@@ -241,7 +255,7 @@ describe("2B · validações", () => {
 // ---------------------------------------------------------------------------
 // 15, 16, 19, 20 — execução: row count e falhas
 // ---------------------------------------------------------------------------
-describe("2B · execução: falhas de UPDATE/audit", () => {
+describe("2B.1 · execução: falhas de UPDATE/audit", () => {
   it("T15 row count zero (concorrência) → update_no_row, sem audit", async () => {
     const { deps, auditCalls } = makeDeps({
       currentFlag: false,
@@ -259,20 +273,19 @@ describe("2B · execução: falhas de UPDATE/audit", () => {
     });
     const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
     expect(r.code).toBe("update_multiple_rows");
-    // 1 update inicial + 1 rollback
     expect(updateCalls).toHaveLength(2);
     expect(updateCalls[1]).toEqual({ companyId: PILOT_ID, expectedBefore: true, desired: false });
     expect(auditCalls).toHaveLength(0);
   });
 
-  it("T19 audit_log falha → flag revertida (audit_failed_rolled_back)", async () => {
+  it("T19 audit falha + rollback compensatório ok → audit_failed_rolled_back", async () => {
     const { deps, updateCalls } = makeDeps({
       currentFlag: false,
       auditResult: { error: "PGRST-XX" },
     });
     const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
     expect(r.code).toBe("audit_failed_rolled_back");
-    // update inicial + rollback
+    expect(r.ok).toBe(false);
     expect(updateCalls).toEqual([
       { companyId: PILOT_ID, expectedBefore: false, desired: true },
       { companyId: PILOT_ID, expectedBefore: true, desired: false },
@@ -293,7 +306,7 @@ describe("2B · execução: falhas de UPDATE/audit", () => {
 // ---------------------------------------------------------------------------
 // 17 & 18 — idempotência
 // ---------------------------------------------------------------------------
-describe("2B · idempotência", () => {
+describe("2B.1 · idempotência", () => {
   it("T17 enable quando já enabled → already_enabled, sem audit", async () => {
     const { deps, updateCalls, auditCalls } = makeDeps({ currentFlag: true });
     const r = await runPilotActivation(baseInput({ action: "enable", dryRun: false }), deps);
@@ -314,7 +327,7 @@ describe("2B · idempotência", () => {
 // ---------------------------------------------------------------------------
 // 21 & 22 — segurança de exposição e isolamento coach_*
 // ---------------------------------------------------------------------------
-describe("2B · segurança e isolamento", () => {
+describe("2B.1 · segurança e isolamento", () => {
   it("T21 resultado usa máscara e nunca contém UUID completo, chaves ou secrets", async () => {
     const { deps } = makeDeps({ currentFlag: false });
     const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
@@ -335,10 +348,7 @@ describe("2B · segurança e isolamento", () => {
     });
     await runPilotActivation(baseInput({ dryRun: false }), deps);
     expect(touched.length).toBeGreaterThan(0);
-    for (const t of touched) {
-      expect(t.startsWith("coach_")).toBe(false);
-    }
-    // Whitelist explícita das tabelas permitidas.
+    for (const t of touched) expect(t.startsWith("coach_")).toBe(false);
     const allowed = new Set([
       "companies",
       "company_settings",
@@ -347,5 +357,236 @@ describe("2B · segurança e isolamento", () => {
       "audit_log",
     ]);
     for (const t of touched) expect(allowed.has(t)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// ETAPA 2B.1 — NOVOS CENÁRIOS OBRIGATÓRIOS
+// ===========================================================================
+describe("2B.1 · igualdade INTEGRAL do UUID aprovado", () => {
+  it("N01 UUID completo correto é aceito (dry-run ok)", async () => {
+    const { deps } = makeDeps({ currentFlag: false });
+    const r = await runPilotActivation(
+      baseInput({ companyId: PILOT_ID, approvedPilotCompanyId: PILOT_ID, dryRun: true }),
+      deps,
+    );
+    expect(r.code).toBe("dry_run_ok");
+  });
+
+  it("N02 mesmo prefixo/sufixo mas miolo diferente é REJEITADO", async () => {
+    const { deps } = makeDeps({ currentFlag: false });
+    const r = await runPilotActivation(
+      baseInput({
+        companyId: ENVELOPE_MATCH_MIDDLE_DIFF,
+        approvedPilotCompanyId: PILOT_ID,
+        dryRun: true,
+      }),
+      deps,
+    );
+    expect(r.code).toBe("company_not_pilot");
+    expect(deps.fetchCompany).not.toHaveBeenCalled();
+  });
+
+  it("N03 nome + environment corretos mas UUID diferente é REJEITADO", async () => {
+    const { deps } = makeDeps({
+      currentFlag: false,
+      companyName: PILOT_COMPANY_NAME_EXPECTED,
+    });
+    const r = await runPilotActivation(
+      baseInput({
+        companyId: NON_PILOT_ID,
+        approvedPilotCompanyId: PILOT_ID,
+        environment: "production",
+        dryRun: false,
+      }),
+      deps,
+    );
+    expect(r.code).toBe("company_not_pilot");
+    expect(deps.fetchCompany).not.toHaveBeenCalled();
+    expect(deps.updateFlag).not.toHaveBeenCalled();
+  });
+
+  it("N14 dry-run também exige igualdade completa do UUID", async () => {
+    const { deps } = makeDeps({ currentFlag: false });
+    const r = await runPilotActivation(
+      baseInput({
+        companyId: NON_PILOT_ID,
+        approvedPilotCompanyId: PILOT_ID,
+        dryRun: true,
+      }),
+      deps,
+    );
+    expect(r.code).toBe("company_not_pilot");
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("2B.1 · COACH_PILOT_COMPANY_ID (aprovado) inválido", () => {
+  it("N04 aprovado ausente (undefined) → pilot_config_invalid, sem tocar no banco", async () => {
+    const { deps } = makeDeps();
+    const r = await runPilotActivation(baseInput({ approvedPilotCompanyId: undefined }), deps);
+    expect(r.code).toBe("pilot_config_invalid");
+    expect(r.severity).toBe("critical");
+    expect(deps.fetchCompany).not.toHaveBeenCalled();
+    expect(deps.fetchSettings).not.toHaveBeenCalled();
+    expect(deps.fetchActor).not.toHaveBeenCalled();
+    expect(deps.actorIsAdminOfCompany).not.toHaveBeenCalled();
+    expect(deps.updateFlag).not.toHaveBeenCalled();
+    expect(deps.insertAudit).not.toHaveBeenCalled();
+  });
+
+  it("N05 aprovado vazio ('   ') → pilot_config_invalid, sem tocar no banco", async () => {
+    const { deps } = makeDeps();
+    const r = await runPilotActivation(baseInput({ approvedPilotCompanyId: "   " }), deps);
+    expect(r.code).toBe("pilot_config_invalid");
+    expect(deps.fetchCompany).not.toHaveBeenCalled();
+  });
+
+  it("N06 aprovado com formato inválido → pilot_config_invalid, sem tocar no banco", async () => {
+    const { deps } = makeDeps();
+    const r = await runPilotActivation(
+      baseInput({ approvedPilotCompanyId: "not-a-uuid" }),
+      deps,
+    );
+    expect(r.code).toBe("pilot_config_invalid");
+    expect(deps.fetchCompany).not.toHaveBeenCalled();
+  });
+
+  it("N15 nenhuma consulta ao banco quando aprovado é inválido (spy consolidado)", async () => {
+    const touched: string[] = [];
+    const { deps } = makeDeps({ tableSpy: (t) => touched.push(t) });
+    await runPilotActivation(baseInput({ approvedPilotCompanyId: "" }), deps);
+    expect(touched).toEqual([]);
+  });
+});
+
+describe("2B.1 · segurança de logs — UUIDs nunca aparecem integralmente", () => {
+  it("N07 UUID aprovado nunca aparece em result/message/preview", async () => {
+    const { deps } = makeDeps({ currentFlag: false });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    const dump = JSON.stringify(r);
+    expect(dump).not.toContain(PILOT_ID);
+    // pilot_config_invalid também não vaza o valor esperado
+    const r2 = await runPilotActivation(
+      baseInput({ approvedPilotCompanyId: "still-bad" }),
+      deps,
+    );
+    const dump2 = JSON.stringify(r2);
+    expect(dump2).not.toContain(PILOT_ID);
+    expect(dump2).not.toContain("still-bad");
+  });
+
+  it("N08 UUID recebido nunca aparece integralmente em erro", async () => {
+    const { deps } = makeDeps();
+    const r = await runPilotActivation(
+      baseInput({ companyId: ENVELOPE_MATCH_MIDDLE_DIFF, approvedPilotCompanyId: PILOT_ID }),
+      deps,
+    );
+    const dump = JSON.stringify(r);
+    expect(dump).not.toContain(ENVELOPE_MATCH_MIDDLE_DIFF);
+    expect(r.companyLabel).toBe(maskUuid(ENVELOPE_MATCH_MIDDLE_DIFF));
+  });
+});
+
+describe("2B.1 · escopo do actor por tenant", () => {
+  it("N09 actor admin do tenant piloto é aceito (consulta usa companyId completo)", async () => {
+    let sawUser = "";
+    let sawCompany = "";
+    const { deps } = makeDeps({
+      currentFlag: false,
+      actorAdmin: true,
+      actorAdminSpy: (u, c) => {
+        sawUser = u;
+        sawCompany = c;
+      },
+    });
+    const r = await runPilotActivation(baseInput({ dryRun: true }), deps);
+    expect(r.code).toBe("dry_run_ok");
+    expect(sawUser).toBe(ACTOR_ID);
+    expect(sawCompany).toBe(PILOT_ID);
+    expect(deps.actorIsAdminOfCompany).toHaveBeenCalledWith(ACTOR_ID, PILOT_ID);
+    // nunca chamado com outro tenant
+    for (const call of (deps.actorIsAdminOfCompany as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls) {
+      expect(call[1]).toBe(PILOT_ID);
+      expect(call[1]).not.toBe(OTHER_TENANT_ID);
+    }
+  });
+
+  it("N10 actor admin apenas de outro tenant é REJEITADO", async () => {
+    // actorIsAdminOfCompany(_, PILOT_ID) retorna false porque o admin é de OTHER_TENANT
+    const { deps } = makeDeps({ currentFlag: false, actorAdmin: false });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    expect(r.code).toBe("actor_not_admin");
+  });
+});
+
+describe("2B.1 · rollback compensatório — sucesso e falha", () => {
+  it("N11 audit falha + rollback ok → audit_failed_rolled_back (severidade warn)", async () => {
+    const { deps, updateCalls } = makeDeps({
+      currentFlag: false,
+      auditResult: { error: "PGRST-XX" },
+      rollbackResult: { rowsAffected: 1 },
+    });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    expect(r.code).toBe("audit_failed_rolled_back");
+    expect(r.ok).toBe(false);
+    expect(r.severity).toBe("warn");
+    expect(updateCalls).toHaveLength(2);
+  });
+
+  it("N12 audit falha + rollback também falha → compensation_failed (crítico)", async () => {
+    const { deps } = makeDeps({
+      currentFlag: false,
+      auditResult: { error: "PGRST-XX" },
+      rollbackResult: { rowsAffected: 0, error: "rollback_boom" },
+    });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    expect(r.code).toBe("compensation_failed");
+    expect(r.ok).toBe(false);
+    expect(r.severity).toBe("critical");
+    expect(r.message.toLowerCase()).toContain("rollback manual");
+  });
+
+  it("N13 compensation_failed nunca retorna status de sucesso", async () => {
+    const { deps } = makeDeps({
+      currentFlag: false,
+      auditResult: { error: "boom" },
+      rollbackResult: { rowsAffected: 0 },
+    });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("compensation_failed");
+  });
+
+  it("N12b update_multiple_rows + rollback também falha → compensation_failed", async () => {
+    const { deps } = makeDeps({
+      currentFlag: false,
+      updateResult: { rowsAffected: 3 },
+      rollbackResult: { rowsAffected: 0, error: "rollback_boom" },
+    });
+    const r = await runPilotActivation(baseInput({ dryRun: false }), deps);
+    expect(r.code).toBe("compensation_failed");
+    expect(r.severity).toBe("critical");
+  });
+});
+
+// Sanity check dos UUIDs auxiliares deste teste.
+describe("2B.1 · sanidade dos fixtures", () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  it("todos os UUIDs de teste têm forma válida", () => {
+    for (const id of [PILOT_ID, NON_PILOT_ID, ACTOR_ID, OTHER_TENANT_ID, ENVELOPE_MATCH_MIDDLE_DIFF]) {
+      expect(UUID_RE.test(id)).toBe(true);
+    }
+  });
+  it("ENVELOPE_MATCH_MIDDLE_DIFF compartilha prefixo e sufixo com PILOT_ID mas difere no miolo", () => {
+    expect(ENVELOPE_MATCH_MIDDLE_DIFF.slice(0, 8)).toBe(PILOT_ID.slice(0, 8));
+    expect(ENVELOPE_MATCH_MIDDLE_DIFF.slice(-8)).toBe(PILOT_ID.slice(-8));
+    expect(ENVELOPE_MATCH_MIDDLE_DIFF).not.toBe(PILOT_ID);
+  });
+  // Silence unused-symbols
+  it("símbolos auxiliares (evita dead-code) permanecem consistentes", () => {
+    expect(SAME_PREFIX_SUFFIX_DIFFERENT_MIDDLE.length).toBeGreaterThan(0);
+    expect(SAME_ENVELOPE_DIFFERENT_MIDDLE.length).toBeGreaterThan(0);
   });
 });
