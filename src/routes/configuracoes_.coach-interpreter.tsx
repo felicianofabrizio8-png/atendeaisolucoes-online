@@ -217,12 +217,15 @@ function InterpreterShell() {
     retry: false,
   });
 
-  // Feature flag detection — as server fns lançam COACH_INTERPRETER_DISABLED
-  // quando a flag está desligada. Reconhecemos essa string para renderizar o
-  // estado "recurso desabilitado" sem tocar no backend.
-  const disabledMessage = extractDisabledMessage(listQ.error);
-  if (disabledMessage) {
-    return <FeatureDisabledScreen reason={disabledMessage} />;
+  // Feature flag / erros — passamos qualquer error do listQ pelo helper
+  // seguro `getSafeInterpreterError`, que devolve { code, message, disabled,
+  // killed, ... }. NUNCA usamos `String(err)` ou `.toString()` aqui.
+  const listSafe: SafeInterpreterError | null = listQ.error
+    ? getSafeInterpreterError(listQ.error)
+    : null;
+
+  if (listSafe?.disabled || listSafe?.killed) {
+    return <FeatureDisabledScreen reason={listSafe.message} />;
   }
 
   return (
@@ -244,12 +247,7 @@ function InterpreterShell() {
         </div>
         <NewConversationButton
           onCreated={(id) => setSelectedId(id)}
-          onError={(msg) => {
-            if (extractDisabledMessage({ message: msg })) {
-              // Recarrega listagem para acionar tela de desabilitado.
-              listQ.refetch();
-            }
-          }}
+          onDisabled={() => listQ.refetch()}
         />
       </header>
 
@@ -257,6 +255,7 @@ function InterpreterShell() {
         <ConversationsPanel
           conversations={listQ.data?.conversations ?? []}
           loading={listQ.isLoading}
+          error={listSafe}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onRefresh={() => listQ.refetch()}
@@ -277,20 +276,16 @@ function InterpreterShell() {
 }
 
 // ------------------------------------------------------------------
-// Feature flag disabled screen
+// Feature flag disabled screen (mantido; agora consumido a partir do
+// contrato SafeInterpreterError).
 // ------------------------------------------------------------------
+/**
+ * @deprecated 3.1a — use `getSafeInterpreterError`. Mantido apenas para
+ * compatibilidade com testes existentes que checam labels de flag.
+ */
 function extractDisabledMessage(err: unknown): string | null {
-  if (!err) return null;
-  const msg =
-    typeof err === "string"
-      ? err
-      : err && typeof err === "object" && "message" in err && typeof err.message === "string"
-        ? err.message
-        : "";
-  if (msg.includes("COACH_INTERPRETER_DISABLED"))
-    return "Feature flag desligada para esta empresa.";
-  if (msg.includes("COACH_INTERPRETER_KILLED"))
-    return "Kill-switch ativo (COACH_INTERPRETER_KILLSWITCH=true).";
+  const safe = getSafeInterpreterError(err);
+  if (safe.disabled || safe.killed) return safe.message;
   return null;
 }
 
