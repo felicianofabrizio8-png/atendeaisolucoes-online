@@ -145,7 +145,7 @@ function renderLayer(layer: SceneLayer, width: number, height: number, index: nu
       let rectY = 0, rectH = height;
       if (layer.y === "top") { rectY = 0; rectH = ((layer.height ?? 30) / 100) * height; }
       else if (layer.y === "bottom") { rectH = ((layer.height ?? 30) / 100) * height; rectY = height - rectH; }
-      return `<rect x="0" y="${rectY}" width="${width}" height="${rectH}" fill="${layer.color}" opacity="${opacity}"/>`;
+      return `<rect x="0" y="${rectY}" width="${width}" height="${rectH}" fill="${attr(layer.color)}" opacity="${opacity}"/>`;
     }
     case "angular": {
       // Pontos em coord 0..100. Escala para width/height mantendo aspect.
