@@ -1522,7 +1522,7 @@ export const __test__ = {
   KIND_META,
   // Componentes internos expostos exclusivamente para a bateria de testes
   // de interação da Fase 3.1a. NÃO consumir fora de testes.
-  InterpreterAdminPage,
+  InterpreterAdminPage: AdminPageBody,
   InterpreterShell,
   ConversationsPanel,
   NewConversationButton,
