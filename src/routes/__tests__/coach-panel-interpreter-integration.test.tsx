@@ -51,40 +51,43 @@ vi.mock("@tanstack/react-router", () => ({
 
 // Supabase client — CoachPanel usa .from(...).select/update e .auth.getSession/.rpc.
 // Só precisamos que as chamadas iniciais de carga não explodam.
-const supabaseFromMock = vi.fn(() => ({
-  select: () => ({
-    eq: () => ({
+const { supabaseFromMock, authMock, adminState } = vi.hoisted(() => {
+  const from = () => ({
+    select: () => ({
       eq: () => ({
-        order: () => ({
-          order: () => Promise.resolve({ data: [] }),
-          limit: () => Promise.resolve({ data: [] }),
+        eq: () => ({
+          order: () => ({
+            order: () => Promise.resolve({ data: [] }),
+            limit: () => Promise.resolve({ data: [] }),
+          }),
         }),
       }),
     }),
-  }),
-  update: () => ({ eq: () => Promise.resolve({ data: null }) }),
-}));
+    update: () => ({ eq: () => Promise.resolve({ data: null }) }),
+  });
+  return {
+    supabaseFromMock: Object.assign(from, { calls: 0 }),
+    authMock: { user: { id: "user-1" }, profile: { company_id: "co-1" }, loading: false },
+    adminState: { isAdmin: false },
+  };
+});
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: supabaseFromMock,
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      getSession: () => Promise.resolve({ data: { session: null } }),
     },
-    rpc: vi.fn().mockResolvedValue({ data: false }),
+    rpc: () => Promise.resolve({ data: false }),
   },
 }));
 
-// useAuth — perfil mínimo com company_id (necessário para useIsAdmin habilitar).
-const authMock = { user: { id: "user-1" }, profile: { company_id: "co-1" }, loading: false };
 vi.mock("@/auth/AuthContext", () => ({
   useAuth: () => authMock,
 }));
 
-// useIsAdmin — controlado por teste; começa false, é reatribuído em describes.
-let isAdminMock = false;
 vi.mock("@/hooks/useIsAdmin", () => ({
-  useIsAdmin: () => ({ isAdmin: isAdminMock, isLoading: false }),
+  useIsAdmin: () => ({ isAdmin: adminState.isAdmin, isLoading: false }),
 }));
 
 // Import após mocks.
