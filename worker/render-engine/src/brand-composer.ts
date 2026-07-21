@@ -216,11 +216,38 @@ export async function composeBrandLayers(
           scene_applies_logo: sceneAppliesLogo,
         });
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Post-mortem: salva o SVG cru + trecho ao redor do offset reportado
+        // pelo resvg para diagnosticar atributos malformados (ex.: aspas não
+        // escapadas em font-family, dataURI, cores).
+        let dumpPath: string | null = null;
+        let excerpt: string | null = null;
+        try {
+          const built = buildSceneOverlaySvg({
+            width, height, scene,
+            layout: overlayLayout as unknown as VideoLayout,
+            content: {
+              headline: content.headline,
+              supportingText: content.supportingText,
+              ctaText: content.ctaText,
+            },
+            logo: null, // sem dataURI enorme no dump para facilitar leitura
+          });
+          dumpPath = path.join(workDir, "scene-overlay-invalid.svg");
+          await writeFile(dumpPath, built, "utf8");
+          const m = message.match(/(\d+):(\d+)/);
+          if (m) {
+            const offset = Math.max(0, parseInt(m[2], 10) - 60);
+            excerpt = built.slice(offset, offset + 160);
+          }
+        } catch { /* best-effort dump */ }
         log.warn("scene_render_fallback", {
           job_id: jobId,
           template: scene.id,
           reason: "rasterize_failed",
-          message: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+          message: message.slice(0, 200),
+          svg_dump_path: dumpPath,
+          svg_excerpt: excerpt,
         });
       }
     } else {
