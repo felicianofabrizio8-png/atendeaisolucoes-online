@@ -122,8 +122,8 @@ export async function interpretCoachMessage(
 
   let attempts = 0;
   let repaired = false;
-  let provider = COACH_INTERPRETER_PROVIDER;
-  let model = COACH_INTERPRETER_MODEL;
+  let provider: string = COACH_INTERPRETER_PROVIDER;
+  let model: string = COACH_INTERPRETER_MODEL;
   let tokensIn = 0;
   let tokensOut = 0;
   let latencyMs = 0;

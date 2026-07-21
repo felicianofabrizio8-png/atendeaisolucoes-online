@@ -291,11 +291,11 @@ export async function updateCoachProposal(
     scope_ref: Record<string, unknown>;
   }>,
 ): Promise<void> {
-  const update: Record<string, unknown> = {
+  const update = {
     ...patch,
-    status: "edited",
+    status: "edited" as const,
     updated_at: new Date().toISOString(),
-  };
+  } as unknown as Database["public"]["Tables"]["coach_rule_proposals"]["Update"];
   const { error } = await sb
     .from("coach_rule_proposals")
     .update(update)
