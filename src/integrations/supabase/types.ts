@@ -1278,11 +1278,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "coach_rule_versions_rule_id_fkey"
-            columns: ["rule_id"]
+            foreignKeyName: "coach_rule_versions_rule_company_fk"
+            columns: ["rule_id", "company_id"]
             isOneToOne: false
             referencedRelation: "coach_rules"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "company_id"]
           },
         ]
       }
@@ -1352,11 +1352,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "coach_rules_active_version_fk"
-            columns: ["active_version_id"]
+            foreignKeyName: "coach_rules_active_version_composite_fk"
+            columns: ["active_version_id", "id", "company_id"]
             isOneToOne: false
             referencedRelation: "coach_rule_versions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "rule_id", "company_id"]
           },
           {
             foreignKeyName: "coach_rules_company_id_fkey"
