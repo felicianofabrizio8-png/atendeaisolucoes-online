@@ -384,6 +384,13 @@ function ConversationsPanel({
           <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando conversas…
           </div>
+        ) : error ? (
+          <ErrorBanner
+            title="Falha ao carregar conversas"
+            error={error}
+            onRetry={onRefresh}
+            testId="conversations-error"
+          />
         ) : pageRows.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             Nenhuma conversa encontrada.
