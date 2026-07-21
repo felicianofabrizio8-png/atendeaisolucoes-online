@@ -108,21 +108,33 @@ export const Route = createFileRoute("/configuracoes_/coach-interpreter")({
 });
 
 // ------------------------------------------------------------------
-// Guard admin — mesma estratégia da tela de Regras do Coach (Fase 1).
+// Guard admin — 3.1a: sem flash. Enquanto (a) auth ainda carrega e user é
+// desconhecido, (b) status de admin está sendo consultado, renderizamos
+// apenas o spinner. O redirect para /login é agendado por useEffect no
+// próximo tick — o spinner cobre esse intervalo.
 // ------------------------------------------------------------------
 function InterpreterAdminPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
 
   useEffect(() => {
-    if (!user) navigate({ to: "/login" });
-  }, [user, navigate]);
+    if (!authLoading && !user) navigate({ to: "/login" });
+  }, [authLoading, user, navigate]);
 
-  if (adminLoading) {
+  // Guard "sem flash": mostra spinner enquanto qualquer sinal de auth/admin
+  // estiver indeterminado. Só decide após ambos concluírem.
+  if (authLoading || !user || adminLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div
+        className="flex items-center justify-center h-full"
+        data-testid="interpreter-guard-loading"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="sr-only">Verificando acesso…</span>
       </div>
     );
   }
