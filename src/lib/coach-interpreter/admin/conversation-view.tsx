@@ -7,12 +7,7 @@ import { Loader2 } from "lucide-react";
 import { getCoachConversationFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
 import { getSafeInterpreterError } from "@/lib/coach-interpreter/errors";
 import { DEFAULT_FILTERS } from "./constants";
-import type {
-  ConversationRow,
-  MessageRow,
-  ProposalFilters,
-  ProposalRow,
-} from "./types";
+import type { ConversationRow, MessageRow, ProposalFilters, ProposalRow } from "./types";
 import { ChatTimeline } from "./chat-timeline";
 import { MessageComposer } from "./message-composer";
 import { ProposalFilterBar } from "./proposal-filters";
@@ -21,7 +16,6 @@ import { ConversationStatusBadge } from "./status-badges";
 import { ErrorBanner } from "./error-banner";
 import { FeatureDisabledScreen } from "./feature-disabled-screen";
 import { formatDateTime } from "./helpers";
-
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient();
@@ -45,7 +39,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
     invalidate();
     setScrollBumpToken((t) => t + 1);
   };
-
 
   const safe = q.error ? getSafeInterpreterError(q.error) : null;
   if (safe?.disabled || safe?.killed) return <FeatureDisabledScreen reason={safe.message} />;
@@ -110,7 +103,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
           scrollBumpToken={scrollBumpToken}
         />
         <MessageComposer conversationId={conv.id} onSent={invalidateAndBump} />
-
       </div>
 
       <aside className="min-h-0 overflow-y-auto p-3">

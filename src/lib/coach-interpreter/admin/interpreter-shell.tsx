@@ -9,10 +9,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { listCoachConversationsFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
-import {
-  getSafeInterpreterError,
-  type SafeInterpreterError,
-} from "@/lib/coach-interpreter/errors";
+import { getSafeInterpreterError, type SafeInterpreterError } from "@/lib/coach-interpreter/errors";
 import type { ConversationRow } from "./types";
 import {
   ConversationsPanel,

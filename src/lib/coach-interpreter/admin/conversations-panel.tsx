@@ -16,10 +16,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Loader2, MessageSquare, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createCoachConversationFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
-import {
-  getSafeInterpreterError,
-  type SafeInterpreterError,
-} from "@/lib/coach-interpreter/errors";
+import { getSafeInterpreterError, type SafeInterpreterError } from "@/lib/coach-interpreter/errors";
 import { PAGE_SIZE } from "./constants";
 import type { ConversationRow } from "./types";
 import { ConversationStatusBadge } from "./status-badges";
@@ -171,9 +168,7 @@ export function ConversationsPanel({
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-1 flex gap-2 flex-wrap">
                       <span>
-                        {formatDateTime(
-                          c.updated_at ?? c.last_message_at ?? c.created_at,
-                        )}
+                        {formatDateTime(c.updated_at ?? c.last_message_at ?? c.created_at)}
                       </span>
                       <span>·</span>
                       <span className="font-mono truncate">

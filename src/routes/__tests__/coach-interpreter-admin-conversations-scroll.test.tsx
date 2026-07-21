@@ -88,17 +88,10 @@ beforeEach(() => {
   }
 });
 
-
 afterEach(() => cleanup());
 
 const mod = await import("@/lib/coach-interpreter/admin-console");
-const {
-  InterpreterShell,
-  ConversationsPanel,
-  ChatTimeline,
-  sortConversations,
-  isNearBottom,
-} = mod;
+const { InterpreterShell, ConversationsPanel, ChatTimeline, sortConversations, isNearBottom } = mod;
 
 type ConversationRow = {
   id: string;
@@ -231,9 +224,7 @@ describe("Fase 3.1c · Ordenação e paginação", () => {
     const nav = screen.getByTestId("conversations-pagination");
     expect(nav.tagName).toBe("NAV");
     expect(nav).toHaveAttribute("aria-label");
-    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent(
-      "Página 1 / 2",
-    );
+    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent("Página 1 / 2");
   });
 
   it("paginação: 'Próxima' avança, 'Anterior' volta; botões acessíveis", async () => {
@@ -259,14 +250,10 @@ describe("Fase 3.1c · Ordenação e paginação", () => {
     const prev = screen.getByRole("button", { name: /Página anterior/i });
     expect(prev).toBeDisabled();
     await user.click(next);
-    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent(
-      "Página 2 / 2",
-    );
+    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent("Página 2 / 2");
     expect(next).toBeDisabled();
     await user.click(prev);
-    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent(
-      "Página 1 / 2",
-    );
+    expect(screen.getByTestId("conversations-page-indicator")).toHaveTextContent("Página 1 / 2");
   });
 });
 
@@ -392,10 +379,7 @@ describe("Fase 3.1c · Preservação de seleção", () => {
     await user.click(screen.getByLabelText(/Recarregar conversas/i));
     await waitFor(() => expect(listFn).toHaveBeenCalledTimes(2));
     // Seleção preservada.
-    expect(screen.getByTestId("conversation-item-conv-b")).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    expect(screen.getByTestId("conversation-item-conv-b")).toHaveAttribute("aria-current", "true");
   });
 
   it("seleciona fallback (primeira) quando a atual desaparece", async () => {
@@ -444,9 +428,7 @@ describe("Fase 3.1c · Preservação de seleção", () => {
     renderWithClient(<InterpreterShell />);
     await user.click(await screen.findByText("Alpha"));
     await user.click(screen.getByLabelText(/Recarregar conversas/i));
-    await waitFor(() =>
-      expect(screen.getByTestId("conversation-empty-state")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("conversation-empty-state")).toBeInTheDocument());
   });
 });
 
@@ -478,7 +460,11 @@ describe("Fase 3.1c · Scroll inteligente da timeline", () => {
   // Simula um container scrollável — jsdom não faz layout real.
   function stubScroll(
     el: HTMLElement,
-    { scrollHeight, clientHeight, scrollTop }: {
+    {
+      scrollHeight,
+      clientHeight,
+      scrollTop,
+    }: {
       scrollHeight: number;
       clientHeight: number;
       scrollTop: number;
@@ -586,7 +572,7 @@ describe("Fase 3.1c · Scroll inteligente da timeline", () => {
       this: HTMLElement,
       arg: ScrollToOptions | number,
     ) {
-      const top = typeof arg === "number" ? arg : arg?.top ?? 0;
+      const top = typeof arg === "number" ? arg : (arg?.top ?? 0);
       Object.defineProperty(this, "scrollTop", {
         configurable: true,
         value: top,
@@ -612,9 +598,7 @@ describe("Fase 3.1c · Scroll inteligente da timeline", () => {
       // do state; disparamos scroll para forçar a leitura.
       Object.defineProperty(el, "scrollTop", { configurable: true, value: 600 });
       el.dispatchEvent(new Event("scroll"));
-      await waitFor(() =>
-        expect(screen.queryByTestId("chat-jump-to-end")).not.toBeInTheDocument(),
-      );
+      await waitFor(() => expect(screen.queryByTestId("chat-jump-to-end")).not.toBeInTheDocument());
     } finally {
       spy.mockRestore();
     }
