@@ -113,7 +113,11 @@ export const Route = createFileRoute("/configuracoes_/coach-interpreter")({
 // apenas o spinner. O redirect para /login é agendado por useEffect no
 // próximo tick — o spinner cobre esse intervalo.
 // ------------------------------------------------------------------
-function InterpreterAdminPage() {
+// Corpo do console admin: guard + shell. Extraído em função separada porque
+// o TanStack auto code-splitter REMOVE do módulo qualquer função usada como
+// `component:` de rota. O corpo aqui NÃO é referenciado pelas opções da
+// rota, então sobrevive e pode ser reaproveitado pelos testes via __test__.
+function AdminPageBody() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
@@ -158,6 +162,10 @@ function InterpreterAdminPage() {
   }
 
   return <InterpreterShell />;
+}
+
+function InterpreterAdminPage() {
+  return <AdminPageBody />;
 }
 
 // ------------------------------------------------------------------
