@@ -200,14 +200,14 @@ function renderTextBlock(
   const anchor = textAnchor(align);
   const x = xForAlign(align, padL, padR, width);
   const color = style.color ?? "#ffffff";
-  const ls = style.letterSpacing ? ` letter-spacing="${style.letterSpacing}"` : "";
+  const ls = style.letterSpacing ? ` letter-spacing="${attr(style.letterSpacing)}"` : "";
   const tspans = lines
     .map((line, i) => {
       const y = cursorY + sizePx + i * lineH;
       return `<tspan x="${x}" y="${y}">${xmlEscape(line)}</tspan>`;
     })
     .join("");
-  const svg = `<text font-family="${style.fontFamily}" font-weight="${style.weight}" font-size="${sizePx}" fill="${color}" text-anchor="${anchor}"${ls}>${tspans}</text>`;
+  const svg = `<text font-family="${attr(style.fontFamily)}" font-weight="${style.weight}" font-size="${sizePx}" fill="${attr(color)}" text-anchor="${anchor}"${ls}>${tspans}</text>`;
   const totalH = sizePx + (lines.length - 1) * lineH + sizePx * 0.15;
   return { svg, heightPx: totalH };
 }
