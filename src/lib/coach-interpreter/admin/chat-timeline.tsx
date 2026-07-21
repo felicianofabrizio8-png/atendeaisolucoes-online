@@ -1,9 +1,17 @@
 // Timeline de chat + bubbles + botão "Reinterpretar".
-import { useEffect, useRef } from "react";
+// Fase 3.1c — Scroll inteligente:
+//  · Ao abrir uma conversa (mudança de conversationId) → posiciona no fim.
+//  · Nova mensagem do usuário (último kind = user_message) → fim.
+//  · Retry bem-sucedido → fim.
+//  · Nova mensagem qualquer → auto-scroll SÓ se o usuário estiver próximo do fim.
+//  · Botão "Ir para o final" aparece quando o usuário está distante.
+//  · Refs estáveis + cleanup de listener; sem loop de render/scroll.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
+  ArrowDown,
   CheckCircle2,
   Info,
   Loader2,
@@ -58,27 +66,118 @@ const DEFAULT_KIND_META: KindMeta = {
   bubble: "bg-muted border-border",
 };
 
+/** Distância (px) até o fim para considerar "próximo do fim". */
+const NEAR_BOTTOM_THRESHOLD_PX = 80;
+/** Distância (px) para exibir o botão "Ir para o final". */
+const SHOW_JUMP_BUTTON_THRESHOLD_PX = 200;
+
+function isNearBottomLocal(
+  el: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">,
+  thresholdPx = NEAR_BOTTOM_THRESHOLD_PX,
+): boolean {
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return distance <= thresholdPx;
+}
+
 export function ChatTimeline({
   messages,
   conversationId,
   onChanged,
+  /** Incrementado externamente após envios do composer bem-sucedidos → força scroll ao fim. */
+  scrollBumpToken = 0,
 }: {
   messages: MessageRow[];
   conversationId: string;
   onChanged: () => void;
+  scrollBumpToken?: number;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const forceScrollNextRef = useRef<boolean>(true); // primeira renderização
+  const lastMessageCountRef = useRef<number>(messages.length);
+  const lastConversationIdRef = useRef<string>(conversationId);
+  const [showJumpButton, setShowJumpButton] = useState(false);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (typeof el.scrollTo === "function") {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
   const retryFn = useServerFn(retryCoachInterpretationFn);
   const retryM = useMutation({
     mutationFn: (userMessageId: string) =>
       retryFn({ data: { conversation_id: conversationId, user_message_id: userMessageId } }),
-    onSuccess: onChanged,
+    onSuccess: () => {
+      // Retry bem-sucedido → força posicionamento ao fim.
+      forceScrollNextRef.current = true;
+      scrollToBottom("smooth");
+      onChanged();
+    },
   });
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Detecção de scroll do usuário → atualiza visibilidade do botão de salto.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+    if (!el) return;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowJumpButton(distance > SHOW_JUMP_BUTTON_THRESHOLD_PX);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    // Estado inicial coerente após primeiro layout.
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [conversationId]);
+
+  // Mudança de conversa → sempre posiciona no fim.
+  useEffect(() => {
+    if (lastConversationIdRef.current !== conversationId) {
+      lastConversationIdRef.current = conversationId;
+      forceScrollNextRef.current = true;
+    }
+  }, [conversationId]);
+
+  // Bump externo (envio de mensagem do composer) → força scroll ao fim.
+  useEffect(() => {
+    if (scrollBumpToken > 0) {
+      forceScrollNextRef.current = true;
+    }
+  }, [scrollBumpToken]);
+
+  // Decisão de scroll pós-render — useLayoutEffect evita "flash" de posição.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const prevCount = lastMessageCountRef.current;
+    const nextCount = messages.length;
+    const messageAdded = nextCount > prevCount;
+    const lastKind = messages[nextCount - 1]?.kind;
+    const forced = forceScrollNextRef.current;
+    const nearBottom = isNearBottomLocal(el);
+
+    // Regras (avaliadas em ordem):
+    //  1) Se marcado como "forçar" (abrir conversa, envio, retry, bump) → ao fim.
+    //  2) Se mensagem nova é do próprio usuário → ao fim (envio local).
+    //  3) Se nova mensagem chegou e o usuário está próximo do fim → ao fim.
+    //  4) Caso contrário (usuário lendo histórico) → NÃO interrompe.
+    if (forced) {
+      scrollToBottom("auto");
+    } else if (messageAdded && lastKind === "user_message") {
+      scrollToBottom("smooth");
+    } else if (messageAdded && nearBottom) {
+      scrollToBottom("smooth");
+    }
+
+    forceScrollNextRef.current = false;
+    lastMessageCountRef.current = nextCount;
+    // Atualiza visibilidade do botão coerente com o novo conteúdo.
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpButton(distance > SHOW_JUMP_BUTTON_THRESHOLD_PX);
+  }, [messages, scrollToBottom]);
 
   const retryError =
     retryM.error && retryM.variables
@@ -86,37 +185,54 @@ export function ChatTimeline({
       : null;
 
   return (
-    <div
-      ref={scrollRef}
-      className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3"
-      data-testid="chat-timeline"
-    >
-      {messages.length === 0 ? (
-        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-          Nenhuma mensagem ainda. Envie a primeira abaixo.
-        </div>
-      ) : (
-        messages.map((m) => (
-          <div key={m.id}>
-            <MessageBubble
-              message={m}
-              onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
-              retrying={retryM.isPending && retryM.variables === m.id}
-            />
-            {retryError && retryError.messageId === m.id && (
-              <div className="mt-2 flex justify-end">
-                <div className="max-w-[85%]">
-                  <ErrorBanner
-                    title="Falha ao reinterpretar"
-                    error={retryError.safe}
-                    onRetry={() => retryM.mutate(m.id)}
-                    testId={`retry-error-${m.id}`}
-                  />
-                </div>
-              </div>
-            )}
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        className="absolute inset-0 overflow-y-auto p-4 space-y-3"
+        data-testid="chat-timeline"
+      >
+        {messages.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+            Nenhuma mensagem ainda. Envie a primeira abaixo.
           </div>
-        ))
+        ) : (
+          messages.map((m) => (
+            <div key={m.id}>
+              <MessageBubble
+                message={m}
+                onRetry={m.kind === "user_message" ? () => retryM.mutate(m.id) : undefined}
+                retrying={retryM.isPending && retryM.variables === m.id}
+              />
+              {retryError && retryError.messageId === m.id && (
+                <div className="mt-2 flex justify-end">
+                  <div className="max-w-[85%]">
+                    <ErrorBanner
+                      title="Falha ao reinterpretar"
+                      error={retryError.safe}
+                      onRetry={() => retryM.mutate(m.id)}
+                      testId={`retry-error-${m.id}`}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      {showJumpButton && (
+        <button
+          type="button"
+          onClick={() => {
+            forceScrollNextRef.current = true;
+            scrollToBottom("smooth");
+          }}
+          data-testid="chat-jump-to-end"
+          aria-label="Ir para o final"
+          className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs shadow-sm hover:bg-accent"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          Ir para o final
+        </button>
       )}
     </div>
   );

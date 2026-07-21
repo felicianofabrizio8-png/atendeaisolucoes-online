@@ -1,5 +1,19 @@
 // Helpers puros (sem componentes React) reutilizados pelo console admin.
 import { getSafeInterpreterError } from "@/lib/coach-interpreter/errors";
+import type { ConversationRow } from "./types";
+
+/**
+ * Ordena por `updated_at` desc. Quando ausente, cai em `created_at` desc.
+ * Determinística; não muta o array de entrada.
+ */
+export function sortConversations(list: ConversationRow[]): ConversationRow[] {
+  return [...list].sort((a, b) => {
+    const av = a.updated_at ?? a.created_at ?? "";
+    const bv = b.updated_at ?? b.created_at ?? "";
+    if (av === bv) return 0;
+    return av < bv ? 1 : -1;
+  });
+}
 
 /**
  * Retorna label amigável se `err` for uma sinalização de feature flag
@@ -28,4 +42,13 @@ export function formatDateTime(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+/** Verdadeiro quando o container está a `thresholdPx` (default 80) do fim. */
+export function isNearBottom(
+  el: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">,
+  thresholdPx = 80,
+): boolean {
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return distance <= thresholdPx;
 }

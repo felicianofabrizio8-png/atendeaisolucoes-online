@@ -10,6 +10,8 @@ export type ConversationRow = {
   status: string;
   last_message_at: string | null;
   created_at: string;
+  /** Opcional — quando ausente, ordenação cai em created_at. */
+  updated_at?: string | null;
 };
 
 export type MessageRow = {

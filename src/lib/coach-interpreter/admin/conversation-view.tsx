@@ -7,12 +7,7 @@ import { Loader2 } from "lucide-react";
 import { getCoachConversationFn } from "@/lib/coach-interpreter/coach-interpreter.functions";
 import { getSafeInterpreterError } from "@/lib/coach-interpreter/errors";
 import { DEFAULT_FILTERS } from "./constants";
-import type {
-  ConversationRow,
-  MessageRow,
-  ProposalFilters,
-  ProposalRow,
-} from "./types";
+import type { ConversationRow, MessageRow, ProposalFilters, ProposalRow } from "./types";
 import { ChatTimeline } from "./chat-timeline";
 import { MessageComposer } from "./message-composer";
 import { ProposalFilterBar } from "./proposal-filters";
@@ -21,7 +16,6 @@ import { ConversationStatusBadge } from "./status-badges";
 import { ErrorBanner } from "./error-banner";
 import { FeatureDisabledScreen } from "./feature-disabled-screen";
 import { formatDateTime } from "./helpers";
-
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient();
@@ -33,10 +27,17 @@ export function ConversationView({ conversationId }: { conversationId: string })
   });
 
   const [filters, setFilters] = useState<ProposalFilters>(DEFAULT_FILTERS);
+  // Contador incrementado em eventos disparados pelo próprio usuário
+  // (envio no composer). Usado pela ChatTimeline para forçar scroll ao fim.
+  const [scrollBumpToken, setScrollBumpToken] = useState(0);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversation", conversationId] });
     qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversations"] });
+  };
+  const invalidateAndBump = () => {
+    invalidate();
+    setScrollBumpToken((t) => t + 1);
   };
 
   const safe = q.error ? getSafeInterpreterError(q.error) : null;
@@ -95,8 +96,13 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
 
-        <ChatTimeline messages={messages} conversationId={conv.id} onChanged={invalidate} />
-        <MessageComposer conversationId={conv.id} onSent={invalidate} />
+        <ChatTimeline
+          messages={messages}
+          conversationId={conv.id}
+          onChanged={invalidate}
+          scrollBumpToken={scrollBumpToken}
+        />
+        <MessageComposer conversationId={conv.id} onSent={invalidateAndBump} />
       </div>
 
       <aside className="min-h-0 overflow-y-auto p-3">

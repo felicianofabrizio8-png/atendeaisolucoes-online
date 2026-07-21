@@ -13,12 +13,13 @@
 
 export { AdminPageBody } from "./admin/interpreter-admin-page";
 export { InterpreterShell } from "./admin/interpreter-shell";
-export {
-  ConversationsPanel,
-  NewConversationButton,
-} from "./admin/conversations-panel";
+export { ConversationsPanel, NewConversationButton } from "./admin/conversations-panel";
+export { sortConversations } from "./admin/helpers";
+
 export { ConversationView } from "./admin/conversation-view";
 export { ChatTimeline, KIND_META } from "./admin/chat-timeline";
+export { isNearBottom } from "./admin/helpers";
+
 export { MessageComposer } from "./admin/message-composer";
 export { ProposalFilterBar } from "./admin/proposal-filters";
 export { ProposalCard } from "./admin/proposal-card";
@@ -32,9 +33,4 @@ export {
   PROPOSAL_STATUS_STYLE,
 } from "./admin/constants";
 export { extractDisabledMessage, formatDateTime } from "./admin/helpers";
-export type {
-  ConversationRow,
-  MessageRow,
-  ProposalRow,
-  ProposalFilters,
-} from "./admin/types";
+export type { ConversationRow, MessageRow, ProposalRow, ProposalFilters } from "./admin/types";
