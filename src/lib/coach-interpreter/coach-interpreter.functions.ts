@@ -21,6 +21,23 @@ import { interpretCoachMessage } from "./coach-interpreter.service";
 import { COACH_INTERPRETER_MAX_INPUT_CHARS, COACH_INTERPRETER_MODEL } from "./types";
 import { COACH_INTERPRETER_PROMPT_VERSION } from "./prompt/interpreter-prompt.v1";
 import { COACH_INTERPRETER_CHANNELS, COACH_INTERPRETER_SCOPES } from "./schema";
+import { toSafeInterpreterErrorMessage } from "./errors";
+
+/**
+ * FASE 3.1a — transporte seguro de erros: cada handler colapsa erros
+ * inesperados em códigos estáveis definidos em `errors.ts`. Preserva
+ * `InterpreterError` (que já é estável) e literais conhecidos ("not_found",
+ * "cross_tenant", "no_company"). Nunca vaza mensagens de banco ao cliente.
+ */
+async function runSafe<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof InterpreterError) throw err;
+    const code = toSafeInterpreterErrorMessage(err);
+    throw new Error(code);
+  }
+}
 
 /**
  * Fase 2.b.1 (M3) — códigos estáveis expostos ao cliente para o fluxo
