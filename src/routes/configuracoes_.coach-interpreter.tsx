@@ -324,12 +324,14 @@ const PAGE_SIZE = 15;
 function ConversationsPanel({
   conversations,
   loading,
+  error,
   selectedId,
   onSelect,
   onRefresh,
 }: {
   conversations: ConversationRow[];
   loading: boolean;
+  error: SafeInterpreterError | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
