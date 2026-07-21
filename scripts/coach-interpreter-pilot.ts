@@ -73,14 +73,16 @@ function buildDeps(sb: SupabaseClient<Database>): PilotActivationDeps {
       if (error) throw new Error(`fetchActor failed: ${error.code ?? "unknown"}`);
       return data ? { id: data.id as string } : null;
     },
-    async actorIsAdmin(userId) {
+    async actorIsAdminOfCompany(userId, companyId) {
+      // Escopo estrito: admin do tenant piloto (não de outra empresa).
       const { data, error } = await sb
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
+        .eq("company_id", companyId)
         .eq("role", "admin")
         .maybeSingle();
-      if (error) throw new Error(`actorIsAdmin failed: ${error.code ?? "unknown"}`);
+      if (error) throw new Error(`actorIsAdminOfCompany failed: ${error.code ?? "unknown"}`);
       return Boolean(data);
     },
     async countOtherEnabled(excludeCompanyId) {
