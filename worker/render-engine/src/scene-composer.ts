@@ -57,6 +57,21 @@ function xmlEscape(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Escapa QUALQUER string usada como valor de atributo SVG.
+ *
+ * Causa raiz do bug "expected space not 'P'": valores como
+ * `fontFamily = '"Playfair Display", Georgia, serif'` contêm aspas duplas
+ * que fecham o atributo prematuramente. O parser do resvg encontra `P`
+ * (de Playfair) onde esperava um espaço/atributo, e falha com
+ * `SVG data parsing failed: invalid attribute`.
+ */
+function attr(s: string | number | undefined | null): string {
+  if (s === undefined || s === null) return "";
+  return xmlEscape(String(s));
+}
+
+
 function wrapText(text: string, maxCharsPerLine: number, maxLines: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
