@@ -257,17 +257,10 @@ export async function interpretCoachMessage(
 
   const out: CoachInterpreterOutput = validation.data;
 
-  // Clarificação determinística no servidor (evita esconder baixa confiança).
+  const decision = decideCoachInterpreterOutcome(out);
   const priorClarifications = await countPriorClarifications(supabase, conversationId);
-  const materialAmbiguity =
-    out.proposals.some((p) => p.ambiguities.length > 0 && p.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL);
-  const needsClarify =
-    out.clarification_questions.length > 0 &&
-    (out.confidence < COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL ||
-      materialAmbiguity ||
-      out.proposals.length === 0);
 
-  if (needsClarify) {
+  if (decision.kind === "clarification") {
     if (priorClarifications >= COACH_INTERPRETER_MAX_CLARIFICATIONS) {
       const run = buildRun();
       const msg = await insertAssistantCoachMessage(
@@ -294,6 +287,9 @@ export async function interpretCoachMessage(
       };
     }
     const run = buildRun();
+    const warnings = decision.materialAmbiguity
+      ? [...out.warnings, "material_ambiguity_forced_clarification"]
+      : out.warnings;
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
@@ -303,6 +299,7 @@ export async function interpretCoachMessage(
         intent: out.intent,
         clarification_questions: out.clarification_questions,
         normalized_output: out,
+        material_ambiguity: decision.materialAmbiguity,
       },
       run,
       "clarification_request",
@@ -311,27 +308,35 @@ export async function interpretCoachMessage(
       outcome: {
         kind: "clarification",
         questions: out.clarification_questions,
-        warnings: out.warnings,
+        warnings,
       },
       run,
       assistantMessageId: msg.id,
     };
   }
 
-  // Sem proposals: classifica e não persiste em knowledge/faq/quick_reply/marketing.
-  if (out.proposals.length === 0) {
+  // Sem proposals ou ambiguidade material sem perguntas: classifica e não persiste.
+  if (decision.kind === "classified") {
     const run = buildRun();
+    const warnings = decision.materialAmbiguity
+      ? [...out.warnings, "material_ambiguity_blocked_proposals"]
+      : out.warnings;
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
       conversationId,
       out.reasoning_summary || "Mensagem classificada sem proposta de regra.",
-      { intent: out.intent, warnings: out.warnings, normalized_output: out },
+      {
+        intent: out.intent,
+        warnings,
+        normalized_output: out,
+        material_ambiguity: decision.materialAmbiguity,
+      },
       run,
       "assistant_message",
     );
     return {
-      outcome: { kind: "classified", intent: out.intent, warnings: out.warnings },
+      outcome: { kind: "classified", intent: out.intent, warnings },
       run,
       assistantMessageId: msg.id,
     };
