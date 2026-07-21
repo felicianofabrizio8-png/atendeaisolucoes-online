@@ -1,12 +1,15 @@
 // Coach Interpreter — Service.
 // Puro em relação ao TanStack Start: recebe supabase autenticado do handler,
 // não conhece HTTP nem sessão.
+//
+// Fase 2.b.1 (correção A2): `supabaseAdmin` é carregado via `await import()`
+// dentro do handler para não vazar o módulo server-only na cadeia de bundle
+// dos `*.functions.ts` que importam este arquivo.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { LLMGateway } from "@/lib/llm-gateway/LLMGateway.server";
 import type { LLMProvider } from "@/lib/llm-gateway/LLMProvider";
 import { LovableChatProvider } from "@/lib/llm-gateway/providers/LovableChatProvider";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   CoachInterpreterOutputSchema,
   type CoachInterpreterOutput,
