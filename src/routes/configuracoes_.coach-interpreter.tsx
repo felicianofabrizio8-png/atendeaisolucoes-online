@@ -585,8 +585,8 @@ function ConversationView({ conversationId }: { conversationId: string }) {
     qc.invalidateQueries({ queryKey: ["coach-interpreter", "conversations"] });
   };
 
-  const disabled = extractDisabledMessage(q.error);
-  if (disabled) return <FeatureDisabledScreen reason={disabled} />;
+  const safe = q.error ? getSafeInterpreterError(q.error) : null;
+  if (safe?.disabled || safe?.killed) return <FeatureDisabledScreen reason={safe.message} />;
 
   if (q.isLoading) {
     return (
@@ -595,10 +595,15 @@ function ConversationView({ conversationId }: { conversationId: string }) {
       </div>
     );
   }
-  if (q.error) {
+  if (safe) {
     return (
-      <div className="p-6 text-sm text-destructive">
-        Erro ao carregar: {q.error instanceof Error ? q.error.message : String(q.error)}
+      <div className="p-4">
+        <ErrorBanner
+          title="Erro ao carregar a conversa"
+          error={safe}
+          onRetry={() => q.refetch()}
+          testId="conversation-error"
+        />
       </div>
     );
   }
