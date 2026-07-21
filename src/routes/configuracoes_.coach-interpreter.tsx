@@ -86,23 +86,25 @@ export const Route = createFileRoute("/configuracoes_/coach-interpreter")({
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
-  errorComponent: ({ error, reset }) => (
-    <div className="max-w-2xl mx-auto p-8">
-      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
-        <h2 className="font-semibold text-destructive">Erro ao carregar Coach Interpreter</h2>
-        <p className="text-sm text-muted-foreground mt-1 break-words">
-          {error instanceof Error ? error.message : "Erro desconhecido"}
-        </p>
-        <button
-          type="button"
-          onClick={() => reset()}
-          className="mt-3 text-sm text-primary underline"
-        >
-          Tentar novamente
-        </button>
+  errorComponent: ({ error, reset }) => {
+    const safe = getSafeInterpreterError(error);
+    return (
+      <div className="max-w-2xl mx-auto p-8">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+          <h2 className="font-semibold text-destructive">Erro ao carregar Coach Interpreter</h2>
+          <p className="text-sm text-muted-foreground mt-1 break-words">{safe.message}</p>
+          <p className="text-[11px] text-muted-foreground mt-1 font-mono">code: {safe.code}</p>
+          <button
+            type="button"
+            onClick={() => reset()}
+            className="mt-3 text-sm text-primary underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
       </div>
-    </div>
-  ),
+    );
+  },
 });
 
 // ------------------------------------------------------------------
