@@ -1767,13 +1767,22 @@ export type Database = {
           conversation_id: string
           created_at: string
           created_by: string | null
+          domain_validation: Json | null
+          feedback_created_at: string | null
+          feedback_status: string | null
+          feedback_user_id: string | null
+          grounding_score: number | null
           id: string
+          learning_confidence: number | null
+          learning_ids_used: string[]
+          learning_versions_used: Json
           message_id: string | null
           next_action: string | null
           objection_type: string | null
           reasoning: string | null
           risk_score: number | null
           situation: string | null
+          sources_used: Json | null
           status: string
           suggestion_text: string
           urgency: string | null
@@ -1784,13 +1793,22 @@ export type Database = {
           conversation_id: string
           created_at?: string
           created_by?: string | null
+          domain_validation?: Json | null
+          feedback_created_at?: string | null
+          feedback_status?: string | null
+          feedback_user_id?: string | null
+          grounding_score?: number | null
           id?: string
+          learning_confidence?: number | null
+          learning_ids_used?: string[]
+          learning_versions_used?: Json
           message_id?: string | null
           next_action?: string | null
           objection_type?: string | null
           reasoning?: string | null
           risk_score?: number | null
           situation?: string | null
+          sources_used?: Json | null
           status?: string
           suggestion_text: string
           urgency?: string | null
@@ -1801,13 +1819,22 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           created_by?: string | null
+          domain_validation?: Json | null
+          feedback_created_at?: string | null
+          feedback_status?: string | null
+          feedback_user_id?: string | null
+          grounding_score?: number | null
           id?: string
+          learning_confidence?: number | null
+          learning_ids_used?: string[]
+          learning_versions_used?: Json
           message_id?: string | null
           next_action?: string | null
           objection_type?: string | null
           reasoning?: string | null
           risk_score?: number | null
           situation?: string | null
+          sources_used?: Json | null
           status?: string
           suggestion_text?: string
           urgency?: string | null
@@ -5500,6 +5527,14 @@ export type Database = {
       submit_coach_rule_version: {
         Args: { _version_id: string }
         Returns: undefined
+      }
+      submit_coach_suggestion_feedback: {
+        Args: {
+          _feedback: string
+          _learning_id?: string
+          _suggestion_id: string
+        }
+        Returns: string
       }
       touch_last_seen: { Args: never; Returns: undefined }
       update_coach_learning: {
