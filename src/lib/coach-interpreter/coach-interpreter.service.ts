@@ -29,6 +29,7 @@ import {
   listCoachMessages,
 } from "./coach-interpreter.repository";
 import { buildCompanyGrounding } from "./grounding.server";
+import { validateAgainstDomain, type DomainValidationResult } from "./domain-validator.server";
 import {
   COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL,
   COACH_INTERPRETER_MAX_CLARIFICATIONS,
@@ -321,7 +322,22 @@ export async function interpretCoachMessage(
     };
   }
 
-  const out: CoachInterpreterOutput = validation.data;
+  const rawOut: CoachInterpreterOutput = validation.data;
+
+  // Domain Validator — nunca escreve, apenas filtra o output do LLM.
+  const domainRaw = grounding?.raw ?? {
+    products: [],
+    forbiddenWords: [],
+    preferredWords: [],
+    activeRuleTitles: [],
+    detectedDomains: [],
+  };
+  const domainResult: DomainValidationResult = validateAgainstDomain(rawOut, domainRaw);
+  const out: CoachInterpreterOutput = domainResult.filteredOutput;
+  const domainMeta = { domain_validation: domainResult.metadata };
+  const domainWarnings = domainResult.passed
+    ? []
+    : ["domain_validation_filtered"];
 
   const decision = decideCoachInterpreterOutcome(out);
   const priorClarifications = await countPriorClarifications(supabase, conversationId);
@@ -336,9 +352,10 @@ export async function interpretCoachMessage(
         "Ainda há ambiguidade, mas atingimos o limite de perguntas. Revise manualmente.",
         {
           intent: out.intent,
-          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, ...domainWarnings, "max_clarifications_reached"],
           normalized_output: out,
           ...groundingMeta,
+          ...domainMeta,
         },
         run,
         "assistant_message",
@@ -347,7 +364,7 @@ export async function interpretCoachMessage(
         outcome: {
           kind: "classified",
           intent: out.intent,
-          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, ...domainWarnings, "max_clarifications_reached"],
         },
         run,
         assistantMessageId: msg.id,
@@ -357,6 +374,7 @@ export async function interpretCoachMessage(
     const warnings = [
       ...out.warnings,
       ...groundingWarnings,
+      ...domainWarnings,
       ...(decision.materialAmbiguity ? ["material_ambiguity_forced_clarification"] : []),
     ];
     const msg = await insertAssistantCoachMessage(
@@ -370,6 +388,7 @@ export async function interpretCoachMessage(
         normalized_output: out,
         material_ambiguity: decision.materialAmbiguity,
         ...groundingMeta,
+          ...domainMeta,
       },
       run,
       "clarification_request",
@@ -391,6 +410,7 @@ export async function interpretCoachMessage(
     const warnings = [
       ...out.warnings,
       ...groundingWarnings,
+      ...domainWarnings,
       ...(decision.materialAmbiguity ? ["material_ambiguity_blocked_proposals"] : []),
     ];
     const msg = await insertAssistantCoachMessage(
@@ -404,6 +424,7 @@ export async function interpretCoachMessage(
         normalized_output: out,
         material_ambiguity: decision.materialAmbiguity,
         ...groundingMeta,
+          ...domainMeta,
       },
       run,
       "assistant_message",
@@ -416,7 +437,7 @@ export async function interpretCoachMessage(
   }
 
   // Duplicidade determinística (warning, nunca bloqueia).
-  const warnings = [...out.warnings, ...groundingWarnings];
+  const warnings = [...out.warnings, ...groundingWarnings, ...domainWarnings];
   for (const p of out.proposals) {
     try {
       const dup = await findPotentialDuplicateRules(supabase, p);
@@ -454,6 +475,7 @@ export async function interpretCoachMessage(
       warnings,
       normalized_output: out,
       ...groundingMeta,
+          ...domainMeta,
     },
     run,
     "assistant_message",

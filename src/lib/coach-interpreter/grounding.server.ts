@@ -34,6 +34,20 @@ export interface CoachGroundingCounts {
   kb_sections: number;
 }
 
+export interface CoachGroundingRawProduct {
+  name: string;
+  category: string | null;
+  description: string | null;
+}
+
+export interface CoachGroundingRaw {
+  products: CoachGroundingRawProduct[];
+  forbiddenWords: string[];
+  preferredWords: string[];
+  activeRuleTitles: string[];
+  detectedDomains: string[]; // ex.: ["piscinas"]
+}
+
 export interface CoachGroundingContext {
   block: string; // Texto pronto para injeção no system prompt (pt-BR).
   sourcesUsed: CoachGroundingSources;
@@ -41,7 +55,9 @@ export interface CoachGroundingContext {
   counts: CoachGroundingCounts;
   warnings: string[]; // sanitizadas
   isEmpty: boolean; // true quando nenhuma fonte trouxe dado útil
+  raw: CoachGroundingRaw; // dados estruturados para o Domain Validator
 }
+
 
 const MAX_PRODUCTS = 40;
 const MAX_QUICK_REPLIES = 20;
@@ -141,6 +157,14 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
   ]);
 
   const sections: string[] = [];
+  const raw: CoachGroundingRaw = {
+    products: [],
+    forbiddenWords: [],
+    preferredWords: [],
+    activeRuleTitles: [],
+    detectedDomains: [],
+  };
+
 
   // -- Produtos ------------------------------------------------------------
   if ((productsRes as { error?: unknown }).error) {
@@ -157,6 +181,19 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts.products = rows.length;
     if (rows.length > 0) {
       sources.products = true;
+      raw.products = rows.map((p) => ({
+        name: clip(p.name, 80),
+        category: p.category ? clip(p.category, 40) : null,
+        description: p.description ? clip(p.description, 240) : null,
+      }));
+      const haystack = rows
+        .map((p) => `${p.name ?? ""} ${p.category ?? ""} ${p.description ?? ""}`)
+        .join(" ")
+        .toLowerCase();
+      if (/\b(piscina|fibra|prainha|maragogi|canyon)\b/.test(haystack)) {
+        raw.detectedDomains.push("piscinas");
+      }
+
       const lines = rows.map((p) => {
         const price =
           p.promo_price != null
@@ -212,12 +249,20 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
       push("Palavras preferidas", kb.preferred_words);
       push("Palavras proibidas", kb.forbidden_words);
       push("Observações extras", kb.extra_notes);
+      const splitTokens = (s?: string | null) =>
+        (s ?? "")
+          .split(/[,;\n|]+/)
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length >= 2 && t.length <= 60);
+      raw.forbiddenWords = splitTokens(kb.forbidden_words);
+      raw.preferredWords = splitTokens(kb.preferred_words);
       if (kbLines.length > 0) {
         sources.knowledge_base = true;
         sections.push(`### BASE DE CONHECIMENTO DA EMPRESA\n${kbLines.join("\n")}`);
       }
     }
   }
+
 
   // -- Quick Replies (também servem como FAQ operacional) ------------------
   if ((quickRes as { error?: unknown }).error) {
@@ -255,6 +300,8 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts.active_rules = rows.length;
     if (rows.length > 0) {
       sources.active_rules = true;
+      raw.activeRuleTitles = rows.map((r) => clip(r.title, 140).toLowerCase());
+
       const lines = rows.map(
         (r) => `[${r.category}/${r.scope_kind}] (p${r.priority}) ${clip(r.title, 140)}`,
       );
@@ -303,5 +350,7 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts,
     warnings,
     isEmpty,
+    raw,
   };
 }
+
