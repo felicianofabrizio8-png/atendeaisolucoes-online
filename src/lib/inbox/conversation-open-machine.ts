@@ -114,23 +114,13 @@ export function reduceConversationOpen(
     }
 
     case "messages_changed": {
-      // Realtime durante loading/preparing: absorve novo total, reseta
-      // frames estáveis (altura mudou implicitamente).
-      if (state.name === "loading") {
-        if (event.totalItems >= CONVERSATION_OPEN_MIN_BATCH_FOR_PREPARE) {
-          return {
-            name: "preparing",
-            cid: event.cid,
-            totalItems: event.totalItems,
-            stableFrames: 0,
-          };
-        }
-        return state;
-      }
+      // Realtime durante loading NÃO promove sozinho a preparing (só o
+      // load_ok promove). Isso evita que um preview isolado (length 1)
+      // seja tratado como "lote pronto".
+      if (state.name === "loading") return state;
       if (state.name === "preparing") {
         return { ...state, totalItems: event.totalItems, stableFrames: 0 };
       }
-      // Em ready/visible apenas atualiza o total.
       if (state.name === "ready" || state.name === "visible") {
         return { ...state, totalItems: event.totalItems };
       }
