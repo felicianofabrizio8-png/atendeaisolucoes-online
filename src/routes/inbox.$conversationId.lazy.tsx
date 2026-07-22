@@ -2874,6 +2874,80 @@ function ConversationPage() {
     void loadThread();
   }, [conversationId, loadThread]);
 
+  // ---- Scroll controller (hotfix) --------------------------------------
+  // Um único scroll automático por conversationId, disparado somente
+  // após threadLoad READY + 2 rAFs (layout estabilizado).
+  useEffect(() => {
+    if (threadLoad.status !== "ready") return;
+    if (visibleMessages.length === 0) return;
+    const state = initialScrollRef.current;
+    if (state.cid !== conversationId || state.done) return;
+    state.done = true;
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => {
+        if (initialScrollRef.current.cid !== conversationId) return;
+        const last = latestVisibleMessagesLengthRef.current - 1;
+        if (last < 0) return;
+        virtuosoRef.current?.scrollToIndex({
+          index: last,
+          align: "end",
+          behavior: "auto",
+        });
+        lastMsgIdRef.current =
+          visibleMessages[visibleMessages.length - 1]?.id ?? null;
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.debug("[inbox-scroll] READY→AUTO_SCROLL", conversationId, last);
+        }
+      });
+      cancelableR2Ref.current = r2;
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      if (cancelableR2Ref.current) cancelAnimationFrame(cancelableR2Ref.current);
+    };
+  }, [threadLoad.status, conversationId, visibleMessages.length]);
+
+  // Detecta chegada de nova mensagem após o scroll inicial. Se o usuário
+  // não estiver próximo do fim, incrementa contador para o pill "Novas
+  // mensagens" — nunca move a tela.
+  useEffect(() => {
+    if (!initialScrollRef.current.done) return;
+    const last = visibleMessages[visibleMessages.length - 1];
+    if (!last) return;
+    if (lastMsgIdRef.current === last.id) return;
+    const isRealNew = lastMsgIdRef.current !== null;
+    lastMsgIdRef.current = last.id;
+    if (isRealNew) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug("[inbox-scroll] NEW_MESSAGE", last.id, { atBottom });
+      }
+      if (!atBottom) setNewSinceCount((n) => n + 1);
+    }
+  }, [visibleMessages, atBottom]);
+
+  // Zera o contador quando o usuário volta ao fim.
+  useEffect(() => {
+    if (atBottom && newSinceCount > 0) setNewSinceCount(0);
+  }, [atBottom, newSinceCount]);
+
+  const scrollToBottomManual = useCallback(() => {
+    const last = latestVisibleMessagesLengthRef.current - 1;
+    if (last < 0) return;
+    virtuosoRef.current?.scrollToIndex({
+      index: last,
+      align: "end",
+      behavior: "smooth",
+    });
+    setNewSinceCount(0);
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[inbox-scroll] USER_SCROLL → bottom");
+    }
+  }, []);
+
+
   // Onda 2.4: paginação de histórico via Virtuoso (`startReached`).
   const olderLoadingRef = useRef(false);
   const [hasMoreOlder, setHasMoreOlder] = useState<boolean>(() =>
