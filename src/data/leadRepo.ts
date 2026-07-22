@@ -126,6 +126,7 @@ export function setRepoMode(next: Mode) {
     remoteLeads = [];
     remoteConversations = [];
     remoteMessages = [];
+    messagesIndex.clear();
     remoteLoaded = false;
     olderHasMore.clear();
     olderLoading.clear();
