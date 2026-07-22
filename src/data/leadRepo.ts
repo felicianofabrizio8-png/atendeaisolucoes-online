@@ -23,6 +23,13 @@ import {
   getMessagesSnapshot,
   addLead as addLeadMock,
 } from "@/data/leadStore";
+import {
+  createMessageIndex,
+  upsertMessage as idxUpsert,
+  removeMessage as idxRemove,
+  rebuildIndex as idxRebuild,
+  getMessages as idxGet,
+} from "@/data/message-index";
 
 
 // ---------- estado em memória sincronizado com o supabase ----------
@@ -38,6 +45,15 @@ let realtimeChannel: RealtimeChannel | null = null;
 let realtimeCompanyId: string | null = null;
 let currentSlaMinutes = 30;
 
+// P3 — Índice de mensagens por conversationId (O(1) por lookup).
+// Substitui filter+sort O(N total) do antigo getMessagesFor.
+const messagesIndex = createMessageIndex();
+
+// P3 — Contador de versão do repo. Consumido via useSyncExternalStore para
+// habilitar memoização real (`buildSortedItems`, etc.) sem depender de
+// referências que trocam a cada render.
+let repoVersion = 0;
+
 // Paginação por conversa (Onda 2.2): histórico antigo via scroll-up.
 const olderHasMore = new Map<string, boolean>();
 const olderLoading = new Set<string>();
@@ -47,7 +63,12 @@ const recentLoaded = new Set<string>();
 const listeners = new Set<() => void>();
 
 function notify() {
+  repoVersion++;
   for (const l of listeners) l();
+}
+
+export function getRepoVersion(): number {
+  return repoVersion;
 }
 
 // ---------- emitter de novas mensagens de lead (observador) ----------
