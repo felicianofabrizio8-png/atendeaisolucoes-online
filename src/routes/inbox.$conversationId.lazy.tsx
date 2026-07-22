@@ -3715,7 +3715,8 @@ function ConversationPage() {
         .map((item) => item.data?.id)
         .filter((id): id is string => typeof id === "string"),
     });
-  }, []);
+    reanchorIfLocked("items_rendered");
+  }, [reanchorIfLocked]);
 
   const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
     visibleRangeRef.current = {
@@ -3726,7 +3727,23 @@ function ConversationPage() {
       startIndex: range.startIndex,
       endIndex: range.endIndex,
     });
-  }, []);
+    reanchorIfLocked("range_changed", {
+      startIndex: range.startIndex,
+      endIndex: range.endIndex,
+    });
+  }, [reanchorIfLocked]);
+
+  const handleVirtuosoTotalListHeightChanged = useCallback((height: number) => {
+    const s = bottomLockRef.current;
+    const prev = s.lastHeight;
+    s.lastHeight = height;
+    traceInboxScroll("OUTRO", "TOTAL_HEIGHT_CHANGED", {
+      previous: prev,
+      next: height,
+      locked: s.active,
+    });
+    reanchorIfLocked("total_height_changed", { previous: prev, next: height });
+  }, [reanchorIfLocked]);
 
   const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
     const decision = isAtBottom ? "auto" : false;
