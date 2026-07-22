@@ -14,7 +14,10 @@ import {
   Loader2,
   Flame,
   Settings2,
+  Brain,
 } from "lucide-react";
+import { TeachModeDrawer } from "@/components/coach/TeachModeDrawer";
+
 
 interface CoachAlert {
   id: string;
@@ -191,17 +194,39 @@ export function CoachPanel({
           <div className="text-sm font-semibold">Coach IA</div>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTeachOpen(true)}
+            data-testid="coach-panel-open-teach"
+            className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 text-primary px-2 py-1 text-xs hover:bg-primary/20"
+            title="Ensinar a IA com um aprendizado novo"
+            aria-label="Ensinar IA"
+          >
+            <Brain className="h-3 w-3" />
+            Ensinar IA
+          </button>
           {isAdmin && (
-            <Link
-              to="/configuracoes_/coach-interpreter"
-              data-testid="coach-panel-open-interpreter"
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
-              title="Abrir Console do Coach Interpreter"
-              aria-label="Abrir Console do Coach Interpreter"
-            >
-              <Settings2 className="h-3 w-3" />
-              Console
-            </Link>
+            <>
+              <Link
+                to="/configuracoes_/coach-learnings"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
+                title="Ver aprendizados desta empresa"
+                aria-label="Aprendizados"
+              >
+                <Brain className="h-3 w-3" />
+                Aprendizados
+              </Link>
+              <Link
+                to="/configuracoes_/coach-interpreter"
+                data-testid="coach-panel-open-interpreter"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
+                title="Abrir Console do Coach Interpreter"
+                aria-label="Abrir Console do Coach Interpreter"
+              >
+                <Settings2 className="h-3 w-3" />
+                Console
+              </Link>
+            </>
           )}
           <button
             type="button"
