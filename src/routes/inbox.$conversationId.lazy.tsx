@@ -3110,6 +3110,32 @@ function ConversationPage() {
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
+  const renderedWindowRef = useRef<{
+    renderedItems: number | null;
+    firstItemIndex: number | null;
+    lastItemIndex: number | null;
+  }>({ renderedItems: null, firstItemIndex: null, lastItemIndex: null });
+  const visibleRangeRef = useRef<{
+    rangeStartIndex: number | null;
+    rangeEndIndex: number | null;
+  }>({ rangeStartIndex: null, rangeEndIndex: null });
+  const readScrollVirtualSnapshot = useCallback((): InboxScrollVirtualSnapshot => {
+    const totalItems = latestVisibleMessagesLengthRef.current;
+    const domRenderedItems =
+      inboxScrollTraceState.scroller?.querySelectorAll(INBOX_SCROLL_TRACE_SELECTOR).length ??
+      null;
+    const renderedItems = renderedWindowRef.current.renderedItems ?? domRenderedItems;
+    return {
+      totalItems,
+      renderedItems,
+      virtualizedItems:
+        renderedItems === null ? null : Math.max(totalItems - renderedItems, 0),
+      firstItemIndex: renderedWindowRef.current.firstItemIndex,
+      lastItemIndex: renderedWindowRef.current.lastItemIndex,
+      rangeStartIndex: visibleRangeRef.current.rangeStartIndex,
+      rangeEndIndex: visibleRangeRef.current.rangeEndIndex,
+    };
+  }, []);
   // Controlador único de scroll da conversa. Uma única execução de
   // scrollToIndex por conversationId, disparada somente após threadLoad READY
   // e dois rAFs. Depois, permite UMA correção silenciosa em ~800ms para
@@ -3128,6 +3154,7 @@ function ConversationPage() {
   const setAtBottom = useCallback((v: boolean) => {
     atBottomRef.current = v;
     _setAtBottom(v);
+    traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
     // Após o scroll inicial, sair do fim = interação manual do usuário.
     if (!v && initialScrollRef.current.done) {
       if (!userScrolledRef.current && import.meta.env.DEV) {
@@ -3160,7 +3187,9 @@ function ConversationPage() {
       // eslint-disable-next-line no-console
       console.debug("[inbox-scroll] OPEN", conversationId);
     }
-  }, [conversationId]);
+    startInboxScrollTrace(conversationId, readScrollVirtualSnapshot);
+    return () => stopInboxScrollTrace(conversationId);
+  }, [conversationId, readScrollVirtualSnapshot]);
 
 
 
