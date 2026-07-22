@@ -3760,7 +3760,17 @@ function ConversationPage() {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden relative">
+          {newSinceCount > 0 && !atBottom && (
+            <button
+              type="button"
+              onClick={scrollToBottomManual}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 rounded-full bg-primary text-primary-foreground text-xs font-semibold px-3.5 py-1.5 shadow-lg hover:bg-primary/90 transition-colors"
+              aria-label="Ir para o final"
+            >
+              {newSinceCount === 1 ? "1 nova mensagem" : `${newSinceCount} novas mensagens`} · Ir para o final ↓
+            </button>
+          )}
           <MessagesContext.Provider value={messages}>
             <ReplyComposeContext.Provider value={replyComposeValue}>
             <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
