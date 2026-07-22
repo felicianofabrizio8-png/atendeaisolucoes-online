@@ -382,6 +382,13 @@ export function CoachPanel({
           )}
         </div>
       )}
+      <TeachModeDrawer
+        open={teachOpen}
+        onClose={() => setTeachOpen(false)}
+        seedExplanation={teachSeed}
+        conversationId={null}
+      />
     </div>
   );
 }
+
