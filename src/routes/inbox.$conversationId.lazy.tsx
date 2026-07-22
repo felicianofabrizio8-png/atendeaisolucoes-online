@@ -288,7 +288,14 @@ function ImagePreview({
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
   if (!display) {
-    return <div className="h-32 w-48 rounded-md bg-muted animate-pulse" />;
+    // Placeholder com aspect-ratio 4/3 reservado — evita layout shift quando a URL
+    // resolve depois. Mesmo tamanho da reserva pós-load (240×180).
+    return (
+      <div
+        className="rounded-md bg-muted animate-pulse"
+        style={{ width: 240, aspectRatio: "4 / 3", maxWidth: "100%" }}
+      />
+    );
   }
   return (
     <div className="space-y-1">
@@ -297,12 +304,18 @@ function ImagePreview({
         onClick={() => setLightbox(true)}
         className="block focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
       >
+        {/* width/height atributos reservam aspect-ratio antes do decode
+            (browsers usam ratio como hint); w-auto/h-auto ajustam para a
+            proporção natural após onLoad. Elimina shift de altura no bubble. */}
         <img
           src={display}
           alt={filename ?? "Imagem"}
+          width={240}
+          height={180}
           onError={() => setError(true)}
-          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
+          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
           loading="lazy"
+          decoding="async"
         />
       </button>
       <DownloadButton href={display} filename={filename} />
@@ -349,14 +362,22 @@ function VideoPreview({
 }) {
   const display = useResolvedMediaSrc({ path, url, bucket });
   if (!display) {
-    return <div className="h-40 w-64 rounded-md bg-muted animate-pulse" />;
+    // Reserva aspect 16/9 (280×158) — evita mudança de altura ao carregar metadata.
+    return (
+      <div
+        className="rounded-md bg-muted animate-pulse"
+        style={{ width: 280, aspectRatio: "16 / 9", maxWidth: "100%" }}
+      />
+    );
   }
   return (
     <div className="space-y-1">
       <video
         src={display}
         controls
-        className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
+        width={280}
+        height={158}
+        className="rounded-md max-w-full md:max-w-[280px] w-auto h-auto max-h-[50vh] bg-black"
         preload="metadata"
       />
       <DownloadButton href={display} filename={filename} />
@@ -2680,16 +2701,32 @@ function ConversationPage() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
   // Controlador único de scroll da conversa. Uma única execução de
-  // scrollToIndex por conversationId, disparada após threadLoad READY e
-  // dois rAFs para o layout estabilizar. Elimina o "sobe e desce" causado
-  // pela combinação anterior (rAF + setTimeout 300ms + followOutput).
+  // scrollToIndex por conversationId, disparada somente após threadLoad READY
+  // e dois rAFs. Depois, permite UMA correção silenciosa em ~800ms para
+  // absorver decode de imagens/vídeos, respeitando qualquer scroll manual.
   const initialScrollRef = useRef<{ cid: string | null; done: boolean }>({
     cid: null,
     done: false,
   });
   const lastMsgIdRef = useRef<string | null>(null);
   const cancelableR2Ref = useRef<number | null>(null);
-  const [atBottom, setAtBottom] = useState(true);
+  const userScrolledRef = useRef(false);
+  const silentCorrectionDoneRef = useRef(false);
+  const silentCorrectionTimerRef = useRef<number | null>(null);
+  const atBottomRef = useRef(true);
+  const [atBottom, _setAtBottom] = useState(true);
+  const setAtBottom = useCallback((v: boolean) => {
+    atBottomRef.current = v;
+    _setAtBottom(v);
+    // Após o scroll inicial, sair do fim = interação manual do usuário.
+    if (!v && initialScrollRef.current.done) {
+      if (!userScrolledRef.current && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug("[inbox-scroll] USER_CANCELLED_AUTOSCROLL");
+      }
+      userScrolledRef.current = true;
+    }
+  }, []);
   const [newSinceCount, setNewSinceCount] = useState(0);
 
   useEffect(() => {
@@ -2700,12 +2737,21 @@ function ConversationPage() {
   useEffect(() => {
     initialScrollRef.current = { cid: conversationId, done: false };
     lastMsgIdRef.current = null;
+    userScrolledRef.current = false;
+    silentCorrectionDoneRef.current = false;
+    if (silentCorrectionTimerRef.current) {
+      window.clearTimeout(silentCorrectionTimerRef.current);
+      silentCorrectionTimerRef.current = null;
+    }
+    atBottomRef.current = true;
+    _setAtBottom(true);
     setNewSinceCount(0);
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.debug("[inbox-scroll] OPEN", conversationId);
     }
   }, [conversationId]);
+
 
 
   // ---- Manual follow-up (admin only) ----
@@ -2898,8 +2944,33 @@ function ConversationPage() {
           visibleMessages[visibleMessages.length - 1]?.id ?? null;
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
-          console.debug("[inbox-scroll] READY→AUTO_SCROLL", conversationId, last);
+          console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
+        // Correção silenciosa única: absorve mudanças de altura por decode
+        // de imagens/vídeos após o primeiro posicionamento. Cancelada por
+        // qualquer scroll manual do usuário.
+        if (silentCorrectionTimerRef.current) {
+          window.clearTimeout(silentCorrectionTimerRef.current);
+        }
+        silentCorrectionTimerRef.current = window.setTimeout(() => {
+          silentCorrectionTimerRef.current = null;
+          if (initialScrollRef.current.cid !== conversationId) return;
+          if (silentCorrectionDoneRef.current) return;
+          if (userScrolledRef.current) return;
+          if (!atBottomRef.current) return;
+          const lastIdx = latestVisibleMessagesLengthRef.current - 1;
+          if (lastIdx < 0) return;
+          silentCorrectionDoneRef.current = true;
+          virtuosoRef.current?.scrollToIndex({
+            index: lastIdx,
+            align: "end",
+            behavior: "auto",
+          });
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.debug("[inbox-scroll] FINAL_CORRECTION", conversationId, lastIdx);
+          }
+        }, 800);
       });
       cancelableR2Ref.current = r2;
     });
@@ -3814,6 +3885,7 @@ function ConversationPage() {
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
                 className="h-full px-3 md:px-4"
+                style={{ overflowAnchor: "none" }}
                 components={{
                   Header: () =>
                     !hasMoreOlder && visibleMessages.length > 0 ? (
