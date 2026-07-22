@@ -4633,6 +4633,7 @@ function ConversationPage() {
                 startReached={loadOlder}
                 itemsRendered={handleVirtuosoItemsRendered}
                 rangeChanged={handleVirtuosoRangeChanged}
+                totalListHeightChanged={handleVirtuosoTotalListHeightChanged}
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
                 className="h-full px-3 md:px-4"
