@@ -207,7 +207,8 @@ describe("[inbox-scroll] auditoria estática", () => {
 
   it("mantém followOutput conservador (não força bottom quando usuário rolou)", () => {
     expect(src).toContain("const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) =>");
-    expect(src).toMatch(/return isAtBottom \? "auto" : false/);
+    expect(src).toMatch(/const decision = isAtBottom \? "auto" : false/);
+    expect(src).toContain("return decision");
     expect(src).toContain("followOutput={handleVirtuosoFollowOutput}");
   });
 
