@@ -448,11 +448,13 @@ function subscribeRealtime(companyId: string) {
         const row = payload.new as DbMessage & { company_id: string };
         const idx = remoteMessages.findIndex((m) => m.id === row.id);
         if (idx === -1) return;
+        const msg = toMessage(row);
         remoteMessages = [
           ...remoteMessages.slice(0, idx),
-          toMessage(row),
+          msg,
           ...remoteMessages.slice(idx + 1),
         ];
+        idxUpsert(messagesIndex, msg);
         notify();
       },
     )
