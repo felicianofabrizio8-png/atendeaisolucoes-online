@@ -2701,16 +2701,32 @@ function ConversationPage() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
   // Controlador único de scroll da conversa. Uma única execução de
-  // scrollToIndex por conversationId, disparada após threadLoad READY e
-  // dois rAFs para o layout estabilizar. Elimina o "sobe e desce" causado
-  // pela combinação anterior (rAF + setTimeout 300ms + followOutput).
+  // scrollToIndex por conversationId, disparada somente após threadLoad READY
+  // e dois rAFs. Depois, permite UMA correção silenciosa em ~800ms para
+  // absorver decode de imagens/vídeos, respeitando qualquer scroll manual.
   const initialScrollRef = useRef<{ cid: string | null; done: boolean }>({
     cid: null,
     done: false,
   });
   const lastMsgIdRef = useRef<string | null>(null);
   const cancelableR2Ref = useRef<number | null>(null);
-  const [atBottom, setAtBottom] = useState(true);
+  const userScrolledRef = useRef(false);
+  const silentCorrectionDoneRef = useRef(false);
+  const silentCorrectionTimerRef = useRef<number | null>(null);
+  const atBottomRef = useRef(true);
+  const [atBottom, _setAtBottom] = useState(true);
+  const setAtBottom = useCallback((v: boolean) => {
+    atBottomRef.current = v;
+    _setAtBottom(v);
+    // Após o scroll inicial, sair do fim = interação manual do usuário.
+    if (!v && initialScrollRef.current.done) {
+      if (!userScrolledRef.current && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug("[inbox-scroll] USER_CANCELLED_AUTOSCROLL");
+      }
+      userScrolledRef.current = true;
+    }
+  }, []);
   const [newSinceCount, setNewSinceCount] = useState(0);
 
   useEffect(() => {
@@ -2721,12 +2737,21 @@ function ConversationPage() {
   useEffect(() => {
     initialScrollRef.current = { cid: conversationId, done: false };
     lastMsgIdRef.current = null;
+    userScrolledRef.current = false;
+    silentCorrectionDoneRef.current = false;
+    if (silentCorrectionTimerRef.current) {
+      window.clearTimeout(silentCorrectionTimerRef.current);
+      silentCorrectionTimerRef.current = null;
+    }
+    atBottomRef.current = true;
+    _setAtBottom(true);
     setNewSinceCount(0);
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.debug("[inbox-scroll] OPEN", conversationId);
     }
   }, [conversationId]);
+
 
 
   // ---- Manual follow-up (admin only) ----
