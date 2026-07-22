@@ -3607,6 +3607,86 @@ function ConversationPage() {
     void loadThread();
   }, [conversationId, loadThread]);
 
+  // ---- Máquina de estados determinística de abertura (F2) --------------
+  // Elimina o tremor: enquanto a máquina não estiver em `visible`, o
+  // Virtuoso é renderizado com `visibility: hidden` sobre o skeleton, e
+  // qualquer recalibração acontece invisível ao usuário.
+  const [openState, dispatchOpen] = useReducer(
+    reduceConversationOpen,
+    undefined,
+    initialConversationOpenState,
+  );
+  const openStateRef = useRef<ConversationOpenState>(openState);
+  useEffect(() => {
+    openStateRef.current = openState;
+  }, [openState]);
+
+  const dispatchLayoutProbe = useCallback((heightChanged: boolean) => {
+    const s = openStateRef.current;
+    if (s.name !== "preparing") return;
+    const scroller = inboxScrollTraceState.scroller;
+    const distanceToEnd = scroller
+      ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      : 0;
+    const ev: ConversationOpenEvent = {
+      type: "layout_probe",
+      cid: s.cid,
+      totalItems: latestVisibleMessagesLengthRef.current,
+      lastRenderedIndex: renderedWindowRef.current.lastItemIndex ?? -1,
+      distanceToEnd,
+      heightChanged,
+    };
+    dispatchOpen(ev);
+  }, []);
+
+  // Abertura por troca de conversa. Cache íntegro (>=2 msgs) entra direto
+  // em `preparing`; preview isolado (1 msg) mantém em `loading`.
+  useEffect(() => {
+    if (!conversationId) return;
+    dispatchOpen({
+      type: "open",
+      cid: conversationId,
+      cachedTotal: latestVisibleMessagesLengthRef.current,
+    });
+    return () => dispatchOpen({ type: "close" });
+  }, [conversationId]);
+
+  // Reflete o resultado do carregamento inicial.
+  useEffect(() => {
+    if (threadLoad.status === "ready") {
+      dispatchOpen({
+        type: "load_ok",
+        cid: conversationId,
+        totalItems: latestVisibleMessagesLengthRef.current,
+      });
+    } else if (threadLoad.status === "error") {
+      dispatchOpen({
+        type: "load_error",
+        cid: conversationId,
+        message: threadLoad.error ?? "Falha ao carregar",
+      });
+    }
+  }, [threadLoad, conversationId]);
+
+  // Novas mensagens (bootstrap tardio, realtime durante loading/preparing).
+  useEffect(() => {
+    dispatchOpen({
+      type: "messages_changed",
+      cid: conversationId,
+      totalItems: visibleMessages.length,
+    });
+  }, [visibleMessages.length, conversationId]);
+
+  // Revelação atômica: ready → visible em 1 rAF, sem animação.
+  useEffect(() => {
+    if (openState.name !== "ready") return;
+    const raf = requestAnimationFrame(() => {
+      dispatchOpen({ type: "reveal", cid: openState.cid });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [openState]);
+
+
   // ---- Scroll controller (hotfix) --------------------------------------
   // Um único scroll automático por conversationId, disparado somente
   // após threadLoad READY + 2 rAFs (layout estabilizado).
