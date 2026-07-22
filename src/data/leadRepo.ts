@@ -586,13 +586,15 @@ export function hasMoreOlderMessages(conversationId: string): boolean {
 
 // Ao abrir a conversa: garante que temos pelo menos `limit` mensagens recentes
 // dessa conversa em memória. Idempotente — só executa uma vez por conversa por sessão.
+// P3 — retorna resultado explícito para permitir estados de loading/erro/retry na UI.
 export async function loadConversationRecent(
   conversationId: string,
   limit = 100,
-): Promise<void> {
-  if (mode !== "remote") return;
-  if (recentLoaded.has(conversationId)) return;
+): Promise<{ ok: boolean; error?: string }> {
+  if (mode !== "remote") return { ok: true };
+  if (recentLoaded.has(conversationId)) return { ok: true };
   recentLoaded.add(conversationId);
+  const t0 = typeof performance !== "undefined" ? performance.now() : 0;
   const { data, error } = await supabase
     .from("messages")
     .select(MSG_SELECT)
@@ -600,8 +602,12 @@ export async function loadConversationRecent(
     .order("at", { ascending: false })
     .limit(limit);
   if (error || !data) {
+    // Libera o guard idempotente para permitir retry pelo usuário.
     recentLoaded.delete(conversationId);
-    return;
+    const msg =
+      (error as { message?: string } | null)?.message ??
+      "Falha ao carregar mensagens";
+    return { ok: false, error: msg };
   }
   const existing = new Set(remoteMessages.map((m) => m.id));
   const fresh = data
@@ -609,10 +615,22 @@ export async function loadConversationRecent(
     .filter((m) => !existing.has(m.id));
   if (fresh.length > 0) {
     remoteMessages = [...remoteMessages, ...fresh];
+    for (const m of fresh) idxUpsert(messagesIndex, m);
     notify();
   }
   // Se voltou menos que o limite, não há mais histórico antigo.
   if (data.length < limit) olderHasMore.set(conversationId, false);
+  if (import.meta.env.DEV && typeof performance !== "undefined") {
+    const ms = performance.now() - t0;
+    // eslint-disable-next-line no-console
+    console.debug(`[inbox-perf] loadConversationRecent ${conversationId} ${ms.toFixed(1)}ms fresh=${fresh.length}`);
+  }
+  return { ok: true };
+}
+
+// Reset explícito do guard idempotente — usado no retry manual do UI.
+export function resetConversationRecentLoaded(conversationId: string) {
+  recentLoaded.delete(conversationId);
 }
 
 // Scroll-up: busca mensagens anteriores ao cursor composto (at, id) para
@@ -657,6 +675,7 @@ export async function loadConversationOlder(
       .filter((m) => !existing.has(m.id));
     if (fresh.length > 0) {
       remoteMessages = [...remoteMessages, ...fresh];
+      for (const m of fresh) idxUpsert(messagesIndex, m);
       notify();
     }
     const hasMore = data.length === limit;
