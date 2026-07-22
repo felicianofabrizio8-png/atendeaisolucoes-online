@@ -29,6 +29,7 @@ import {
   listCoachMessages,
 } from "./coach-interpreter.repository";
 import { buildCompanyGrounding } from "./grounding.server";
+import { validateAgainstDomain, type DomainValidationResult } from "./domain-validator.server";
 import {
   COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL,
   COACH_INTERPRETER_MAX_CLARIFICATIONS,
