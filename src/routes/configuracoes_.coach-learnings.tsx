@@ -41,7 +41,7 @@ export const Route = createFileRoute("/configuracoes_/coach-learnings")({
 });
 
 function CoachLearningsPage() {
-  const { isAdmin, loading: adminLoading } = useIsAdmin();
+  const { isAdmin, isLoading: adminLoading } = useIsAdmin();
   const listFn = useServerFn(listCoachLearningsFn);
   const [includeArchived, setIncludeArchived] = useState(false);
   const qc = useQueryClient();
