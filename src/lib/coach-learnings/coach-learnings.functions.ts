@@ -115,9 +115,16 @@ export const teachModeExtractFn = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => teachExtractInput.parse(data))
   .handler(async ({ data, context }) => {
     try {
+      const { data: profile } = await context.supabase
+        .from("profiles")
+        .select("company_id")
+        .eq("id", context.userId)
+        .maybeSingle();
+      const companyId = (profile?.company_id as string | null) ?? "";
+      if (!companyId) return { ok: false as const, error: "no_company" };
       const result = await extractTeachModeDraft({
         supabase: context.supabase,
-        companyId: context.claims?.company_id as string | undefined ?? "",
+        companyId,
         companyName: data.companyName ?? null,
         userExplanation: data.explanation,
         priorTurns: data.priorTurns,
