@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
 import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
