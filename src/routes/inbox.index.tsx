@@ -299,7 +299,7 @@ function InboxPage() {
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
