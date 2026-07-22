@@ -355,6 +355,58 @@ function stopInboxScrollTrace(conversationId: string) {
   inboxScrollTraceState.active = false;
 }
 
+const TracedVirtuosoScroller = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  function TracedVirtuosoScroller(props, forwardedRef) {
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+    const setRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = null;
+        setInboxScrollTraceScroller(node);
+        if (typeof forwardedRef === "function") forwardedRef(node);
+        else if (forwardedRef) forwardedRef.current = node;
+        if (!node || typeof ResizeObserver === "undefined") return;
+        resizeObserverRef.current = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            traceInboxScroll("RESIZE_OBSERVER", "SCROLLER_RESIZE", {
+              width: Math.round(entry.contentRect.width),
+              height: Math.round(entry.contentRect.height),
+            });
+          }
+        });
+        resizeObserverRef.current.observe(node);
+      },
+      [forwardedRef],
+    );
+
+    return (
+      <div
+        {...props}
+        ref={setRef}
+        onWheel={(event) => {
+          markInboxUserInput("wheel");
+          props.onWheel?.(event);
+        }}
+        onTouchMove={(event) => {
+          markInboxUserInput("touchmove");
+          props.onTouchMove?.(event);
+        }}
+        onPointerDown={(event) => {
+          markInboxUserInput("pointerdown");
+          props.onPointerDown?.(event);
+        }}
+        onScroll={(event) => {
+          traceInboxScroll(inferInboxScrollReason(), "SCROLL_EVENT", {
+            targetClassName: (event.currentTarget as HTMLElement).className,
+          });
+          props.onScroll?.(event);
+        }}
+      />
+    );
+  },
+);
+
 // Feature 3 — Reply: permite que a MessageBubble (filha) dispare o estado de
 // "respondendo a esta mensagem" no composer da ConversationPage (pai), sem
 // acoplar via props.
