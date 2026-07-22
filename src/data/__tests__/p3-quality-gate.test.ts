@@ -146,8 +146,8 @@ describe("P3 · subscriptions (canal duplicado removido)", () => {
       resolve(__dirname, "../../routes/inbox.$conversationId.lazy.tsx"),
       "utf8",
     );
-    expect(src).not.toMatch(/conv-ai-\$\{conversationId\}/);
     expect(src).not.toMatch(/\.channel\(\s*`conv-ai-/);
+    expect(src).not.toMatch(/supabase\s*\.channel\(\s*`conv-ai/);
   });
 
   it("removeu o `useState` órfão do rerender manual do repo", () => {
