@@ -23,6 +23,8 @@ import {
   loadConversationOlder,
   hasMoreOlderMessages,
   getRepoMode,
+  getRepoVersion,
+  resetConversationRecentLoaded,
 } from "@/data/leadRepo";
 import { recordAudit } from "@/lib/audit";
 import { useAuth } from "@/auth/AuthContext";
