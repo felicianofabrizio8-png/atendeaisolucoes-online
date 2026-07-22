@@ -362,14 +362,22 @@ function VideoPreview({
 }) {
   const display = useResolvedMediaSrc({ path, url, bucket });
   if (!display) {
-    return <div className="h-40 w-64 rounded-md bg-muted animate-pulse" />;
+    // Reserva aspect 16/9 (280×158) — evita mudança de altura ao carregar metadata.
+    return (
+      <div
+        className="rounded-md bg-muted animate-pulse"
+        style={{ width: 280, aspectRatio: "16 / 9", maxWidth: "100%" }}
+      />
+    );
   }
   return (
     <div className="space-y-1">
       <video
         src={display}
         controls
-        className="rounded-md max-w-full md:max-w-[280px] max-h-[50vh] bg-black"
+        width={280}
+        height={158}
+        className="rounded-md max-w-full md:max-w-[280px] w-auto h-auto max-h-[50vh] bg-black"
         preload="metadata"
       />
       <DownloadButton href={display} filename={filename} />
