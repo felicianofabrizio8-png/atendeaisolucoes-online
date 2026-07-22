@@ -164,6 +164,7 @@ export async function interpretCoachMessage(
   const turns = buildCoachInterpreterTurns(history, userMessageText);
 
   // Metadados de grounding — anexados a todos os payloads e a warnings quando fraco.
+  const learningIdsUsed = grounding?.learningIdsUsed ?? [];
   const groundingMeta = grounding
     ? {
         sources_used: grounding.sourcesUsed,
@@ -171,6 +172,7 @@ export async function interpretCoachMessage(
         grounding_counts: grounding.counts,
         grounding_warnings: grounding.warnings,
         grounding_empty: grounding.isEmpty,
+        learning_ids_used: learningIdsUsed,
       }
     : {
         sources_used: null,
@@ -178,11 +180,26 @@ export async function interpretCoachMessage(
         grounding_counts: null,
         grounding_warnings: ["grounding_build_failed"],
         grounding_empty: true,
+        learning_ids_used: [] as string[],
       };
   const groundingWarnings: string[] = [];
   if (!grounding || grounding.isEmpty) groundingWarnings.push("grounding_empty");
   else if (grounding.groundingScore < 0.34) groundingWarnings.push("grounding_low");
   for (const w of groundingMeta.grounding_warnings ?? []) groundingWarnings.push(w);
+
+  // Fire-and-forget: registra que estes learnings foram usados.
+  if (learningIdsUsed.length > 0) {
+    void (async () => {
+      try {
+        const { incrementLearningUsage } = await import(
+          "@/lib/coach-learnings/coach-learnings.repository"
+        );
+        await incrementLearningUsage(supabase, learningIdsUsed);
+      } catch {
+        // silencioso: não bloqueia o fluxo do Interpreter
+      }
+    })();
+  }
 
   const baseMessages = [
     { role: "system" as const, content: systemPrompt },
