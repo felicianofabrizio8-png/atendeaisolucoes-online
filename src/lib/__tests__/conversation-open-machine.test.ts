@@ -12,7 +12,7 @@ import {
   CONVERSATION_OPEN_TOLERANCE_PX,
   type ConversationOpenState,
   type ConversationOpenEvent,
-} from "../conversation-open-machine";
+} from "../inbox/conversation-open-machine";
 
 function run(events: ConversationOpenEvent[]): ConversationOpenState {
   return events.reduce(reduceConversationOpen, initialConversationOpenState());
