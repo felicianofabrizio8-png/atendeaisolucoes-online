@@ -2688,6 +2688,7 @@ function ConversationPage() {
     done: false,
   });
   const lastMsgIdRef = useRef<string | null>(null);
+  const cancelableR2Ref = useRef<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [newSinceCount, setNewSinceCount] = useState(0);
 
