@@ -279,9 +279,19 @@ function inferInboxScrollReason(): InboxScrollTraceReason {
   return "OUTRO";
 }
 
+// Callback registrado pelo componente para cancelar o bottom-lock inicial
+// assim que o usuário interage. Vive no escopo do módulo porque
+// `markInboxUserInput` é chamado por wrappers estáticos do scroller.
+let inboxBottomLockCancelHandler: ((reason: string) => void) | null = null;
+
+function setInboxBottomLockCancelHandler(fn: ((reason: string) => void) | null) {
+  inboxBottomLockCancelHandler = fn;
+}
+
 function markInboxUserInput(source: string) {
   inboxScrollTraceState.lastUserInputAt = inboxTraceNow();
   traceInboxScroll("USER_SCROLL", "USER_INPUT", { source });
+  inboxBottomLockCancelHandler?.(source);
 }
 
 function patchInboxScrollerScrollTop(scroller: HTMLElement) {
