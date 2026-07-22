@@ -487,7 +487,7 @@ async function processMessages(args: {
           at,
           external_id: m.id,
           integration_id: integrationId,
-          source_subtype: mediaPart?.kind ?? null,
+          source_subtype: mediaPart?.kind ?? m.type ?? null,
           source_metadata: {
             raw: m as unknown,
             wa_id: waId,
