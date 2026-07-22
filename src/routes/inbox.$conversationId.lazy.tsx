@@ -3359,7 +3359,26 @@ function ConversationPage() {
 
   useEffect(() => {
     latestVisibleMessagesLengthRef.current = visibleMessages.length;
-  }, [visibleMessages.length]);
+    if (import.meta.env.DEV) {
+      const first = visibleMessages[0];
+      const last = visibleMessages[visibleMessages.length - 1];
+      // Instrumentação da regressão "só última mensagem": auditoria dos
+      // números que chegam ao Virtuoso em cada notify() do repo.
+      // eslint-disable-next-line no-console
+      console.debug("[inbox-data]", {
+        conversationId,
+        threadLoad: threadLoad.status,
+        repoMessages: repoMessages.length,
+        localMessages: localMessages.length,
+        visible: visibleMessages.length,
+        firstId: first?.id?.slice(0, 8) ?? null,
+        lastId: last?.id?.slice(0, 8) ?? null,
+        firstAt: first?.at ?? null,
+        lastAt: last?.at ?? null,
+      });
+    }
+  }, [visibleMessages, conversationId, threadLoad.status, repoMessages.length, localMessages.length]);
+
 
   // Reset por conversa: novo controlador, sem contagens antigas.
   useEffect(() => {
