@@ -300,6 +300,8 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts.active_rules = rows.length;
     if (rows.length > 0) {
       sources.active_rules = true;
+      raw.activeRuleTitles = rows.map((r) => clip(r.title, 140).toLowerCase());
+
       const lines = rows.map(
         (r) => `[${r.category}/${r.scope_kind}] (p${r.priority}) ${clip(r.title, 140)}`,
       );
