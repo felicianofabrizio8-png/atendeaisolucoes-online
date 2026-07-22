@@ -890,6 +890,7 @@ export async function appendMessage(
 
   const newMsg = toMessage(data as DbMessage);
   remoteMessages = [...remoteMessages, newMsg];
+  idxUpsert(messagesIndex, newMsg);
 
   // atualiza conversa
   const conv = remoteConversations.find((c) => c.id === message.conversationId);
