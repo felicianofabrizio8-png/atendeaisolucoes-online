@@ -322,7 +322,22 @@ export async function interpretCoachMessage(
     };
   }
 
-  const out: CoachInterpreterOutput = validation.data;
+  const rawOut: CoachInterpreterOutput = validation.data;
+
+  // Domain Validator — nunca escreve, apenas filtra o output do LLM.
+  const domainRaw = grounding?.raw ?? {
+    products: [],
+    forbiddenWords: [],
+    preferredWords: [],
+    activeRuleTitles: [],
+    detectedDomains: [],
+  };
+  const domainResult: DomainValidationResult = validateAgainstDomain(rawOut, domainRaw);
+  const out: CoachInterpreterOutput = domainResult.filteredOutput;
+  const domainMeta = { domain_validation: domainResult.metadata };
+  const domainWarnings = domainResult.passed
+    ? []
+    : ["domain_validation_filtered"];
 
   const decision = decideCoachInterpreterOutcome(out);
   const priorClarifications = await countPriorClarifications(supabase, conversationId);
