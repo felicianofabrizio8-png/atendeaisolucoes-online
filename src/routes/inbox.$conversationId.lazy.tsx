@@ -3704,7 +3704,31 @@ function ConversationPage() {
           <MessagesContext.Provider value={messages}>
             <ReplyComposeContext.Provider value={replyComposeValue}>
             <VirtuosoScrollContext.Provider value={{ ref: virtuosoRef, items: visibleMessages }}>
-              {visibleMessages.length === 0 ? (
+              {threadLoad.status === "error" && visibleMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
+                  <p className="text-sm text-muted-foreground">
+                    Não foi possível carregar as mensagens desta conversa.
+                  </p>
+                  {threadLoad.error && (
+                    <p className="text-xs text-muted-foreground/70 max-w-md break-words">
+                      {threadLoad.error}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={retryLoadThread}
+                    className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-secondary transition-colors"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : threadLoad.status === "loading" && visibleMessages.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    Carregando mensagens…
+                  </span>
+                </div>
+              ) : visibleMessages.length === 0 ? (
                 <div className="h-full" />
               ) : (
               <Virtuoso
