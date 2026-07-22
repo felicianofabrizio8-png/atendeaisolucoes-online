@@ -34,6 +34,20 @@ export interface CoachGroundingCounts {
   kb_sections: number;
 }
 
+export interface CoachGroundingRawProduct {
+  name: string;
+  category: string | null;
+  description: string | null;
+}
+
+export interface CoachGroundingRaw {
+  products: CoachGroundingRawProduct[];
+  forbiddenWords: string[];
+  preferredWords: string[];
+  activeRuleTitles: string[];
+  detectedDomains: string[]; // ex.: ["piscinas"]
+}
+
 export interface CoachGroundingContext {
   block: string; // Texto pronto para injeção no system prompt (pt-BR).
   sourcesUsed: CoachGroundingSources;
@@ -41,7 +55,9 @@ export interface CoachGroundingContext {
   counts: CoachGroundingCounts;
   warnings: string[]; // sanitizadas
   isEmpty: boolean; // true quando nenhuma fonte trouxe dado útil
+  raw: CoachGroundingRaw; // dados estruturados para o Domain Validator
 }
+
 
 const MAX_PRODUCTS = 40;
 const MAX_QUICK_REPLIES = 20;
