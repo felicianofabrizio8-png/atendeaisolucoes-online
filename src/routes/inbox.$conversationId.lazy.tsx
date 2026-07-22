@@ -3776,6 +3776,9 @@ function ConversationPage() {
       conversationId,
       hasMoreOlder: hasMoreOlderMessages(conversationId),
     });
+    // Carregar histórico antigo é uma navegação intencional para cima:
+    // cancela o bottom lock imediatamente para não puxar a lista de volta.
+    cancelBottomLockByUser("start_reached_load_older");
     if (olderLoadingRef.current) return;
     if (!hasMoreOlderMessages(conversationId)) {
       setHasMoreOlder(false);
