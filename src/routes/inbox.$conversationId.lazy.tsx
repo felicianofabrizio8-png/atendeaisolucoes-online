@@ -3718,40 +3718,10 @@ function ConversationPage() {
           // eslint-disable-next-line no-console
           console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
-        // Ativa o bottom lock: qualquer recalibração de altura/range
-        // enquanto o usuário não interagir reancorará no último item.
-        startBottomLock(conversationId);
-        // Correção silenciosa única: absorve mudanças de altura por decode
-        // de imagens/vídeos após o primeiro posicionamento. Cancelada por
-        // qualquer scroll manual do usuário.
-        if (silentCorrectionTimerRef.current) {
-          window.clearTimeout(silentCorrectionTimerRef.current);
-        }
-        silentCorrectionTimerRef.current = window.setTimeout(() => {
-          silentCorrectionTimerRef.current = null;
-          if (initialScrollRef.current.cid !== conversationId) return;
-          if (silentCorrectionDoneRef.current) return;
-          if (userScrolledRef.current) return;
-          if (!atBottomRef.current) return;
-          const lastIdx = latestVisibleMessagesLengthRef.current - 1;
-          if (lastIdx < 0) return;
-          silentCorrectionDoneRef.current = true;
-          markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
-            source: "final_correction",
-            index: lastIdx,
-            align: "end",
-            behavior: "auto",
-          });
-          virtuosoRef.current?.scrollToIndex({
-            index: lastIdx,
-            align: "end",
-            behavior: "auto",
-          });
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.debug("[inbox-scroll] FINAL_CORRECTION", conversationId, lastIdx);
-          }
-        }, 800);
+        // F4 — bottom-lock e correção silenciosa 800ms REMOVIDOS. A
+        // máquina de estados (openState) só revela o Virtuoso após a
+        // calibração — não precisamos mais empilhar reancoragens.
+
       });
       cancelableR2Ref.current = r2;
     });
