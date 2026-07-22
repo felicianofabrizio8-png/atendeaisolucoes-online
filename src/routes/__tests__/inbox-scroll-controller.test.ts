@@ -206,13 +206,16 @@ describe("[inbox-scroll] auditoria estática", () => {
   });
 
   it("mantém followOutput conservador (não força bottom quando usuário rolou)", () => {
-    expect(src).toMatch(/followOutput=\{\(isAtBottom\)\s*=>\s*\(isAtBottom \? "auto" : false\)\}/);
+    expect(src).toContain("const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) =>");
+    expect(src).toMatch(/return isAtBottom \? "auto" : false/);
+    expect(src).toContain("followOutput={handleVirtuosoFollowOutput}");
   });
 
   // Garante que só existem os dois scrolls automáticos esperados:
   // o INITIAL_POSITION e a FINAL_CORRECTION silenciosa única.
   it("possui exatamente dois scrollToIndex 'auto' (initial + correção silenciosa)", () => {
-    const autoBlocks = src.match(/behavior:\s*"auto"/g) ?? [];
+    const runtimeSrc = src.replace(/markInboxScrollIntent\([\s\S]*?\);/g, "");
+    const autoBlocks = runtimeSrc.match(/behavior:\s*"auto"/g) ?? [];
     expect(autoBlocks.length).toBe(2);
   });
 
