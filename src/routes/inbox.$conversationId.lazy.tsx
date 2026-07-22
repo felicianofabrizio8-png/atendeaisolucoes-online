@@ -2548,8 +2548,10 @@ function ConversationPage() {
   const { profile } = useAuth();
   const [, rerenderRepo] = useState(0);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
-  // Re-renderiza quando o repo mudar (mensagens novas, status atualizado, etc.).
-  useEffect(() => subscribeRepo(() => rerenderRepo((v) => v + 1)), []);
+  // P3 — external store: re-render disparado apenas quando a versão do repo
+  // muda. Substitui o `useState + useEffect(subscribeRepo)` que rerenderizava
+  // com referências instáveis a cada notify().
+  useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const repoMessages = conversation ? getMessagesFor(conversationId) : [];
