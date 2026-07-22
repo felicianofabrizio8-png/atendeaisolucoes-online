@@ -62,7 +62,7 @@ describe("domain-validator — piscinas de fibra", () => {
           scope_kind: "company",
           scope_ref: {},
           priority: 50,
-          condition: null,
+          condition: "",
           instruction: "Antes de dar o preço, pergunte a largura preferida da piscina.",
           rationale: "Qualificar tamanho.",
           examples: [],
