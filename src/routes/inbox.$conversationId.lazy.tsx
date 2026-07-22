@@ -3,9 +3,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
 import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type ItemProps, type ListItem, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
@@ -108,6 +108,360 @@ const VirtuosoScrollContext = createContext<{
   ref: React.RefObject<VirtuosoHandle | null>;
   items: Message[];
 } | null>(null);
+
+type InboxScrollTraceReason =
+  | "INITIAL_LOAD"
+  | "VIRTUOSO_RESTORE"
+  | "IMAGE_DECODE"
+  | "RESIZE_OBSERVER"
+  | "FOLLOW_OUTPUT"
+  | "REALTIME"
+  | "USER_SCROLL"
+  | "SCROLL_CONTROLLER"
+  | "RESTORE_POSITION"
+  | "OUTRO";
+
+interface InboxScrollVirtualSnapshot {
+  totalItems: number;
+  renderedItems: number | null;
+  virtualizedItems: number | null;
+  firstItemIndex: number | null;
+  lastItemIndex: number | null;
+  rangeStartIndex: number | null;
+  rangeEndIndex: number | null;
+}
+
+interface InboxScrollMetrics extends InboxScrollVirtualSnapshot {
+  timestamp: string;
+  elapsedMs: number;
+  conversationId: string | null;
+  scrollTop: number | null;
+  scrollHeight: number | null;
+  clientHeight: number | null;
+  distanceToEnd: number | null;
+}
+
+interface InboxScrollTraceEntry extends InboxScrollMetrics {
+  seq: number;
+  reason: InboxScrollTraceReason;
+  event: string;
+  details?: Record<string, unknown>;
+}
+
+interface InboxScrollTraceState {
+  active: boolean;
+  conversationId: string | null;
+  startedAt: number;
+  seq: number;
+  scroller: HTMLElement | null;
+  getSnapshot: (() => InboxScrollVirtualSnapshot) | null;
+  pendingReason: InboxScrollTraceReason | null;
+  pendingReasonUntil: number;
+  lastUserInputAt: number;
+  restoreScrollTopPatch: (() => void) | null;
+  restoreScrollToPatch: (() => void) | null;
+  restoreScrollIntoViewPatch: (() => void) | null;
+}
+
+declare global {
+  interface Window {
+    __INBOX_SCROLL_TRACE__?: InboxScrollTraceEntry[];
+  }
+}
+
+const INBOX_SCROLL_TRACE_WINDOW_MS = 3000;
+const INBOX_SCROLL_TRACE_SELECTOR = "[data-inbox-virtual-item='true']";
+const inboxScrollTraceState: InboxScrollTraceState = {
+  active: false,
+  conversationId: null,
+  startedAt: 0,
+  seq: 0,
+  scroller: null,
+  getSnapshot: null,
+  pendingReason: null,
+  pendingReasonUntil: 0,
+  lastUserInputAt: 0,
+  restoreScrollTopPatch: null,
+  restoreScrollToPatch: null,
+  restoreScrollIntoViewPatch: null,
+};
+
+function inboxTraceNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function isInboxScrollTraceActive(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!inboxScrollTraceState.active) return false;
+  return inboxTraceNow() - inboxScrollTraceState.startedAt <= INBOX_SCROLL_TRACE_WINDOW_MS;
+}
+
+function readInboxScrollMetrics(): Omit<InboxScrollMetrics, keyof InboxScrollVirtualSnapshot> {
+  const scroller = inboxScrollTraceState.scroller;
+  const elapsedMs = Math.round(inboxTraceNow() - inboxScrollTraceState.startedAt);
+  if (!scroller) {
+    return {
+      timestamp: new Date().toISOString(),
+      elapsedMs,
+      conversationId: inboxScrollTraceState.conversationId,
+      scrollTop: null,
+      scrollHeight: null,
+      clientHeight: null,
+      distanceToEnd: null,
+    };
+  }
+  const distanceToEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  return {
+    timestamp: new Date().toISOString(),
+    elapsedMs,
+    conversationId: inboxScrollTraceState.conversationId,
+    scrollTop: Math.round(scroller.scrollTop),
+    scrollHeight: scroller.scrollHeight,
+    clientHeight: scroller.clientHeight,
+    distanceToEnd: Math.round(distanceToEnd),
+  };
+}
+
+function getInboxVirtualSnapshot(): InboxScrollVirtualSnapshot {
+  return (
+    inboxScrollTraceState.getSnapshot?.() ?? {
+      totalItems: 0,
+      renderedItems: null,
+      virtualizedItems: null,
+      firstItemIndex: null,
+      lastItemIndex: null,
+      rangeStartIndex: null,
+      rangeEndIndex: null,
+    }
+  );
+}
+
+function traceInboxScroll(
+  reason: InboxScrollTraceReason,
+  event: string,
+  details?: Record<string, unknown>,
+) {
+  if (!isInboxScrollTraceActive()) return;
+  const entry: InboxScrollTraceEntry = {
+    seq: ++inboxScrollTraceState.seq,
+    reason,
+    event,
+    ...readInboxScrollMetrics(),
+    ...getInboxVirtualSnapshot(),
+    ...(details ? { details } : {}),
+  };
+  window.__INBOX_SCROLL_TRACE__ = window.__INBOX_SCROLL_TRACE__ ?? [];
+  window.__INBOX_SCROLL_TRACE__.push(entry);
+  // eslint-disable-next-line no-console
+  console.debug("[inbox-scroll-trace]", entry);
+}
+
+function markInboxScrollIntent(
+  reason: InboxScrollTraceReason,
+  event: string,
+  details?: Record<string, unknown>,
+) {
+  inboxScrollTraceState.pendingReason = reason;
+  inboxScrollTraceState.pendingReasonUntil = inboxTraceNow() + 1200;
+  traceInboxScroll(reason, event, details);
+}
+
+function inferInboxScrollReason(): InboxScrollTraceReason {
+  const now = inboxTraceNow();
+  if (
+    inboxScrollTraceState.pendingReason &&
+    now <= inboxScrollTraceState.pendingReasonUntil
+  ) {
+    return inboxScrollTraceState.pendingReason;
+  }
+  if (now - inboxScrollTraceState.lastUserInputAt <= 500) return "USER_SCROLL";
+  if (now - inboxScrollTraceState.startedAt <= 700) return "INITIAL_LOAD";
+  return "OUTRO";
+}
+
+function markInboxUserInput(source: string) {
+  inboxScrollTraceState.lastUserInputAt = inboxTraceNow();
+  traceInboxScroll("USER_SCROLL", "USER_INPUT", { source });
+}
+
+function patchInboxScrollerScrollTop(scroller: HTMLElement) {
+  inboxScrollTraceState.restoreScrollTopPatch?.();
+  inboxScrollTraceState.restoreScrollToPatch?.();
+  const descriptor =
+    Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop") ??
+    Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+  if (!descriptor?.get || !descriptor.set) {
+    inboxScrollTraceState.restoreScrollTopPatch = null;
+    return;
+  }
+  Object.defineProperty(scroller, "scrollTop", {
+    configurable: true,
+    enumerable: false,
+    get() {
+      return descriptor.get?.call(this) ?? 0;
+    },
+    set(value: number) {
+      const before = descriptor.get?.call(this) ?? 0;
+      descriptor.set?.call(this, value);
+      const after = descriptor.get?.call(this) ?? value;
+      traceInboxScroll(inferInboxScrollReason(), "scrollTop_SET", {
+        before: Math.round(before),
+        assigned: Math.round(value),
+        after: Math.round(after),
+      });
+    },
+  });
+  inboxScrollTraceState.restoreScrollTopPatch = () => {
+    delete (scroller as { scrollTop?: number }).scrollTop;
+  };
+  const originalScrollTo = scroller.scrollTo.bind(scroller);
+  scroller.scrollTo = ((...args: Parameters<HTMLElement["scrollTo"]>) => {
+    const before = scroller.scrollTop;
+    traceInboxScroll(inferInboxScrollReason(), "scrollTo_CALL", {
+      before: Math.round(before),
+      args,
+    });
+    originalScrollTo(...args);
+    traceInboxScroll(inferInboxScrollReason(), "scrollTo_AFTER", {
+      before: Math.round(before),
+      after: Math.round(scroller.scrollTop),
+    });
+  }) as HTMLElement["scrollTo"];
+  inboxScrollTraceState.restoreScrollToPatch = () => {
+    scroller.scrollTo = originalScrollTo;
+  };
+}
+
+function patchInboxScrollIntoView() {
+  if (inboxScrollTraceState.restoreScrollIntoViewPatch) return;
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = function patchedScrollIntoView(
+    arg?: boolean | ScrollIntoViewOptions,
+  ) {
+    const element = this as HTMLElement;
+    markInboxScrollIntent("USER_SCROLL", "scrollIntoView_CALL", {
+      targetId: element.id || null,
+      targetTagName: element.tagName,
+      targetClassName: element.className || null,
+      arg: typeof arg === "boolean" ? arg : arg ? { ...arg } : undefined,
+    });
+    return originalScrollIntoView.call(this, arg as ScrollIntoViewOptions);
+  };
+  inboxScrollTraceState.restoreScrollIntoViewPatch = () => {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  };
+}
+
+function setInboxScrollTraceScroller(scroller: HTMLElement | null) {
+  if (inboxScrollTraceState.scroller === scroller) return;
+  inboxScrollTraceState.restoreScrollTopPatch?.();
+  inboxScrollTraceState.restoreScrollToPatch?.();
+  inboxScrollTraceState.restoreScrollTopPatch = null;
+  inboxScrollTraceState.restoreScrollToPatch = null;
+  inboxScrollTraceState.scroller = scroller;
+  if (scroller) {
+    patchInboxScrollerScrollTop(scroller);
+    traceInboxScroll("INITIAL_LOAD", "SCROLLER_ATTACHED");
+  } else {
+    traceInboxScroll("OUTRO", "SCROLLER_DETACHED");
+  }
+}
+
+function startInboxScrollTrace(
+  conversationId: string,
+  getSnapshot: () => InboxScrollVirtualSnapshot,
+) {
+  if (typeof window === "undefined") return;
+  inboxScrollTraceState.active = true;
+  inboxScrollTraceState.conversationId = conversationId;
+  inboxScrollTraceState.startedAt = inboxTraceNow();
+  inboxScrollTraceState.seq = 0;
+  inboxScrollTraceState.getSnapshot = getSnapshot;
+  inboxScrollTraceState.pendingReason = null;
+  inboxScrollTraceState.pendingReasonUntil = 0;
+  inboxScrollTraceState.lastUserInputAt = 0;
+  window.__INBOX_SCROLL_TRACE__ = [];
+  patchInboxScrollIntoView();
+  traceInboxScroll("INITIAL_LOAD", "TRACE_START", {
+    windowMs: INBOX_SCROLL_TRACE_WINDOW_MS,
+    restoreStateFromConfigured: false,
+  });
+  window.setTimeout(() => {
+    if (inboxScrollTraceState.conversationId !== conversationId) return;
+    traceInboxScroll("OUTRO", "TRACE_END");
+    inboxScrollTraceState.active = false;
+    inboxScrollTraceState.restoreScrollIntoViewPatch?.();
+    inboxScrollTraceState.restoreScrollIntoViewPatch = null;
+  }, INBOX_SCROLL_TRACE_WINDOW_MS);
+}
+
+function stopInboxScrollTrace(conversationId: string) {
+  if (inboxScrollTraceState.conversationId !== conversationId) return;
+  traceInboxScroll("OUTRO", "TRACE_STOP");
+  inboxScrollTraceState.active = false;
+  inboxScrollTraceState.restoreScrollIntoViewPatch?.();
+  inboxScrollTraceState.restoreScrollIntoViewPatch = null;
+}
+
+const TracedVirtuosoScroller = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  function TracedVirtuosoScroller(props, forwardedRef) {
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+    const setRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = null;
+        setInboxScrollTraceScroller(node);
+        if (typeof forwardedRef === "function") forwardedRef(node);
+        else if (forwardedRef) forwardedRef.current = node;
+        if (!node || typeof ResizeObserver === "undefined") return;
+        resizeObserverRef.current = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            traceInboxScroll("RESIZE_OBSERVER", "SCROLLER_RESIZE", {
+              width: Math.round(entry.contentRect.width),
+              height: Math.round(entry.contentRect.height),
+            });
+          }
+        });
+        resizeObserverRef.current.observe(node);
+      },
+      [forwardedRef],
+    );
+
+    return (
+      <div
+        {...props}
+        ref={setRef}
+        onWheel={(event) => {
+          markInboxUserInput("wheel");
+          props.onWheel?.(event);
+        }}
+        onTouchMove={(event) => {
+          markInboxUserInput("touchmove");
+          props.onTouchMove?.(event);
+        }}
+        onPointerDown={(event) => {
+          markInboxUserInput("pointerdown");
+          props.onPointerDown?.(event);
+        }}
+        onScroll={(event) => {
+          traceInboxScroll(inferInboxScrollReason(), "SCROLL_EVENT", {
+            targetClassName: (event.currentTarget as HTMLElement).className,
+          });
+          props.onScroll?.(event);
+        }}
+      />
+    );
+  },
+);
+
+function TracedVirtuosoItem({ children, context: _context, ...props }: ItemProps<Message> & { context?: unknown }) {
+  return (
+    <div {...props} data-inbox-virtual-item="true">
+      {children}
+    </div>
+  );
+}
 
 // Feature 3 — Reply: permite que a MessageBubble (filha) dispare o estado de
 // "respondendo a esta mensagem" no composer da ConversationPage (pai), sem
@@ -313,6 +667,16 @@ function ImagePreview({
           alt={filename ?? "Imagem"}
           width={240}
           height={180}
+          onLoad={(event) => {
+            const img = event.currentTarget;
+            traceInboxScroll("IMAGE_DECODE", "IMAGE_LOAD", {
+              src: display,
+              naturalWidth: img.naturalWidth,
+              naturalHeight: img.naturalHeight,
+              renderedWidth: img.clientWidth,
+              renderedHeight: img.clientHeight,
+            });
+          }}
           onError={() => setError(true)}
           className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
           loading="lazy"
@@ -378,6 +742,16 @@ function VideoPreview({
         controls
         width={280}
         height={158}
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          traceInboxScroll("IMAGE_DECODE", "VIDEO_METADATA", {
+            src: display,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            renderedWidth: video.clientWidth,
+            renderedHeight: video.clientHeight,
+          });
+        }}
         className="rounded-md max-w-full md:max-w-[280px] w-auto h-auto max-h-[50vh] bg-black"
         preload="metadata"
       />
@@ -863,6 +1237,12 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const virtuoso = useContext(VirtuosoScrollContext);
 
   function highlight(el: HTMLElement) {
+    markInboxScrollIntent("USER_SCROLL", "scrollIntoView_CALL", {
+      source: "reply_preview",
+      targetId: el.id,
+      behavior: "smooth",
+      block: "center",
+    });
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.classList.add("ring-2", "ring-primary/60", "transition");
     setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
@@ -879,6 +1259,12 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
     if (!virtuoso) return;
     const idx = virtuoso.items.findIndex((m) => m.id === reply.message_id);
     if (idx < 0) return;
+    markInboxScrollIntent("USER_SCROLL", "scrollToIndex_CALL", {
+      source: "reply_preview",
+      index: idx,
+      align: "center",
+      behavior: "smooth",
+    });
     virtuoso.ref.current?.scrollToIndex({ index: idx, align: "center", behavior: "smooth" });
     // Aguarda o item entrar no DOM antes de aplicar o highlight.
     const start = Date.now();
@@ -2732,6 +3118,32 @@ function ConversationPage() {
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
+  const renderedWindowRef = useRef<{
+    renderedItems: number | null;
+    firstItemIndex: number | null;
+    lastItemIndex: number | null;
+  }>({ renderedItems: null, firstItemIndex: null, lastItemIndex: null });
+  const visibleRangeRef = useRef<{
+    rangeStartIndex: number | null;
+    rangeEndIndex: number | null;
+  }>({ rangeStartIndex: null, rangeEndIndex: null });
+  const readScrollVirtualSnapshot = useCallback((): InboxScrollVirtualSnapshot => {
+    const totalItems = latestVisibleMessagesLengthRef.current;
+    const domRenderedItems =
+      inboxScrollTraceState.scroller?.querySelectorAll(INBOX_SCROLL_TRACE_SELECTOR).length ??
+      null;
+    const renderedItems = renderedWindowRef.current.renderedItems ?? domRenderedItems;
+    return {
+      totalItems,
+      renderedItems,
+      virtualizedItems:
+        renderedItems === null ? null : Math.max(totalItems - renderedItems, 0),
+      firstItemIndex: renderedWindowRef.current.firstItemIndex,
+      lastItemIndex: renderedWindowRef.current.lastItemIndex,
+      rangeStartIndex: visibleRangeRef.current.rangeStartIndex,
+      rangeEndIndex: visibleRangeRef.current.rangeEndIndex,
+    };
+  }, []);
   // Controlador único de scroll da conversa. Uma única execução de
   // scrollToIndex por conversationId, disparada somente após threadLoad READY
   // e dois rAFs. Depois, permite UMA correção silenciosa em ~800ms para
@@ -2750,6 +3162,7 @@ function ConversationPage() {
   const setAtBottom = useCallback((v: boolean) => {
     atBottomRef.current = v;
     _setAtBottom(v);
+    traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
     // Após o scroll inicial, sair do fim = interação manual do usuário.
     if (!v && initialScrollRef.current.done) {
       if (!userScrolledRef.current && import.meta.env.DEV) {
@@ -2769,6 +3182,15 @@ function ConversationPage() {
   useEffect(() => {
     initialScrollRef.current = { cid: conversationId, done: false };
     lastMsgIdRef.current = null;
+    renderedWindowRef.current = {
+      renderedItems: null,
+      firstItemIndex: null,
+      lastItemIndex: null,
+    };
+    visibleRangeRef.current = {
+      rangeStartIndex: null,
+      rangeEndIndex: null,
+    };
     userScrolledRef.current = false;
     silentCorrectionDoneRef.current = false;
     if (silentCorrectionTimerRef.current) {
@@ -2782,7 +3204,9 @@ function ConversationPage() {
       // eslint-disable-next-line no-console
       console.debug("[inbox-scroll] OPEN", conversationId);
     }
-  }, [conversationId]);
+    startInboxScrollTrace(conversationId, readScrollVirtualSnapshot);
+    return () => stopInboxScrollTrace(conversationId);
+  }, [conversationId, readScrollVirtualSnapshot]);
 
 
 
@@ -2926,9 +3350,14 @@ function ConversationPage() {
       }
     }, timeoutMs);
     try {
+      traceInboxScroll("INITIAL_LOAD", "LOAD_RECENT_START", { limit: 100 });
       const res = await loadConversationRecent(conversationId, 100);
       if (threadTokenRef.current !== token || timedOut) return;
       window.clearTimeout(timeoutId);
+      traceInboxScroll(res.ok ? "INITIAL_LOAD" : "OUTRO", "LOAD_RECENT_DONE", {
+        ok: res.ok,
+        error: res.error ?? null,
+      });
       setThreadLoad(
         res.ok
           ? { status: "ready" }
@@ -2967,6 +3396,12 @@ function ConversationPage() {
         if (initialScrollRef.current.cid !== conversationId) return;
         const last = latestVisibleMessagesLengthRef.current - 1;
         if (last < 0) return;
+        markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
+          source: "initial_position",
+          index: last,
+          align: "end",
+          behavior: "auto",
+        });
         virtuosoRef.current?.scrollToIndex({
           index: last,
           align: "end",
@@ -2993,6 +3428,12 @@ function ConversationPage() {
           const lastIdx = latestVisibleMessagesLengthRef.current - 1;
           if (lastIdx < 0) return;
           silentCorrectionDoneRef.current = true;
+          markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
+            source: "final_correction",
+            index: lastIdx,
+            align: "end",
+            behavior: "auto",
+          });
           virtuosoRef.current?.scrollToIndex({
             index: lastIdx,
             align: "end",
@@ -3023,6 +3464,10 @@ function ConversationPage() {
     const isRealNew = lastMsgIdRef.current !== null;
     lastMsgIdRef.current = last.id;
     if (isRealNew) {
+      traceInboxScroll("REALTIME", "LAST_MESSAGE_CHANGED", {
+        messageId: last.id,
+        atBottom,
+      });
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.debug("[inbox-scroll] NEW_MESSAGE", last.id, { atBottom });
@@ -3039,6 +3484,12 @@ function ConversationPage() {
   const scrollToBottomManual = useCallback(() => {
     const last = latestVisibleMessagesLengthRef.current - 1;
     if (last < 0) return;
+    markInboxScrollIntent("USER_SCROLL", "scrollToIndex_CALL", {
+      source: "manual_bottom_button",
+      index: last,
+      align: "end",
+      behavior: "smooth",
+    });
     virtuosoRef.current?.scrollToIndex({
       index: last,
       align: "end",
@@ -3049,6 +3500,48 @@ function ConversationPage() {
       // eslint-disable-next-line no-console
       console.debug("[inbox-scroll] USER_SCROLL → bottom");
     }
+  }, []);
+
+  const handleVirtuosoItemsRendered = useCallback((items: ListItem<Message>[]) => {
+    const indexes = items.map((item) => item.index);
+    renderedWindowRef.current = {
+      renderedItems: items.length,
+      firstItemIndex: indexes.length ? Math.min(...indexes) : null,
+      lastItemIndex: indexes.length ? Math.max(...indexes) : null,
+    };
+    traceInboxScroll("OUTRO", "ITEMS_RENDERED", {
+      indexes,
+      itemIds: items
+        .map((item) => item.data?.id)
+        .filter((id): id is string => typeof id === "string"),
+    });
+  }, []);
+
+  const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
+    visibleRangeRef.current = {
+      rangeStartIndex: range.startIndex,
+      rangeEndIndex: range.endIndex,
+    };
+    traceInboxScroll("OUTRO", "RANGE_CHANGED", {
+      startIndex: range.startIndex,
+      endIndex: range.endIndex,
+    });
+  }, []);
+
+  const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
+    const decision = isAtBottom ? "auto" : false;
+    if (decision === "auto") {
+      markInboxScrollIntent("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
+        isAtBottom,
+        decision,
+      });
+    } else {
+      traceInboxScroll("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
+        isAtBottom,
+        decision,
+      });
+    }
+    return decision;
   }, []);
 
 
@@ -3062,6 +3555,10 @@ function ConversationPage() {
   }, [conversationId]);
 
   const loadOlder = useCallback(() => {
+    traceInboxScroll("USER_SCROLL", "START_REACHED", {
+      conversationId,
+      hasMoreOlder: hasMoreOlderMessages(conversationId),
+    });
     if (olderLoadingRef.current) return;
     if (!hasMoreOlderMessages(conversationId)) {
       setHasMoreOlder(false);
@@ -3910,15 +4407,19 @@ function ConversationPage() {
                 data={visibleMessages}
                 computeItemKey={(_idx, m) => m.id}
                 initialTopMostItemIndex={visibleMessages.length - 1}
-                followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+                followOutput={handleVirtuosoFollowOutput}
                 atBottomStateChange={setAtBottom}
                 atBottomThreshold={160}
                 startReached={loadOlder}
+                itemsRendered={handleVirtuosoItemsRendered}
+                rangeChanged={handleVirtuosoRangeChanged}
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
                 className="h-full px-3 md:px-4"
                 style={{ overflowAnchor: "none" }}
                 components={{
+                  Scroller: TracedVirtuosoScroller,
+                  Item: TracedVirtuosoItem,
                   Header: () =>
                     !hasMoreOlder && visibleMessages.length > 0 ? (
                       <div className="flex justify-center py-3">
