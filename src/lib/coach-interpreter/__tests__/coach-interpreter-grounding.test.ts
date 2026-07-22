@@ -22,7 +22,7 @@ function mockSupabase(byTable: Record<string, { data: unknown; error?: unknown }
     // resolve para {data, error}.
     const chain: Record<string, (...args: unknown[]) => unknown> = {};
     const self: PromiseLike<{ data: unknown; error: unknown }> & Record<string, unknown> = {
-      then(onFulfilled, onRejected) {
+      then(onFulfilled: unknown, onRejected: unknown) {
         return Promise.resolve({ data: src.data, error: src.error ?? null }).then(
           onFulfilled,
           onRejected,
