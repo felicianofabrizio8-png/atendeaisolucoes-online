@@ -181,6 +181,19 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts.products = rows.length;
     if (rows.length > 0) {
       sources.products = true;
+      raw.products = rows.map((p) => ({
+        name: clip(p.name, 80),
+        category: p.category ? clip(p.category, 40) : null,
+        description: p.description ? clip(p.description, 240) : null,
+      }));
+      const haystack = rows
+        .map((p) => `${p.name ?? ""} ${p.category ?? ""} ${p.description ?? ""}`)
+        .join(" ")
+        .toLowerCase();
+      if (/\b(piscina|fibra|prainha|maragogi|canyon)\b/.test(haystack)) {
+        raw.detectedDomains.push("piscinas");
+      }
+
       const lines = rows.map((p) => {
         const price =
           p.promo_price != null
