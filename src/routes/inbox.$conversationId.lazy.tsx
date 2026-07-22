@@ -3367,7 +3367,6 @@ function ConversationPage() {
       // eslint-disable-next-line no-console
       console.debug("[inbox-data]", {
         conversationId,
-        threadLoad: threadLoad.status,
         repoMessages: repoMessages.length,
         localMessages: localMessages.length,
         visible: visibleMessages.length,
@@ -3377,7 +3376,8 @@ function ConversationPage() {
         lastAt: last?.at ?? null,
       });
     }
-  }, [visibleMessages, conversationId, threadLoad.status, repoMessages.length, localMessages.length]);
+  }, [visibleMessages, conversationId, repoMessages.length, localMessages.length]);
+
 
 
   // Reset por conversa: novo controlador, sem contagens antigas.
