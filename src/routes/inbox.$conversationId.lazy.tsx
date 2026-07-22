@@ -455,6 +455,14 @@ const TracedVirtuosoScroller = forwardRef<HTMLDivElement, ComponentPropsWithoutR
   },
 );
 
+function TracedVirtuosoItem({ children, ...props }: ItemProps<Message>) {
+  return (
+    <div {...props} data-inbox-virtual-item="true">
+      {children}
+    </div>
+  );
+}
+
 // Feature 3 — Reply: permite que a MessageBubble (filha) dispare o estado de
 // "respondendo a esta mensagem" no composer da ConversationPage (pai), sem
 // acoplar via props.
