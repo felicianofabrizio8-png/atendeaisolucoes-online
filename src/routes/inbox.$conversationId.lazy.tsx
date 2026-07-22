@@ -3359,7 +3359,26 @@ function ConversationPage() {
 
   useEffect(() => {
     latestVisibleMessagesLengthRef.current = visibleMessages.length;
-  }, [visibleMessages.length]);
+    if (import.meta.env.DEV) {
+      const first = visibleMessages[0];
+      const last = visibleMessages[visibleMessages.length - 1];
+      // Instrumentação da regressão "só última mensagem": auditoria dos
+      // números que chegam ao Virtuoso em cada notify() do repo.
+      // eslint-disable-next-line no-console
+      console.debug("[inbox-data]", {
+        conversationId,
+        repoMessages: repoMessages.length,
+        localMessages: localMessages.length,
+        visible: visibleMessages.length,
+        firstId: first?.id?.slice(0, 8) ?? null,
+        lastId: last?.id?.slice(0, 8) ?? null,
+        firstAt: first?.at ?? null,
+        lastAt: last?.at ?? null,
+      });
+    }
+  }, [visibleMessages, conversationId, repoMessages.length, localMessages.length]);
+
+
 
   // Reset por conversa: novo controlador, sem contagens antigas.
   useEffect(() => {
@@ -4612,7 +4631,12 @@ function ConversationPage() {
                     Tentar novamente
                   </button>
                 </div>
-              ) : threadLoad.status === "loading" && visibleMessages.length === 0 ? (
+              ) : threadLoad.status === "loading" ? (
+                // HOTFIX regressão "só última mensagem": aguardamos o
+                // loadConversationRecent concluir ANTES de montar o Virtuoso.
+                // Caso contrário, o Virtuoso mounta com o único preview vindo
+                // de `latest_messages_per_conversation` e não recupera o
+                // histórico mesmo depois de os 99 restantes chegarem ao índice.
                 <div className="h-full flex items-center justify-center">
                   <span className="text-xs text-muted-foreground animate-pulse">
                     Carregando mensagens…
@@ -4621,6 +4645,7 @@ function ConversationPage() {
               ) : visibleMessages.length === 0 ? (
                 <div className="h-full" />
               ) : (
+
               <Virtuoso
                 key={conversationId}
                 ref={virtuosoRef}
