@@ -5,7 +5,7 @@ import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
 import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type ListItem, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 
 import { timeAgo, formatBRL, type Message } from "@/data/mock";
 import {
