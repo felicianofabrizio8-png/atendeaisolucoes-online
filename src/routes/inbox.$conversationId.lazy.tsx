@@ -2546,7 +2546,6 @@ function ConversationPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [, rerenderRepo] = useState(0);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   // P3 — external store: re-render disparado apenas quando a versão do repo
   // muda. Substitui o `useState + useEffect(subscribeRepo)` que rerenderizava
