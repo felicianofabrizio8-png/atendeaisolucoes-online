@@ -38,19 +38,16 @@ describe("P3 · race condition — token de requisição", () => {
       const token = ++tokenRef.current;
       return new Promise<void>((resolvePromise) => {
         setTimeout(() => {
-          if (tokenRef.current !== token) return; // regra do P3
-          applied.push(convId);
+          if (tokenRef.current === token) applied.push(convId);
           resolvePromise();
         }, resolveAfterMs);
       });
     }
 
-    vi.useFakeTimers();
-    const first = runLoad("conv-A", 200); // resolve por último
-    const second = runLoad("conv-B", 50); //  resolve primeiro
-    await vi.advanceTimersByTimeAsync(250);
-    await Promise.allSettled([first, second]);
-    vi.useRealTimers();
+    // A resolve por último (30ms); B resolve primeiro (10ms).
+    const first = runLoad("conv-A", 30);
+    const second = runLoad("conv-B", 10);
+    await Promise.all([first, second]);
 
     expect(applied).toEqual(["conv-B"]);
   });
