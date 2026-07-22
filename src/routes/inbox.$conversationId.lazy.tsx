@@ -4772,7 +4772,10 @@ function ConversationPage() {
                   );
                 }}
               />
+                </div>
+              </div>
               )}
+
 
             </VirtuosoScrollContext.Provider>
             </ReplyComposeContext.Provider>
