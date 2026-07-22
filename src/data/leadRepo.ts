@@ -337,6 +337,8 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
       toConversation(r as DbConversation, slaMinutes),
     );
     remoteMessages = (ms ?? []).map((r) => toMessage(r as DbMessage));
+    // P3 — reconstrói o índice a partir do bulk inicial.
+    idxRebuild(messagesIndex, remoteMessages);
 
     remoteLoaded = true;
     mode = "remote";
