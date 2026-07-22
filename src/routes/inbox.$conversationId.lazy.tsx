@@ -559,6 +559,16 @@ function ImagePreview({
           alt={filename ?? "Imagem"}
           width={240}
           height={180}
+          onLoad={(event) => {
+            const img = event.currentTarget;
+            traceInboxScroll("IMAGE_DECODE", "IMAGE_LOAD", {
+              src: display,
+              naturalWidth: img.naturalWidth,
+              naturalHeight: img.naturalHeight,
+              renderedWidth: img.clientWidth,
+              renderedHeight: img.clientHeight,
+            });
+          }}
           onError={() => setError(true)}
           className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
           loading="lazy"
@@ -624,6 +634,16 @@ function VideoPreview({
         controls
         width={280}
         height={158}
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          traceInboxScroll("IMAGE_DECODE", "VIDEO_METADATA", {
+            src: display,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            renderedWidth: video.clientWidth,
+            renderedHeight: video.clientHeight,
+          });
+        }}
         className="rounded-md max-w-full md:max-w-[280px] w-auto h-auto max-h-[50vh] bg-black"
         preload="metadata"
       />
