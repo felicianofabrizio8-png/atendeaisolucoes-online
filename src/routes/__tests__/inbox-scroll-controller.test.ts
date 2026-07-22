@@ -209,11 +209,21 @@ describe("[inbox-scroll] auditoria estática", () => {
     expect(src).toMatch(/followOutput=\{\(isAtBottom\)\s*=>\s*\(isAtBottom \? "auto" : false\)\}/);
   });
 
-  // Garante que o único scrollToIndex automático fica no efeito READY-gated.
-  it("possui exatamente um scrollToIndex disparado no efeito de abertura", () => {
+  // Garante que só existem os dois scrolls automáticos esperados:
+  // o INITIAL_POSITION e a FINAL_CORRECTION silenciosa única.
+  it("possui exatamente dois scrollToIndex 'auto' (initial + correção silenciosa)", () => {
     const autoBlocks = src.match(/behavior:\s*"auto"/g) ?? [];
-    // O único bloco 'auto' esperado é o scroll inicial.
-    expect(autoBlocks.length).toBe(1);
+    expect(autoBlocks.length).toBe(2);
+  });
+
+  it("aplica overflow-anchor: none no scroller do Virtuoso", () => {
+    expect(src).toMatch(/overflowAnchor:\s*"none"/);
+  });
+
+  it("dispara log FINAL_CORRECTION após INITIAL_POSITION", () => {
+    expect(src).toContain("INITIAL_POSITION");
+    expect(src).toContain("FINAL_CORRECTION");
+    expect(src).toContain("USER_CANCELLED_AUTOSCROLL");
   });
 });
 
