@@ -81,6 +81,8 @@ export function CoachPanel({
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [teachOpen, setTeachOpen] = useState(false);
+  const [teachSeed, setTeachSeed] = useState<string>("");
 
   const loadData = useMemo(
     () => async () => {
