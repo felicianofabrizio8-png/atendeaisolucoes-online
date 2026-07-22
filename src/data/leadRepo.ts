@@ -571,6 +571,7 @@ export async function refetchConversationMessages(conversationId: string) {
     .filter((m) => !existing.has(m.id));
   if (fresh.length === 0) return;
   remoteMessages = [...remoteMessages, ...fresh];
+  for (const m of fresh) idxUpsert(messagesIndex, m);
   notify();
 }
 
