@@ -285,7 +285,7 @@ function LearningCard({
               <select
                 className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
                 value={draft.status}
-                onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                onChange={(e) => setDraft({ ...draft, status: e.target.value as CoachLearningStatus })}
               >
                 {COACH_LEARNING_STATUSES.filter((s) => s !== "archived").map((s) => (
                   <option key={s} value={s}>
