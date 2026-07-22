@@ -3494,6 +3494,48 @@ function ConversationPage() {
     }
   }, []);
 
+  const handleVirtuosoItemsRendered = useCallback((items: ListItem<Message>[]) => {
+    const indexes = items.map((item) => item.index);
+    renderedWindowRef.current = {
+      renderedItems: items.length,
+      firstItemIndex: indexes.length ? Math.min(...indexes) : null,
+      lastItemIndex: indexes.length ? Math.max(...indexes) : null,
+    };
+    traceInboxScroll("OUTRO", "ITEMS_RENDERED", {
+      indexes,
+      itemIds: items
+        .map((item) => item.data?.id)
+        .filter((id): id is string => typeof id === "string"),
+    });
+  }, []);
+
+  const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
+    visibleRangeRef.current = {
+      rangeStartIndex: range.startIndex,
+      rangeEndIndex: range.endIndex,
+    };
+    traceInboxScroll("OUTRO", "RANGE_CHANGED", {
+      startIndex: range.startIndex,
+      endIndex: range.endIndex,
+    });
+  }, []);
+
+  const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
+    const decision = isAtBottom ? "auto" : false;
+    if (decision === "auto") {
+      markInboxScrollIntent("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
+        isAtBottom,
+        decision,
+      });
+    } else {
+      traceInboxScroll("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
+        isAtBottom,
+        decision,
+      });
+    }
+    return decision;
+  }, []);
+
 
   // Onda 2.4: paginação de histórico via Virtuoso (`startReached`).
   const olderLoadingRef = useRef(false);
