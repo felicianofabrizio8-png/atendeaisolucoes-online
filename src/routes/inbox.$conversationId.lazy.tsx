@@ -776,6 +776,90 @@ function deletedLabelFor(kind: MediaKind | null): string {
   }
 }
 
+// Mapa de tipos de mensagem do WhatsApp Cloud API / Meta que ainda não
+// possuem UI dedicada. Renderiza um placeholder amigável de altura fixa,
+// preservando estabilidade de layout e o tipo original em data-attr para
+// futura implementação (ver source_subtype / source_metadata.raw).
+const UNSUPPORTED_LABELS: Record<string, string> = {
+  document: "📎 Documento",
+  location: "📍 Localização",
+  contacts: "👤 Contato",
+  contact: "👤 Contato",
+  sticker: "🌟 Sticker",
+  reaction: "💬 Reação",
+  interactive: "🔘 Resposta interativa",
+  button: "🔘 Botão",
+  order: "🛒 Pedido",
+  poll: "📊 Enquete",
+  system: "ℹ️ Mensagem do sistema",
+  ephemeral: "⏳ Mensagem temporária",
+  unknown: "✉️ Mensagem não suportada",
+  unsupported: "✉️ Mensagem não suportada",
+};
+
+// Textos legados que podem ter sido salvos por versões anteriores do webhook.
+const LEGACY_BRACKET_TEXT: Record<string, { label: string; rawType: string }> = {
+  "[unsupported]": { label: "✉️ Mensagem não suportada", rawType: "unsupported" },
+  "[unknown]": { label: "✉️ Mensagem não suportada", rawType: "unknown" },
+  "[mensagem]": { label: "✉️ Mensagem não suportada", rawType: "unknown" },
+  "[localização]": { label: "📍 Localização", rawType: "location" },
+  "[localizacao]": { label: "📍 Localização", rawType: "location" },
+  "[location]": { label: "📍 Localização", rawType: "location" },
+  "[contacts]": { label: "👤 Contato", rawType: "contacts" },
+  "[contato]": { label: "👤 Contato", rawType: "contacts" },
+  "[reaction]": { label: "💬 Reação", rawType: "reaction" },
+  "[interactive]": { label: "🔘 Resposta interativa", rawType: "interactive" },
+  "[order]": { label: "🛒 Pedido", rawType: "order" },
+  "[poll]": { label: "📊 Enquete", rawType: "poll" },
+  "[system]": { label: "ℹ️ Mensagem do sistema", rawType: "system" },
+  "[ephemeral]": { label: "⏳ Mensagem temporária", rawType: "ephemeral" },
+  "[sticker]": { label: "🌟 Sticker", rawType: "sticker" },
+};
+
+function getUnsupportedPlaceholder(
+  message: Message,
+  text: string,
+): { label: string; rawType: string } | null {
+  const trimmed = (text ?? "").trim();
+  const legacy = LEGACY_BRACKET_TEXT[trimmed.toLowerCase()];
+  if (legacy) return legacy;
+
+  const sub = (message.sourceSubtype ?? "").toLowerCase();
+  if (sub && UNSUPPORTED_LABELS[sub] && !["image", "video", "audio"].includes(sub)) {
+    // Só mostra placeholder se não houver mídia renderizável associada.
+    // (getMediaInfo já tratou image/video/audio/document/sticker com arquivo.)
+    if (sub === "document" || sub === "sticker") {
+      // Documento/sticker sem arquivo baixado — placeholder amigável.
+      return { label: UNSUPPORTED_LABELS[sub], rawType: sub };
+    }
+    return { label: UNSUPPORTED_LABELS[sub], rawType: sub };
+  }
+
+  // Fallback: texto ainda em formato [algo] que não conhecemos.
+  const bracketMatch = /^\[([a-z0-9_\- ]{1,32})\]$/i.exec(trimmed);
+  if (bracketMatch) {
+    const raw = bracketMatch[1].toLowerCase();
+    return {
+      label: UNSUPPORTED_LABELS[raw] ?? "✉️ Mensagem não suportada",
+      rawType: raw,
+    };
+  }
+  return null;
+}
+
+function UnsupportedPlaceholder({ label, rawType }: { label: string; rawType: string }) {
+  return (
+    <div
+      data-unsupported-type={rawType}
+      className="flex items-center gap-2 rounded-md border border-dashed border-border/60 bg-muted/40 px-3 text-sm text-muted-foreground"
+      style={{ height: 44, minHeight: 44 }}
+      title={`Tipo original: ${rawType}`}
+    >
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
 type ReplyToMeta = {
   message_id?: string | null;
   external_id?: string | null;
