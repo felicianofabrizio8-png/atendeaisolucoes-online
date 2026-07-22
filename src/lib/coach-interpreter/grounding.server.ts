@@ -327,5 +327,7 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     counts,
     warnings,
     isEmpty,
+    raw,
   };
 }
+
