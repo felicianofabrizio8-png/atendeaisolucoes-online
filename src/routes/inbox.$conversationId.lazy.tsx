@@ -3,7 +3,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
 import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
-import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
+import {
+  initialConversationOpenState,
+  reduceConversationOpen,
+  shouldMountVirtuoso,
+  shouldRevealVirtuoso,
+  type ConversationOpenEvent,
+  type ConversationOpenState,
+} from "@/lib/inbox/conversation-open-machine";
+import { ChatSkeleton } from "@/components/inbox/ChatSkeleton";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso, type ItemProps, type ListItem, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 
@@ -3598,6 +3607,86 @@ function ConversationPage() {
     void loadThread();
   }, [conversationId, loadThread]);
 
+  // ---- Máquina de estados determinística de abertura (F2) --------------
+  // Elimina o tremor: enquanto a máquina não estiver em `visible`, o
+  // Virtuoso é renderizado com `visibility: hidden` sobre o skeleton, e
+  // qualquer recalibração acontece invisível ao usuário.
+  const [openState, dispatchOpen] = useReducer(
+    reduceConversationOpen,
+    undefined,
+    initialConversationOpenState,
+  );
+  const openStateRef = useRef<ConversationOpenState>(openState);
+  useEffect(() => {
+    openStateRef.current = openState;
+  }, [openState]);
+
+  const dispatchLayoutProbe = useCallback((heightChanged: boolean) => {
+    const s = openStateRef.current;
+    if (s.name !== "preparing") return;
+    const scroller = inboxScrollTraceState.scroller;
+    const distanceToEnd = scroller
+      ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      : 0;
+    const ev: ConversationOpenEvent = {
+      type: "layout_probe",
+      cid: s.cid,
+      totalItems: latestVisibleMessagesLengthRef.current,
+      lastRenderedIndex: renderedWindowRef.current.lastItemIndex ?? -1,
+      distanceToEnd,
+      heightChanged,
+    };
+    dispatchOpen(ev);
+  }, []);
+
+  // Abertura por troca de conversa. Cache íntegro (>=2 msgs) entra direto
+  // em `preparing`; preview isolado (1 msg) mantém em `loading`.
+  useEffect(() => {
+    if (!conversationId) return;
+    dispatchOpen({
+      type: "open",
+      cid: conversationId,
+      cachedTotal: latestVisibleMessagesLengthRef.current,
+    });
+    return () => dispatchOpen({ type: "close" });
+  }, [conversationId]);
+
+  // Reflete o resultado do carregamento inicial.
+  useEffect(() => {
+    if (threadLoad.status === "ready") {
+      dispatchOpen({
+        type: "load_ok",
+        cid: conversationId,
+        totalItems: latestVisibleMessagesLengthRef.current,
+      });
+    } else if (threadLoad.status === "error") {
+      dispatchOpen({
+        type: "load_error",
+        cid: conversationId,
+        message: threadLoad.error ?? "Falha ao carregar",
+      });
+    }
+  }, [threadLoad, conversationId]);
+
+  // Novas mensagens (bootstrap tardio, realtime durante loading/preparing).
+  useEffect(() => {
+    dispatchOpen({
+      type: "messages_changed",
+      cid: conversationId,
+      totalItems: visibleMessages.length,
+    });
+  }, [visibleMessages.length, conversationId]);
+
+  // Revelação atômica: ready → visible em 1 rAF, sem animação.
+  useEffect(() => {
+    if (openState.name !== "ready") return;
+    const raf = requestAnimationFrame(() => {
+      dispatchOpen({ type: "reveal", cid: openState.cid });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [openState]);
+
+
   // ---- Scroll controller (hotfix) --------------------------------------
   // Um único scroll automático por conversationId, disparado somente
   // após threadLoad READY + 2 rAFs (layout estabilizado).
@@ -3629,40 +3718,10 @@ function ConversationPage() {
           // eslint-disable-next-line no-console
           console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
-        // Ativa o bottom lock: qualquer recalibração de altura/range
-        // enquanto o usuário não interagir reancorará no último item.
-        startBottomLock(conversationId);
-        // Correção silenciosa única: absorve mudanças de altura por decode
-        // de imagens/vídeos após o primeiro posicionamento. Cancelada por
-        // qualquer scroll manual do usuário.
-        if (silentCorrectionTimerRef.current) {
-          window.clearTimeout(silentCorrectionTimerRef.current);
-        }
-        silentCorrectionTimerRef.current = window.setTimeout(() => {
-          silentCorrectionTimerRef.current = null;
-          if (initialScrollRef.current.cid !== conversationId) return;
-          if (silentCorrectionDoneRef.current) return;
-          if (userScrolledRef.current) return;
-          if (!atBottomRef.current) return;
-          const lastIdx = latestVisibleMessagesLengthRef.current - 1;
-          if (lastIdx < 0) return;
-          silentCorrectionDoneRef.current = true;
-          markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
-            source: "final_correction",
-            index: lastIdx,
-            align: "end",
-            behavior: "auto",
-          });
-          virtuosoRef.current?.scrollToIndex({
-            index: lastIdx,
-            align: "end",
-            behavior: "auto",
-          });
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.debug("[inbox-scroll] FINAL_CORRECTION", conversationId, lastIdx);
-          }
-        }, 800);
+        // F4 — bottom-lock e correção silenciosa 800ms REMOVIDOS. A
+        // máquina de estados (openState) só revela o Virtuoso após a
+        // calibração — não precisamos mais empilhar reancoragens.
+
       });
       cancelableR2Ref.current = r2;
     });
@@ -3670,7 +3729,7 @@ function ConversationPage() {
       cancelAnimationFrame(r1);
       if (cancelableR2Ref.current) cancelAnimationFrame(cancelableR2Ref.current);
     };
-  }, [threadLoad.status, conversationId, visibleMessages.length, startBottomLock]);
+  }, [threadLoad.status, conversationId, visibleMessages.length]);
 
   // Detecta chegada de nova mensagem após o scroll inicial. Se o usuário
   // não estiver próximo do fim, incrementa contador para o pill "Novas
@@ -3735,7 +3794,8 @@ function ConversationPage() {
         .filter((id): id is string => typeof id === "string"),
     });
     reanchorIfLocked("items_rendered");
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(false);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
     visibleRangeRef.current = {
@@ -3750,7 +3810,8 @@ function ConversationPage() {
       startIndex: range.startIndex,
       endIndex: range.endIndex,
     });
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(false);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoTotalListHeightChanged = useCallback((height: number) => {
     const s = bottomLockRef.current;
@@ -3762,10 +3823,15 @@ function ConversationPage() {
       locked: s.active,
     });
     reanchorIfLocked("total_height_changed", { previous: prev, next: height });
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(true);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
-    const decision = isAtBottom ? "auto" : false;
+    // F4 — followOutput só age depois de `visible`. Durante preparing/ready,
+    // não deixamos o Virtuoso "seguir" mensagens que ainda estão sendo
+    // absorvidas do bootstrap.
+    const revealed = openStateRef.current.name === "visible";
+    const decision = revealed && isAtBottom ? "auto" : false;
     if (decision === "auto") {
       markInboxScrollIntent("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
         isAtBottom,
@@ -4631,21 +4697,32 @@ function ConversationPage() {
                     Tentar novamente
                   </button>
                 </div>
-              ) : threadLoad.status === "loading" ? (
-                // HOTFIX regressão "só última mensagem": aguardamos o
-                // loadConversationRecent concluir ANTES de montar o Virtuoso.
-                // Caso contrário, o Virtuoso mounta com o único preview vindo
-                // de `latest_messages_per_conversation` e não recupera o
-                // histórico mesmo depois de os 99 restantes chegarem ao índice.
-                <div className="h-full flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground animate-pulse">
-                    Carregando mensagens…
-                  </span>
-                </div>
+              ) : !shouldMountVirtuoso(openState) ? (
+                // F2/F8 — enquanto a máquina está em loading (aguardando
+                // loadConversationRecent), mostramos skeleton estável. O
+                // Virtuoso ainda NÃO monta: garante que ele nunca calibra
+                // com um preview isolado como se fosse histórico completo.
+                <ChatSkeleton />
               ) : visibleMessages.length === 0 ? (
                 <div className="h-full" />
               ) : (
-
+              <div className="relative h-full">
+                {/* F3 — Skeleton permanece por cima enquanto o Virtuoso
+                    calibra invisível. `visibility: hidden` preserva
+                    medições (diferente de display:none). */}
+                {!shouldRevealVirtuoso(openState) && (
+                  <div className="absolute inset-0 z-10 pointer-events-none">
+                    <ChatSkeleton />
+                  </div>
+                )}
+                <div
+                  className="h-full"
+                  style={{
+                    visibility: shouldRevealVirtuoso(openState)
+                      ? "visible"
+                      : "hidden",
+                  }}
+                >
               <Virtuoso
                 key={conversationId}
                 ref={virtuosoRef}
@@ -4695,7 +4772,10 @@ function ConversationPage() {
                   );
                 }}
               />
+                </div>
+              </div>
               )}
+
 
             </VirtuosoScrollContext.Provider>
             </ReplyComposeContext.Provider>

@@ -200,51 +200,44 @@ describe("[inbox-scroll] auditoria estática", () => {
     expect(src).not.toMatch(/setTimeout\(\s*scrollToLastMessage/);
   });
 
+  it("não usa mais o timer silencioso de 800ms (removido pela máquina de estados)", () => {
+    expect(src).not.toMatch(/silentCorrectionTimerRef\.current = window\.setTimeout/);
+    expect(src).not.toMatch(/FINAL_CORRECTION/);
+  });
+
   it("expõe o pill 'Ir para o final' controlado por newSinceCount", () => {
     expect(src).toContain("newSinceCount");
     expect(src).toContain("Ir para o final");
   });
 
-  it("mantém followOutput conservador (não força bottom quando usuário rolou)", () => {
+  it("followOutput é conservador e só age depois de visible", () => {
     expect(src).toContain("const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) =>");
-    expect(src).toMatch(/const decision = isAtBottom \? "auto" : false/);
-    expect(src).toContain("return decision");
+    expect(src).toMatch(
+      /openStateRef\.current\.name === "visible"[\s\S]{0,200}?revealed && isAtBottom \? "auto" : false/,
+    );
     expect(src).toContain("followOutput={handleVirtuosoFollowOutput}");
   });
 
-  // Garante presença dos três scrolls automáticos esperados:
-  // INITIAL_POSITION, FINAL_CORRECTION silenciosa e BOTTOM_LOCK_CORRECTION.
-  it("possui pelo menos três scrollToIndex 'auto' (initial + correção silenciosa + bottom lock)", () => {
-    const runtimeSrc = src.replace(/markInboxScrollIntent\([\s\S]*?\);/g, "");
-    const autoBlocks = runtimeSrc.match(/behavior:\s*"auto"/g) ?? [];
-    expect(autoBlocks.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("aplica overflow-anchor: none no scroller do Virtuoso", () => {
+  it("mantém overflow-anchor: none no scroller do Virtuoso", () => {
     expect(src).toMatch(/overflowAnchor:\s*"none"/);
   });
 
-  it("dispara log FINAL_CORRECTION após INITIAL_POSITION", () => {
-    expect(src).toContain("INITIAL_POSITION");
-    expect(src).toContain("FINAL_CORRECTION");
-    expect(src).toContain("USER_CANCELLED_AUTOSCROLL");
+  it("integra a máquina de abertura (F2) — mount e reveal controlados pelo openState", () => {
+    expect(src).toContain("shouldMountVirtuoso(openState)");
+    expect(src).toContain("shouldRevealVirtuoso(openState)");
+    expect(src).toContain("<ChatSkeleton />");
+    expect(src).toContain("dispatchOpen");
   });
 
-  it("implementa bottom lock com callbacks totalListHeightChanged/rangeChanged/itemsRendered", () => {
-    expect(src).toContain("BOTTOM_LOCK_START");
-    expect(src).toContain("BOTTOM_LOCK_CORRECTION");
-    expect(src).toContain("BOTTOM_LOCK_STABLE");
-    expect(src).toContain("BOTTOM_LOCK_TIMEOUT");
-    expect(src).toContain("BOTTOM_LOCK_CANCELLED_BY_USER");
-    expect(src).toContain("totalListHeightChanged={handleVirtuosoTotalListHeightChanged}");
-    expect(src).toContain("reanchorIfLocked");
-    expect(src).toContain("cancelBottomLockByUser");
-    // Interação do usuário nos wrappers estáticos cancela o lock.
-    expect(src).toContain("inboxBottomLockCancelHandler?.(source)");
-    // loadOlder (histórico antigo) cancela o lock.
-    expect(src).toContain("cancelBottomLockByUser(\"start_reached_load_older\")");
+  it("não ativa mais startBottomLock durante a abertura", () => {
+    const initialEffect = src.match(
+      /Scroll controller \(hotfix\)[\s\S]*?visibleMessages\.length\]\);/,
+    )?.[0];
+    expect(initialEffect).toBeDefined();
+    expect(initialEffect!).not.toMatch(/startBottomLock\(conversationId\)/);
   });
 });
+
 
 // ---- Máquina de estado do bottom lock (isolada) --------------------------
 // Reimplementação minimal para validar as regras exigidas: reancoragem em
