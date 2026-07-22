@@ -82,18 +82,27 @@ export function reduceConversationOpen(
 
   switch (event.type) {
     case "load_ok": {
-      if (state.name !== "loading" && state.name !== "error") return state;
-      if (event.totalItems < CONVERSATION_OPEN_MIN_BATCH_FOR_PREPARE) {
-        // Sem mensagens reais — permanece em "loading" até chegar realtime,
-        // ou o componente decide mostrar "conversa vazia".
-        return state;
+      if (state.name === "loading" || state.name === "error") {
+        if (event.totalItems < CONVERSATION_OPEN_MIN_BATCH_FOR_PREPARE) {
+          return state;
+        }
+        return {
+          name: "preparing",
+          cid: event.cid,
+          totalItems: event.totalItems,
+          stableFrames: 0,
+        };
       }
-      return {
-        name: "preparing",
-        cid: event.cid,
-        totalItems: event.totalItems,
-        stableFrames: 0,
-      };
+      if (state.name === "preparing") {
+        // Realtime já elevou o total antes do load_ok chegar — mantém o
+        // maior e reseta frames (a lista mudou implicitamente).
+        return {
+          ...state,
+          totalItems: Math.max(state.totalItems, event.totalItems),
+          stableFrames: 0,
+        };
+      }
+      return state;
     }
 
     case "load_error": {
