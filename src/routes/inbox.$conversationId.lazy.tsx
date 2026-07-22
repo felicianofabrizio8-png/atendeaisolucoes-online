@@ -3174,6 +3174,15 @@ function ConversationPage() {
   useEffect(() => {
     initialScrollRef.current = { cid: conversationId, done: false };
     lastMsgIdRef.current = null;
+    renderedWindowRef.current = {
+      renderedItems: null,
+      firstItemIndex: null,
+      lastItemIndex: null,
+    };
+    visibleRangeRef.current = {
+      rangeStartIndex: null,
+      rangeEndIndex: null,
+    };
     userScrolledRef.current = false;
     silentCorrectionDoneRef.current = false;
     if (silentCorrectionTimerRef.current) {
@@ -3333,9 +3342,14 @@ function ConversationPage() {
       }
     }, timeoutMs);
     try {
+      traceInboxScroll("INITIAL_LOAD", "LOAD_RECENT_START", { limit: 100 });
       const res = await loadConversationRecent(conversationId, 100);
       if (threadTokenRef.current !== token || timedOut) return;
       window.clearTimeout(timeoutId);
+      traceInboxScroll(res.ok ? "INITIAL_LOAD" : "OUTRO", "LOAD_RECENT_DONE", {
+        ok: res.ok,
+        error: res.error ?? null,
+      });
       setThreadLoad(
         res.ok
           ? { status: "ready" }
@@ -3374,6 +3388,12 @@ function ConversationPage() {
         if (initialScrollRef.current.cid !== conversationId) return;
         const last = latestVisibleMessagesLengthRef.current - 1;
         if (last < 0) return;
+        markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
+          source: "initial_position",
+          index: last,
+          align: "end",
+          behavior: "auto",
+        });
         virtuosoRef.current?.scrollToIndex({
           index: last,
           align: "end",
@@ -3400,6 +3420,12 @@ function ConversationPage() {
           const lastIdx = latestVisibleMessagesLengthRef.current - 1;
           if (lastIdx < 0) return;
           silentCorrectionDoneRef.current = true;
+          markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
+            source: "final_correction",
+            index: lastIdx,
+            align: "end",
+            behavior: "auto",
+          });
           virtuosoRef.current?.scrollToIndex({
             index: lastIdx,
             align: "end",
@@ -3430,6 +3456,10 @@ function ConversationPage() {
     const isRealNew = lastMsgIdRef.current !== null;
     lastMsgIdRef.current = last.id;
     if (isRealNew) {
+      traceInboxScroll("REALTIME", "LAST_MESSAGE_CHANGED", {
+        messageId: last.id,
+        atBottom,
+      });
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.debug("[inbox-scroll] NEW_MESSAGE", last.id, { atBottom });
@@ -3446,6 +3476,12 @@ function ConversationPage() {
   const scrollToBottomManual = useCallback(() => {
     const last = latestVisibleMessagesLengthRef.current - 1;
     if (last < 0) return;
+    markInboxScrollIntent("USER_SCROLL", "scrollToIndex_CALL", {
+      source: "manual_bottom_button",
+      index: last,
+      align: "end",
+      behavior: "smooth",
+    });
     virtuosoRef.current?.scrollToIndex({
       index: last,
       align: "end",
@@ -3469,6 +3505,10 @@ function ConversationPage() {
   }, [conversationId]);
 
   const loadOlder = useCallback(() => {
+    traceInboxScroll("USER_SCROLL", "START_REACHED", {
+      conversationId,
+      hasMoreOlder: hasMoreOlderMessages(conversationId),
+    });
     if (olderLoadingRef.current) return;
     if (!hasMoreOlderMessages(conversationId)) {
       setHasMoreOlder(false);
