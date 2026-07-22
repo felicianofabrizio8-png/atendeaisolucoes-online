@@ -58,7 +58,9 @@ export interface CoachGroundingContext {
   warnings: string[]; // sanitizadas
   isEmpty: boolean; // true quando nenhuma fonte trouxe dado útil
   raw: CoachGroundingRaw; // dados estruturados para o Domain Validator
+  learningIdsUsed: string[]; // ids de coach_learnings injetados no bloco
 }
+
 
 
 const MAX_PRODUCTS = 40;
@@ -335,6 +337,31 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     }
   }
 
+  // -- Coach Learnings (aprendizados conversacionais da própria empresa) ---
+  const learningIdsUsed: string[] = [];
+  try {
+    const { listActiveLearningsForGrounding } = await import(
+      "@/lib/coach-learnings/coach-learnings.repository"
+    );
+    const learnings = await listActiveLearningsForGrounding(sb, companyId, 20);
+    if (learnings.length > 0) {
+      sources.coach_learnings = true;
+      const lines = learnings.map((l) => {
+        const cat = `[${clip(l.category, 30)}${l.product_ref ? `/${clip(l.product_ref, 40)}` : ""}]`;
+        const rule = clip(l.rule_structured, 260);
+        const pos = l.positive_example ? ` ✓ ${clip(l.positive_example, 140)}` : "";
+        const neg = l.negative_example ? ` ✗ ${clip(l.negative_example, 140)}` : "";
+        learningIdsUsed.push(l.id);
+        return `${cat} (p${l.priority}, v${l.version}) ${clip(l.title, 80)} — ${rule}${pos}${neg}`;
+      });
+      sections.push(
+        `### APRENDIZADOS DA EQUIPE (ensinados pelos vendedores desta empresa — TÊM PRIORIDADE sobre a Base de Conhecimento e produtos, exceto quando conflitam com REGRAS COMERCIAIS ATIVAS)\n${bullet(lines)}`,
+      );
+    }
+  } catch {
+    warnings.push("grounding_learnings_failed");
+  }
+
   // -- Score de grounding --------------------------------------------------
   const activeSources = Object.values(sources).filter(Boolean).length;
   const totalSources = Object.keys(sources).length;
@@ -354,6 +381,7 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     warnings,
     isEmpty,
     raw,
+    learningIdsUsed,
   };
 }
 
