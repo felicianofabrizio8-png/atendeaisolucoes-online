@@ -4612,7 +4612,12 @@ function ConversationPage() {
                     Tentar novamente
                   </button>
                 </div>
-              ) : threadLoad.status === "loading" && visibleMessages.length === 0 ? (
+              ) : threadLoad.status === "loading" ? (
+                // HOTFIX regressão "só última mensagem": aguardamos o
+                // loadConversationRecent concluir ANTES de montar o Virtuoso.
+                // Caso contrário, o Virtuoso mounta com o único preview vindo
+                // de `latest_messages_per_conversation` e não recupera o
+                // histórico mesmo depois de os 99 restantes chegarem ao índice.
                 <div className="h-full flex items-center justify-center">
                   <span className="text-xs text-muted-foreground animate-pulse">
                     Carregando mensagens…
@@ -4621,6 +4626,7 @@ function ConversationPage() {
               ) : visibleMessages.length === 0 ? (
                 <div className="h-full" />
               ) : (
+
               <Virtuoso
                 key={conversationId}
                 ref={virtuosoRef}
