@@ -387,7 +387,9 @@ function subscribeRealtime(companyId: string) {
         };
         // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
         if (remoteMessages.some((m) => m.id === row.id)) return;
-        remoteMessages = [...remoteMessages, toMessage(row)];
+        const msg = toMessage(row);
+        remoteMessages = [...remoteMessages, msg];
+        idxUpsert(messagesIndex, msg);
 
         // P2 — Bump local imediato da conversa correspondente. Sem esperar
         // o trigger de banco emitir `conversations UPDATE`, a fila reordena
