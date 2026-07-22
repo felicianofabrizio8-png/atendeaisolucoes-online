@@ -249,12 +249,20 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
       push("Palavras preferidas", kb.preferred_words);
       push("Palavras proibidas", kb.forbidden_words);
       push("Observações extras", kb.extra_notes);
+      const splitTokens = (s?: string | null) =>
+        (s ?? "")
+          .split(/[,;\n|]+/)
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length >= 2 && t.length <= 60);
+      raw.forbiddenWords = splitTokens(kb.forbidden_words);
+      raw.preferredWords = splitTokens(kb.preferred_words);
       if (kbLines.length > 0) {
         sources.knowledge_base = true;
         sections.push(`### BASE DE CONHECIMENTO DA EMPRESA\n${kbLines.join("\n")}`);
       }
     }
   }
+
 
   // -- Quick Replies (também servem como FAQ operacional) ------------------
   if ((quickRes as { error?: unknown }).error) {
