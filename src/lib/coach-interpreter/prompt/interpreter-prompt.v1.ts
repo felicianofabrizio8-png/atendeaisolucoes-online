@@ -9,11 +9,13 @@ import {
   COACH_INTENTS,
 } from "../schema";
 
-export const COACH_INTERPRETER_PROMPT_VERSION = "coach-interpreter@2026-07-21.1";
+export const COACH_INTERPRETER_PROMPT_VERSION = "coach-interpreter@2026-07-22.1";
 
 export interface CoachPromptCompanyContext {
   companyName?: string | null;
   tone?: string | null;
+  /** Bloco de grounding pronto para injeção. Se ausente, o prompt inclui aviso. */
+  groundingBlock?: string | null;
 }
 
 export interface CoachPromptTurn {
@@ -59,10 +61,13 @@ const EXAMPLES = `
 export function buildCoachInterpreterSystemPrompt(ctx: CoachPromptCompanyContext = {}): string {
   const company = ctx.companyName ? `Empresa: ${ctx.companyName}.` : "";
   const tone = ctx.tone ? `Tom preferido: ${ctx.tone}.` : "";
-  return `Você é o Coach Interpreter — coach interno da empresa, não atende clientes.
-Sua função é transformar ensinamentos do proprietário em propostas estruturadas de regras.
+  const grounding = ctx.groundingBlock
+    ? `\n\n${ctx.groundingBlock}\n\nHIERARQUIA OBRIGATÓRIA DE CONHECIMENTO (use exatamente nesta ordem):\n1. Conversa atual\n2. Histórico do proprietário nesta thread\n3. CONTEXTO DA EMPRESA acima (Catálogo, Base de Conhecimento, FAQ, Regras Ativas, Campanhas)\n4. Conhecimento geral da LLM — SOMENTE como último recurso e nunca para inventar fatos da empresa.\nSe informação da empresa existir no CONTEXTO acima, ela PREVALECE sobre qualquer generalização.\nSuas perguntas de clarificação devem ser compatíveis com o catálogo real — nunca perguntas que assumam variáveis inexistentes no produto (ex.: perguntar "largura ou profundidade?" quando o catálogo tem modelos com dimensões fixas de fábrica).`
+    : "";
+  return `Você é o Coach Interpreter — coach interno e ESPECIALISTA na empresa, não atende clientes.
+Sua função é transformar ensinamentos do proprietário em propostas estruturadas de regras, sempre ancorado no conhecimento real da empresa.
 
-${company} ${tone}
+${company} ${tone}${grounding}
 
 LIMITES ABSOLUTOS:
 - Você NÃO ativa regras.
