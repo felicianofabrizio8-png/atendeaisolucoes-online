@@ -3,7 +3,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
 import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
-import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
+import {
+  initialConversationOpenState,
+  reduceConversationOpen,
+  shouldMountVirtuoso,
+  shouldRevealVirtuoso,
+  type ConversationOpenEvent,
+  type ConversationOpenState,
+} from "@/lib/inbox/conversation-open-machine";
+import { ChatSkeleton } from "@/components/inbox/ChatSkeleton";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso, type ItemProps, type ListItem, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 
