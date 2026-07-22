@@ -113,14 +113,14 @@ describe("[open-machine] fluxo determinístico", () => {
     expect(s.name).toBe("ready");
   });
 
-  it("5) realtime durante loading é incorporado ANTES de revelar", () => {
+  it("5) realtime durante loading é absorvido silenciosamente; load_ok promove", () => {
     let s = run([
       { type: "open", cid: CID, cachedTotal: 0 },
-      // realtime chega antes do load
+      // Realtime chega ANTES do load_ok — mantém loading (não promove).
       { type: "messages_changed", cid: CID, totalItems: 3 },
     ]);
-    expect(s.name).toBe("preparing");
-    // load termina — não regride
+    expect(s.name).toBe("loading");
+    // Load termina — agora promove para preparing com o total real.
     s = reduceConversationOpen(s, {
       type: "load_ok",
       cid: CID,
