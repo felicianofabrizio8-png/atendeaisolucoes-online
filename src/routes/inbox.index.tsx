@@ -363,7 +363,7 @@ function InboxPage() {
     }
     return [...set].sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const handleSeed = async () => {
     if (!profile) return;
