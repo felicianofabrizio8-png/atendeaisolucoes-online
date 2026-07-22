@@ -2765,19 +2765,23 @@ function ConversationPage() {
 
 
 
-  // Carrega ai_status da conversa + realtime + último motivo de handoff
+  // P3 — `aiState` deriva do objeto `conversation` do leadRepo, que já
+  // assina `conversations *` via Realtime global. A subscription duplicada
+  // `conv-ai-${conversationId}` foi removida (double-render, listener órfão
+  // e crescimento de canais ao trocar de conversa).
+  useEffect(() => {
+    if (!conversation) return;
+    setAiState({
+      ai_status: conversation.aiStatus ?? null,
+      ai_handling: conversation.aiHandling ?? false,
+    });
+  }, [conversation]);
+
+  // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
-    const loadStatus = async () => {
-      const { data } = await supabase
-        .from("conversations")
-        .select("ai_status, ai_handling")
-        .eq("id", conversationId)
-        .maybeSingle();
-      if (!cancelled && data) setAiState({ ai_status: data.ai_status, ai_handling: data.ai_handling });
-    };
-    const loadReason = async () => {
+    (async () => {
       const { data } = await supabase
         .from("ai_flow_events")
         .select("payload, event_type, created_at")
@@ -2789,24 +2793,9 @@ function ConversationPage() {
         const p = (data[0].payload ?? {}) as { reason?: string };
         setAiHandoffReason(p.reason ?? data[0].event_type);
       }
-    };
-    void loadStatus();
-    void loadReason();
-
-    const ch = supabase
-      .channel(`conv-ai-${conversationId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "conversations", filter: `id=eq.${conversationId}` },
-        (payload) => {
-          const row = payload.new as { ai_status: string | null; ai_handling: boolean };
-          setAiState({ ai_status: row.ai_status, ai_handling: row.ai_handling });
-        },
-      )
-      .subscribe();
+    })();
     return () => {
       cancelled = true;
-      void supabase.removeChannel(ch);
     };
   }, [conversationId]);
 
@@ -2850,16 +2839,55 @@ function ConversationPage() {
     }
   }, [search.quote, conversationId, navigate]);
 
-  // Onda 2.2: ao abrir a conversa, garante que temos as últimas ~100 mensagens
-  // em memória (idempotente). Depende também de `repoMode` para que, quando o
-  // repo transita de "demo" → "remote" após a sessão hidratar, o carregamento
-  // seja disparado sem precisar de F5 (o guard interno em modo demo faz o
-  // primeiro efeito ser no-op silenciosamente).
+  // P3 — carregamento resiliente da conversa. Substitui o `void loadConversationRecent`
+  // silencioso por estados explícitos + retry, evitando loading eterno e F5.
+  // Usa request token para descartar respostas atrasadas de conversas anteriores.
   const repoMode = useSyncExternalStore(subscribeRepo, getRepoMode, getRepoMode);
-  useEffect(() => {
+  const [threadLoad, setThreadLoad] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    error?: string;
+  }>({ status: "idle" });
+  const threadTokenRef = useRef(0);
+
+  const loadThread = useCallback(async () => {
     if (!conversationId) return;
-    void loadConversationRecent(conversationId, 100);
-  }, [conversationId, repoMode]);
+    const token = ++threadTokenRef.current;
+    setThreadLoad({ status: "loading" });
+    const timeoutMs = 15000;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      if (threadTokenRef.current === token) {
+        setThreadLoad({ status: "error", error: "Tempo de carregamento excedido" });
+      }
+    }, timeoutMs);
+    try {
+      const res = await loadConversationRecent(conversationId, 100);
+      if (threadTokenRef.current !== token || timedOut) return;
+      window.clearTimeout(timeoutId);
+      setThreadLoad(
+        res.ok
+          ? { status: "ready" }
+          : { status: "error", error: res.error ?? "Falha ao carregar" },
+      );
+    } catch (e) {
+      if (threadTokenRef.current !== token) return;
+      window.clearTimeout(timeoutId);
+      setThreadLoad({
+        status: "error",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    void loadThread();
+  }, [loadThread, repoMode]);
+
+  const retryLoadThread = useCallback(() => {
+    resetConversationRecentLoaded(conversationId);
+    void loadThread();
+  }, [conversationId, loadThread]);
 
   // Onda 2.4: paginação de histórico via Virtuoso (`startReached`).
   const olderLoadingRef = useRef(false);
