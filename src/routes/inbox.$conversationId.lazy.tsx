@@ -288,7 +288,14 @@ function ImagePreview({
     return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
   if (!display) {
-    return <div className="h-32 w-48 rounded-md bg-muted animate-pulse" />;
+    // Placeholder com aspect-ratio 4/3 reservado — evita layout shift quando a URL
+    // resolve depois. Mesmo tamanho da reserva pós-load (240×180).
+    return (
+      <div
+        className="rounded-md bg-muted animate-pulse"
+        style={{ width: 240, aspectRatio: "4 / 3", maxWidth: "100%" }}
+      />
+    );
   }
   return (
     <div className="space-y-1">
@@ -297,12 +304,18 @@ function ImagePreview({
         onClick={() => setLightbox(true)}
         className="block focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
       >
+        {/* width/height atributos reservam aspect-ratio antes do decode
+            (browsers usam ratio como hint); w-auto/h-auto ajustam para a
+            proporção natural após onLoad. Elimina shift de altura no bubble. */}
         <img
           src={display}
           alt={filename ?? "Imagem"}
+          width={240}
+          height={180}
           onError={() => setError(true)}
-          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in"
+          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
           loading="lazy"
+          decoding="async"
         />
       </button>
       <DownloadButton href={display} filename={filename} />
