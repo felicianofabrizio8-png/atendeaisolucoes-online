@@ -24,7 +24,9 @@ export interface CoachGroundingSources {
   quick_replies: boolean;
   active_rules: boolean;
   campaigns: boolean;
+  coach_learnings: boolean;
 }
+
 
 export interface CoachGroundingCounts {
   products: number;
