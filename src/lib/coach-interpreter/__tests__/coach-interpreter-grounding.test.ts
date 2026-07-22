@@ -24,8 +24,8 @@ function mockSupabase(byTable: Record<string, { data: unknown; error?: unknown }
     const self: PromiseLike<{ data: unknown; error: unknown }> & Record<string, unknown> = {
       then(onFulfilled: unknown, onRejected: unknown) {
         return Promise.resolve({ data: src.data, error: src.error ?? null }).then(
-          onFulfilled,
-          onRejected,
+          onFulfilled as never,
+          onRejected as never,
         );
       },
     } as never;
