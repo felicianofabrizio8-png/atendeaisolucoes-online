@@ -3794,7 +3794,7 @@ function ConversationPage() {
       .finally(() => {
         olderLoadingRef.current = false;
       });
-  }, [conversationId, messages]);
+  }, [conversationId, messages, cancelBottomLockByUser]);
 
 
 
