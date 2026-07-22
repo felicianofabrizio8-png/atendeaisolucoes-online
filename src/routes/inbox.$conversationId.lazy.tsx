@@ -159,6 +159,8 @@ interface InboxScrollTraceState {
   pendingReasonUntil: number;
   lastUserInputAt: number;
   restoreScrollTopPatch: (() => void) | null;
+  restoreScrollToPatch: (() => void) | null;
+  restoreScrollIntoViewPatch: (() => void) | null;
 }
 
 declare global {
@@ -180,6 +182,8 @@ const inboxScrollTraceState: InboxScrollTraceState = {
   pendingReasonUntil: 0,
   lastUserInputAt: 0,
   restoreScrollTopPatch: null,
+  restoreScrollToPatch: null,
+  restoreScrollIntoViewPatch: null,
 };
 
 function inboxTraceNow(): number {
@@ -282,6 +286,7 @@ function markInboxUserInput(source: string) {
 
 function patchInboxScrollerScrollTop(scroller: HTMLElement) {
   inboxScrollTraceState.restoreScrollTopPatch?.();
+  inboxScrollTraceState.restoreScrollToPatch?.();
   const descriptor =
     Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop") ??
     Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
@@ -309,12 +314,50 @@ function patchInboxScrollerScrollTop(scroller: HTMLElement) {
   inboxScrollTraceState.restoreScrollTopPatch = () => {
     delete (scroller as { scrollTop?: number }).scrollTop;
   };
+  const originalScrollTo = scroller.scrollTo.bind(scroller);
+  scroller.scrollTo = ((...args: Parameters<HTMLElement["scrollTo"]>) => {
+    const before = scroller.scrollTop;
+    traceInboxScroll(inferInboxScrollReason(), "scrollTo_CALL", {
+      before: Math.round(before),
+      args,
+    });
+    originalScrollTo(...args);
+    traceInboxScroll(inferInboxScrollReason(), "scrollTo_AFTER", {
+      before: Math.round(before),
+      after: Math.round(scroller.scrollTop),
+    });
+  }) as HTMLElement["scrollTo"];
+  inboxScrollTraceState.restoreScrollToPatch = () => {
+    scroller.scrollTo = originalScrollTo;
+  };
+}
+
+function patchInboxScrollIntoView() {
+  if (inboxScrollTraceState.restoreScrollIntoViewPatch) return;
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = function patchedScrollIntoView(
+    arg?: boolean | ScrollIntoViewOptions,
+  ) {
+    const element = this as HTMLElement;
+    markInboxScrollIntent("USER_SCROLL", "scrollIntoView_CALL", {
+      targetId: element.id || null,
+      targetTagName: element.tagName,
+      targetClassName: element.className || null,
+      arg: typeof arg === "boolean" ? arg : arg ? { ...arg } : undefined,
+    });
+    return originalScrollIntoView.call(this, arg as ScrollIntoViewOptions);
+  };
+  inboxScrollTraceState.restoreScrollIntoViewPatch = () => {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  };
 }
 
 function setInboxScrollTraceScroller(scroller: HTMLElement | null) {
   if (inboxScrollTraceState.scroller === scroller) return;
   inboxScrollTraceState.restoreScrollTopPatch?.();
+  inboxScrollTraceState.restoreScrollToPatch?.();
   inboxScrollTraceState.restoreScrollTopPatch = null;
+  inboxScrollTraceState.restoreScrollToPatch = null;
   inboxScrollTraceState.scroller = scroller;
   if (scroller) {
     patchInboxScrollerScrollTop(scroller);
@@ -338,6 +381,7 @@ function startInboxScrollTrace(
   inboxScrollTraceState.pendingReasonUntil = 0;
   inboxScrollTraceState.lastUserInputAt = 0;
   window.__INBOX_SCROLL_TRACE__ = [];
+  patchInboxScrollIntoView();
   traceInboxScroll("INITIAL_LOAD", "TRACE_START", {
     windowMs: INBOX_SCROLL_TRACE_WINDOW_MS,
     restoreStateFromConfigured: false,
@@ -346,6 +390,8 @@ function startInboxScrollTrace(
     if (inboxScrollTraceState.conversationId !== conversationId) return;
     traceInboxScroll("OUTRO", "TRACE_END");
     inboxScrollTraceState.active = false;
+    inboxScrollTraceState.restoreScrollIntoViewPatch?.();
+    inboxScrollTraceState.restoreScrollIntoViewPatch = null;
   }, INBOX_SCROLL_TRACE_WINDOW_MS);
 }
 
@@ -353,6 +399,8 @@ function stopInboxScrollTrace(conversationId: string) {
   if (inboxScrollTraceState.conversationId !== conversationId) return;
   traceInboxScroll("OUTRO", "TRACE_STOP");
   inboxScrollTraceState.active = false;
+  inboxScrollTraceState.restoreScrollIntoViewPatch?.();
+  inboxScrollTraceState.restoreScrollIntoViewPatch = null;
 }
 
 const TracedVirtuosoScroller = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
