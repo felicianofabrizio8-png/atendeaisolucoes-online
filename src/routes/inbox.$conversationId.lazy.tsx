@@ -455,7 +455,7 @@ const TracedVirtuosoScroller = forwardRef<HTMLDivElement, ComponentPropsWithoutR
   },
 );
 
-function TracedVirtuosoItem({ children, ...props }: ItemProps<Message>) {
+function TracedVirtuosoItem({ children, context: _context, ...props }: ItemProps<Message> & { context?: unknown }) {
   return (
     <div {...props} data-inbox-virtual-item="true">
       {children}
