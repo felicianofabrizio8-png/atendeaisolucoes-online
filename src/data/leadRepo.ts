@@ -702,6 +702,8 @@ export async function editMessage(messageId: string, newText: string) {
       ? { ...m, text: newText, editedAt }
       : m,
   );
+  const edited = remoteMessages.find((m) => m.id === messageId);
+  if (edited) idxUpsert(messagesIndex, edited);
   notify();
 }
 
