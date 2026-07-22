@@ -28,6 +28,7 @@ import {
   insertCoachProposals,
   listCoachMessages,
 } from "./coach-interpreter.repository";
+import { buildCompanyGrounding } from "./grounding.server";
 import {
   COACH_INTERPRETER_CONFIDENCE_MIN_PROPOSAL,
   COACH_INTERPRETER_MAX_CLARIFICATIONS,
@@ -150,12 +151,37 @@ export async function interpretCoachMessage(
     retryAttempts: 2,
   });
 
+  // Grounding obrigatório: contexto de conhecimento da empresa.
+  const grounding = await buildCompanyGrounding(supabase, companyId).catch(() => null);
+
   const systemPrompt = buildCoachInterpreterSystemPrompt({
     companyName: companyName ?? null,
     tone: companyTone ?? null,
+    groundingBlock: grounding?.block ?? null,
   });
   const history = await buildHistoryTurns(supabase, conversationId);
   const turns = buildCoachInterpreterTurns(history, userMessageText);
+
+  // Metadados de grounding — anexados a todos os payloads e a warnings quando fraco.
+  const groundingMeta = grounding
+    ? {
+        sources_used: grounding.sourcesUsed,
+        grounding_score: Number(grounding.groundingScore.toFixed(2)),
+        grounding_counts: grounding.counts,
+        grounding_warnings: grounding.warnings,
+        grounding_empty: grounding.isEmpty,
+      }
+    : {
+        sources_used: null,
+        grounding_score: 0,
+        grounding_counts: null,
+        grounding_warnings: ["grounding_build_failed"],
+        grounding_empty: true,
+      };
+  const groundingWarnings: string[] = [];
+  if (!grounding || grounding.isEmpty) groundingWarnings.push("grounding_empty");
+  else if (grounding.groundingScore < 0.34) groundingWarnings.push("grounding_low");
+  for (const w of groundingMeta.grounding_warnings ?? []) groundingWarnings.push(w);
 
   const baseMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -310,8 +336,9 @@ export async function interpretCoachMessage(
         "Ainda há ambiguidade, mas atingimos o limite de perguntas. Revise manualmente.",
         {
           intent: out.intent,
-          warnings: [...out.warnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
           normalized_output: out,
+          ...groundingMeta,
         },
         run,
         "assistant_message",
@@ -320,16 +347,18 @@ export async function interpretCoachMessage(
         outcome: {
           kind: "classified",
           intent: out.intent,
-          warnings: [...out.warnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
         },
         run,
         assistantMessageId: msg.id,
       };
     }
     const run = buildRun();
-    const warnings = decision.materialAmbiguity
-      ? [...out.warnings, "material_ambiguity_forced_clarification"]
-      : out.warnings;
+    const warnings = [
+      ...out.warnings,
+      ...groundingWarnings,
+      ...(decision.materialAmbiguity ? ["material_ambiguity_forced_clarification"] : []),
+    ];
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
@@ -340,6 +369,7 @@ export async function interpretCoachMessage(
         clarification_questions: out.clarification_questions,
         normalized_output: out,
         material_ambiguity: decision.materialAmbiguity,
+        ...groundingMeta,
       },
       run,
       "clarification_request",
@@ -358,9 +388,11 @@ export async function interpretCoachMessage(
   // Sem proposals ou ambiguidade material sem perguntas: classifica e não persiste.
   if (decision.kind === "classified") {
     const run = buildRun();
-    const warnings = decision.materialAmbiguity
-      ? [...out.warnings, "material_ambiguity_blocked_proposals"]
-      : out.warnings;
+    const warnings = [
+      ...out.warnings,
+      ...groundingWarnings,
+      ...(decision.materialAmbiguity ? ["material_ambiguity_blocked_proposals"] : []),
+    ];
     const msg = await insertAssistantCoachMessage(
       supabase,
       companyId,
@@ -371,6 +403,7 @@ export async function interpretCoachMessage(
         warnings,
         normalized_output: out,
         material_ambiguity: decision.materialAmbiguity,
+        ...groundingMeta,
       },
       run,
       "assistant_message",
@@ -383,7 +416,7 @@ export async function interpretCoachMessage(
   }
 
   // Duplicidade determinística (warning, nunca bloqueia).
-  const warnings = [...out.warnings];
+  const warnings = [...out.warnings, ...groundingWarnings];
   for (const p of out.proposals) {
     try {
       const dup = await findPotentialDuplicateRules(supabase, p);
@@ -420,6 +453,7 @@ export async function interpretCoachMessage(
       proposal_ids: rows.map((r) => r.id),
       warnings,
       normalized_output: out,
+      ...groundingMeta,
     },
     run,
     "assistant_message",
