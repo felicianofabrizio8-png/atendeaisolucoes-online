@@ -3729,7 +3729,7 @@ function ConversationPage() {
       cancelAnimationFrame(r1);
       if (cancelableR2Ref.current) cancelAnimationFrame(cancelableR2Ref.current);
     };
-  }, [threadLoad.status, conversationId, visibleMessages.length, startBottomLock]);
+  }, [threadLoad.status, conversationId, visibleMessages.length]);
 
   // Detecta chegada de nova mensagem após o scroll inicial. Se o usuário
   // não estiver próximo do fim, incrementa contador para o pill "Novas
@@ -3794,7 +3794,8 @@ function ConversationPage() {
         .filter((id): id is string => typeof id === "string"),
     });
     reanchorIfLocked("items_rendered");
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(false);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
     visibleRangeRef.current = {
@@ -3809,7 +3810,8 @@ function ConversationPage() {
       startIndex: range.startIndex,
       endIndex: range.endIndex,
     });
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(false);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoTotalListHeightChanged = useCallback((height: number) => {
     const s = bottomLockRef.current;
@@ -3821,10 +3823,15 @@ function ConversationPage() {
       locked: s.active,
     });
     reanchorIfLocked("total_height_changed", { previous: prev, next: height });
-  }, [reanchorIfLocked]);
+    dispatchLayoutProbe(true);
+  }, [reanchorIfLocked, dispatchLayoutProbe]);
 
   const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
-    const decision = isAtBottom ? "auto" : false;
+    // F4 — followOutput só age depois de `visible`. Durante preparing/ready,
+    // não deixamos o Virtuoso "seguir" mensagens que ainda estão sendo
+    // absorvidas do bootstrap.
+    const revealed = openStateRef.current.name === "visible";
+    const decision = revealed && isAtBottom ? "auto" : false;
     if (decision === "auto") {
       markInboxScrollIntent("FOLLOW_OUTPUT", "FOLLOW_OUTPUT", {
         isAtBottom,
@@ -4690,21 +4697,32 @@ function ConversationPage() {
                     Tentar novamente
                   </button>
                 </div>
-              ) : threadLoad.status === "loading" ? (
-                // HOTFIX regressão "só última mensagem": aguardamos o
-                // loadConversationRecent concluir ANTES de montar o Virtuoso.
-                // Caso contrário, o Virtuoso mounta com o único preview vindo
-                // de `latest_messages_per_conversation` e não recupera o
-                // histórico mesmo depois de os 99 restantes chegarem ao índice.
-                <div className="h-full flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground animate-pulse">
-                    Carregando mensagens…
-                  </span>
-                </div>
+              ) : !shouldMountVirtuoso(openState) ? (
+                // F2/F8 — enquanto a máquina está em loading (aguardando
+                // loadConversationRecent), mostramos skeleton estável. O
+                // Virtuoso ainda NÃO monta: garante que ele nunca calibra
+                // com um preview isolado como se fosse histórico completo.
+                <ChatSkeleton />
               ) : visibleMessages.length === 0 ? (
                 <div className="h-full" />
               ) : (
-
+              <div className="relative h-full">
+                {/* F3 — Skeleton permanece por cima enquanto o Virtuoso
+                    calibra invisível. `visibility: hidden` preserva
+                    medições (diferente de display:none). */}
+                {!shouldRevealVirtuoso(openState) && (
+                  <div className="absolute inset-0 z-10 pointer-events-none">
+                    <ChatSkeleton />
+                  </div>
+                )}
+                <div
+                  className="h-full"
+                  style={{
+                    visibility: shouldRevealVirtuoso(openState)
+                      ? "visible"
+                      : "hidden",
+                  }}
+                >
               <Virtuoso
                 key={conversationId}
                 ref={virtuosoRef}
