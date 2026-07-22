@@ -3610,6 +3610,9 @@ function ConversationPage() {
           // eslint-disable-next-line no-console
           console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
+        // Ativa o bottom lock: qualquer recalibração de altura/range
+        // enquanto o usuário não interagir reancorará no último item.
+        startBottomLock(conversationId);
         // Correção silenciosa única: absorve mudanças de altura por decode
         // de imagens/vídeos após o primeiro posicionamento. Cancelada por
         // qualquer scroll manual do usuário.
