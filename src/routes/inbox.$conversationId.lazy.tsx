@@ -2679,48 +2679,33 @@ function ConversationPage() {
   const [takingOver, setTakingOver] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
-  const hasInitialScrolledRef = useRef<{ conversationId: string | null; done: boolean }>({
-    conversationId: null,
+  // Controlador único de scroll da conversa. Uma única execução de
+  // scrollToIndex por conversationId, disparada após threadLoad READY e
+  // dois rAFs para o layout estabilizar. Elimina o "sobe e desce" causado
+  // pela combinação anterior (rAF + setTimeout 300ms + followOutput).
+  const initialScrollRef = useRef<{ cid: string | null; done: boolean }>({
+    cid: null,
     done: false,
   });
+  const lastMsgIdRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const [newSinceCount, setNewSinceCount] = useState(0);
 
   useEffect(() => {
     latestVisibleMessagesLengthRef.current = visibleMessages.length;
   }, [visibleMessages.length]);
 
+  // Reset por conversa: novo controlador, sem contagens antigas.
   useEffect(() => {
-    hasInitialScrolledRef.current = { conversationId, done: false };
+    initialScrollRef.current = { cid: conversationId, done: false };
+    lastMsgIdRef.current = null;
+    setNewSinceCount(0);
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[inbox-scroll] OPEN", conversationId);
+    }
   }, [conversationId]);
 
-  useEffect(() => {
-    if (visibleMessages.length === 0) return;
-    const scrollState = hasInitialScrolledRef.current;
-    if (scrollState.conversationId !== conversationId) {
-      hasInitialScrolledRef.current = { conversationId, done: false };
-    }
-    if (hasInitialScrolledRef.current.done) return;
-
-    const scrollToLastMessage = () => {
-      if (hasInitialScrolledRef.current.conversationId !== conversationId) return;
-      const lastIndex = latestVisibleMessagesLengthRef.current - 1;
-      if (lastIndex < 0) return;
-      virtuosoRef.current?.scrollToIndex({
-        index: lastIndex,
-        align: "end",
-        behavior: "auto",
-      });
-    };
-
-    hasInitialScrolledRef.current.done = true;
-    const frameId = requestAnimationFrame(scrollToLastMessage);
-    const timeoutId = window.setTimeout(scrollToLastMessage, 300);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      window.clearTimeout(timeoutId);
-    };
-  }, [conversationId, visibleMessages.length]);
 
   // ---- Manual follow-up (admin only) ----
   const { profile: authProfile } = useAuth();
