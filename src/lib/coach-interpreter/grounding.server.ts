@@ -90,6 +90,7 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     quick_replies: false,
     active_rules: false,
     campaigns: false,
+    coach_learnings: false,
   };
   const counts: CoachGroundingCounts = {
     products: 0,
