@@ -66,6 +66,8 @@ const DOMAIN_POLICIES: DomainPolicy[] = [
       /\bqual formato\b[^?]*\b(prefere|deseja|quer)\b/i,
       /\b(medida|dimens[ãa]o) (personalizada|customizada|sob medida|sob encomenda)\b/i,
       /\bdeseja (uma )?piscina (retangular|redonda|oval|quadrada) (de|com)\b/i,
+      /\b(pergunt\w+|questionar|indagar)\b[^.?]*\b(largura|profundidade|altura|comprimento)\b/i,
+      /\b(largura|profundidade|altura)\s+(desejada|preferida|ideal|customizada|personalizada)\b/i,
       /\b(qual|prefere) (o )?(comprimento|tamanho) (exato|personalizado|customizado)\b/i,
     ],
     bannedReason:
