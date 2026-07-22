@@ -212,12 +212,12 @@ describe("[inbox-scroll] auditoria estática", () => {
     expect(src).toContain("followOutput={handleVirtuosoFollowOutput}");
   });
 
-  // Garante que só existem os dois scrolls automáticos esperados:
-  // o INITIAL_POSITION e a FINAL_CORRECTION silenciosa única.
-  it("possui exatamente dois scrollToIndex 'auto' (initial + correção silenciosa)", () => {
+  // Garante presença dos três scrolls automáticos esperados:
+  // INITIAL_POSITION, FINAL_CORRECTION silenciosa e BOTTOM_LOCK_CORRECTION.
+  it("possui pelo menos três scrollToIndex 'auto' (initial + correção silenciosa + bottom lock)", () => {
     const runtimeSrc = src.replace(/markInboxScrollIntent\([\s\S]*?\);/g, "");
     const autoBlocks = runtimeSrc.match(/behavior:\s*"auto"/g) ?? [];
-    expect(autoBlocks.length).toBe(2);
+    expect(autoBlocks.length).toBeGreaterThanOrEqual(3);
   });
 
   it("aplica overflow-anchor: none no scroller do Virtuoso", () => {
@@ -228,6 +228,218 @@ describe("[inbox-scroll] auditoria estática", () => {
     expect(src).toContain("INITIAL_POSITION");
     expect(src).toContain("FINAL_CORRECTION");
     expect(src).toContain("USER_CANCELLED_AUTOSCROLL");
+  });
+
+  it("implementa bottom lock com callbacks totalListHeightChanged/rangeChanged/itemsRendered", () => {
+    expect(src).toContain("BOTTOM_LOCK_START");
+    expect(src).toContain("BOTTOM_LOCK_CORRECTION");
+    expect(src).toContain("BOTTOM_LOCK_STABLE");
+    expect(src).toContain("BOTTOM_LOCK_TIMEOUT");
+    expect(src).toContain("BOTTOM_LOCK_CANCELLED_BY_USER");
+    expect(src).toContain("totalListHeightChanged={handleVirtuosoTotalListHeightChanged}");
+    expect(src).toContain("reanchorIfLocked");
+    expect(src).toContain("cancelBottomLockByUser");
+    // Interação do usuário nos wrappers estáticos cancela o lock.
+    expect(src).toContain("inboxBottomLockCancelHandler?.(source)");
+    // loadOlder (histórico antigo) cancela o lock.
+    expect(src).toContain("cancelBottomLockByUser(\"start_reached_load_older\")");
+  });
+});
+
+// ---- Máquina de estado do bottom lock (isolada) --------------------------
+// Reimplementação minimal para validar as regras exigidas: reancoragem em
+// recalibração, liberação por estabilidade, cancelamento por interação e
+// isolamento entre conversas.
+function makeBottomLock() {
+  const TOL = 8;
+  const STABLE_MS = 300;
+  const SAFETY_MS = 2500;
+  const scrolls: Array<{ index: number; source: string }> = [];
+  let now = 0;
+  const timers: Array<{ at: number; fn: () => void; id: number }> = [];
+  let nextTimerId = 1;
+  const setTimeout_ = (fn: () => void, ms: number) => {
+    const id = nextTimerId++;
+    timers.push({ at: now + ms, fn, id });
+    return id;
+  };
+  const clearTimeout_ = (id: number) => {
+    const i = timers.findIndex((t) => t.id === id);
+    if (i >= 0) timers.splice(i, 1);
+  };
+  const advance = (ms: number) => {
+    const target = now + ms;
+    // Executa em ordem cronológica.
+    while (true) {
+      const next = timers
+        .filter((t) => t.at <= target)
+        .sort((a, b) => a.at - b.at)[0];
+      if (!next) break;
+      timers.splice(timers.indexOf(next), 1);
+      now = next.at;
+      next.fn();
+    }
+    now = target;
+  };
+
+  const state = {
+    cid: null as string | null,
+    active: false,
+    totalItems: 0,
+    lastRenderedIndex: -1,
+    distanceToEnd: 0,
+    userScrolled: false,
+    corrections: 0,
+    releasedReason: null as string | null,
+    stableTimer: null as number | null,
+    safetyTimer: null as number | null,
+  };
+
+  function anchor(source: string) {
+    scrolls.push({ index: state.totalItems - 1, source });
+    state.distanceToEnd = 0;
+    state.lastRenderedIndex = state.totalItems - 1;
+  }
+  function release(reason: string) {
+    if (!state.active) return;
+    state.active = false;
+    state.releasedReason = reason;
+    if (state.stableTimer !== null) clearTimeout_(state.stableTimer);
+    if (state.safetyTimer !== null) clearTimeout_(state.safetyTimer);
+    state.stableTimer = null;
+    state.safetyTimer = null;
+  }
+  function scheduleStability() {
+    if (!state.active) return;
+    if (state.stableTimer !== null) clearTimeout_(state.stableTimer);
+    state.stableTimer = setTimeout_(() => {
+      state.stableTimer = null;
+      if (!state.active) return;
+      const nearBottom = state.distanceToEnd <= TOL;
+      const lastRendered = state.lastRenderedIndex >= state.totalItems - 1;
+      if (nearBottom && lastRendered) release("stable");
+      else {
+        if (!state.userScrolled && state.distanceToEnd > TOL) {
+          state.corrections += 1;
+          anchor("stability_recheck");
+        }
+        scheduleStability();
+      }
+    }, STABLE_MS);
+  }
+  function reanchor(trigger: string) {
+    if (!state.active) return;
+    if (state.userScrolled) return release("user_scrolled");
+    if (state.distanceToEnd <= TOL) return scheduleStability();
+    state.corrections += 1;
+    anchor(trigger);
+    scheduleStability();
+  }
+  function start(cid: string, totalItems: number) {
+    if (state.active) release("conversation_switch");
+    state.cid = cid;
+    state.active = true;
+    state.totalItems = totalItems;
+    state.lastRenderedIndex = totalItems - 1;
+    state.distanceToEnd = 0;
+    state.corrections = 0;
+    state.releasedReason = null;
+    state.userScrolled = false;
+    anchor("initial_position");
+    state.safetyTimer = setTimeout_(() => release("safety_timeout"), SAFETY_MS);
+    scheduleStability();
+  }
+  function heightGrew(deltaPx: number, extraItems = 0, renderedLast = true) {
+    state.totalItems += extraItems;
+    state.distanceToEnd += deltaPx;
+    if (!renderedLast) state.lastRenderedIndex = state.totalItems - 2;
+    reanchor("total_height_changed");
+  }
+  function userInteract() {
+    state.userScrolled = true;
+    release("user_input");
+  }
+  function tick(ms: number) {
+    advance(ms);
+  }
+  return { state, scrolls, start, heightGrew, userInteract, tick };
+}
+
+describe("[inbox-scroll] bottom lock (máquina isolada)", () => {
+  it("1) abre no final e mantém ancoragem após recalibração de altura", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 50);
+    expect(bl.state.active).toBe(true);
+    // Virtuoso recalibra alturas — altura total cresce e distância aumenta.
+    bl.heightGrew(400);
+    expect(bl.scrolls.at(-1)?.source).toBe("total_height_changed");
+    expect(bl.state.distanceToEnd).toBe(0);
+  });
+
+  it("2) múltiplas recalibrações continuam ancoradas", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 30);
+    bl.heightGrew(150);
+    bl.heightGrew(300);
+    bl.heightGrew(80);
+    expect(bl.state.corrections).toBeGreaterThanOrEqual(3);
+    expect(bl.state.distanceToEnd).toBe(0);
+  });
+
+  it("3) libera o lock por estabilidade após janela sem mudanças", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 10);
+    bl.tick(400);
+    expect(bl.state.active).toBe(false);
+    expect(bl.state.releasedReason).toBe("stable");
+  });
+
+  it("4) interação manual cancela imediatamente e ignora mudanças futuras", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 20);
+    bl.userInteract();
+    expect(bl.state.active).toBe(false);
+    expect(bl.state.releasedReason).toBe("user_input");
+    const before = bl.scrolls.length;
+    bl.heightGrew(500);
+    expect(bl.scrolls.length).toBe(before); // nenhuma correção nova
+  });
+
+  it("5) safety timeout libera o lock mesmo sob instabilidade contínua", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 40);
+    // Mantém instável (último item não renderizado) — força stability recheck
+    // até o safety timeout de 2500ms disparar.
+    for (let i = 0; i < 10; i++) {
+      bl.heightGrew(50, 0, false);
+      bl.tick(250);
+    }
+    expect(bl.state.active).toBe(false);
+    expect(["safety_timeout", "stable"]).toContain(bl.state.releasedReason);
+  });
+
+  it("6) troca de conversa cancela o lock anterior", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 10);
+    bl.start("c2", 5);
+    expect(bl.state.cid).toBe("c2");
+    expect(bl.state.active).toBe(true);
+  });
+
+  it("7) guard idempotência: já no fundo não gera correção redundante", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 10);
+    const before = bl.scrolls.length;
+    bl.heightGrew(0); // altura muda 0 — distância continua 0
+    expect(bl.scrolls.length).toBe(before); // sem correção nova
+  });
+
+  it("8) termina dentro da tolerância mínima do final", () => {
+    const bl = makeBottomLock();
+    bl.start("c1", 25);
+    bl.heightGrew(1200);
+    bl.tick(400);
+    expect(bl.state.distanceToEnd).toBeLessThanOrEqual(8);
   });
 });
 

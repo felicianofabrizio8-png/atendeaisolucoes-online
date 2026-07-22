@@ -279,9 +279,19 @@ function inferInboxScrollReason(): InboxScrollTraceReason {
   return "OUTRO";
 }
 
+// Callback registrado pelo componente para cancelar o bottom-lock inicial
+// assim que o usuário interage. Vive no escopo do módulo porque
+// `markInboxUserInput` é chamado por wrappers estáticos do scroller.
+let inboxBottomLockCancelHandler: ((reason: string) => void) | null = null;
+
+function setInboxBottomLockCancelHandler(fn: ((reason: string) => void) | null) {
+  inboxBottomLockCancelHandler = fn;
+}
+
 function markInboxUserInput(source: string) {
   inboxScrollTraceState.lastUserInputAt = inboxTraceNow();
   traceInboxScroll("USER_SCROLL", "USER_INPUT", { source });
+  inboxBottomLockCancelHandler?.(source);
 }
 
 function patchInboxScrollerScrollTop(scroller: HTMLElement) {
@@ -3146,8 +3156,10 @@ function ConversationPage() {
   }, []);
   // Controlador único de scroll da conversa. Uma única execução de
   // scrollToIndex por conversationId, disparada somente após threadLoad READY
-  // e dois rAFs. Depois, permite UMA correção silenciosa em ~800ms para
-  // absorver decode de imagens/vídeos, respeitando qualquer scroll manual.
+  // e dois rAFs. Depois, mantém um "bottom lock" ativo enquanto o Virtuoso
+  // recalibra alturas de itens virtualizados — a lista permanece ancorada
+  // no último índice até que a altura total fique estável (debounce curto)
+  // ou até o safety timeout, sem interferir se o usuário rolar manualmente.
   const initialScrollRef = useRef<{ cid: string | null; done: boolean }>({
     cid: null,
     done: false,
@@ -3158,6 +3170,172 @@ function ConversationPage() {
   const silentCorrectionDoneRef = useRef(false);
   const silentCorrectionTimerRef = useRef<number | null>(null);
   const atBottomRef = useRef(true);
+
+  // ---- Bottom lock (hotfix: Virtuoso perde ancoragem ao recalibrar) ------
+  const BOTTOM_LOCK_TOLERANCE_PX = 8;
+  const BOTTOM_LOCK_STABLE_MS = 300;
+  const BOTTOM_LOCK_SAFETY_MS = 2500;
+  const bottomLockRef = useRef<{
+    cid: string | null;
+    active: boolean;
+    lastHeight: number | null;
+    correctionCount: number;
+    stableTimer: number | null;
+    safetyTimer: number | null;
+  }>({
+    cid: null,
+    active: false,
+    lastHeight: null,
+    correctionCount: 0,
+    stableTimer: null,
+    safetyTimer: null,
+  });
+
+  const clearBottomLockTimers = useCallback(() => {
+    const s = bottomLockRef.current;
+    if (s.stableTimer !== null) {
+      window.clearTimeout(s.stableTimer);
+      s.stableTimer = null;
+    }
+    if (s.safetyTimer !== null) {
+      window.clearTimeout(s.safetyTimer);
+      s.safetyTimer = null;
+    }
+  }, []);
+
+  const releaseBottomLock = useCallback(
+    (reason: string, event: "BOTTOM_LOCK_STABLE" | "BOTTOM_LOCK_TIMEOUT" | "BOTTOM_LOCK_CANCELLED_BY_USER") => {
+      const s = bottomLockRef.current;
+      if (!s.active) return;
+      s.active = false;
+      clearBottomLockTimers();
+      traceInboxScroll(event === "BOTTOM_LOCK_CANCELLED_BY_USER" ? "USER_SCROLL" : "SCROLL_CONTROLLER", event, {
+        reason,
+        corrections: s.correctionCount,
+        lastHeight: s.lastHeight,
+      });
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug(`[inbox-scroll] ${event}`, { reason, corrections: s.correctionCount });
+      }
+    },
+    [clearBottomLockTimers],
+  );
+
+  const cancelBottomLockByUser = useCallback(
+    (source: string) => {
+      const s = bottomLockRef.current;
+      if (!s.active) return;
+      userScrolledRef.current = true;
+      releaseBottomLock(source, "BOTTOM_LOCK_CANCELLED_BY_USER");
+    },
+    [releaseBottomLock],
+  );
+
+  const anchorLastAuto = useCallback((source: string) => {
+    const last = latestVisibleMessagesLengthRef.current - 1;
+    if (last < 0) return;
+    markInboxScrollIntent("SCROLL_CONTROLLER", "scrollToIndex_CALL", {
+      source,
+      index: last,
+      align: "end",
+      behavior: "auto",
+    });
+    virtuosoRef.current?.scrollToIndex({ index: last, align: "end", behavior: "auto" });
+  }, []);
+
+  const scheduleBottomLockStability = useCallback(() => {
+    const s = bottomLockRef.current;
+    if (!s.active) return;
+    if (s.stableTimer !== null) window.clearTimeout(s.stableTimer);
+    s.stableTimer = window.setTimeout(() => {
+      s.stableTimer = null;
+      if (!bottomLockRef.current.active) return;
+      const scroller = inboxScrollTraceState.scroller;
+      const totalItems = latestVisibleMessagesLengthRef.current;
+      const lastIdx = renderedWindowRef.current.lastItemIndex;
+      const distance =
+        scroller ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight : null;
+      const nearBottom = distance !== null && distance <= BOTTOM_LOCK_TOLERANCE_PX;
+      const lastRendered = lastIdx !== null && lastIdx >= totalItems - 1;
+      if (nearBottom && lastRendered) {
+        releaseBottomLock("stable", "BOTTOM_LOCK_STABLE");
+      } else {
+        // Ainda instável — corrige e reagenda.
+        if (!userScrolledRef.current && distance !== null && distance > BOTTOM_LOCK_TOLERANCE_PX) {
+          bottomLockRef.current.correctionCount += 1;
+          traceInboxScroll("SCROLL_CONTROLLER", "BOTTOM_LOCK_CORRECTION", {
+            trigger: "stability_recheck",
+            distance,
+            corrections: bottomLockRef.current.correctionCount,
+          });
+          anchorLastAuto("bottom_lock_stability_recheck");
+        }
+        scheduleBottomLockStability();
+      }
+    }, BOTTOM_LOCK_STABLE_MS);
+  }, [anchorLastAuto, releaseBottomLock]);
+
+  const startBottomLock = useCallback(
+    (cid: string) => {
+      const s = bottomLockRef.current;
+      clearBottomLockTimers();
+      s.cid = cid;
+      s.active = true;
+      s.lastHeight = inboxScrollTraceState.scroller?.scrollHeight ?? null;
+      s.correctionCount = 0;
+      traceInboxScroll("SCROLL_CONTROLLER", "BOTTOM_LOCK_START", {
+        cid,
+        initialHeight: s.lastHeight,
+      });
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug("[inbox-scroll] BOTTOM_LOCK_START", cid);
+      }
+      s.safetyTimer = window.setTimeout(() => {
+        releaseBottomLock("safety_timeout", "BOTTOM_LOCK_TIMEOUT");
+      }, BOTTOM_LOCK_SAFETY_MS);
+      scheduleBottomLockStability();
+    },
+    [clearBottomLockTimers, releaseBottomLock, scheduleBottomLockStability],
+  );
+
+  const reanchorIfLocked = useCallback(
+    (trigger: string, extra?: Record<string, unknown>) => {
+      const s = bottomLockRef.current;
+      if (!s.active) return;
+      if (userScrolledRef.current) {
+        releaseBottomLock("user_scrolled", "BOTTOM_LOCK_CANCELLED_BY_USER");
+        return;
+      }
+      const scroller = inboxScrollTraceState.scroller;
+      const distance = scroller
+        ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+        : null;
+      // Guard idempotência: já está no fundo, apenas reagenda estabilidade.
+      if (distance !== null && distance <= BOTTOM_LOCK_TOLERANCE_PX) {
+        scheduleBottomLockStability();
+        return;
+      }
+      s.correctionCount += 1;
+      traceInboxScroll("SCROLL_CONTROLLER", "BOTTOM_LOCK_CORRECTION", {
+        trigger,
+        distance,
+        corrections: s.correctionCount,
+        ...(extra ?? {}),
+      });
+      anchorLastAuto(`bottom_lock_${trigger}`);
+      scheduleBottomLockStability();
+    },
+    [anchorLastAuto, releaseBottomLock, scheduleBottomLockStability],
+  );
+
+  // Registra o cancelador para wrappers estáticos do scroller (wheel/touch/pointer).
+  useEffect(() => {
+    setInboxBottomLockCancelHandler(cancelBottomLockByUser);
+    return () => setInboxBottomLockCancelHandler(null);
+  }, [cancelBottomLockByUser]);
+
   const [atBottom, _setAtBottom] = useState(true);
   const setAtBottom = useCallback((v: boolean) => {
     atBottomRef.current = v;
@@ -3165,11 +3343,16 @@ function ConversationPage() {
     traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
     // Após o scroll inicial, sair do fim = interação manual do usuário.
     if (!v && initialScrollRef.current.done) {
-      if (!userScrolledRef.current && import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.debug("[inbox-scroll] USER_CANCELLED_AUTOSCROLL");
+      // Se o bottom lock ainda estiver ativo, este "false" pode ser
+      // consequência da própria recalibração — só cancelamos se o usuário
+      // já for a origem conhecida (userScrolledRef) ou se o lock já saiu.
+      if (!bottomLockRef.current.active) {
+        if (!userScrolledRef.current && import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.debug("[inbox-scroll] USER_CANCELLED_AUTOSCROLL");
+        }
+        userScrolledRef.current = true;
       }
-      userScrolledRef.current = true;
     }
   }, []);
   const [newSinceCount, setNewSinceCount] = useState(0);
@@ -3197,6 +3380,19 @@ function ConversationPage() {
       window.clearTimeout(silentCorrectionTimerRef.current);
       silentCorrectionTimerRef.current = null;
     }
+    // Cancela lock da conversa anterior (se houver) antes de abrir a nova.
+    if (bottomLockRef.current.active) {
+      releaseBottomLock("conversation_switch", "BOTTOM_LOCK_CANCELLED_BY_USER");
+    }
+    clearBottomLockTimers();
+    bottomLockRef.current = {
+      cid: conversationId,
+      active: false,
+      lastHeight: null,
+      correctionCount: 0,
+      stableTimer: null,
+      safetyTimer: null,
+    };
     atBottomRef.current = true;
     _setAtBottom(true);
     setNewSinceCount(0);
@@ -3206,7 +3402,8 @@ function ConversationPage() {
     }
     startInboxScrollTrace(conversationId, readScrollVirtualSnapshot);
     return () => stopInboxScrollTrace(conversationId);
-  }, [conversationId, readScrollVirtualSnapshot]);
+  }, [conversationId, readScrollVirtualSnapshot, clearBottomLockTimers, releaseBottomLock]);
+
 
 
 
@@ -3413,6 +3610,9 @@ function ConversationPage() {
           // eslint-disable-next-line no-console
           console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
+        // Ativa o bottom lock: qualquer recalibração de altura/range
+        // enquanto o usuário não interagir reancorará no último item.
+        startBottomLock(conversationId);
         // Correção silenciosa única: absorve mudanças de altura por decode
         // de imagens/vídeos após o primeiro posicionamento. Cancelada por
         // qualquer scroll manual do usuário.
@@ -3451,7 +3651,7 @@ function ConversationPage() {
       cancelAnimationFrame(r1);
       if (cancelableR2Ref.current) cancelAnimationFrame(cancelableR2Ref.current);
     };
-  }, [threadLoad.status, conversationId, visibleMessages.length]);
+  }, [threadLoad.status, conversationId, visibleMessages.length, startBottomLock]);
 
   // Detecta chegada de nova mensagem após o scroll inicial. Se o usuário
   // não estiver próximo do fim, incrementa contador para o pill "Novas
@@ -3515,7 +3715,8 @@ function ConversationPage() {
         .map((item) => item.data?.id)
         .filter((id): id is string => typeof id === "string"),
     });
-  }, []);
+    reanchorIfLocked("items_rendered");
+  }, [reanchorIfLocked]);
 
   const handleVirtuosoRangeChanged = useCallback((range: ListRange) => {
     visibleRangeRef.current = {
@@ -3526,7 +3727,23 @@ function ConversationPage() {
       startIndex: range.startIndex,
       endIndex: range.endIndex,
     });
-  }, []);
+    reanchorIfLocked("range_changed", {
+      startIndex: range.startIndex,
+      endIndex: range.endIndex,
+    });
+  }, [reanchorIfLocked]);
+
+  const handleVirtuosoTotalListHeightChanged = useCallback((height: number) => {
+    const s = bottomLockRef.current;
+    const prev = s.lastHeight;
+    s.lastHeight = height;
+    traceInboxScroll("OUTRO", "TOTAL_HEIGHT_CHANGED", {
+      previous: prev,
+      next: height,
+      locked: s.active,
+    });
+    reanchorIfLocked("total_height_changed", { previous: prev, next: height });
+  }, [reanchorIfLocked]);
 
   const handleVirtuosoFollowOutput = useCallback((isAtBottom: boolean) => {
     const decision = isAtBottom ? "auto" : false;
@@ -3559,6 +3776,9 @@ function ConversationPage() {
       conversationId,
       hasMoreOlder: hasMoreOlderMessages(conversationId),
     });
+    // Carregar histórico antigo é uma navegação intencional para cima:
+    // cancela o bottom lock imediatamente para não puxar a lista de volta.
+    cancelBottomLockByUser("start_reached_load_older");
     if (olderLoadingRef.current) return;
     if (!hasMoreOlderMessages(conversationId)) {
       setHasMoreOlder(false);
@@ -3574,7 +3794,7 @@ function ConversationPage() {
       .finally(() => {
         olderLoadingRef.current = false;
       });
-  }, [conversationId, messages]);
+  }, [conversationId, messages, cancelBottomLockByUser]);
 
 
 
@@ -4413,6 +4633,7 @@ function ConversationPage() {
                 startReached={loadOlder}
                 itemsRendered={handleVirtuosoItemsRendered}
                 rangeChanged={handleVirtuosoRangeChanged}
+                totalListHeightChanged={handleVirtuosoTotalListHeightChanged}
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
                 className="h-full px-3 md:px-4"
