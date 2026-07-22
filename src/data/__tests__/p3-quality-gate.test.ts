@@ -116,7 +116,8 @@ describe("P3 · timeout e retry", () => {
 
   it("retry chama resetConversationRecentLoaded e re-executa a carga", async () => {
     const load = vi
-      .fn<[string], Promise<{ ok: boolean; error?: string }>>()
+      .fn((_convId: string): Promise<{ ok: boolean; error?: string }> =>
+        Promise.resolve({ ok: false, error: "boom" }))
       .mockResolvedValueOnce({ ok: false, error: "boom" })
       .mockResolvedValueOnce({ ok: true });
     const reset = vi.fn();
