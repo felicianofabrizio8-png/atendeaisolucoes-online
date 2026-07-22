@@ -441,6 +441,7 @@ describe("[inbox-scroll] bottom lock (máquina isolada)", () => {
     bl.tick(400);
     expect(bl.state.distanceToEnd).toBeLessThanOrEqual(8);
   });
+});
 
 // Silence potentially unused imports in some CI setups.
 void vi;
