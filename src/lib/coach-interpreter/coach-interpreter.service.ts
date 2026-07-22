@@ -374,6 +374,7 @@ export async function interpretCoachMessage(
     const warnings = [
       ...out.warnings,
       ...groundingWarnings,
+      ...domainWarnings,
       ...(decision.materialAmbiguity ? ["material_ambiguity_forced_clarification"] : []),
     ];
     const msg = await insertAssistantCoachMessage(
@@ -409,6 +410,7 @@ export async function interpretCoachMessage(
     const warnings = [
       ...out.warnings,
       ...groundingWarnings,
+      ...domainWarnings,
       ...(decision.materialAmbiguity ? ["material_ambiguity_blocked_proposals"] : []),
     ];
     const msg = await insertAssistantCoachMessage(
@@ -435,7 +437,7 @@ export async function interpretCoachMessage(
   }
 
   // Duplicidade determinística (warning, nunca bloqueia).
-  const warnings = [...out.warnings, ...groundingWarnings];
+  const warnings = [...out.warnings, ...groundingWarnings, ...domainWarnings];
   for (const p of out.proposals) {
     try {
       const dup = await findPotentialDuplicateRules(supabase, p);
