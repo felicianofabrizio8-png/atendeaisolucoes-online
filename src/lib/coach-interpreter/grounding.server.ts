@@ -157,6 +157,14 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
   ]);
 
   const sections: string[] = [];
+  const raw: CoachGroundingRaw = {
+    products: [],
+    forbiddenWords: [],
+    preferredWords: [],
+    activeRuleTitles: [],
+    detectedDomains: [],
+  };
+
 
   // -- Produtos ------------------------------------------------------------
   if ((productsRes as { error?: unknown }).error) {
