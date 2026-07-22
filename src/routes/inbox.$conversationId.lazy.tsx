@@ -1109,6 +1109,12 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const virtuoso = useContext(VirtuosoScrollContext);
 
   function highlight(el: HTMLElement) {
+    markInboxScrollIntent("USER_SCROLL", "scrollIntoView_CALL", {
+      source: "reply_preview",
+      targetId: el.id,
+      behavior: "smooth",
+      block: "center",
+    });
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.classList.add("ring-2", "ring-primary/60", "transition");
     setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1400);
@@ -1125,6 +1131,12 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
     if (!virtuoso) return;
     const idx = virtuoso.items.findIndex((m) => m.id === reply.message_id);
     if (idx < 0) return;
+    markInboxScrollIntent("USER_SCROLL", "scrollToIndex_CALL", {
+      source: "reply_preview",
+      index: idx,
+      align: "center",
+      behavior: "smooth",
+    });
     virtuoso.ref.current?.scrollToIndex({ index: idx, align: "center", behavior: "smooth" });
     // Aguarda o item entrar no DOM antes de aplicar o highlight.
     const start = Date.now();
