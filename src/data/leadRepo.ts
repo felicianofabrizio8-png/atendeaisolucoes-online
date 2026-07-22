@@ -288,8 +288,12 @@ export function getConversations(): Conversation[] {
 }
 
 export function getMessagesFor(conversationId: string): Message[] {
-  const list = mode === "remote" ? remoteMessages : getMessagesSnapshot();
-  return list
+  if (mode === "remote") {
+    // P3 — lookup O(1) via índice pré-ordenado por conversationId.
+    return idxGet(messagesIndex, conversationId);
+  }
+  // Modo demo: mantém o comportamento antigo (filter+sort sobre o mock).
+  return getMessagesSnapshot()
     .filter((m) => m.conversationId === conversationId)
     .sort((a, b) => +new Date(a.at) - +new Date(b.at));
 }
