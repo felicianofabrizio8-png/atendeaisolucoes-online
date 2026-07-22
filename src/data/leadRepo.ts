@@ -739,6 +739,8 @@ export async function deleteMessage(
       ? { ...m, deletedAt, deletedFor: scope }
       : m,
   );
+  const updated = remoteMessages.find((m) => m.id === messageId);
+  if (updated) idxUpsert(messagesIndex, updated);
   notify();
 }
 
