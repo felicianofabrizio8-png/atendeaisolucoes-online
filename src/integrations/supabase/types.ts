@@ -1089,6 +1089,162 @@ export type Database = {
           },
         ]
       }
+      coach_learning_versions: {
+        Row: {
+          category: string
+          company_id: string
+          confidence: number
+          created_at: string
+          description: string
+          edited_by: string | null
+          id: string
+          learning_id: string
+          negative_example: string | null
+          positive_example: string | null
+          priority: number
+          product_ref: string | null
+          rule_structured: string
+          status: string
+          title: string
+          version: number
+        }
+        Insert: {
+          category: string
+          company_id: string
+          confidence: number
+          created_at?: string
+          description: string
+          edited_by?: string | null
+          id?: string
+          learning_id: string
+          negative_example?: string | null
+          positive_example?: string | null
+          priority: number
+          product_ref?: string | null
+          rule_structured: string
+          status: string
+          title: string
+          version: number
+        }
+        Update: {
+          category?: string
+          company_id?: string
+          confidence?: number
+          created_at?: string
+          description?: string
+          edited_by?: string | null
+          id?: string
+          learning_id?: string
+          negative_example?: string | null
+          positive_example?: string | null
+          priority?: number
+          product_ref?: string | null
+          rule_structured?: string
+          status?: string
+          title?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_learning_versions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_learning_versions_learning_id_fkey"
+            columns: ["learning_id"]
+            isOneToOne: false
+            referencedRelation: "coach_learnings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_learnings: {
+        Row: {
+          archived_at: string | null
+          category: string
+          company_id: string
+          confidence: number
+          created_at: string
+          description: string
+          id: string
+          last_used_at: string | null
+          negative_example: string | null
+          positive_example: string | null
+          priority: number
+          product_ref: string | null
+          rule_structured: string
+          source_conversation_id: string | null
+          status: string
+          taught_by: string | null
+          title: string
+          updated_at: string
+          usage_count: number
+          version: number
+        }
+        Insert: {
+          archived_at?: string | null
+          category: string
+          company_id: string
+          confidence?: number
+          created_at?: string
+          description: string
+          id?: string
+          last_used_at?: string | null
+          negative_example?: string | null
+          positive_example?: string | null
+          priority?: number
+          product_ref?: string | null
+          rule_structured: string
+          source_conversation_id?: string | null
+          status?: string
+          taught_by?: string | null
+          title: string
+          updated_at?: string
+          usage_count?: number
+          version?: number
+        }
+        Update: {
+          archived_at?: string | null
+          category?: string
+          company_id?: string
+          confidence?: number
+          created_at?: string
+          description?: string
+          id?: string
+          last_used_at?: string | null
+          negative_example?: string | null
+          positive_example?: string | null
+          priority?: number
+          product_ref?: string | null
+          rule_structured?: string
+          source_conversation_id?: string | null
+          status?: string
+          taught_by?: string | null
+          title?: string
+          updated_at?: string
+          usage_count?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_learnings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_learnings_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "coach_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_messages: {
         Row: {
           author_user_id: string | null
@@ -4982,6 +5138,10 @@ export type Database = {
         Args: { _critical_confirmed?: boolean; _version_id: string }
         Returns: undefined
       }
+      archive_coach_learning: {
+        Args: { _learning_id: string }
+        Returns: undefined
+      }
       archive_coach_rule: { Args: { _rule_id: string }; Returns: undefined }
       brand_asset_storage_metadata: {
         Args: { _bucket: string; _path: string }
@@ -5129,6 +5289,21 @@ export type Database = {
         }[]
       }
       count_company_admins: { Args: { _company_id: string }; Returns: number }
+      create_coach_learning: {
+        Args: {
+          _category: string
+          _confidence?: number
+          _description: string
+          _negative_example?: string
+          _positive_example?: string
+          _priority?: number
+          _product_ref?: string
+          _rule_structured: string
+          _source_conversation_id?: string
+          _title: string
+        }
+        Returns: string
+      }
       create_coach_rule_draft: {
         Args: {
           _category: Database["public"]["Enums"]["coach_rule_category"]
@@ -5214,6 +5389,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_coach_learning_usage: {
+        Args: { _ids: string[] }
+        Returns: number
       }
       latest_messages_per_conversation: {
         Args: { _company_id: string }
@@ -5323,6 +5502,22 @@ export type Database = {
         Returns: undefined
       }
       touch_last_seen: { Args: never; Returns: undefined }
+      update_coach_learning: {
+        Args: {
+          _category: string
+          _confidence?: number
+          _description: string
+          _learning_id: string
+          _negative_example?: string
+          _positive_example?: string
+          _priority?: number
+          _product_ref?: string
+          _rule_structured: string
+          _status?: string
+          _title: string
+        }
+        Returns: number
+      }
     }
     Enums: {
       ai_proposal_status: "pending" | "approved" | "rejected"
