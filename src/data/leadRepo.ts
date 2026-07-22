@@ -360,6 +360,36 @@ function subscribeRealtime(companyId: string) {
         // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
         if (remoteMessages.some((m) => m.id === row.id)) return;
         remoteMessages = [...remoteMessages, toMessage(row)];
+
+        // P2 — Bump local imediato da conversa correspondente. Sem esperar
+        // o trigger de banco emitir `conversations UPDATE`, a fila reordena
+        // no mesmo tick da chegada da mensagem. Quando o UPDATE chegar em
+        // seguida, o handler de `conversations` sobrescreve com o estado
+        // canônico (idempotente).
+        const convIdx = remoteConversations.findIndex(
+          (c) => c.id === row.conversation_id,
+        );
+        if (convIdx !== -1) {
+          const prev = remoteConversations[convIdx];
+          const ageMin =
+            (Date.now() - new Date(row.at).getTime()) / 60_000;
+          const isLead = row.role === "lead";
+          const nextConv: Conversation = {
+            ...prev,
+            lastMessageAt: row.at,
+            unread: isLead ? (prev.unread ?? 0) + 1 : prev.unread,
+            awaitingReply: isLead ? true : prev.awaitingReply,
+            slaBreached: isLead
+              ? ageMin >= currentSlaMinutes
+              : false,
+          };
+          remoteConversations = [
+            ...remoteConversations.slice(0, convIdx),
+            nextConv,
+            ...remoteConversations.slice(convIdx + 1),
+          ];
+        }
+
         notify();
         // Emitter de novas mensagens (apenas role=lead). Observador puro,
         // não altera nenhuma lógica acima. Consumido por NotificationBridge.
@@ -409,6 +439,51 @@ function subscribeRealtime(companyId: string) {
         if (remoteLeads.some((l) => l.id === row.id)) return;
         remoteLeads = [...remoteLeads, toLead(row)];
         notify();
+      },
+    )
+    // P1 — UPDATE de leads: propaga em tempo real mudanças de status,
+    // etapa, tags, nextAction, closedAt, lossReason, estimatedValue etc.
+    // Fecha a lacuna documentada em docs/inbox-ux-audit.md §2.
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "leads",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const row = payload.new as DbLead;
+        const idx = remoteLeads.findIndex((l) => l.id === row.id);
+        if (idx === -1) {
+          // Lead veio de update sem estar em memória: insere para não
+          // deixar a UI dessincronizada até o próximo full-refresh.
+          remoteLeads = [...remoteLeads, toLead(row)];
+        } else {
+          remoteLeads = [
+            ...remoteLeads.slice(0, idx),
+            toLead(row),
+            ...remoteLeads.slice(idx + 1),
+          ];
+        }
+        notify();
+      },
+    )
+    // P1 — DELETE de leads: remove localmente para evitar cartões-fantasma.
+    .on(
+      "postgres_changes",
+      {
+        event: "DELETE",
+        schema: "public",
+        table: "leads",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload) => {
+        const old = payload.old as { id?: string };
+        if (!old.id) return;
+        const before = remoteLeads.length;
+        remoteLeads = remoteLeads.filter((l) => l.id !== old.id);
+        if (remoteLeads.length !== before) notify();
       },
     )
     .on(
