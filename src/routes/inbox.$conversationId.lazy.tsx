@@ -3651,7 +3651,7 @@ function ConversationPage() {
       cancelAnimationFrame(r1);
       if (cancelableR2Ref.current) cancelAnimationFrame(cancelableR2Ref.current);
     };
-  }, [threadLoad.status, conversationId, visibleMessages.length]);
+  }, [threadLoad.status, conversationId, visibleMessages.length, startBottomLock]);
 
   // Detecta chegada de nova mensagem após o scroll inicial. Se o usuário
   // não estiver próximo do fim, incrementa contador para o pill "Novas
