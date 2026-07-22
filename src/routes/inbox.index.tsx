@@ -349,7 +349,7 @@ function InboxPage() {
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const breachedCount = statusCounts.parados;
 
