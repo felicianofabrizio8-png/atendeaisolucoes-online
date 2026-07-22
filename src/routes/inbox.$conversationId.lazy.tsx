@@ -2944,8 +2944,33 @@ function ConversationPage() {
           visibleMessages[visibleMessages.length - 1]?.id ?? null;
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
-          console.debug("[inbox-scroll] READY→AUTO_SCROLL", conversationId, last);
+          console.debug("[inbox-scroll] INITIAL_POSITION", conversationId, last);
         }
+        // Correção silenciosa única: absorve mudanças de altura por decode
+        // de imagens/vídeos após o primeiro posicionamento. Cancelada por
+        // qualquer scroll manual do usuário.
+        if (silentCorrectionTimerRef.current) {
+          window.clearTimeout(silentCorrectionTimerRef.current);
+        }
+        silentCorrectionTimerRef.current = window.setTimeout(() => {
+          silentCorrectionTimerRef.current = null;
+          if (initialScrollRef.current.cid !== conversationId) return;
+          if (silentCorrectionDoneRef.current) return;
+          if (userScrolledRef.current) return;
+          if (!atBottomRef.current) return;
+          const lastIdx = latestVisibleMessagesLengthRef.current - 1;
+          if (lastIdx < 0) return;
+          silentCorrectionDoneRef.current = true;
+          virtuosoRef.current?.scrollToIndex({
+            index: lastIdx,
+            align: "end",
+            behavior: "auto",
+          });
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.debug("[inbox-scroll] FINAL_CORRECTION", conversationId, lastIdx);
+          }
+        }, 800);
       });
       cancelableR2Ref.current = r2;
     });
