@@ -2,6 +2,7 @@ import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
 import { Zap } from "lucide-react";
+import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -776,76 +777,9 @@ function deletedLabelFor(kind: MediaKind | null): string {
   }
 }
 
-// Mapa de tipos de mensagem do WhatsApp Cloud API / Meta que ainda não
-// possuem UI dedicada. Renderiza um placeholder amigável de altura fixa,
-// preservando estabilidade de layout e o tipo original em data-attr para
-// futura implementação (ver source_subtype / source_metadata.raw).
-const UNSUPPORTED_LABELS: Record<string, string> = {
-  document: "📎 Documento",
-  location: "📍 Localização",
-  contacts: "👤 Contato",
-  contact: "👤 Contato",
-  sticker: "🌟 Sticker",
-  reaction: "💬 Reação",
-  interactive: "🔘 Resposta interativa",
-  button: "🔘 Botão",
-  order: "🛒 Pedido",
-  poll: "📊 Enquete",
-  system: "ℹ️ Mensagem do sistema",
-  ephemeral: "⏳ Mensagem temporária",
-  unknown: "✉️ Mensagem não suportada",
-  unsupported: "✉️ Mensagem não suportada",
-};
+// getUnsupportedPlaceholder e mapas foram extraídos para
+// src/lib/inbox/unsupported-placeholder.ts (testável isoladamente).
 
-// Textos legados que podem ter sido salvos por versões anteriores do webhook.
-const LEGACY_BRACKET_TEXT: Record<string, { label: string; rawType: string }> = {
-  "[unsupported]": { label: "✉️ Mensagem não suportada", rawType: "unsupported" },
-  "[unknown]": { label: "✉️ Mensagem não suportada", rawType: "unknown" },
-  "[mensagem]": { label: "✉️ Mensagem não suportada", rawType: "unknown" },
-  "[localização]": { label: "📍 Localização", rawType: "location" },
-  "[localizacao]": { label: "📍 Localização", rawType: "location" },
-  "[location]": { label: "📍 Localização", rawType: "location" },
-  "[contacts]": { label: "👤 Contato", rawType: "contacts" },
-  "[contato]": { label: "👤 Contato", rawType: "contacts" },
-  "[reaction]": { label: "💬 Reação", rawType: "reaction" },
-  "[interactive]": { label: "🔘 Resposta interativa", rawType: "interactive" },
-  "[order]": { label: "🛒 Pedido", rawType: "order" },
-  "[poll]": { label: "📊 Enquete", rawType: "poll" },
-  "[system]": { label: "ℹ️ Mensagem do sistema", rawType: "system" },
-  "[ephemeral]": { label: "⏳ Mensagem temporária", rawType: "ephemeral" },
-  "[sticker]": { label: "🌟 Sticker", rawType: "sticker" },
-};
-
-function getUnsupportedPlaceholder(
-  message: Message,
-  text: string,
-): { label: string; rawType: string } | null {
-  const trimmed = (text ?? "").trim();
-  const legacy = LEGACY_BRACKET_TEXT[trimmed.toLowerCase()];
-  if (legacy) return legacy;
-
-  const sub = (message.sourceSubtype ?? "").toLowerCase();
-  if (sub && UNSUPPORTED_LABELS[sub] && !["image", "video", "audio"].includes(sub)) {
-    // Só mostra placeholder se não houver mídia renderizável associada.
-    // (getMediaInfo já tratou image/video/audio/document/sticker com arquivo.)
-    if (sub === "document" || sub === "sticker") {
-      // Documento/sticker sem arquivo baixado — placeholder amigável.
-      return { label: UNSUPPORTED_LABELS[sub], rawType: sub };
-    }
-    return { label: UNSUPPORTED_LABELS[sub], rawType: sub };
-  }
-
-  // Fallback: texto ainda em formato [algo] que não conhecemos.
-  const bracketMatch = /^\[([a-z0-9_\- ]{1,32})\]$/i.exec(trimmed);
-  if (bracketMatch) {
-    const raw = bracketMatch[1].toLowerCase();
-    return {
-      label: UNSUPPORTED_LABELS[raw] ?? "✉️ Mensagem não suportada",
-      rawType: raw,
-    };
-  }
-  return null;
-}
 
 function UnsupportedPlaceholder({ label, rawType }: { label: string; rawType: string }) {
   return (
