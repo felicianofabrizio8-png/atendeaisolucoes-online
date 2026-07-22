@@ -23,6 +23,13 @@ import {
   getMessagesSnapshot,
   addLead as addLeadMock,
 } from "@/data/leadStore";
+import {
+  createMessageIndex,
+  upsertMessage as idxUpsert,
+  removeMessage as idxRemove,
+  rebuildIndex as idxRebuild,
+  getMessages as idxGet,
+} from "@/data/message-index";
 
 
 // ---------- estado em memória sincronizado com o supabase ----------
@@ -38,6 +45,15 @@ let realtimeChannel: RealtimeChannel | null = null;
 let realtimeCompanyId: string | null = null;
 let currentSlaMinutes = 30;
 
+// P3 — Índice de mensagens por conversationId (O(1) por lookup).
+// Substitui filter+sort O(N total) do antigo getMessagesFor.
+const messagesIndex = createMessageIndex();
+
+// P3 — Contador de versão do repo. Consumido via useSyncExternalStore para
+// habilitar memoização real (`buildSortedItems`, etc.) sem depender de
+// referências que trocam a cada render.
+let repoVersion = 0;
+
 // Paginação por conversa (Onda 2.2): histórico antigo via scroll-up.
 const olderHasMore = new Map<string, boolean>();
 const olderLoading = new Set<string>();
@@ -47,7 +63,12 @@ const recentLoaded = new Set<string>();
 const listeners = new Set<() => void>();
 
 function notify() {
+  repoVersion++;
   for (const l of listeners) l();
+}
+
+export function getRepoVersion(): number {
+  return repoVersion;
 }
 
 // ---------- emitter de novas mensagens de lead (observador) ----------
@@ -105,6 +126,7 @@ export function setRepoMode(next: Mode) {
     remoteLeads = [];
     remoteConversations = [];
     remoteMessages = [];
+    messagesIndex.clear();
     remoteLoaded = false;
     olderHasMore.clear();
     olderLoading.clear();
@@ -266,8 +288,12 @@ export function getConversations(): Conversation[] {
 }
 
 export function getMessagesFor(conversationId: string): Message[] {
-  const list = mode === "remote" ? remoteMessages : getMessagesSnapshot();
-  return list
+  if (mode === "remote") {
+    // P3 — lookup O(1) via índice pré-ordenado por conversationId.
+    return idxGet(messagesIndex, conversationId);
+  }
+  // Modo demo: mantém o comportamento antigo (filter+sort sobre o mock).
+  return getMessagesSnapshot()
     .filter((m) => m.conversationId === conversationId)
     .sort((a, b) => +new Date(a.at) - +new Date(b.at));
 }
@@ -311,6 +337,8 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
       toConversation(r as DbConversation, slaMinutes),
     );
     remoteMessages = (ms ?? []).map((r) => toMessage(r as DbMessage));
+    // P3 — reconstrói o índice a partir do bulk inicial.
+    idxRebuild(messagesIndex, remoteMessages);
 
     remoteLoaded = true;
     mode = "remote";
@@ -359,7 +387,9 @@ function subscribeRealtime(companyId: string) {
         };
         // Dedup: se já temos essa msg em memória (id ou external_id local), ignora.
         if (remoteMessages.some((m) => m.id === row.id)) return;
-        remoteMessages = [...remoteMessages, toMessage(row)];
+        const msg = toMessage(row);
+        remoteMessages = [...remoteMessages, msg];
+        idxUpsert(messagesIndex, msg);
 
         // P2 — Bump local imediato da conversa correspondente. Sem esperar
         // o trigger de banco emitir `conversations UPDATE`, a fila reordena
@@ -418,11 +448,13 @@ function subscribeRealtime(companyId: string) {
         const row = payload.new as DbMessage & { company_id: string };
         const idx = remoteMessages.findIndex((m) => m.id === row.id);
         if (idx === -1) return;
+        const msg = toMessage(row);
         remoteMessages = [
           ...remoteMessages.slice(0, idx),
-          toMessage(row),
+          msg,
           ...remoteMessages.slice(idx + 1),
         ];
+        idxUpsert(messagesIndex, msg);
         notify();
       },
     )
@@ -539,6 +571,7 @@ export async function refetchConversationMessages(conversationId: string) {
     .filter((m) => !existing.has(m.id));
   if (fresh.length === 0) return;
   remoteMessages = [...remoteMessages, ...fresh];
+  for (const m of fresh) idxUpsert(messagesIndex, m);
   notify();
 }
 
@@ -553,13 +586,15 @@ export function hasMoreOlderMessages(conversationId: string): boolean {
 
 // Ao abrir a conversa: garante que temos pelo menos `limit` mensagens recentes
 // dessa conversa em memória. Idempotente — só executa uma vez por conversa por sessão.
+// P3 — retorna resultado explícito para permitir estados de loading/erro/retry na UI.
 export async function loadConversationRecent(
   conversationId: string,
   limit = 100,
-): Promise<void> {
-  if (mode !== "remote") return;
-  if (recentLoaded.has(conversationId)) return;
+): Promise<{ ok: boolean; error?: string }> {
+  if (mode !== "remote") return { ok: true };
+  if (recentLoaded.has(conversationId)) return { ok: true };
   recentLoaded.add(conversationId);
+  const t0 = typeof performance !== "undefined" ? performance.now() : 0;
   const { data, error } = await supabase
     .from("messages")
     .select(MSG_SELECT)
@@ -567,8 +602,12 @@ export async function loadConversationRecent(
     .order("at", { ascending: false })
     .limit(limit);
   if (error || !data) {
+    // Libera o guard idempotente para permitir retry pelo usuário.
     recentLoaded.delete(conversationId);
-    return;
+    const msg =
+      (error as { message?: string } | null)?.message ??
+      "Falha ao carregar mensagens";
+    return { ok: false, error: msg };
   }
   const existing = new Set(remoteMessages.map((m) => m.id));
   const fresh = data
@@ -576,10 +615,22 @@ export async function loadConversationRecent(
     .filter((m) => !existing.has(m.id));
   if (fresh.length > 0) {
     remoteMessages = [...remoteMessages, ...fresh];
+    for (const m of fresh) idxUpsert(messagesIndex, m);
     notify();
   }
   // Se voltou menos que o limite, não há mais histórico antigo.
   if (data.length < limit) olderHasMore.set(conversationId, false);
+  if (import.meta.env.DEV && typeof performance !== "undefined") {
+    const ms = performance.now() - t0;
+    // eslint-disable-next-line no-console
+    console.debug(`[inbox-perf] loadConversationRecent ${conversationId} ${ms.toFixed(1)}ms fresh=${fresh.length}`);
+  }
+  return { ok: true };
+}
+
+// Reset explícito do guard idempotente — usado no retry manual do UI.
+export function resetConversationRecentLoaded(conversationId: string) {
+  recentLoaded.delete(conversationId);
 }
 
 // Scroll-up: busca mensagens anteriores ao cursor composto (at, id) para
@@ -624,6 +675,7 @@ export async function loadConversationOlder(
       .filter((m) => !existing.has(m.id));
     if (fresh.length > 0) {
       remoteMessages = [...remoteMessages, ...fresh];
+      for (const m of fresh) idxUpsert(messagesIndex, m);
       notify();
     }
     const hasMore = data.length === limit;
@@ -650,6 +702,8 @@ export async function editMessage(messageId: string, newText: string) {
       ? { ...m, text: newText, editedAt }
       : m,
   );
+  const edited = remoteMessages.find((m) => m.id === messageId);
+  if (edited) idxUpsert(messagesIndex, edited);
   notify();
 }
 
@@ -685,6 +739,8 @@ export async function deleteMessage(
       ? { ...m, deletedAt, deletedFor: scope }
       : m,
   );
+  const updated = remoteMessages.find((m) => m.id === messageId);
+  if (updated) idxUpsert(messagesIndex, updated);
   notify();
 }
 
@@ -834,6 +890,7 @@ export async function appendMessage(
 
   const newMsg = toMessage(data as DbMessage);
   remoteMessages = [...remoteMessages, newMsg];
+  idxUpsert(messagesIndex, newMsg);
 
   // atualiza conversa
   const conv = remoteConversations.find((c) => c.id === message.conversationId);

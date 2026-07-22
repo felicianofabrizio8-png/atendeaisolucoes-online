@@ -12,6 +12,7 @@ import {
   seedMockIntoCompany,
   loadRemote,
   getRepoMode,
+  getRepoVersion,
 } from "@/data/leadRepo";
 import { seedMockProductsIntoCompany, loadProductsRemote } from "@/data/products";
 import { useAuth } from "@/auth/AuthContext";
@@ -142,13 +143,10 @@ function useSettings() {
   return useSyncExternalStore(subscribeSettings, getSettings, getSettings);
 }
 
-function useRepoVersion() {
-  const [, forceRepoRender] = useState(0);
-  useEffect(() => {
-    return subscribeRepo(() => {
-      forceRepoRender((v) => v + 1);
-    });
-  }, []);
+function useRepoVersion(): number {
+  // P3 — external store propaga a versão do repo (bump em cada notify()),
+  // permitindo memoização estável em `useMemo` sem depender de referências.
+  return useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
 }
 
 function isSlaBreached(c: Conversation, slaMinutes: number): boolean {
@@ -249,7 +247,7 @@ function ViewToggle({ view, onChange }: { view: "cockpit" | "classic"; onChange:
 function InboxPage() {
   const navigate = useNavigate();
   const settings = useSettings();
-  useRepoVersion();
+  const repoVersion = useRepoVersion();
   const { profile } = useAuth();
   const { status: statusFilter, source: sourceFilter, lossReason: lossReasonFilter, wpWindow: windowFilter } = Route.useSearch();
   const [seeding, setSeeding] = useState(false);
@@ -262,11 +260,27 @@ function InboxPage() {
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* noop */ }
   };
 
-  const itemsRaw = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
-  const items =
-    statusFilter === "coach"
-      ? itemsRaw.filter((it) => alertsByConv.has(it.conv.id))
-      : itemsRaw;
+  // P3 — memoiza a construção da fila. Recomputa apenas quando a versão do
+  // repo, o SLA ou os filtros mudam (deps estáveis, referências não trocam).
+  const itemsRaw = useMemo(
+    () => {
+      const t0 = import.meta.env.DEV && typeof performance !== "undefined" ? performance.now() : 0;
+      const out = buildSortedItems(settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter);
+      if (import.meta.env.DEV && typeof performance !== "undefined") {
+        // eslint-disable-next-line no-console
+        console.debug(`[inbox-perf] buildSortedItems ${(performance.now() - t0).toFixed(1)}ms items=${out.length}`);
+      }
+      return out;
+    },
+    [repoVersion, settings.slaMinutes, statusFilter, sourceFilter, lossReasonFilter, windowFilter],
+  );
+  const items = useMemo(
+    () =>
+      statusFilter === "coach"
+        ? itemsRaw.filter((it) => alertsByConv.has(it.conv.id))
+        : itemsRaw,
+    [itemsRaw, statusFilter, alertsByConv],
+  );
   const awaitingCount = items.filter((i) => i.conv.awaitingReply).length;
 
   // Contadores globais (dashboard) da janela de 24h — base independente dos filtros ativos.
@@ -285,7 +299,7 @@ function InboxPage() {
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
@@ -312,7 +326,7 @@ function InboxPage() {
     counts.coach = coachCount;
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.slaMinutes, lossReasonFilter, items, coachCount]);
+  }, [repoVersion, settings.slaMinutes, lossReasonFilter, coachCount]);
 
   const sourceCounts = useMemo(() => {
     const counts: Record<SourceFilter, number> = {
@@ -335,7 +349,7 @@ function InboxPage() {
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const breachedCount = statusCounts.parados;
 
@@ -349,7 +363,7 @@ function InboxPage() {
     }
     return [...set].sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [repoVersion]);
 
   const handleSeed = async () => {
     if (!profile) return;
