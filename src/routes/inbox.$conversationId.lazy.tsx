@@ -1029,6 +1029,20 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
   }
 
   const text = message.text ?? "";
+
+  // Placeholder amigável para tipos ainda não renderizados nativamente
+  // (documentos sem download, localização, contatos, enquetes, stickers legados,
+  // reações, pedidos, etc.). Nunca deixa "[unsupported]" ou "[qualquer_coisa]" visível.
+  const placeholder = getUnsupportedPlaceholder(message, text);
+  if (placeholder) {
+    return (
+      <>
+        {replyNode}
+        <UnsupportedPlaceholder label={placeholder.label} rawType={placeholder.rawType} />
+      </>
+    );
+  }
+
   IMAGE_URL_RE.lastIndex = 0;
   if (!IMAGE_URL_RE.test(text)) {
     return (
