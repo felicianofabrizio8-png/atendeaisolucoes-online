@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash";
@@ -58,7 +59,7 @@ export const Route = createFileRoute("/api/coach/suggest")({
           .maybeSingle();
         if (!conv) return Response.json({ error: "conversa não encontrada" }, { status: 404 });
 
-        const [{ data: lead }, { data: msgs }, { data: company }] = await Promise.all([
+        const [{ data: lead }, { data: msgs }, { data: company }, grounding] = await Promise.all([
           supabaseAdmin
             .from("leads")
             .select("name, product, status, estimated_value")
@@ -72,6 +73,9 @@ export const Route = createFileRoute("/api/coach/suggest")({
             .order("at", { ascending: false })
             .limit(15),
           supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
+          // Grounding OBRIGATÓRIO — inclui aprendizados ativos da empresa
+          // (isolados por company_id via RLS-safe filter). Nunca vaza entre tenants.
+          buildCompanyGrounding(supabaseAdmin, companyId).catch(() => null),
         ]);
 
         const ordered = (msgs ?? []).slice().reverse();
@@ -83,16 +87,51 @@ export const Route = createFileRoute("/api/coach/suggest")({
           )
           .join("\n");
 
+        // Auditoria de learnings usados no grounding.
+        const learningIdsUsed = grounding?.learningIdsUsed ?? [];
+        let learningVersionsUsed: Array<{ id: string; version: number }> = [];
+        let learningConfidence: number | null = null;
+        if (learningIdsUsed.length > 0) {
+          const { data: lv } = await supabaseAdmin
+            .from("coach_learnings" as never)
+            .select("id, version, confidence, company_id")
+            .in("id", learningIdsUsed);
+          const rows = ((lv ?? []) as Array<{
+            id: string;
+            version: number;
+            confidence: number;
+            company_id: string;
+          }>).filter((r) => r.company_id === companyId);
+          learningVersionsUsed = rows.map((r) => ({ id: r.id, version: r.version }));
+          if (rows.length > 0) {
+            learningConfidence =
+              rows.reduce((a, r) => a + Number(r.confidence ?? 0), 0) / rows.length;
+          }
+        }
+
+        const groundingBlock = grounding?.block ?? "";
         const systemPrompt = `Você é a "IA Coach do Vendedor" da empresa "${company?.name ?? "—"}".
 Você NUNCA envia mensagens. Apenas orienta o vendedor humano.
+
+HIERARQUIA OBRIGATÓRIA de conhecimento (respeite nesta ordem):
+1. Conversa atual e histórico do cliente.
+2. APRENDIZADOS DA EQUIPE (bloco abaixo — regras específicas ensinadas pelos vendedores desta empresa; TÊM PRIORIDADE sobre a Base de Conhecimento e o catálogo, exceto quando conflitam com REGRAS COMERCIAIS ATIVAS).
+3. Base de Conhecimento da empresa.
+4. Catálogo de produtos.
+5. FAQ / respostas rápidas.
+6. Regras comerciais ativas.
+7. Conhecimento geral seu.
+
 Analise a conversa e devolva via tool call:
 - situation: descrição curta do estado atual do cliente (1 frase, pt-BR).
 - next_action: próxima ação recomendada ao vendedor (verbo no infinitivo, curto).
-- suggestion_text: sugestão de mensagem pronta para o vendedor copiar/editar/enviar. pt-BR, humano, máx 4 frases, sem clichês, sem inventar preço/prazo/desconto.
-- reasoning: por que essa sugestão (1-2 frases).
+- suggestion_text: sugestão de mensagem pronta para o vendedor copiar/editar/enviar. pt-BR, humano, máx 4 frases, sem clichês, sem inventar preço/prazo/desconto, respeitando os APRENDIZADOS DA EQUIPE.
+- reasoning: por que essa sugestão (1-2 frases). Se um aprendizado foi decisivo, cite-o.
 - objection_type: "price"|"timing"|"spouse"|"researching"|"discount"|"other"|null.
 - urgency: "low"|"medium"|"high"|"critical".
-- risk_score: 0-100 (risco de perder a venda).`;
+- risk_score: 0-100 (risco de perder a venda).
+
+${groundingBlock}`;
 
         const userPrompt = `Lead: ${lead?.name ?? "—"}
 Produto: ${lead?.product ?? "—"}
@@ -183,11 +222,25 @@ ${transcript || "(sem mensagens)"}`;
             urgency: parsed.urgency,
             risk_score: parsed.risk_score,
             created_by: userId,
-          })
+            // Auditoria — Coach Evolutivo
+            learning_ids_used: learningIdsUsed,
+            learning_versions_used: learningVersionsUsed as unknown as never,
+            learning_confidence: learningConfidence,
+            grounding_score: grounding ? Number(grounding.groundingScore.toFixed(2)) : null,
+            sources_used: grounding ? (grounding.sourcesUsed as unknown as never) : null,
+          } as never)
           .select("*")
           .single();
 
         if (insErr) return Response.json({ error: insErr.message }, { status: 500 });
+
+        // Registra uso (fire-and-forget) — não bloqueia resposta.
+        if (learningIdsUsed.length > 0) {
+          void supabaseAdmin
+            .rpc("increment_coach_learning_usage" as never, { _ids: learningIdsUsed } as never)
+            .then(() => undefined, () => undefined);
+        }
+
         return Response.json({ ok: true, suggestion: ins });
       },
     },

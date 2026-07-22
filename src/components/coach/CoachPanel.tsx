@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -15,8 +16,15 @@ import {
   Flame,
   Settings2,
   Brain,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
-import { TeachModeDrawer } from "@/components/coach/TeachModeDrawer";
+import {
+  TeachModeDrawer,
+  type TeachSourceSuggestion,
+} from "@/components/coach/TeachModeDrawer";
+import { submitSuggestionFeedbackFn } from "@/lib/coach-learnings/coach-learnings.functions";
+
 
 
 interface CoachAlert {
@@ -41,7 +49,14 @@ interface CoachSuggestion {
   risk_score: number | null;
   status: string;
   created_at: string;
+  message_id: string | null;
+  learning_ids_used?: string[] | null;
+  grounding_score?: number | null;
+  sources_used?: Record<string, boolean> | null;
+  domain_validation?: unknown;
+  feedback_status?: "positive" | "negative" | null;
 }
+
 
 const ALERT_LABEL: Record<string, string> = {
   no_response: "Cliente sem resposta",
@@ -83,6 +98,10 @@ export function CoachPanel({
   const [copied, setCopied] = useState(false);
   const [teachOpen, setTeachOpen] = useState(false);
   const [teachSeed, setTeachSeed] = useState<string>("");
+  const [teachSource, setTeachSource] = useState<TeachSourceSuggestion | null>(null);
+  const [feedbackBusy, setFeedbackBusy] = useState<"positive" | "negative" | null>(null);
+  const submitFeedback = useServerFn(submitSuggestionFeedbackFn);
+
 
   const loadData = useMemo(
     () => async () => {
@@ -187,6 +206,60 @@ export function CoachPanel({
       .eq("id", suggestion.id);
     setSuggestion(null);
   }
+
+  async function fetchClientMessage(messageId: string | null): Promise<string | null> {
+    if (!messageId) return null;
+    const { data } = await supabase
+      .from("messages")
+      .select("text")
+      .eq("id", messageId)
+      .maybeSingle();
+    return (data?.text as string | undefined) ?? null;
+  }
+
+  async function handleThumbsUp() {
+    if (!suggestion || feedbackBusy) return;
+    setFeedbackBusy("positive");
+    try {
+      await submitFeedback({
+        data: { suggestionId: suggestion.id, status: "positive" },
+      });
+      setSuggestion({ ...suggestion, feedback_status: "positive" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeedbackBusy(null);
+    }
+  }
+
+  async function handleThumbsDown() {
+    if (!suggestion || feedbackBusy) return;
+    setFeedbackBusy("negative");
+    try {
+      const clientMessage = await fetchClientMessage(suggestion.message_id);
+      const product =
+        (suggestion.domain_validation as { product?: string } | null)?.product ??
+        suggestion.objection_type ??
+        null;
+      setTeachSource({
+        suggestion_id: suggestion.id,
+        client_message: clientMessage,
+        suggestion_text: suggestion.suggestion_text,
+        situation: suggestion.situation,
+        next_action: suggestion.next_action,
+        product_or_category: product,
+        sources_used: suggestion.sources_used ?? null,
+        grounding_score: suggestion.grounding_score ?? null,
+        domain_validation: suggestion.domain_validation ?? null,
+        conversation_id: conversationId,
+      });
+      setTeachSeed("");
+      setTeachOpen(true);
+    } finally {
+      setFeedbackBusy(null);
+    }
+  }
+
 
   return (
     <div className="border-b border-border p-4 space-y-3">
@@ -377,17 +450,74 @@ export function CoachPanel({
               <X className="h-3 w-3" />
             </button>
           </div>
+          <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
+            <span className="text-[10px] text-muted-foreground mr-auto">
+              A sugestão te ajudou?
+            </span>
+            <button
+              type="button"
+              onClick={handleThumbsUp}
+              disabled={!!feedbackBusy || suggestion.feedback_status === "positive"}
+              data-testid="coach-suggestion-thumbs-up"
+              aria-label="Boa sugestão"
+              className={cn(
+                "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-muted disabled:opacity-60",
+                suggestion.feedback_status === "positive"
+                  ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-border bg-background",
+              )}
+            >
+              {feedbackBusy === "positive" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ThumbsUp className="h-3 w-3" />
+              )}
+              Boa
+            </button>
+            <button
+              type="button"
+              onClick={handleThumbsDown}
+              disabled={!!feedbackBusy}
+              data-testid="coach-suggestion-thumbs-down"
+              aria-label="Precisa melhorar — abrir Ensinar IA"
+              className={cn(
+                "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-muted",
+                suggestion.feedback_status === "negative"
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "border-border bg-background",
+              )}
+            >
+              {feedbackBusy === "negative" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ThumbsDown className="h-3 w-3" />
+              )}
+              Precisa melhorar
+            </button>
+          </div>
           {suggestion.reasoning && (
             <div className="text-[10px] text-muted-foreground italic">{suggestion.reasoning}</div>
+          )}
+          {suggestion.learning_ids_used && suggestion.learning_ids_used.length > 0 && (
+            <div className="text-[10px] text-emerald-700 dark:text-emerald-400">
+              Aprendizados usados: {suggestion.learning_ids_used.length}
+              {suggestion.grounding_score != null &&
+                ` · grounding ${suggestion.grounding_score.toFixed(2)}`}
+            </div>
           )}
         </div>
       )}
       <TeachModeDrawer
         open={teachOpen}
-        onClose={() => setTeachOpen(false)}
+        onClose={() => {
+          setTeachOpen(false);
+          setTeachSource(null);
+        }}
         seedExplanation={teachSeed}
-        conversationId={null}
+        conversationId={conversationId}
+        sourceSuggestion={teachSource}
       />
+
     </div>
   );
 }

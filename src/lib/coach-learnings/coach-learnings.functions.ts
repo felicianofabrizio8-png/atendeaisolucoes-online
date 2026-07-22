@@ -47,6 +47,7 @@ export const getCoachLearningFn = createServerFn({ method: "GET" })
 const createInput = z.object({
   draft: CoachLearningDraftSchema,
   sourceConversationId: z.string().uuid().nullable().optional(),
+  sourceSuggestionId: z.string().uuid().nullable().optional(),
 });
 
 export const createCoachLearningFn = createServerFn({ method: "POST" })
@@ -58,8 +59,24 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
       data.draft,
       data.sourceConversationId ?? null,
     );
+    // Se veio de um 👎 numa sugestão, marca feedback negativo e vincula.
+    if (data.sourceSuggestionId) {
+      try {
+        await context.supabase.rpc(
+          "submit_coach_suggestion_feedback" as never,
+          {
+            _suggestion_id: data.sourceSuggestionId,
+            _feedback: "negative",
+            _learning_id: id,
+          } as never,
+        );
+      } catch {
+        // Não bloqueia a criação do aprendizado se a sugestão sumir.
+      }
+    }
     return { id };
   });
+
 
 const updateInput = z.object({
   id: z.string().uuid(),
@@ -159,3 +176,30 @@ export const submitLearningFeedbackFn = createServerFn({ method: "POST" })
     const count = await incrementLearningUsage(context.supabase, data.learningIds);
     return { incremented: count };
   });
+
+const suggestionFeedbackInput = z.object({
+  suggestionId: z.string().uuid(),
+  status: z.enum(["positive", "negative"]),
+  learningId: z.string().uuid().nullable().optional(),
+});
+
+/**
+ * Registra 👍 / 👎 na sugestão. Escopo garantido pela RPC via auth.uid()
+ * + comparação de company_id da sugestão com a do profile do chamador.
+ */
+export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => suggestionFeedbackInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.rpc(
+      "submit_coach_suggestion_feedback" as never,
+      {
+        _suggestion_id: data.suggestionId,
+        _feedback: data.status,
+        _learning_id: data.learningId ?? null,
+      } as never,
+    );
+    if (error) throw new Error(error.message ?? "suggestion_feedback_failed");
+    return { ok: true as const };
+  });
+

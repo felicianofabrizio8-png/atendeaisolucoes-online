@@ -16,18 +16,34 @@ interface Turn {
   content: string;
 }
 
+export interface TeachSourceSuggestion {
+  suggestion_id: string;
+  client_message: string | null;
+  suggestion_text: string;
+  situation: string | null;
+  next_action: string | null;
+  product_or_category: string | null;
+  sources_used: unknown;
+  grounding_score: number | null;
+  domain_validation: unknown;
+  conversation_id: string;
+}
+
 interface TeachModeDrawerProps {
   open: boolean;
   onClose: () => void;
   seedExplanation?: string;
   conversationId?: string | null;
+  sourceSuggestion?: TeachSourceSuggestion | null;
 }
+
 
 export function TeachModeDrawer({
   open,
   onClose,
   seedExplanation,
   conversationId,
+  sourceSuggestion,
 }: TeachModeDrawerProps) {
   const extractFn = useServerFn(teachModeExtractFn);
   const createFn = useServerFn(createCoachLearningFn);
@@ -42,15 +58,44 @@ export function TeachModeDrawer({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setTurns([]);
-      setDraft(null);
-      setError(null);
-      setSaved(false);
+    if (!open) return;
+    setDraft(null);
+    setError(null);
+    setSaved(false);
+    // Se abriu via 👎, semeia o chat com a pergunta guiada + contexto.
+    if (sourceSuggestion) {
+      const ctxLines = [
+        sourceSuggestion.client_message
+          ? `Mensagem do cliente: "${sourceSuggestion.client_message}"`
+          : null,
+        `Sugestão gerada: "${sourceSuggestion.suggestion_text}"`,
+        sourceSuggestion.situation ? `Situação: ${sourceSuggestion.situation}` : null,
+        sourceSuggestion.next_action
+          ? `Próxima ação sugerida: ${sourceSuggestion.next_action}`
+          : null,
+        sourceSuggestion.product_or_category
+          ? `Produto/categoria: ${sourceSuggestion.product_or_category}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      setTurns([
+        {
+          role: "assistant",
+          content:
+            "Entendi que esta sugestão precisa melhorar. O que ficou errado e como o Coach deveria responder nesse tipo de situação?",
+        },
+        ...(ctxLines
+          ? [{ role: "assistant" as const, content: `Contexto:\n${ctxLines}` }]
+          : []),
+      ]);
       setInput(seedExplanation ?? "");
-      setTimeout(() => inputRef.current?.focus(), 60);
+    } else {
+      setTurns([]);
+      setInput(seedExplanation ?? "");
     }
-  }, [open, seedExplanation]);
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }, [open, seedExplanation, sourceSuggestion]);
 
   if (!open) return null;
 
@@ -63,9 +108,14 @@ export function TeachModeDrawer({
     setTurns(nextTurns);
     setInput("");
     try {
+      // Enriquece a explicação com o contexto da sugestão reprovada,
+      // para o extrator escolher categoria / product_ref / negative_example.
+      const enrichedExplanation = sourceSuggestion
+        ? `${text}\n\n---\nContexto da sugestão reprovada:\n- Mensagem do cliente: ${sourceSuggestion.client_message ?? "(não informada)"}\n- Sugestão original que precisa melhorar (use como negative_example): "${sourceSuggestion.suggestion_text}"\n- Produto/categoria: ${sourceSuggestion.product_or_category ?? "(não informada)"}`
+        : text;
       const res = await extractFn({
         data: {
-          explanation: text,
+          explanation: enrichedExplanation,
           priorTurns: nextTurns.slice(0, -1),
         },
       });
@@ -81,12 +131,17 @@ export function TeachModeDrawer({
         ]);
         return;
       }
-      setDraft(res.draft);
+      // Se veio de 👎, garante que o negative_example seja a sugestão reprovada.
+      const draftFromLlm =
+        sourceSuggestion && !res.draft.negative_example
+          ? { ...res.draft, negative_example: sourceSuggestion.suggestion_text }
+          : res.draft;
+      setDraft(draftFromLlm);
       setTurns((t) => [
         ...t,
         {
           role: "assistant",
-          content: `Entendi assim: "${res.draft.title}". Revise ao lado e ajuste antes de salvar.`,
+          content: `Entendi assim: "${draftFromLlm.title}". Revise ao lado e confirme antes de salvar.`,
         },
       ]);
     } catch (err) {
@@ -104,7 +159,9 @@ export function TeachModeDrawer({
       await createFn({
         data: {
           draft,
-          sourceConversationId: conversationId ?? null,
+          sourceConversationId:
+            conversationId ?? sourceSuggestion?.conversation_id ?? null,
+          sourceSuggestionId: sourceSuggestion?.suggestion_id ?? null,
         },
       });
       setSaved(true);
@@ -113,6 +170,7 @@ export function TeachModeDrawer({
       setError(err instanceof Error ? err.message : "save_failed");
     } finally {
       setSaving(false);
+
     }
   }
 
