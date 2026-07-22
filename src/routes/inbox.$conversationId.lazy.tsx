@@ -4407,15 +4407,19 @@ function ConversationPage() {
                 data={visibleMessages}
                 computeItemKey={(_idx, m) => m.id}
                 initialTopMostItemIndex={visibleMessages.length - 1}
-                followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+                followOutput={handleVirtuosoFollowOutput}
                 atBottomStateChange={setAtBottom}
                 atBottomThreshold={160}
                 startReached={loadOlder}
+                itemsRendered={handleVirtuosoItemsRendered}
+                rangeChanged={handleVirtuosoRangeChanged}
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
                 className="h-full px-3 md:px-4"
                 style={{ overflowAnchor: "none" }}
                 components={{
+                  Scroller: TracedVirtuosoScroller,
+                  Item: TracedVirtuosoItem,
                   Header: () =>
                     !hasMoreOlder && visibleMessages.length > 0 ? (
                       <div className="flex justify-center py-3">
