@@ -352,7 +352,7 @@ export async function interpretCoachMessage(
         "Ainda há ambiguidade, mas atingimos o limite de perguntas. Revise manualmente.",
         {
           intent: out.intent,
-          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, ...domainWarnings, "max_clarifications_reached"],
           normalized_output: out,
           ...groundingMeta,
           ...domainMeta,
@@ -364,7 +364,7 @@ export async function interpretCoachMessage(
         outcome: {
           kind: "classified",
           intent: out.intent,
-          warnings: [...out.warnings, ...groundingWarnings, "max_clarifications_reached"],
+          warnings: [...out.warnings, ...groundingWarnings, ...domainWarnings, "max_clarifications_reached"],
         },
         run,
         assistantMessageId: msg.id,
