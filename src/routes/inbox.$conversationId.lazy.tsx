@@ -3378,6 +3378,7 @@ function ConversationPage() {
 
   const [atBottom, _setAtBottom] = useState(true);
   const setAtBottom = useCallback((v: boolean) => {
+    logAtBottom(renderIdRef.current, v);
     atBottomRef.current = v;
     _setAtBottom(v);
     traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
