@@ -68,10 +68,9 @@ describe("Inbox stable refs — hotfix", () => {
   });
 
   it("setAtBottom: transição true -> false produz mudança", () => {
-    const prev = true;
-    const v = false;
+    const prev: boolean = true;
+    const v: boolean = false;
     const result = prev === v ? prev : v;
-    expect(result).toBe(v);
     expect(result).toBe(false);
   });
 
