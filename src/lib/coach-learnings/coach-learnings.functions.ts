@@ -53,7 +53,7 @@ const createInput = z.object({
   sourceConversationId: z.string().uuid().nullable().optional(),
   sourceSuggestionId: z.string().uuid().nullable().optional(),
   promptVersion: z.string().max(120).nullable().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const createCoachLearningFn = createServerFn({ method: "POST" })
@@ -107,7 +107,7 @@ const updateInput = z.object({
   origin: z.enum(COACH_LEARNING_VERSION_ORIGINS).optional(),
   changeReason: z.string().max(500).nullable().optional(),
   promptVersion: z.string().max(120).nullable().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const updateCoachLearningFn = createServerFn({ method: "POST" })
