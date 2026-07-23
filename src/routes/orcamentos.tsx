@@ -56,6 +56,8 @@ import {
   type QuoteStatus,
 } from "@/data/quotes";
 import { newQuoteSendAttemptId, friendlyQuoteSendMessage } from "@/lib/quote-send/errors";
+import { qsCode, qsDebug } from "@/lib/quote-send/diagnostics";
+
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
