@@ -3067,6 +3067,8 @@ function ConversationPage() {
   );
 
   // DIAG cascade — diff de identidade vs conteúdo por render.
+  // Guardada por `import.meta.env.DEV` dentro de `diag-cascade.ts` — não
+  // ativa em produção.
   {
     const rid = renderIdRef.current;
     const nextRepoSnap = snapshotArray(repoMessages);
@@ -3075,14 +3077,6 @@ function ConversationPage() {
     const nextVisibleSnap = snapshotArray(visibleMessages);
     diffArraySnapshot("visibleMessages", rid, prevVisibleSnapRef.current, nextVisibleSnap);
     prevVisibleSnapRef.current = nextVisibleSnap;
-    if (import.meta.env.DEV && repoMessages.length === 0) {
-      // eslint-disable-next-line no-console
-      console.debug("[cascade] repoSource", {
-        render: rid,
-        conversationDefined: !!conversation,
-        isEmptySingleton: repoMessages === EMPTY_MESSAGES,
-      });
-    }
   }
 
 
