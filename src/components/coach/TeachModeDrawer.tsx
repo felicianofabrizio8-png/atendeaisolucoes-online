@@ -94,7 +94,10 @@ export function TeachModeDrawer({
     setErrorPhase(null);
     setValidation({});
     setSaved(false);
+    setUsedFallback(false);
+    setPendingOverwrite(null);
     lastExtractPayloadRef.current = null;
+    pristineDraftRef.current = null;
     // Se abriu via 👎, semeia o chat com a pergunta guiada + contexto.
     if (sourceSuggestion) {
       const ctxLines = [
