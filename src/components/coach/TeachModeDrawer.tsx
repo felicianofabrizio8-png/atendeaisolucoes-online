@@ -586,7 +586,67 @@ export function TeachModeDrawer({
             </div>
           </section>
         </div>
+        {pendingOverwrite && (
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
+            role="alertdialog"
+            aria-modal="true"
+            data-testid="teach-overwrite-confirm"
+          >
+            <div className="w-full max-w-md rounded-lg bg-background border border-border shadow-xl p-4 space-y-3">
+              <div className="font-semibold text-sm">Nova interpretação vai sobrescrever seus ajustes</div>
+              <div className="text-xs text-muted-foreground">
+                Você editou manualmente:{" "}
+                <span className="font-medium text-foreground">
+                  {pendingOverwrite.fields.join(", ")}
+                </span>
+                . Confirmar reinterpretação vai substituir esses campos.
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingOverwrite(null)}
+                  className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                >
+                  Manter meus ajustes
+                </button>
+                <button
+                  type="button"
+                  data-testid="teach-overwrite-confirm-yes"
+                  onClick={() => {
+                    const p = pendingOverwrite;
+                    setPendingOverwrite(null);
+                    if (p) runExtract(p.text, p.turns, { force: true });
+                  }}
+                  className="rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90"
+                >
+                  Reinterpretar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function LearningSummaryCard({ draft }: { draft: CoachLearningDraft }) {
+  const summary = buildLearningSummary(draft);
+  if (summary.bullets.length === 0) return null;
+  return (
+    <div
+      data-testid="teach-summary"
+      className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1.5"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+        {summary.intro}
+      </div>
+      <ul className="text-xs text-foreground space-y-1 list-disc pl-4">
+        {summary.bullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
     </div>
   );
 }
