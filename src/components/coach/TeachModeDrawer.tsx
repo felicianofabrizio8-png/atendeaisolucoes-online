@@ -400,6 +400,16 @@ export function TeachModeDrawer({
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <LearningSummaryCard draft={draft} />
+                  {usedFallback && (
+                    <div
+                      data-testid="teach-fallback-banner"
+                      className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-300"
+                    >
+                      A IA não retornou uma resposta estruturada. Um rascunho de segurança
+                      foi preenchido com sua explicação — revise antes de salvar.
+                    </div>
+                  )}
                   <Field label="Título" error={validation.title} testId="teach-field-title">
                     <input
                       type="text"
