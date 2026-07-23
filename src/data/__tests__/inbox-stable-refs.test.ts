@@ -10,7 +10,7 @@
 //      constante `EMPTY_MESSAGES` do componente assume no ramo vazio.
 
 import { describe, expect, it } from "vitest";
-import { aiStateEqual, type AiStateShape } from "../diag-cascade";
+import { aiStateEqual, type AiStateShape } from "@/lib/inbox/diag-cascade";
 import {
   createMessageIndex,
   getMessages,
