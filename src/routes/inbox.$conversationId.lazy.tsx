@@ -3409,6 +3409,7 @@ function ConversationPage() {
       rangeStartIndex: null,
       rangeEndIndex: null,
     };
+    lastProbeWindowRef.current = null;
     userScrolledRef.current = false;
     silentCorrectionDoneRef.current = false;
     if (silentCorrectionTimerRef.current) {
