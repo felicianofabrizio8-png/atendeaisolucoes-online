@@ -16,6 +16,7 @@ import {
   diffArraySnapshot,
   logAiStateAttempt,
   logAtBottom,
+  aiStateEqual,
   type ArrayDiagSnapshot,
   type AiStateShape,
 } from "@/lib/inbox/diag-cascade";
