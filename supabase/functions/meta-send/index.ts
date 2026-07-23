@@ -34,24 +34,43 @@ function corsFor(req: Request): Record<string, string> {
 
 Deno.serve(async (req) => {
   const cors = corsFor(req);
+  const originHeader = req.headers.get("Origin") ?? "";
+  const originAllowed = cors["Access-Control-Allow-Origin"] !== "null";
+  const requestId =
+    req.headers.get("x-request-id") ??
+    (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now().toString(36)}`);
   const json = (b: unknown, s = 200) =>
     new Response(JSON.stringify(b), {
       status: s,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json", "x-request-id": requestId },
     });
+  console.log("META_SEND_REQUEST_RECEIVED", {
+    requestId,
+    method: req.method,
+    origin: originHeader,
+    originAllowed,
+  });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
+  if (req.method !== "POST")
+    return json({ ok: false, code: "invalid_payload", error: "method not allowed", requestId }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
   const accessToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!accessToken) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!accessToken) {
+    console.error("META_SEND_ERROR", { requestId, step: "auth", code: "unauthorized" });
+    return json({ ok: false, code: "unauthorized", error: "unauthorized", requestId }, 401);
+  }
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   const { data: userRes } = await sb.auth.getUser(accessToken);
-  if (!userRes?.user) return json({ ok: false, error: "invalid session" }, 401);
+  if (!userRes?.user) {
+    console.error("META_SEND_ERROR", { requestId, step: "auth", code: "session_expired" });
+    return json({ ok: false, code: "session_expired", error: "invalid session", requestId }, 401);
+  }
+  console.log("META_SEND_AUTH_VALIDATED", { requestId, userId: userRes.user.id });
 
   const { data: profile } = await sb
     .from("profiles")
@@ -59,7 +78,14 @@ Deno.serve(async (req) => {
     .eq("id", userRes.user.id)
     .maybeSingle();
   const companyId = profile?.company_id;
-  if (!companyId) return json({ ok: false, error: "profile without company" }, 403);
+  if (!companyId) {
+    console.error("META_SEND_ERROR", { requestId, step: "company", code: "company_not_found" });
+    return json({ ok: false, code: "company_not_found", error: "profile without company", requestId }, 403);
+  }
+  console.log("META_SEND_COMPANY_RESOLVED", {
+    requestId,
+    companyIdPrefix: String(companyId).slice(0, 8),
+  });
 
   let body: {
     conversationId?: string;
@@ -72,26 +98,35 @@ Deno.serve(async (req) => {
     subtype?: string;
     origin?: string;
     provider_type?: string;
+    attemptId?: string;
   };
   try {
     body = await req.json();
   } catch {
-    return json({ ok: false, error: "invalid json" }, 400);
+    return json({ ok: false, code: "invalid_payload", error: "invalid json", requestId }, 400);
   }
+
+  const attemptId = typeof body.attemptId === "string" ? body.attemptId : null;
 
   const text = String(body.text ?? "").trim();
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
     : [];
-  if (!text && imageUrls.length === 0) return json({ ok: false, error: "text or imageUrls required" }, 400);
-  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
+  if (!text && imageUrls.length === 0)
+    return json({ ok: false, code: "invalid_payload", error: "text or imageUrls required", requestId, attemptId }, 400);
+  if (text.length > 4000)
+    return json({ ok: false, code: "text_too_long", error: "text too long", requestId, attemptId }, 400);
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
-    console.log("META_SEND_START", {
+    const phoneDigitsForLog = String(body.phone ?? "").replace(/\D/g, "");
+    const phoneMasked = phoneDigitsForLog.length > 4 ? `****${phoneDigitsForLog.slice(-4)}` : "****";
+    console.log("META_SEND_PAYLOAD_VALIDATED", {
+      requestId,
+      attemptId,
       channel: "whatsapp",
-      phone: body.phone,
-      leadId: body.leadId,
+      phoneMasked,
+      hasLeadId: !!body.leadId,
       textLen: text.length,
       images: imageUrls.length,
     });
@@ -100,13 +135,13 @@ Deno.serve(async (req) => {
     let conversationId: string | null = null;
 
     if (!leadId && !body.phone) {
-      return json({ ok: false, error: "phone or leadId required" }, 400);
+      return json({ ok: false, code: "invalid_payload", error: "phone or leadId required", requestId, attemptId }, 400);
     }
 
     if (body.phone) {
       const phoneDigits = String(body.phone).replace(/\D/g, "");
       if (phoneDigits.length < 8 || phoneDigits.length > 15) {
-        return json({ ok: false, error: "telefone inválido" }, 400);
+        return json({ ok: false, code: "invalid_phone", error: "telefone inválido", requestId, attemptId }, 400);
       }
       if (!leadId) {
         const externalId = `phone:${phoneDigits}`;
@@ -134,7 +169,7 @@ Deno.serve(async (req) => {
             .single();
           if (leadErr || !newLead) {
             console.error("META_SEND_ERROR lead create", leadErr);
-            return json({ ok: false, error: "falha ao criar contato" }, 500);
+            return json({ ok: false, code: "lead_creation_failed", error: "falha ao criar contato", requestId, attemptId }, 500);
           }
           leadId = newLead.id;
         }
@@ -147,11 +182,12 @@ Deno.serve(async (req) => {
       .eq("id", leadId!)
       .maybeSingle();
     if (!lead || lead.company_id !== companyId) {
-      return json({ ok: false, error: "lead não encontrado" }, 404);
+      return json({ ok: false, code: "lead_not_found", error: "lead não encontrado", requestId, attemptId }, 404);
     }
+    console.log("META_SEND_LEAD_RESOLVED", { requestId, attemptId, hasLead: true, hasPhone: !!lead.phone });
     const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
     if (recipient.length < 8 || recipient.length > 15) {
-      return json({ ok: false, error: "lead sem telefone válido" }, 400);
+      return json({ ok: false, code: "invalid_phone", error: "lead sem telefone válido", requestId, attemptId }, 400);
     }
 
     const { data: existingConv } = await sb
@@ -163,6 +199,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (existingConv?.id) {
       conversationId = existingConv.id;
+      console.log("META_SEND_CONVERSATION_RESOLVED", { requestId, attemptId, phase: "existing" });
     } else {
       const { data: newConv, error: convErr } = await sb
         .from("conversations")
@@ -175,9 +212,10 @@ Deno.serve(async (req) => {
         .single();
       if (convErr || !newConv) {
         console.error("META_SEND_ERROR conv create", convErr);
-        return json({ ok: false, error: "falha ao criar conversa" }, 500);
+        return json({ ok: false, code: "conversation_creation_failed", error: "falha ao criar conversa", requestId, attemptId }, 500);
       }
       conversationId = newConv.id;
+      console.log("META_SEND_CONVERSATION_RESOLVED", { requestId, attemptId, phase: "created" });
     }
 
     const integrationQuery = sb
@@ -189,6 +227,13 @@ Deno.serve(async (req) => {
     const { data: integration } = lead.integration_id
       ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
       : await integrationQuery.limit(1).maybeSingle();
+    console.log("META_SEND_INTEGRATION_FOUND", {
+      requestId,
+      attemptId,
+      hasIntegration: !!integration,
+      hasToken: !!integration?.access_token,
+      hasPhoneNumberId: !!integration?.external_account_id,
+    });
 
     const accessTok =
       integration?.access_token ||
@@ -198,7 +243,7 @@ Deno.serve(async (req) => {
     const phoneNumberId =
       integration?.external_account_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
     if (!accessTok || !phoneNumberId) {
-      return json({ ok: false, error: "WhatsApp não conectado para esta empresa" }, 400);
+      return json({ ok: false, code: "whatsapp_not_connected", error: "WhatsApp não conectado para esta empresa", requestId, attemptId }, 400);
     }
 
     const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
@@ -207,6 +252,7 @@ Deno.serve(async (req) => {
     // Send images first (if any), then the text message.
     // The product-images bucket is private — convert any URL pointing to it
     // (path or legacy public URL) into a fresh signed URL so Meta can fetch.
+    if (imageUrls.length > 0) console.log("META_SEND_MEDIA_PREPARE_START", { requestId, attemptId, count: imageUrls.length });
     const signedImageUrls: string[] = [];
     for (const raw of imageUrls) {
       let path: string | null = null;
@@ -230,12 +276,13 @@ Deno.serve(async (req) => {
       if (signErr || !signed?.signedUrl) {
         console.error("WHATSAPP_IMAGE_SIGN_ERROR", { path, err: signErr?.message });
         return json(
-          { ok: false, error: `Não foi possível preparar a imagem para envio: ${signErr?.message ?? "sign failed"}` },
+          { ok: false, code: "media_sign_failed", error: `Não foi possível preparar a imagem para envio: ${signErr?.message ?? "sign failed"}`, requestId, attemptId },
           400,
         );
       }
       signedImageUrls.push(signed.signedUrl);
     }
+    if (imageUrls.length > 0) console.log("META_SEND_MEDIA_PREPARE_SUCCESS", { requestId, attemptId, count: signedImageUrls.length });
 
     let lastImageExternalId: string | null = null;
     for (const imgUrl of signedImageUrls) {
@@ -247,7 +294,7 @@ Deno.serve(async (req) => {
         if (!head.ok) {
           const msg = `Imagem inacessível (HTTP ${head.status}). Verifique se o bucket é público.`;
           console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate", imgUrl, status: head.status });
-          return json({ ok: false, error: msg }, 400);
+          return json({ ok: false, code: "media_not_accessible", error: msg, requestId, attemptId }, 400);
         }
         const ct = head.headers.get("content-type") || "";
         if (ct && !ct.startsWith("image/")) {
@@ -256,7 +303,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "falha ao validar URL";
         console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate-network", imgUrl, msg });
-        return json({ ok: false, error: `Não foi possível validar a imagem: ${msg}` }, 400);
+        return json({ ok: false, code: "media_url_invalid", error: `Não foi possível validar a imagem: ${msg}`, requestId, attemptId }, 400);
       }
 
       try {
@@ -301,7 +348,17 @@ Deno.serve(async (req) => {
               ? "Esse cliente está fora da janela de 24 horas do WhatsApp. Para enviar nova mensagem, use um template aprovado."
               : `WhatsApp imagem: ${rawMsg}`;
           return json(
-            { ok: false, error: friendly, code: code ?? null, outside24hWindow: code === 131047, metaError: metaErr, status: imgRes.status },
+            {
+              ok: false,
+              code: code === 131047 ? "outside_24h_window" : "graph_api_rejected",
+              error: friendly,
+              metaCode: code ?? null,
+              outside24hWindow: code === 131047,
+              metaError: metaErr,
+              status: imgRes.status,
+              requestId,
+              attemptId,
+            },
             502,
           );
         }
@@ -329,7 +386,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "falha de rede";
         console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "network", imgUrl, msg });
-        return json({ ok: false, error: `Falha ao enviar imagem: ${msg}` }, 502);
+        return json({ ok: false, code: "network_error", error: `Falha ao enviar imagem: ${msg}`, requestId, attemptId }, 502);
       }
     }
 
@@ -345,6 +402,7 @@ Deno.serve(async (req) => {
           .update({ last_synced_at: sentAt, last_error: null })
           .eq("id", integration.id);
       }
+      console.log("META_SEND_SUCCESS", { requestId, attemptId, phase: "images_only", externalId: lastImageExternalId });
       return json({
         ok: true,
         messageId: lastImageExternalId,
@@ -352,6 +410,8 @@ Deno.serve(async (req) => {
         leadId,
         at: sentAt,
         imagesSent: imageUrls.length,
+        requestId,
+        attemptId,
       });
     }
 
@@ -406,11 +466,14 @@ Deno.serve(async (req) => {
         return json(
           {
             ok: false,
+            code: code === 131047 ? "outside_24h_window" : code === 4 || code === 80007 ? "graph_rate_limited" : "graph_api_rejected",
             error: friendly,
-            code: code ?? null,
+            metaCode: code ?? null,
             outside24hWindow: code === 131047,
             metaError: metaErr,
             status: apiRes.status,
+            requestId,
+            attemptId,
           },
           502,
         );
@@ -420,7 +483,7 @@ Deno.serve(async (req) => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "falha de rede";
       console.error("META_SEND_ERROR network", msg);
-      return json({ ok: false, error: `Falha ao enviar: ${msg}` }, 502);
+      return json({ ok: false, code: "network_error", error: `Falha ao enviar: ${msg}`, requestId, attemptId }, 502);
     }
 
     const { data: inserted, error: insertErr } = await sb
@@ -438,7 +501,7 @@ Deno.serve(async (req) => {
       .single();
     if (insertErr) {
       console.error("META_SEND_ERROR insert msg", insertErr);
-      return json({ ok: false, error: "Falha ao salvar mensagem" }, 500);
+      return json({ ok: false, code: "message_persistence_failed", error: "Falha ao salvar mensagem", requestId, attemptId }, 500);
     }
 
     await sb
@@ -466,6 +529,7 @@ Deno.serve(async (req) => {
       whatsapp_jid: `${recipient}@s.whatsapp.net`,
     });
 
+    console.log("META_SEND_SUCCESS", { requestId, attemptId, phase: "text", externalId });
     return json({
       ok: true,
       messageId: externalId,
@@ -473,6 +537,8 @@ Deno.serve(async (req) => {
       conversationId,
       leadId,
       at: sentAt,
+      requestId,
+      attemptId,
     });
   }
   // ---------------- end WhatsApp branch ----------------

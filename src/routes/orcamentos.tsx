@@ -49,11 +49,13 @@ import {
   buildQuoteMessage,
   computeQuoteStatus,
   sendQuoteWhatsApp,
+  QuoteSendError,
   deleteQuote,
   type PaymentMethod,
   type Quote,
   type QuoteStatus,
 } from "@/data/quotes";
+import { newQuoteSendAttemptId, friendlyQuoteSendMessage } from "@/lib/quote-send/errors";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
@@ -577,9 +579,12 @@ function SendWhatsAppModal({
     );
   };
 
-  const sendBlock = async (key: BlockKey): Promise<boolean> => {
+  const sendBlock = async (key: BlockKey, ctx?: { attemptId?: string; blockIndex?: number }): Promise<boolean> => {
     if (!available[key]) return false;
     if (status[key] === "enviando") return false;
+    const attemptId = ctx?.attemptId ?? newQuoteSendAttemptId();
+    const blockIndex = ctx?.blockIndex ?? 0;
+    console.log("QUOTE_SEND_CLICKED", { attemptId, quoteId: quote.id, blockType: key, blockIndex });
     setStatus((s) => ({ ...s, [key]: "enviando" }));
     try {
       if (key === "photos") {
@@ -591,6 +596,9 @@ function SendWhatsAppModal({
           leadId: quote.leadId || undefined,
           text: "",
           imageUrls: selectedImages,
+          attemptId,
+          blockIndex,
+          blockType: key,
         });
         setStatus((s) => ({ ...s, [key]: "enviado" }));
         onSent(res.conversationId);
@@ -604,32 +612,63 @@ function SendWhatsAppModal({
         contactName: leadName,
         leadId: quote.leadId || undefined,
         text,
+        attemptId,
+        blockIndex,
+        blockType: key,
       });
       setStatus((s) => ({ ...s, [key]: "enviado" }));
       onSent(res.conversationId);
       return true;
     } catch (e) {
-      console.error("SEND_BLOCK_ERROR", key, e);
       setStatus((s) => ({ ...s, [key]: "erro" }));
-      toast.error(e instanceof Error ? e.message : "Falha ao enviar");
+      if (e instanceof QuoteSendError) {
+        console.error("SEND_BLOCK_ERROR", { attemptId, blockType: key, blockIndex, norm: e.normalized });
+        const msg = friendlyQuoteSendMessage(e.normalized.code);
+        if (e.normalized.retryable) {
+          toast.error(msg, {
+            action: { label: "Tentar novamente", onClick: () => void sendBlock(key) },
+          });
+        } else {
+          toast.error(msg);
+        }
+      } else {
+        console.error("SEND_BLOCK_ERROR", { attemptId, blockType: key, blockIndex, error: e });
+        toast.error(e instanceof Error ? e.message : "Falha ao enviar");
+      }
       return false;
     }
   };
 
   const sendSelected = async () => {
+    const attemptId = newQuoteSendAttemptId();
     const order: BlockKey[] = ["photos", "base", "inclusos", "brindes", "porConta", "notes"];
     const toSend = order.filter((k) => selected[k] && available[k] && status[k] !== "enviado");
+    console.log("QUOTE_SEND_SELECTED_START", {
+      attemptId,
+      quoteId: quote.id,
+      blocks: toSend.length,
+      types: toSend,
+    });
     if (toSend.length === 0) {
       toast.error("Selecione ao menos um bloco");
       return;
     }
     setBusyAll(true);
     let okCount = 0;
+    let idx = 0;
     for (const k of toSend) {
-      const ok = await sendBlock(k);
+      const ok = await sendBlock(k, { attemptId, blockIndex: idx });
       if (ok) okCount += 1;
+      idx += 1;
     }
     setBusyAll(false);
+    console.log("QUOTE_SEND_SELECTED_END", {
+      attemptId,
+      quoteId: quote.id,
+      total: toSend.length,
+      ok: okCount,
+      failed: toSend.length - okCount,
+    });
     if (okCount > 0) toast.success(`${okCount} mensagem(ns) enviada(s)`);
   };
 
