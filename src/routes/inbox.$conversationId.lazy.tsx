@@ -3571,7 +3571,10 @@ function ConversationPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao assumir");
-      setAiState({ ai_status: "assumido_humano", ai_handling: false });
+      const nextAi: AiStateShape = { ai_status: "assumido_humano", ai_handling: false };
+      logAiStateAttempt(renderIdRef.current, "handleTakeover", aiStatePrevDiagRef.current, nextAi, "handleTakeover");
+      aiStatePrevDiagRef.current = nextAi;
+      setAiState(nextAi);
       toast.success("Você assumiu o atendimento. IA pausada para esta conversa.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
