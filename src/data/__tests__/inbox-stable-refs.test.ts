@@ -66,10 +66,9 @@ describe("Inbox stable refs — hotfix", () => {
   });
 
   it("setAtBottom: transição true -> false produz mudança", () => {
-    const prev: boolean = true;
-    const v: boolean = false;
-    const result = prev === v ? prev : v;
-    expect(result).toBe(false);
+    const applyUpdater = (prev: boolean, v: boolean) => (prev === v ? prev : v);
+    expect(applyUpdater(true, false)).toBe(false);
+    expect(applyUpdater(false, true)).toBe(true);
   });
 
   it("MessageIndex.getMessages: mesma conversa sem mudanças mantém referência", () => {
