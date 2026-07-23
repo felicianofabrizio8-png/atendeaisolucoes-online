@@ -3017,6 +3017,11 @@ function ConversationPage() {
   // muda. Substitui o `useState + useEffect(subscribeRepo)` que rerenderizava
   // com referências instáveis a cada notify().
   useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
+  // DIAG cascade — contador de render + snapshots para diff ref/conteúdo.
+  const renderIdRef = useRef(0);
+  renderIdRef.current += 1;
+  const prevRepoSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
+  const prevVisibleSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const repoMessages = conversation ? getMessagesFor(conversationId) : [];
