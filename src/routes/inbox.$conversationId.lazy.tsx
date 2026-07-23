@@ -3007,6 +3007,13 @@ function ProductsLibraryModal({
   );
 }
 
+// Referência estável para "sem mensagens". Evita que um literal `[]` novo a
+// cada render (quando `conversation` ainda é undefined durante a hidratação
+// do leadRepo) invalide as memoizações downstream de `messages` /
+// `visibleMessages` e force re-medição do Virtuoso. Congelado para impedir
+// mutação acidental por consumidores.
+const EMPTY_MESSAGES: Message[] = Object.freeze([]) as unknown as Message[];
+
 function ConversationPage() {
 
   const { conversationId } = Route.useParams();
