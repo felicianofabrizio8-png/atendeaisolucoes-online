@@ -125,6 +125,8 @@ const teachExtractInput = z.object({
     .max(20)
     .optional(),
   companyName: z.string().max(200).nullable().optional(),
+  clientMessage: z.string().max(4000).nullable().optional(),
+  suggestionText: z.string().max(4000).nullable().optional(),
 });
 
 export const teachModeExtractFn = createServerFn({ method: "POST" })
@@ -145,10 +147,13 @@ export const teachModeExtractFn = createServerFn({ method: "POST" })
         companyName: data.companyName ?? null,
         userExplanation: data.explanation,
         priorTurns: data.priorTurns,
+        clientMessage: data.clientMessage ?? null,
+        suggestionText: data.suggestionText ?? null,
       });
       return {
         ok: true as const,
         draft: result.draft,
+        usedFallback: result.usedFallback,
         meta: {
           provider: result.provider,
           model: result.model,
