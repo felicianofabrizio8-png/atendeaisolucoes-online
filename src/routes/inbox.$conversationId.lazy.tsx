@@ -3032,7 +3032,7 @@ function ConversationPage() {
   const prevVisibleSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
-  const repoMessages = conversation ? getMessagesFor(conversationId) : [];
+  const repoMessages = conversation ? getMessagesFor(conversationId) : EMPTY_MESSAGES;
 
   // `localMessages` guarda apenas adições otimistas (envios ainda não confirmados
   // pelo backend) e mensagens de sistema locais (ex.: "Venda fechada"). O Realtime
