@@ -3058,6 +3058,17 @@ function ConversationPage() {
     [messages],
   );
 
+  // DIAG cascade — diff de identidade vs conteúdo por render.
+  {
+    const rid = renderIdRef.current;
+    const nextRepoSnap = snapshotArray(repoMessages);
+    diffArraySnapshot("repoMessages", rid, prevRepoSnapRef.current, nextRepoSnap);
+    prevRepoSnapRef.current = nextRepoSnap;
+    const nextVisibleSnap = snapshotArray(visibleMessages);
+    diffArraySnapshot("visibleMessages", rid, prevVisibleSnapRef.current, nextVisibleSnap);
+    prevVisibleSnapRef.current = nextVisibleSnap;
+  }
+
 
   // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
   useEffect(() => {
