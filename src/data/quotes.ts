@@ -8,6 +8,12 @@
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL } from "./mock";
 import { activePrice, getProduct, type Product } from "./products";
+import {
+  normalizeQuoteSendError,
+  maskPhone,
+  maskId,
+  type NormalizedQuoteSendError,
+} from "@/lib/quote-send/errors";
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
