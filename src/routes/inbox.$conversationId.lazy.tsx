@@ -16,6 +16,7 @@ import {
   diffArraySnapshot,
   logAiStateAttempt,
   logAtBottom,
+  aiStateEqual,
   type ArrayDiagSnapshot,
   type AiStateShape,
 } from "@/lib/inbox/diag-cascade";
@@ -3006,6 +3007,13 @@ function ProductsLibraryModal({
   );
 }
 
+// Referência estável para "sem mensagens". Evita que um literal `[]` novo a
+// cada render (quando `conversation` ainda é undefined durante a hidratação
+// do leadRepo) invalide as memoizações downstream de `messages` /
+// `visibleMessages` e force re-medição do Virtuoso. Congelado para impedir
+// mutação acidental por consumidores.
+const EMPTY_MESSAGES: Message[] = Object.freeze([]) as unknown as Message[];
+
 function ConversationPage() {
 
   const { conversationId } = Route.useParams();
@@ -3024,7 +3032,7 @@ function ConversationPage() {
   const prevVisibleSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
-  const repoMessages = conversation ? getMessagesFor(conversationId) : [];
+  const repoMessages = conversation ? getMessagesFor(conversationId) : EMPTY_MESSAGES;
 
   // `localMessages` guarda apenas adições otimistas (envios ainda não confirmados
   // pelo backend) e mensagens de sistema locais (ex.: "Venda fechada"). O Realtime
@@ -3059,6 +3067,8 @@ function ConversationPage() {
   );
 
   // DIAG cascade — diff de identidade vs conteúdo por render.
+  // Guardada por `import.meta.env.DEV` dentro de `diag-cascade.ts` — não
+  // ativa em produção.
   {
     const rid = renderIdRef.current;
     const nextRepoSnap = snapshotArray(repoMessages);
@@ -3380,7 +3390,10 @@ function ConversationPage() {
   const setAtBottom = useCallback((v: boolean) => {
     logAtBottom(renderIdRef.current, v);
     atBottomRef.current = v;
-    _setAtBottom(v);
+    // Guarda referencial: chamadas com o mesmo valor não devem forçar
+    // re-render. A atualização funcional garante bail-out do React quando
+    // `prev === v`.
+    _setAtBottom((prev) => (prev === v ? prev : v));
     traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
     // Após o scroll inicial, sair do fim = interação manual do usuário.
     if (!v && initialScrollRef.current.done) {
@@ -3530,7 +3543,7 @@ function ConversationPage() {
       "useEffect@line3518",
     );
     aiStatePrevDiagRef.current = next;
-    setAiState(next);
+    setAiState((prev) => (aiStateEqual(prev, next) ? prev : next));
   }, [conversation]);
 
   // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
@@ -3574,7 +3587,7 @@ function ConversationPage() {
       const nextAi: AiStateShape = { ai_status: "assumido_humano", ai_handling: false };
       logAiStateAttempt(renderIdRef.current, "handleTakeover", aiStatePrevDiagRef.current, nextAi, "handleTakeover");
       aiStatePrevDiagRef.current = nextAi;
-      setAiState(nextAi);
+      setAiState((prev) => (aiStateEqual(prev, nextAi) ? prev : nextAi));
       toast.success("Você assumiu o atendimento. IA pausada para esta conversa.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
