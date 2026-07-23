@@ -184,6 +184,7 @@ Deno.serve(async (req) => {
     if (!lead || lead.company_id !== companyId) {
       return json({ ok: false, code: "lead_not_found", error: "lead não encontrado", requestId, attemptId }, 404);
     }
+    console.log("META_SEND_LEAD_RESOLVED", { requestId, attemptId, hasLead: true, hasPhone: !!lead.phone });
     const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
     if (recipient.length < 8 || recipient.length > 15) {
       return json({ ok: false, code: "invalid_phone", error: "lead sem telefone válido", requestId, attemptId }, 400);
@@ -198,6 +199,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (existingConv?.id) {
       conversationId = existingConv.id;
+      console.log("META_SEND_CONVERSATION_RESOLVED", { requestId, attemptId, phase: "existing" });
     } else {
       const { data: newConv, error: convErr } = await sb
         .from("conversations")
@@ -213,6 +215,7 @@ Deno.serve(async (req) => {
         return json({ ok: false, code: "conversation_creation_failed", error: "falha ao criar conversa", requestId, attemptId }, 500);
       }
       conversationId = newConv.id;
+      console.log("META_SEND_CONVERSATION_RESOLVED", { requestId, attemptId, phase: "created" });
     }
 
     const integrationQuery = sb
@@ -224,6 +227,13 @@ Deno.serve(async (req) => {
     const { data: integration } = lead.integration_id
       ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
       : await integrationQuery.limit(1).maybeSingle();
+    console.log("META_SEND_INTEGRATION_FOUND", {
+      requestId,
+      attemptId,
+      hasIntegration: !!integration,
+      hasToken: !!integration?.access_token,
+      hasPhoneNumberId: !!integration?.external_account_id,
+    });
 
     const accessTok =
       integration?.access_token ||
@@ -242,6 +252,7 @@ Deno.serve(async (req) => {
     // Send images first (if any), then the text message.
     // The product-images bucket is private — convert any URL pointing to it
     // (path or legacy public URL) into a fresh signed URL so Meta can fetch.
+    if (imageUrls.length > 0) console.log("META_SEND_MEDIA_PREPARE_START", { requestId, attemptId, count: imageUrls.length });
     const signedImageUrls: string[] = [];
     for (const raw of imageUrls) {
       let path: string | null = null;
@@ -271,6 +282,7 @@ Deno.serve(async (req) => {
       }
       signedImageUrls.push(signed.signedUrl);
     }
+    if (imageUrls.length > 0) console.log("META_SEND_MEDIA_PREPARE_SUCCESS", { requestId, attemptId, count: signedImageUrls.length });
 
     let lastImageExternalId: string | null = null;
     for (const imgUrl of signedImageUrls) {
