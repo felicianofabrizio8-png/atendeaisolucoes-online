@@ -237,13 +237,13 @@ describe("normalizeAiDraft — cenários do BLOCO 2", () => {
     const { draft } = normalizeAiDraft(
       {
         title: "Reconhecer comparação",
-        description: "ok",
-        rule_structured: "Reconheça.",
+        description: "descrição adequada para validação",
+        rule_structured: "Reconheça o cliente antes de continuar.",
         category: "objection",
         priority: 60,
         positive_example: "Claro, entendo que você já está comparando.",
       },
-      { userExplanation: "x" },
+      { userExplanation: "cliente diz que está comparando propostas" },
     );
     expect(draft.positive_example).toBe("Claro, entendo que você já está comparando.");
   });
