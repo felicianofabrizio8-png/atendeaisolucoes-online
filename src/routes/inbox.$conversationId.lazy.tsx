@@ -3541,7 +3541,7 @@ function ConversationPage() {
       "useEffect@line3518",
     );
     aiStatePrevDiagRef.current = next;
-    setAiState(next);
+    setAiState((prev) => (aiStateEqual(prev, next) ? prev : next));
   }, [conversation]);
 
   // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
