@@ -135,13 +135,13 @@ Deno.serve(async (req) => {
     let conversationId: string | null = null;
 
     if (!leadId && !body.phone) {
-      return json({ ok: false, error: "phone or leadId required" }, 400);
+      return json({ ok: false, code: "invalid_payload", error: "phone or leadId required", requestId, attemptId }, 400);
     }
 
     if (body.phone) {
       const phoneDigits = String(body.phone).replace(/\D/g, "");
       if (phoneDigits.length < 8 || phoneDigits.length > 15) {
-        return json({ ok: false, error: "telefone inválido" }, 400);
+        return json({ ok: false, code: "invalid_phone", error: "telefone inválido", requestId, attemptId }, 400);
       }
       if (!leadId) {
         const externalId = `phone:${phoneDigits}`;
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
             .single();
           if (leadErr || !newLead) {
             console.error("META_SEND_ERROR lead create", leadErr);
-            return json({ ok: false, error: "falha ao criar contato" }, 500);
+            return json({ ok: false, code: "lead_creation_failed", error: "falha ao criar contato", requestId, attemptId }, 500);
           }
           leadId = newLead.id;
         }
@@ -182,11 +182,11 @@ Deno.serve(async (req) => {
       .eq("id", leadId!)
       .maybeSingle();
     if (!lead || lead.company_id !== companyId) {
-      return json({ ok: false, error: "lead não encontrado" }, 404);
+      return json({ ok: false, code: "lead_not_found", error: "lead não encontrado", requestId, attemptId }, 404);
     }
     const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
     if (recipient.length < 8 || recipient.length > 15) {
-      return json({ ok: false, error: "lead sem telefone válido" }, 400);
+      return json({ ok: false, code: "invalid_phone", error: "lead sem telefone válido", requestId, attemptId }, 400);
     }
 
     const { data: existingConv } = await sb
@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
         .single();
       if (convErr || !newConv) {
         console.error("META_SEND_ERROR conv create", convErr);
-        return json({ ok: false, error: "falha ao criar conversa" }, 500);
+        return json({ ok: false, code: "conversation_creation_failed", error: "falha ao criar conversa", requestId, attemptId }, 500);
       }
       conversationId = newConv.id;
     }
@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
     const phoneNumberId =
       integration?.external_account_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
     if (!accessTok || !phoneNumberId) {
-      return json({ ok: false, error: "WhatsApp não conectado para esta empresa" }, 400);
+      return json({ ok: false, code: "whatsapp_not_connected", error: "WhatsApp não conectado para esta empresa", requestId, attemptId }, 400);
     }
 
     const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
       if (signErr || !signed?.signedUrl) {
         console.error("WHATSAPP_IMAGE_SIGN_ERROR", { path, err: signErr?.message });
         return json(
-          { ok: false, error: `Não foi possível preparar a imagem para envio: ${signErr?.message ?? "sign failed"}` },
+          { ok: false, code: "media_sign_failed", error: `Não foi possível preparar a imagem para envio: ${signErr?.message ?? "sign failed"}`, requestId, attemptId },
           400,
         );
       }
@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
         if (!head.ok) {
           const msg = `Imagem inacessível (HTTP ${head.status}). Verifique se o bucket é público.`;
           console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate", imgUrl, status: head.status });
-          return json({ ok: false, error: msg }, 400);
+          return json({ ok: false, code: "media_not_accessible", error: msg, requestId, attemptId }, 400);
         }
         const ct = head.headers.get("content-type") || "";
         if (ct && !ct.startsWith("image/")) {
@@ -291,7 +291,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "falha ao validar URL";
         console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "validate-network", imgUrl, msg });
-        return json({ ok: false, error: `Não foi possível validar a imagem: ${msg}` }, 400);
+        return json({ ok: false, code: "media_url_invalid", error: `Não foi possível validar a imagem: ${msg}`, requestId, attemptId }, 400);
       }
 
       try {
@@ -336,7 +336,17 @@ Deno.serve(async (req) => {
               ? "Esse cliente está fora da janela de 24 horas do WhatsApp. Para enviar nova mensagem, use um template aprovado."
               : `WhatsApp imagem: ${rawMsg}`;
           return json(
-            { ok: false, error: friendly, code: code ?? null, outside24hWindow: code === 131047, metaError: metaErr, status: imgRes.status },
+            {
+              ok: false,
+              code: code === 131047 ? "outside_24h_window" : "graph_api_rejected",
+              error: friendly,
+              metaCode: code ?? null,
+              outside24hWindow: code === 131047,
+              metaError: metaErr,
+              status: imgRes.status,
+              requestId,
+              attemptId,
+            },
             502,
           );
         }
@@ -364,7 +374,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "falha de rede";
         console.error("WHATSAPP_IMAGE_SEND_ERROR", { stage: "network", imgUrl, msg });
-        return json({ ok: false, error: `Falha ao enviar imagem: ${msg}` }, 502);
+        return json({ ok: false, code: "network_error", error: `Falha ao enviar imagem: ${msg}`, requestId, attemptId }, 502);
       }
     }
 
@@ -380,6 +390,7 @@ Deno.serve(async (req) => {
           .update({ last_synced_at: sentAt, last_error: null })
           .eq("id", integration.id);
       }
+      console.log("META_SEND_SUCCESS", { requestId, attemptId, phase: "images_only", externalId: lastImageExternalId });
       return json({
         ok: true,
         messageId: lastImageExternalId,
@@ -387,6 +398,8 @@ Deno.serve(async (req) => {
         leadId,
         at: sentAt,
         imagesSent: imageUrls.length,
+        requestId,
+        attemptId,
       });
     }
 
@@ -441,11 +454,14 @@ Deno.serve(async (req) => {
         return json(
           {
             ok: false,
+            code: code === 131047 ? "outside_24h_window" : code === 4 || code === 80007 ? "graph_rate_limited" : "graph_api_rejected",
             error: friendly,
-            code: code ?? null,
+            metaCode: code ?? null,
             outside24hWindow: code === 131047,
             metaError: metaErr,
             status: apiRes.status,
+            requestId,
+            attemptId,
           },
           502,
         );
@@ -455,7 +471,7 @@ Deno.serve(async (req) => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "falha de rede";
       console.error("META_SEND_ERROR network", msg);
-      return json({ ok: false, error: `Falha ao enviar: ${msg}` }, 502);
+      return json({ ok: false, code: "network_error", error: `Falha ao enviar: ${msg}`, requestId, attemptId }, 502);
     }
 
     const { data: inserted, error: insertErr } = await sb
@@ -473,7 +489,7 @@ Deno.serve(async (req) => {
       .single();
     if (insertErr) {
       console.error("META_SEND_ERROR insert msg", insertErr);
-      return json({ ok: false, error: "Falha ao salvar mensagem" }, 500);
+      return json({ ok: false, code: "message_persistence_failed", error: "Falha ao salvar mensagem", requestId, attemptId }, 500);
     }
 
     await sb
@@ -501,6 +517,7 @@ Deno.serve(async (req) => {
       whatsapp_jid: `${recipient}@s.whatsapp.net`,
     });
 
+    console.log("META_SEND_SUCCESS", { requestId, attemptId, phase: "text", externalId });
     return json({
       ok: true,
       messageId: externalId,
@@ -508,6 +525,8 @@ Deno.serve(async (req) => {
       conversationId,
       leadId,
       at: sentAt,
+      requestId,
+      attemptId,
     });
   }
   // ---------------- end WhatsApp branch ----------------
