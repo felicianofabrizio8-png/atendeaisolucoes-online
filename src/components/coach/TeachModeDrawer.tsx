@@ -38,8 +38,11 @@ import { cn } from "@/lib/utils";
 import {
   teachModeExtractFn,
   createCoachLearningFn,
+  findSimilarCoachLearningFn,
 } from "@/lib/coach-learnings/coach-learnings.functions";
 import type { CoachLearningDraft } from "@/lib/coach-learnings/schema";
+import type { SimilarCandidate } from "@/lib/coach-learnings/similarity";
+import { decideSaveGate } from "@/lib/coach-learnings/similarity";
 import { COACH_LEARNING_CATEGORIES } from "@/lib/coach-learnings/schema";
 import {
   getSafeLearningError,
@@ -114,6 +117,8 @@ export function TeachModeDrawer({
 }: TeachModeDrawerProps) {
   const extractFn = useServerFn(teachModeExtractFn);
   const createFn = useServerFn(createCoachLearningFn);
+  const similarFn = useServerFn(findSimilarCoachLearningFn);
+
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -134,6 +139,12 @@ export function TeachModeDrawer({
     fields: string[];
   }>(null);
   const [closeGuard, setCloseGuard] = useState(false);
+  const [similarityGate, setSimilarityGate] = useState<{
+    gate: "block_exact" | "confirm_similar";
+    exact: SimilarCandidate | null;
+    similar: SimilarCandidate[];
+  } | null>(null);
+  const [checkingSimilar, setCheckingSimilar] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -392,7 +403,7 @@ export function TeachModeDrawer({
     if (v.priority) return priorityRef.current?.focus();
   }
 
-  async function handleSave(opts: { isRetry?: boolean } = {}) {
+  async function handleSave(opts: { isRetry?: boolean; forceDespiteSimilar?: boolean } = {}) {
     if (!draft || saving) return;
     const v = validateLearningDraft({
       title: draft.title,
@@ -408,6 +419,36 @@ export function TeachModeDrawer({
       setErrorPhase("save");
       focusFirstInvalid(v);
       return;
+    }
+    // BLOCO 4 — Gate de similaridade: só executa na 1ª tentativa (não retry, não forçado).
+    if (!opts.isRetry && !opts.forceDespiteSimilar) {
+      try {
+        setCheckingSimilar(true);
+        const { candidates } = await similarFn({
+          data: {
+            category: draft.category,
+            title: draft.title,
+            rule_structured: draft.rule_structured,
+            description: draft.description ?? null,
+            product_ref: draft.product_ref ?? null,
+            limit: 5,
+          },
+        });
+        const decision = decideSaveGate(candidates ?? []);
+        if (decision.gate !== "proceed") {
+          setSimilarityGate({
+            gate: decision.gate,
+            exact: decision.exact,
+            similar: decision.similar,
+          });
+          setCheckingSimilar(false);
+          return;
+        }
+      } catch {
+        // Falha do similaridade não bloqueia salvamento — seguimos.
+      } finally {
+        setCheckingSimilar(false);
+      }
     }
     if (opts.isRetry) setRetrying(true);
     setSaving(true);
@@ -818,16 +859,20 @@ export function TeachModeDrawer({
                 <button
                   type="button"
                   onClick={() => handleSave()}
-                  disabled={!canSave}
+                  disabled={!canSave || checkingSimilar}
                   data-testid="teach-save"
                   className="inline-flex items-center gap-1 min-h-9 rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90 disabled:opacity-40"
                 >
-                  {saving ? (
+                  {saving || checkingSimilar ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <Save className="h-3 w-3" />
                   )}
-                  {saving ? "Salvando…" : "Salvar aprendizado"}
+                  {checkingSimilar
+                    ? "Verificando semelhantes…"
+                    : saving
+                      ? "Salvando…"
+                      : "Salvar aprendizado"}
                 </button>
               </div>
             )}
@@ -873,6 +918,77 @@ export function TeachModeDrawer({
             </div>
           </OverlayModal>
         )}
+
+        {similarityGate && (
+          <OverlayModal
+            testId="teach-similarity-gate"
+            title={
+              similarityGate.gate === "block_exact"
+                ? "Aprendizado idêntico já existe"
+                : "Encontramos aprendizados semelhantes"
+            }
+          >
+            <div className="text-xs text-muted-foreground">
+              {similarityGate.gate === "block_exact"
+                ? "Já existe um aprendizado idêntico nesta empresa. Edite o existente em vez de criar um novo."
+                : "Revise as regras abaixo antes de criar um aprendizado novo. Você pode salvar mesmo assim se realmente for um caso distinto."}
+            </div>
+            <ul
+              className="mt-1 space-y-1.5 max-h-56 overflow-auto pr-1"
+              data-testid="teach-similarity-list"
+            >
+              {(similarityGate.exact
+                ? [similarityGate.exact]
+                : similarityGate.similar
+              ).map((c) => (
+                <li
+                  key={c.id}
+                  className="rounded border border-border bg-muted/40 p-2 text-xs space-y-0.5"
+                  data-testid={`teach-similarity-item-${c.classification}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-foreground truncate">
+                      {c.title}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                      {c.classification} · {Math.round(c.score * 100)}%
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground line-clamp-2">
+                    {c.rule_structured}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 pt-1 flex-wrap">
+              <button
+                type="button"
+                data-testid="teach-similarity-cancel"
+                onClick={() => setSimilarityGate(null)}
+                className="min-h-9 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              >
+                {similarityGate.gate === "block_exact"
+                  ? "Fechar"
+                  : "Revisar existente"}
+              </button>
+              {similarityGate.gate === "confirm_similar" && (
+                <button
+                  type="button"
+                  data-testid="teach-similarity-force"
+                  onClick={() => {
+                    setSimilarityGate(null);
+                    void handleSave({ forceDespiteSimilar: true });
+                  }}
+                  className="min-h-9 rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90"
+                >
+                  Criar novo mesmo assim
+                </button>
+              )}
+            </div>
+          </OverlayModal>
+        )}
+
+
 
         {closeGuard && (
           <OverlayModal testId="teach-close-guard" title="Descartar alterações?">
