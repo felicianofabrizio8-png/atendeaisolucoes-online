@@ -581,12 +581,30 @@ function SendWhatsAppModal({
     );
   };
 
+  // Rastreia blocos concluídos por tentativa (mesmo attemptId).
+  // Se >0, retry do lote inteiro é inseguro (duplicaria mensagens).
+  const completedByAttempt = useMemo(() => new Map<string, number>(), []);
+
+  const showErrorToast = (norm: { code: import("@/lib/quote-send/errors").QuoteSendErrorCode; retryable: boolean }, attemptId: string, opts?: { onRetry?: () => void }) => {
+    const code = qsCode(attemptId);
+    const msg = friendlyQuoteSendMessage(norm.code);
+    const priorCompleted = completedByAttempt.get(attemptId) ?? 0;
+    const safeRetry = norm.retryable && priorCompleted === 0 && !!opts?.onRetry;
+    toast.error(msg, {
+      description: `Código de atendimento: ${code}`,
+      duration: 12000,
+      action: safeRetry
+        ? { label: "Tentar novamente", onClick: opts!.onRetry! }
+        : { label: "Copiar código", onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined) },
+    });
+  };
+
   const sendBlock = async (key: BlockKey, ctx?: { attemptId?: string; blockIndex?: number }): Promise<boolean> => {
     if (!available[key]) return false;
     if (status[key] === "enviando") return false;
     const attemptId = ctx?.attemptId ?? newQuoteSendAttemptId();
     const blockIndex = ctx?.blockIndex ?? 0;
-    console.log("QUOTE_SEND_CLICKED", { attemptId, quoteId: quote.id, blockType: key, blockIndex });
+    qsDebug("QUOTE_SEND_CLICKED", { attemptId, quoteIdMasked: quote.id.slice(0, 8), blockType: key, blockIndex });
     setStatus((s) => ({ ...s, [key]: "enviando" }));
     try {
       if (key === "photos") {
@@ -603,6 +621,7 @@ function SendWhatsAppModal({
           blockType: key,
         });
         setStatus((s) => ({ ...s, [key]: "enviado" }));
+        completedByAttempt.set(attemptId, (completedByAttempt.get(attemptId) ?? 0) + 1);
         onSent(res.conversationId);
         return true;
       }
@@ -619,23 +638,19 @@ function SendWhatsAppModal({
         blockType: key,
       });
       setStatus((s) => ({ ...s, [key]: "enviado" }));
+      completedByAttempt.set(attemptId, (completedByAttempt.get(attemptId) ?? 0) + 1);
       onSent(res.conversationId);
       return true;
     } catch (e) {
       setStatus((s) => ({ ...s, [key]: "erro" }));
       if (e instanceof QuoteSendError) {
-        console.error("SEND_BLOCK_ERROR", { attemptId, blockType: key, blockIndex, norm: e.normalized });
-        const msg = friendlyQuoteSendMessage(e.normalized.code);
-        if (e.normalized.retryable) {
-          toast.error(msg, {
-            action: { label: "Tentar novamente", onClick: () => void sendBlock(key) },
-          });
-        } else {
-          toast.error(msg);
-        }
+        console.error("QUOTE_SEND_ERROR", { attemptIdMasked: qsCode(attemptId), blockType: key, blockIndex, code: e.normalized.code, step: e.normalized.step, status: e.normalized.status });
+        showErrorToast(e.normalized, attemptId, { onRetry: () => void sendBlock(key) });
       } else {
-        console.error("SEND_BLOCK_ERROR", { attemptId, blockType: key, blockIndex, error: e });
-        toast.error(e instanceof Error ? e.message : "Falha ao enviar");
+        console.error("QUOTE_SEND_ERROR", { attemptIdMasked: qsCode(attemptId), blockType: key, blockIndex, message: e instanceof Error ? e.message : String(e) });
+        toast.error(e instanceof Error ? e.message : "Falha ao enviar", {
+          description: `Código de atendimento: ${qsCode(attemptId)}`,
+        });
       }
       return false;
     }
@@ -645,9 +660,9 @@ function SendWhatsAppModal({
     const attemptId = newQuoteSendAttemptId();
     const order: BlockKey[] = ["photos", "base", "inclusos", "brindes", "porConta", "notes"];
     const toSend = order.filter((k) => selected[k] && available[k] && status[k] !== "enviado");
-    console.log("QUOTE_SEND_SELECTED_START", {
+    qsDebug("QUOTE_SEND_SELECTED_START", {
       attemptId,
-      quoteId: quote.id,
+      quoteIdMasked: quote.id.slice(0, 8),
       blocks: toSend.length,
       types: toSend,
     });
@@ -658,21 +673,40 @@ function SendWhatsAppModal({
     setBusyAll(true);
     let okCount = 0;
     let idx = 0;
+    let failedKey: BlockKey | null = null;
     for (const k of toSend) {
       const ok = await sendBlock(k, { attemptId, blockIndex: idx });
       if (ok) okCount += 1;
+      else {
+        failedKey = k;
+        break;
+      }
       idx += 1;
     }
     setBusyAll(false);
-    console.log("QUOTE_SEND_SELECTED_END", {
+    qsDebug("QUOTE_SEND_SELECTED_END", {
       attemptId,
-      quoteId: quote.id,
+      quoteIdMasked: quote.id.slice(0, 8),
       total: toSend.length,
       ok: okCount,
-      failed: toSend.length - okCount,
+      failedAt: failedKey,
     });
-    if (okCount > 0) toast.success(`${okCount} mensagem(ns) enviada(s)`);
+    if (okCount > 0 && !failedKey) {
+      toast.success(`${okCount} mensagem(ns) enviada(s)`);
+      return;
+    }
+    if (okCount > 0 && failedKey) {
+      // Envio parcial: NÃO oferecer retry do lote (duplicaria blocos entregues).
+      const code = qsCode(attemptId);
+      toast.warning("Parte do orçamento pode já ter sido enviada.", {
+        description: `Foram enviados ${okCount} de ${toSend.length} blocos. Evite reenviar imediatamente para não duplicar mensagens. Código: ${code}`,
+        duration: 20000,
+        action: { label: "Copiar código", onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined) },
+      });
+    }
   };
+
+
 
   const StatusPill = ({ s }: { s: BlockStatus }) => {
     if (s === "enviado")
