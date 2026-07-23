@@ -11,6 +11,14 @@ import {
   type ConversationOpenEvent,
   type ConversationOpenState,
 } from "@/lib/inbox/conversation-open-machine";
+import {
+  snapshotArray,
+  diffArraySnapshot,
+  logAiStateAttempt,
+  logAtBottom,
+  type ArrayDiagSnapshot,
+  type AiStateShape,
+} from "@/lib/inbox/diag-cascade";
 import { ChatSkeleton } from "@/components/inbox/ChatSkeleton";
 import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
