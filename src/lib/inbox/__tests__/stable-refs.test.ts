@@ -59,10 +59,8 @@ describe("Inbox stable refs — hotfix", () => {
   });
 
   it("setAtBottom: chamada redundante com mesmo valor mantém referência (bail-out)", () => {
-    // Simula o comportamento do updater funcional do React:
-    //   _setAtBottom((prev) => (prev === v ? prev : v));
-    const prev = false;
-    const v = false;
+    const prev: boolean = false;
+    const v: boolean = false;
     const result = prev === v ? prev : v;
     expect(result).toBe(prev);
   });
