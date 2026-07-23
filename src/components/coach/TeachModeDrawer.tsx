@@ -441,7 +441,7 @@ export function TeachModeDrawer({
                       >
                         {COACH_LEARNING_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
-                            {c}
+                            {CATEGORY_LABELS_PT[c]}
                           </option>
                         ))}
                       </select>
