@@ -3517,11 +3517,19 @@ function ConversationPage() {
   // e crescimento de canais ao trocar de conversa).
   useEffect(() => {
     if (!conversation) return;
-    setAiState({
+    const next: AiStateShape = {
       ai_status: conversation.aiStatus ?? null,
       ai_handling: conversation.aiHandling ?? false,
-    });
-  }, [conversation]);
+    };
+    logAiStateAttempt(
+      renderIdRef.current,
+      "effect[conversation]",
+      aiState,
+      next,
+      "useEffect@line3518",
+    );
+    setAiState(next);
+  }, [conversation, aiState]);
 
   // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
   useEffect(() => {
