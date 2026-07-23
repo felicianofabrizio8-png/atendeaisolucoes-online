@@ -73,4 +73,4 @@ export interface CoachLearningVersionRow {
   created_at: string;
 }
 
-export const TEACH_MODE_PROMPT_VERSION = "coach-teach-mode@2026-07-22.1";
+export const TEACH_MODE_PROMPT_VERSION = "coach-teach-mode@2026-07-23.b2";

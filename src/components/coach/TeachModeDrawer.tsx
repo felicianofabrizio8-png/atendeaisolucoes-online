@@ -20,6 +20,11 @@ import {
   type DraftValidationErrors,
   type SafeLearningError,
 } from "@/lib/coach-learnings/errors";
+import {
+  buildLearningSummary,
+  CATEGORY_LABELS_PT,
+  diffDrafts,
+} from "@/lib/coach-learnings/interpretation";
 
 interface Turn {
   role: "user" | "assistant";
@@ -67,11 +72,20 @@ export function TeachModeDrawer({
   const [errorPhase, setErrorPhase] = useState<"extract" | "save" | null>(null);
   const [validation, setValidation] = useState<DraftValidationErrors>({});
   const [saved, setSaved] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
+  const [pendingOverwrite, setPendingOverwrite] = useState<null | {
+    text: string;
+    turns: Turn[];
+    fields: string[];
+  }>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Guarda o último payload enviado ao servidor — usado no botão "Tentar
   // novamente" para preservar EXATAMENTE o que o usuário digitou.
   const lastExtractPayloadRef = useRef<{ text: string; turns: Turn[] } | null>(null);
+  // Rascunho "puro" produzido pela IA — base para detectar edições manuais
+  // antes de sobrescrever com uma nova extração.
+  const pristineDraftRef = useRef<CoachLearningDraft | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -80,7 +94,10 @@ export function TeachModeDrawer({
     setErrorPhase(null);
     setValidation({});
     setSaved(false);
+    setUsedFallback(false);
+    setPendingOverwrite(null);
     lastExtractPayloadRef.current = null;
+    pristineDraftRef.current = null;
     // Se abriu via 👎, semeia o chat com a pergunta guiada + contexto.
     if (sourceSuggestion) {
       const ctxLines = [
@@ -141,19 +158,32 @@ export function TeachModeDrawer({
 
   if (!open) return null;
 
-  async function runExtract(text: string, priorTurns: Turn[]) {
+  async function runExtract(
+    text: string,
+    priorTurns: Turn[],
+    opts: { force?: boolean } = {},
+  ) {
+    // Se já há um rascunho anterior e o usuário editou manualmente algum
+    // campo, avisa antes de sobrescrever (força quando opts.force = true).
+    if (!opts.force && draft && pristineDraftRef.current) {
+      const changed = diffDrafts(pristineDraftRef.current, draft);
+      if (changed.length > 0) {
+        setPendingOverwrite({ text, turns: priorTurns, fields: changed });
+        return;
+      }
+    }
     setSafeError(null);
     setErrorPhase(null);
+    setPendingOverwrite(null);
     setLoading(true);
     lastExtractPayloadRef.current = { text, turns: priorTurns };
     try {
-      const enrichedExplanation = sourceSuggestion
-        ? `${text}\n\n---\nContexto da sugestão reprovada:\n- Mensagem do cliente: ${sourceSuggestion.client_message ?? "(não informada)"}\n- Sugestão original que precisa melhorar (use como negative_example): "${sourceSuggestion.suggestion_text}"\n- Produto/categoria: ${sourceSuggestion.product_or_category ?? "(não informada)"}`
-        : text;
       const res = await extractFn({
         data: {
-          explanation: enrichedExplanation,
+          explanation: text,
           priorTurns,
+          clientMessage: sourceSuggestion?.client_message ?? null,
+          suggestionText: sourceSuggestion?.suggestion_text ?? null,
         },
       });
       if (!res.ok) {
@@ -171,16 +201,17 @@ export function TeachModeDrawer({
         ]);
         return;
       }
-      const draftFromLlm =
-        sourceSuggestion && !res.draft.negative_example
-          ? { ...res.draft, negative_example: sourceSuggestion.suggestion_text }
-          : res.draft;
-      setDraft(draftFromLlm);
+      const nextDraft = res.draft;
+      setDraft(nextDraft);
+      pristineDraftRef.current = nextDraft;
+      setUsedFallback(!!res.usedFallback);
       setTurns((t) => [
         ...t,
         {
           role: "assistant",
-          content: `Entendi assim: "${draftFromLlm.title}". Revise ao lado e confirme antes de salvar.`,
+          content: res.usedFallback
+            ? "Não consegui estruturar totalmente. Preenchi um rascunho de segurança — revise ao lado antes de salvar."
+            : `Entendi como "${nextDraft.title}". Revise o resumo ao lado antes de confirmar.`,
         },
       ]);
     } catch (err) {
@@ -369,6 +400,16 @@ export function TeachModeDrawer({
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <LearningSummaryCard draft={draft} />
+                  {usedFallback && (
+                    <div
+                      data-testid="teach-fallback-banner"
+                      className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-300"
+                    >
+                      A IA não retornou uma resposta estruturada. Um rascunho de segurança
+                      foi preenchido com sua explicação — revise antes de salvar.
+                    </div>
+                  )}
                   <Field label="Título" error={validation.title} testId="teach-field-title">
                     <input
                       type="text"
@@ -400,7 +441,7 @@ export function TeachModeDrawer({
                       >
                         {COACH_LEARNING_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
-                            {c}
+                            {CATEGORY_LABELS_PT[c]}
                           </option>
                         ))}
                       </select>
@@ -545,7 +586,67 @@ export function TeachModeDrawer({
             </div>
           </section>
         </div>
+        {pendingOverwrite && (
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
+            role="alertdialog"
+            aria-modal="true"
+            data-testid="teach-overwrite-confirm"
+          >
+            <div className="w-full max-w-md rounded-lg bg-background border border-border shadow-xl p-4 space-y-3">
+              <div className="font-semibold text-sm">Nova interpretação vai sobrescrever seus ajustes</div>
+              <div className="text-xs text-muted-foreground">
+                Você editou manualmente:{" "}
+                <span className="font-medium text-foreground">
+                  {pendingOverwrite.fields.join(", ")}
+                </span>
+                . Confirmar reinterpretação vai substituir esses campos.
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingOverwrite(null)}
+                  className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                >
+                  Manter meus ajustes
+                </button>
+                <button
+                  type="button"
+                  data-testid="teach-overwrite-confirm-yes"
+                  onClick={() => {
+                    const p = pendingOverwrite;
+                    setPendingOverwrite(null);
+                    if (p) runExtract(p.text, p.turns, { force: true });
+                  }}
+                  className="rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90"
+                >
+                  Reinterpretar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function LearningSummaryCard({ draft }: { draft: CoachLearningDraft }) {
+  const summary = buildLearningSummary(draft);
+  if (summary.bullets.length === 0) return null;
+  return (
+    <div
+      data-testid="teach-summary"
+      className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1.5"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+        {summary.intro}
+      </div>
+      <ul className="text-xs text-foreground space-y-1 list-disc pl-4">
+        {summary.bullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
     </div>
   );
 }
