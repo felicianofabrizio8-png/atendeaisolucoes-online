@@ -3388,7 +3388,10 @@ function ConversationPage() {
   const setAtBottom = useCallback((v: boolean) => {
     logAtBottom(renderIdRef.current, v);
     atBottomRef.current = v;
-    _setAtBottom(v);
+    // Guarda referencial: chamadas com o mesmo valor não devem forçar
+    // re-render. A atualização funcional garante bail-out do React quando
+    // `prev === v`.
+    _setAtBottom((prev) => (prev === v ? prev : v));
     traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
     // Após o scroll inicial, sair do fim = interação manual do usuário.
     if (!v && initialScrollRef.current.done) {
