@@ -14,6 +14,8 @@ import {
   maskId,
   type NormalizedQuoteSendError,
 } from "@/lib/quote-send/errors";
+import { qsDebug, qsError } from "@/lib/quote-send/diagnostics";
+
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
