@@ -3075,6 +3075,14 @@ function ConversationPage() {
     const nextVisibleSnap = snapshotArray(visibleMessages);
     diffArraySnapshot("visibleMessages", rid, prevVisibleSnapRef.current, nextVisibleSnap);
     prevVisibleSnapRef.current = nextVisibleSnap;
+    if (import.meta.env.DEV && repoMessages.length === 0) {
+      // eslint-disable-next-line no-console
+      console.debug("[cascade] repoSource", {
+        render: rid,
+        conversationDefined: !!conversation,
+        isEmptySingleton: repoMessages === EMPTY_MESSAGES,
+      });
+    }
   }
 
 
