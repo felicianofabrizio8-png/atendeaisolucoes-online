@@ -20,6 +20,11 @@ import {
   type DraftValidationErrors,
   type SafeLearningError,
 } from "@/lib/coach-learnings/errors";
+import {
+  buildLearningSummary,
+  CATEGORY_LABELS_PT,
+  diffDrafts,
+} from "@/lib/coach-learnings/interpretation";
 
 interface Turn {
   role: "user" | "assistant";
