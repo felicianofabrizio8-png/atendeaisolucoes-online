@@ -1089,9 +1089,55 @@ export type Database = {
           },
         ]
       }
+      coach_learning_retrievals: {
+        Row: {
+          company_id: string
+          conversation_id: string | null
+          created_at: string
+          generation_ref: string
+          id: string
+          learning_id: string
+          version_number: number
+        }
+        Insert: {
+          company_id: string
+          conversation_id?: string | null
+          created_at?: string
+          generation_ref: string
+          id?: string
+          learning_id: string
+          version_number: number
+        }
+        Update: {
+          company_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          generation_ref?: string
+          id?: string
+          learning_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_learning_retrievals_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_learning_retrievals_learning_id_fkey"
+            columns: ["learning_id"]
+            isOneToOne: false
+            referencedRelation: "coach_learnings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_learning_versions: {
         Row: {
           category: string
+          change_reason: string | null
           company_id: string
           confidence: number
           created_at: string
@@ -1099,10 +1145,13 @@ export type Database = {
           edited_by: string | null
           id: string
           learning_id: string
+          metadata: Json
           negative_example: string | null
+          origin: string
           positive_example: string | null
           priority: number
           product_ref: string | null
+          prompt_version: string | null
           rule_structured: string
           status: string
           title: string
@@ -1110,6 +1159,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          change_reason?: string | null
           company_id: string
           confidence: number
           created_at?: string
@@ -1117,10 +1167,13 @@ export type Database = {
           edited_by?: string | null
           id?: string
           learning_id: string
+          metadata?: Json
           negative_example?: string | null
+          origin?: string
           positive_example?: string | null
           priority: number
           product_ref?: string | null
+          prompt_version?: string | null
           rule_structured: string
           status: string
           title: string
@@ -1128,6 +1181,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          change_reason?: string | null
           company_id?: string
           confidence?: number
           created_at?: string
@@ -1135,10 +1189,13 @@ export type Database = {
           edited_by?: string | null
           id?: string
           learning_id?: string
+          metadata?: Json
           negative_example?: string | null
+          origin?: string
           positive_example?: string | null
           priority?: number
           product_ref?: string | null
+          prompt_version?: string | null
           rule_structured?: string
           status?: string
           title?: string
@@ -1167,9 +1224,11 @@ export type Database = {
           category: string
           company_id: string
           confidence: number
+          content_hash: string
           created_at: string
           description: string
           id: string
+          last_retrieved_at: string | null
           last_used_at: string | null
           negative_example: string | null
           positive_example: string | null
@@ -1179,8 +1238,10 @@ export type Database = {
           source_conversation_id: string | null
           status: string
           taught_by: string | null
+          times_retrieved: number
           title: string
           updated_at: string
+          updated_by: string | null
           usage_count: number
           version: number
         }
@@ -1189,9 +1250,11 @@ export type Database = {
           category: string
           company_id: string
           confidence?: number
+          content_hash: string
           created_at?: string
           description: string
           id?: string
+          last_retrieved_at?: string | null
           last_used_at?: string | null
           negative_example?: string | null
           positive_example?: string | null
@@ -1201,8 +1264,10 @@ export type Database = {
           source_conversation_id?: string | null
           status?: string
           taught_by?: string | null
+          times_retrieved?: number
           title: string
           updated_at?: string
+          updated_by?: string | null
           usage_count?: number
           version?: number
         }
@@ -1211,9 +1276,11 @@ export type Database = {
           category?: string
           company_id?: string
           confidence?: number
+          content_hash?: string
           created_at?: string
           description?: string
           id?: string
+          last_retrieved_at?: string | null
           last_used_at?: string | null
           negative_example?: string | null
           positive_example?: string | null
@@ -1223,8 +1290,10 @@ export type Database = {
           source_conversation_id?: string | null
           status?: string
           taught_by?: string | null
+          times_retrieved?: number
           title?: string
           updated_at?: string
+          updated_by?: string | null
           usage_count?: number
           version?: number
         }
@@ -5251,6 +5320,19 @@ export type Database = {
         Args: { _cat: Database["public"]["Enums"]["coach_rule_category"] }
         Returns: boolean
       }
+      coach_learning_compute_hash: {
+        Args: {
+          _category: string
+          _product_ref: string
+          _rule_structured: string
+          _title: string
+        }
+        Returns: string
+      }
+      coach_learning_normalize_text: {
+        Args: { _input: string }
+        Returns: string
+      }
       coach_reserve_user_message: {
         Args: {
           _client_request_id: string
@@ -5321,10 +5403,13 @@ export type Database = {
           _category: string
           _confidence?: number
           _description: string
+          _metadata?: Json
           _negative_example?: string
+          _origin?: string
           _positive_example?: string
           _priority?: number
           _product_ref?: string
+          _prompt_version?: string
           _rule_structured: string
           _source_conversation_id?: string
           _title: string
@@ -5393,6 +5478,31 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      find_similar_coach_learning: {
+        Args: {
+          _category: string
+          _description?: string
+          _limit?: number
+          _product_ref?: string
+          _rule_structured: string
+          _title: string
+        }
+        Returns: {
+          category: string
+          classification: string
+          content_hash: string
+          description: string
+          id: string
+          priority: number
+          product_ref: string
+          rule_structured: string
+          score: number
+          status: string
+          title: string
+          updated_at: string
+          version: number
+        }[]
       }
       get_facebook_publish_readiness: {
         Args: never
@@ -5477,6 +5587,14 @@ export type Database = {
         }
         Returns: number
       }
+      record_coach_learning_retrieval: {
+        Args: {
+          _conversation_id?: string
+          _generation_ref: string
+          _ids: string[]
+        }
+        Returns: number
+      }
       reject_coach_rule_version: {
         Args: { _reason: string; _version_id: string }
         Returns: undefined
@@ -5484,6 +5602,15 @@ export type Database = {
       replace_coach_rule: {
         Args: { _new_rule_id: string; _old_rule_id: string }
         Returns: undefined
+      }
+      restore_coach_learning_version: {
+        Args: {
+          _change_reason?: string
+          _expected_version: number
+          _learning_id: string
+          _target_version: number
+        }
+        Returns: number
       }
       runtime_cleanup_expired: {
         Args: never
@@ -5524,6 +5651,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       submit_coach_rule_version: {
         Args: { _version_id: string }
         Returns: undefined
@@ -5540,13 +5669,18 @@ export type Database = {
       update_coach_learning: {
         Args: {
           _category: string
+          _change_reason?: string
           _confidence?: number
           _description: string
+          _expected_version: number
           _learning_id: string
+          _metadata?: Json
           _negative_example?: string
+          _origin?: string
           _positive_example?: string
           _priority?: number
           _product_ref?: string
+          _prompt_version?: string
           _rule_structured: string
           _status?: string
           _title: string
