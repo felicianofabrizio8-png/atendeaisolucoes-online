@@ -5136,7 +5136,18 @@ function ConversationPage() {
       {/* Side panel */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
 
-        <CoachPanel conversationId={conversation.id} onInsertSuggestion={(t: string) => setInput(t)} />
+        <CoachPanel
+          conversationId={conversation.id}
+          onInsertSuggestion={(t: string) => setInput(t)}
+          messages={visibleMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            text: m.text,
+            at: m.at,
+            sourceSubtype: m.sourceSubtype,
+          }))}
+          composerHasDraft={input.trim().length > 0}
+        />
 
 
         {/* Lead header */}
