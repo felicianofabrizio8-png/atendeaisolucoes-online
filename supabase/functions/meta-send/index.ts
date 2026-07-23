@@ -427,6 +427,11 @@ Deno.serve(async (req) => {
 
     let externalId: string | null = null;
     try {
+      const graphStart = performance.now();
+      console.log("META_SEND_GRAPH_REQUEST", {
+        requestId, attemptId, channel: "whatsapp", phase: "text",
+        endpoint: apiUrl, phoneNumberId, textLen: text.length,
+      });
       const apiRes = await fetch(apiUrl, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessTok}`, "Content-Type": "application/json" },
@@ -438,6 +443,11 @@ Deno.serve(async (req) => {
         }),
       });
       const apiText = await apiRes.text();
+      console.log("META_SEND_GRAPH_RESPONSE", {
+        requestId, attemptId, phase: "text",
+        status: apiRes.status, durationMs: Math.round(performance.now() - graphStart),
+        bodyPreview: apiText.slice(0, 300),
+      });
       let apiJson: {
         messages?: Array<{ id: string }>;
         error?: { message?: string; code?: number; type?: string };
