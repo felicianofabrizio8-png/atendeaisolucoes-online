@@ -45,7 +45,15 @@ export const getCoachLearningFn = createServerFn({ method: "GET" })
       listLearningVersions(context.supabase, data.id),
     ]);
     if (!row) throw new Error("not_found");
-    return { learning: row, versions };
+    // Cast solto: schema local carrega `metadata: Record<string, unknown>`,
+    // enquanto o tipo gerado do banco expõe `{[x:string]: {}}`. Ambos são
+    // JSONB opaco — o cliente decide como interpretar.
+    return { learning: row, versions } as unknown as {
+      learning: typeof row;
+      versions: Array<Omit<(typeof versions)[number], "metadata"> & {
+        metadata: Record<string, unknown>;
+      }>;
+    };
   });
 
 const createInput = z.object({
