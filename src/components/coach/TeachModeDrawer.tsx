@@ -1,8 +1,11 @@
 // Teach Mode Drawer — conversa curta para ensinar a IA.
 // Extração via teachModeExtractFn; commit via createCoachLearningFn.
-import { useEffect, useRef, useState } from "react";
+// BLOCO 1: validação por campo, preservação de estado no erro, retry,
+// mensagens amigáveis (contrato SafeLearningError).
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Brain, Loader2, Save, X, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { AlertTriangle, Brain, Loader2, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   teachModeExtractFn,
@@ -10,6 +13,13 @@ import {
 } from "@/lib/coach-learnings/coach-learnings.functions";
 import type { CoachLearningDraft } from "@/lib/coach-learnings/schema";
 import { COACH_LEARNING_CATEGORIES } from "@/lib/coach-learnings/schema";
+import {
+  getSafeLearningError,
+  validateLearningDraft,
+  hasValidationErrors,
+  type DraftValidationErrors,
+  type SafeLearningError,
+} from "@/lib/coach-learnings/errors";
 
 interface Turn {
   role: "user" | "assistant";
