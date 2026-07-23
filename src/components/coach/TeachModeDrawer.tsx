@@ -158,19 +158,32 @@ export function TeachModeDrawer({
 
   if (!open) return null;
 
-  async function runExtract(text: string, priorTurns: Turn[]) {
+  async function runExtract(
+    text: string,
+    priorTurns: Turn[],
+    opts: { force?: boolean } = {},
+  ) {
+    // Se já há um rascunho anterior e o usuário editou manualmente algum
+    // campo, avisa antes de sobrescrever (força quando opts.force = true).
+    if (!opts.force && draft && pristineDraftRef.current) {
+      const changed = diffDrafts(pristineDraftRef.current, draft);
+      if (changed.length > 0) {
+        setPendingOverwrite({ text, turns: priorTurns, fields: changed });
+        return;
+      }
+    }
     setSafeError(null);
     setErrorPhase(null);
+    setPendingOverwrite(null);
     setLoading(true);
     lastExtractPayloadRef.current = { text, turns: priorTurns };
     try {
-      const enrichedExplanation = sourceSuggestion
-        ? `${text}\n\n---\nContexto da sugestão reprovada:\n- Mensagem do cliente: ${sourceSuggestion.client_message ?? "(não informada)"}\n- Sugestão original que precisa melhorar (use como negative_example): "${sourceSuggestion.suggestion_text}"\n- Produto/categoria: ${sourceSuggestion.product_or_category ?? "(não informada)"}`
-        : text;
       const res = await extractFn({
         data: {
-          explanation: enrichedExplanation,
+          explanation: text,
           priorTurns,
+          clientMessage: sourceSuggestion?.client_message ?? null,
+          suggestionText: sourceSuggestion?.suggestion_text ?? null,
         },
       });
       if (!res.ok) {
@@ -188,16 +201,17 @@ export function TeachModeDrawer({
         ]);
         return;
       }
-      const draftFromLlm =
-        sourceSuggestion && !res.draft.negative_example
-          ? { ...res.draft, negative_example: sourceSuggestion.suggestion_text }
-          : res.draft;
-      setDraft(draftFromLlm);
+      const nextDraft = res.draft;
+      setDraft(nextDraft);
+      pristineDraftRef.current = nextDraft;
+      setUsedFallback(!!res.usedFallback);
       setTurns((t) => [
         ...t,
         {
           role: "assistant",
-          content: `Entendi assim: "${draftFromLlm.title}". Revise ao lado e confirme antes de salvar.`,
+          content: res.usedFallback
+            ? "Não consegui estruturar totalmente. Preenchi um rascunho de segurança — revise ao lado antes de salvar."
+            : `Entendi como "${nextDraft.title}". Revise o resumo ao lado antes de confirmar.`,
         },
       ]);
     } catch (err) {
