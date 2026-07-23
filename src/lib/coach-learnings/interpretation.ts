@@ -268,7 +268,10 @@ export function normalizeAiDraft(
   raw: unknown,
   ctx: NormalizeContext,
 ): { draft: CoachLearningDraft; usedFallback: boolean } {
-  const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (raw == null || typeof raw !== "object") {
+    return { draft: buildFallbackDraft(ctx), usedFallback: true };
+  }
+  const source = raw as Record<string, unknown>;
   const contextText = [
     ctx.userExplanation,
     ctx.clientMessage ?? "",
