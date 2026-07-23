@@ -3142,6 +3142,13 @@ function ConversationPage() {
     firstItemIndex: number | null;
     lastItemIndex: number | null;
   }>({ renderedItems: null, firstItemIndex: null, lastItemIndex: null });
+  // Última janela observada para deduplicar probes redundantes do Virtuoso
+  // (hotfix React #185). Resetado a cada troca de conversationId.
+  const lastProbeWindowRef = useRef<{
+    firstItemIndex: number | null;
+    lastItemIndex: number | null;
+    totalItems: number;
+  } | null>(null);
   const visibleRangeRef = useRef<{
     rangeStartIndex: number | null;
     rangeEndIndex: number | null;
