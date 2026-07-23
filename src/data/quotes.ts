@@ -432,6 +432,33 @@ export async function deleteQuote(id: string): Promise<void> {
  * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
  * Returns the new/existing conversationId so the caller can open the chat.
  */
+import {
+  normalizeQuoteSendError,
+  maskPhone,
+  maskId,
+  type NormalizedQuoteSendError,
+} from "@/lib/quote-send/errors";
+
+export class QuoteSendError extends Error {
+  readonly normalized: NormalizedQuoteSendError;
+  constructor(normalized: NormalizedQuoteSendError) {
+    super(normalized.message);
+    this.name = "QuoteSendError";
+    this.normalized = normalized;
+  }
+}
+
+interface EdgeFunctionPayload {
+  ok?: boolean;
+  error?: string;
+  code?: string;
+  messageId?: string;
+  conversationId?: string;
+  attemptId?: string;
+  status?: number;
+  requestId?: string;
+}
+
 export async function sendQuoteWhatsApp(args: {
   quoteId: string;
   phone: string;
@@ -439,12 +466,41 @@ export async function sendQuoteWhatsApp(args: {
   leadId?: string;
   text: string;
   imageUrls?: string[];
+  attemptId: string;
+  blockIndex?: number;
+  blockType?: string;
 }): Promise<{ conversationId?: string; messageId?: string }> {
-  console.log("QUOTE_SEND_WA_START", {
+  const base = {
+    attemptId: args.attemptId,
     quoteId: args.quoteId,
-    phone: args.phone,
+    blockIndex: args.blockIndex ?? 0,
+    blockType: args.blockType ?? "unknown",
+    phoneMasked: maskPhone(args.phone),
+    textLen: args.text.length,
     images: args.imageUrls?.length ?? 0,
-  });
+    ts: new Date().toISOString(),
+  };
+
+  console.log("QUOTE_SEND_BLOCK_START", base);
+
+  // Sessão
+  const sessionStart = performance.now();
+  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+  const sessionMs = Math.round(performance.now() - sessionStart);
+  if (sessionErr || !sessionData?.session) {
+    const norm = normalizeQuoteSendError(
+      sessionErr ?? new Error("no active session"),
+      "session",
+      { ...base, durationMs: sessionMs },
+    );
+    console.error("QUOTE_SEND_ERROR", { ...base, step: "session", norm });
+    throw new QuoteSendError({ ...norm, code: norm.code === "unknown" ? "session_expired" : norm.code });
+  }
+  console.log("QUOTE_SEND_SESSION_READY", { ...base, durationMs: sessionMs });
+
+  // Invoke
+  const invokeStart = performance.now();
+  console.log("QUOTE_SEND_FUNCTION_REQUEST", base);
   const { data, error } = await supabase.functions.invoke("meta-send", {
     body: {
       channel: "whatsapp",
@@ -453,27 +509,63 @@ export async function sendQuoteWhatsApp(args: {
       leadId: args.leadId,
       text: args.text,
       imageUrls: args.imageUrls,
+      attemptId: args.attemptId,
     },
   });
-  if (error) {
-    console.error("QUOTE_SEND_WA_ERROR", error);
-    throw new Error(error.message || "Falha ao enviar pelo WhatsApp");
-  }
-  const payload = (data ?? {}) as {
-    ok?: boolean;
-    error?: string;
-    messageId?: string;
-    conversationId?: string;
-  };
-  if (!payload.ok) {
-    console.error("QUOTE_SEND_WA_ERROR", payload);
-    throw new Error(payload.error || "Falha ao enviar pelo WhatsApp");
-  }
-  await markQuoteSent(args.quoteId, {
-    externalMessageId: payload.messageId,
-    conversationId: payload.conversationId,
+  const invokeMs = Math.round(performance.now() - invokeStart);
+
+  const payload = (data ?? {}) as EdgeFunctionPayload;
+  console.log("QUOTE_SEND_FUNCTION_RESPONSE", {
+    ...base,
+    durationMs: invokeMs,
+    ok: payload.ok ?? null,
+    code: payload.code ?? null,
+    status: payload.status ?? null,
+    hasError: !!error,
+    errorName: error?.name ?? null,
+    errorStatus: (error as { status?: number } | null)?.status ?? null,
+    attemptIdEcho: payload.attemptId ?? null,
+    requestId: payload.requestId ?? null,
   });
-  console.log("QUOTE_SEND_WA_SUCCESS", payload);
+
+  if (error) {
+    const norm = normalizeQuoteSendError(error, "invoke", { ...base, durationMs: invokeMs });
+    // Se a função retornou body com code, prefira ele
+    if (payload.code) norm.code = payload.code as NormalizedQuoteSendError["code"];
+    console.error("QUOTE_SEND_ERROR", { ...base, step: "invoke", norm });
+    throw new QuoteSendError(norm);
+  }
+
+  if (!payload.ok) {
+    const norm = normalizeQuoteSendError(
+      { message: payload.error, code: payload.code, status: payload.status },
+      "function_response",
+      { ...base, durationMs: invokeMs },
+    );
+    console.error("QUOTE_SEND_ERROR", { ...base, step: "function_response", norm });
+    throw new QuoteSendError(norm);
+  }
+
+  // Persistência local
+  console.log("QUOTE_SEND_MARK_SENT_START", { ...base, messageIdMasked: maskId(payload.messageId) });
+  try {
+    await markQuoteSent(args.quoteId, {
+      externalMessageId: payload.messageId,
+      conversationId: payload.conversationId,
+    });
+  } catch (e) {
+    const norm = normalizeQuoteSendError(e, "mark_sent", base);
+    norm.code = "mark_sent_failed";
+    console.error("QUOTE_SEND_ERROR", { ...base, step: "mark_sent", norm });
+    throw new QuoteSendError(norm);
+  }
+
+  console.log("QUOTE_SEND_SUCCESS", {
+    ...base,
+    conversationIdMasked: maskId(payload.conversationId),
+    messageIdMasked: maskId(payload.messageId),
+    totalMs: Math.round(performance.now() - sessionStart),
+  });
   return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
 
