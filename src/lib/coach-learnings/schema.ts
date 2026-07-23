@@ -100,7 +100,9 @@ export interface CoachLearningVersionRow {
   origin: CoachLearningVersionOrigin;
   change_reason: string | null;
   prompt_version: string | null;
-  metadata: Record<string, unknown>;
+  // `{}` (não `unknown`) para casar com o tipo inferido do PostgREST/JSON
+  // gerado por supabase-js. É JSONB opaco em ambos os lados.
+  metadata: { [key: string]: {} };
   created_at: string;
 }
 
