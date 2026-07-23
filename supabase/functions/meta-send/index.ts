@@ -34,24 +34,43 @@ function corsFor(req: Request): Record<string, string> {
 
 Deno.serve(async (req) => {
   const cors = corsFor(req);
+  const originHeader = req.headers.get("Origin") ?? "";
+  const originAllowed = cors["Access-Control-Allow-Origin"] !== "null";
+  const requestId =
+    req.headers.get("x-request-id") ??
+    (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now().toString(36)}`);
   const json = (b: unknown, s = 200) =>
     new Response(JSON.stringify(b), {
       status: s,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json", "x-request-id": requestId },
     });
+  console.log("META_SEND_REQUEST_RECEIVED", {
+    requestId,
+    method: req.method,
+    origin: originHeader,
+    originAllowed,
+  });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  if (req.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
+  if (req.method !== "POST")
+    return json({ ok: false, code: "invalid_payload", error: "method not allowed", requestId }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
   const accessToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!accessToken) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!accessToken) {
+    console.error("META_SEND_ERROR", { requestId, step: "auth", code: "unauthorized" });
+    return json({ ok: false, code: "unauthorized", error: "unauthorized", requestId }, 401);
+  }
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   const { data: userRes } = await sb.auth.getUser(accessToken);
-  if (!userRes?.user) return json({ ok: false, error: "invalid session" }, 401);
+  if (!userRes?.user) {
+    console.error("META_SEND_ERROR", { requestId, step: "auth", code: "session_expired" });
+    return json({ ok: false, code: "session_expired", error: "invalid session", requestId }, 401);
+  }
+  console.log("META_SEND_AUTH_VALIDATED", { requestId, userId: userRes.user.id });
 
   const { data: profile } = await sb
     .from("profiles")
