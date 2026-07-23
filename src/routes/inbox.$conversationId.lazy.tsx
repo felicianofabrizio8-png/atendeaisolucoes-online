@@ -3782,10 +3782,12 @@ function ConversationPage() {
 
   const handleVirtuosoItemsRendered = useCallback((items: ListItem<Message>[]) => {
     const indexes = items.map((item) => item.index);
+    const firstItemIndex = indexes.length ? Math.min(...indexes) : null;
+    const lastItemIndex = indexes.length ? Math.max(...indexes) : null;
     renderedWindowRef.current = {
       renderedItems: items.length,
-      firstItemIndex: indexes.length ? Math.min(...indexes) : null,
-      lastItemIndex: indexes.length ? Math.max(...indexes) : null,
+      firstItemIndex,
+      lastItemIndex,
     };
     traceInboxScroll("OUTRO", "ITEMS_RENDERED", {
       indexes,
@@ -3794,6 +3796,21 @@ function ConversationPage() {
         .filter((id): id is string => typeof id === "string"),
     });
     reanchorIfLocked("items_rendered");
+    // Deduplicação defensiva: quando o Virtuoso re-emite `itemsRendered`
+    // com a mesma janela (mesmo primeiro/último índice e mesmo total de
+    // itens) NÃO despachamos uma nova probe. Isso complementa a
+    // idempotência do reducer e é o corte final do loop do React #185.
+    const totalItems = latestVisibleMessagesLengthRef.current;
+    const prev = lastProbeWindowRef.current;
+    if (
+      prev !== null &&
+      prev.firstItemIndex === firstItemIndex &&
+      prev.lastItemIndex === lastItemIndex &&
+      prev.totalItems === totalItems
+    ) {
+      return;
+    }
+    lastProbeWindowRef.current = { firstItemIndex, lastItemIndex, totalItems };
     dispatchLayoutProbe(false);
   }, [reanchorIfLocked, dispatchLayoutProbe]);
 
