@@ -389,7 +389,7 @@ describe("Coach Evolutivo · isolamento estrito por tenant", () => {
   it("empresa B não consegue atualizar aprendizado da empresa A", async () => {
     const id = await createCoachLearning(sbA, goodDraft, CONV_A);
     await expect(
-      updateCoachLearningRpc(sbB, id, { ...goodDraft, title: "hack" }),
+      updateCoachLearningRpc(sbB, id, 1, { ...goodDraft, title: "hack" }),
     ).rejects.toThrow();
     expect(store.learnings.get(id)!.title).toBe(goodDraft.title);
   });
@@ -408,7 +408,7 @@ describe("Coach Evolutivo · isolamento estrito por tenant", () => {
 describe("Coach Evolutivo · versionamento", () => {
   it("edição incrementa versão; versões anteriores permanecem auditáveis", async () => {
     const id = await createCoachLearning(sbA, goodDraft, CONV_A);
-    const v2 = await updateCoachLearningRpc(sbA, id, {
+    const v2 = await updateCoachLearningRpc(sbA, id, 1, {
       ...goodDraft,
       title: "Nunca dizer 'vou verificar' — v2",
       rule_structured: goodDraft.rule_structured + " Cite sempre o modelo Maragogi ou Canyon.",
@@ -424,7 +424,7 @@ describe("Coach Evolutivo · versionamento", () => {
 
   it("grounding após edição usa a versão ativa (v2)", async () => {
     const id = await createCoachLearning(sbA, goodDraft, CONV_A);
-    await updateCoachLearningRpc(sbA, id, {
+    await updateCoachLearningRpc(sbA, id, 1, {
       ...goodDraft,
       rule_structured: "Regra v2: apresente Maragogi 8x3,5m e Canyon 6x3m.",
     });

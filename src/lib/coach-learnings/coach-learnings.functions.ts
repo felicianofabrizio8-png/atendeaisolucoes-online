@@ -5,16 +5,20 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   archiveCoachLearningRpc,
   createCoachLearning,
+  findSimilarCoachLearning,
   getCoachLearning,
   incrementLearningUsage,
   listCoachLearnings,
   listLearningVersions,
+  recordCoachLearningRetrieval,
+  restoreCoachLearningVersion,
   updateCoachLearningRpc,
 } from "./coach-learnings.repository";
 import {
   CoachLearningDraftSchema,
   COACH_LEARNING_CATEGORIES,
   COACH_LEARNING_STATUSES,
+  COACH_LEARNING_VERSION_ORIGINS,
 } from "./schema";
 import { extractTeachModeDraft } from "./teach-mode.service";
 
@@ -48,6 +52,8 @@ const createInput = z.object({
   draft: CoachLearningDraftSchema,
   sourceConversationId: z.string().uuid().nullable().optional(),
   sourceSuggestionId: z.string().uuid().nullable().optional(),
+  promptVersion: z.string().max(120).nullable().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export const createCoachLearningFn = createServerFn({ method: "POST" })
@@ -58,8 +64,12 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
       context.supabase,
       data.draft,
       data.sourceConversationId ?? null,
+      {
+        origin: "teach_mode",
+        promptVersion: data.promptVersion ?? null,
+        metadata: data.metadata ?? {},
+      },
     );
-    // Se veio de um 👎 numa sugestão, marca feedback negativo e vincula.
     if (data.sourceSuggestionId) {
       try {
         await context.supabase.rpc(
@@ -80,6 +90,7 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
 
 const updateInput = z.object({
   id: z.string().uuid(),
+  expectedVersion: z.number().int().min(1),
   patch: z
     .object({
       category: z.enum(COACH_LEARNING_CATEGORIES),
@@ -93,13 +104,28 @@ const updateInput = z.object({
       confidence: z.number().min(0).max(1).optional(),
       status: z.enum(COACH_LEARNING_STATUSES).optional(),
     }),
+  origin: z.enum(COACH_LEARNING_VERSION_ORIGINS).optional(),
+  changeReason: z.string().max(500).nullable().optional(),
+  promptVersion: z.string().max(120).nullable().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export const updateCoachLearningFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => updateInput.parse(data))
   .handler(async ({ data, context }) => {
-    const version = await updateCoachLearningRpc(context.supabase, data.id, data.patch);
+    const version = await updateCoachLearningRpc(
+      context.supabase,
+      data.id,
+      data.expectedVersion,
+      data.patch,
+      {
+        origin: data.origin ?? "manual_edit",
+        changeReason: data.changeReason ?? null,
+        promptVersion: data.promptVersion ?? null,
+        metadata: data.metadata ?? {},
+      },
+    );
     return { version };
   });
 
@@ -188,10 +214,6 @@ const suggestionFeedbackInput = z.object({
   learningId: z.string().uuid().nullable().optional(),
 });
 
-/**
- * Registra 👍 / 👎 na sugestão. Escopo garantido pela RPC via auth.uid()
- * + comparação de company_id da sugestão com a do profile do chamador.
- */
 export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => suggestionFeedbackInput.parse(data))
@@ -208,3 +230,71 @@ export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+// -------------------------------------------------------------------------
+// BLOCO 4 — Similaridade, restauração, telemetria
+// -------------------------------------------------------------------------
+
+const findSimilarInput = z.object({
+  category: z.enum(COACH_LEARNING_CATEGORIES),
+  title: z.string().min(1).max(120),
+  rule_structured: z.string().min(1).max(2000),
+  description: z.string().max(2000).nullable().optional(),
+  product_ref: z.string().max(120).nullable().optional(),
+  limit: z.number().int().min(1).max(10).optional(),
+});
+
+/**
+ * Detecta duplicidade exata + aprendizados semelhantes na MESMA empresa.
+ * A empresa é resolvida no servidor pela RPC via `current_company_id()`.
+ */
+export const findSimilarCoachLearningFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => findSimilarInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const candidates = await findSimilarCoachLearning(context.supabase, data);
+    return { candidates };
+  });
+
+const restoreInput = z.object({
+  learningId: z.string().uuid(),
+  targetVersion: z.number().int().min(1),
+  expectedVersion: z.number().int().min(1),
+  changeReason: z.string().max(500).nullable().optional(),
+});
+
+export const restoreCoachLearningVersionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => restoreInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const version = await restoreCoachLearningVersion(
+      context.supabase,
+      data.learningId,
+      data.targetVersion,
+      data.expectedVersion,
+      data.changeReason ?? null,
+    );
+    return { version };
+  });
+
+const retrievalInput = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(20),
+  generationRef: z.string().min(3).max(160),
+  conversationId: z.string().uuid().nullable().optional(),
+});
+
+/**
+ * Telemetria de retrieval — best-effort. Nunca lança erro para o cliente.
+ * Idempotente por (learning_id, generation_ref).
+ */
+export const recordCoachLearningRetrievalFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => retrievalInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const inserted = await recordCoachLearningRetrieval(
+      context.supabase,
+      data.ids,
+      data.generationRef,
+      data.conversationId ?? null,
+    );
+    return { inserted };
+  });

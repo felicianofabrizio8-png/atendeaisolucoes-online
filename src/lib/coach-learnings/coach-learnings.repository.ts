@@ -5,8 +5,10 @@ import type { Database } from "@/integrations/supabase/types";
 import type {
   CoachLearningDraft,
   CoachLearningRow,
+  CoachLearningVersionOrigin,
   CoachLearningVersionRow,
 } from "./schema";
+import type { SimilarCandidate } from "./similarity";
 
 type SB = SupabaseClient<Database>;
 
@@ -28,12 +30,16 @@ export async function listCoachLearnings(
   return (data ?? []) as CoachLearningRow[];
 }
 
-/** Learnings ativos, top-priority, para grounding. */
+/**
+ * Learnings ativos, top-priority, para grounding.
+ * BLOCO 4: default reduzido para 5; máximo 10 (via clampGroundingLimit).
+ */
 export async function listActiveLearningsForGrounding(
   sb: SB,
   companyId: string,
-  limit = 20,
+  limit = 5,
 ): Promise<CoachLearningRow[]> {
+  const safeLimit = Math.min(10, Math.max(1, limit));
   const { data, error } = await sb
     .from("coach_learnings" as never)
     .select("*")
@@ -41,7 +47,8 @@ export async function listActiveLearningsForGrounding(
     .eq("status", "active")
     .order("priority", { ascending: false })
     .order("usage_count", { ascending: false })
-    .limit(Math.min(50, Math.max(1, limit)));
+    .order("updated_at", { ascending: false })
+    .limit(safeLimit);
   if (error) return [];
   return ((data ?? []) as unknown) as CoachLearningRow[];
 }
@@ -72,10 +79,17 @@ export async function listLearningVersions(
   return ((data ?? []) as unknown) as CoachLearningVersionRow[];
 }
 
+export interface CreateCoachLearningExtras {
+  origin?: CoachLearningVersionOrigin;
+  promptVersion?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export async function createCoachLearning(
   sb: SB,
   draft: CoachLearningDraft,
   sourceConversationId: string | null,
+  extras: CreateCoachLearningExtras = {},
 ): Promise<string> {
   const { data, error } = await sb.rpc("create_coach_learning" as never, {
     _category: draft.category,
@@ -88,18 +102,35 @@ export async function createCoachLearning(
     _priority: draft.priority,
     _confidence: draft.confidence,
     _source_conversation_id: sourceConversationId,
+    _origin: extras.origin ?? "teach_mode",
+    _prompt_version: extras.promptVersion ?? null,
+    _metadata: extras.metadata ?? {},
   } as never);
   if (error) throw error;
   return data as unknown as string;
 }
 
+export interface UpdateCoachLearningExtras {
+  origin?: CoachLearningVersionOrigin;
+  changeReason?: string | null;
+  promptVersion?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * BLOCO 4: `expectedVersion` obrigatório para concorrência otimista.
+ * O RPC compara com a versão atual; se divergir, retorna `learning_version_conflict`.
+ */
 export async function updateCoachLearningRpc(
   sb: SB,
   id: string,
+  expectedVersion: number,
   patch: Partial<CoachLearningDraft> & { status?: string },
+  extras: UpdateCoachLearningExtras = {},
 ): Promise<number> {
   const { data, error } = await sb.rpc("update_coach_learning" as never, {
     _learning_id: id,
+    _expected_version: expectedVersion,
     _title: patch.title,
     _description: patch.description,
     _rule_structured: patch.rule_structured,
@@ -110,6 +141,10 @@ export async function updateCoachLearningRpc(
     _priority: patch.priority ?? null,
     _status: patch.status ?? null,
     _confidence: patch.confidence ?? null,
+    _origin: extras.origin ?? "manual_edit",
+    _change_reason: extras.changeReason ?? null,
+    _prompt_version: extras.promptVersion ?? null,
+    _metadata: extras.metadata ?? {},
   } as never);
   if (error) throw error;
   return data as unknown as number;
@@ -132,4 +167,78 @@ export async function incrementLearningUsage(
   } as never);
   if (error) return 0;
   return (data as unknown as number) ?? 0;
+}
+
+/**
+ * BLOCO 4: detecta aprendizados duplicados ou semelhantes dentro da mesma
+ * empresa. `company_id` é resolvido no banco via `current_company_id()`.
+ * O caller nunca envia company_id.
+ */
+export interface FindSimilarInput {
+  category: string;
+  title: string;
+  rule_structured: string;
+  description?: string | null;
+  product_ref?: string | null;
+  limit?: number;
+}
+
+export async function findSimilarCoachLearning(
+  sb: SB,
+  input: FindSimilarInput,
+): Promise<SimilarCandidate[]> {
+  const { data, error } = await sb.rpc("find_similar_coach_learning" as never, {
+    _category: input.category,
+    _title: input.title,
+    _rule_structured: input.rule_structured,
+    _description: input.description ?? null,
+    _product_ref: input.product_ref ?? null,
+    _limit: Math.min(10, Math.max(1, input.limit ?? 5)),
+  } as never);
+  if (error) return [];
+  return ((data ?? []) as unknown) as SimilarCandidate[];
+}
+
+/**
+ * BLOCO 4: restaura uma versão anterior criando NOVA versão. Preserva
+ * histórico integralmente. Concorrência otimista via `expectedVersion`.
+ */
+export async function restoreCoachLearningVersion(
+  sb: SB,
+  learningId: string,
+  targetVersion: number,
+  expectedVersion: number,
+  changeReason?: string | null,
+): Promise<number> {
+  const { data, error } = await sb.rpc("restore_coach_learning_version" as never, {
+    _learning_id: learningId,
+    _target_version: targetVersion,
+    _expected_version: expectedVersion,
+    _change_reason: changeReason ?? null,
+  } as never);
+  if (error) throw error;
+  return data as unknown as number;
+}
+
+/**
+ * BLOCO 4: telemetria BEST-EFFORT. Nunca lança. Idempotente por
+ * `generation_ref`. Silencia qualquer falha para não afetar a sugestão.
+ */
+export async function recordCoachLearningRetrieval(
+  sb: SB,
+  ids: string[],
+  generationRef: string,
+  conversationId: string | null = null,
+): Promise<number> {
+  if (!ids.length || !generationRef) return 0;
+  try {
+    const { data } = await sb.rpc("record_coach_learning_retrieval" as never, {
+      _ids: ids,
+      _generation_ref: generationRef,
+      _conversation_id: conversationId,
+    } as never);
+    return (data as unknown as number) ?? 0;
+  } catch {
+    return 0;
+  }
 }

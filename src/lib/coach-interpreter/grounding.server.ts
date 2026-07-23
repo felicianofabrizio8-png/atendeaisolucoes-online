@@ -338,12 +338,30 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
   }
 
   // -- Coach Learnings (aprendizados conversacionais da própria empresa) ---
+  // BLOCO 4: default reduzido para 5 (máx 10). Filtra `status='active'`
+  // (paused/archived nunca entram). Dedup por content_hash quando presente.
   const learningIdsUsed: string[] = [];
   try {
-    const { listActiveLearningsForGrounding } = await import(
-      "@/lib/coach-learnings/coach-learnings.repository"
+    const {
+      listActiveLearningsForGrounding,
+      recordCoachLearningRetrieval,
+    } = await import("@/lib/coach-learnings/coach-learnings.repository");
+    const { COACH_GROUNDING_DEFAULT_LIMIT } = await import(
+      "@/lib/coach-learnings/schema"
     );
-    const learnings = await listActiveLearningsForGrounding(sb, companyId, 20);
+    const rawLearnings = await listActiveLearningsForGrounding(
+      sb,
+      companyId,
+      COACH_GROUNDING_DEFAULT_LIMIT,
+    );
+    // Dedup defensivo por content_hash (nunca envia regra duas vezes no prompt).
+    const seenHash = new Set<string>();
+    const learnings = rawLearnings.filter((l) => {
+      const h = l.content_hash ?? l.id;
+      if (seenHash.has(h)) return false;
+      seenHash.add(h);
+      return true;
+    });
     if (learnings.length > 0) {
       sources.coach_learnings = true;
       const lines = learnings.map((l) => {
@@ -356,6 +374,11 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
       });
       sections.push(
         `### APRENDIZADOS DA EQUIPE (ensinados pelos vendedores desta empresa — TÊM PRIORIDADE sobre a Base de Conhecimento e produtos, exceto quando conflitam com REGRAS COMERCIAIS ATIVAS)\n${bullet(lines)}`,
+      );
+      // Telemetria best-effort — NUNCA bloqueia nem atrasa a sugestão.
+      const genRef = `${companyId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+      void recordCoachLearningRetrieval(sb, learningIdsUsed, genRef, null).catch(
+        () => {},
       );
     }
   } catch {

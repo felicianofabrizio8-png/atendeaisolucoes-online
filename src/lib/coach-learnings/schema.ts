@@ -18,6 +18,29 @@ export type CoachLearningCategory = (typeof COACH_LEARNING_CATEGORIES)[number];
 export const COACH_LEARNING_STATUSES = ["active", "paused", "archived"] as const;
 export type CoachLearningStatus = (typeof COACH_LEARNING_STATUSES)[number];
 
+/**
+ * Mapeamento oficial DB ↔ UI (BLOCO 4).
+ * - `active`   → "Ativo"    → usado pelo Coach.
+ * - `paused`   → "Inativo"  → editável, não é usado pelo Coach; pode ser reativado.
+ * - `archived` → "Arquivado" → oculto das listas principais; nunca usado pelo Coach.
+ */
+export const STATUS_LABEL_PT: Record<CoachLearningStatus, string> = {
+  active: "Ativo",
+  paused: "Inativo",
+  archived: "Arquivado",
+};
+
+/** Origens permitidas para uma versão (espelha CHECK no banco). */
+export const COACH_LEARNING_VERSION_ORIGINS = [
+  "teach_mode",
+  "manual_edit",
+  "restore",
+  "migration",
+  "system",
+] as const;
+export type CoachLearningVersionOrigin =
+  (typeof COACH_LEARNING_VERSION_ORIGINS)[number];
+
 export const CoachLearningDraftSchema = z.object({
   category: z.enum(COACH_LEARNING_CATEGORIES),
   product_ref: z.string().max(120).nullable().optional(),
@@ -45,9 +68,13 @@ export interface CoachLearningRow {
   priority: number;
   status: CoachLearningStatus;
   confidence: number;
-  usage_count: number;
+  usage_count: number; // aplicações confirmadas (feedback 👍)
   last_used_at: string | null;
+  times_retrieved: number; // vezes que o Coach recuperou para o contexto
+  last_retrieved_at: string | null;
+  content_hash: string;
   taught_by: string | null;
+  updated_by: string | null;
   source_conversation_id: string | null;
   version: number;
   created_at: string;
@@ -70,7 +97,20 @@ export interface CoachLearningVersionRow {
   status: string;
   confidence: number;
   edited_by: string | null;
+  origin: CoachLearningVersionOrigin;
+  change_reason: string | null;
+  prompt_version: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
 }
 
 export const TEACH_MODE_PROMPT_VERSION = "coach-teach-mode@2026-07-23.b2";
+
+/** Limite operacional de aprendizados injetados por sugestão do Coach. */
+export const COACH_GROUNDING_DEFAULT_LIMIT = 5;
+export const COACH_GROUNDING_MAX_LIMIT = 10;
+
+export function clampGroundingLimit(n: number | null | undefined): number {
+  const base = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : COACH_GROUNDING_DEFAULT_LIMIT;
+  return Math.min(COACH_GROUNDING_MAX_LIMIT, Math.max(1, base));
+}
