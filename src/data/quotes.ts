@@ -438,13 +438,6 @@ export async function deleteQuote(id: string): Promise<void> {
  * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
  * Returns the new/existing conversationId so the caller can open the chat.
  */
-import {
-  normalizeQuoteSendError,
-  maskPhone,
-  maskId,
-  type NormalizedQuoteSendError,
-} from "@/lib/quote-send/errors";
-
 export class QuoteSendError extends Error {
   readonly normalized: NormalizedQuoteSendError;
   constructor(normalized: NormalizedQuoteSendError) {
