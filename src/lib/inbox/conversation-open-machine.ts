@@ -18,6 +18,12 @@
 //     (`lastRenderedIndex >= totalItems - 1`) E distância ao fim ≤ TOLERANCE_PX
 //     E houve pelo menos um frame com altura estável (stableFrames >= 1).
 //   - Troca de `conversationId` reseta para `idle`.
+//
+// HOTFIX (React #185, Maximum update depth):
+//   Todo ramo do reducer PRECISA devolver EXATAMENTE `state` (mesma
+//   referência) quando o evento não produzir alteração semântica. Objetos
+//   novos com valores idênticos causam re-render e realimentam o Virtuoso,
+//   que reemite `itemsRendered` → nova probe → loop até React abortar.
 
 export const CONVERSATION_OPEN_TOLERANCE_PX = 8;
 export const CONVERSATION_OPEN_MIN_BATCH_FOR_PREPARE = 1;
@@ -55,17 +61,31 @@ export function initialConversationOpenState(): ConversationOpenState {
  * Transição pura. Ignora eventos de conversas antigas (cid diferente do
  * estado atual) — o componente é responsável por descartar respostas
  * atrasadas via token, mas a máquina também se protege.
+ *
+ * Contrato de identidade: quando o evento não altera nada semanticamente,
+ * a função DEVE retornar `state` (mesma referência). Isso é o que impede
+ * o loop de renderização descrito no hotfix do React #185.
  */
 export function reduceConversationOpen(
   state: ConversationOpenState,
   event: ConversationOpenEvent,
 ): ConversationOpenState {
-  if (event.type === "close") return { name: "idle" };
+  if (event.type === "close") {
+    return state.name === "idle" ? state : { name: "idle" };
+  }
 
   if (event.type === "open") {
     // Cache íntegro (≥ MIN_BATCH mensagens) → pula loading e vai direto
     // para preparing para reancorar sem nova rede.
     if (event.cachedTotal >= CONVERSATION_OPEN_MIN_BATCH_FOR_PREPARE + 1) {
+      if (
+        state.name === "preparing" &&
+        state.cid === event.cid &&
+        state.totalItems === event.cachedTotal &&
+        state.stableFrames === 0
+      ) {
+        return state;
+      }
       return {
         name: "preparing",
         cid: event.cid,
@@ -73,6 +93,7 @@ export function reduceConversationOpen(
         stableFrames: 0,
       };
     }
+    if (state.name === "loading" && state.cid === event.cid) return state;
     return { name: "loading", cid: event.cid };
   }
 
@@ -96,9 +117,13 @@ export function reduceConversationOpen(
       if (state.name === "preparing") {
         // Realtime já elevou o total antes do load_ok chegar — mantém o
         // maior e reseta frames (a lista mudou implicitamente).
+        const nextTotal = Math.max(state.totalItems, event.totalItems);
+        if (nextTotal === state.totalItems && state.stableFrames === 0) {
+          return state;
+        }
         return {
           ...state,
-          totalItems: Math.max(state.totalItems, event.totalItems),
+          totalItems: nextTotal,
           stableFrames: 0,
         };
       }
@@ -106,10 +131,18 @@ export function reduceConversationOpen(
     }
 
     case "load_error": {
+      if (
+        state.name === "error" &&
+        state.cid === event.cid &&
+        state.message === event.message
+      ) {
+        return state;
+      }
       return { name: "error", cid: event.cid, message: event.message };
     }
 
     case "retry": {
+      if (state.name === "loading" && state.cid === event.cid) return state;
       return { name: "loading", cid: event.cid };
     }
 
@@ -119,9 +152,13 @@ export function reduceConversationOpen(
       // seja tratado como "lote pronto".
       if (state.name === "loading") return state;
       if (state.name === "preparing") {
+        if (state.totalItems === event.totalItems && state.stableFrames === 0) {
+          return state;
+        }
         return { ...state, totalItems: event.totalItems, stableFrames: 0 };
       }
       if (state.name === "ready" || state.name === "visible") {
+        if (state.totalItems === event.totalItems) return state;
         return { ...state, totalItems: event.totalItems };
       }
       return state;
@@ -129,18 +166,44 @@ export function reduceConversationOpen(
 
     case "layout_probe": {
       if (state.name !== "preparing") return state;
+
       const lastRenderedOk = event.lastRenderedIndex >= event.totalItems - 1;
-      const nearBottom =
-        event.distanceToEnd <= CONVERSATION_OPEN_TOLERANCE_PX;
+      const nearBottom = event.distanceToEnd <= CONVERSATION_OPEN_TOLERANCE_PX;
+
+      // Ramo 1: altura mudou → precisamos reiniciar a contagem de frames
+      // estáveis. Só cria novo estado se algo mudou de fato.
       if (event.heightChanged) {
+        if (
+          state.totalItems === event.totalItems &&
+          state.stableFrames === 0
+        ) {
+          return state;
+        }
         return { ...state, totalItems: event.totalItems, stableFrames: 0 };
       }
+
+      // Ramo 2: janela ainda não cobriu o último item OU não está colada
+      // no fim → mantém preparing com stableFrames zerado.
       if (!lastRenderedOk || !nearBottom) {
+        if (
+          state.totalItems === event.totalItems &&
+          state.stableFrames === 0
+        ) {
+          return state;
+        }
         return { ...state, totalItems: event.totalItems, stableFrames: 0 };
       }
+
+      // Ramo 3: probe estável — pode avançar para ready.
       const nextStable = state.stableFrames + 1;
       if (nextStable >= 1) {
         return { name: "ready", cid: state.cid, totalItems: event.totalItems };
+      }
+      if (
+        state.totalItems === event.totalItems &&
+        state.stableFrames === nextStable
+      ) {
+        return state;
       }
       return { ...state, totalItems: event.totalItems, stableFrames: nextStable };
     }
