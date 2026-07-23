@@ -3585,7 +3585,7 @@ function ConversationPage() {
       const nextAi: AiStateShape = { ai_status: "assumido_humano", ai_handling: false };
       logAiStateAttempt(renderIdRef.current, "handleTakeover", aiStatePrevDiagRef.current, nextAi, "handleTakeover");
       aiStatePrevDiagRef.current = nextAi;
-      setAiState(nextAi);
+      setAiState((prev) => (aiStateEqual(prev, nextAi) ? prev : nextAi));
       toast.success("Você assumiu o atendimento. IA pausada para esta conversa.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
