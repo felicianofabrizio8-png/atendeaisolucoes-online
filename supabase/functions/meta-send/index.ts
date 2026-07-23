@@ -78,7 +78,14 @@ Deno.serve(async (req) => {
     .eq("id", userRes.user.id)
     .maybeSingle();
   const companyId = profile?.company_id;
-  if (!companyId) return json({ ok: false, error: "profile without company" }, 403);
+  if (!companyId) {
+    console.error("META_SEND_ERROR", { requestId, step: "company", code: "company_not_found" });
+    return json({ ok: false, code: "company_not_found", error: "profile without company", requestId }, 403);
+  }
+  console.log("META_SEND_COMPANY_RESOLVED", {
+    requestId,
+    companyIdPrefix: String(companyId).slice(0, 8),
+  });
 
   let body: {
     conversationId?: string;
@@ -91,26 +98,35 @@ Deno.serve(async (req) => {
     subtype?: string;
     origin?: string;
     provider_type?: string;
+    attemptId?: string;
   };
   try {
     body = await req.json();
   } catch {
-    return json({ ok: false, error: "invalid json" }, 400);
+    return json({ ok: false, code: "invalid_payload", error: "invalid json", requestId }, 400);
   }
+
+  const attemptId = typeof body.attemptId === "string" ? body.attemptId : null;
 
   const text = String(body.text ?? "").trim();
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
     : [];
-  if (!text && imageUrls.length === 0) return json({ ok: false, error: "text or imageUrls required" }, 400);
-  if (text.length > 4000) return json({ ok: false, error: "text too long" }, 400);
+  if (!text && imageUrls.length === 0)
+    return json({ ok: false, code: "invalid_payload", error: "text or imageUrls required", requestId, attemptId }, 400);
+  if (text.length > 4000)
+    return json({ ok: false, code: "text_too_long", error: "text too long", requestId, attemptId }, 400);
 
   // ---------------- WhatsApp Cloud API branch ----------------
   if (body.channel === "whatsapp") {
-    console.log("META_SEND_START", {
+    const phoneDigitsForLog = String(body.phone ?? "").replace(/\D/g, "");
+    const phoneMasked = phoneDigitsForLog.length > 4 ? `****${phoneDigitsForLog.slice(-4)}` : "****";
+    console.log("META_SEND_PAYLOAD_VALIDATED", {
+      requestId,
+      attemptId,
       channel: "whatsapp",
-      phone: body.phone,
-      leadId: body.leadId,
+      phoneMasked,
+      hasLeadId: !!body.leadId,
       textLen: text.length,
       images: imageUrls.length,
     });
