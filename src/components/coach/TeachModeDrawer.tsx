@@ -369,17 +369,21 @@ export function TeachModeDrawer({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <Field label="Título">
+                  <Field label="Título" error={validation.title} testId="teach-field-title">
                     <input
                       type="text"
                       value={draft.title}
                       onChange={(e) => updateDraft("title", e.target.value)}
                       maxLength={120}
-                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+                      aria-invalid={!!validation.title}
+                      className={cn(
+                        "w-full rounded border bg-background px-2 py-1.5 text-sm",
+                        validation.title ? "border-destructive" : "border-border",
+                      )}
                     />
                   </Field>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Categoria">
+                    <Field label="Categoria" error={validation.category} testId="teach-field-category">
                       <select
                         value={draft.category}
                         onChange={(e) =>
@@ -388,7 +392,11 @@ export function TeachModeDrawer({
                             e.target.value as CoachLearningDraft["category"],
                           )
                         }
-                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+                        aria-invalid={!!validation.category}
+                        className={cn(
+                          "w-full rounded border bg-background px-2 py-1.5 text-sm",
+                          validation.category ? "border-destructive" : "border-border",
+                        )}
                       >
                         {COACH_LEARNING_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
@@ -397,7 +405,7 @@ export function TeachModeDrawer({
                         ))}
                       </select>
                     </Field>
-                    <Field label="Prioridade (0-100)">
+                    <Field label="Prioridade (0-100)" error={validation.priority} testId="teach-field-priority">
                       <input
                         type="number"
                         min={0}
@@ -409,7 +417,11 @@ export function TeachModeDrawer({
                             Math.max(0, Math.min(100, Number(e.target.value) || 0)),
                           )
                         }
-                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+                        aria-invalid={!!validation.priority}
+                        className={cn(
+                          "w-full rounded border bg-background px-2 py-1.5 text-sm",
+                          validation.priority ? "border-destructive" : "border-border",
+                        )}
                       />
                     </Field>
                   </div>
@@ -421,20 +433,32 @@ export function TeachModeDrawer({
                       className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
                     />
                   </Field>
-                  <Field label="Descrição">
+                  <Field label="Descrição" error={validation.description} testId="teach-field-description">
                     <textarea
                       rows={2}
                       value={draft.description}
                       onChange={(e) => updateDraft("description", e.target.value)}
-                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm resize-none"
+                      aria-invalid={!!validation.description}
+                      className={cn(
+                        "w-full rounded border bg-background px-2 py-1.5 text-sm resize-none",
+                        validation.description ? "border-destructive" : "border-border",
+                      )}
                     />
                   </Field>
-                  <Field label="Regra estruturada (o que a IA deve seguir)">
+                  <Field
+                    label="Regra estruturada (o que a IA deve seguir)"
+                    error={validation.rule_structured}
+                    testId="teach-field-rule"
+                  >
                     <textarea
                       rows={3}
                       value={draft.rule_structured}
                       onChange={(e) => updateDraft("rule_structured", e.target.value)}
-                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm resize-none"
+                      aria-invalid={!!validation.rule_structured}
+                      className={cn(
+                        "w-full rounded border bg-background px-2 py-1.5 text-sm resize-none",
+                        validation.rule_structured ? "border-destructive" : "border-border",
+                      )}
                     />
                   </Field>
                   <Field label="Exemplo positivo (opcional)">
@@ -455,14 +479,44 @@ export function TeachModeDrawer({
                   </Field>
                 </div>
               )}
-              {error && (
-                <div className="text-xs text-red-600 dark:text-red-400 border border-red-500/30 bg-red-500/10 rounded p-2">
-                  {error}
+              {safeError && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  data-testid="teach-error-banner"
+                  className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-destructive">{safeError.message}</div>
+                      {safeError.hint && (
+                        <div className="text-foreground mt-0.5 break-words">{safeError.hint}</div>
+                      )}
+                      <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                        code: {safeError.code}
+                      </div>
+                    </div>
+                    {safeError.retryable && (
+                      <button
+                        type="button"
+                        onClick={handleRetry}
+                        disabled={loading || saving}
+                        data-testid="teach-retry"
+                        className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline shrink-0 disabled:opacity-40"
+                      >
+                        <RefreshCw className="h-3 w-3" /> Tentar novamente
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {saved && (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 rounded p-2">
-                  Aprendizado salvo. A IA passa a usá-lo imediatamente.
+                <div
+                  data-testid="teach-saved-banner"
+                  className="text-xs text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 rounded p-2"
+                >
+                  Aprendizado salvo com sucesso. O Coach utilizará esta regra nas próximas conversas.
                 </div>
               )}
             </div>
@@ -477,7 +531,8 @@ export function TeachModeDrawer({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!draft || saving}
+                disabled={!canSave}
+                data-testid="teach-save"
                 className="inline-flex items-center gap-1 rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90 disabled:opacity-40"
               >
                 {saving ? (
@@ -495,20 +550,33 @@ export function TeachModeDrawer({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  error,
+  testId,
+}: {
+  label: string;
+  children: React.ReactNode;
+  error?: string;
+  testId?: string;
+}) {
   return (
-    <label className="block space-y-1">
+    <label className="block space-y-1" data-testid={testId}>
       <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
         {label}
       </span>
       {children}
+      {error && (
+        <span
+          role="alert"
+          data-testid={testId ? `${testId}-error` : undefined}
+          className="block text-[11px] text-destructive"
+        >
+          {error}
+        </span>
+      )}
     </label>
   );
 }
 
-function labelError(code: string): string {
-  if (code === "no_company") return "Sua conta não está vinculada a uma empresa.";
-  if (code === "teach_mode_schema_invalid")
-    return "A IA não conseguiu estruturar. Explique com mais detalhe.";
-  return "Falha ao estruturar o aprendizado. Tente reformular.";
-}
