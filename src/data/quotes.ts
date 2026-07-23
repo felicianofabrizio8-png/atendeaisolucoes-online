@@ -482,7 +482,7 @@ export async function sendQuoteWhatsApp(args: {
     ts: new Date().toISOString(),
   };
 
-  console.log("QUOTE_SEND_BLOCK_START", base);
+  qsDebug("QUOTE_SEND_BLOCK_START", base);
 
   // Sessão
   const sessionStart = performance.now();
@@ -494,14 +494,14 @@ export async function sendQuoteWhatsApp(args: {
       "session",
       { ...base, durationMs: sessionMs },
     );
-    console.error("QUOTE_SEND_ERROR", { ...base, step: "session", norm });
+    qsError("QUOTE_SEND_ERROR", { ...base, step: "session", norm });
     throw new QuoteSendError({ ...norm, code: norm.code === "unknown" ? "session_expired" : norm.code });
   }
-  console.log("QUOTE_SEND_SESSION_READY", { ...base, durationMs: sessionMs });
+  qsDebug("QUOTE_SEND_SESSION_READY", { ...base, durationMs: sessionMs });
 
   // Invoke
   const invokeStart = performance.now();
-  console.log("QUOTE_SEND_FUNCTION_REQUEST", base);
+  qsDebug("QUOTE_SEND_FUNCTION_REQUEST", base);
   const { data, error } = await supabase.functions.invoke("meta-send", {
     body: {
       channel: "whatsapp",
@@ -516,7 +516,7 @@ export async function sendQuoteWhatsApp(args: {
   const invokeMs = Math.round(performance.now() - invokeStart);
 
   const payload = (data ?? {}) as EdgeFunctionPayload;
-  console.log("QUOTE_SEND_FUNCTION_RESPONSE", {
+  qsDebug("QUOTE_SEND_FUNCTION_RESPONSE", {
     ...base,
     durationMs: invokeMs,
     ok: payload.ok ?? null,
@@ -531,9 +531,8 @@ export async function sendQuoteWhatsApp(args: {
 
   if (error) {
     const norm = normalizeQuoteSendError(error, "invoke", { ...base, durationMs: invokeMs });
-    // Se a função retornou body com code, prefira ele
     if (payload.code) norm.code = payload.code as NormalizedQuoteSendError["code"];
-    console.error("QUOTE_SEND_ERROR", { ...base, step: "invoke", norm });
+    qsError("QUOTE_SEND_ERROR", { ...base, step: "invoke", norm });
     throw new QuoteSendError(norm);
   }
 
@@ -543,12 +542,12 @@ export async function sendQuoteWhatsApp(args: {
       "function_response",
       { ...base, durationMs: invokeMs },
     );
-    console.error("QUOTE_SEND_ERROR", { ...base, step: "function_response", norm });
+    qsError("QUOTE_SEND_ERROR", { ...base, step: "function_response", norm });
     throw new QuoteSendError(norm);
   }
 
   // Persistência local
-  console.log("QUOTE_SEND_MARK_SENT_START", { ...base, messageIdMasked: maskId(payload.messageId) });
+  qsDebug("QUOTE_SEND_MARK_SENT_START", { ...base, messageIdMasked: maskId(payload.messageId) });
   try {
     await markQuoteSent(args.quoteId, {
       externalMessageId: payload.messageId,
@@ -557,11 +556,11 @@ export async function sendQuoteWhatsApp(args: {
   } catch (e) {
     const norm = normalizeQuoteSendError(e, "mark_sent", base);
     norm.code = "mark_sent_failed";
-    console.error("QUOTE_SEND_ERROR", { ...base, step: "mark_sent", norm });
+    qsError("QUOTE_SEND_ERROR", { ...base, step: "mark_sent", norm });
     throw new QuoteSendError(norm);
   }
 
-  console.log("QUOTE_SEND_SUCCESS", {
+  qsDebug("QUOTE_SEND_SUCCESS", {
     ...base,
     conversationIdMasked: maskId(payload.conversationId),
     messageIdMasked: maskId(payload.messageId),
@@ -569,4 +568,5 @@ export async function sendQuoteWhatsApp(args: {
   });
   return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
+
 
