@@ -63,15 +63,24 @@ export function TeachModeDrawer({
   const [draft, setDraft] = useState<CoachLearningDraft | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [safeError, setSafeError] = useState<SafeLearningError | null>(null);
+  const [errorPhase, setErrorPhase] = useState<"extract" | "save" | null>(null);
+  const [validation, setValidation] = useState<DraftValidationErrors>({});
   const [saved, setSaved] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Guarda o último payload enviado ao servidor — usado no botão "Tentar
+  // novamente" para preservar EXATAMENTE o que o usuário digitou.
+  const lastExtractPayloadRef = useRef<{ text: string; turns: Turn[] } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraft(null);
-    setError(null);
+    setSafeError(null);
+    setErrorPhase(null);
+    setValidation({});
     setSaved(false);
+    lastExtractPayloadRef.current = null;
     // Se abriu via 👎, semeia o chat com a pergunta guiada + contexto.
     if (sourceSuggestion) {
       const ctxLines = [
@@ -107,30 +116,51 @@ export function TeachModeDrawer({
     setTimeout(() => inputRef.current?.focus(), 60);
   }, [open, seedExplanation, sourceSuggestion]);
 
+  // Recalcula validação sempre que o rascunho muda.
+  useEffect(() => {
+    if (!draft) {
+      setValidation({});
+      return;
+    }
+    setValidation(
+      validateLearningDraft({
+        title: draft.title,
+        description: draft.description,
+        rule_structured: draft.rule_structured,
+        category: draft.category,
+        priority: draft.priority,
+        allowedCategories: COACH_LEARNING_CATEGORIES,
+      }),
+    );
+  }, [draft]);
+
+  const canSave = useMemo(
+    () => !!draft && !saving && !hasValidationErrors(validation),
+    [draft, saving, validation],
+  );
+
   if (!open) return null;
 
-  async function handleSend() {
-    const text = input.trim();
-    if (text.length < 3 || loading) return;
-    setError(null);
+  async function runExtract(text: string, priorTurns: Turn[]) {
+    setSafeError(null);
+    setErrorPhase(null);
     setLoading(true);
-    const nextTurns: Turn[] = [...turns, { role: "user", content: text }];
-    setTurns(nextTurns);
-    setInput("");
+    lastExtractPayloadRef.current = { text, turns: priorTurns };
     try {
-      // Enriquece a explicação com o contexto da sugestão reprovada,
-      // para o extrator escolher categoria / product_ref / negative_example.
       const enrichedExplanation = sourceSuggestion
         ? `${text}\n\n---\nContexto da sugestão reprovada:\n- Mensagem do cliente: ${sourceSuggestion.client_message ?? "(não informada)"}\n- Sugestão original que precisa melhorar (use como negative_example): "${sourceSuggestion.suggestion_text}"\n- Produto/categoria: ${sourceSuggestion.product_or_category ?? "(não informada)"}`
         : text;
       const res = await extractFn({
         data: {
           explanation: enrichedExplanation,
-          priorTurns: nextTurns.slice(0, -1),
+          priorTurns,
         },
       });
       if (!res.ok) {
-        setError(labelError(res.error));
+        const safe = getSafeLearningError(res.error);
+        console.error("[TeachMode] extract failed", { code: safe.code, raw: res.error });
+        setSafeError(safe);
+        setErrorPhase("extract");
         setTurns((t) => [
           ...t,
           {
@@ -141,7 +171,6 @@ export function TeachModeDrawer({
         ]);
         return;
       }
-      // Se veio de 👎, garante que o negative_example seja a sugestão reprovada.
       const draftFromLlm =
         sourceSuggestion && !res.draft.negative_example
           ? { ...res.draft, negative_example: sourceSuggestion.suggestion_text }
@@ -155,16 +184,44 @@ export function TeachModeDrawer({
         },
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "extract_failed");
+      const safe = getSafeLearningError(err);
+      console.error("[TeachMode] extract threw", { code: safe.code, err });
+      setSafeError(safe);
+      setErrorPhase("extract");
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleSend() {
+    const text = input.trim();
+    if (text.length < 3 || loading) return;
+    const nextTurns: Turn[] = [...turns, { role: "user", content: text }];
+    setTurns(nextTurns);
+    setInput("");
+    await runExtract(text, nextTurns.slice(0, -1));
+  }
+
   async function handleSave() {
     if (!draft || saving) return;
+    // Validação por campo antes de sair da máquina.
+    const v = validateLearningDraft({
+      title: draft.title,
+      description: draft.description,
+      rule_structured: draft.rule_structured,
+      category: draft.category,
+      priority: draft.priority,
+      allowedCategories: COACH_LEARNING_CATEGORIES,
+    });
+    setValidation(v);
+    if (hasValidationErrors(v)) {
+      setSafeError(getSafeLearningError("input_invalid"));
+      setErrorPhase("save");
+      return;
+    }
     setSaving(true);
-    setError(null);
+    setSafeError(null);
+    setErrorPhase(null);
     try {
       await createFn({
         data: {
@@ -175,12 +232,31 @@ export function TeachModeDrawer({
         },
       });
       setSaved(true);
+      toast.success("Aprendizado salvo com sucesso.", {
+        description: "O Coach utilizará esta regra nas próximas conversas.",
+      });
       setTimeout(() => onClose(), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "save_failed");
+      const safe = getSafeLearningError(err);
+      console.error("[TeachMode] save failed", { code: safe.code, err });
+      setSafeError(safe);
+      setErrorPhase("save");
+      // NÃO limpa `draft` — usuário mantém tudo o que preencheu.
     } finally {
       setSaving(false);
+    }
+  }
 
+  async function handleRetry() {
+    if (!safeError?.retryable) return;
+    if (errorPhase === "save") {
+      await handleSave();
+      return;
+    }
+    if (errorPhase === "extract") {
+      const payload = lastExtractPayloadRef.current;
+      if (!payload) return;
+      await runExtract(payload.text, payload.turns);
     }
   }
 
@@ -190,6 +266,7 @@ export function TeachModeDrawer({
   ) {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
   }
+
 
   return (
     <div
