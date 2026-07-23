@@ -72,11 +72,20 @@ export function TeachModeDrawer({
   const [errorPhase, setErrorPhase] = useState<"extract" | "save" | null>(null);
   const [validation, setValidation] = useState<DraftValidationErrors>({});
   const [saved, setSaved] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
+  const [pendingOverwrite, setPendingOverwrite] = useState<null | {
+    text: string;
+    turns: Turn[];
+    fields: string[];
+  }>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Guarda o último payload enviado ao servidor — usado no botão "Tentar
   // novamente" para preservar EXATAMENTE o que o usuário digitou.
   const lastExtractPayloadRef = useRef<{ text: string; turns: Turn[] } | null>(null);
+  // Rascunho "puro" produzido pela IA — base para detectar edições manuais
+  // antes de sobrescrever com uma nova extração.
+  const pristineDraftRef = useRef<CoachLearningDraft | null>(null);
 
   useEffect(() => {
     if (!open) return;
