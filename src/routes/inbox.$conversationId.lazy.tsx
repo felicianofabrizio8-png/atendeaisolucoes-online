@@ -3515,6 +3515,7 @@ function ConversationPage() {
   // assina `conversations *` via Realtime global. A subscription duplicada
   // `conv-ai-${conversationId}` foi removida (double-render, listener órfão
   // e crescimento de canais ao trocar de conversa).
+  const aiStatePrevDiagRef = useRef<AiStateShape>(null);
   useEffect(() => {
     if (!conversation) return;
     const next: AiStateShape = {
@@ -3524,12 +3525,13 @@ function ConversationPage() {
     logAiStateAttempt(
       renderIdRef.current,
       "effect[conversation]",
-      aiState,
+      aiStatePrevDiagRef.current,
       next,
       "useEffect@line3518",
     );
+    aiStatePrevDiagRef.current = next;
     setAiState(next);
-  }, [conversation, aiState]);
+  }, [conversation]);
 
   // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
   useEffect(() => {
