@@ -11,6 +11,14 @@ import {
   type ConversationOpenEvent,
   type ConversationOpenState,
 } from "@/lib/inbox/conversation-open-machine";
+import {
+  snapshotArray,
+  diffArraySnapshot,
+  logAiStateAttempt,
+  logAtBottom,
+  type ArrayDiagSnapshot,
+  type AiStateShape,
+} from "@/lib/inbox/diag-cascade";
 import { ChatSkeleton } from "@/components/inbox/ChatSkeleton";
 import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from "react";
 import { createPortal } from "react-dom";
@@ -3009,6 +3017,11 @@ function ConversationPage() {
   // muda. Substitui o `useState + useEffect(subscribeRepo)` que rerenderizava
   // com referências instáveis a cada notify().
   useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
+  // DIAG cascade — contador de render + snapshots para diff ref/conteúdo.
+  const renderIdRef = useRef(0);
+  renderIdRef.current += 1;
+  const prevRepoSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
+  const prevVisibleSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
   const repoMessages = conversation ? getMessagesFor(conversationId) : [];
@@ -3044,6 +3057,17 @@ function ConversationPage() {
     () => messages.filter((m) => !(m.deletedAt && m.deletedFor === "me")),
     [messages],
   );
+
+  // DIAG cascade — diff de identidade vs conteúdo por render.
+  {
+    const rid = renderIdRef.current;
+    const nextRepoSnap = snapshotArray(repoMessages);
+    diffArraySnapshot("repoMessages", rid, prevRepoSnapRef.current, nextRepoSnap);
+    prevRepoSnapRef.current = nextRepoSnap;
+    const nextVisibleSnap = snapshotArray(visibleMessages);
+    diffArraySnapshot("visibleMessages", rid, prevVisibleSnapRef.current, nextVisibleSnap);
+    prevVisibleSnapRef.current = nextVisibleSnap;
+  }
 
 
   // Limpa otimistas que já foram absorvidos pelo repo (evita memória crescendo).
@@ -3354,6 +3378,7 @@ function ConversationPage() {
 
   const [atBottom, _setAtBottom] = useState(true);
   const setAtBottom = useCallback((v: boolean) => {
+    logAtBottom(renderIdRef.current, v);
     atBottomRef.current = v;
     _setAtBottom(v);
     traceInboxScroll("OUTRO", "AT_BOTTOM_STATE_CHANGE", { atBottom: v });
@@ -3490,12 +3515,22 @@ function ConversationPage() {
   // assina `conversations *` via Realtime global. A subscription duplicada
   // `conv-ai-${conversationId}` foi removida (double-render, listener órfão
   // e crescimento de canais ao trocar de conversa).
+  const aiStatePrevDiagRef = useRef<AiStateShape>(null);
   useEffect(() => {
     if (!conversation) return;
-    setAiState({
+    const next: AiStateShape = {
       ai_status: conversation.aiStatus ?? null,
       ai_handling: conversation.aiHandling ?? false,
-    });
+    };
+    logAiStateAttempt(
+      renderIdRef.current,
+      "effect[conversation]",
+      aiStatePrevDiagRef.current,
+      next,
+      "useEffect@line3518",
+    );
+    aiStatePrevDiagRef.current = next;
+    setAiState(next);
   }, [conversation]);
 
   // Motivo do último handoff — vive em `ai_flow_events` (não no repo).
@@ -3536,7 +3571,10 @@ function ConversationPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao assumir");
-      setAiState({ ai_status: "assumido_humano", ai_handling: false });
+      const nextAi: AiStateShape = { ai_status: "assumido_humano", ai_handling: false };
+      logAiStateAttempt(renderIdRef.current, "handleTakeover", aiStatePrevDiagRef.current, nextAi, "handleTakeover");
+      aiStatePrevDiagRef.current = nextAi;
+      setAiState(nextAi);
       toast.success("Você assumiu o atendimento. IA pausada para esta conversa.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
