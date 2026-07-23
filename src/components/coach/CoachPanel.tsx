@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,8 +24,6 @@ import {
   type TeachSourceSuggestion,
 } from "@/components/coach/TeachModeDrawer";
 import { submitSuggestionFeedbackFn } from "@/lib/coach-learnings/coach-learnings.functions";
-
-
 
 interface CoachAlert {
   id: string;
@@ -57,6 +55,18 @@ interface CoachSuggestion {
   feedback_status?: "positive" | "negative" | null;
 }
 
+/**
+ * Mensagem mínima que o CoachPanel precisa para decidir auto-geração.
+ * O painel não depende do tipo `Message` completo do repo — apenas dos
+ * campos abaixo, mantendo o acoplamento com o inbox mínimo.
+ */
+export interface CoachPanelMessage {
+  id: string;
+  role: "lead" | "agent" | "system";
+  text: string;
+  at: string;
+  sourceSubtype?: string;
+}
 
 const ALERT_LABEL: Record<string, string> = {
   no_response: "Cliente sem resposta",
@@ -77,23 +87,67 @@ const SEVERITY_STYLE: Record<string, string> = {
   critical: "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30",
 };
 
+// Janela de agrupamento — se várias mensagens do cliente chegarem em sequência,
+// consolidamos em uma única sugestão.
+const DEBOUNCE_MS = 1500;
+// Tempo máximo esperando mídia (transcrição/OCR) antes de gerar mesmo assim
+// com o contexto disponível — a IA registra internamente a limitação.
+const MEDIA_WAIT_MS = 15_000;
+
+const MEDIA_SUBTYPES = new Set([
+  "image",
+  "audio",
+  "voice",
+  "video",
+  "document",
+  "sticker",
+]);
+
+function isMediaSubtype(sub?: string): boolean {
+  if (!sub) return false;
+  return MEDIA_SUBTYPES.has(sub.toLowerCase());
+}
+
+/** Uma mensagem de mídia é considerada "pronta" quando já tem texto
+ *  (legenda, transcrição, OCR ou fallback) OU quando estourou a janela
+ *  máxima de espera. Textos puros são sempre prontos. */
+function isMessageReady(msg: CoachPanelMessage, nowMs: number): boolean {
+  if (msg.text && msg.text.trim().length > 0) return true;
+  if (!isMediaSubtype(msg.sourceSubtype)) return true;
+  const ageMs = nowMs - new Date(msg.at).getTime();
+  return ageMs >= MEDIA_WAIT_MS;
+}
+
+type AutoState =
+  | "idle"
+  | "waiting_media"
+  | "debouncing"
+  | "generating"
+  | "ready"
+  | "error";
+
 export function CoachPanel({
   conversationId,
   onInsertSuggestion,
+  messages,
+  composerHasDraft = false,
 }: {
   conversationId: string;
   onInsertSuggestion?: (text: string) => void;
+  /** Mensagens visíveis da conversa (ordem cronológica). Necessário para
+   *  auto-geração da sugestão quando uma nova mensagem inbound é confirmada. */
+  messages?: CoachPanelMessage[];
+  /** Se `true`, o compositor tem texto digitado pelo atendente. Usado só para
+   *  telemetria de UX — o painel nunca sobrescreve o compositor sozinho. */
+  composerHasDraft?: boolean;
 }) {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
-  // Fase 3.2 — reutiliza o guard já existente. Não altera permissões,
-  // apenas condiciona a exibição do atalho para o Admin Console.
   const { isAdmin } = useIsAdmin();
 
   const [alerts, setAlerts] = useState<CoachAlert[]>([]);
   const [suggestion, setSuggestion] = useState<CoachSuggestion | null>(null);
   const [loadingScan, setLoadingScan] = useState(false);
-  const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [teachOpen, setTeachOpen] = useState(false);
@@ -102,7 +156,28 @@ export function CoachPanel({
   const [feedbackBusy, setFeedbackBusy] = useState<"positive" | "negative" | null>(null);
   const submitFeedback = useServerFn(submitSuggestionFeedbackFn);
 
+  // Máquina de auto-geração —————————————————————————————————————
+  const [autoState, setAutoState] = useState<AutoState>("idle");
+  // Último messageId inbound que já disparou (ou está disparando) uma sugestão.
+  // Idempotência: mesmo id nunca gera duas vezes.
+  const processedIdRef = useRef<string | null>(null);
+  // Conversa "ativa" para invalidar respostas antigas quando o usuário troca.
+  const activeConversationRef = useRef(conversationId);
+  // Sequência da requisição em andamento — resultados de seq antigo são descartados.
+  const requestSeqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guarda o momento em que a sugestão foi carregada inicialmente, evitando
+  // auto-gerar ao abrir uma conversa antiga cujo último inbound já foi processado.
+  const initialLoadDoneRef = useRef(false);
+  // Sinaliza que o atendente está "avaliando" (feedback em andamento ou drawer aberto)
+  // — nesse caso a próxima sugestão fica pendente para não substituir sem aviso.
+  const evaluatingRef = useRef(false);
+  const [pendingRefresh, setPendingRefresh] = useState<string | null>(null);
+  evaluatingRef.current = teachOpen || feedbackBusy !== null;
 
+  // ————————————— carrega alertas + última sugestão salva —————————————
   const loadData = useMemo(
     () => async () => {
       if (!companyId) return;
@@ -121,15 +196,157 @@ export function CoachPanel({
           .order("created_at", { ascending: false })
           .limit(1),
       ]);
+      // Descarta se o usuário já trocou de conversa durante o await.
+      if (activeConversationRef.current !== conversationId) return;
       setAlerts((a ?? []) as CoachAlert[]);
-      setSuggestion(((s ?? [])[0] as CoachSuggestion) ?? null);
+      const last = ((s ?? [])[0] as CoachSuggestion) ?? null;
+      setSuggestion(last);
+      if (last?.message_id) processedIdRef.current = last.message_id;
+      initialLoadDoneRef.current = true;
     },
     [conversationId, companyId],
   );
 
+  // Reset completo ao trocar de conversa — cancela requisições, timers e estados.
   useEffect(() => {
+    activeConversationRef.current = conversationId;
+    initialLoadDoneRef.current = false;
+    processedIdRef.current = null;
+    setSuggestion(null);
+    setAlerts([]);
+    setError(null);
+    setAutoState("idle");
+    setPendingRefresh(null);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (mediaWaitTimerRef.current) clearTimeout(mediaWaitTimerRef.current);
+    abortRef.current?.abort();
+    abortRef.current = null;
     void loadData();
-  }, [loadData]);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (mediaWaitTimerRef.current) clearTimeout(mediaWaitTimerRef.current);
+      abortRef.current?.abort();
+    };
+  }, [conversationId, loadData]);
+
+  // ————————————— geração da sugestão (auto ou manual) —————————————
+  const runSuggest = useCallback(
+    async (opts?: { auto?: boolean; targetMessageId?: string | null }) => {
+      const auto = opts?.auto === true;
+      // Cancela requisição anterior — resultado antigo vira obsoleto.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const seq = ++requestSeqRef.current;
+      const capturedConversation = conversationId;
+      // Marca imediatamente o id como "em processamento" (idempotência dura).
+      if (opts?.targetMessageId) processedIdRef.current = opts.targetMessageId;
+      setAutoState("generating");
+      setError(null);
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) throw new Error("Sessão expirada");
+        const res = await fetch("/api/coach/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ conversation_id: capturedConversation }),
+          signal: controller.signal,
+        });
+        const json = await res.json();
+        // Descarta se: usuário trocou de conversa OU chegou nova mensagem
+        // (seq mais novo) OU controller foi abortado.
+        if (
+          controller.signal.aborted ||
+          activeConversationRef.current !== capturedConversation ||
+          requestSeqRef.current !== seq
+        ) {
+          return;
+        }
+        if (!res.ok) throw new Error(json.error ?? "Falha ao gerar sugestão");
+        const nextSuggestion = json.suggestion as CoachSuggestion;
+        // Se o atendente está avaliando/ensinando, não substitui em silêncio:
+        // mostra um "toast" leve pedindo confirmação.
+        if (!auto || !evaluatingRef.current) {
+          setSuggestion(nextSuggestion);
+          setPendingRefresh(null);
+        } else {
+          setPendingRefresh(nextSuggestion.id);
+          // Guarda a nova sugestão em ref via state secundário — reaproveitamos
+          // `suggestion` mas empurramos após o usuário aceitar. Aqui simplificamos
+          // fazendo overwrite quando o drawer/feedback fecha (efeito abaixo).
+          setSuggestion((prev) => prev ?? nextSuggestion);
+          pendingSuggestionRef.current = nextSuggestion;
+        }
+        setAutoState("ready");
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        if (activeConversationRef.current !== capturedConversation) return;
+        if (requestSeqRef.current !== seq) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setAutoState("error");
+      }
+    },
+    [conversationId],
+  );
+
+  const pendingSuggestionRef = useRef<CoachSuggestion | null>(null);
+
+  // Quando o atendente termina de avaliar/ensinar, aplica a sugestão pendente.
+  useEffect(() => {
+    if (evaluatingRef.current) return;
+    const pending = pendingSuggestionRef.current;
+    if (pending && pendingRefresh) {
+      setSuggestion(pending);
+      pendingSuggestionRef.current = null;
+      setPendingRefresh(null);
+    }
+  }, [teachOpen, feedbackBusy, pendingRefresh]);
+
+  // ————————————— gatilho automático por nova mensagem inbound —————————————
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    if (!initialLoadDoneRef.current) return;
+    // Última mensagem do cliente (role === "lead"). Ignora system/agent.
+    let lastInbound: CoachPanelMessage | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "lead") {
+        lastInbound = m;
+        break;
+      }
+    }
+    if (!lastInbound) return;
+    if (lastInbound.id === processedIdRef.current) return;
+
+    const now = Date.now();
+    const ready = isMessageReady(lastInbound, now);
+
+    // Limpa timers pendentes — sempre reprograma com o estado atual.
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (mediaWaitTimerRef.current) clearTimeout(mediaWaitTimerRef.current);
+
+    if (!ready) {
+      setAutoState("waiting_media");
+      const ageMs = now - new Date(lastInbound.at).getTime();
+      const remaining = Math.max(500, MEDIA_WAIT_MS - ageMs);
+      mediaWaitTimerRef.current = setTimeout(() => {
+        // Reavalia — o effect vai reentrar pois messages continua o mesmo,
+        // então forçamos via bump: agenda debouncing direto.
+        setAutoState("debouncing");
+        debounceTimerRef.current = setTimeout(() => {
+          void runSuggest({ auto: true, targetMessageId: lastInbound.id });
+        }, DEBOUNCE_MS);
+      }, remaining);
+      return;
+    }
+
+    setAutoState("debouncing");
+    const targetId = lastInbound.id;
+    debounceTimerRef.current = setTimeout(() => {
+      void runSuggest({ auto: true, targetMessageId: targetId });
+    }, DEBOUNCE_MS);
+  }, [messages, runSuggest]);
 
   async function runAnalyze() {
     setLoadingScan(true);
@@ -150,28 +367,6 @@ export function CoachPanel({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoadingScan(false);
-    }
-  }
-
-  async function runSuggest() {
-    setLoadingSuggest(true);
-    setError(null);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
-      if (!token) throw new Error("Sessão expirada");
-      const res = await fetch("/api/coach/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ conversation_id: conversationId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Falha ao gerar sugestão");
-      setSuggestion(json.suggestion as CoachSuggestion);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoadingSuggest(false);
     }
   }
 
@@ -260,6 +455,9 @@ export function CoachPanel({
     }
   }
 
+  const isGenerating = autoState === "generating";
+  const isAnalyzingMedia = autoState === "waiting_media" || autoState === "debouncing";
+  const showAnalyzingState = isGenerating || isAnalyzingMedia;
 
   return (
     <div className="border-b border-border p-4 space-y-3">
@@ -320,15 +518,28 @@ export function CoachPanel({
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300">
-          {error}
+      {composerHasDraft && showAnalyzingState && (
+        <div className="text-[10px] text-muted-foreground italic">
+          Seu texto no compositor está preservado.
         </div>
       )}
 
-      {alerts.length === 0 && !suggestion && !loadingScan && (
+      {error && (
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300">
+          {error}
+          <button
+            type="button"
+            onClick={() => void runSuggest({ auto: false })}
+            className="ml-2 underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {alerts.length === 0 && !suggestion && !loadingScan && !showAnalyzingState && (
         <div className="text-xs text-muted-foreground">
-          Clique em "Analisar" para verificar a situação e gerar sugestão.
+          Aguardando nova mensagem do cliente para gerar sugestão automaticamente.
         </div>
       )}
 
@@ -374,11 +585,12 @@ export function CoachPanel({
 
       <button
         type="button"
-        onClick={runSuggest}
-        disabled={loadingSuggest}
+        onClick={() => void runSuggest({ auto: false })}
+        disabled={isGenerating || isAnalyzingMedia}
+        data-testid="coach-generate-alternative"
         className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-primary text-primary-foreground px-2 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
       >
-        {loadingSuggest ? (
+        {isGenerating ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (
           <Sparkles className="h-3.5 w-3.5" />
@@ -386,7 +598,39 @@ export function CoachPanel({
         {suggestion ? "Gerar nova sugestão" : "Gerar sugestão de resposta"}
       </button>
 
-      {suggestion && (
+      {showAnalyzingState && (
+        <div
+          data-testid="coach-analyzing-state"
+          className="rounded-md border border-border bg-card/60 p-3 flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <span>
+            {autoState === "waiting_media"
+              ? "Aguardando processamento da mídia…"
+              : "Analisando a nova mensagem…"}
+          </span>
+        </div>
+      )}
+
+      {pendingRefresh && !showAnalyzingState && (
+        <div className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5 text-[11px] text-primary flex items-center justify-between gap-2">
+          <span>Nova sugestão pronta enquanto você avaliava.</span>
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              const p = pendingSuggestionRef.current;
+              if (p) setSuggestion(p);
+              pendingSuggestionRef.current = null;
+              setPendingRefresh(null);
+            }}
+          >
+            Atualizar
+          </button>
+        </div>
+      )}
+
+      {suggestion && !showAnalyzingState && (
         <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
           {suggestion.situation && (
             <div className="text-[11px]">
@@ -517,8 +761,6 @@ export function CoachPanel({
         conversationId={conversationId}
         sourceSuggestion={teachSource}
       />
-
     </div>
   );
 }
-
