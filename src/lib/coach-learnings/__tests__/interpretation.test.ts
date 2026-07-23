@@ -102,8 +102,8 @@ describe("sanitizeTitle", () => {
     );
   });
 
-  it('remove prefixo "Lidar com"', () => {
-    const out = sanitizeTitle('Lidar com "já tenho outros orçamentos"');
+  it('remove prefixo "Lidar com" e não deixa a frase do cliente vazar', () => {
+    const out = sanitizeTitle('Lidar com "já tenho outros orçamentos"', "já tenho outros orçamentos");
     expect(out.toLowerCase()).not.toMatch(/^lidar com/);
     expect(out.toLowerCase()).not.toContain("já tenho outros orçamentos");
   });
