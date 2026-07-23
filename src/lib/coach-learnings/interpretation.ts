@@ -46,24 +46,25 @@ const TITLE_MAX = 120;
  */
 export function sanitizeTitle(raw: string, clientMessage?: string | null): string {
   let t = (raw ?? "").trim();
-  // Remove aspas envolventes.
-  t = t.replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "").trim();
-  // Remove prefixos frequentes.
+  // Remove prefixos frequentes ANTES de tirar aspas para pegar 'Lidar com "…"'.
   t = t.replace(
     /^(lidar com|responder a?o?|como (responder|lidar)( com)?|quando o cliente (diz(er)?|fala|informa))\s*[:\-–]?\s*/i,
     "",
   );
-  // Se o título ainda é essencialmente a mensagem do cliente entre aspas, cai
-  // para um placeholder — a IA nunca deve ecoar a fala do cliente.
+  // Remove aspas envolventes (repete até estabilizar).
+  let prev = "";
+  while (prev !== t) {
+    prev = t;
+    t = t.replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "").trim();
+  }
   if (clientMessage) {
     const cm = clientMessage.trim().toLowerCase().replace(/[.!?…]+$/g, "");
     const tl = t.trim().toLowerCase().replace(/[.!?…]+$/g, "");
-    if (cm && (tl === cm || tl.includes(`"${cm}"`) || tl.includes(`“${cm}”`))) {
+    if (cm && (tl === cm || tl.includes(cm))) {
       t = "";
     }
   }
   if (!t) return "Aprendizado do Coach";
-  // Capitaliza primeira letra.
   t = t.charAt(0).toUpperCase() + t.slice(1);
   if (t.length > TITLE_MAX) t = t.slice(0, TITLE_MAX - 1).trimEnd() + "…";
   return t;
