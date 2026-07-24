@@ -179,10 +179,11 @@ const FRIENDLY: Record<CoachLearningErrorCode, FriendlyEntry> = {
     retryable: true,
   },
   internal: {
-    message: "Não foi possível salvar o aprendizado. O erro foi registrado para análise.",
+    message: "Ocorreu um erro inesperado ao salvar o aprendizado. O erro foi registrado para análise.",
     hint: "Tente novamente. Se persistir, contate o suporte.",
     retryable: true,
   },
+
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
