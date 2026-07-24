@@ -17,6 +17,7 @@ export const COACH_LEARNING_ERROR_CODES = [
   "duplicate",
   "not_found",
   "input_invalid",
+  "invalid_source_conversation",
   "extract_failed",
   "save_failed",
   "server_error",
