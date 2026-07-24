@@ -471,11 +471,19 @@ export function TeachModeDrawer({
           sourceSuggestionId: sourceSuggestion?.suggestion_id ?? null,
         },
       });
+      if (!res.ok) {
+        const safe = getSafeLearningError(res);
+        console.error("[TeachMode] save returned error", { code: safe.code, field: safe.field });
+        setSafeError(safe);
+        setErrorPhase("save");
+        return;
+      }
       setSavedLearningId(res.id);
       toast.success("Aprendizado salvo com sucesso.", {
         description: "O Coach utilizará esta regra nas próximas conversas.",
       });
       // NÃO fecha automaticamente — usuário confirma via botão.
+
     } catch (err) {
       const safe = getSafeLearningError(err);
       console.error("[TeachMode] save failed", { code: safe.code, err });
