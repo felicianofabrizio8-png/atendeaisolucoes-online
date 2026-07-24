@@ -53,10 +53,11 @@ describe("getSafeLearningError — códigos da RPC create_coach_learning", () =>
     expect(safe.code).toBe("check_violation");
   });
 
-  it("mapeia 23505 como unique_violation", () => {
+  it("mapeia 23505 como duplicate (compat legado)", () => {
     const safe = getSafeLearningError({ message: "dup", code: "23505" });
-    expect(safe.code).toBe("unique_violation");
+    expect(safe.code).toBe("duplicate");
   });
+
 
   it("prefere code do PostgrestError sobre message", () => {
     const safe = getSafeLearningError({ code: "coach_learning_invalid_title", message: "algo genérico" });
