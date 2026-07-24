@@ -47,6 +47,18 @@ describe("getSafeLearningError", () => {
     expect(err.retryable).toBe(true);
   });
 
+  it("mapeia violação de FK 23503 como invalid_source_conversation", () => {
+    const err = getSafeLearningError(new Error('insert or update on table "coach_learnings" violates foreign key constraint "coach_learnings_source_conversation_id_fkey" (23503)'));
+    expect(err.code).toBe("invalid_source_conversation");
+    expect(err.retryable).toBe(true);
+    expect(err.message).not.toMatch(/coach_learnings_source_conversation_id_fkey/);
+  });
+
+  it("mapeia RAISE invalid_source_conversation da RPC", () => {
+    const err = getSafeLearningError(new Error("invalid_source_conversation"));
+    expect(err.code).toBe("invalid_source_conversation");
+  });
+
   it("cai em internal para erros desconhecidos", () => {
     const err = getSafeLearningError(new Error("something exploded"));
     expect(err.code).toBe("internal");
