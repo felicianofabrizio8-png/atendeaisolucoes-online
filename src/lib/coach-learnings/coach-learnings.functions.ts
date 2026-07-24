@@ -110,36 +110,90 @@ const createInput = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const FIELD_FOR_CODE: Record<string, "title" | "rule_structured" | "origin" | null> = {
+  coach_learning_invalid_title: "title",
+  coach_learning_invalid_rule: "rule_structured",
+  coach_learning_invalid_origin: "origin",
+  learning_duplicate_conflict: "title",
+  unique_violation: "title",
+};
+
 export const createCoachLearningFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => createInput.parse(data))
   .handler(async ({ data, context }) => {
-    const id = await createCoachLearning(
-      context.supabase,
-      data.draft,
-      data.sourceConversationId ?? null,
-      {
-        origin: "teach_mode",
-        promptVersion: data.promptVersion ?? null,
-        metadata: data.metadata ?? {},
-      },
-    );
-    if (data.sourceSuggestionId) {
-      try {
-        await context.supabase.rpc(
-          "submit_coach_suggestion_feedback" as never,
-          {
-            _suggestion_id: data.sourceSuggestionId,
-            _feedback: "negative",
-            _learning_id: id,
-          } as never,
-        );
-      } catch {
-        // Não bloqueia a criação do aprendizado se a sugestão sumir.
+    const t0 = Date.now();
+    let stage: "rpc:create_coach_learning" | "rpc:submit_suggestion_feedback" = "rpc:create_coach_learning";
+    try {
+      const id = await createCoachLearning(
+        context.supabase,
+        data.draft,
+        data.sourceConversationId ?? null,
+        {
+          origin: "teach_mode",
+          promptVersion: data.promptVersion ?? null,
+          metadata: data.metadata ?? {},
+        },
+      );
+      if (data.sourceSuggestionId) {
+        stage = "rpc:submit_suggestion_feedback";
+        try {
+          await context.supabase.rpc(
+            "submit_coach_suggestion_feedback" as never,
+            {
+              _suggestion_id: data.sourceSuggestionId,
+              _feedback: "negative",
+              _learning_id: id,
+            } as never,
+          );
+        } catch {
+          // Não bloqueia a criação do aprendizado se a sugestão sumir.
+        }
       }
+      return { ok: true as const, id, learning: { id } };
+    } catch (err) {
+      const norm = normalizeFailure(err);
+      const logPayload = {
+        stage,
+        pgCode: norm.pgCode ?? null,
+        code: norm.code,
+        message: sanitizeText(norm.message),
+        details: sanitizeText(norm.details ?? null),
+        hint: sanitizeText(norm.hint ?? null),
+        userId: maskId(context.userId),
+        sourceConversationId: maskId(data.sourceConversationId ?? null),
+        sourceSuggestionId: maskId(data.sourceSuggestionId ?? null),
+        category: data.draft.category,
+        priority: data.draft.priority,
+        timestamp: new Date().toISOString(),
+      };
+      // Log server-side sem qualquer conteúdo do rascunho.
+      console.error("[createCoachLearningFn] failure", logPayload);
+      // Auditoria best-effort — não afeta o retorno.
+      try {
+        const audit = new HttpAudit(context.supabase);
+        await audit.record({
+          userId: context.userId,
+          method: "POST",
+          path: "rpc:create_coach_learning",
+          status: norm.code === "permission_denied" ? 403 : 500,
+          durationMs: Date.now() - t0,
+          outcome: "error",
+          error: `${norm.pgCode ?? "-"}:${norm.code}`,
+        });
+      } catch {
+        // audit nunca deve falhar o caller
+      }
+      const field = FIELD_FOR_CODE[norm.code] ?? null;
+      return {
+        ok: false as const,
+        code: norm.code,
+        field,
+        retryable: norm.retryable,
+      };
     }
-    return { id };
   });
+
 
 
 const updateInput = z.object({
