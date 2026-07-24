@@ -43,7 +43,7 @@ describe("HttpAudit.record", () => {
       status: 500,
       duration_ms: 12,
     });
-    const raw = (captured as { error: string }).error;
+    const raw = (captured as unknown as { error: string }).error;
     expect(raw).not.toContain("user@x.com");
     expect(raw).not.toContain("5511");
     expect(raw).not.toContain("eyJabc");
