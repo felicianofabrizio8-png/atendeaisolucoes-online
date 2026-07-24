@@ -17,6 +17,7 @@ export const COACH_LEARNING_ERROR_CODES = [
   "duplicate",
   "not_found",
   "input_invalid",
+  "invalid_source_conversation",
   "extract_failed",
   "save_failed",
   "server_error",
@@ -65,6 +66,11 @@ const FRIENDLY: Record<CoachLearningErrorCode, { message: string; hint?: string;
     hint: "Revise os campos destacados antes de salvar.",
     retryable: false,
   },
+  invalid_source_conversation: {
+    message: "Não foi possível vincular este aprendizado à conversa de origem.",
+    hint: "O aprendizado será salvo sem vínculo. Tente novamente.",
+    retryable: true,
+  },
   extract_failed: {
     message: "A IA não conseguiu estruturar o aprendizado.",
     hint: "Explique com mais detalhes: quando aplicar, o que fazer e o que evitar.",
@@ -109,6 +115,7 @@ export function getSafeLearningError(err: unknown): SafeLearningError {
     if (raw.includes("no_company")) return "no_company";
     if (raw.includes("not_found") || raw.includes("pgrst116")) return "not_found";
     if (raw.includes("failed to fetch") || raw.includes("network") || raw.includes("networkerror") || raw.includes("load failed")) return "network";
+    if (raw.includes("23503") || raw.includes("foreign key") || raw.includes("foreign_key_violation") || raw.includes("invalid_source_conversation") || raw.includes("coach_learnings_source_conversation_id_fkey")) return "invalid_source_conversation";
     if (raw.includes("teach_mode_schema_invalid") || raw.includes("input_invalid") || raw.includes("zoderror") || raw.includes("invalid_type")) return "input_invalid";
     if (raw.includes("extract_failed")) return "extract_failed";
     if (raw.includes("save_failed") || raw.includes("coach_learnings_")) return "save_failed";
