@@ -287,14 +287,19 @@ export function getSafeLearningError(err: unknown): SafeLearningError {
     return { code: exact, ...base };
   }
 
+  // Se o `code` do PostgrestError é um SQLSTATE numérico (23505, 42501, ...),
+  // ele não está no catálogo — trate-o via substring, concatenando ao raw.
   const rawOriginal = rawMessage(err);
-  const raw = rawOriginal.toLowerCase();
+  const withPgCode = codeField ? `${codeField} ${rawOriginal}` : rawOriginal;
+  const raw = withPgCode.toLowerCase();
 
   const exactByMessage = matchExactCode(rawOriginal);
   if (exactByMessage) {
     const base = FRIENDLY[exactByMessage];
     return { code: exactByMessage, ...base };
   }
+
+
 
   const bySub = matchBySubstring(raw);
   const code: CoachLearningErrorCode = bySub ?? "internal";
