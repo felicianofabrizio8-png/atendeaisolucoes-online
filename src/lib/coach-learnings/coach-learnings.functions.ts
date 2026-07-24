@@ -75,6 +75,31 @@ function normalizeFailure(err: unknown): NormalizedRepoFailure {
   return { code: "internal", message: msg, retryable: true };
 }
 
+// Allowlist declarativa — path/outcome NUNCA vêm do payload do cliente.
+type AuditPath = "rpc:create_coach_learning";
+type AuditOutcome = "error" | "ok" | "instrumentation_test";
+const AUDIT_PATHS: readonly AuditPath[] = ["rpc:create_coach_learning"] as const;
+const AUDIT_OUTCOMES: readonly AuditOutcome[] = ["error", "ok", "instrumentation_test"] as const;
+// Referências mantidas para inspeção em testes — evita warnings de "unused".
+void AUDIT_PATHS;
+void AUDIT_OUTCOMES;
+
+async function getCompanyIdSafe(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from("profiles")
+      .select("company_id")
+      .eq("id", userId)
+      .maybeSingle();
+    return (data?.company_id as string | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 
 const listInput = z.object({ includeArchived: z.boolean().optional() });
 
