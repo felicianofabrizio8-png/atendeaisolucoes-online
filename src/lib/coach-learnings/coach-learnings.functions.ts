@@ -169,20 +169,42 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
       };
       // Log server-side sem qualquer conteúdo do rascunho.
       console.error("[createCoachLearningFn] failure", logPayload);
-      // Auditoria best-effort — não afeta o retorno.
+      // Auditoria best-effort — usa cliente administrativo (bypass RLS).
+      // Tenant/user vêm SEMPRE do contexto autenticado, nunca do payload do cliente.
+      // Path e outcome pertencem à allowlist declarada em AUDIT_ALLOWLIST.
       try {
-        const audit = new HttpAudit(context.supabase);
-        await audit.record({
+        const companyId = await getCompanyIdSafe(context.supabase, context.userId);
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const audit = new HttpAudit(supabaseAdmin);
+        const auditPath: AuditPath = "rpc:create_coach_learning";
+        const auditOutcome: AuditOutcome = "error";
+        const auditResult = await audit.record({
+          companyId,
           userId: context.userId,
           method: "POST",
-          path: "rpc:create_coach_learning",
+          path: auditPath,
           status: norm.code === "permission_denied" ? 403 : 500,
           durationMs: Date.now() - t0,
-          outcome: "error",
+          outcome: auditOutcome,
           error: `${norm.pgCode ?? "-"}:${norm.code}`,
         });
-      } catch {
-        // audit nunca deve falhar o caller
+        if (!auditResult.ok) {
+          // Fallback observável — o console estruturado é a fonte final de diagnóstico.
+          console.error("[createCoachLearningFn] audit_write_failed", {
+            path: auditPath,
+            outcome: auditOutcome,
+            audit_code: auditResult.code,
+            audit_pgCode: auditResult.pgCode ?? null,
+            original_code: norm.code,
+            original_pgCode: norm.pgCode ?? null,
+          });
+        }
+      } catch (auditErr) {
+        // Auditoria nunca substitui o erro principal.
+        console.error("[createCoachLearningFn] audit_exception", {
+          message: auditErr instanceof Error ? auditErr.message.slice(0, 200) : "unknown",
+          original_code: norm.code,
+        });
       }
       const field = FIELD_FOR_CODE[norm.code] ?? null;
       return {
