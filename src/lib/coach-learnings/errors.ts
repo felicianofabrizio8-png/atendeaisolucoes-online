@@ -225,7 +225,7 @@ function matchBySubstring(raw: string): CoachLearningErrorCode | null {
     return "invalid_source_conversation";
   }
   // SQLSTATE.
-  if (raw.includes("23505") || raw.includes("duplicate key")) return "unique_violation";
+  if (raw.includes("23505") || raw.includes("duplicate key")) return "duplicate";
   if (raw.includes("23503") || raw.includes("foreign key")) return "foreign_key_violation";
   if (raw.includes("23514") || raw.includes("check constraint")) return "check_violation";
   if (
@@ -234,8 +234,9 @@ function matchBySubstring(raw: string): CoachLearningErrorCode | null {
     raw.includes("permission denied") ||
     raw.includes("row-level security")
   ) {
-    return "permission_denied";
+    return "unauthorized";
   }
+
   if (raw.includes("not_found") || raw.includes("pgrst116")) return "not_found";
   if (
     raw.includes("failed to fetch") ||
