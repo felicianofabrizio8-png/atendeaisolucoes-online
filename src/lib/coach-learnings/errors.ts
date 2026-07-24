@@ -115,6 +115,7 @@ export function getSafeLearningError(err: unknown): SafeLearningError {
     if (raw.includes("no_company")) return "no_company";
     if (raw.includes("not_found") || raw.includes("pgrst116")) return "not_found";
     if (raw.includes("failed to fetch") || raw.includes("network") || raw.includes("networkerror") || raw.includes("load failed")) return "network";
+    if (raw.includes("23503") || raw.includes("foreign key") || raw.includes("foreign_key_violation") || raw.includes("invalid_source_conversation") || raw.includes("coach_learnings_source_conversation_id_fkey")) return "invalid_source_conversation";
     if (raw.includes("teach_mode_schema_invalid") || raw.includes("input_invalid") || raw.includes("zoderror") || raw.includes("invalid_type")) return "input_invalid";
     if (raw.includes("extract_failed")) return "extract_failed";
     if (raw.includes("save_failed") || raw.includes("coach_learnings_")) return "save_failed";
