@@ -456,11 +456,18 @@ export function TeachModeDrawer({
     setErrorPhase(null);
     try {
       const payload = buildFinalPayload({ draft, positives, negatives });
+      // HOTFIX FK 23503 — `coach_learnings.source_conversation_id` referencia
+      // `public.coach_conversations(id)`, mas tanto o prop `conversationId`
+      // quanto `sourceSuggestion.conversation_id` (setado em CoachPanel.tsx
+      // linha 449) carregam o id de `public.conversations` (Inbox). Enviar
+      // qualquer um deles como FK viola a constraint. Até termos um mapeamento
+      // confiável para `coach_conversations`, salvamos SEMPRE sem vínculo —
+      // é preferível a gravar uma referência incorreta. O vínculo semântico
+      // com a sugestão é preservado via `sourceSuggestionId`.
       const res = await createFn({
         data: {
           draft: payload,
-          sourceConversationId:
-            conversationId ?? sourceSuggestion?.conversation_id ?? null,
+          sourceConversationId: null,
           sourceSuggestionId: sourceSuggestion?.suggestion_id ?? null,
         },
       });
