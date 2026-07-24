@@ -1,6 +1,6 @@
 // Testes de HttpAudit — validam retorno explícito e sanitização.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { HttpAudit } from "../HttpAudit.server";
+import { HttpAudit } from "@/lib/audit/HttpAudit.server";
 
 function makeWriter(insertImpl: (payload: unknown) => unknown) {
   return {
@@ -109,7 +109,7 @@ describe("HttpAudit.record", () => {
 });
 
 // Pequeno helper para reduzir boilerplate nos testes.
-declare module "../HttpAudit.server" {
+declare module "@/lib/audit/HttpAudit.server" {
   interface HttpAudit {
     recordCall(
       writer: never,
