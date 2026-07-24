@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   archiveCoachLearningRpc,
+  CoachLearningRepoError,
   createCoachLearning,
   findSimilarCoachLearning,
   getCoachLearning,
@@ -21,6 +22,59 @@ import {
   COACH_LEARNING_VERSION_ORIGINS,
 } from "./schema";
 import { extractTeachModeDraft } from "./teach-mode.service";
+import { HttpAudit } from "@/lib/audit/HttpAudit.server";
+
+// ---------------------------------------------------------------------------
+// Helpers server-only para instrumentação sanitizada.
+// Nunca gravam conteúdo do rascunho (regra, descrição, exemplos, mensagens).
+// ---------------------------------------------------------------------------
+function maskId(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return `${id.slice(0, 8)}…`;
+}
+
+function sanitizeText(s: string | undefined | null, max = 240): string | null {
+  if (!s) return null;
+  return s
+    .replace(/eyJ[a-zA-Z0-9._-]+/g, "[jwt]")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\+?\d{2,3}[\s-]?\(?\d{2,3}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/g, "[phone]")
+    .slice(0, max);
+}
+
+interface NormalizedRepoFailure {
+  code: string;
+  pgCode?: string;
+  message: string;
+  details?: string;
+  hint?: string;
+  retryable: boolean;
+}
+
+const RETRYABLE_CODES = new Set([
+  "network",
+  "timeout",
+  "internal",
+  "server_error",
+  "invalid_source_conversation",
+  "foreign_key_violation",
+]);
+
+function normalizeFailure(err: unknown): NormalizedRepoFailure {
+  if (err instanceof CoachLearningRepoError) {
+    return {
+      code: err.code,
+      pgCode: err.pgCode,
+      message: err.message,
+      details: err.details,
+      hint: err.hint,
+      retryable: RETRYABLE_CODES.has(err.code),
+    };
+  }
+  const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "internal";
+  return { code: "internal", message: msg, retryable: true };
+}
+
 
 const listInput = z.object({ includeArchived: z.boolean().optional() });
 
