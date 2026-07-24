@@ -85,6 +85,65 @@ export interface CreateCoachLearningExtras {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Erro estruturado do repositório — preserva `code`, `pgCode`, `details` e
+ * `hint` originais do PostgrestError para o serverFn logar/mapear.
+ * Nunca inclui payload do rascunho.
+ */
+export class CoachLearningRepoError extends Error {
+  readonly code: string;
+  readonly pgCode?: string;
+  readonly details?: string;
+  readonly hint?: string;
+  constructor(init: { code: string; message: string; pgCode?: string; details?: string; hint?: string }) {
+    super(init.message);
+    this.name = "CoachLearningRepoError";
+    this.code = init.code;
+    this.pgCode = init.pgCode;
+    this.details = init.details;
+    this.hint = init.hint;
+  }
+}
+
+const KNOWN_DOMAIN_CODES = new Set([
+  "coach_learning_no_company",
+  "coach_learning_invalid_title",
+  "coach_learning_invalid_rule",
+  "coach_learning_invalid_origin",
+  "learning_duplicate_conflict",
+  "invalid_source_conversation",
+  "no_company",
+]);
+
+function toRepoError(err: unknown): CoachLearningRepoError {
+  const raw = (err ?? {}) as {
+    message?: unknown;
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  const message = typeof raw.message === "string" ? raw.message : "internal";
+  const pgCode = typeof raw.code === "string" ? raw.code : undefined;
+  const details = typeof raw.details === "string" ? raw.details : undefined;
+  const hint = typeof raw.hint === "string" ? raw.hint : undefined;
+
+  // 1) RAISE EXCEPTION 'foo' chega com message == 'foo'.
+  const trimmed = message.trim();
+  let code: string = "internal";
+  if (KNOWN_DOMAIN_CODES.has(trimmed)) {
+    code = trimmed;
+  } else if (pgCode === "23505") code = "unique_violation";
+  else if (pgCode === "23503") {
+    code = message.includes("source_conversation") ? "invalid_source_conversation" : "foreign_key_violation";
+  } else if (pgCode === "23514") code = "check_violation";
+  else if (pgCode === "42501" || pgCode === "PGRST301") code = "permission_denied";
+  else if (pgCode === "PGRST116") code = "not_found";
+  else if (message.toLowerCase().includes("failed to fetch")) code = "network";
+  else code = "internal";
+
+  return new CoachLearningRepoError({ code, message: trimmed || "internal", pgCode, details, hint });
+}
+
 export async function createCoachLearning(
   sb: SB,
   draft: CoachLearningDraft,
@@ -106,9 +165,10 @@ export async function createCoachLearning(
     _prompt_version: extras.promptVersion ?? null,
     _metadata: extras.metadata ?? {},
   } as never);
-  if (error) throw error;
+  if (error) throw toRepoError(error);
   return data as unknown as string;
 }
+
 
 export interface UpdateCoachLearningExtras {
   origin?: CoachLearningVersionOrigin;
