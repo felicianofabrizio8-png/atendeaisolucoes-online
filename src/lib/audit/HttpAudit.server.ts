@@ -56,7 +56,7 @@ export class HttpAudit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const pgCode = (err as { code?: string } | null)?.code;
-      const code = classifyPgError(pgCode) ?? "network";
+      const code = pgCode ? classifyPgError(pgCode) : "network";
       console.error("[http_audit] write_failed", {
         pgCode: pgCode ?? null,
         code,
