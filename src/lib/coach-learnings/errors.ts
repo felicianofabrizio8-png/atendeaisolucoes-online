@@ -66,6 +66,11 @@ const FRIENDLY: Record<CoachLearningErrorCode, { message: string; hint?: string;
     hint: "Revise os campos destacados antes de salvar.",
     retryable: false,
   },
+  invalid_source_conversation: {
+    message: "Não foi possível vincular este aprendizado à conversa de origem.",
+    hint: "O aprendizado será salvo sem vínculo. Tente novamente.",
+    retryable: true,
+  },
   extract_failed: {
     message: "A IA não conseguiu estruturar o aprendizado.",
     hint: "Explique com mais detalhes: quando aplicar, o que fazer e o que evitar.",
