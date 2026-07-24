@@ -74,8 +74,10 @@ type FriendlyEntry = {
 const FRIENDLY: Record<CoachLearningErrorCode, FriendlyEntry> = {
   network: {
     message: "Falha de conexão. Verifique a internet e tente novamente.",
+    hint: "Verifique sua conexão e tente novamente.",
     retryable: true,
   },
+
   timeout: {
     message: "A operação demorou demais para responder.",
     hint: "Tente novamente em instantes.",
