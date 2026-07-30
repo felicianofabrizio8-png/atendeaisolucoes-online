@@ -45,6 +45,12 @@ import {
   type MarketingRowOverlaySource,
 } from "./overlay-content-resolver";
 import {
+  resolveCampaignFormats,
+  formatsTelemetry,
+  type CampaignRole,
+} from "./campaign-formats";
+import { buildThemeSnapshot, themeIdForTemplate } from "./theme-snapshot";
+import {
   MANUAL_LIMITS,
   buildManualOverlay,
   composeManualCaption,
@@ -266,6 +272,8 @@ interface EnsureJobArgs {
     companyName?: string | null;
     template?: string | null;
     overlayLayout?: Record<string, unknown> | null;
+    /** Snapshot visual resolvido do tema (cores hex já validadas). */
+    theme?: unknown;
   } | null;
 }
 
@@ -294,6 +302,8 @@ async function prepareMarketingVideoBrandColumns(params: {
     companyName?: string | null;
     template?: string | null;
     overlayLayout?: Record<string, unknown> | null;
+    /** Snapshot visual resolvido do tema (cores hex já validadas). */
+    theme?: unknown;
   } | null;
 }): Promise<
   | { brand_version_id: string; video_brand: VideoBrandSnapshot }
