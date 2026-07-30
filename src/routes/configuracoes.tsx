@@ -784,7 +784,7 @@ function WhatsAppTestPanel({
           endpoint?: string;
         };
       };
-      console.log("[WhatsAppTestPanel] response", { httpStatus: res.status, json });
+      console.log("[WhatsAppTestPanel] response", summarizeHttp(res.status, json));
       setResult({
         ok: Boolean(json.ok),
         status: json.status ?? res.status,
@@ -945,7 +945,7 @@ function WhatsAppCloudDebugPanel({
         }),
       });
       const json = await res.json();
-      console.log("[WhatsAppCloudDebug] result", json);
+      console.log("[WhatsAppCloudDebug] result", sanitizeForLog(json));
       setResult(json);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Falha no debug");
@@ -1509,7 +1509,7 @@ function MetaIntegrationSection() {
         body: { mode: "debug_token", shortLivedToken: shortToken },
       });
       if (error) throw error;
-      console.log("META_DEBUG_TOKEN_RESULT", data);
+      console.log("META_DEBUG_TOKEN_RESULT", sanitizeForLog(data));
       setDebugResult(data);
     } catch (e) {
       setDebugResult({ error: e instanceof Error ? e.message : String(e) });
@@ -1571,10 +1571,8 @@ function MetaIntegrationSection() {
   // Carrega páginas a partir de um user access_token (chamado após callback OAuth).
   const loadPagesFromToken = useCallback(async (accessToken: string) => {
     setShortToken(accessToken);
-    console.log("META_ACCESS_TOKEN", {
-      token_preview: `${accessToken.slice(0, 12)}...${accessToken.slice(-6)}`,
-      length: accessToken.length,
-    });
+    // Nunca registrar o token (nem parcialmente): apenas presença e tamanho.
+    console.log("META_ACCESS_TOKEN", { present: !!accessToken, length: accessToken.length });
 
     const tok = encodeURIComponent(accessToken);
     const GRAPH = "https://graph.facebook.com/v25.0";
@@ -1602,7 +1600,7 @@ function MetaIntegrationSection() {
         raw: debugJson,
       });
     } catch (e) {
-      console.warn("META_TOKEN_DEBUG_FAIL", e);
+      console.warn("META_TOKEN_DEBUG_FAIL", safeErrorMessage(e));
     }
 
     // Readiness OAuth: exigir escopos mínimos para intent=facebook_page ANTES
@@ -1628,9 +1626,9 @@ function MetaIntegrationSection() {
     try {
       const meRes = await fetch(`${GRAPH}/me?fields=id,name,email&access_token=${tok}`);
       const meJson = await meRes.json();
-      console.log("META_ME_RESPONSE", { status: meRes.status, payload: meJson });
+      console.log("META_ME_RESPONSE", summarizeHttp(meRes.status, meJson));
     } catch (e) {
-      console.warn("META_ME_FAIL", e);
+      console.warn("META_ME_FAIL", safeErrorMessage(e));
     }
 
     // /me/businesses
@@ -1646,10 +1644,9 @@ function MetaIntegrationSection() {
         status: bizRes.status,
         ok: bizRes.ok,
         count: bizData.length,
-        payload: bizJson,
       });
     } catch (e) {
-      console.warn("META_ME_BUSINESSES_FAIL", e);
+      console.warn("META_ME_BUSINESSES_FAIL", safeErrorMessage(e));
     }
 
     // /me/accounts — páginas Facebook do usuário + IG + WhatsApp vinculados
@@ -1672,11 +1669,11 @@ function MetaIntegrationSection() {
       page_count: pageCount,
       granted_scopes: grantedScopes,
       intent,
-      payload: accountsJson,
     });
 
     if (errObj) {
-      console.error("META_ME_ACCOUNTS_ERROR_FULL", accountsJson);
+      // O payload bruto contém access_token por página — logar só o erro.
+      console.error("META_ME_ACCOUNTS_ERROR", summarizeHttp(accountsRes.status, accountsJson));
       throw new Error(`Graph API: ${errObj.message ?? "erro desconhecido"}`);
     }
 
