@@ -283,7 +283,12 @@ ${transcript || "(sem mensagens)"}`;
             learningIds: learningIdsUsed,
             conversationId: body.conversation_id,
             messageId: lastMessageId,
+            // Trace explicável do ranking: por que CADA aprendizado entrou.
+            // Ausente (fallback estático) → a telemetria usa o motivo padrão.
+            ranking: grounding?.learningRetrieval?.trace,
+            selectionReason: grounding?.learningRetrieval?.strategy,
           }).catch(() => undefined);
+
         }
 
 
