@@ -121,3 +121,27 @@ export function formatsTelemetry(
     reason: payload.reason ?? null,
   });
 }
+
+/** Rótulos de UI — compartilhados por modo IA e modo manual. */
+export const CAMPAIGN_FORMAT_LABELS: Record<CampaignFormatSelection, string> = {
+  feed_story: "Feed + Story",
+  feed: "Somente Feed",
+  story: "Somente Story",
+};
+
+/** Valida uma seleção vinda do cliente. `null` quando desconhecida. */
+export function parseFormatSelection(
+  value: unknown,
+): CampaignFormatSelection | null {
+  return typeof value === "string" &&
+    (CAMPAIGN_FORMAT_SELECTIONS as readonly string[]).includes(value)
+    ? (value as CampaignFormatSelection)
+    : null;
+}
+
+/** Roles de uma seleção canônica (sem passar por `ai_prompt`). */
+export function rolesFromSelection(
+  selection: CampaignFormatSelection,
+): CampaignRole[] {
+  return selection === "feed_story" ? ["feed", "story"] : [selection];
+}
