@@ -868,7 +868,10 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     const themeId =
       data.theme ??
       (typeof promptTheme === "string" ? promptTheme : null) ??
-      themeIdForTemplate(data.template ?? baseRow.video_template ?? null);
+      themeIdForTemplate(
+        data.template ??
+          ((baseRow as { video_template?: string | null }).video_template ?? null),
+      );
     const themeSnapshot = buildThemeSnapshot(themeId);
 
     // eslint-disable-next-line no-console
