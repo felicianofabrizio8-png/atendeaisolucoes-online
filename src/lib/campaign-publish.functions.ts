@@ -15,6 +15,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery, isFailure } from "@/lib/outbound/MetaOutboundContract";
 import { assertOutbound } from "@/lib/environment/EnvironmentGuard.server";
+import { sanitizeForLog, safeErrorMessage } from "@/lib/audit/sanitize";
 
 const PublishInput = z.object({ campaignId: z.string().uuid() });
 
@@ -249,7 +250,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       .eq("active", true)
       .in("channel", ["instagram", "facebook"]);
     if (integError) {
-      console.error("[publishCampaign] integrations query error", { campaignId, companyId, error: integError });
+      console.error("[publishCampaign] integrations query error", { campaignId, companyId, error: safeErrorMessage(integError?.message) });
     }
     const list = ((integrations ?? []) as unknown as Integ[]).filter((i) => Boolean(i.access_token));
     const integ =
@@ -536,7 +537,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           } as never,
         });
       } catch (e) {
-        console.warn("[publishCampaign] error_log insert failed", e);
+        console.warn("[publishCampaign] error_log insert failed", safeErrorMessage(e));
       }
       return {
         ok: false as const, error: "publish_failed", stage, message,
@@ -622,7 +623,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           } as never,
         });
       } catch (e) {
-        console.warn("[publishCampaign] meta_status_log insert failed", e);
+        console.warn("[publishCampaign] meta_status_log insert failed", safeErrorMessage(e));
       }
     }
 
@@ -703,7 +704,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const { data: dl, error: dlErr } = await adminClient.supabaseAdmin
         .storage.from(parsed.bucket).download(parsed.path);
       if (dlErr || !dl) {
-        console.error("[publishCampaign] admin download failed", { parsed, error: dlErr });
+        console.error("[publishCampaign] admin download failed", { parsed, error: safeErrorMessage(dlErr?.message) });
         return fail(
           "upload_media",
           `Imagem não encontrada no storage (${parsed.path}). Reenvie a imagem na campanha.`,
@@ -853,7 +854,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       const { data: signed, error: signErr } = await adminClient.supabaseAdmin
         .storage.from(parsedForCheck.bucket).createSignedUrl(parsedForCheck.path, 60 * 60 * 24);
       if (signErr || !signed?.signedUrl) {
-        console.warn("[publishCampaign] createSignedUrl failed", { signErr });
+        console.warn("[publishCampaign] createSignedUrl failed", { error: safeErrorMessage(signErr?.message) });
       } else {
         // (signed URL será regenerado dentro de getPictureUrlForMeta se o fallback "picture" for usado)
         mediaCheck = await probePublicUrl(signed.signedUrl, "signed");
@@ -892,7 +893,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
             } as never,
           });
         } catch (e) {
-          console.warn("[publishCampaign] image_access_check log failed", e);
+          console.warn("[publishCampaign] image_access_check log failed", safeErrorMessage(e));
         }
         if (!imageHash && !mediaCheck.ok) {
           return fail(
@@ -930,7 +931,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
         is_adset_budget_sharing_enabled: false,
       };
       console.log("[publishCampaign] create_campaign payload", {
-        campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`, payload: campaignPayload,
+        campaignId, actId, endpoint: `${GRAPH}/${actId}/campaigns`,
+        payload: sanitizeForLog(campaignPayload),
       });
       const campRes = await graphWrite<{ id: string }>({
         companyId,
@@ -1104,7 +1106,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         verified_name: waVerifiedName || null,
       });
     } catch (e) {
-      console.warn("[publishCampaign] whatsapp phone lookup failed", e);
+      console.warn("[publishCampaign] whatsapp phone lookup failed", safeErrorMessage(e));
     }
 
     // Step C: cria adset (Click to WhatsApp). Em modo retomada, reutiliza.
@@ -1168,8 +1170,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
         targeting,
         promoted_object: promotedObject,
       };
-      console.log("[publishCampaign] adset targeting", targeting);
-      console.log("[publishCampaign] create_adset payload", adsetPayload);
+      console.log("[publishCampaign] adset targeting", sanitizeForLog(targeting));
+      console.log("[publishCampaign] create_adset payload", sanitizeForLog(adsetPayload));
 
       const adsetRes = await graphWrite<{ id: string }>({
         companyId,
@@ -1335,7 +1337,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
           pictureUrlForMeta = signed.signedUrl;
           return pictureUrlForMeta;
         }
-        console.warn("[publishCampaign] createSignedUrl failed — usando URL crua", { signErr });
+        console.warn("[publishCampaign] createSignedUrl failed — usando URL crua", { error: safeErrorMessage(signErr?.message) });
       }
       pictureUrlForMeta = raw;
       return pictureUrlForMeta;
@@ -1455,7 +1457,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
         ok: res.ok,
       };
       attempts.push(entry);
-      console.log("[publishCampaign] create_creative attempt result", entry);
+      // `entry` carrega headers, corpo bruto e telefone WhatsApp — sanitizar.
+      console.log("[publishCampaign] create_creative attempt result", sanitizeForLog(entry));
       return entry;
     }
 
@@ -1520,7 +1523,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         creativeId = pic.res.data.id;
         console.log("[publishCampaign] create_creative ok", { creativeId, mode: "picture" });
       } else {
-        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts });
+        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts: sanitizeForLog(attempts) });
         return fail(
           "create_creative",
           formatGraphError(simple.res.body, simple.res.message),
@@ -1583,7 +1586,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       page_id: pageId,
       creative_id: creativeId,
     });
-    console.log("[publishCampaign] create_ad", { payload: adPayload });
+    console.log("[publishCampaign] create_ad", { payload: sanitizeForLog(adPayload) });
     const adRes = await graphWrite<{ id: string }>({
       companyId,
       userId,
@@ -1595,25 +1598,24 @@ export const publishCampaign = createServerFn({ method: "POST" })
       logicalPayload: { endpoint: `${GRAPH}/${actId}/ads`, payload: adPayload },
     });
     if (!adRes.ok) {
-      console.error("[publishCampaign] create_ad fail — resposta bruta da Meta", {
+      // Nunca logar a resposta bruta da Meta: pode carregar tokens/PII.
+      console.error("[publishCampaign] create_ad fail", {
         endpoint: `${GRAPH}/${actId}/ads`,
-        request_payload: adPayload,
+        request_payload: sanitizeForLog(adPayload),
         whatsapp_phone_number_id: channel === "whatsapp" ? waPhoneNumberId : null,
         page_id: pageId,
         instagram_actor_id: igActorId || null,
         creative_id: creativeId,
         adset_id: metaAdsetId,
         response_status: adRes.status,
-        response_message: adRes.message,
-        response_body: adRes.body,
-        response_raw: (adRes as { rawText?: string }).rawText ?? null,
+        response_message: safeErrorMessage(adRes.message),
+        response_body: sanitizeForLog(adRes.body),
       });
       return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body, {
         endpoint: `${GRAPH}/${actId}/ads`,
-        request_payload: adPayload,
+        request_payload: sanitizeForLog(adPayload),
         response_status: adRes.status,
-        response_body: adRes.body,
-        response_raw: (adRes as { rawText?: string }).rawText ?? null,
+        response_body: sanitizeForLog(adRes.body),
       });
     }
     const metaAdId = adRes.data.id;
@@ -1765,7 +1767,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
       } as never)
       .eq("id", campaignId);
     if (saveErr) {
-      console.error("[publishCampaign] save final status failed", { campaignId, error: saveErr });
+      console.error("[publishCampaign] save final status failed", { campaignId, error: safeErrorMessage(saveErr?.message) });
     } else {
       console.log("[publishCampaign] success — all ACTIVE", {
         campaignId, metaCampaignId, metaAdsetId, creativeId, metaAdId, activationLog,

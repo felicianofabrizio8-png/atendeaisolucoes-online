@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  sanitizeString,
-  sanitizeForLog,
-  safeErrorMessage,
-  summarizeHttp,
-  pick,
-} from "../sanitize";
+import { sanitizeString, sanitizeForLog, safeErrorMessage, summarizeHttp, pick } from "../sanitize";
 
 describe("sanitizeString", () => {
   it("mascara JWT", () => {

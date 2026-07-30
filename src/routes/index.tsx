@@ -102,6 +102,8 @@ function DashboardPage() {
   const [period, setPeriod] = useState<Period>("hoje");
   const [channel, setChannel] = useState<ChannelFilter>("todos");
   const [visits, setVisits] = useState<Visit[]>([]);
+  // Distingue "nenhuma visita" de "não foi possível carregar".
+  const [visitsFailed, setVisitsFailed] = useState(false);
   // forces "há X min" recálc a cada 60s
   const [, setTick] = useState(0);
 
@@ -110,7 +112,10 @@ function DashboardPage() {
     return () => clearInterval(id);
   }, []);
 
-  const [waConnected, setWaConnected] = useState<boolean | null>(null);
+  // Estado explícito: "unknown" representa FALHA de carregamento e é
+  // visualmente distinto de "disconnected" (dado real igual a zero/inativo).
+  type WaStatus = "loading" | "connected" | "disconnected" | "unknown";
+  const [waStatus, setWaStatus] = useState<WaStatus>("loading");
 
   useEffect(() => {
     if (!companyId) return;
@@ -119,12 +124,12 @@ function DashboardPage() {
       try {
         const integrations = await listIntegrations(companyId);
         const wa = integrations.find((i) => i.channel === "whatsapp");
-        if (!cancelled) setWaConnected(wa?.active ?? false);
+        if (!cancelled) setWaStatus(wa?.active ? "connected" : "disconnected");
       } catch (e) {
-        // Falha de rede/permissão não significa "desconectado": registramos o
-        // motivo (sanitizado) em vez de engolir o erro silenciosamente.
+        // Falha de rede/permissão NÃO é "desconectado". Registramos o motivo
+        // sanitizado e sinalizamos indisponibilidade ao usuário.
         console.warn("[dashboard] falha ao carregar integrações", safeErrorMessage(e));
-        if (!cancelled) setWaConnected(false);
+        if (!cancelled) setWaStatus("unknown");
       }
     })();
     return () => {
@@ -145,9 +150,11 @@ function DashboardPage() {
         .order("scheduled_at", { ascending: true });
       if (cancelled) return;
       if (error) {
-        console.warn("[dashboard] falha ao carregar visitas", error.message);
+        console.warn("[dashboard] falha ao carregar visitas", safeErrorMessage(error.message));
+        setVisitsFailed(true);
         return;
       }
+      setVisitsFailed(false);
       setVisits((data ?? []) as Visit[]);
     })();
     return () => {
@@ -387,19 +394,32 @@ function DashboardPage() {
               Resumo do dia. Foque em quem está esperando.
             </p>
           </div>
-          {waConnected !== null && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+          {waStatus !== "loading" && (
+            <div
+              className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0"
+              title={
+                waStatus === "unknown"
+                  ? "Não foi possível verificar a integração agora. Isso não significa que ela esteja desconectada."
+                  : undefined
+              }
+            >
               <span
                 className={cn(
                   "inline-block h-3 w-3 rounded-full",
-                  waConnected ? "bg-emerald-500" : "bg-red-500",
+                  waStatus === "connected" && "bg-emerald-500",
+                  waStatus === "disconnected" && "bg-red-500",
+                  waStatus === "unknown" && "bg-amber-500",
                 )}
               />
               <span className="hidden md:inline">
-                WhatsApp {waConnected ? "conectado" : "desconectado"}
+                {waStatus === "connected" && "WhatsApp conectado"}
+                {waStatus === "disconnected" && "WhatsApp desconectado"}
+                {waStatus === "unknown" && "WhatsApp: status indisponível"}
               </span>
               <span className="md:hidden">
-                {waConnected ? "Conectado" : "Desconectado"}
+                {waStatus === "connected" && "Conectado"}
+                {waStatus === "disconnected" && "Desconectado"}
+                {waStatus === "unknown" && "Indisponível"}
               </span>
             </div>
           )}
@@ -786,6 +806,12 @@ function DashboardPage() {
             toReturn.length === 0
           }
         >
+          {visitsFailed && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 px-1 pb-1">
+              Não foi possível carregar as visitas agora. A lista pode estar
+              incompleta — tente atualizar a página.
+            </p>
+          )}
           <SubSection
             label="Visitas agendadas"
             count={upcomingVisits.length}

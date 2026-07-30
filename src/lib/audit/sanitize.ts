@@ -76,7 +76,10 @@ export function sanitizeString(input: string): string {
     .replace(/eyJ[a-zA-Z0-9._-]{10,}/g, "[jwt]")
     .replace(/\bEA[A-Za-z0-9]{20,}\b/g, "[meta_token]")
     .replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9._-]+/g, "[sb_key]")
-    .replace(/([?&](?:access_token|token|code|client_secret|apikey|api_key)=)[^&\s"']+/gi, "$1[redacted]")
+    .replace(
+      /([?&](?:access_token|token|code|client_secret|apikey|api_key)=)[^&\s"']+/gi,
+      "$1[redacted]",
+    )
     .replace(/(bearer\s+)[A-Za-z0-9._-]{8,}/gi, "$1[redacted]")
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
     .replace(/\+?\d{2,3}[\s-]?\(?\d{2,3}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/g, "[phone]")

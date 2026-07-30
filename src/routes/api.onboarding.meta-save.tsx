@@ -7,6 +7,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { validatePageAccessToken } from "@/lib/meta-page-token";
+import { safeErrorMessage } from "@/lib/audit/sanitize";
 
 const GRAPH = "https://graph.facebook.com/v25.0";
 const WABA_SUBSCRIBED_FIELDS = "messages,message_template_status_update";
@@ -300,7 +301,7 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
             );
           }
         } catch (e) {
-          console.error("META_ONBOARDING_SAVE_ERROR", { stage: "validate_token_exception", e });
+          console.error("META_ONBOARDING_SAVE_ERROR", { stage: "validate_token_exception", error: safeErrorMessage(e) });
           return Response.json({ error: "Falha ao validar token Meta" }, { status: 400 });
         }
 
@@ -389,7 +390,7 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
             .select("id")
             .single();
           if (error || !data) {
-            console.error("META_ONBOARDING_SAVE_ERROR", { stage: "integ_update", error });
+            console.error("META_ONBOARDING_SAVE_ERROR", { stage: "integ_update", error: safeErrorMessage(error?.message) });
             return Response.json({ error: error?.message ?? "Falha ao atualizar" }, { status: 500 });
           }
           integrationId = data.id;
@@ -400,7 +401,7 @@ export const Route = createFileRoute("/api/onboarding/meta-save")({
             .select("id")
             .single();
           if (error || !data) {
-            console.error("META_ONBOARDING_SAVE_ERROR", { stage: "integ_insert", error });
+            console.error("META_ONBOARDING_SAVE_ERROR", { stage: "integ_insert", error: safeErrorMessage(error?.message) });
             return Response.json({ error: error?.message ?? "Falha ao inserir" }, { status: 500 });
           }
           integrationId = data.id;
