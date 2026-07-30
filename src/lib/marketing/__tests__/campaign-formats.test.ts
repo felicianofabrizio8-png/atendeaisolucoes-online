@@ -78,8 +78,8 @@ describe("theme snapshot", () => {
       const snap = buildThemeSnapshot(preset.id);
       expect(snap).not.toBeNull();
       expect(snap!.id).toBe(preset.id);
-      expect(snap!.primary).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(snap!.text).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(snap!.accentColor).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(snap!.textColor).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
 
@@ -89,7 +89,7 @@ describe("theme snapshot", () => {
   });
 
   it("sanitiza snapshot inválido vindo do banco", () => {
-    expect(sanitizeThemeSnapshot({ id: "x", primary: "azul" })).toBeNull();
+    expect(sanitizeThemeSnapshot({ id: "x", accentColor: "azul" })!.accentColor).toMatch(/^#[0-9A-F]{6}$/);
     expect(sanitizeThemeSnapshot(null)).toBeNull();
     expect(sanitizeThemeSnapshot("promo")).toBeNull();
   });
@@ -97,7 +97,7 @@ describe("theme snapshot", () => {
   it("preserva contraste mínimo entre texto e fundo", () => {
     for (const preset of THEME_PRESETS) {
       const snap = buildThemeSnapshot(preset.id)!;
-      expect(snap.text.toLowerCase()).not.toBe(snap.background.toLowerCase());
+      expect(snap.textColor.toLowerCase()).not.toBe(snap.backgroundColor.toLowerCase());
     }
   });
 
