@@ -309,6 +309,77 @@ describe("overlay-texts / 5 combinações reais válidas", () => {
     }
     if (r.overlay_cta) {
       expect(countWords(r.overlay_cta)).toBeLessThanOrEqual(4);
+      expect(isIncomplete(r.overlay_cta)).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 1 · Item 3 — CTA truncado
+// Regressão: `ctaOk` validava apenas contagem de palavras e comprimento, então
+// CTAs curtos porém sintaticamente incompletos ("Fale com o") passavam intactos.
+// ---------------------------------------------------------------------------
+
+describe("overlay-texts / CTA nunca pode ficar truncado", () => {
+  const fallback = {
+    title: "Piscina dos sonhos",
+    body: "Instalação rápida com garantia total de fábrica. Peça seu orçamento hoje.",
+    cta_text: "Peça orçamento agora mesmo",
+  };
+  const emptyRecent = new Set<string>();
+
+  const truncados = ["Fale com o", "Entre em", "Peça pelo", "Compre na", "Garanta o seu com a"];
+
+  for (const entrada of truncados) {
+    it(`sanea CTA terminado em conectivo: "${entrada}"`, () => {
+      const r = normalizeOverlayCandidate(
+        {
+          headline: "Piscina dos sonhos",
+          subheadline: "Condições únicas neste mês",
+          cta: entrada,
+        },
+        fallback,
+        emptyRecent,
+      );
+      // Ou o CTA sai completo, ou é descartado — nunca truncado.
+      if (r.overlay_cta) {
+        expect(isIncomplete(r.overlay_cta)).toBe(false);
+        expect(countWords(r.overlay_cta)).toBeLessThanOrEqual(4);
+      }
+      expect(r.telemetry.reasons.some((x) => x.startsWith("cta_"))).toBe(true);
+    });
+  }
+
+  it("CTA vazio não gera texto incompleto e recorre ao fallback", () => {
+    const r = normalizeOverlayCandidate(
+      { headline: "Piscina dos sonhos", subheadline: "Condições únicas neste mês", cta: "" },
+      fallback,
+      emptyRecent,
+    );
+    if (r.overlay_cta) expect(isIncomplete(r.overlay_cta)).toBe(false);
+  });
+
+  it("CTA já válido é preservado sem reescrita", () => {
+    const r = normalizeOverlayCandidate(
+      {
+        headline: "Piscina dos sonhos",
+        subheadline: "Condições únicas neste mês",
+        cta: "Peça orçamento",
+      },
+      fallback,
+      emptyRecent,
+    );
+    expect(r.overlay_cta).toBe("Peça orçamento");
+    expect(r.telemetry.reasons).not.toContain("cta_rewritten");
+    expect(r.telemetry.reasons).not.toContain("cta_dropped");
+  });
+
+  it("CTA composto apenas de conectivos é descartado, não truncado", () => {
+    const r = normalizeOverlayCandidate(
+      { headline: "Piscina dos sonhos", subheadline: "Condições únicas neste mês", cta: "com o a" },
+      fallback,
+      emptyRecent,
+    );
+    if (r.overlay_cta) expect(isIncomplete(r.overlay_cta)).toBe(false);
   });
 });
