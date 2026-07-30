@@ -105,9 +105,8 @@ export const Route = createFileRoute("/api/coach/suggest")({
           },
         }).catch(() => null);
 
-
-        const ordered = (msgs ?? []).slice().reverse();
-        const lastMessageId = [...(msgs ?? [])].find((m) => m.role === "lead")?.id ?? null;
+        const ordered = orderedMsgs;
+        const lastMessageId = lastLeadMessage?.id ?? null;
         const transcript = ordered
           .map(
             (m) =>
