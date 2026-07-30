@@ -325,14 +325,29 @@ export function buildSceneOverlaySvgWithMeta(
   // bloco de textos. Espelha `LogoSlot.tsx`: bounding box definido por
   // `LogoLayout` (âncoras + margens em % do frame) e `objectFit: contain`.
   let logoSvg = "";
-  if (logo && logo.dataUri) {
+  let logoRendered = false;
+  let logoSkipReason: SceneOverlaySvgResult["logoSkipReason"] = null;
+  let logoBox: SceneOverlaySvgResult["logoBox"] = null;
+
+  if (!logo) {
+    logoSkipReason = "no_logo_input";
+  } else if (!logo.dataUri || logo.dataUri.trim().length === 0) {
+    logoSkipReason = "empty_data_uri";
+  } else if (!logo.layout || typeof logo.layout !== "object") {
+    logoSkipReason = "invalid_layout";
+  } else {
     const ll = logo.layout;
-    const innerLeft = (Math.max(0, ll.marginLeft) / 100) * width;
-    const innerRight = width - (Math.max(0, ll.marginRight) / 100) * width;
-    const innerTop = (Math.max(0, ll.marginTop) / 100) * height;
-    const innerBottom = height - (Math.max(0, ll.marginBottom) / 100) * height;
-    const boxW = Math.min(0.22 * Math.max(0.1, ll.scale) * width, innerRight - innerLeft);
-    const boxH = Math.min(0.20 * height, innerBottom - innerTop);
+    const num = (v: unknown, fallback: number) =>
+      typeof v === "number" && Number.isFinite(v) ? v : fallback;
+    const innerLeft = (Math.max(0, num(ll.marginLeft, 0)) / 100) * width;
+    const innerRight = width - (Math.max(0, num(ll.marginRight, 0)) / 100) * width;
+    const innerTop = (Math.max(0, num(ll.marginTop, 0)) / 100) * height;
+    const innerBottom = height - (Math.max(0, num(ll.marginBottom, 0)) / 100) * height;
+    const boxW = Math.min(
+      0.22 * Math.max(0.1, num(ll.scale, 1)) * width,
+      innerRight - innerLeft,
+    );
+    const boxH = Math.min(0.2 * height, innerBottom - innerTop);
 
     let lx: number;
     if (ll.hAnchor === "left") lx = innerLeft;
@@ -344,8 +359,30 @@ export function buildSceneOverlaySvgWithMeta(
     else if (ll.vAnchor === "bottom") ly = innerBottom - boxH;
     else ly = (height - boxH) / 2;
 
-    logoSvg = `<image href="${attr(logo.dataUri)}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
+    // Prova objetiva: caixa positiva, finita e dentro do frame (ao menos
+    // parcialmente). Sem isso o `<image>` sairia invisível e o watermark
+    // externo seria suprimido indevidamente — causa raiz do vídeo sem marca.
+    const finite = [lx, ly, boxW, boxH].every((v) => Number.isFinite(v));
+    const MIN_PX = 4;
+    const visible =
+      finite &&
+      boxW >= MIN_PX &&
+      boxH >= MIN_PX &&
+      lx + boxW > 0 &&
+      ly + boxH > 0 &&
+      lx < width &&
+      ly < height;
+
+    if (visible) {
+      logoSvg = `<image href="${attr(logo.dataUri)}" x="${lx}" y="${ly}" width="${boxW}" height="${boxH}" preserveAspectRatio="xMidYMid meet"/>`;
+      logoRendered = true;
+      logoBox = { x: lx, y: ly, width: boxW, height: boxH };
+    } else {
+      logoSkipReason = "degenerate_box";
+    }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${logoSvg}${positioned.join("")}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layersSvg}${logoSvg}${positioned.join("")}</svg>`;
+  return { svg, logoRendered, logoSkipReason, logoBox };
 }
+
