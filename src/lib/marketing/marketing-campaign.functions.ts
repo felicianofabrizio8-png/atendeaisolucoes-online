@@ -1116,3 +1116,173 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     return { job_id: jobId };
   });
 
+// ------------------------------------------------- generateManualCampaign
+//
+// MODO MANUAL (sem IA).
+//
+// Mesmo contrato de saída de `generateMarketingCampaign` (campaign_id +
+// contents feed/story prontos para o editor de aprovação), porém:
+//   * NÃO chama a IA / AI Gateway;
+//   * NÃO consome créditos;
+//   * os textos vêm 100% do formulário do usuário.
+//
+// A partir daqui o fluxo é idêntico ao do modo IA: o usuário revisa no
+// editor e aprova → `approveCampaignAndRender` enfileira o Render Engine.
+
+const ManualFieldsSchema = z.object({
+  title: z.string().trim().min(1).max(MANUAL_LIMITS.headline),
+  subtitle: z.string().trim().max(MANUAL_LIMITS.subheadline).nullable().optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  price: z.string().trim().max(40).nullable().optional(),
+  promo_text: z.string().trim().max(300).nullable().optional(),
+  cta_text: z.string().trim().max(MANUAL_LIMITS.cta).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  whatsapp: z.string().trim().max(40).nullable().optional(),
+  instagram: z.string().trim().max(80).nullable().optional(),
+  website: z.string().trim().max(200).nullable().optional(),
+  hashtags: z.array(z.string().trim().max(60)).max(30).optional(),
+});
+
+export const GenerateManualCampaignInput = z
+  .object({
+    promotion_id: z.string().uuid().nullable().optional(),
+    primary_image: PrimaryImageSchema.optional(),
+    images: z.array(CampaignImageSchema).min(1).max(MAX_CAMPAIGN_IMAGES).optional(),
+    primary_audio_id: z.string().uuid(),
+    audio_start_second: z.number().int().min(0).max(3600).default(0),
+    duration_seconds: z
+      .number()
+      .int()
+      .refine((v): v is RenderDuration => (RENDER_DURATIONS as readonly number[]).includes(v), {
+        message: "duration_seconds_not_allowed",
+      })
+      .default(15),
+    fields: ManualFieldsSchema,
+    formats: z.enum(["feed", "story", "feed_story"]).default("feed_story"),
+    theme: z.string().max(40).nullable().optional(),
+    template: z.string().max(40).nullable().optional(),
+  })
+  .refine((v) => !!v.primary_image || (v.images && v.images.length > 0), {
+    message: "primary_image_or_images_required",
+  });
+
+export const generateManualCampaign = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => GenerateManualCampaignInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+
+    // 1) Mesmas validações de ownership do modo IA.
+    const rawImages = normalizeImages(
+      data as unknown as z.infer<typeof GenerateCampaignInput>,
+    );
+    const validated: ValidatedImage[] = [];
+    for (let i = 0; i < rawImages.length; i++) {
+      validated.push(await validateOneImage(supabase, companyId, rawImages[i], i, i === 0));
+    }
+    await assertPrimaryAudio(
+      supabase,
+      companyId,
+      data.primary_audio_id,
+      data.audio_start_second,
+      data.duration_seconds,
+    );
+    const primary = validated[0];
+
+    // 2) Textos determinísticos a partir do formulário (zero IA).
+    const overlay = buildManualOverlay(data.fields);
+    const caption = composeManualCaption(data.fields);
+    const hashtags = normalizeHashtags(data.fields.hashtags ?? []);
+    const mediaIds = validated
+      .filter((v) => v.ref.source === "marketing_media")
+      .map((v) => (v.ref as { source: "marketing_media"; image_id: string }).image_id);
+
+    const manualSnapshot = {
+      mode: "manual" as const,
+      fields: data.fields,
+      formats: data.formats,
+      theme: data.theme ?? null,
+      template: data.template ?? null,
+      media_ids: mediaIds,
+      promotion_id: data.promotion_id ?? null,
+    };
+
+    const campaignId = crypto.randomUUID();
+    const commonRow = {
+      company_id: companyId,
+      promotion_id: data.promotion_id ?? null,
+      media_ids: mediaIds,
+      channel: "instagram",
+      title: data.fields.title,
+      body: caption,
+      hashtags,
+      cta_text: data.fields.cta_text ?? null,
+      cta_destination: data.fields.whatsapp ?? data.fields.website ?? null,
+      overlay_headline: overlay.overlay_headline,
+      overlay_subheadline: overlay.overlay_subheadline,
+      overlay_cta: overlay.overlay_cta,
+      overlay_original_headline: overlay.overlay_headline,
+      overlay_original_subheadline: overlay.overlay_subheadline,
+      overlay_original_cta: overlay.overlay_cta,
+      ai_model: null,
+      ai_prompt: manualSnapshot as unknown as never,
+      ai_raw_output: null,
+      status: "draft",
+      created_by: userId,
+      campaign_id: campaignId,
+      primary_audio_id: data.primary_audio_id,
+      audio_start_second: data.audio_start_second,
+      duration_seconds: data.duration_seconds,
+      ...(data.template ? { video_template: data.template } : {}),
+      ...(primary.ref.source === "marketing_media"
+        ? { primary_image_media_id: primary.ref.image_id, primary_image_product_ref: null }
+        : {
+            primary_image_media_id: null,
+            primary_image_product_ref: {
+              product_id: primary.ref.product_id,
+              image_path: primary.ref.product_image_path,
+            } as unknown as never,
+          }),
+    };
+
+    // Sempre criamos feed+story (o pipeline de aprovação/render exige as duas
+    // linhas). A escolha do usuário fica registrada em `ai_prompt.formats`
+    // e é usada na etapa de publicação.
+    const { data: inserted, error } = await supabase
+      .from("marketing_contents")
+      .insert([
+        { ...commonRow, format: "feed", campaign_role: "feed" },
+        { ...commonRow, format: "story", campaign_role: "story" },
+      ] as never)
+      .select("*");
+    if (error) throw new Error(error.message);
+
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "campaign_manual_created",
+        campaign_id: campaignId,
+        company_id: companyId,
+        formats: data.formats,
+        theme: data.theme ?? null,
+        images: validated.length,
+        ai_used: false,
+      }),
+    );
+
+    return {
+      campaign_id: campaignId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      contents: (inserted ?? []) as any,
+      needs_approval: true as const,
+      mode: "manual" as const,
+      feed_job_id: null,
+      story_job_id: null,
+      needs_marketing_media_for_render: false,
+    };
+  });
+
+
