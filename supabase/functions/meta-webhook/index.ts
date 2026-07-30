@@ -58,7 +58,8 @@ function getHeaderDiagnostics(req: Request) {
     fbTraceId: req.headers.get("x-fb-trace-id"),
     fbRev: req.headers.get("x-fb-rev"),
     fbRequestId: req.headers.get("x-fb-request-id"),
-    signaturePrefix: req.headers.get("x-hub-signature-256")?.slice(0, 19) ?? null,
+    // Presenca do header apenas. O valor da assinatura nunca e logado.
+    hasSignature: !!req.headers.get("x-hub-signature-256"),
   };
 }
 
@@ -82,7 +83,7 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
         .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`);
 
       if (error) {
-        console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_DB_ERROR", { entryId, error });
+        console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_DB_ERROR", { entryId, reason: error.message });
         continue;
       }
 
@@ -121,7 +122,12 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
             if (r.ok && Array.isArray(j?.data)) {
               subscribedApps.push(...j.data.map((app: any) => ({ id: app?.id ?? null, name: app?.name ?? null, category: app?.category ?? null, target })));
             } else {
-              graphErrors.push({ target, status: r.status, body: j });
+              graphErrors.push({
+                target,
+                status: r.status,
+                // Somente a mensagem: o corpo cru da Graph pode ecoar token/PII.
+                reason: String((j as any)?.error?.message ?? "unknown_graph_error").slice(0, 200),
+              });
             }
           } catch (e) {
             graphErrors.push({ target, error: e instanceof Error ? e.message : String(e) });
