@@ -44,6 +44,8 @@ import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
 import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
 import { CampaignManualForm, type ManualSubmitPayload } from "./CampaignManualForm";
+import { CampaignFormatsField } from "./CampaignFormatsField";
+import type { CampaignFormatSelection } from "@/lib/marketing/campaign-formats";
 import { AiUnavailableNotice } from "./AiUnavailableNotice";
 import { classifyAiFailure, type AiFailureKind } from "@/lib/marketing/ai-failure";
 import {
@@ -76,6 +78,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     useState<"amigável" | "profissional" | "descontraído" | "urgente">("amigável");
   const [audience, setAudience] = useState("");
   const [extra, setExtra] = useState("");
+  // Seleção de formatos no modo IA — mesmo contrato canônico do modo manual.
+  const [aiFormats, setAiFormats] = useState<CampaignFormatSelection>("feed_story");
 
   const [slots, setSlots] = useState<Slot[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -272,6 +276,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         tone,
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
+        formats: aiFormats,
       });
       const contentsRet = (res.contents ?? []) as MarketingContentRow[];
       // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
@@ -412,6 +417,17 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
               placeholder="Ex.: famílias com crianças, moradores da região"
+            />
+          </div>
+          <div className="md:col-span-2">
+            {/* Mesmo componente do modo manual — escolha visível e editável
+                ANTES de "Gerar campanha". */}
+            <CampaignFormatsField
+              id="ai-campaign-formats"
+              value={aiFormats}
+              onChange={setAiFormats}
+              disabled={generating}
+              hint="A IA gera e o render/publicação usam somente os formatos escolhidos."
             />
           </div>
           <div className="md:col-span-2">

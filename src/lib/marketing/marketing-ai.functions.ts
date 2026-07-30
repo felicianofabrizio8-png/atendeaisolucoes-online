@@ -8,6 +8,10 @@ import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import { z } from "zod";
+import {
+  rolesFromSelection,
+  type CampaignRole,
+} from "./campaign-formats";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import type {
@@ -48,6 +52,13 @@ const InputSchema = z.object({
     .default("amigável"),
   audience: z.string().trim().max(300).optional().nullable(),
   extra_instructions: z.string().trim().max(1000).optional().nullable(),
+  // Seleção canônica de formatos (Feed / Story / Feed+Story). Quando ausente,
+  // mantemos o comportamento histórico (ambos) para não quebrar chamadores
+  // antigos desta função.
+  campaign_formats: z
+    .enum(["feed", "story", "feed_story"])
+    .optional()
+    .default("feed_story"),
 });
 
 async function validateProductMediaRefs(
@@ -942,6 +953,9 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       promotion_id: data.promotion_id ?? null,
       product_id: data.product_id ?? null,
       media_ids: mediaIds,
+      // Persistência da escolha do usuário — fonte de verdade para aprovação,
+      // render e publicação (lida por `resolveCampaignFormats`).
+      formats: data.campaign_formats,
       product_media_refs: productMediaDetails.map((p) => ({
         product_id: p.product_id,
         image_path: p.image_path,
@@ -1049,9 +1063,21 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       },
     ];
 
+    // A IA continua produzindo o bundle completo (Story/Feed/Reel/WhatsApp),
+    // mas só materializamos as linhas de campanha (feed/story) escolhidas.
+    // Reel e WhatsApp são conteúdos auxiliares e seguem inalterados.
+    const enabledRoles = rolesFromSelection(data.campaign_formats);
+    const rowsFiltered = rowsToInsert.filter((r) => {
+      const f = r.format as string;
+      if (f === "feed" || f === "story") {
+        return enabledRoles.includes(f as CampaignRole);
+      }
+      return true;
+    });
+
     const { data: inserted, error } = await supabase
       .from("marketing_contents")
-      .insert(rowsToInsert)
+      .insert(rowsFiltered)
       .select("*");
     if (error) throw new Error(error.message);
 

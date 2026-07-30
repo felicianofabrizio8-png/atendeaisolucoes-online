@@ -229,6 +229,8 @@ export async function apiGenerateCampaign(input: {
   tone?: "amigável" | "profissional" | "descontraído" | "urgente";
   audience?: string | null;
   extra_instructions?: string | null;
+  /** Seleção de formatos (mesmo contrato do modo manual). */
+  formats?: "feed" | "story" | "feed_story";
 }) {
   return generateMarketingCampaign({ data: input });
 }

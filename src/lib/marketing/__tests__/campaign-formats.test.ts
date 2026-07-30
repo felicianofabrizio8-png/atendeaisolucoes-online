@@ -3,6 +3,10 @@ import {
   resolveCampaignFormats,
   roleFromContentFormat,
   formatsTelemetry,
+  rolesFromSelection,
+  parseFormatSelection,
+  CAMPAIGN_FORMAT_SELECTIONS,
+  CAMPAIGN_FORMAT_LABELS,
 } from "../campaign-formats";
 import {
   buildThemeSnapshot,
@@ -109,5 +113,37 @@ describe("theme snapshot", () => {
     const withTemplate = THEME_PRESETS[0];
     expect(themeIdForTemplate(withTemplate.template)).toBeTypeOf("string");
     expect(themeIdForTemplate(null)).toBeNull();
+  });
+});
+
+describe("seleção canônica (modo IA e manual compartilham o contrato)", () => {
+  it("rolesFromSelection cobre as três seleções", () => {
+    expect(rolesFromSelection("feed_story")).toEqual(["feed", "story"]);
+    expect(rolesFromSelection("feed")).toEqual(["feed"]);
+    expect(rolesFromSelection("story")).toEqual(["story"]);
+  });
+
+  it("parseFormatSelection rejeita valores desconhecidos", () => {
+    expect(parseFormatSelection("feed")).toBe("feed");
+    expect(parseFormatSelection("reel")).toBeNull();
+    expect(parseFormatSelection(undefined)).toBeNull();
+  });
+
+  it("um snapshot gerado pelo modo IA resolve como explícito", () => {
+    const resolved = resolveCampaignFormats({ formats: "story" });
+    expect(resolved.roles).toEqual(["story"]);
+    expect(resolved.source).toBe("explicit");
+  });
+
+  it("campanha antiga sem formats mantém fallback legado", () => {
+    const resolved = resolveCampaignFormats({});
+    expect(resolved.roles).toEqual(["feed", "story"]);
+    expect(resolved.source).toBe("legacy_fallback");
+  });
+
+  it("expõe rótulos para todas as seleções", () => {
+    for (const s of CAMPAIGN_FORMAT_SELECTIONS) {
+      expect(CAMPAIGN_FORMAT_LABELS[s]).toBeTruthy();
+    }
   });
 });
