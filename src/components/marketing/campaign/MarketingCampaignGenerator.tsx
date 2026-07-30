@@ -272,6 +272,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         tone,
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
+        formats: aiFormats,
       });
       const contentsRet = (res.contents ?? []) as MarketingContentRow[];
       // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
