@@ -18,6 +18,10 @@
 // ============================================================================
 
 import type { BrandContext, BrandLogoPosition } from "@/lib/brand-center/brand.types";
+import {
+  sanitizeThemeSnapshot,
+  type ThemeSnapshot,
+} from "@/lib/marketing/theme-snapshot";
 
 /** Versão atual do schema. Bump apenas quando adicionar campos NÃO opcionais. */
 export const VIDEO_BRAND_SCHEMA_VERSION = 2 as const;
@@ -210,6 +214,7 @@ export function buildVideoBrandSnapshot(params: {
     companyName?: string | null;
     template?: string | null;
     overlayLayout?: Record<string, unknown> | null;
+    theme?: unknown;
   } | null;
 }): VideoBrandSnapshot | null {
   const { brandContext, videoFormat, content } = params;
@@ -246,6 +251,7 @@ export function buildVideoBrandSnapshot(params: {
     overlayLayout: (content?.overlayLayout ?? null) as
       | { [x: string]: {} }
       | null,
+    theme: sanitizeThemeSnapshot(content?.theme ?? null),
   };
 
   const hasAnyText = !!(
