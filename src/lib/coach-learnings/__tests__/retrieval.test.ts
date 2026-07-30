@@ -71,11 +71,25 @@ describe("retrieveLearnings — estratégia e fallback", () => {
     expect(res.selected[0].id).toBe(alta.id);
   });
 
-  it("usa a estratégia contextual quando há mensagem do cliente", () => {
-    const res = run([learning()], "qual é o preço da capa térmica?");
+  it("usa a estratégia contextual quando há mensagem e candidato relevante", () => {
+    const relevante = learning({
+      rule_structured:
+        "Quando o cliente perguntar o preço da capa térmica, informe o valor de tabela.",
+    });
+    const res = run([relevante], "qual é o preço da capa térmica?");
     expect(res.strategy).toBe("contextual_v1");
     expect(res.fallbackReason).toBeNull();
   });
+
+  it("volta ao ranking estático quando nenhum candidato é relevante o bastante", () => {
+    // Garantia crítica: o Coach nunca fica sem contexto por excesso de rigor.
+    const res = run([learning({ rule_structured: "Cumprimente o cliente pelo nome." })],
+      "qual é o preço da capa térmica?");
+    expect(res.strategy).toBe("static_fallback");
+    expect(res.fallbackReason).toBe("no_candidate_above_min_score");
+    expect(res.selected.length).toBeGreaterThan(0);
+  });
+
 
   it("não quebra com lista de candidatos vazia", () => {
     const res = run([], "quanto custa?");
