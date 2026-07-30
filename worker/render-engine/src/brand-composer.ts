@@ -26,6 +26,7 @@ import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard
 import type { VideoBrandDto } from "./api-client.js";
 import { getSceneById, type VideoLayout } from "./scenes.js";
 import { buildSceneOverlaySvg, buildSceneOverlaySvgWithMeta } from "./scene-composer.js";
+import { applyThemeToScene, sanitizeThemeSnapshot } from "./theme.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -152,7 +153,13 @@ export async function composeBrandLayers(
     // painel inferior legado para preservar jobs antigos.
     const templateId = (videoBrand.content as { template?: string | null } | undefined)?.template ?? null;
     const overlayLayout = (videoBrand.content as { overlayLayout?: unknown } | undefined)?.overlayLayout ?? null;
-    const scene = getSceneById(templateId);
+    const rawScene = getSceneById(templateId);
+    // Snapshot visual do tema (cores já resolvidas em #RRGGBB). Valores
+    // inválidos são descartados pelo sanitizador → cena mantém suas cores.
+    const themeSnapshot = sanitizeThemeSnapshot(
+      (videoBrand.content as { theme?: unknown } | undefined)?.theme ?? null,
+    );
+    const scene = rawScene ? applyThemeToScene(rawScene, themeSnapshot) : null;
     const overlayLayoutIsObject = !!overlayLayout && typeof overlayLayout === "object";
     const overlayLayoutKeys = overlayLayoutIsObject
       ? Object.keys(overlayLayout as Record<string, unknown>).slice(0, 20)
@@ -176,6 +183,8 @@ export async function composeBrandLayers(
       overlay_layout_keys: overlayLayoutKeys,
       render_mode: useScene ? "scene" : "legacy",
       fallback_reason: fallbackReason,
+      theme_id: themeSnapshot?.id ?? null,
+      theme_applied: !!themeSnapshot,
     });
 
     if (useScene && scene) {
@@ -230,6 +239,8 @@ export async function composeBrandLayers(
           template: scene.id,
           layer_count: scene.layers.length,
           render_mode: "scene",
+          theme_id: themeSnapshot?.id ?? null,
+          theme_applied: !!themeSnapshot,
           scene_applies_logo: sceneAppliesLogo,
           scene_logo_confirmed: sceneLogoConfirmed,
           scene_logo_reason: sceneLogoReason,

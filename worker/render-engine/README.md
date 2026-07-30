@@ -66,8 +66,8 @@ railway up --detach         # sobe SOMENTE este diretório
 Nos logs do serviço Railway procure, na ordem:
 
 1. `render_build_signature` — deve aparecer UMA vez no boot, com
-   `build_signature="render-watermark-sprint3-build-004"` e `brand_composition_enabled=true`.
-2. `render-watermark-sprint3-build-004` — string única (src/build-info.ts), presente no log acima e em cada
+   `build_signature="render-manual-themes-build-005"` e `brand_composition_enabled=true`.
+2. `render-manual-themes-build-005` — string única (src/build-info.ts), presente no log acima e em cada
    `brand_composition_gate`.
 3. `brand_composition_gate` — dispara a cada job, com `approved` e
    `reason` (ex.: `approved="true"` / `reason="approved"`).

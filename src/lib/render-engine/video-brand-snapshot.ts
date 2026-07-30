@@ -18,6 +18,10 @@
 // ============================================================================
 
 import type { BrandContext, BrandLogoPosition } from "@/lib/brand-center/brand.types";
+import {
+  sanitizeThemeSnapshot,
+  type ThemeSnapshot,
+} from "@/lib/marketing/theme-snapshot";
 
 /** Versão atual do schema. Bump apenas quando adicionar campos NÃO opcionais. */
 export const VIDEO_BRAND_SCHEMA_VERSION = 2 as const;
@@ -77,6 +81,12 @@ export interface VideoBrandContentSnapshot {
    * o vídeo gerado corresponde exatamente à cena aprovada no editor).
    */
   template?: string | null;
+  /**
+   * Sprint acabamento — snapshot VISUAL resolvido do tema (cores em #RRGGBB).
+   * O worker nunca decide cor pelo nome do tema; recebe os valores prontos.
+   * Ausente = comportamento anterior (cores nativas da cena).
+   */
+  theme?: ThemeSnapshot | null;
   /**
    * Layout completo aprovado no editor (posições/tamanhos de logo/textos).
    * Opaco para o snapshot builder — o worker interpreta na próxima fase.
@@ -204,6 +214,7 @@ export function buildVideoBrandSnapshot(params: {
     companyName?: string | null;
     template?: string | null;
     overlayLayout?: Record<string, unknown> | null;
+    theme?: unknown;
   } | null;
 }): VideoBrandSnapshot | null {
   const { brandContext, videoFormat, content } = params;
@@ -240,6 +251,7 @@ export function buildVideoBrandSnapshot(params: {
     overlayLayout: (content?.overlayLayout ?? null) as
       | { [x: string]: {} }
       | null,
+    theme: sanitizeThemeSnapshot(content?.theme ?? null),
   };
 
   const hasAnyText = !!(

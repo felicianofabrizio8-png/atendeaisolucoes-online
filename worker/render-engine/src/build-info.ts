@@ -11,7 +11,7 @@
 // ============================================================================
 
 /** Assinatura única do binário. Alterar a cada deploy relevante. */
-export const BUILD_SIGNATURE = "render-watermark-sprint3-build-004";
+export const BUILD_SIGNATURE = "render-manual-themes-build-005";
 
 /** Data do build (ISO curta), apenas informativa. */
 export const BUILD_DATE = "2026-07-30";

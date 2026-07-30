@@ -4,6 +4,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { PublisherRepository } from "./PublisherRepository.server";
 import type { PublicationChannel, PublicationFormat } from "./types";
+import {
+  resolveCampaignFormats,
+  roleFromContentFormat,
+  formatsTelemetry,
+} from "@/lib/marketing/campaign-formats";
 
 // Só canais e formatos suportados pelo Publisher nesta fase.
 const SUPPORTED_CHANNELS = new Set(["instagram", "facebook"]);
@@ -31,7 +36,7 @@ export class PublisherPlanner {
     const q = await admin
       .from("marketing_schedule")
       .select(
-        "id, company_id, content_id, channel, scheduled_at, status, created_by, marketing_contents!inner(id, status, format, channel)",
+        "id, company_id, content_id, channel, scheduled_at, status, created_by, marketing_contents!inner(id, status, format, channel, campaign_id, ai_prompt)",
       )
       .in("status", ["planned"])
       .lte("scheduled_at", nowIso)
@@ -51,6 +56,8 @@ export class PublisherPlanner {
         status: string;
         format: string;
         channel: string;
+        campaign_id: string | null;
+        ai_prompt: unknown;
       };
     }>;
 
@@ -72,6 +79,40 @@ export class PublisherPlanner {
         }
         continue;
       }
+
+      // Formatos escolhidos na campanha (ai_prompt.formats). Campanha antiga
+      // sem `formats` → fallback legado (feed+story), registrado no log.
+      const formats = resolveCampaignFormats(s.marketing_contents?.ai_prompt);
+      const role = roleFromContentFormat(s.marketing_contents?.format);
+      if (role && !formats.roles.includes(role)) {
+        // eslint-disable-next-line no-console
+        console.info(
+          formatsTelemetry("campaign_format_publish_skipped", {
+            campaign_id: s.marketing_contents?.campaign_id ?? null,
+            company_id: s.company_id,
+            role,
+            formats: formats.selection,
+            source: formats.source,
+            reason: "format_not_selected",
+          }),
+        );
+        await admin
+          .from("marketing_schedule")
+          .update({ status: "cancelled" })
+          .eq("id", s.id)
+          .eq("status", "planned");
+        continue;
+      }
+      // eslint-disable-next-line no-console
+      console.info(
+        formatsTelemetry("campaign_format_publish_requested", {
+          campaign_id: s.marketing_contents?.campaign_id ?? null,
+          company_id: s.company_id,
+          role,
+          formats: formats.selection,
+          source: formats.source,
+        }),
+      );
 
       const row = await this.repo.materialize({
         companyId: s.company_id,
