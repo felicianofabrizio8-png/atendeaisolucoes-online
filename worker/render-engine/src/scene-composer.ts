@@ -248,8 +248,36 @@ function renderPillCta(
   return { svg: rect + text, heightPx: pillH + sizePx * 0.2 };
 }
 
+/**
+ * Resultado com metadados determinísticos da composição da cena.
+ * `logoRendered` só é `true` quando um elemento `<image>` de logo foi de fato
+ * emitido no SVG com caixa positiva e coordenadas finitas — nunca por
+ * declaração de intenção.
+ */
+export interface SceneOverlaySvgResult {
+  svg: string;
+  /** Prova objetiva: a logo foi desenhada no SVG. */
+  logoRendered: boolean;
+  /** Motivo sanitizado quando a logo não foi desenhada. */
+  logoSkipReason:
+    | null
+    | "no_logo_input"
+    | "empty_data_uri"
+    | "invalid_layout"
+    | "degenerate_box";
+  /** Caixa efetiva da logo (para observabilidade/validação). */
+  logoBox: { x: number; y: number; width: number; height: number } | null;
+}
+
 export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
+  return buildSceneOverlaySvgWithMeta(input).svg;
+}
+
+export function buildSceneOverlaySvgWithMeta(
+  input: SceneOverlaySvgInput,
+): SceneOverlaySvgResult {
   const { width, height, scene, layout, content, logo } = input;
+
 
   // 1. Camadas de fundo (background → foreground).
   const layersSvg = scene.layers.map((l, i) => renderLayer(l, width, height, i)).join("");
