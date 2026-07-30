@@ -221,18 +221,34 @@ export function normalizeOverlayCandidate(
   }
 
   // -------- cta --------
-  const ctaOk = (v: string) => !!v && countWords(v) <= 4 && v.length <= 40;
+  // Um CTA precisa ser curto E sintaticamente completo. Sem a checagem de
+  // `isIncomplete`, entradas como "Fale com o" (3 palavras, 10 chars) passavam
+  // intactas e chegavam truncadas ao overlay do vídeo.
+  const ctaOk = (v: string) =>
+    !!v && countWords(v) <= 4 && v.length <= 40 && !isIncomplete(v);
+
   if (cta) {
     if (!ctaOk(cta)) {
       const fitted = fitWords(cta, 4, 40);
-      cta = fitted || null;
-      if (cta) reasons.push("cta_rewritten");
-      else reasons.push("cta_dropped");
+      if (ctaOk(fitted)) {
+        cta = fitted;
+        reasons.push("cta_rewritten");
+      } else {
+        // Não sobrou frase completa: tenta o CTA determinístico da campanha.
+        const fromFallback = fallback.cta_text ? fitWords(fallback.cta_text, 4, 40) : "";
+        if (ctaOk(fromFallback)) {
+          cta = fromFallback;
+          reasons.push("cta_from_fallback");
+        } else {
+          cta = null;
+          reasons.push("cta_dropped");
+        }
+      }
       if (source === "ai") source = "ai_rewritten";
     }
   } else if (fallback.cta_text) {
     const fitted = fitWords(fallback.cta_text, 4, 40);
-    if (fitted) {
+    if (ctaOk(fitted)) {
       cta = fitted;
       reasons.push("cta_from_fallback");
     }
