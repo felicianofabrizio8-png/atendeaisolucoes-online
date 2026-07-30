@@ -619,8 +619,9 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
     }
 
     // Reaproveita as referências de mídia originais gravadas no prompt.
+    const baseRegenRow = (feedRow ?? storyRow)!;
     const prompt =
-      (feedRow.ai_prompt as {
+      (baseRegenRow.ai_prompt as {
         media_ids?: string[];
         product_media_refs?: Array<{ product_id: string; image_path: string }>;
         tone?: "amigável" | "profissional" | "descontraído" | "urgente";
@@ -631,7 +632,7 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
 
     const { contents: fresh } = await generateMarketingContent({
       data: {
-        promotion_id: prompt.promotion_id ?? feedRow.promotion_id ?? null,
+        promotion_id: prompt.promotion_id ?? baseRegenRow.promotion_id ?? null,
         media_ids: prompt.media_ids ?? [],
         product_media_refs: prompt.product_media_refs ?? [],
         tone: prompt.tone ?? "amigável",
@@ -656,14 +657,12 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
       overlay_subheadline: freshFeed.overlay_subheadline ?? null,
       overlay_cta: freshFeed.overlay_cta ?? null,
     };
-    await supabase
-      .from("marketing_contents")
-      .update(overlayPatch)
-      .eq("id", feedRow.id);
-    await supabase
-      .from("marketing_contents")
-      .update(overlayPatch)
-      .eq("id", storyRow.id);
+    const regenIds = [feedRow?.id, storyRow?.id].filter(
+      (x): x is string => typeof x === "string",
+    );
+    for (const id of regenIds) {
+      await supabase.from("marketing_contents").update(overlayPatch).eq("id", id);
+    }
 
     // Remove as linhas efêmeras geradas (não pertencem a nenhuma campanha).
     try {
@@ -678,7 +677,7 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
     const { data: refreshed } = await supabase
       .from("marketing_contents")
       .select("*")
-      .in("id", [feedRow.id, storyRow.id]);
+      .in("id", regenIds);
 
     // eslint-disable-next-line no-console
     console.info(
@@ -1324,15 +1323,28 @@ export const generateManualCampaign = createServerFn({ method: "POST" })
           }),
     };
 
-    // Sempre criamos feed+story (o pipeline de aprovação/render exige as duas
-    // linhas). A escolha do usuário fica registrada em `ai_prompt.formats`
-    // e é usada na etapa de publicação.
+    // Criamos SOMENTE as linhas dos formatos escolhidos pelo usuário.
+    // `ai_prompt.formats` guarda a escolha e é a fonte de verdade para
+    // aprovação, render e publicação.
+    const manualFormats = resolveCampaignFormats(manualSnapshot);
+    // eslint-disable-next-line no-console
+    console.info(
+      formatsTelemetry("campaign_formats_resolved", {
+        campaign_id: campaignId,
+        company_id: companyId,
+        formats: manualFormats.selection,
+        source: manualFormats.source,
+        reason: "manual_create",
+      }),
+    );
+    const rowsToInsert = manualFormats.roles.map((role: CampaignRole) => ({
+      ...commonRow,
+      format: role,
+      campaign_role: role,
+    }));
     const { data: inserted, error } = await supabase
       .from("marketing_contents")
-      .insert([
-        { ...commonRow, format: "feed", campaign_role: "feed" },
-        { ...commonRow, format: "story", campaign_role: "story" },
-      ] as never)
+      .insert(rowsToInsert as never)
       .select("*");
     if (error) throw new Error(error.message);
 
