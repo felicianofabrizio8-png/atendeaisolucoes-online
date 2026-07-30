@@ -16,11 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, PencilRuler } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   apiListPromotions,
   apiGenerateCampaign,
+  apiGenerateManualCampaign,
   apiRetryCampaignRender,
   urlForMarketingPath,
   type CampaignImageInput,
@@ -41,6 +43,9 @@ import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
 import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
+import { CampaignManualForm, type ManualSubmitPayload } from "./CampaignManualForm";
+import { AiUnavailableNotice } from "./AiUnavailableNotice";
+import { classifyAiFailure, type AiFailureKind } from "@/lib/marketing/ai-failure";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -80,6 +85,10 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [duration, setDuration] = useState<Duration>(15);
 
   const [generating, setGenerating] = useState(false);
+  // Modo de criação: IA (padrão) ou manual (sem IA, sem créditos).
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
+  // Falha da IA → oferecemos o modo manual sem bloquear o usuário.
+  const [aiFailure, setAiFailure] = useState<AiFailureKind | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   // Approval-gate: quando existe, renderiza a tela de revisão em vez do
   // progress. Só limpamos quando o usuário aprova (então o render começa).
@@ -212,19 +221,14 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   );
 
   const primarySlot = slots[0] ?? null;
-  const canGenerate =
+  const baseReady =
     slots.length > 0 && !!audio && !generating && slots.every((s) => !!s.previewUrl);
+  const canGenerate = baseReady;
 
-  async function generate() {
-    if (!audio || slots.length === 0) return;
-    const audioDur = Number(audio.duration_seconds ?? 0);
-    if (audioStart + duration > audioDur + 0.001) {
-      toast.error("O trecho do áudio excede sua duração total.");
-      return;
-    }
-    setGenerating(true);
-    try {
-      const images: CampaignImageInput[] = slots.map((s) =>
+  /** Imagens no formato aceito pelo backend (compartilhado IA + manual). */
+  const buildImages = useCallback(
+    (): CampaignImageInput[] =>
+      slots.map((s) =>
         s.selection.origin === "marketing"
           ? { origin: "marketing", media_id: s.selection.id, focal_point: s.focal ?? null }
           : {
@@ -233,10 +237,35 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
               image_path: s.selection.imagePath,
               focal_point: s.focal ?? null,
             },
-      );
+      ),
+    [slots],
+  );
+
+  /** Valida áudio/imagens antes de qualquer chamada (IA ou manual). */
+  function assertReady(): boolean {
+    if (!audio || slots.length === 0) return false;
+    const audioDur = Number(audio.duration_seconds ?? 0);
+    if (audioStart + duration > audioDur + 0.001) {
+      toast.error("O trecho do áudio excede sua duração total.");
+      return false;
+    }
+    return true;
+  }
+
+  function openReview(campaign: string, contentsRet: MarketingContentRow[], msg: string) {
+    setPendingReview({ campaignId: campaign, contents: contentsRet });
+    toast.success(msg);
+    onGenerated?.(contentsRet);
+  }
+
+  async function generate() {
+    if (!assertReady() || !audio) return;
+    setGenerating(true);
+    setAiFailure(null);
+    try {
       const res = await apiGenerateCampaign({
         promotion_id: promotionId || null,
-        images,
+        images: buildImages(),
         primary_audio_id: audio.id,
         audio_start_second: audioStart,
         duration_seconds: duration,
@@ -247,15 +276,39 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       const contentsRet = (res.contents ?? []) as MarketingContentRow[];
       // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
       // ainda não foi enfileirado. Abrimos a tela de revisão.
-      setPendingReview({ campaignId: res.campaign_id, contents: contentsRet });
-      toast.success("Textos sugeridos. Revise antes de gerar o vídeo.");
-      onGenerated?.(contentsRet);
+      openReview(res.campaign_id, contentsRet, "Textos sugeridos. Revise antes de gerar o vídeo.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
+      // Nunca bloquear: classificamos a falha e oferecemos o modo manual.
+      setAiFailure(classifyAiFailure(e));
     } finally {
       setGenerating(false);
     }
   }
+
+  async function generateManual(payload: ManualSubmitPayload) {
+    if (!assertReady() || !audio) return;
+    setGenerating(true);
+    try {
+      const res = await apiGenerateManualCampaign({
+        promotion_id: promotionId || null,
+        images: buildImages(),
+        primary_audio_id: audio.id,
+        audio_start_second: audioStart,
+        duration_seconds: duration,
+        fields: payload.fields,
+        formats: payload.formats,
+        theme: payload.theme,
+        template: payload.template,
+      });
+      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
+      openReview(res.campaign_id, contentsRet, "Campanha criada. Revise e gere o vídeo.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao criar campanha manual.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
 
   async function handleRetry(role: "feed" | "story") {
     if (!campaignId) return;
@@ -269,8 +322,61 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Modo de criação — IA (acelerador) ou Manual (sempre disponível) */}
+      {!pendingReview && !campaignId && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm font-semibold mb-2">Como você quer criar?</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("ai")}
+              className={cn(
+                "rounded-md border p-3 text-left text-sm transition-colors",
+                mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted",
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <Sparkles className="h-4 w-4" /> Gerar com IA
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                A IA sugere títulos, legenda e CTA — você edita antes de renderizar.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              className={cn(
+                "rounded-md border p-3 text-left text-sm transition-colors",
+                mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted",
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <PencilRuler className="h-4 w-4" /> Criar manualmente
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Sem IA e sem consumo de créditos. Você escreve os textos.
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback automático quando a IA falha */}
+      {aiFailure && mode === "ai" && !pendingReview && (
+        <AiUnavailableNotice
+          kind={aiFailure}
+          retrying={generating}
+          onRetry={() => void generate()}
+          onContinueManually={() => {
+            setAiFailure(null);
+            setMode("manual");
+          }}
+        />
+      )}
+
       {/* Contexto */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Promoção (opcional)</Label>
@@ -395,6 +501,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         )}
       </div>
 
+      {/* Modo manual — formulário completo, sem IA */}
+      {mode === "manual" && !pendingReview && !campaignId && (
+        <CampaignManualForm
+          submitting={generating}
+          disabled={!baseReady}
+          disabledReason="Selecione ao menos 1 imagem e um áudio para continuar."
+          onSubmit={(payload) => void generateManual(payload)}
+        />
+      )}
+
       {/* Revisão de texto (approval-gate) — sem job de render ainda */}
       {pendingReview && !campaignId && (
         <CampaignVideoEditor
@@ -428,24 +544,27 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
       />
 
-      {/* Sticky action */}
-      <CampaignStickyActionBar>
-        <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
-          {slots.length === 0
-            ? "Selecione ao menos 1 imagem"
-            : !audio
-              ? "Selecione um áudio"
-              : `${slots.length} imagem(ns) · ${duration}s`}
-        </div>
-        <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
-          {generating ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
-          ) : (
-            <Sparkles className="h-4 w-4 mr-1" />
-          )}
-          Gerar campanha (Feed + Story)
-        </Button>
-      </CampaignStickyActionBar>
+      {/* Sticky action — só no modo IA (o manual tem seu próprio botão) */}
+      {mode === "ai" && !pendingReview && !campaignId && (
+        <CampaignStickyActionBar>
+          <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
+            {slots.length === 0
+              ? "Selecione ao menos 1 imagem"
+              : !audio
+                ? "Selecione um áudio"
+                : `${slots.length} imagem(ns) · ${duration}s`}
+          </div>
+          <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1" />
+            )}
+            Gerar campanha (Feed + Story)
+          </Button>
+        </CampaignStickyActionBar>
+      )}
+
     </div>
   );
 }
