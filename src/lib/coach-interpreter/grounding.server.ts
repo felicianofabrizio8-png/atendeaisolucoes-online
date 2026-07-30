@@ -14,6 +14,7 @@
 // ============================================================================
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { listActiveRulesForGrounding } from "./coach-interpreter.repository";
 
 type SB = SupabaseClient<Database>;
 
