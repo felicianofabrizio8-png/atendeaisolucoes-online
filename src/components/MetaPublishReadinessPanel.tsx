@@ -19,6 +19,7 @@ import type { Campaign } from "@/lib/campaigns";
 import { Check, X, Loader2, RefreshCw, ChevronDown, ChevronUp, ShieldCheck, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { sanitizeForLog, safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 
 type Readiness = {
   ok: true;
@@ -257,7 +258,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     setLoading(true);
     try {
       const r = await fetchReadiness();
-      console.log("[MetaPanel] readiness response", r);
+      console.log("[MetaPanel] readiness response", sanitizeForLog(r));
       if (r.ok) {
         setReadiness(r as Readiness);
         if (!opts?.silent) toast.success("Status atualizado.");
@@ -265,7 +266,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         toast.error((("message" in r && typeof r.message === "string" && r.message) || "Falha ao verificar prontidão."));
       }
     } catch (e) {
-      console.error("[MetaPanel] refresh error", e);
+      console.error("[MetaPanel] refresh error", safeErrorMessage(e));
       toast.error(e instanceof Error ? e.message : "Erro ao verificar prontidão.");
     } finally { setLoading(false); }
   }, [fetchReadiness]);
@@ -275,7 +276,13 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
     setLoadingAccounts(true);
     try {
       const [a, p] = await Promise.all([fetchAccounts(), fetchPages()]);
-      console.log("[MetaPanel] assets response", { accounts: a, pages: p });
+      // As páginas trazem access_token no payload — logar apenas contagens.
+      console.log("[MetaPanel] assets response", {
+        accounts_ok: a.ok,
+        accounts_count: Array.isArray((a as { accounts?: unknown[] }).accounts) ? (a as { accounts: unknown[] }).accounts.length : 0,
+        pages_ok: p.ok,
+        pages_count: Array.isArray((p as { pages?: unknown[] }).pages) ? (p as { pages: unknown[] }).pages.length : 0,
+      });
       if (a.ok) {
         const accs = a.accounts as AdAccount[];
         setAccounts(accs);
@@ -296,7 +303,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
         toast.error((("message" in p && typeof p.message === "string" && p.message) || "Erro ao listar páginas."));
       }
     } catch (e) {
-      console.error("[MetaPanel] loadAssets error", e);
+      console.error("[MetaPanel] loadAssets error", safeErrorMessage(e));
       toast.error(e instanceof Error ? e.message : "Erro ao carregar assets Meta.");
     } finally { setLoadingAccounts(false); }
   }, [fetchAccounts, fetchPages]);
@@ -326,7 +333,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
       console.log("META_RECONNECT_VALIDATION", {
         token_type: tokenType,
         is_valid: debug.debug_token?.is_valid ?? null,
-        me: debug.me ?? null,
+        me_id: debug.me?.id ?? null,
         requested_scopes: META_REQUIRED_SCOPES.split(","),
         granted_scopes: scopes,
         has_ads_read: scopes.includes("ads_read"),
@@ -342,7 +349,10 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
       const tok = encodeURIComponent(userToken);
       const adRes = await fetch(`${GRAPH}/me/adaccounts?fields=id,account_id,name,account_status,currency,timezone_name,business{id,name}&limit=200&access_token=${tok}`);
       const adJson = (await adRes.json()) as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
-      console.log("META_RECONNECT_ME_ADACCOUNTS", { status: adRes.status, ok: adRes.ok, payload: adJson });
+      console.log("META_RECONNECT_ME_ADACCOUNTS", {
+        ...summarizeHttp(adRes.status, adJson),
+        count: Array.isArray(adJson.data) ? adJson.data.length : 0,
+      });
       if (!adRes.ok || adJson.error) throw new Error(adJson.error?.message ?? "GET /me/adaccounts falhou.");
       const adAccounts = Array.isArray(adJson.data) ? adJson.data : [];
       if (adAccounts.length === 0) throw new Error("Reconexão feita, mas /me/adaccounts não retornou contas de anúncios.");
@@ -383,7 +393,7 @@ export function MetaPublishReadinessPanel({ campaign }: { campaign: Campaign }) 
       await refresh({ silent: true });
       await loadAssets();
     } catch (e) {
-      console.error("META_RECONNECT_FAILED", e);
+      console.error("META_RECONNECT_FAILED", safeErrorMessage(e));
       toast.error(e instanceof Error ? e.message : "Falha ao reconectar Meta.");
     } finally {
       setReconnecting(false);

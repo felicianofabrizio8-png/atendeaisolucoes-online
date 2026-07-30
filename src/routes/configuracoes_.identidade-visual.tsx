@@ -102,7 +102,7 @@ function BrandCenterPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) { navigate({ to: "/auth" }); return; }
+    if (!user) { navigate({ to: "/login" }); return; }
   }, [user, authLoading, navigate]);
 
   const reload = useCallback(async () => {

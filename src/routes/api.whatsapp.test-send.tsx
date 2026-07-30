@@ -6,6 +6,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+import { sanitizeString } from "@/lib/audit/sanitize";
 
 interface Body {
   integrationId: string;
@@ -73,16 +74,12 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           integration.access_token && integration.access_token.trim().length > 0,
         );
         const phoneNumberId = integration.external_account_id ?? "";
-        const tokenPrefix = tokenSaved
-          ? integration.access_token!.slice(0, 6)
-          : null;
-
-        // Log seguro: NUNCA logar o token inteiro.
+        // Log seguro: NUNCA logar o token, nem mesmo um prefixo — o prefixo
+        // identifica o app/tipo de token e é material sensível.
         console.log("[whatsapp test-send] credentials", {
           integrationId,
           phoneNumberId,
           tokenSaved: tokenSaved ? "Yes" : "No",
-          tokenPrefix: tokenPrefix ?? "N/A",
         });
 
         if (!tokenSaved || !phoneNumberId) {
@@ -94,7 +91,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
               diagnostics: {
                 phoneNumberId,
                 tokenSaved: tokenSaved ? "Yes" : "No",
-                tokenPrefix: tokenPrefix ?? "N/A",
               },
             },
             { status: 400 },
@@ -111,9 +107,9 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
         const startedAt = new Date().toISOString();
         console.log("[whatsapp test-send] request", {
           integrationId,
-          to,
+          phoneNumberId,
+          toLen: to.length,
           textLen: text.length,
-          url,
         });
 
         let status = 0;
@@ -147,7 +143,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
             diagnostics: {
               phoneNumberId,
               tokenSaved: "Yes",
-              tokenPrefix,
               endpoint: url,
             },
             request: { url, payload },
@@ -179,8 +174,7 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           status,
           ok,
           phoneNumberId,
-          tokenPrefix,
-          body: respText.slice(0, 1000),
+          detail: sanitizeString(respText.slice(0, 300)),
         });
 
         const metaError = (respJson as {
@@ -219,7 +213,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           diagnostics: {
             phoneNumberId,
             tokenSaved: "Yes",
-            tokenPrefix,
             endpoint: url,
           },
           request: { url, payload },

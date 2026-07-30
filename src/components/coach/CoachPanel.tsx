@@ -481,7 +481,7 @@ export function CoachPanel({
           {isAdmin && (
             <>
               <Link
-                to="/configuracoes_/coach-learnings"
+                to="/configuracoes/coach-learnings"
                 className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
                 title="Ver aprendizados desta empresa"
                 aria-label="Aprendizados"
@@ -490,7 +490,7 @@ export function CoachPanel({
                 Aprendizados
               </Link>
               <Link
-                to="/configuracoes_/coach-interpreter"
+                to="/configuracoes/coach-interpreter"
                 data-testid="coach-panel-open-interpreter"
                 className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
                 title="Abrir Console do Coach Interpreter"

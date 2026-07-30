@@ -4,6 +4,7 @@
 // do usuário — tokens só existem do lado do servidor.
 
 import { supabase } from "@/integrations/supabase/client";
+import { safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 
 export type ChannelType = "whatsapp" | "instagram" | "facebook";
 
@@ -75,9 +76,9 @@ export async function listIntegrations(_companyId: string): Promise<Integration[
       "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error, token_expires_at",
     )
     .order("created_at", { ascending: true });
-  console.log("[listIntegrations] raw response", { data, error });
+  console.log("[listIntegrations] response", { count: data?.length ?? 0, hasError: !!error });
   if (error) {
-    console.error("[listIntegrations] Supabase error", error);
+    console.error("[listIntegrations] Supabase error", safeErrorMessage(error.message));
     throw new Error(
       `Falha ao carregar integrações: ${error.message ?? JSON.stringify(error)}`,
     );
@@ -107,7 +108,10 @@ async function authedFetch(input: RequestInfo, init?: RequestInit) {
     } catch {
       /* ignore */
     }
-    console.error("[authedFetch] request failed", { input, status: res.status, details });
+    console.error("[authedFetch] request failed", {
+      ...summarizeHttp(res.status, details),
+      path: typeof input === "string" ? input.split("?")[0] : "[request]",
+    });
     throw new Error(msg);
   }
   return res;
@@ -172,9 +176,9 @@ export async function upsertWhatsAppIntegration(
   );
   if (!found) {
     console.error("[upsertWhatsAppIntegration] saved id not found in list", {
-      savedId: json.id,
+      hasSavedId: !!json.id,
       listSize: list.length,
-      listChannels: list.map((i) => `${i.channel}:${i.externalAccountId}`),
+      listChannels: list.map((i) => i.channel),
     });
     throw new Error("Integração salva mas não encontrada na lista");
   }

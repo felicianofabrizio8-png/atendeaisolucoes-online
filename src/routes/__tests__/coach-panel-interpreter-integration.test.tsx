@@ -119,7 +119,9 @@ describe("Fase 3.2 · CoachPanel → Coach Interpreter (abertura e navegação)"
 
     const link = screen.getByTestId("coach-panel-open-interpreter");
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute("href", "/configuracoes_/coach-interpreter");
+    // URL pública real: o sufixo "_" do arquivo é apenas convenção de layout
+    // do TanStack Router e NÃO faz parte da URL navegável.
+    expect(link).toHaveAttribute("href", "/configuracoes/coach-interpreter");
     expect(link).toHaveAccessibleName(/console do coach interpreter/i);
   });
 
