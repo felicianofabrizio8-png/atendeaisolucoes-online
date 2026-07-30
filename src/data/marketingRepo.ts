@@ -23,11 +23,16 @@ import {
 import { generateMarketingContent } from "@/lib/marketing/marketing-ai.functions";
 import {
   generateMarketingCampaign,
+  generateManualCampaign,
   getCampaignRenderStatus,
   retryCampaignRender,
   regenerateCampaignTexts,
   approveCampaignAndRender,
 } from "@/lib/marketing/marketing-campaign.functions";
+import type {
+  ManualCampaignFields,
+  ManualCampaignFormats,
+} from "@/lib/marketing/manual-campaign";
 import type {
   MarketingMediaRow,
   MarketingPromotionRow,
