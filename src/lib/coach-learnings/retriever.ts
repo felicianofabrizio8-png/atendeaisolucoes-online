@@ -51,6 +51,7 @@ import {
   type CoachIntent,
 } from "./retrieval/intents";
 import { neutralizeDelimiters, scanForInjection } from "./retrieval/injection";
+import { feedbackRankingSignal } from "./feedback-policy";
 
 // ---------------------------------------------------------------------------
 // Contratos públicos
@@ -207,6 +208,8 @@ interface CandidateSignals {
   priorityRatio: number;
   confidenceRatio: number;
   successRatio: number;
+  /** 0..1 — evidência acumulada de 👎. Alimenta `poor_feedback_history`. */
+  poorFeedbackRatio: number;
   recencyRatio: number;
   specificity: number;
   hasAnyContextOverlap: boolean;
@@ -280,9 +283,24 @@ function buildSignals(
   const confidenceRatio = Math.min(1, Math.max(0, Number(row.confidence ?? 0)));
 
   // Histórico só vira sinal quando existe dado suficiente para significar algo.
-  const retrieved = Number(row.times_retrieved ?? 0);
-  const used = Number(row.usage_count ?? 0);
-  const successRatio = retrieved >= 3 ? Math.min(1, used / retrieved) : 0;
+  //
+  // FASE 4: o sinal preferencial é o feedback REAL do vendedor (👍/👎), que
+  // mede qualidade. `usage_count/times_retrieved` mede apenas quantas vezes a
+  // sugestão foi copiada — é um proxy fraco, mantido só como retaguarda para
+  // aprendizados que ainda não receberam avaliações suficientes.
+  const feedbackSignal = feedbackRankingSignal(
+    row.success_rate,
+    row.feedback_sample_count,
+  );
+
+  let successRatio: number;
+  if (feedbackSignal.hasEvidence) {
+    successRatio = feedbackSignal.quality;
+  } else {
+    const retrieved = Number(row.times_retrieved ?? 0);
+    const used = Number(row.usage_count ?? 0);
+    successRatio = retrieved >= 3 ? Math.min(1, used / retrieved) : 0;
+  }
 
   // Recência é apenas desempate: satura rápido e vale pouco.
   let recencyRatio = 0;
@@ -311,6 +329,7 @@ function buildSignals(
     priorityRatio,
     confidenceRatio,
     successRatio,
+    poorFeedbackRatio: feedbackSignal.poorQuality,
     recencyRatio,
     specificity: computeSpecificity(row),
     hasAnyContextOverlap:
@@ -374,6 +393,13 @@ function scoreCandidate(signals: CandidateSignals): RawScore {
   credit(signals.specificity, W.specificity, "high_specificity");
 
   // -- Penalizações --------------------------------------------------------
+  // Má reputação comprovada. Só dispara com amostras suficientes (a política
+  // devolve 0 abaixo do mínimo), então um 👎 isolado nunca chega aqui. O peso
+  // é modesto de propósito: rebaixa no ranking, não bane o aprendizado.
+  if (signals.poorFeedbackRatio > 0) {
+    raw += W.poorFeedbackPenalty * signals.poorFeedbackRatio;
+    penalties.push("poor_feedback_history");
+  }
   if (signals.specificity < 0.25) {
     raw += W.genericPenalty;
     penalties.push("low_specificity");

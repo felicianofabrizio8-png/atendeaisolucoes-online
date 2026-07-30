@@ -1089,6 +1089,81 @@ export type Database = {
           },
         ]
       }
+      coach_learning_feedback_events: {
+        Row: {
+          actor_user_id: string | null
+          company_id: string
+          confidence_after: number | null
+          confidence_before: number | null
+          created_at: string
+          event_weight: number
+          final_score: number | null
+          id: string
+          learning_id: string
+          new_feedback: string | null
+          previous_feedback: string | null
+          rank: number | null
+          source: string
+          success_rate_after: number | null
+          success_rate_before: number | null
+          suggestion_id: string
+          transition: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          company_id: string
+          confidence_after?: number | null
+          confidence_before?: number | null
+          created_at?: string
+          event_weight?: number
+          final_score?: number | null
+          id?: string
+          learning_id: string
+          new_feedback?: string | null
+          previous_feedback?: string | null
+          rank?: number | null
+          source?: string
+          success_rate_after?: number | null
+          success_rate_before?: number | null
+          suggestion_id: string
+          transition: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          company_id?: string
+          confidence_after?: number | null
+          confidence_before?: number | null
+          created_at?: string
+          event_weight?: number
+          final_score?: number | null
+          id?: string
+          learning_id?: string
+          new_feedback?: string | null
+          previous_feedback?: string | null
+          rank?: number | null
+          source?: string
+          success_rate_after?: number | null
+          success_rate_before?: number | null
+          suggestion_id?: string
+          transition?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_learning_feedback_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_learning_feedback_events_learning_id_fkey"
+            columns: ["learning_id"]
+            isOneToOne: false
+            referencedRelation: "coach_learnings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_learning_retrievals: {
         Row: {
           company_id: string
@@ -1245,16 +1320,25 @@ export type Database = {
           content_hash: string
           created_at: string
           description: string
+          feedback_sample_count: number
           id: string
+          last_feedback_at: string | null
+          last_negative_feedback_at: string | null
+          last_positive_feedback_at: string | null
           last_retrieved_at: string | null
           last_used_at: string | null
           negative_example: string | null
+          negative_feedback_count: number
+          negative_feedback_weight: number
           positive_example: string | null
+          positive_feedback_count: number
+          positive_feedback_weight: number
           priority: number
           product_ref: string | null
           rule_structured: string
           source_conversation_id: string | null
           status: string
+          success_rate: number
           taught_by: string | null
           times_retrieved: number
           title: string
@@ -1271,16 +1355,25 @@ export type Database = {
           content_hash: string
           created_at?: string
           description: string
+          feedback_sample_count?: number
           id?: string
+          last_feedback_at?: string | null
+          last_negative_feedback_at?: string | null
+          last_positive_feedback_at?: string | null
           last_retrieved_at?: string | null
           last_used_at?: string | null
           negative_example?: string | null
+          negative_feedback_count?: number
+          negative_feedback_weight?: number
           positive_example?: string | null
+          positive_feedback_count?: number
+          positive_feedback_weight?: number
           priority?: number
           product_ref?: string | null
           rule_structured: string
           source_conversation_id?: string | null
           status?: string
+          success_rate?: number
           taught_by?: string | null
           times_retrieved?: number
           title: string
@@ -1297,16 +1390,25 @@ export type Database = {
           content_hash?: string
           created_at?: string
           description?: string
+          feedback_sample_count?: number
           id?: string
+          last_feedback_at?: string | null
+          last_negative_feedback_at?: string | null
+          last_positive_feedback_at?: string | null
           last_retrieved_at?: string | null
           last_used_at?: string | null
           negative_example?: string | null
+          negative_feedback_count?: number
+          negative_feedback_weight?: number
           positive_example?: string | null
+          positive_feedback_count?: number
+          positive_feedback_weight?: number
           priority?: number
           product_ref?: string | null
           rule_structured?: string
           source_conversation_id?: string | null
           status?: string
+          success_rate?: number
           taught_by?: string | null
           times_retrieved?: number
           title?: string
@@ -5334,6 +5436,18 @@ export type Database = {
         }
         Returns: string
       }
+      coach_feedback_confidence: {
+        Args: { _sample_count: number; _success_rate: number }
+        Returns: number
+      }
+      coach_feedback_event_weight: {
+        Args: { _final_score: number; _rank: number }
+        Returns: number
+      }
+      coach_feedback_success_rate: {
+        Args: { _neg_weight: number; _pos_weight: number }
+        Returns: number
+      }
       coach_is_critical_category: {
         Args: { _cat: Database["public"]["Enums"]["coach_rule_category"] }
         Returns: boolean
@@ -5698,6 +5812,10 @@ export type Database = {
           _suggestion_id: string
         }
         Returns: string
+      }
+      submit_coach_suggestion_feedback_v2: {
+        Args: { _feedback: string; _source?: string; _suggestion_id: string }
+        Returns: Json
       }
       touch_last_seen: { Args: never; Returns: undefined }
       update_coach_learning: {
