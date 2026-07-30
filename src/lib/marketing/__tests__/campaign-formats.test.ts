@@ -49,10 +49,10 @@ describe("resolveCampaignFormats", () => {
   it("normaliza duplicatas e valores desconhecidos", () => {
     const r = resolveCampaignFormats({ formats: ["feed", "feed"] });
     expect(r.roles).toEqual(["feed"]);
-    // valores desconhecidos são ignorados na normalização
-    expect(resolveCampaignFormats({ formats: ["story", "bogus"] }).roles).toEqual([
-      "story",
-    ]);
+    // valor desconhecido invalida o snapshot → fallback legado (conservador)
+    expect(resolveCampaignFormats({ formats: ["story", "bogus"] }).source).toBe(
+      "legacy_fallback",
+    );
   });
 
   it("mapeia formato de conteúdo para role", () => {
