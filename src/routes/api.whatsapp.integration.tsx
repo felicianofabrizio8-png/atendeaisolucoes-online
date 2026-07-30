@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { appendOnboardingEvent } from "@/lib/onboarding/appendEvent.server";
+import { sanitizeForLog, safeErrorMessage } from "@/lib/audit/sanitize";
 
 interface UpsertBody {
   displayName: string;
@@ -105,7 +106,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           channel: payload.channel,
           displayName: payload.display_name,
           phoneNumberId: payload.external_account_id,
-          accountMetadata: payload.account_metadata,
+          accountMetadata: sanitizeForLog(payload.account_metadata),
           hasAccessToken: !!payload.access_token,
           hasVerifyToken: !!payload.verify_token,
           hasWebhookSecret: !!payload.webhook_secret,
@@ -119,11 +120,9 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .eq("external_account_id", body.phoneNumberId)
           .maybeSingle();
         if (existingError) {
-          console.error("[whatsapp integration save] lookup error", existingError);
-          return Response.json(
-            { error: existingError.message, details: existingError },
-            { status: 500 },
-          );
+          console.error("[whatsapp integration save] lookup error", safeErrorMessage(existingError.message));
+          // `details` expunha o objeto cru do Postgres ao cliente.
+          return Response.json({ error: "Falha ao consultar integração." }, { status: 500 });
         }
 
         const safeCols =
@@ -137,11 +136,8 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
             .select(safeCols)
             .single();
           if (error || !updated) {
-            console.error("integrations update error", error);
-            return Response.json(
-              { error: error?.message ?? "Update sem retorno", details: error },
-              { status: 500 },
-            );
+            console.error("integrations update error", safeErrorMessage(error?.message));
+            return Response.json({ error: "Falha ao atualizar integração." }, { status: 500 });
           }
           console.log("integrations updated", { id: updated.id, company_id: updated.company_id });
           await appendOnboardingEvent(auth.companyId, "whatsapp_connected", { updated: true });
@@ -158,11 +154,8 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .select(safeCols)
           .single();
         if (error || !data) {
-          console.error("integrations insert error", error);
-          return Response.json(
-            { error: error?.message ?? "Insert sem retorno", details: error },
-            { status: 500 },
-          );
+          console.error("integrations insert error", safeErrorMessage(error?.message));
+          return Response.json({ error: "Falha ao criar integração." }, { status: 500 });
         }
         console.log("integrations inserted", { id: data.id, company_id: data.company_id });
         await appendOnboardingEvent(auth.companyId, "whatsapp_connected", { created: true });
@@ -200,7 +193,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .update({ active: body.active })
           .eq("id", body.id);
         if (error) {
-          console.error("integrations patch error", error);
+          console.error("integrations patch error", safeErrorMessage(error.message));
           return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
         }
         return Response.json({ ok: true });
@@ -232,7 +225,7 @@ export const Route = createFileRoute("/api/whatsapp/integration")({
           .delete()
           .eq("id", body.id);
         if (error) {
-          console.error("integrations delete error", error);
+          console.error("integrations delete error", safeErrorMessage(error.message));
           return Response.json({ error: "Operação falhou. Tente novamente." }, { status: 500 });
         }
         return Response.json({ ok: true });
