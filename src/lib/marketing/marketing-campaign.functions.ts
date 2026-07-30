@@ -44,6 +44,12 @@ import {
   resolveOverlayContentFromRow,
   type MarketingRowOverlaySource,
 } from "./overlay-content-resolver";
+import {
+  MANUAL_LIMITS,
+  buildManualOverlay,
+  composeManualCaption,
+  normalizeHashtags,
+} from "./manual-campaign";
 
 type SB = SupabaseClient<Database>;
 
