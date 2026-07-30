@@ -234,12 +234,31 @@ ${transcript || "(sem mensagens)"}`;
 
         if (insErr) return Response.json({ error: insErr.message }, { status: 500 });
 
-        // Registra uso (fire-and-forget) — não bloqueia resposta.
-        if (learningIdsUsed.length > 0) {
-          void supabaseAdmin
-            .rpc("increment_coach_learning_usage" as never, { _ids: learningIdsUsed } as never)
-            .then(() => undefined, () => undefined);
+        // ---------------------------------------------------------------
+        // Telemetria do Coach Evolutivo (SPRINT 4 · FASE 2)
+        //
+        // Ordem obrigatória: sugestão persistida → suggestion_id disponível
+        // → retrievals → incremento de uso. O `suggestion_id` é a chave de
+        // idempotência (`generation_ref`), então um retry não duplica.
+        //
+        // `companyId` vem SEMPRE do JWT do usuário (profiles.company_id),
+        // nunca do payload do cliente. As RPCs `_internal` revalidam cada
+        // learning_id contra a empresa antes de escrever.
+        //
+        // Falha aqui NÃO bloqueia a entrega — mas nunca é silenciosa:
+        // `recordSuggestionTelemetry` emite log estruturado sanitizado.
+        // ---------------------------------------------------------------
+        const suggestionId = (ins as { id?: string } | null)?.id ?? null;
+        if (learningIdsUsed.length > 0 && suggestionId) {
+          await recordSuggestionTelemetry(supabaseAdmin, {
+            companyId,
+            suggestionId,
+            learningIds: learningIdsUsed,
+            conversationId: body.conversation_id,
+            messageId: lastMessageId,
+          }).catch(() => undefined);
         }
+
 
         return Response.json({ ok: true, suggestion: ins });
       },
