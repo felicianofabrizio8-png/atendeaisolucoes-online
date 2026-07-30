@@ -935,14 +935,24 @@ Deno.serve(async (req) => {
   });
 
   if (!sigResult.ok) {
+    // Observabilidade: app identificado, label, origem, status e motivo.
+    // Nunca: payload, token, assinatura completa, telefone ou mensagem.
     console.log("META_WEBHOOK_BAD_SIGNATURE", {
-      sigReceivedPrefix: sig?.slice(7, 19) ?? null,
-      sigExpectedPrefix: sigResult.expectedPreview,
+      status: 401,
+      reason: sigResult.reason,
+      object: origin.object,
+      entryIds: origin.entryIds,
       secretsTried: sigResult.secretsTried,
-      bodyLen: rawBodyBytes.byteLength,
-      origin,
-      candidates: sigResult.candidates,
-      skipping: false,
+      // Tokens de META_APP_SECRETS que nao sao App Secrets validos (32 hex).
+      // Se vier > 0, o valor do secret esta mal formatado — causa comum de
+      // BAD_SIGNATURE quando o app correto "parece" estar configurado.
+      malformedTokens: sigResult.malformed,
+      // Apenas rotulos: permite ver QUAIS apps foram testados, sem segredo.
+      appsTried: sigResult.candidates.map((c) => ({
+        appId: c.appId,
+        label: c.label,
+        source: c.source,
+      })),
     });
     if (origin.object === "instagram") {
       await logInstagramAppDiagnostics(sb, origin.entryIds);
@@ -950,11 +960,15 @@ Deno.serve(async (req) => {
     return text("invalid signature", 401);
   } else {
     console.log("META_WEBHOOK_SIG_OK", {
+      status: 200,
+      reason: "ok",
+      object: origin.object,
+      entryIds: origin.entryIds,
       secretsTried: sigResult.secretsTried,
       matchedAppId: sigResult.matched?.appId ?? null,
       matchedLabel: sigResult.matched?.label ?? null,
       matchedSource: sigResult.matched?.source ?? null,
-      origin,
+      malformedTokens: sigResult.malformed,
     });
   }
 
