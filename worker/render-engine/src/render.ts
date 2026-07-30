@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUILD_SIGNATURE } from "./build-info.js";
 
 // ---------------------------------------------------------------------------
 // HOTFIX OPERACIONAL — Prova de qual código está rodando no container Railway.
@@ -11,7 +12,7 @@ try {
   // eslint-disable-next-line no-console
   console.info({
     event: "RENDER_BUILD_SIGNATURE",
-    build_signature: "render-phase-5b1-build-001",
+    build_signature: BUILD_SIGNATURE,
     file: fileURLToPath(import.meta.url),
     cwd: process.cwd(),
     node_env: process.env.NODE_ENV ?? null,
@@ -215,6 +216,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
 
     if (brand && (hasWatermarkable || hasContent)) {
       let logoLocal: string | null = null;
+      let logoBytes = 0;
       if (hasWatermarkable) {
         try {
           logoLocal = path.join(workDir, "in-logo");
@@ -222,6 +224,10 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
             brand.logoDownloadUrl!,
             cfg.httpTimeoutMs,
           );
+          logoBytes = logoMeta.downloadedBytes ?? logoBuf.byteLength;
+          if (!logoBytes || logoBuf.byteLength === 0) {
+            throw new Error("empty_logo_download");
+          }
           await writeFile(logoLocal, Buffer.from(logoBuf));
           log.info("brand_watermark_prepared", {
             ...baseCtx,
@@ -237,8 +243,11 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           const msg = err instanceof Error ? err.message : String(err);
           log.warn("brand_watermark_skipped", {
             ...baseCtx, stage, reason: sanitizeError(msg),
+            logo_bytes: logoBytes,
+            download_status: "FAILED",
           });
           logoLocal = null;
+          logoBytes = 0;
         }
       }
 
@@ -247,6 +256,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
       let sceneAppliesLogo = false;
+      let sceneLogoConfirmed = false;
+      let sceneLogoReason: string | null = "composer_not_run";
       const gateApproved = !!(brand && hasContent);
       const gateReason = !brand
         ? "no_brand_snapshot"
@@ -261,7 +272,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
                 : "approved";
       log.info("brand_composition_gate", {
         ...baseCtx, stage,
-        build_signature: "brand-phase-5b1-v1",
+        build_signature: BUILD_SIGNATURE,
         approved: gateApproved,
         reason: gateReason,
         has_brand: !!brand,
@@ -298,6 +309,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           outroCardPath = layers.outroCardPath;
           outroDurationSeconds = layers.outroDurationSeconds;
           sceneAppliesLogo = layers.sceneAppliesLogo;
+          sceneLogoConfirmed = layers.sceneLogoConfirmed;
+          sceneLogoReason = layers.sceneLogoReason;
           const layersCount =
             (bottomPanelPath ? 1 : 0) + (outroCardPath ? 1 : 0);
           log.info("brand_layers_count", {
@@ -307,6 +320,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
             has_outro_card: !!outroCardPath,
             outro_duration_seconds: outroDurationSeconds,
             scene_applies_logo: sceneAppliesLogo,
+            scene_logo_confirmed: sceneLogoConfirmed,
+            scene_logo_reason: sceneLogoReason,
           });
           log.info("brand_composition_finished", {
             ...baseCtx, stage,
@@ -315,6 +330,9 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          sceneAppliesLogo = false;
+          sceneLogoConfirmed = false;
+          sceneLogoReason = "composer_failed";
           log.warn("brand_composer_failed", {
             ...baseCtx, stage, reason: sanitizeError(msg),
           });
@@ -323,7 +341,26 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
 
       // Quando a cena já embutiu a logo dentro do overlay full-frame, evitamos
       // duplicar a logo via watermark clássico do FFmpeg.
-      const effectiveLogoForWatermark = sceneAppliesLogo ? null : logoLocal;
+      // Sprint 3 — o watermark externo SÓ pode ser suprimido quando existe
+      // CONFIRMAÇÃO OBJETIVA de que a logo foi desenhada dentro da cena.
+      // `sceneAppliesLogo` é apenas intenção declarada; confiar nele causava
+      // vídeos com branding habilitado e sem nenhuma marca.
+      const watermarkFallbackApplied =
+        !!logoLocal && sceneAppliesLogo && !sceneLogoConfirmed;
+      const effectiveLogoForWatermark = sceneLogoConfirmed ? null : logoLocal;
+
+      log.info("brand_watermark_decision", {
+        ...baseCtx, stage,
+        build_signature: BUILD_SIGNATURE,
+        brand_version_id: brand.brandVersionId,
+        scene_applies_logo: sceneAppliesLogo,
+        scene_logo_confirmed: sceneLogoConfirmed,
+        scene_logo_reason: sceneLogoReason,
+        logo_download_ok: !!logoLocal,
+        logo_bytes: logoBytes,
+        watermark_applied: !!effectiveLogoForWatermark,
+        watermark_fallback_applied: watermarkFallbackApplied,
+      });
 
       if (effectiveLogoForWatermark || bottomPanelPath || outroCardPath) {
         watermark = {
