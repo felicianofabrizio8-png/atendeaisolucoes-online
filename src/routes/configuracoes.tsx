@@ -22,6 +22,7 @@ import {
   Crosshair,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { sanitizeForLog, safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 import {
   getNotificationPrefs,
   setNotificationPrefs,
