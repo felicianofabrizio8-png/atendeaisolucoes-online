@@ -31,7 +31,6 @@ function makeHypothesis(
   return {
     id: `hy-${pk}`,
     category: "objection",
-    title: over.title,
     description: `desc ${over.title}`,
     confidence: 0.8,
     occurrences: 6,
@@ -43,6 +42,7 @@ function makeHypothesis(
     provenanceKey: pk,
     contradictionDetected: false,
     ...over,
+    title: over.title,
   };
 }
 
