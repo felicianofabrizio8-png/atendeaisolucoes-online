@@ -141,15 +141,9 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
         .order("sort_order", { ascending: true })
         .limit(MAX_QUICK_REPLIES),
     ),
-    safe(
-      sb
-        .from("coach_rules")
-        .select("title, category, scope_kind, priority, status")
-        .eq("company_id", companyId)
-        .eq("status", "active")
-        .order("priority", { ascending: false })
-        .limit(MAX_RULES),
-    ),
+    // Coach V2 · isolamento: o acesso à tabela de regras fica no repository
+    // autorizado (ver listActiveRulesForGrounding).
+    safe(listActiveRulesForGrounding(sb, companyId, MAX_RULES)),
     safe(
       sb
         .from("campaigns")
