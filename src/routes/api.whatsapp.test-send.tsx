@@ -74,10 +74,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           integration.access_token && integration.access_token.trim().length > 0,
         );
         const phoneNumberId = integration.external_account_id ?? "";
-        const tokenPrefix = tokenSaved
-          ? integration.access_token!.slice(0, 6)
-          : null;
-
         // Log seguro: NUNCA logar o token, nem mesmo um prefixo — o prefixo
         // identifica o app/tipo de token e é material sensível.
         console.log("[whatsapp test-send] credentials", {
@@ -147,7 +143,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
             diagnostics: {
               phoneNumberId,
               tokenSaved: "Yes",
-              tokenPrefix,
               endpoint: url,
             },
             request: { url, payload },
@@ -218,7 +213,6 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
           diagnostics: {
             phoneNumberId,
             tokenSaved: "Yes",
-            tokenPrefix,
             endpoint: url,
           },
           request: { url, payload },

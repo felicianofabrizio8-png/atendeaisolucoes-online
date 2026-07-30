@@ -38,6 +38,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { CoachAttentionList } from "@/components/coach/CoachAttentionList";
+import { safeErrorMessage } from "@/lib/audit/sanitize";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -119,7 +120,10 @@ function DashboardPage() {
         const integrations = await listIntegrations(companyId);
         const wa = integrations.find((i) => i.channel === "whatsapp");
         if (!cancelled) setWaConnected(wa?.active ?? false);
-      } catch {
+      } catch (e) {
+        // Falha de rede/permissão não significa "desconectado": registramos o
+        // motivo (sanitizado) em vez de engolir o erro silenciosamente.
+        console.warn("[dashboard] falha ao carregar integrações", safeErrorMessage(e));
         if (!cancelled) setWaConnected(false);
       }
     })();
