@@ -25,7 +25,7 @@ import { log } from "./logger.js";
 import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
 import { getSceneById, type VideoLayout } from "./scenes.js";
-import { buildSceneOverlaySvg } from "./scene-composer.js";
+import { buildSceneOverlaySvg, buildSceneOverlaySvgWithMeta } from "./scene-composer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +66,15 @@ export interface BrandLayerPaths {
    * O caller deve suprimir o watermark clássico para evitar duplicação.
    */
   sceneAppliesLogo: boolean;
+  /**
+   * Sprint 3 — CONFIRMAÇÃO OBJETIVA. Só é `true` quando o compositor emitiu
+   * de fato o elemento de logo no SVG (caixa positiva/finita) E a
+   * rasterização do overlay da cena teve sucesso. É o único sinal que
+   * autoriza suprimir o watermark externo.
+   */
+  sceneLogoConfirmed: boolean;
+  /** Motivo sanitizado quando a logo não foi confirmada na cena. */
+  sceneLogoReason: string | null;
 }
 
 export interface ComposeBrandLayersInput {
@@ -135,6 +144,8 @@ export async function composeBrandLayers(
 
   let bottomPanelPath: string | null = null;
   let sceneAppliesLogo = false;
+  let sceneLogoConfirmed = false;
+  let sceneLogoReason: string | null = "scene_not_used";
   if (hasBottomPanel) {
     // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
     // renderiza a CENA completa (full-frame RGBA). Caso contrário, cai no
@@ -188,7 +199,7 @@ export async function composeBrandLayers(
           } catch { /* segue sem logo no overlay */ }
         }
 
-        const svg = buildSceneOverlaySvg({
+        const built = buildSceneOverlaySvgWithMeta({
           width,
           height,
           scene,
@@ -201,19 +212,29 @@ export async function composeBrandLayers(
           logo: sceneLogo,
         });
         bottomPanelPath = await rasterizeSvg({
-          svg,
+          svg: built.svg,
           width,
           height,
           fontFiles,
           outPath: path.join(workDir, "brand-scene-overlay.png"),
         });
+        // Intenção declarada (havia logo disponível para a cena).
         sceneAppliesLogo = !!sceneLogo;
+        // Confirmação real: logo emitida no SVG + overlay rasterizado.
+        sceneLogoConfirmed = built.logoRendered && !!bottomPanelPath;
+        sceneLogoReason = sceneLogoConfirmed
+          ? null
+          : built.logoSkipReason ?? "rasterize_missing";
         log.info("brand_composer_scene_applied", {
           job_id: jobId,
           template: scene.id,
           layer_count: scene.layers.length,
           render_mode: "scene",
           scene_applies_logo: sceneAppliesLogo,
+          scene_logo_confirmed: sceneLogoConfirmed,
+          scene_logo_reason: sceneLogoReason,
+          logo_box_width: built.logoBox ? Math.round(built.logoBox.width) : null,
+          logo_box_height: built.logoBox ? Math.round(built.logoBox.height) : null,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -241,6 +262,9 @@ export async function composeBrandLayers(
             excerpt = built.slice(offset, offset + 160);
           }
         } catch { /* best-effort dump */ }
+        sceneAppliesLogo = false;
+        sceneLogoConfirmed = false;
+        sceneLogoReason = "rasterize_failed";
         log.warn("scene_render_fallback", {
           job_id: jobId,
           template: scene.id,
@@ -251,6 +275,7 @@ export async function composeBrandLayers(
         });
       }
     } else {
+      sceneLogoReason = fallbackReason;
       log.warn("scene_render_fallback", {
         job_id: jobId,
         template: templateId,
@@ -324,7 +349,14 @@ export async function composeBrandLayers(
     height,
   });
 
-  return { bottomPanelPath, outroCardPath, outroDurationSeconds, sceneAppliesLogo };
+  return {
+    bottomPanelPath,
+    outroCardPath,
+    outroDurationSeconds,
+    sceneAppliesLogo,
+    sceneLogoConfirmed,
+    sceneLogoReason,
+  };
 }
 
 // ---------------------------------------------------------------------------

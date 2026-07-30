@@ -6,8 +6,7 @@ import { getActiveJobId } from "./runtime-state.js";
 import { SCENES } from "./scenes.js";
 
 
-const BUILD_SIGNATURE = "render-scene-svg-escape-build-003";
-const BUILD_TIMESTAMP = "2026-07-20";
+import { BUILD_SIGNATURE, BUILD_DATE, SCENE_COMPOSER_VERSION } from "./build-info.js";
 
 
 async function main() {
@@ -18,10 +17,10 @@ async function main() {
   // do container Railway. Não contém segredos.
   log.info("render_build_signature", {
     build_signature: BUILD_SIGNATURE,
-    build_date: BUILD_TIMESTAMP,
+    build_date: BUILD_DATE,
     brand_composition_enabled: true,
     scene_engine_enabled: true,
-    scene_composer_version: "scene-v1",
+    scene_composer_version: SCENE_COMPOSER_VERSION,
     available_scene_ids: Object.keys(SCENES),
     entrypoint: "dist/index.js",
     node_version: process.version,
