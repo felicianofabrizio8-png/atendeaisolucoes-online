@@ -6,13 +6,16 @@
 //       Para cada evento, faz upsert de lead + conversation + insere message.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { buildSecretCandidates, verifyMetaSignature } from "./signature.ts";
 
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const META_APP_SECRETS_EXTRA = Deno.env.get("META_APP_SECRETS") ?? ""; // comma-separated fallback secrets
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? Deno.env.get("VITE_META_APP_ID") ?? "";
 const META_INSTAGRAM_APP_SECRET = Deno.env.get("META_INSTAGRAM_APP_SECRET") ?? "";
-const META_INSTAGRAM_APP_ID = "981573787924167";
+// App do Instagram Login. Configuravel por env; o default preserva o app
+// historico do projeto para nao quebrar instalacoes existentes.
+const META_INSTAGRAM_APP_ID = Deno.env.get("META_INSTAGRAM_APP_ID") ?? "981573787924167";
 // Bypass removed for security — HMAC signature is always enforced.
 const META_SKIP_SIG = false;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -23,162 +26,14 @@ function text(body: string, status = 200) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain" } });
 }
 
-type SecretCandidate = {
-  appId: string | null;
-  label: string;
-  secret: string;
-  source: string;
-};
-
-type SignatureResult = {
-  ok: boolean;
-  expectedPreview: string;
-  secretsTried: number;
-  matched: Omit<SecretCandidate, "secret"> & { secretLen: number } | null;
-  candidates: Array<Omit<SecretCandidate, "secret"> & { secretLen: number; expectedPrefix: string }>;
-};
-
-function parseSecretToken(raw: string, index: number): SecretCandidate | null {
-  const token = raw.trim().replace(/^['"]|['"]$/g, "");
-  if (!token) return null;
-
-  let label = `META_APP_SECRETS[${index}]`;
-  let appId: string | null = null;
-  let secret = token;
-  const hexSecret = token.match(/[a-f0-9]{32}/i)?.[0];
-  if (hexSecret) {
-    secret = hexSecret;
-    const beforeSecret = token.slice(0, token.indexOf(hexSecret)).replace(/[\s:=-]+$/g, "").trim();
-    if (beforeSecret) label = beforeSecret;
-    const idMatch = token.match(/\b\d{6,}\b/);
-    if (idMatch) appId = idMatch[0];
-  }
-
-  const eq = token.indexOf("=");
-  const colon = token.indexOf(":");
-  const separator = eq > 0 ? eq : colon > 0 ? colon : -1;
-  if (!hexSecret && separator > 0) {
-    const left = token.slice(0, separator).trim();
-    const right = token.slice(separator + 1).trim();
-    if (right.length >= 16) {
-      secret = right.replace(/^['"]|['"]$/g, "");
-      appId = /^\d{6,}$/.test(left) ? left : null;
-      label = left || label;
-    }
-  }
-
-  return { appId, label, secret, source: "META_APP_SECRETS" };
-}
-
-function getAllSecretCandidates(): SecretCandidate[] {
-  const candidates: SecretCandidate[] = [];
-  if (META_APP_SECRET.trim()) {
-    candidates.push({
-      appId: META_APP_ID || null,
-      label: META_APP_ID ? `META_APP_SECRET:${META_APP_ID}` : "META_APP_SECRET",
-      secret: META_APP_SECRET.trim(),
-      source: "META_APP_SECRET",
-    });
-  }
-
-  if (META_INSTAGRAM_APP_SECRET.trim()) {
-    candidates.push({
-      appId: META_INSTAGRAM_APP_ID,
-      label: `META_INSTAGRAM_APP_SECRET:${META_INSTAGRAM_APP_ID}`,
-      secret: META_INSTAGRAM_APP_SECRET.trim(),
-      source: "META_INSTAGRAM_APP_SECRET",
-    });
-  }
-
-  const extra = META_APP_SECRETS_EXTRA.trim();
-  if (extra.startsWith("{") || extra.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(extra);
-      if (Array.isArray(parsed)) {
-        parsed.forEach((item, index) => {
-          if (typeof item === "string") {
-            const candidate = parseSecretToken(item, index);
-            if (candidate) candidates.push({ ...candidate, source: "META_APP_SECRETS_JSON" });
-            return;
-          }
-          const secret = String(item?.secret ?? item?.app_secret ?? "").trim();
-          if (!secret) return;
-          const normalizedSecret = secret.match(/[a-f0-9]{32}/i)?.[0] ?? secret;
-          candidates.push({
-            appId: item?.app_id || item?.appId ? String(item.app_id ?? item.appId) : null,
-            label: String(item?.name ?? item?.label ?? item?.app_id ?? item?.appId ?? `META_APP_SECRETS[${index}]`),
-            secret: normalizedSecret,
-            source: "META_APP_SECRETS_JSON",
-          });
-        });
-      } else if (parsed && typeof parsed === "object") {
-        Object.entries(parsed).forEach(([appId, secret]) => {
-          if (typeof secret === "string" && secret.trim()) {
-            candidates.push({ appId, label: appId, secret: secret.trim(), source: "META_APP_SECRETS_JSON" });
-          }
-        });
-      }
-    } catch (e) {
-      console.error("META_WEBHOOK_SECRET_PARSE_ERROR", e instanceof Error ? e.message : String(e));
-    }
-  } else {
-    extra
-      .split(/[\n,;]/)
-      .map((s, i) => parseSecretToken(s, i))
-      .filter((s): s is SecretCandidate => !!s)
-      .forEach((s) => candidates.push(s));
-  }
-
-  const seen = new Set<string>();
-  return candidates.filter((c) => {
-    const key = c.secret;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-async function hmacHex(secret: string, bodyBytes: Uint8Array): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, bodyBytes);
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function verifySignature(rawBodyBytes: Uint8Array, signature: string | null): Promise<SignatureResult> {
-  const candidates = getAllSecretCandidates();
-  if (!signature || !signature.startsWith("sha256=")) {
-    return { ok: false, expectedPreview: "", secretsTried: candidates.length, matched: null, candidates: [] };
-  }
-  const provided = signature.slice(7);
-  let firstExpected = "";
-  const diagnostics: SignatureResult["candidates"] = [];
-  for (const c of candidates) {
-    const expected = await hmacHex(c.secret, rawBodyBytes);
-    if (!firstExpected) firstExpected = expected;
-    diagnostics.push({ appId: c.appId, label: c.label, source: c.source, secretLen: c.secret.length, expectedPrefix: expected.slice(0, 12) });
-    if (provided.length === expected.length) {
-      let diff = 0;
-      for (let i = 0; i < expected.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
-      if (diff === 0) {
-        return {
-          ok: true,
-          expectedPreview: expected.slice(0, 12),
-          secretsTried: candidates.length,
-          matched: { appId: c.appId, label: c.label, source: c.source, secretLen: c.secret.length },
-          candidates: diagnostics,
-        };
-      }
-    }
-  }
-  return { ok: false, expectedPreview: firstExpected.slice(0, 12), secretsTried: candidates.length, matched: null, candidates: diagnostics };
+function buildEnv() {
+  return {
+    META_APP_SECRET,
+    META_APP_ID,
+    META_INSTAGRAM_APP_SECRET,
+    META_INSTAGRAM_APP_ID,
+    META_APP_SECRETS: META_APP_SECRETS_EXTRA,
+  };
 }
 
 function extractWebhookOrigin(rawBody: string) {
@@ -203,7 +58,8 @@ function getHeaderDiagnostics(req: Request) {
     fbTraceId: req.headers.get("x-fb-trace-id"),
     fbRev: req.headers.get("x-fb-rev"),
     fbRequestId: req.headers.get("x-fb-request-id"),
-    signaturePrefix: req.headers.get("x-hub-signature-256")?.slice(0, 19) ?? null,
+    // Presenca do header apenas. O valor da assinatura nunca e logado.
+    hasSignature: !!req.headers.get("x-hub-signature-256"),
   };
 }
 
@@ -227,7 +83,7 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
         .or(`page_id.eq.${entryId},ig_business_account_id.eq.${entryId}`);
 
       if (error) {
-        console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_DB_ERROR", { entryId, error });
+        console.error("INSTAGRAM_WEBHOOK_APP_DIAGNOSTIC_DB_ERROR", { entryId, reason: error.message });
         continue;
       }
 
@@ -266,7 +122,12 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
             if (r.ok && Array.isArray(j?.data)) {
               subscribedApps.push(...j.data.map((app: any) => ({ id: app?.id ?? null, name: app?.name ?? null, category: app?.category ?? null, target })));
             } else {
-              graphErrors.push({ target, status: r.status, body: j });
+              graphErrors.push({
+                target,
+                status: r.status,
+                // Somente a mensagem: o corpo cru da Graph pode ecoar token/PII.
+                reason: String((j as any)?.error?.message ?? "unknown_graph_error").slice(0, 200),
+              });
             }
           } catch (e) {
             graphErrors.push({ target, error: e instanceof Error ? e.message : String(e) });
@@ -1066,7 +927,6 @@ Deno.serve(async (req) => {
   const rawBodyBytes = new Uint8Array(await req.arrayBuffer());
   const raw = new TextDecoder().decode(rawBodyBytes);
   const origin = extractWebhookOrigin(raw);
-  console.log("META_WEBHOOK_RAW_BODY", raw.slice(0, 4000));
   console.log("META_WEBHOOK_ORIGIN", {
     ...origin,
     headers: getHeaderDiagnostics(req),
@@ -1074,20 +934,31 @@ Deno.serve(async (req) => {
   });
 
   const sig = req.headers.get("x-hub-signature-256");
-  const sigResult = await verifySignature(rawBodyBytes, sig);
+  const parsedSecrets = buildSecretCandidates(buildEnv());
+  const sigResult = await verifyMetaSignature(rawBodyBytes, sig, parsedSecrets);
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   if (!sigResult.ok) {
+    // Observabilidade: app identificado, label, origem, status e motivo.
+    // Nunca: payload, token, assinatura completa, telefone ou mensagem.
     console.log("META_WEBHOOK_BAD_SIGNATURE", {
-      sigReceivedPrefix: sig?.slice(7, 19) ?? null,
-      sigExpectedPrefix: sigResult.expectedPreview,
+      status: 401,
+      reason: sigResult.reason,
+      object: origin.object,
+      entryIds: origin.entryIds,
       secretsTried: sigResult.secretsTried,
-      bodyLen: rawBodyBytes.byteLength,
-      origin,
-      candidates: sigResult.candidates,
-      skipping: false,
+      // Tokens de META_APP_SECRETS que nao sao App Secrets validos (32 hex).
+      // Se vier > 0, o valor do secret esta mal formatado — causa comum de
+      // BAD_SIGNATURE quando o app correto "parece" estar configurado.
+      malformedTokens: sigResult.malformed,
+      // Apenas rotulos: permite ver QUAIS apps foram testados, sem segredo.
+      appsTried: sigResult.candidates.map((c) => ({
+        appId: c.appId,
+        label: c.label,
+        source: c.source,
+      })),
     });
     if (origin.object === "instagram") {
       await logInstagramAppDiagnostics(sb, origin.entryIds);
@@ -1095,11 +966,15 @@ Deno.serve(async (req) => {
     return text("invalid signature", 401);
   } else {
     console.log("META_WEBHOOK_SIG_OK", {
+      status: 200,
+      reason: "ok",
+      object: origin.object,
+      entryIds: origin.entryIds,
       secretsTried: sigResult.secretsTried,
       matchedAppId: sigResult.matched?.appId ?? null,
       matchedLabel: sigResult.matched?.label ?? null,
       matchedSource: sigResult.matched?.source ?? null,
-      origin,
+      malformedTokens: sigResult.malformed,
     });
   }
 
@@ -1123,7 +998,12 @@ Deno.serve(async (req) => {
   const object = body?.object as string | undefined;
   const entries = Array.isArray(body?.entry) ? body.entry : [];
 
-  console.log("META_WEBHOOK_INCOMING", { object, raw: raw.slice(0, 2000) });
+  // Metadados apenas: o corpo contem mensagens, telefones e usernames.
+  console.log("META_WEBHOOK_INCOMING", {
+    object,
+    entries: Array.isArray(body?.entry) ? body.entry.length : 0,
+    bodyLen: rawBodyBytes.byteLength,
+  });
 
   for (const entry of entries) {
     // Identify the page/account this entry belongs to.

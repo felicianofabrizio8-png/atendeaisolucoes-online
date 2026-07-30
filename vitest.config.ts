@@ -30,6 +30,7 @@ export default defineConfig({
       "src/data/__tests__/**/*.test.ts",
       "src/lib/quote-send/__tests__/**/*.test.ts",
       "src/lib/scientific-knowledge/__tests__/**/*.test.ts",
+      "src/lib/meta-webhook/__tests__/**/*.test.ts",
 
 
 
