@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 
 export interface ForwardMessageTarget {
   messageId: string;
@@ -163,7 +164,7 @@ export function ForwardMessageDialog({
       });
       const json = (await res.json().catch(() => ({}))) as ForwardErrorResponse;
       if (!res.ok) {
-        console.error("FORWARD_DEBUG", { status: res.status, body: json });
+        console.error("FORWARD_DEBUG", summarizeHttp(res.status, json));
         const mainMsg =
           json.error ??
           json.debug?.meta?.error?.message ??
@@ -199,7 +200,7 @@ export function ForwardMessageDialog({
       onSuccess?.({ conversationId: json.conversationId ?? "" });
       onClose();
     } catch (e) {
-      console.error("FORWARD_DEBUG", e);
+      console.error("FORWARD_DEBUG", safeErrorMessage(e));
       toast.error("Erro ao encaminhar", {
         description: e instanceof Error ? e.message : String(e),
       });
