@@ -163,12 +163,17 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
       if (data.sourceSuggestionId) {
         stage = "rpc:submit_suggestion_feedback";
         try {
+          // Ensinar a IA a partir de uma sugestão implica que ela estava
+          // ruim: registramos 👎 na sugestão de origem, o que já propaga o
+          // impacto aos aprendizados que a produziram (via RPC v2).
+          // O aprendizado recém-criado NÃO é penalizado — ele não participou
+          // da sugestão, então não aparece no trace de recuperação dela.
           await context.supabase.rpc(
-            "submit_coach_suggestion_feedback" as never,
+            "submit_coach_suggestion_feedback_v2" as never,
             {
               _suggestion_id: data.sourceSuggestionId,
               _feedback: "negative",
-              _learning_id: id,
+              _source: "teach_mode",
             } as never,
           );
         } catch {
@@ -365,24 +370,60 @@ export const submitLearningFeedbackFn = createServerFn({ method: "POST" })
 
 const suggestionFeedbackInput = z.object({
   suggestionId: z.string().uuid(),
-  status: z.enum(["positive", "negative"]),
-  learningId: z.string().uuid().nullable().optional(),
+  /**
+   * `cleared` remove a avaliação. A RPC trata a remoção revertendo o impacto
+   * do voto anterior nos aprendizados — não é um "soft delete" cosmético.
+   */
+  status: z.enum(["positive", "negative", "cleared"]),
+  source: z.enum(["coach_panel", "teach_mode", "admin"]).optional(),
 });
 
+export interface SuggestionFeedbackResult {
+  ok: true;
+  previousFeedback: "positive" | "negative" | null;
+  currentFeedback: "positive" | "negative" | null;
+  /** false quando o valor enviado já era o vigente (no-op idempotente). */
+  changed: boolean;
+  affectedLearnings: number;
+  metricsUpdated: number;
+  metricsFailed: number;
+}
+
+/**
+ * Registra o 👍/👎 e propaga o impacto para os aprendizados efetivamente
+ * usados na sugestão.
+ *
+ * Toda a lógica vive na RPC `submit_coach_suggestion_feedback_v2` porque a
+ * atualização precisa ser atômica e travar a sugestão. Aqui só validamos a
+ * entrada e traduzimos o resultado. O `company_id` NUNCA é enviado pelo
+ * cliente — a RPC o deriva de `auth.uid()`.
+ */
 export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => suggestionFeedbackInput.parse(data))
-  .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc(
-      "submit_coach_suggestion_feedback" as never,
+  .handler(async ({ data, context }): Promise<SuggestionFeedbackResult> => {
+    const { data: result, error } = await context.supabase.rpc(
+      "submit_coach_suggestion_feedback_v2" as never,
       {
         _suggestion_id: data.suggestionId,
         _feedback: data.status,
-        _learning_id: data.learningId ?? null,
+        _source: data.source ?? "coach_panel",
       } as never,
     );
     if (error) throw new Error(error.message ?? "suggestion_feedback_failed");
-    return { ok: true as const };
+
+    const payload = (result ?? {}) as Record<string, unknown>;
+    return {
+      ok: true as const,
+      previousFeedback:
+        (payload.previousFeedback as "positive" | "negative" | null) ?? null,
+      currentFeedback:
+        (payload.currentFeedback as "positive" | "negative" | null) ?? null,
+      changed: payload.changed === true,
+      affectedLearnings: Number(payload.affectedLearnings ?? 0),
+      metricsUpdated: Number(payload.metricsUpdated ?? 0),
+      metricsFailed: Number(payload.metricsFailed ?? 0),
+    };
   });
 
 // -------------------------------------------------------------------------

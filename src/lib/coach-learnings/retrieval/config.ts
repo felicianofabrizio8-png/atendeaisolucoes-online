@@ -57,6 +57,7 @@ export const COACH_LEARNING_RANKING_WEIGHTS = {
   recency: 2,
   specificity: 5,
   // --- Penalizações (valores negativos) -----------------------------------
+  poorFeedbackPenalty: -12,
   genericPenalty: -6,
   noContextPenalty: -10,
   unsafeInstructionPenalty: -60,
@@ -91,6 +92,7 @@ export const COACH_PENALTY_REASONS = [
   "low_specificity",
   "no_context_overlap",
   "unsafe_instruction_pattern",
+  "poor_feedback_history",
   "near_duplicate",
   "context_budget_exceeded",
 ] as const;

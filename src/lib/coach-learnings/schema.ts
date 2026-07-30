@@ -72,6 +72,19 @@ export interface CoachLearningRow {
   last_used_at: string | null;
   times_retrieved: number; // vezes que o Coach recuperou para o contexto
   last_retrieved_at: string | null;
+  // --- Ciclo de feedback (SPRINT 4 · FASE 4) --------------------------------
+  // Contadores brutos são auditáveis; os *_weight são as versões ponderadas
+  // por rank/score da recuperação, e alimentam success_rate/confidence.
+  positive_feedback_count: number;
+  negative_feedback_count: number;
+  feedback_sample_count: number;
+  positive_feedback_weight: number;
+  negative_feedback_weight: number;
+  /** Função pura dos pesos acumulados (média bayesiana). 0.5 = neutro. */
+  success_rate: number;
+  last_feedback_at: string | null;
+  last_positive_feedback_at: string | null;
+  last_negative_feedback_at: string | null;
   content_hash: string;
   taught_by: string | null;
   updated_by: string | null;
