@@ -350,6 +350,39 @@ export function normalizeTitle(t: string): string {
     .trim();
 }
 
+/**
+ * Sprint 1 · Item 6 — leitura de regras ativas para grounding.
+ *
+ * O acesso às tabelas `coach_*` é arquiteturalmente confinado aos repositories
+ * autorizados (quality gate Coach V2 · Fase 1). O grounding precisa apenas dos
+ * metadados públicos das regras ativas, então a query vive aqui em vez de no
+ * módulo de grounding — preservando o isolamento sem ampliar a allowlist.
+ *
+ * Escopo: somente leitura, filtrada por company_id, sem corpo/conteúdo da regra.
+ */
+export interface CoachRuleGroundingRow {
+  title: string;
+  category: string;
+  scope_kind: string;
+  priority: number | null;
+  status: string;
+}
+
+export async function listActiveRulesForGrounding(
+  sb: SB,
+  companyId: string,
+  limit: number,
+): Promise<{ data: CoachRuleGroundingRow[] | null; error: unknown }> {
+  const { data, error } = await sb
+    .from("coach_rules")
+    .select("title, category, scope_kind, priority, status")
+    .eq("company_id", companyId)
+    .eq("status", "active")
+    .order("priority", { ascending: false })
+    .limit(limit);
+  return { data: (data as CoachRuleGroundingRow[] | null) ?? null, error: error ?? null };
+}
+
 export async function findPotentialDuplicateRules(
   sb: SB,
   proposal: Pick<CoachProposal, "title" | "category" | "scope_kind">,
