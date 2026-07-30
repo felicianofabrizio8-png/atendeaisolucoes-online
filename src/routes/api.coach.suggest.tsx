@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server";
+import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
+
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash";
