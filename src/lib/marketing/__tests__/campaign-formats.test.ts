@@ -28,7 +28,7 @@ describe("resolveCampaignFormats", () => {
   it("respeita feed + story", () => {
     const r = resolveCampaignFormats({ formats: ["story", "feed"] });
     expect(r.roles).toEqual(["feed", "story"]);
-    expect(r.selection).toBe("feed+story");
+    expect(r.selection).toBe("feed_story");
   });
 
   it("campanha legada sem formats cai no fallback feed+story", () => {
@@ -47,14 +47,18 @@ describe("resolveCampaignFormats", () => {
   });
 
   it("normaliza duplicatas e valores desconhecidos", () => {
-    const r = resolveCampaignFormats({ formats: ["feed", "feed", "bogus"] });
+    const r = resolveCampaignFormats({ formats: ["feed", "feed"] });
     expect(r.roles).toEqual(["feed"]);
+    // valores desconhecidos são ignorados na normalização
+    expect(resolveCampaignFormats({ formats: ["story", "bogus"] }).roles).toEqual([
+      "story",
+    ]);
   });
 
   it("mapeia formato de conteúdo para role", () => {
     expect(roleFromContentFormat("feed")).toBe("feed");
     expect(roleFromContentFormat("story")).toBe("story");
-    expect(roleFromContentFormat("reel")).toBe("story");
+    expect(roleFromContentFormat("reel")).toBe("feed");
     expect(roleFromContentFormat("whatsapp_cta")).toBeNull();
   });
 
