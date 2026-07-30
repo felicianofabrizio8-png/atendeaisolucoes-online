@@ -611,8 +611,8 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
     const list = (rows ?? []) as MarketingContentRow[];
     const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
     const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
-    if (!feedRow || !storyRow) throw new Error("campaign_not_found");
-    if (feedRow.feed_render_job_id || storyRow.story_render_job_id) {
+    if (!feedRow && !storyRow) throw new Error("campaign_not_found");
+    if (feedRow?.feed_render_job_id || storyRow?.story_render_job_id) {
       // Campanha já teve texto aprovado e render disparado — regeneração
       // pós-aprovação exigiria criar nova campanha.
       throw new Error("campaign_already_approved");
@@ -714,6 +714,8 @@ const ApproveInput = z.object({
   // a próxima fase ler `video_layout` do content ou `brand_snapshot.overlay_layout`.
   layout: z.record(z.string(), z.unknown()).nullable().optional(),
   template: z.string().max(40).nullable().optional(),
+  /** ID do tema escolhido (biblioteca de temas). Opcional. */
+  theme: z.string().max(40).nullable().optional(),
 });
 
 export const approveCampaignAndRender = createServerFn({ method: "POST" })
@@ -730,9 +732,50 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       .eq("campaign_id", data.campaign_id);
     if (error) throw new Error(error.message);
     const list = (rows ?? []) as MarketingContentRow[];
-    const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
-    const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
-    if (!feedRow || !storyRow) throw new Error("campaign_not_found");
+    const feedRowRaw = list.find((r) => r.campaign_role === "feed") ?? null;
+    const storyRowRaw = list.find((r) => r.campaign_role === "story") ?? null;
+    if (!feedRowRaw && !storyRowRaw) throw new Error("campaign_not_found");
+
+    // Formatos escolhidos pelo usuário (ai_prompt.formats). Campanhas antigas
+    // caem no comportamento legado (feed+story) e isso fica registrado no log.
+    const formats = resolveCampaignFormats(
+      (storyRowRaw ?? feedRowRaw)!.ai_prompt as unknown,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+      formatsTelemetry("campaign_formats_resolved", {
+        campaign_id: data.campaign_id,
+        company_id: companyId,
+        formats: formats.selection,
+        source: formats.source,
+        reason: "approve",
+      }),
+    );
+    // Uma role só é considerada quando (a) o usuário a escolheu E (b) existe
+    // linha correspondente. Nunca inferimos formato pela existência da linha.
+    const feedRow = formats.roles.includes("feed") ? feedRowRaw : null;
+    const storyRow = formats.roles.includes("story") ? storyRowRaw : null;
+    const baseRow = storyRow ?? feedRow;
+    if (!baseRow) throw new Error("campaign_no_enabled_format");
+    for (const role of ["feed", "story"] as CampaignRole[]) {
+      const enabled = formats.roles.includes(role);
+      // eslint-disable-next-line no-console
+      console.info(
+        formatsTelemetry(
+          enabled
+            ? "campaign_format_render_requested"
+            : "campaign_format_render_skipped",
+          {
+            campaign_id: data.campaign_id,
+            company_id: companyId,
+            role,
+            formats: formats.selection,
+            source: formats.source,
+            reason: enabled ? null : "format_not_selected",
+          },
+        ),
+      );
+    }
 
     // Idempotência refinada:
     //  - Job em andamento (queued/processing/claimed) → devolve o mesmo jobId
@@ -741,8 +784,8 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     //    persistimos o texto/layout/template atuais do editor e enfileiramos
     //    um NOVO job, com snapshot recém-montado a partir do estado editado.
     const previousJobId =
-      storyRow.story_render_job_id ??
-      feedRow.feed_render_job_id ??
+      storyRow?.story_render_job_id ??
+      feedRow?.feed_render_job_id ??
       null;
     if (previousJobId) {
       const { data: prev } = await supabase
@@ -760,8 +803,8 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       }
     }
 
-    if (!storyRow.primary_audio_id) throw new Error("campaign_missing_primary_audio");
-    if (!storyRow.primary_image_media_id && !storyRow.primary_image_product_ref) {
+    if (!baseRow.primary_audio_id) throw new Error("campaign_missing_primary_audio");
+    if (!baseRow.primary_image_media_id && !baseRow.primary_image_product_ref) {
       throw new Error("campaign_missing_primary_image");
     }
 
@@ -779,22 +822,20 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         : {}),
       ...(data.template !== undefined ? { video_template: data.template } : {}),
     };
-    await supabase
-      .from("marketing_contents")
-      .update(approvedPatch)
-      .eq("id", feedRow.id);
-    await supabase
-      .from("marketing_contents")
-      .update(approvedPatch)
-      .eq("id", storyRow.id);
+    const approveTargetIds = [feedRow?.id, storyRow?.id].filter(
+      (x): x is string => typeof x === "string",
+    );
+    for (const id of approveTargetIds) {
+      await supabase.from("marketing_contents").update(approvedPatch).eq("id", id);
+    }
 
-    // Master 9:16 (Story) — feed reutiliza o mesmo MP4.
-    const image: ImageOwnershipRef = storyRow.primary_image_media_id
-      ? { source: "marketing_media", image_id: storyRow.primary_image_media_id }
+    // Master 9:16 (Story quando habilitada; senão a linha disponível).
+    const image: ImageOwnershipRef = baseRow.primary_image_media_id
+      ? { source: "marketing_media", image_id: baseRow.primary_image_media_id }
       : {
           source: "product_image",
-          product_id: storyRow.primary_image_product_ref!.product_id,
-          product_image_path: storyRow.primary_image_product_ref!.image_path,
+          product_id: baseRow.primary_image_product_ref!.product_id,
+          product_image_path: baseRow.primary_image_product_ref!.image_path,
         };
 
     let companyName: string | null = null;
@@ -810,13 +851,26 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     }
 
     const resolved = resolveOverlayContentFromRow({
-      title: storyRow.title,
-      body: storyRow.body,
-      cta_text: storyRow.cta_text,
+      title: baseRow.title,
+      body: baseRow.body,
+      cta_text: baseRow.cta_text,
       overlay_headline: data.headline,
       overlay_subheadline: data.subheadline ?? null,
       overlay_cta: data.cta ?? null,
     });
+
+    // Tema → snapshot visual EXPLÍCITO (cores resolvidas) para o worker.
+    // Prioridade: tema informado na aprovação > tema do snapshot manual >
+    // tema derivado do template escolhido no editor (modo IA).
+    const promptTheme =
+      baseRow.ai_prompt && typeof baseRow.ai_prompt === "object"
+        ? ((baseRow.ai_prompt as { theme?: unknown }).theme ?? null)
+        : null;
+    const themeId =
+      data.theme ??
+      (typeof promptTheme === "string" ? promptTheme : null) ??
+      themeIdForTemplate(data.template ?? baseRow.video_template ?? null);
+    const themeSnapshot = buildThemeSnapshot(themeId);
 
     // eslint-disable-next-line no-console
     console.info(
@@ -831,6 +885,9 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         overlay_fields: resolved.telemetry.overlay_fields,
         legacy_fallback: resolved.telemetry.legacy_fallback,
         template: data.template ?? null,
+        formats: formats.selection,
+        formats_source: formats.source,
+        theme: themeSnapshot?.id ?? null,
         has_layout: data.layout !== undefined && data.layout !== null,
         previous_job_id: previousJobId,
         rerender: !!previousJobId,
@@ -844,9 +901,9 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       primaryImage: image,
       primaryFocalPoint: null,
       imageSequence: null,
-      audioId: storyRow.primary_audio_id,
-      audioStart: Number(storyRow.audio_start_second ?? 0),
-      duration: Number(storyRow.duration_seconds ?? 15),
+      audioId: baseRow.primary_audio_id,
+      audioStart: Number(baseRow.audio_start_second ?? 0),
+      duration: Number(baseRow.duration_seconds ?? 15),
       // Nunca reusa job antigo aqui — se chegamos até este ponto, ou não
       // havia job, ou o anterior estava em estado terminal. Um novo job
       // com snapshot atual é criado e re-vinculado abaixo.
@@ -856,17 +913,22 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         companyName,
         template: data.template ?? null,
         overlayLayout: (data.layout ?? null) as Record<string, unknown> | null,
+        theme: themeSnapshot,
       },
     });
 
-    await supabase
-      .from("marketing_contents")
-      .update({ feed_render_job_id: jobId })
-      .eq("id", feedRow.id);
-    await supabase
-      .from("marketing_contents")
-      .update({ story_render_job_id: jobId })
-      .eq("id", storyRow.id);
+    if (feedRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ feed_render_job_id: jobId })
+        .eq("id", feedRow.id);
+    }
+    if (storyRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ story_render_job_id: jobId })
+        .eq("id", storyRow.id);
+    }
 
     return { job_id: jobId };
   });
