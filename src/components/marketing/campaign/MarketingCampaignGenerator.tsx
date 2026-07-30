@@ -501,6 +501,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         )}
       </div>
 
+      {/* Modo manual — formulário completo, sem IA */}
+      {mode === "manual" && !pendingReview && !campaignId && (
+        <CampaignManualForm
+          submitting={generating}
+          disabled={!baseReady}
+          disabledReason="Selecione ao menos 1 imagem e um áudio para continuar."
+          onSubmit={(payload) => void generateManual(payload)}
+        />
+      )}
+
       {/* Revisão de texto (approval-gate) — sem job de render ainda */}
       {pendingReview && !campaignId && (
         <CampaignVideoEditor
@@ -534,24 +544,27 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
       />
 
-      {/* Sticky action */}
-      <CampaignStickyActionBar>
-        <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
-          {slots.length === 0
-            ? "Selecione ao menos 1 imagem"
-            : !audio
-              ? "Selecione um áudio"
-              : `${slots.length} imagem(ns) · ${duration}s`}
-        </div>
-        <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
-          {generating ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
-          ) : (
-            <Sparkles className="h-4 w-4 mr-1" />
-          )}
-          Gerar campanha (Feed + Story)
-        </Button>
-      </CampaignStickyActionBar>
+      {/* Sticky action — só no modo IA (o manual tem seu próprio botão) */}
+      {mode === "ai" && !pendingReview && !campaignId && (
+        <CampaignStickyActionBar>
+          <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
+            {slots.length === 0
+              ? "Selecione ao menos 1 imagem"
+              : !audio
+                ? "Selecione um áudio"
+                : `${slots.length} imagem(ns) · ${duration}s`}
+          </div>
+          <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1" />
+            )}
+            Gerar campanha (Feed + Story)
+          </Button>
+        </CampaignStickyActionBar>
+      )}
+
     </div>
   );
 }
