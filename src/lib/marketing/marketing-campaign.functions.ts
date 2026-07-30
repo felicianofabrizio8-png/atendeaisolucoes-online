@@ -46,6 +46,7 @@ import {
 } from "./overlay-content-resolver";
 import {
   resolveCampaignFormats,
+  rolesFromSelection,
   formatsTelemetry,
   type CampaignRole,
 } from "./campaign-formats";
@@ -119,6 +120,8 @@ export const GenerateCampaignInput = z
       .default("amigável"),
     audience: z.string().trim().max(300).nullable().optional(),
     extra_instructions: z.string().trim().max(1000).nullable().optional(),
+    // Seleção de formatos no modo IA (mesmo contrato do modo manual).
+    formats: z.enum(["feed", "story", "feed_story"]).default("feed_story"),
   })
   .refine((v) => !!v.primary_image || (v.images && v.images.length > 0), {
     message: "primary_image_or_images_required",
@@ -522,14 +525,22 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
         tone: data.tone,
         audience: data.audience ?? null,
         extra_instructions: data.extra_instructions ?? null,
+        campaign_formats: data.formats,
       },
     });
 
     // 3) Vincula story/feed ao campaign_id e grava referências de mídia/áudio.
     const campaignId = crypto.randomUUID();
-    const feedRow = contents.find((c) => (c.format as MarketingContentFormat) === "feed");
-    const storyRow = contents.find((c) => (c.format as MarketingContentFormat) === "story");
-    if (!feedRow || !storyRow) throw new Error("ai_missing_feed_or_story");
+    const aiRoles = rolesFromSelection(data.formats);
+    const feedRow = aiRoles.includes("feed")
+      ? contents.find((c) => (c.format as MarketingContentFormat) === "feed")
+      : undefined;
+    const storyRow = aiRoles.includes("story")
+      ? contents.find((c) => (c.format as MarketingContentFormat) === "story")
+      : undefined;
+    // Só exigimos da IA as linhas dos formatos escolhidos.
+    if (aiRoles.includes("feed") && !feedRow) throw new Error("ai_missing_feed_or_story");
+    if (aiRoles.includes("story") && !storyRow) throw new Error("ai_missing_feed_or_story");
 
     const primaryRef =
       primary.ref.source === "marketing_media"
@@ -548,15 +559,29 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audio_start_second: data.audio_start_second,
       duration_seconds: data.duration_seconds,
     };
-    await supabase
-      .from("marketing_contents")
-      .update({ ...commonPatch, campaign_role: "feed" })
-      .eq("id", feedRow.id);
-    await supabase
-      .from("marketing_contents")
-      .update({ ...commonPatch, campaign_role: "story" })
-      .eq("id", storyRow.id);
+    if (feedRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ ...commonPatch, campaign_role: "feed" })
+        .eq("id", feedRow.id);
+    }
+    if (storyRow) {
+      await supabase
+        .from("marketing_contents")
+        .update({ ...commonPatch, campaign_role: "story" })
+        .eq("id", storyRow.id);
+    }
 
+    // eslint-disable-next-line no-console
+    console.info(
+      formatsTelemetry("campaign_formats_resolved", {
+        campaign_id: campaignId,
+        company_id: companyId,
+        formats: data.formats,
+        source: "explicit",
+        reason: "ai_create",
+      }),
+    );
     // eslint-disable-next-line no-console
     console.info(
       JSON.stringify({
