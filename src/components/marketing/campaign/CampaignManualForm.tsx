@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CampaignFormatsField } from "./CampaignFormatsField";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, PencilRuler } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -171,18 +172,12 @@ export function CampaignManualForm({
         </p>
       </div>
 
-      <div>
-        <Label>Formatos</Label>
-        <select
-          className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-          value={formats}
-          onChange={(e) => setFormats(e.target.value as ManualCampaignFormats)}
-        >
-          <option value="feed_story">Feed + Story</option>
-          <option value="feed">Somente Feed</option>
-          <option value="story">Somente Story</option>
-        </select>
-      </div>
+      {/* Componente compartilhado com o modo IA — nenhuma duplicação. */}
+      <CampaignFormatsField
+        id="manual-campaign-formats"
+        value={formats}
+        onChange={(v) => setFormats(v as ManualCampaignFormats)}
+      />
 
       {disabled && disabledReason && (
         <p className="text-xs text-muted-foreground">{disabledReason}</p>
