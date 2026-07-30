@@ -237,6 +237,25 @@ export async function apiGetCampaignRenderStatus(campaign_id: string) {
   return getCampaignRenderStatus({ data: { campaign_id } });
 }
 
+/**
+ * Modo Manual — cria a campanha sem chamar a IA (não consome créditos).
+ * Devolve o mesmo formato do modo IA para reuso do editor de aprovação.
+ */
+export async function apiGenerateManualCampaign(input: {
+  promotion_id?: string | null;
+  images: CampaignImageInput[];
+  primary_audio_id: string;
+  audio_start_second?: number;
+  duration_seconds?: 8 | 10 | 15 | 30 | 60;
+  fields: ManualCampaignFields;
+  formats?: ManualCampaignFormats;
+  theme?: string | null;
+  template?: string | null;
+}) {
+  return generateManualCampaign({ data: input });
+}
+
+
 export async function apiRetryCampaignRender(input: {
   campaign_id: string;
   role: "feed" | "story";
