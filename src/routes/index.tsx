@@ -806,6 +806,12 @@ function DashboardPage() {
             toReturn.length === 0
           }
         >
+          {visitsFailed && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 px-1 pb-1">
+              Não foi possível carregar as visitas agora. A lista pode estar
+              incompleta — tente atualizar a página.
+            </p>
+          )}
           <SubSection
             label="Visitas agendadas"
             count={upcomingVisits.length}
