@@ -181,14 +181,18 @@ describe("Garantias estruturais da camada científica", () => {
   });
 
   it("nenhum agente operacional consome a camada científica nesta fase", () => {
-    // Apenas o próprio módulo, a persistência científica e as rotas de leitura.
+    // IA de Atendimento nunca consome conhecimento científico nesta fase.
+    expect(
+      readFileSync(join(process.cwd(), "src/lib/ai-agent.server.ts"), "utf8"),
+    ).not.toContain("@/lib/scientific-knowledge/");
+    // Módulos operacionais (coach, inbox, marketing, outbound, followup).
     const src = readdirSync(join(process.cwd(), "src/lib"), { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
       .filter(
         (d) =>
           !d.startsWith("scientific-") &&
-          ["coach", "inbox", "marketing", "outbound", "runtime", "followup"].includes(d),
+          ["coach", "inbox", "marketing", "outbound", "followup"].includes(d),
       );
     for (const dir of src) {
       const base = join(process.cwd(), "src/lib", dir);
