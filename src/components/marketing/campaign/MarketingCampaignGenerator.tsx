@@ -85,6 +85,10 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [duration, setDuration] = useState<Duration>(15);
 
   const [generating, setGenerating] = useState(false);
+  // Modo de criação: IA (padrão) ou manual (sem IA, sem créditos).
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
+  // Falha da IA → oferecemos o modo manual sem bloquear o usuário.
+  const [aiFailure, setAiFailure] = useState<AiFailureKind | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   // Approval-gate: quando existe, renderiza a tela de revisão em vez do
   // progress. Só limpamos quando o usuário aprova (então o render começa).
