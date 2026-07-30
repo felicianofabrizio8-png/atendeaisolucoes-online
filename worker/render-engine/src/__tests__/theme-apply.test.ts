@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { applyThemeToScene, sanitizeThemeSnapshot } from "../theme.js";
-import { getSceneById, listSceneIds } from "../scenes/registry.js";
+import { SCENES, getSceneById } from "../scenes.js";
 import { BUILD_SIGNATURE } from "../build-info.js";
 
 const THEME = {
@@ -19,7 +19,7 @@ describe("worker theme application (build-005)", () => {
   });
 
   it("aplica cores do tema em todas as cenas sem quebrar o contrato", () => {
-    for (const id of listSceneIds()) {
+    for (const id of Object.keys(SCENES)) {
       const scene = getSceneById(id);
       expect(scene).toBeTruthy();
       const themed = applyThemeToScene(scene!, sanitizeThemeSnapshot(THEME));
@@ -29,7 +29,7 @@ describe("worker theme application (build-005)", () => {
   });
 
   it("sem tema, a cena permanece idêntica (compatibilidade)", () => {
-    const scene = getSceneById(listSceneIds()[0])!;
+    const scene = getSceneById(Object.keys(SCENES)[0])!;
     expect(applyThemeToScene(scene, null)).toEqual(scene);
     expect(applyThemeToScene(scene, sanitizeThemeSnapshot("promo"))).toEqual(scene);
   });
