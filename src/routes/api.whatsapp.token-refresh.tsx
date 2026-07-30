@@ -13,6 +13,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { safeErrorMessage } from "@/lib/audit/sanitize";
 
 interface PostBody {
   integrationId: string;
@@ -138,7 +139,7 @@ export const Route = createFileRoute("/api/whatsapp/token-refresh")({
         console.log("[whatsapp token-refresh POST] validation", {
           integrationId,
           phoneNumberId,
-          tokenPrefix: newToken.slice(0, 6),
+          tokenLength: newToken.length,
           status: check.status,
           ok: check.ok,
         });
@@ -171,7 +172,7 @@ export const Route = createFileRoute("/api/whatsapp/token-refresh")({
           })
           .eq("id", integrationId);
         if (upErr) {
-          console.error("[whatsapp token-refresh POST] update failed", upErr);
+          console.error("[whatsapp token-refresh POST] update failed", safeErrorMessage(upErr?.message));
           return Response.json(
             { ok: false, error: "Falha ao salvar token" },
             { status: 500 },
