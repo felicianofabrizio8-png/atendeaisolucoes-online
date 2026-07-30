@@ -60,7 +60,50 @@ export interface CoachGroundingContext {
   isEmpty: boolean; // true quando nenhuma fonte trouxe dado útil
   raw: CoachGroundingRaw; // dados estruturados para o Domain Validator
   learningIdsUsed: string[]; // ids de coach_learnings injetados no bloco
+  /** Trace do ranking contextual (SPRINT 4 · FASE 3). Null se indisponível. */
+  learningRetrieval: CoachGroundingRetrievalTrace | null;
 }
+
+/**
+ * Contexto conversacional OPCIONAL para a recuperação contextual.
+ * Ausente → o retriever devolve `static_fallback` e o comportamento é
+ * idêntico ao anterior. É isto que mantém o Coach Interpreter intacto.
+ */
+export interface CoachGroundingRetrievalContext {
+  currentMessage?: string | null;
+  recentMessages?: Array<{ role: "lead" | "agent" | "system"; text: string | null }>;
+  channel?: string | null;
+  productContext?: string | null;
+  intent?: string | null;
+  maxSelected?: number;
+}
+
+export interface CoachGroundingOptions {
+  retrieval?: CoachGroundingRetrievalContext;
+}
+
+export interface CoachGroundingRetrievalTrace {
+  strategy: string;
+  fallbackReason: string | null;
+  metrics: {
+    candidateCount: number;
+    selectedCount: number;
+    discardedCount: number;
+    rankingDurationMs: number;
+    contextCharacters: number;
+    detectedIntents: string[];
+  };
+  trace: Array<{
+    learning_id: string;
+    rank: number;
+    final_score: number;
+    selection_reason: string;
+    matchedReasons: string[];
+    penalties: string[];
+    strategy: string;
+  }>;
+}
+
 
 
 
@@ -84,7 +127,11 @@ function bullet(items: string[]): string {
  * Coleta o contexto de conhecimento da empresa para grounding do Interpreter.
  * Todas as consultas são independentes e resilientes.
  */
-export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<CoachGroundingContext> {
+export async function buildCompanyGrounding(
+  sb: SB,
+  companyId: string,
+  options?: CoachGroundingOptions,
+): Promise<CoachGroundingContext> {
   const warnings: string[] = [];
   const sources: CoachGroundingSources = {
     products: false,
@@ -333,52 +380,71 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
   }
 
   // -- Coach Learnings (aprendizados conversacionais da própria empresa) ---
-  // BLOCO 4: default reduzido para 5 (máx 10). Filtra `status='active'`
-  // (paused/archived nunca entram). Dedup por content_hash quando presente.
+  //
+  // SPRINT 4 · FASE 3 — Recuperação CONTEXTUAL.
+  // Antes: `ORDER BY priority LIMIT 5` — os mesmos 5 em toda resposta.
+  // Agora: carrega até MAX_CANDIDATES e ranqueia contra a mensagem atual.
+  //
+  // Compatibilidade: sem `options.retrieval`, o retriever recebe contexto
+  // vazio e devolve `static_fallback`, que replica exatamente o
+  // comportamento anterior. O Coach Interpreter (que não tem conversa de
+  // cliente) segue funcionando sem alteração.
   const learningIdsUsed: string[] = [];
+  let learningRetrieval: CoachGroundingRetrievalTrace | null = null;
   try {
-    const {
-      listActiveLearningsForGrounding,
-      recordCoachLearningRetrieval,
-    } = await import("@/lib/coach-learnings/coach-learnings.repository");
-    const { COACH_GROUNDING_DEFAULT_LIMIT } = await import(
-      "@/lib/coach-learnings/schema"
+    const { listLearningCandidates } = await import(
+      "@/lib/coach-learnings/coach-learnings.repository"
     );
-    const rawLearnings = await listActiveLearningsForGrounding(
+    const {
+      retrieveLearnings,
+      formatLearningsForGrounding,
+      buildRankingTrace,
+      COACH_RETRIEVAL_LIMITS,
+    } = await import("@/lib/coach-learnings/retriever");
+
+    const rawCandidates = await listLearningCandidates(
       sb,
       companyId,
-      COACH_GROUNDING_DEFAULT_LIMIT,
+      COACH_RETRIEVAL_LIMITS.MAX_CANDIDATES,
     );
-    // Dedup defensivo por content_hash (nunca envia regra duas vezes no prompt).
+
+    // Dedup defensivo por content_hash (nunca envia regra duas vezes).
     const seenHash = new Set<string>();
-    const learnings = rawLearnings.filter((l) => {
+    const candidates = rawCandidates.filter((l) => {
       const h = l.content_hash ?? l.id;
       if (seenHash.has(h)) return false;
       seenHash.add(h);
       return true;
     });
-    if (learnings.length > 0) {
+
+    const ctx = options?.retrieval;
+    const result = retrieveLearnings({
+      companyId,
+      currentMessage: ctx?.currentMessage ?? null,
+      recentMessages: ctx?.recentMessages ?? [],
+      channel: ctx?.channel ?? null,
+      productContext: ctx?.productContext ?? null,
+      intent: ctx?.intent ?? null,
+      candidates,
+      maxSelected: ctx?.maxSelected,
+    });
+
+    if (result.selected.length > 0) {
       sources.coach_learnings = true;
-      const lines = learnings.map((l) => {
-        const cat = `[${clip(l.category, 30)}${l.product_ref ? `/${clip(l.product_ref, 40)}` : ""}]`;
-        const rule = clip(l.rule_structured, 260);
-        const pos = l.positive_example ? ` ✓ ${clip(l.positive_example, 140)}` : "";
-        const neg = l.negative_example ? ` ✗ ${clip(l.negative_example, 140)}` : "";
-        learningIdsUsed.push(l.id);
-        return `${cat} (p${l.priority}, v${l.version}) ${clip(l.title, 80)} — ${rule}${pos}${neg}`;
-      });
-      sections.push(
-        `### APRENDIZADOS DA EQUIPE (ensinados pelos vendedores desta empresa — TÊM PRIORIDADE sobre a Base de Conhecimento e produtos, exceto quando conflitam com REGRAS COMERCIAIS ATIVAS)\n${bullet(lines)}`,
-      );
-      // Telemetria best-effort — NUNCA bloqueia nem atrasa a sugestão.
-      const genRef = `${companyId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
-      void recordCoachLearningRetrieval(sb, learningIdsUsed, genRef, null).catch(
-        () => {},
-      );
+      for (const l of result.selected) learningIdsUsed.push(l.id);
+      sections.push(formatLearningsForGrounding(result.selected));
     }
+
+    learningRetrieval = {
+      strategy: result.strategy,
+      fallbackReason: result.fallbackReason,
+      metrics: result.metrics,
+      trace: buildRankingTrace(result),
+    };
   } catch {
     warnings.push("grounding_learnings_failed");
   }
+
 
   // -- Score de grounding --------------------------------------------------
   const activeSources = Object.values(sources).filter(Boolean).length;
@@ -400,6 +466,7 @@ export async function buildCompanyGrounding(sb: SB, companyId: string): Promise<
     isEmpty,
     raw,
     learningIdsUsed,
+    learningRetrieval,
   };
 }
 

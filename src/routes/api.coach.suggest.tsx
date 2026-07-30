@@ -55,13 +55,24 @@ export const Route = createFileRoute("/api/coach/suggest")({
 
         const { data: conv } = await supabaseAdmin
           .from("conversations")
-          .select("id, lead_id")
+          .select("id, lead_id, channel")
           .eq("company_id", companyId)
           .eq("id", body.conversation_id)
           .maybeSingle();
         if (!conv) return Response.json({ error: "conversa não encontrada" }, { status: 404 });
 
-        const [{ data: lead }, { data: msgs }, { data: company }, grounding] = await Promise.all([
+        // ---------------------------------------------------------------
+        // SPRINT 4 · FASE 3 — o grounding agora depende da conversa.
+        //
+        // Ordem obrigatória: lead + mensagens PRIMEIRO, grounding DEPOIS.
+        // O retriever contextual precisa da mensagem atual do cliente e do
+        // produto do lead para ranquear; sem isso ele cairia em fallback
+        // estático e a fase inteira perderia o sentido.
+        //
+        // Custo: uma ida extra ao banco em série. Aceitável — as três
+        // consultas iniciais continuam paralelas e o ranking é local.
+        // ---------------------------------------------------------------
+        const [{ data: lead }, { data: msgs }, { data: company }] = await Promise.all([
           supabaseAdmin
             .from("leads")
             .select("name, product, status, estimated_value")
@@ -75,10 +86,25 @@ export const Route = createFileRoute("/api/coach/suggest")({
             .order("at", { ascending: false })
             .limit(15),
           supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
-          // Grounding OBRIGATÓRIO — inclui aprendizados ativos da empresa
-          // (isolados por company_id via RLS-safe filter). Nunca vaza entre tenants.
-          buildCompanyGrounding(supabaseAdmin, companyId).catch(() => null),
         ]);
+
+        const orderedMsgs = (msgs ?? []).slice().reverse();
+        const lastLeadMessage = [...(msgs ?? [])].find((m) => m.role === "lead") ?? null;
+
+        // Grounding OBRIGATÓRIO — inclui aprendizados ranqueados pelo contexto
+        // desta conversa, isolados por company_id. Nunca vaza entre tenants.
+        const grounding = await buildCompanyGrounding(supabaseAdmin, companyId, {
+          retrieval: {
+            currentMessage: lastLeadMessage?.text ?? null,
+            recentMessages: orderedMsgs.map((m) => ({
+              role: m.role as "lead" | "agent" | "system",
+              text: m.text,
+            })),
+            channel: (conv as { channel?: string | null }).channel ?? null,
+            productContext: lead?.product ?? null,
+          },
+        }).catch(() => null);
+
 
         const ordered = (msgs ?? []).slice().reverse();
         const lastMessageId = [...(msgs ?? [])].find((m) => m.role === "lead")?.id ?? null;

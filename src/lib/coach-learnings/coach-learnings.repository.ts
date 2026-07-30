@@ -53,6 +53,44 @@ export async function listActiveLearningsForGrounding(
   return ((data ?? []) as unknown) as CoachLearningRow[];
 }
 
+/**
+ * SPRINT 4 · FASE 3 — Candidatos para a recuperação contextual.
+ *
+ * Diferença essencial em relação a `listActiveLearningsForGrounding`: aqui
+ * buscamos um conjunto AMPLO (até MAX_CANDIDATES) para ranquear em memória,
+ * em vez de já cortar em 5 pelo critério estático. O corte final é decisão
+ * do retriever, não do banco.
+ *
+ * Filtros obrigatórios: empresa correta, status active (paused/archived nunca
+ * entram) e conteúdo válido. Uma única consulta — nunca N+1.
+ */
+export async function listLearningCandidates(
+  sb: SB,
+  companyId: string,
+  limit = 50,
+): Promise<CoachLearningRow[]> {
+  const safeLimit = Math.min(200, Math.max(1, limit));
+  const { data, error } = await sb
+    .from("coach_learnings" as never)
+    .select("*")
+    .eq("company_id", companyId)
+    .eq("status", "active")
+    .order("priority", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(safeLimit);
+  if (error) return [];
+  const rows = ((data ?? []) as unknown) as CoachLearningRow[];
+  // Barreira dupla de isolamento + descarte de conteúdo inutilizável.
+  return rows.filter(
+    (r) =>
+      r.company_id === companyId &&
+      r.status === "active" &&
+      typeof r.rule_structured === "string" &&
+      r.rule_structured.trim().length >= 3,
+  );
+}
+
+
 export async function getCoachLearning(
   sb: SB,
   id: string,
