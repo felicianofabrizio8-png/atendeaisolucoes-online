@@ -221,19 +221,14 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   );
 
   const primarySlot = slots[0] ?? null;
-  const canGenerate =
+  const baseReady =
     slots.length > 0 && !!audio && !generating && slots.every((s) => !!s.previewUrl);
+  const canGenerate = baseReady;
 
-  async function generate() {
-    if (!audio || slots.length === 0) return;
-    const audioDur = Number(audio.duration_seconds ?? 0);
-    if (audioStart + duration > audioDur + 0.001) {
-      toast.error("O trecho do áudio excede sua duração total.");
-      return;
-    }
-    setGenerating(true);
-    try {
-      const images: CampaignImageInput[] = slots.map((s) =>
+  /** Imagens no formato aceito pelo backend (compartilhado IA + manual). */
+  const buildImages = useCallback(
+    (): CampaignImageInput[] =>
+      slots.map((s) =>
         s.selection.origin === "marketing"
           ? { origin: "marketing", media_id: s.selection.id, focal_point: s.focal ?? null }
           : {
@@ -242,10 +237,35 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
               image_path: s.selection.imagePath,
               focal_point: s.focal ?? null,
             },
-      );
+      ),
+    [slots],
+  );
+
+  /** Valida áudio/imagens antes de qualquer chamada (IA ou manual). */
+  function assertReady(): boolean {
+    if (!audio || slots.length === 0) return false;
+    const audioDur = Number(audio.duration_seconds ?? 0);
+    if (audioStart + duration > audioDur + 0.001) {
+      toast.error("O trecho do áudio excede sua duração total.");
+      return false;
+    }
+    return true;
+  }
+
+  function openReview(campaign: string, contentsRet: MarketingContentRow[], msg: string) {
+    setPendingReview({ campaignId: campaign, contents: contentsRet });
+    toast.success(msg);
+    onGenerated?.(contentsRet);
+  }
+
+  async function generate() {
+    if (!assertReady() || !audio) return;
+    setGenerating(true);
+    setAiFailure(null);
+    try {
       const res = await apiGenerateCampaign({
         promotion_id: promotionId || null,
-        images,
+        images: buildImages(),
         primary_audio_id: audio.id,
         audio_start_second: audioStart,
         duration_seconds: duration,
@@ -256,15 +276,39 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       const contentsRet = (res.contents ?? []) as MarketingContentRow[];
       // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
       // ainda não foi enfileirado. Abrimos a tela de revisão.
-      setPendingReview({ campaignId: res.campaign_id, contents: contentsRet });
-      toast.success("Textos sugeridos. Revise antes de gerar o vídeo.");
-      onGenerated?.(contentsRet);
+      openReview(res.campaign_id, contentsRet, "Textos sugeridos. Revise antes de gerar o vídeo.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar campanha.");
+      // Nunca bloquear: classificamos a falha e oferecemos o modo manual.
+      setAiFailure(classifyAiFailure(e));
     } finally {
       setGenerating(false);
     }
   }
+
+  async function generateManual(payload: ManualSubmitPayload) {
+    if (!assertReady() || !audio) return;
+    setGenerating(true);
+    try {
+      const res = await apiGenerateManualCampaign({
+        promotion_id: promotionId || null,
+        images: buildImages(),
+        primary_audio_id: audio.id,
+        audio_start_second: audioStart,
+        duration_seconds: duration,
+        fields: payload.fields,
+        formats: payload.formats,
+        theme: payload.theme,
+        template: payload.template,
+      });
+      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
+      openReview(res.campaign_id, contentsRet, "Campanha criada. Revise e gere o vídeo.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao criar campanha manual.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
 
   async function handleRetry(role: "feed" | "story") {
     if (!campaignId) return;
