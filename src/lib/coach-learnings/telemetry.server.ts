@@ -101,6 +101,22 @@ function errorCodeOf(err: unknown): { code: string; pgCode?: string } {
   return { code: "internal", pgCode };
 }
 
+/**
+ * Trace explicável de UM aprendizado selecionado (SPRINT 4 · FASE 3).
+ * Vai para `coach_learning_retrievals.ranking_metadata` (JSONB controlado).
+ * Contém APENAS identificadores e códigos de allowlist — jamais mensagem,
+ * regra completa ou prompt.
+ */
+export interface LearningRankingTrace {
+  learning_id: string;
+  rank: number;
+  final_score: number;
+  selection_reason: string;
+  matchedReasons: string[];
+  penalties: string[];
+  strategy: string;
+}
+
 export interface RecordRetrievalInput {
   companyId: string;
   learningIds: string[];
@@ -109,6 +125,8 @@ export interface RecordRetrievalInput {
   conversationId?: string | null;
   messageId?: string | null;
   selectionReason?: string;
+  /** Trace por aprendizado. Ausente → o banco mantém o comportamento antigo. */
+  ranking?: LearningRankingTrace[];
 }
 
 /**
@@ -138,9 +156,11 @@ export async function recordRetrievalInternal(
         _conversation_id: input.conversationId ?? null,
         _message_id: input.messageId ?? null,
         _selection_reason: input.selectionReason ?? COACH_SELECTION_REASON_STATIC,
+        _ranking: input.ranking ?? [],
       } as never,
     );
     if (error) throw error;
+
 
     const insertedCount = Number(data ?? 0);
     const durationMs = Date.now() - t0;
@@ -235,6 +255,14 @@ export interface SuggestionTelemetryInput {
   learningIds: string[];
   conversationId?: string | null;
   messageId?: string | null;
+  /**
+   * Trace do ranking contextual (SPRINT 4 · FASE 3). Quando ausente, a
+   * telemetria degrada para o motivo estático — mantendo compatibilidade
+   * com qualquer chamador anterior.
+   */
+  ranking?: LearningRankingTrace[];
+  /** Motivo padrão quando um aprendizado não tem entrada no trace. */
+  selectionReason?: string;
 }
 
 export interface SuggestionTelemetryOutcome {
@@ -260,8 +288,10 @@ export async function recordSuggestionTelemetry(
     generationRef: input.suggestionId,
     conversationId: input.conversationId ?? null,
     messageId: input.messageId ?? null,
-    selectionReason: COACH_SELECTION_REASON_STATIC,
+    selectionReason: input.selectionReason ?? COACH_SELECTION_REASON_STATIC,
+    ranking: input.ranking,
   });
+
 
   const usage = await incrementUsageInternal(sb, {
     companyId: input.companyId,

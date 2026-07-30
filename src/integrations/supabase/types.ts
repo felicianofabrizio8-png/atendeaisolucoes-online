@@ -1094,11 +1094,13 @@ export type Database = {
           company_id: string
           conversation_id: string | null
           created_at: string
+          final_score: number | null
           generation_ref: string
           id: string
           learning_id: string
           message_id: string | null
           rank: number | null
+          ranking_metadata: Json
           selection_reason: string | null
           usage_counted: boolean
           version_number: number
@@ -1107,11 +1109,13 @@ export type Database = {
           company_id: string
           conversation_id?: string | null
           created_at?: string
+          final_score?: number | null
           generation_ref: string
           id?: string
           learning_id: string
           message_id?: string | null
           rank?: number | null
+          ranking_metadata?: Json
           selection_reason?: string | null
           usage_counted?: boolean
           version_number: number
@@ -1120,11 +1124,13 @@ export type Database = {
           company_id?: string
           conversation_id?: string | null
           created_at?: string
+          final_score?: number | null
           generation_ref?: string
           id?: string
           learning_id?: string
           message_id?: string | null
           rank?: number | null
+          ranking_metadata?: Json
           selection_reason?: string | null
           usage_counted?: boolean
           version_number?: number
@@ -5618,6 +5624,7 @@ export type Database = {
           _generation_ref: string
           _ids: string[]
           _message_id?: string
+          _ranking?: Json
           _selection_reason?: string
         }
         Returns: number
