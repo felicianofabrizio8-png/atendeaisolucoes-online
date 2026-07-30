@@ -9,9 +9,8 @@
 // Para adicionar um tema novo, basta adicionar um item em THEME_PRESETS.
 // ============================================================================
 
-import type { TemplateId } from "./layout.types";
+import type { TemplateId, VideoLayout } from "./layout.types";
 import { getScene } from "./scenes/registry";
-import type { VideoLayout } from "./layout.types";
 
 export type ThemeId =
   | "promocao"
