@@ -322,8 +322,61 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Modo de criação — IA (acelerador) ou Manual (sempre disponível) */}
+      {!pendingReview && !campaignId && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm font-semibold mb-2">Como você quer criar?</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("ai")}
+              className={cn(
+                "rounded-md border p-3 text-left text-sm transition-colors",
+                mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted",
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <Sparkles className="h-4 w-4" /> Gerar com IA
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                A IA sugere títulos, legenda e CTA — você edita antes de renderizar.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              className={cn(
+                "rounded-md border p-3 text-left text-sm transition-colors",
+                mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted",
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <PencilRuler className="h-4 w-4" /> Criar manualmente
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Sem IA e sem consumo de créditos. Você escreve os textos.
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback automático quando a IA falha */}
+      {aiFailure && mode === "ai" && !pendingReview && (
+        <AiUnavailableNotice
+          kind={aiFailure}
+          retrying={generating}
+          onRetry={() => void generate()}
+          onContinueManually={() => {
+            setAiFailure(null);
+            setMode("manual");
+          }}
+        />
+      )}
+
       {/* Contexto */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Promoção (opcional)</Label>
