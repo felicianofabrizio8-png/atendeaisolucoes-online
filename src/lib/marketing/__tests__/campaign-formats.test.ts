@@ -3,6 +3,10 @@ import {
   resolveCampaignFormats,
   roleFromContentFormat,
   formatsTelemetry,
+  rolesFromSelection,
+  parseFormatSelection,
+  CAMPAIGN_FORMAT_SELECTIONS,
+  CAMPAIGN_FORMAT_LABELS,
 } from "../campaign-formats";
 import {
   buildThemeSnapshot,
