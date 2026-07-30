@@ -16,11 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, PencilRuler } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   apiListPromotions,
   apiGenerateCampaign,
+  apiGenerateManualCampaign,
   apiRetryCampaignRender,
   urlForMarketingPath,
   type CampaignImageInput,
@@ -41,6 +43,9 @@ import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
 import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
+import { CampaignManualForm, type ManualSubmitPayload } from "./CampaignManualForm";
+import { AiUnavailableNotice } from "./AiUnavailableNotice";
+import { classifyAiFailure, type AiFailureKind } from "@/lib/marketing/ai-failure";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
