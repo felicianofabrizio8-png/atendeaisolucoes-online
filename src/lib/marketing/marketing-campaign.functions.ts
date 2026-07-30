@@ -950,7 +950,7 @@ export const getCampaignRenderStatus = createServerFn({ method: "POST" })
     const { data: rows, error } = await supabase
       .from("marketing_contents")
       .select(
-        "id, campaign_role, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id",
+        "id, campaign_role, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id, ai_prompt",
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id);
@@ -975,14 +975,23 @@ export const getCampaignRenderStatus = createServerFn({ method: "POST" })
     }
     const byId = new Map(jobs.map((j) => [j.id, j]));
 
+    const statusFormats = resolveCampaignFormats(
+      ((storyRow ?? feedRow) as { ai_prompt?: unknown } | undefined)?.ai_prompt,
+    );
+
     return {
+      formats: statusFormats.selection,
+      formats_source: statusFormats.source,
+      enabled_roles: statusFormats.roles,
       feed: {
+        enabled: statusFormats.roles.includes("feed"),
         content_id: feedRow?.id ?? null,
         job_id: feedRow?.feed_render_job_id ?? null,
         job: feedRow?.feed_render_job_id ? byId.get(feedRow.feed_render_job_id) ?? null : null,
         video_id: feedRow?.feed_video_id ?? null,
       },
       story: {
+        enabled: statusFormats.roles.includes("story"),
         content_id: storyRow?.id ?? null,
         job_id: storyRow?.story_render_job_id ?? null,
         job: storyRow?.story_render_job_id ? byId.get(storyRow.story_render_job_id) ?? null : null,
