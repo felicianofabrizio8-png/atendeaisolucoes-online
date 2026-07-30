@@ -749,7 +749,6 @@ function WhatsAppTestPanel({
     diagnostics?: {
       phoneNumberId?: string;
       tokenSaved?: string;
-      tokenPrefix?: string | null;
       endpoint?: string;
     };
   } | null>(null);
@@ -781,7 +780,6 @@ function WhatsAppTestPanel({
         diagnostics?: {
           phoneNumberId?: string;
           tokenSaved?: string;
-          tokenPrefix?: string | null;
           endpoint?: string;
         };
       };
@@ -867,12 +865,6 @@ function WhatsAppTestPanel({
             <div className="text-[10px] text-muted-foreground bg-background border border-border rounded p-2 font-mono space-y-0.5">
               <div>phone_number_id: {result.diagnostics.phoneNumberId || "—"}</div>
               <div>token salvo: {result.diagnostics.tokenSaved ?? "—"}</div>
-              <div>
-                token (primeiros 6):{" "}
-                {result.diagnostics.tokenPrefix
-                  ? `${result.diagnostics.tokenPrefix}…`
-                  : "—"}
-              </div>
               {result.diagnostics.endpoint && (
                 <div className="break-all">endpoint: {result.diagnostics.endpoint}</div>
               )}
@@ -1137,7 +1129,7 @@ function WhatsAppForm({
       });
       onSaved();
     } catch (e) {
-      console.error("[WhatsAppForm] save failed", e);
+      console.error("[WhatsAppForm] save failed", safeErrorMessage(e));
       setErr(e instanceof Error ? e.message : "Falha ao salvar conexão");
     } finally {
       setSaving(false);
@@ -1992,7 +1984,7 @@ function MetaIntegrationSection() {
             );
           }
         } catch (e) {
-          console.warn("META_FB_PAGE_PUBLISH_VALIDATION_FAIL", e);
+          console.warn("META_FB_PAGE_PUBLISH_VALIDATION_FAIL", safeErrorMessage(e));
           setInfo(`Conectado: ${savedName}${igLabel}${webhookLabel}`);
         }
       } else {
@@ -2543,7 +2535,7 @@ function CompanyLocationCard() {
       if (error) throw error;
       setSavedAt(Date.now());
     } catch (e) {
-      console.error("[company_location save]", e);
+      console.error("[company_location save]", safeErrorMessage(e));
     } finally {
       setSaving(false);
     }

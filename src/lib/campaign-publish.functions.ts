@@ -1457,7 +1457,8 @@ export const publishCampaign = createServerFn({ method: "POST" })
         ok: res.ok,
       };
       attempts.push(entry);
-      console.log("[publishCampaign] create_creative attempt result", entry);
+      // `entry` carrega headers, corpo bruto e telefone WhatsApp — sanitizar.
+      console.log("[publishCampaign] create_creative attempt result", sanitizeForLog(entry));
       return entry;
     }
 
@@ -1522,7 +1523,7 @@ export const publishCampaign = createServerFn({ method: "POST" })
         creativeId = pic.res.data.id;
         console.log("[publishCampaign] create_creative ok", { creativeId, mode: "picture" });
       } else {
-        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts });
+        console.error("[publishCampaign] create_creative fallback fail (sem media_url)", { attempts: sanitizeForLog(attempts) });
         return fail(
           "create_creative",
           formatGraphError(simple.res.body, simple.res.message),
@@ -1612,10 +1613,9 @@ export const publishCampaign = createServerFn({ method: "POST" })
       });
       return fail("create_ad", formatGraphError(adRes.body, adRes.message), adRes.body, {
         endpoint: `${GRAPH}/${actId}/ads`,
-        request_payload: adPayload,
+        request_payload: sanitizeForLog(adPayload),
         response_status: adRes.status,
-        response_body: adRes.body,
-        response_raw: (adRes as { rawText?: string }).rawText ?? null,
+        response_body: sanitizeForLog(adRes.body),
       });
     }
     const metaAdId = adRes.data.id;
