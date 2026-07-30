@@ -78,6 +78,12 @@ export interface VideoBrandContentSnapshot {
    */
   template?: string | null;
   /**
+   * Sprint acabamento — snapshot VISUAL resolvido do tema (cores em #RRGGBB).
+   * O worker nunca decide cor pelo nome do tema; recebe os valores prontos.
+   * Ausente = comportamento anterior (cores nativas da cena).
+   */
+  theme?: ThemeSnapshot | null;
+  /**
    * Layout completo aprovado no editor (posições/tamanhos de logo/textos).
    * Opaco para o snapshot builder — o worker interpreta na próxima fase.
    */
