@@ -1097,6 +1097,10 @@ export type Database = {
           generation_ref: string
           id: string
           learning_id: string
+          message_id: string | null
+          rank: number | null
+          selection_reason: string | null
+          usage_counted: boolean
           version_number: number
         }
         Insert: {
@@ -1106,6 +1110,10 @@ export type Database = {
           generation_ref: string
           id?: string
           learning_id: string
+          message_id?: string | null
+          rank?: number | null
+          selection_reason?: string | null
+          usage_counted?: boolean
           version_number: number
         }
         Update: {
@@ -1115,6 +1123,10 @@ export type Database = {
           generation_ref?: string
           id?: string
           learning_id?: string
+          message_id?: string | null
+          rank?: number | null
+          selection_reason?: string | null
+          usage_counted?: boolean
           version_number?: number
         }
         Relationships: [
@@ -5531,6 +5543,10 @@ export type Database = {
         Args: { _ids: string[] }
         Returns: number
       }
+      increment_coach_learning_usage_internal: {
+        Args: { _company_id: string; _generation_ref?: string; _ids: string[] }
+        Returns: number
+      }
       latest_messages_per_conversation: {
         Args: { _company_id: string }
         Returns: {
@@ -5592,6 +5608,17 @@ export type Database = {
           _conversation_id?: string
           _generation_ref: string
           _ids: string[]
+        }
+        Returns: number
+      }
+      record_coach_learning_retrieval_internal: {
+        Args: {
+          _company_id: string
+          _conversation_id?: string
+          _generation_ref: string
+          _ids: string[]
+          _message_id?: string
+          _selection_reason?: string
         }
         Returns: number
       }
