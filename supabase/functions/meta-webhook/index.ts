@@ -998,7 +998,12 @@ Deno.serve(async (req) => {
   const object = body?.object as string | undefined;
   const entries = Array.isArray(body?.entry) ? body.entry : [];
 
-  console.log("META_WEBHOOK_INCOMING", { object, raw: raw.slice(0, 2000) });
+  // Metadados apenas: o corpo contem mensagens, telefones e usernames.
+  console.log("META_WEBHOOK_INCOMING", {
+    object,
+    entries: Array.isArray(body?.entry) ? body.entry.length : 0,
+    bodyLen: rawBodyBytes.byteLength,
+  });
 
   for (const entry of entries) {
     // Identify the page/account this entry belongs to.
