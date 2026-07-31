@@ -68,6 +68,8 @@ import {
   Loader2,
   Tag,
   Clock,
+  PanelRight,
+
   Flame,
   X,
   DollarSign,
