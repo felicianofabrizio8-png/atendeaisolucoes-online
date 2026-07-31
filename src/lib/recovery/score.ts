@@ -214,12 +214,17 @@ export function computeRecoveryScore(snap: RecoverySnapshot, now: number): Score
   if (state === "perdido") {
     factors.push({ key: "perdido", label: "Lead marcado como perdido pela equipe", points: -25 });
   }
+  // Venda concluída não é recuperação: nenhum sinal positivo (ticket alto,
+  // lead quente, conversa longa) deve reerguer a nota. Por isso o teto duro,
+  // e não apenas um fator negativo somado.
+  const ENCERRADO_CAP = 10;
   if (state === "encerrado") {
-    factors.push({ key: "encerrado", label: "Venda já concluída", points: -40 });
+    factors.push({ key: "encerrado", label: "Venda já concluída — nada a recuperar", points: -40 });
   }
 
   const raw = factors.reduce((sum, f) => sum + f.points, 0);
-  const score = Math.max(0, Math.min(100, Math.round(raw)));
+  const ceiling = state === "encerrado" ? ENCERRADO_CAP : 100;
+  const score = Math.max(0, Math.min(ceiling, Math.round(raw)));
 
   // Explicação = os 3 fatores positivos de maior peso, em linguagem de vendas.
   const top = factors
