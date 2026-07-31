@@ -1,66 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import {
-  FileText,
-  Plus,
-  X,
-  Send,
-  Check,
-  Calendar as CalendarIcon,
-  CreditCard,
-  Percent,
-  Package as PackageIcon,
-  Sparkles,
-  MessageCircle,
-  Copy,
-  Loader2,
-  Pencil,
-  RotateCcw,
-  Trash2,
-  Settings as SettingsIcon,
-} from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { formatBRL, timeAgo, type Channel } from "@/data/mock";
-import { products, getProduct, activePrice } from "@/data/products";
-import { getLeads, getConversations, subscribeRepo, createLead } from "@/data/leadRepo";
-import {
-  createQuote,
-  listQuotes,
-  subscribeQuotes,
-  buildQuoteMessage,
-  computeQuoteStatus,
-  sendQuoteWhatsApp,
-  QuoteSendError,
-  deleteQuote,
-  type PaymentMethod,
-  type Quote,
-  type QuoteStatus,
-} from "@/data/quotes";
-import { newQuoteSendAttemptId, friendlyQuoteSendMessage } from "@/lib/quote-send/errors";
-import { qsCode, qsDebug } from "@/lib/quote-send/diagnostics";
-
-import { useAuth } from "@/auth/AuthContext";
-import { cn } from "@/lib/utils";
-import { SmartImage } from "@/components/SmartImage";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { FileText, Plus } from "lucide-react";
+import { listQuotes, subscribeQuotes } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
 
