@@ -117,3 +117,69 @@ export function readListScroll(
     return 0;
   }
 }
+
+// ---------------------------------------------------------------------------
+// SPRINT 6 · FASE 6.2 — Entrega de texto do Recovery AI Assistant ao composer.
+//
+// "Usar no campo" nunca envia mensagem: apenas deixa o texto pronto no
+// composer da conversa. Como o composer inicializa a partir do rascunho, a
+// entrega acontece pelo mesmo canal — e o rascunho existente é PRESERVADO
+// (o texto sugerido é acrescentado depois dele, nunca por cima).
+// ---------------------------------------------------------------------------
+
+const COMPOSER_FOCUS_KEY = "atendeai:inbox:focus-composer";
+
+/** Une rascunho existente e sugestão sem perder nenhum dos dois. */
+export function mergeDraft(existing: string, addition: string): string {
+  const base = (existing ?? "").trimEnd();
+  const extra = (addition ?? "").trim();
+  if (!extra) return existing ?? "";
+  if (!base) return extra;
+  if (base.includes(extra)) return base;
+  return `${base}\n\n${extra}`.slice(0, MAX_DRAFT_LENGTH);
+}
+
+/**
+ * Deixa `text` pronto no composer da conversa e pede foco ao abrir.
+ * Retorna o rascunho final gravado (útil para teste e telemetria local).
+ */
+export function stageComposerText(
+  conversationId: string,
+  text: string,
+  storage: SessionLike | null = getSessionStorage(),
+): string {
+  if (!conversationId) return "";
+  const merged = mergeDraft(readDraft(conversationId, storage), text);
+  saveDraft(conversationId, merged, storage);
+  requestComposerFocus(conversationId, storage);
+  return merged;
+}
+
+/** Sinaliza que o composer desta conversa deve receber foco ao montar. */
+export function requestComposerFocus(
+  conversationId: string,
+  storage: SessionLike | null = getSessionStorage(),
+): void {
+  if (!storage || !conversationId) return;
+  try {
+    storage.setItem(COMPOSER_FOCUS_KEY, conversationId);
+  } catch {
+    /* noop */
+  }
+}
+
+/** Consome o pedido de foco (uma única vez) para a conversa informada. */
+export function consumeComposerFocus(
+  conversationId: string,
+  storage: SessionLike | null = getSessionStorage(),
+): boolean {
+  if (!storage || !conversationId) return false;
+  try {
+    const pending = storage.getItem(COMPOSER_FOCUS_KEY);
+    if (pending !== conversationId) return false;
+    storage.removeItem(COMPOSER_FOCUS_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

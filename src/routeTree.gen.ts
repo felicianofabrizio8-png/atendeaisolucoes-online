@@ -66,6 +66,7 @@ import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.
 import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
 import { Route as ApiRuntimeExecuteRouteImport } from './routes/api.runtime.execute'
 import { Route as ApiRuntimeAutonomyRouteImport } from './routes/api.runtime.autonomy'
+import { Route as ApiRecoveryAssistRouteImport } from './routes/api.recovery.assist'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
 import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
@@ -425,6 +426,11 @@ const ApiRuntimeAutonomyRoute = ApiRuntimeAutonomyRouteImport.update({
   path: '/api/runtime/autonomy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRecoveryAssistRoute = ApiRecoveryAssistRouteImport.update({
+  id: '/api/recovery/assist',
+  path: '/api/recovery/assist',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
   id: '/api/onboarding/test-send',
   path: '/api/onboarding/test-send',
@@ -733,6 +739,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/recovery/assist': typeof ApiRecoveryAssistRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -837,6 +844,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/recovery/assist': typeof ApiRecoveryAssistRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -943,6 +951,7 @@ export interface FileRoutesById {
   '/api/onboarding/meta-save': typeof ApiOnboardingMetaSaveRoute
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
+  '/api/recovery/assist': typeof ApiRecoveryAssistRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -1050,6 +1059,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/recovery/assist'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1154,6 +1164,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/recovery/assist'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1259,6 +1270,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/meta-save'
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
+    | '/api/recovery/assist'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1360,6 +1372,7 @@ export interface RootRouteChildren {
   ApiOnboardingMetaSaveRoute: typeof ApiOnboardingMetaSaveRoute
   ApiOnboardingStatusRoute: typeof ApiOnboardingStatusRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
+  ApiRecoveryAssistRoute: typeof ApiRecoveryAssistRoute
   ApiRuntimeAutonomyRoute: typeof ApiRuntimeAutonomyRoute
   ApiRuntimeExecuteRoute: typeof ApiRuntimeExecuteRoute
   ApiRuntimeStatusRoute: typeof ApiRuntimeStatusRoute
@@ -1806,6 +1819,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRuntimeAutonomyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/recovery/assist': {
+      id: '/api/recovery/assist'
+      path: '/api/recovery/assist'
+      fullPath: '/api/recovery/assist'
+      preLoaderRoute: typeof ApiRecoveryAssistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/test-send': {
       id: '/api/onboarding/test-send'
       path: '/api/onboarding/test-send'
@@ -2215,6 +2235,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingMetaSaveRoute: ApiOnboardingMetaSaveRoute,
   ApiOnboardingStatusRoute: ApiOnboardingStatusRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
+  ApiRecoveryAssistRoute: ApiRecoveryAssistRoute,
   ApiRuntimeAutonomyRoute: ApiRuntimeAutonomyRoute,
   ApiRuntimeExecuteRoute: ApiRuntimeExecuteRoute,
   ApiRuntimeStatusRoute: ApiRuntimeStatusRoute,
