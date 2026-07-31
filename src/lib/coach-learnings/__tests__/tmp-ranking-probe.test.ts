@@ -10,7 +10,7 @@ const ctx = {
 function run(rows: unknown[], label: string) {
   const res = retrieveLearnings({ ...ctx, candidates: rows } as never);
   console.log(label, res.scored.map((s: never) => ({
-    id: (s as {learningId?:string;row?:{id:string}}).row?.id?.slice(0,8),
+    id: JSON.stringify(s).slice(0,120),
     score: (s as {finalScore:number}).finalScore,
     rank: (s as {rank:number}).rank,
     pen: (s as {penalties:string[]}).penalties,
