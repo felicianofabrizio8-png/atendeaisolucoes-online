@@ -40,10 +40,9 @@ export function LossReasonsSection({ reasons }: { reasons: string[] }) {
         <h2 className="text-sm font-semibold">Motivos de perda</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Quando você marcar um lead como{" "}
-        <span className="font-semibold">perdido</span> na conversa, vai escolher
-        um destes motivos. Eles entram automaticamente nos relatórios para
-        você entender por que está perdendo vendas.
+        Quando você marcar um lead como <span className="font-semibold">perdido</span> na conversa,
+        vai escolher um destes motivos. Eles entram automaticamente nos relatórios para você
+        entender por que está perdendo vendas.
       </p>
 
       <ul className="space-y-1.5">
@@ -127,8 +126,7 @@ export function LossReasonsSection({ reasons }: { reasons: string[] }) {
         </div>
         {reasons.length <= 1 && (
           <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">
-            <X className="h-3 w-3" /> É preciso manter ao menos um motivo
-            cadastrado.
+            <X className="h-3 w-3" /> É preciso manter ao menos um motivo cadastrado.
           </p>
         )}
       </div>

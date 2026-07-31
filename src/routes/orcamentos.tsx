@@ -64,7 +64,6 @@ import { SmartImage } from "@/components/SmartImage";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
 
-
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
   validateSearch: (search: Record<string, unknown>): QuotesSearch => {
@@ -86,7 +85,6 @@ interface QuotesSearch {
   suggestedProductId?: string;
   suggestionReason?: string;
 }
-
 
 function useQuotes() {
   return useSyncExternalStore(
@@ -177,7 +175,6 @@ function QuotesPage() {
         )}
       </div>
 
-
       {open && (
         <QuoteFormModal
           defaultLeadId={prefillLeadId}
@@ -222,4 +219,3 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
     </div>
   );
 }
-

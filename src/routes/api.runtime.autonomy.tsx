@@ -26,7 +26,6 @@ const BodySchema = z
     { message: "at least one flag required" },
   );
 
-
 async function resolveAdminTenant(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
@@ -58,13 +57,11 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
     handlers: {
       GET: async ({ request }) => {
         const ctx = await resolveAdminTenant(request);
-        if ("error" in ctx) return Response.json({ ok: false, error: ctx.error }, { status: ctx.status });
-        const { RuntimeAutonomyRegistry } = await import(
-          "@/lib/runtime/RuntimeAutonomyRegistry.server"
-        );
-        const { getRuntimeFlags } = await import(
-          "@/lib/runtime/RuntimeStateStore.server"
-        );
+        if ("error" in ctx)
+          return Response.json({ ok: false, error: ctx.error }, { status: ctx.status });
+        const { RuntimeAutonomyRegistry } =
+          await import("@/lib/runtime/RuntimeAutonomyRegistry.server");
+        const { getRuntimeFlags } = await import("@/lib/runtime/RuntimeStateStore.server");
         const [systemHealthSnap, brainSnap, flags, systemHealthEnabled, brainEnabled] =
           await Promise.all([
             RuntimeAutonomyRegistry.snapshot("system-health"),
@@ -91,7 +88,8 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
       },
       POST: async ({ request }) => {
         const ctx = await resolveAdminTenant(request);
-        if ("error" in ctx) return Response.json({ ok: false, error: ctx.error }, { status: ctx.status });
+        if ("error" in ctx)
+          return Response.json({ ok: false, error: ctx.error }, { status: ctx.status });
 
         // Rejeita explicitamente qualquer companyId/tenantId no body.
         let raw: unknown;
@@ -116,12 +114,9 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
           return Response.json({ ok: false, error: "invalid_body" }, { status: 400 });
         }
 
-        const { updateRuntimeFlags } = await import(
-          "@/lib/runtime/RuntimeStateStore.server"
-        );
-        const { RuntimeAutonomyRegistry } = await import(
-          "@/lib/runtime/RuntimeAutonomyRegistry.server"
-        );
+        const { updateRuntimeFlags } = await import("@/lib/runtime/RuntimeStateStore.server");
+        const { RuntimeAutonomyRegistry } =
+          await import("@/lib/runtime/RuntimeAutonomyRegistry.server");
 
         const cid = correlationId();
         const result = await updateRuntimeFlags(ctx.tenantId, {
@@ -154,7 +149,6 @@ export const Route = createFileRoute("/api/runtime/autonomy")({
           },
         });
       },
-
     },
   },
 });

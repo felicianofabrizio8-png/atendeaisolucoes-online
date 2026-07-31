@@ -117,7 +117,11 @@ export function SendWhatsAppModal({
   // Se >0, retry do lote inteiro é inseguro (duplicaria mensagens).
   const completedByAttempt = useMemo(() => new Map<string, number>(), []);
 
-  const showErrorToast = (norm: { code: import("@/lib/quote-send/errors").QuoteSendErrorCode; retryable: boolean }, attemptId: string, opts?: { onRetry?: () => void }) => {
+  const showErrorToast = (
+    norm: { code: import("@/lib/quote-send/errors").QuoteSendErrorCode; retryable: boolean },
+    attemptId: string,
+    opts?: { onRetry?: () => void },
+  ) => {
     const code = qsCode(attemptId);
     const msg = friendlyQuoteSendMessage(norm.code);
     const priorCompleted = completedByAttempt.get(attemptId) ?? 0;
@@ -127,16 +131,27 @@ export function SendWhatsAppModal({
       duration: 12000,
       action: safeRetry
         ? { label: "Tentar novamente", onClick: opts!.onRetry! }
-        : { label: "Copiar código", onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined) },
+        : {
+            label: "Copiar código",
+            onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined),
+          },
     });
   };
 
-  const sendBlock = async (key: BlockKey, ctx?: { attemptId?: string; blockIndex?: number }): Promise<boolean> => {
+  const sendBlock = async (
+    key: BlockKey,
+    ctx?: { attemptId?: string; blockIndex?: number },
+  ): Promise<boolean> => {
     if (!available[key]) return false;
     if (status[key] === "enviando") return false;
     const attemptId = ctx?.attemptId ?? newQuoteSendAttemptId();
     const blockIndex = ctx?.blockIndex ?? 0;
-    qsDebug("QUOTE_SEND_CLICKED", { attemptId, quoteIdMasked: quote.id.slice(0, 8), blockType: key, blockIndex });
+    qsDebug("QUOTE_SEND_CLICKED", {
+      attemptId,
+      quoteIdMasked: quote.id.slice(0, 8),
+      blockType: key,
+      blockIndex,
+    });
     setStatus((s) => ({ ...s, [key]: "enviando" }));
     try {
       if (key === "photos") {
@@ -176,10 +191,22 @@ export function SendWhatsAppModal({
     } catch (e) {
       setStatus((s) => ({ ...s, [key]: "erro" }));
       if (e instanceof QuoteSendError) {
-        console.error("QUOTE_SEND_ERROR", { attemptIdMasked: qsCode(attemptId), blockType: key, blockIndex, code: e.normalized.code, step: e.normalized.step, status: e.normalized.status });
+        console.error("QUOTE_SEND_ERROR", {
+          attemptIdMasked: qsCode(attemptId),
+          blockType: key,
+          blockIndex,
+          code: e.normalized.code,
+          step: e.normalized.step,
+          status: e.normalized.status,
+        });
         showErrorToast(e.normalized, attemptId, { onRetry: () => void sendBlock(key) });
       } else {
-        console.error("QUOTE_SEND_ERROR", { attemptIdMasked: qsCode(attemptId), blockType: key, blockIndex, message: e instanceof Error ? e.message : String(e) });
+        console.error("QUOTE_SEND_ERROR", {
+          attemptIdMasked: qsCode(attemptId),
+          blockType: key,
+          blockIndex,
+          message: e instanceof Error ? e.message : String(e),
+        });
         toast.error(e instanceof Error ? e.message : "Falha ao enviar", {
           description: `Código de atendimento: ${qsCode(attemptId)}`,
         });
@@ -233,12 +260,13 @@ export function SendWhatsAppModal({
       toast.warning("Parte do orçamento pode já ter sido enviada.", {
         description: `Foram enviados ${okCount} de ${toSend.length} blocos. Evite reenviar imediatamente para não duplicar mensagens. Código: ${code}`,
         duration: 20000,
-        action: { label: "Copiar código", onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined) },
+        action: {
+          label: "Copiar código",
+          onClick: () => void navigator.clipboard.writeText(code).catch(() => undefined),
+        },
       });
     }
   };
-
-
 
   const StatusPill = ({ s }: { s: BlockStatus }) => {
     if (s === "enviado")
@@ -452,9 +480,6 @@ export function SendWhatsAppModal({
     </div>
   );
 }
-
-
-
 
 export function Chip({ children }: { children: React.ReactNode }) {
   return <span className="rounded bg-secondary px-1.5 py-0.5">{children}</span>;

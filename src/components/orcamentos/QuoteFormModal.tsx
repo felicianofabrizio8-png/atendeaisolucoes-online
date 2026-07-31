@@ -4,8 +4,30 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { FileText, Plus, X, Send, Check, Calendar as CalendarIcon, CreditCard, Percent, Package as PackageIcon, Sparkles, Loader2, Pencil, RotateCcw, Settings as SettingsIcon } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  FileText,
+  Plus,
+  X,
+  Send,
+  Check,
+  Calendar as CalendarIcon,
+  CreditCard,
+  Percent,
+  Package as PackageIcon,
+  Sparkles,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatBRL } from "@/data/mock";
@@ -137,7 +159,6 @@ export function QuoteFormModal({
     };
   }, [companyId]);
 
-
   const [editingMessage, setEditingMessage] = useState(false);
   const [customMessage, setCustomMessage] = useState<string | null>(null);
 
@@ -181,8 +202,18 @@ export function QuoteFormModal({
       extra.push(observacoes.trim());
     }
     return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-  }, [product, finalValue, installments, paymentMethod, validUntil, discount, inclusosText, brindesText, porContaText, observacoes]);
-
+  }, [
+    product,
+    finalValue,
+    installments,
+    paymentMethod,
+    validUntil,
+    discount,
+    inclusosText,
+    brindesText,
+    porContaText,
+    observacoes,
+  ]);
 
   const previewMessage = customMessage ?? autoMessage;
 
@@ -201,7 +232,6 @@ export function QuoteFormModal({
     setList([...list, v]);
     reset();
   };
-
 
   const newClientValid =
     clientMode === "new" &&
@@ -321,8 +351,6 @@ export function QuoteFormModal({
     toast.success("Textos padrão aplicados");
   };
 
-
-
   return (
     <div
       className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-4 overflow-y-auto"
@@ -335,7 +363,11 @@ export function QuoteFormModal({
         <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Novo orçamento</h2>
-          <button onClick={onCancel} aria-label="Fechar" className="ml-auto inline-flex items-center justify-center rounded-md hover:bg-accent min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7">
+          <button
+            onClick={onCancel}
+            aria-label="Fechar"
+            className="ml-auto inline-flex items-center justify-center rounded-md hover:bg-accent min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7"
+          >
             <X className="h-5 w-5 md:h-4 md:w-4" />
           </button>
         </div>
@@ -484,7 +516,6 @@ export function QuoteFormModal({
               </div>
             )}
           </div>
-
 
           {/* Produto */}
           <Field label="Produto" icon={PackageIcon}>
@@ -654,7 +685,6 @@ export function QuoteFormModal({
             </p>
           </div>
 
-
           {/* Observações */}
           <div className="md:col-span-2">
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
@@ -668,8 +698,6 @@ export function QuoteFormModal({
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring resize-y"
             />
           </div>
-
-
 
           {/* Pré-visualização da mensagem */}
           <div className="md:col-span-2">
@@ -726,7 +754,6 @@ export function QuoteFormModal({
           </div>
         </div>
 
-
         <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 md:flex-wrap safe-bottom">
           {!hasClient && (
             <span className="text-[11px] text-destructive md:mr-auto text-center md:text-left">
@@ -761,7 +788,6 @@ export function QuoteFormModal({
             </button>
           </div>
         </div>
-
       </div>
 
       <EditDefaultsDialog
@@ -840,8 +866,8 @@ export function EditDefaultsDialog({
         <DialogHeader>
           <DialogTitle>Editar textos padrão dos orçamentos</DialogTitle>
           <DialogDescription>
-            Esses textos serão usados automaticamente em todos os novos orçamentos da empresa.
-            Você ainda poderá editar em cada orçamento individualmente.
+            Esses textos serão usados automaticamente em todos os novos orçamentos da empresa. Você
+            ainda poderá editar em cada orçamento individualmente.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-3 py-2">
@@ -886,7 +912,11 @@ export function EditDefaultsDialog({
             }}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
             Salvar padrão
           </button>
         </DialogFooter>
@@ -894,7 +924,6 @@ export function EditDefaultsDialog({
     </Dialog>
   );
 }
-
 
 export function Field({
   label,

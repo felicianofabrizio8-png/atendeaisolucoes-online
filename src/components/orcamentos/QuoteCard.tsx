@@ -5,7 +5,16 @@
 import { useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Send, Check, MessageCircle, Copy, Loader2, Trash2 } from "lucide-react";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatBRL, timeAgo } from "@/data/mock";
 import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
@@ -95,16 +104,14 @@ export function QuoteCard({ quote }: { quote: Quote }) {
             <div className="text-[12px] font-medium truncate">
               {lead?.name ?? "— Cliente não selecionado —"}
             </div>
-            <div className="text-[11px] text-muted-foreground truncate">
-              {contactLine}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              há {timeAgo(quote.createdAt)}
-            </div>
+            <div className="text-[11px] text-muted-foreground truncate">{contactLine}</div>
+            <div className="text-[11px] text-muted-foreground">há {timeAgo(quote.createdAt)}</div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             <div className="text-right">
-              <div className="text-lg md:text-base font-bold leading-tight">{formatBRL(quote.finalValue)}</div>
+              <div className="text-lg md:text-base font-bold leading-tight">
+                {formatBRL(quote.finalValue)}
+              </div>
               {quote.installments > 1 && (
                 <div className="text-[11px] text-muted-foreground">
                   {quote.installments}x {formatBRL(quote.finalValue / quote.installments)}
@@ -177,7 +184,6 @@ export function QuoteCard({ quote }: { quote: Quote }) {
         </div>
       </div>
 
-
       {waOpen && lead && (
         <SendWhatsAppModal
           quote={quote}
@@ -231,11 +237,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
   );
 }
 
-
-export const STATUS_META: Record<
-  QuoteStatus,
-  { label: string; className: string }
-> = {
+export const STATUS_META: Record<QuoteStatus, { label: string; className: string }> = {
   pendente: {
     label: "Pendente envio",
     className: "bg-[var(--status-warm)]/15 text-[var(--status-warm)]",

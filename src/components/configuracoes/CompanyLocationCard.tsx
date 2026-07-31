@@ -82,7 +82,9 @@ export function CompanyLocationCard() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
 
   const lat = Number(latitude);
@@ -115,19 +117,23 @@ export function CompanyLocationCard() {
     }
   };
 
-  const mapUrl = latValid && lngValid
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.005}%2C${lat - 0.003}%2C${lng + 0.005}%2C${lat + 0.003}&layer=mapnik&marker=${lat}%2C${lng}`
-    : null;
+  const mapUrl =
+    latValid && lngValid
+      ? `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.005}%2C${lat - 0.003}%2C${lng + 0.005}%2C${lat + 0.003}&layer=mapnik&marker=${lat}%2C${lng}`
+      : null;
 
   return (
-    <section id="company-location" className="rounded-lg border border-border bg-card p-5 scroll-mt-20">
+    <section
+      id="company-location"
+      className="rounded-lg border border-border bg-card p-5 scroll-mt-20"
+    >
       <div className="flex items-center gap-2 mb-1">
         <MapPin className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Localização da empresa</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Usada pelo botão <span className="font-semibold">Localização</span> no chat.
-        Apenas latitude e longitude são obrigatórias.
+        Usada pelo botão <span className="font-semibold">Localização</span> no chat. Apenas latitude
+        e longitude são obrigatórias.
       </p>
 
       {loading ? (
@@ -170,7 +176,11 @@ export function CompanyLocationCard() {
               disabled={locating}
               className="h-9 px-3 inline-flex items-center gap-2 rounded-md border border-border hover:bg-accent disabled:opacity-40 text-xs font-medium"
             >
-              {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+              {locating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Crosshair className="h-3.5 w-3.5" />
+              )}
               Usar minha localização atual
             </button>
             {geoError && (
@@ -242,4 +252,3 @@ export function CompanyLocationCard() {
     </section>
   );
 }
-
