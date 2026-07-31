@@ -8,6 +8,7 @@
 // ============================================================================
 
 import { createFileRoute } from "@tanstack/react-router";
+import { correlationId } from "@/lib/shared/correlation";
 import { z } from "zod";
 
 const BodySchema = z
@@ -50,10 +51,6 @@ async function resolveAdminTenant(request: Request) {
   });
   if (!isAdmin) return { error: "forbidden" as const, status: 403 as const };
   return { tenantId, userId };
-}
-
-function correlationId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export const Route = createFileRoute("/api/runtime/autonomy")({

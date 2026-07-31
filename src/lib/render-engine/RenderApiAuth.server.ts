@@ -4,7 +4,10 @@
 // comparação timing-safe. Nenhum log expõe o valor do header.
 // ============================================================================
 
-import { timingSafeEqual } from "node:crypto";
+// Primitivas compartilhadas (Sprint 7 — Fase 7.2). API pública preservada.
+import { safeEqualSecret } from "@/lib/shared/secure-compare.server";
+export { safeEqualSecret };
+export { correlationId } from "@/lib/shared/correlation";
 
 const HEADER_NAME = "x-render-worker-secret";
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB — payloads são JSON pequeno
@@ -28,18 +31,6 @@ export function tooLarge(): Response {
 }
 export function internalError(): Response {
   return Response.json({ ok: false, error: "internal_error" }, { status: 500 });
-}
-
-export function safeEqualSecret(provided: string, expected: string): boolean {
-  if (!provided || !expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  try {
-    return timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -78,10 +69,6 @@ export async function readJsonBody<T = unknown>(
   } catch {
     return { error: badRequest("invalid_json") };
   }
-}
-
-export function correlationId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Deriva de forma determinística o path do vídeo produzido por um job. */

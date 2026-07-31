@@ -9,19 +9,11 @@
 // nenhum módulo operacional.
 // ============================================================================
 
-import { timingSafeEqual } from "crypto";
-
-export function safeEqualSecret(provided: string, expected: string): boolean {
-  if (!provided || !expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  try {
-    return timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
+// Primitivas compartilhadas (Sprint 7 — Fase 7.2). A API pública deste
+// módulo permanece idêntica: os consumidores continuam importando
+// `safeEqualSecret` e `correlationId` daqui.
+export { safeEqualSecret } from "@/lib/shared/secure-compare.server";
+export { correlationId } from "@/lib/shared/correlation";
 
 // ---------------------------------------------------------------------------
 // Rate limit por chave (janela deslizante simples em memória).
@@ -109,10 +101,6 @@ export function seenRecently(key: string, ttlMs: number, now = Date.now()): bool
     }
   }
   return false;
-}
-
-export function correlationId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 // Máscara curta para logs (nunca vazar identificadores completos).
