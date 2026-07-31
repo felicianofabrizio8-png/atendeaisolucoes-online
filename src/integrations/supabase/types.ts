@@ -4196,6 +4196,164 @@ export type Database = {
           },
         ]
       }
+      recovery_attempt_events: {
+        Row: {
+          attempt_id: string | null
+          company_id: string
+          conversation_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          lead_id: string | null
+          metadata: Json
+          user_id: string | null
+        }
+        Insert: {
+          attempt_id?: string | null
+          company_id: string
+          conversation_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json
+          user_id?: string | null
+        }
+        Update: {
+          attempt_id?: string | null
+          company_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recovery_attempt_events_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "recovery_attempts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recovery_attempts: {
+        Row: {
+          company_id: string
+          confirmed_at: string | null
+          conversation_id: string
+          created_at: string
+          delivery_status: string | null
+          external_message_id: string | null
+          failure_code: string | null
+          failure_message: string | null
+          id: string
+          idempotency_key: string
+          initiated_at: string
+          initiated_by: string | null
+          lead_id: string
+          message_id: string | null
+          outcome: string | null
+          outcome_at: string | null
+          outcome_by: string | null
+          recovery_chance: number | null
+          recovery_plan_snapshot: Json
+          recovery_score: number | null
+          recovery_tier: string | null
+          replied_at: string | null
+          response_status: string | null
+          selected_message_style: string | null
+          selected_message_text: string | null
+          send_attempts: number
+          sent_at: string | null
+          source: string
+          status: Database["public"]["Enums"]["recovery_attempt_status"]
+          strategy_fingerprint: string | null
+          template_id: string | null
+          template_name: string | null
+          template_variables: Json
+          updated_at: string
+          window_state: string | null
+        }
+        Insert: {
+          company_id: string
+          confirmed_at?: string | null
+          conversation_id: string
+          created_at?: string
+          delivery_status?: string | null
+          external_message_id?: string | null
+          failure_code?: string | null
+          failure_message?: string | null
+          id?: string
+          idempotency_key: string
+          initiated_at?: string
+          initiated_by?: string | null
+          lead_id: string
+          message_id?: string | null
+          outcome?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          recovery_chance?: number | null
+          recovery_plan_snapshot?: Json
+          recovery_score?: number | null
+          recovery_tier?: string | null
+          replied_at?: string | null
+          response_status?: string | null
+          selected_message_style?: string | null
+          selected_message_text?: string | null
+          send_attempts?: number
+          sent_at?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["recovery_attempt_status"]
+          strategy_fingerprint?: string | null
+          template_id?: string | null
+          template_name?: string | null
+          template_variables?: Json
+          updated_at?: string
+          window_state?: string | null
+        }
+        Update: {
+          company_id?: string
+          confirmed_at?: string | null
+          conversation_id?: string
+          created_at?: string
+          delivery_status?: string | null
+          external_message_id?: string | null
+          failure_code?: string | null
+          failure_message?: string | null
+          id?: string
+          idempotency_key?: string
+          initiated_at?: string
+          initiated_by?: string | null
+          lead_id?: string
+          message_id?: string | null
+          outcome?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          recovery_chance?: number | null
+          recovery_plan_snapshot?: Json
+          recovery_score?: number | null
+          recovery_tier?: string | null
+          replied_at?: string | null
+          response_status?: string | null
+          selected_message_style?: string | null
+          selected_message_text?: string | null
+          send_attempts?: number
+          sent_at?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["recovery_attempt_status"]
+          strategy_fingerprint?: string | null
+          template_id?: string | null
+          template_name?: string | null
+          template_variables?: Json
+          updated_at?: string
+          window_state?: string | null
+        }
+        Relationships: []
+      }
       runtime_audit: {
         Row: {
           action: string
@@ -6003,6 +6161,20 @@ export type Database = {
         | "aceito"
         | "recusado"
         | "expirado"
+      recovery_attempt_status:
+        | "draft"
+        | "awaiting_confirmation"
+        | "confirmed"
+        | "sending"
+        | "sent"
+        | "delivered"
+        | "read"
+        | "replied"
+        | "recovered"
+        | "cancelled"
+        | "failed"
+        | "expired"
+        | "not_recovered"
       visit_status:
         | "agendada"
         | "confirmada"
@@ -6241,6 +6413,21 @@ export const Constants = {
         "aceito",
         "recusado",
         "expirado",
+      ],
+      recovery_attempt_status: [
+        "draft",
+        "awaiting_confirmation",
+        "confirmed",
+        "sending",
+        "sent",
+        "delivered",
+        "read",
+        "replied",
+        "recovered",
+        "cancelled",
+        "failed",
+        "expired",
+        "not_recovered",
       ],
       visit_status: [
         "agendada",

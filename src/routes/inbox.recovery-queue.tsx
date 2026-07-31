@@ -13,6 +13,7 @@ import { getRecoveryEngine } from "@/lib/recovery-engine.functions";
 import { RecoveryCards } from "@/components/recovery/RecoveryCards";
 import { RecoveryQueueCard } from "@/components/recovery/RecoveryQueueCard";
 import { RecoveryDetailSheet } from "@/components/recovery/RecoveryDetailSheet";
+import { RecoveryWorkflowSheet } from "@/components/recovery/RecoveryWorkflowSheet";
 import { STATE_LABEL, type RecoveryQueueItem } from "@/lib/recovery";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +60,9 @@ function RecoveryQueuePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("todos");
   const [detail, setDetail] = useState<RecoveryQueueItem | null>(null);
+  // Fase 6.3: execução assistida. Abre o workflow de 5 passos; nada é enviado
+  // até a confirmação explícita dentro dele.
+  const [workflow, setWorkflow] = useState<RecoveryQueueItem | null>(null);
 
   const queue = data?.queue ?? [];
 
@@ -218,6 +222,20 @@ function RecoveryQueuePage() {
         item={detail}
         onOpenChange={(open) => !open && setDetail(null)}
         onOpenConversation={openConversation}
+        onStartRecovery={(item) => {
+          setDetail(null);
+          setWorkflow(item);
+        }}
+      />
+
+      <RecoveryWorkflowSheet
+        item={workflow}
+        onOpenChange={(open) => !open && setWorkflow(null)}
+        onOpenConversation={(item) => {
+          setWorkflow(null);
+          openConversation(item);
+        }}
+        onSent={() => refetch()}
       />
     </div>
   );
