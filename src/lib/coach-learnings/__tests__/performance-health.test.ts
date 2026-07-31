@@ -123,7 +123,6 @@ describe("contrato de consulta", () => {
 
   it("não aceita company_id vindo do cliente", () => {
     const parsed = PerformanceQuerySchema.parse({
-      // @ts-expect-error — campo proibido, deve ser descartado pelo schema
       company_id: "00000000-0000-0000-0000-000000000000",
     });
     expect((parsed as Record<string, unknown>).company_id).toBeUndefined();
