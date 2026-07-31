@@ -162,7 +162,7 @@ function CoachPerformancePage() {
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex sm:flex-wrap sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <Button asChild variant="ghost" size="icon" className="shrink-0" aria-label="Voltar">
-            <Link to="/configuracoes_/coach-learnings">
+            <Link to="/configuracoes/coach-learnings">
               <ArrowLeft className="h-5 w-5" aria-hidden="true" />
             </Link>
           </Button>
