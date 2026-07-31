@@ -52,6 +52,11 @@ import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { MetaDisconnectButton } from "@/components/MetaDisconnectButton";
+import { LossReasonsSection } from "@/components/configuracoes/LossReasonsSection";
+import { MetaIntegrationSection } from "@/components/configuracoes/MetaIntegrationSection";
+import { WhatsAppUnmappedPanel } from "@/components/configuracoes/WhatsAppUnmappedPanel";
+import { NotificationsCard } from "@/components/configuracoes/NotificationsCard";
+import { CompanyLocationCard } from "@/components/configuracoes/CompanyLocationCard";
 
 export const Route = createFileRoute("/configuracoes")({
   component: ConfigPage,
