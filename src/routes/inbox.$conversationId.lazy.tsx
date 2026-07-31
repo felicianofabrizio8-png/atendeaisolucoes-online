@@ -4744,12 +4744,18 @@ function ConversationPage() {
     <div className="flex-1 flex min-w-0 min-h-0 h-full max-w-full overflow-hidden">
       {/* Conversation column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 max-w-full border-r border-border overflow-hidden">
+        {/*
+          Cabeçalho (nível 2 da navegação mobile). Regra da fase: no telefone
+          só ficam soltas as ações primárias — voltar, fechar venda e abrir os
+          detalhes. Tudo o mais (Coach, dados do lead, ações administrativas)
+          vive dentro do sheet de detalhes.
+        */}
         <header className="h-14 md:h-14 px-2 md:px-4 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
 
           <button
             onClick={() => navigate({ to: "/inbox" })}
-            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent shrink-0"
-            aria-label="Voltar"
+            className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent shrink-0"
+            aria-label="Voltar para a caixa de atendimento"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -4782,7 +4788,7 @@ function ConversationPage() {
               onClick={handleManualFollowup}
               disabled={manualRunning}
               title="Executa o motor de follow-up agora, ignorando os tempos configurados"
-              className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold shrink-0 disabled:opacity-50"
+              className="hidden lg:inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold shrink-0 disabled:opacity-50"
             >
               {manualRunning ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -4809,7 +4815,19 @@ function ConversationPage() {
               </button>
             </>
           )}
+          {/* Nível 3: Coach IA, dados do lead e ações. Só no mobile/tablet —
+              no desktop o mesmo conteúdo já está no painel fixo à direita. */}
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(true)}
+            data-testid="open-conversation-details"
+            className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-md border border-border hover:bg-accent shrink-0"
+            aria-label="Abrir detalhes do lead e Coach IA"
+          >
+            <PanelRight className="h-5 w-5" />
+          </button>
         </header>
+
 
         {/* Manual follow-up result modal */}
         {(manualResult || manualError) && (
