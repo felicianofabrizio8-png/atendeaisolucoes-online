@@ -5311,11 +5311,22 @@ function ConversationPage() {
         />
 
 
-        {/* Composer */}
+        {/*
+          Composer. No mobile ele é a barra fixa inferior da tela (o
+          MobileBottomNav é escondido nesta rota), então precisa subir junto
+          com o teclado virtual: `keyboardInset` vem do visualViewport e é
+          somado à safe-area para o campo nunca ficar coberto no iOS.
+        */}
         <div
           className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
+          style={{
+            paddingBottom:
+              keyboardInset > 0
+                ? `${keyboardInset + 12}px`
+                : "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+          }}
         >
+
 
           {replyingTo && (
             <div className="mb-2 flex items-stretch gap-2 rounded-md border-l-4 border-primary bg-muted/60 px-2.5 py-2 max-w-full min-w-0">
