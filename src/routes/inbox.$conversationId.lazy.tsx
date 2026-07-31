@@ -51,6 +51,10 @@ import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import { CoachPanel } from "@/components/coach/CoachPanel";
+import { ConversationDetailsSheet } from "@/components/inbox/ConversationDetailsSheet";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+import { clearDraft, readDraft, saveDraft } from "@/lib/inbox/mobile-session";
+
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -64,6 +68,8 @@ import {
   Loader2,
   Tag,
   Clock,
+  PanelRight,
+
   Flame,
   X,
   DollarSign,
@@ -1625,7 +1631,11 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        "group flex flex-col w-fit max-w-[min(85%,calc(100%-1rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
+        // Mobile usa 92% da largura (Fase 5.2): em 320–390px os 85% antigos
+        // desperdiçavam uma coluna inteira e quebravam frases curtas em duas
+        // linhas. No desktop a leitura continua confortável em 70%.
+        "group flex flex-col w-fit max-w-[min(92%,calc(100%-0.75rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
+
         isAgent ? "ml-auto items-end" : "items-start",
       )}
     >
@@ -3097,7 +3107,29 @@ function ConversationPage() {
       setLocalMessages((prev) => prev.filter((m) => !shouldRemove(m)));
     }
   }, [repoMessages, localMessages]);
-  const [input, setInput] = useState("");
+  // Rascunho: inicializa a partir do que ficou salvo para ESTA conversa, de
+  // modo que voltar para a lista, abrir o Coach ou consultar o lead nunca
+  // descarte o que o vendedor já digitou.
+  const [input, setInput] = useState(() => readDraft(conversationId));
+  // Nível 3 da navegação mobile: Coach + lead + ações em sheet de tela cheia.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Altura do teclado virtual (0 no desktop e com teclado fechado).
+  const keyboardInset = useKeyboardInset();
+
+  // Troca de conversa: carrega o rascunho correspondente e fecha o painel.
+  useEffect(() => {
+    setInput(readDraft(conversationId));
+    setDetailsOpen(false);
+  }, [conversationId]);
+
+  // Persiste o rascunho enquanto o usuário digita (debounce curto para não
+  // gravar a cada tecla).
+  useEffect(() => {
+    const t = setTimeout(() => saveDraft(conversationId, input), 250);
+    return () => clearTimeout(t);
+  }, [conversationId, input]);
+
+
   const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
   const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -4051,6 +4083,9 @@ function ConversationPage() {
     };
     setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
+    // O rascunho já cumpriu seu papel: some junto com o texto enviado.
+    clearDraft(conversationId);
+
     setSendError(null);
     if (replySnapshot && !replyExternalId) setReplyingTo(null);
 
@@ -4475,16 +4510,260 @@ function ConversationPage() {
 
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
+  // Fase 5.2 — o conteúdo do painel (Coach IA, dados do lead, ações) é
+  // definido uma única vez e montado em dois lugares: no <aside> fixo do
+  // desktop e, no mobile, dentro de um sheet de tela cheia. Uma única fonte
+  // evita que as duas superfícies divirjam com o tempo.
+  const sidePanelContent = (
+    <>
+
+        <CoachPanel
+          conversationId={conversation.id}
+          onInsertSuggestion={(t: string) => {
+            setInput(t);
+            // No mobile o Coach vive dentro do sheet: aceitar a sugestão
+            // precisa devolver o vendedor ao composer imediatamente.
+            setDetailsOpen(false);
+          }}
+
+          messages={visibleMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            text: m.text,
+            at: m.at,
+            sourceSubtype: m.sourceSubtype,
+          }))}
+          composerHasDraft={input.trim().length > 0}
+        />
+
+
+        {/* Lead header */}
+        <div className="p-4 border-b border-border">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
+          <div className="text-base font-semibold">{lead.name}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{lead.phone ?? lead.handle}</div>
+        </div>
+
+        {/* HERO: Produto / Valor / Temperatura — destaque máximo */}
+        <div className="p-4 border-b border-border bg-gradient-to-br from-primary/5 to-transparent">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Produto</div>
+          <div className="text-sm font-semibold text-foreground mb-3 break-words">
+            {lead.product ?? <span className="text-muted-foreground font-normal">Sem produto definido</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                {closedInfo ? "Venda" : "Estimado"}
+              </div>
+              <div className="text-lg font-bold tabular-nums text-foreground">
+                {closedInfo
+                  ? formatBRL(closedInfo.value)
+                  : lead.estimatedValue
+                    ? formatBRL(lead.estimatedValue)
+                    : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Temperatura</div>
+              {conversation.leadTemperature ? (
+                <TempBadge temp={conversation.leadTemperature} score={conversation.leadScore} />
+              ) : (
+                <span className="text-xs text-muted-foreground">Sem dados</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* CTA principal — ação comercial mais importante */}
+        {!closedInfo && (() => {
+          const ready = conversation.leadReadyToClose;
+          const hasQuote = !!pendingQuote;
+          const noAction = !lead.nextAction;
+          let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
+            icon: Target,
+            label: "Definir próxima ação",
+            onClick: () => setNextActionOpen(true),
+            variant: "default",
+          };
+          if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
+          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
+          else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
+          const Icon = primary.icon;
+          return (
+            <div className="p-4 border-b border-border">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Ação recomendada</div>
+              <button
+                onClick={primary.onClick}
+                disabled={primary.variant === "won" ? !!closedInfo : false}
+                className={cn(
+                  "w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-sm transition",
+                  primary.variant === "won"
+                    ? "bg-[var(--status-won)] text-[var(--status-won-foreground)] hover:opacity-90"
+                    : "bg-primary text-primary-foreground hover:opacity-90",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {primary.label}
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Próxima ação — alerta destacado se não definida */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+            <Target className="h-3 w-3" /> Próxima ação
+          </div>
+          {lead.nextAction ? (
+            <div className="rounded-md border border-border bg-card/60 px-3 py-2">
+              <div className="text-sm font-medium">{lead.nextAction.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2.5 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-[var(--status-urgent)] shrink-0 mt-0.5 animate-pulse" />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-[var(--status-urgent)]">Sem próxima ação</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  Defina o próximo passo para não perder o lead.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Resumo IA — apenas com dados já existentes */}
+        {(() => {
+          const interesse = conversation.detectedInterest;
+          const objecao = (conversation.detectedObjections ?? [])[0];
+          const ultimoOrc = pendingQuote
+            ? `${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`
+            : null;
+          const proximaOp = conversation.leadReadyToClose
+            ? "Pronto para fechar"
+            : conversation.leadTemperature === "quente"
+              ? "Avançar para fechamento"
+              : conversation.leadTemperature === "morno"
+                ? "Aquecer com follow-up"
+                : null;
+          return (
+            <div className="p-4 border-b border-border">
+              <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                <Sparkles className="h-3 w-3 text-primary" /> Resumo IA
+              </div>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Interesse principal</div>
+                  <div className="text-foreground">{interesse ?? <span className="text-muted-foreground">Ainda não identificado</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Último orçamento</div>
+                  <div className="text-foreground">{ultimoOrc ?? <span className="text-muted-foreground">Nenhum orçamento ainda</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Objeção detectada</div>
+                  <div className={cn(objecao ? "text-amber-500 font-medium" : "")}>
+                    {objecao ?? <span className="text-muted-foreground font-normal">Nenhuma no momento</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Próxima oportunidade</div>
+                  <div className="text-foreground">{proximaOp ?? <span className="text-muted-foreground">Continuar qualificando</span>}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Detalhes secundários */}
+        <div className="p-4 border-b border-border space-y-2 text-xs">
+          <Row label="Atribuído a" value={lead.assignedTo ?? "Ninguém"} />
+          <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
+        </div>
+
+        <QualificationPanel conv={conversation} />
+        <AITimeline conversationId={conversationId} />
+
+        {/* Tags */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+            <Tag className="h-3 w-3" /> Tags
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {lead.tags.length === 0 && (
+              <span className="text-xs text-muted-foreground">Nenhuma</span>
+            )}
+            {lead.tags.map((t: string) => (
+              <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
+                #{t}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Ações secundárias */}
+        <div className="p-4 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Mais ações</div>
+          <ActionButton
+            icon={quoteSuggesting ? Loader2 : FileText}
+            onClick={openNewQuote}
+            disabled={!!closedInfo || quoteSuggesting}
+          >
+            {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
+          </ActionButton>
+          <ActionButton
+            icon={Calendar}
+            onClick={() => setVisitOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Agendar visita
+          </ActionButton>
+          <ActionButton
+            icon={Target}
+            onClick={() => setNextActionOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Definir próxima ação
+          </ActionButton>
+          <ActionButton
+            icon={CheckCircle2}
+            variant="won"
+            onClick={() => setCloseOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Fechar venda
+          </ActionButton>
+          <ActionButton
+            icon={XCircle}
+            variant="lost"
+            onClick={() => setLostOpen(true)}
+            disabled={!!closedInfo || !isAdmin}
+            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
+          >
+            Marcar como perdido
+          </ActionButton>
+        </div>
+    </>
+  );
+
   return (
     <div className="flex-1 flex min-w-0 min-h-0 h-full max-w-full overflow-hidden">
       {/* Conversation column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 max-w-full border-r border-border overflow-hidden">
+        {/*
+          Cabeçalho (nível 2 da navegação mobile). Regra da fase: no telefone
+          só ficam soltas as ações primárias — voltar, fechar venda e abrir os
+          detalhes. Tudo o mais (Coach, dados do lead, ações administrativas)
+          vive dentro do sheet de detalhes.
+        */}
         <header className="h-14 md:h-14 px-2 md:px-4 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
 
           <button
             onClick={() => navigate({ to: "/inbox" })}
-            className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent shrink-0"
-            aria-label="Voltar"
+            className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent shrink-0"
+            aria-label="Voltar para a caixa de atendimento"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -4517,7 +4796,7 @@ function ConversationPage() {
               onClick={handleManualFollowup}
               disabled={manualRunning}
               title="Executa o motor de follow-up agora, ignorando os tempos configurados"
-              className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold shrink-0 disabled:opacity-50"
+              className="hidden lg:inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold shrink-0 disabled:opacity-50"
             >
               {manualRunning ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -4544,7 +4823,19 @@ function ConversationPage() {
               </button>
             </>
           )}
+          {/* Nível 3: Coach IA, dados do lead e ações. Só no mobile/tablet —
+              no desktop o mesmo conteúdo já está no painel fixo à direita. */}
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(true)}
+            data-testid="open-conversation-details"
+            className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-md border border-border hover:bg-accent shrink-0"
+            aria-label="Abrir detalhes do lead e Coach IA"
+          >
+            <PanelRight className="h-5 w-5" />
+          </button>
         </header>
+
 
         {/* Manual follow-up result modal */}
         {(manualResult || manualError) && (
@@ -5026,11 +5317,22 @@ function ConversationPage() {
         />
 
 
-        {/* Composer */}
+        {/*
+          Composer. No mobile ele é a barra fixa inferior da tela (o
+          MobileBottomNav é escondido nesta rota), então precisa subir junto
+          com o teclado virtual: `keyboardInset` vem do visualViewport e é
+          somado à safe-area para o campo nunca ficar coberto no iOS.
+        */}
         <div
           className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
+          style={{
+            paddingBottom:
+              keyboardInset > 0
+                ? `${keyboardInset + 12}px`
+                : "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+          }}
         >
+
 
           {replyingTo && (
             <div className="mb-2 flex items-stretch gap-2 rounded-md border-l-4 border-primary bg-muted/60 px-2.5 py-2 max-w-full min-w-0">
@@ -5065,7 +5367,14 @@ function ConversationPage() {
             </div>
           )}
 
-          <div className="flex items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
+          {/*
+            Mobile: duas linhas (texto em cima, ações embaixo) via flex-wrap +
+            `basis-full` no textarea. Em 320px a linha única espremia o campo
+            de texto em ~90px, tornando impossível revisar o que se escreve.
+            Desktop (md+) volta a ser uma única linha, sem quebra.
+          */}
+          <div className="flex flex-wrap md:flex-nowrap items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
+
             {!audioActive && (
               <button
                 onClick={generateAI}
@@ -5107,7 +5416,7 @@ function ConversationPage() {
                       : "Mensagem…"
                 }
                 rows={1}
-                className="flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
+                className="order-first md:order-none basis-full md:basis-auto flex-1 min-w-0 resize-none rounded-2xl md:rounded-md bg-input px-4 md:px-3 py-2.5 md:py-2 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 max-h-40 min-h-[44px] md:min-h-[3.5rem]"
               />
             )}
             {!audioActive && (
@@ -5196,7 +5505,7 @@ function ConversationPage() {
               <button
                 onClick={() => sendMessage(input)}
                 disabled={!input.trim() || !!closedInfo}
-                className="h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+                className="ml-auto md:ml-0 h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
                 aria-label={isComment ? "Responder comentário" : "Enviar"}
               >
                 <Send className="h-5 w-5 md:h-3.5 md:w-3.5" />
@@ -5211,230 +5520,32 @@ function ConversationPage() {
 
       {/* Side panel */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
-
-        <CoachPanel
-          conversationId={conversation.id}
-          onInsertSuggestion={(t: string) => setInput(t)}
-          messages={visibleMessages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            at: m.at,
-            sourceSubtype: m.sourceSubtype,
-          }))}
-          composerHasDraft={input.trim().length > 0}
-        />
-
-
-        {/* Lead header */}
-        <div className="p-4 border-b border-border">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
-          <div className="text-base font-semibold">{lead.name}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">{lead.phone ?? lead.handle}</div>
-        </div>
-
-        {/* HERO: Produto / Valor / Temperatura — destaque máximo */}
-        <div className="p-4 border-b border-border bg-gradient-to-br from-primary/5 to-transparent">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Produto</div>
-          <div className="text-sm font-semibold text-foreground mb-3 break-words">
-            {lead.product ?? <span className="text-muted-foreground font-normal">Sem produto definido</span>}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
-                {closedInfo ? "Venda" : "Estimado"}
-              </div>
-              <div className="text-lg font-bold tabular-nums text-foreground">
-                {closedInfo
-                  ? formatBRL(closedInfo.value)
-                  : lead.estimatedValue
-                    ? formatBRL(lead.estimatedValue)
-                    : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Temperatura</div>
-              {conversation.leadTemperature ? (
-                <TempBadge temp={conversation.leadTemperature} score={conversation.leadScore} />
-              ) : (
-                <span className="text-xs text-muted-foreground">Sem dados</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* CTA principal — ação comercial mais importante */}
-        {!closedInfo && (() => {
-          const ready = conversation.leadReadyToClose;
-          const hasQuote = !!pendingQuote;
-          const noAction = !lead.nextAction;
-          let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
-            icon: Target,
-            label: "Definir próxima ação",
-            onClick: () => setNextActionOpen(true),
-            variant: "default",
-          };
-          if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
-          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
-          else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
-          const Icon = primary.icon;
-          return (
-            <div className="p-4 border-b border-border">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Ação recomendada</div>
-              <button
-                onClick={primary.onClick}
-                disabled={primary.variant === "won" ? !!closedInfo : false}
-                className={cn(
-                  "w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-sm transition",
-                  primary.variant === "won"
-                    ? "bg-[var(--status-won)] text-[var(--status-won-foreground)] hover:opacity-90"
-                    : "bg-primary text-primary-foreground hover:opacity-90",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {primary.label}
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Próxima ação — alerta destacado se não definida */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            <Target className="h-3 w-3" /> Próxima ação
-          </div>
-          {lead.nextAction ? (
-            <div className="rounded-md border border-border bg-card/60 px-3 py-2">
-              <div className="text-sm font-medium">{lead.nextAction.label}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2.5 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-[var(--status-urgent)] shrink-0 mt-0.5 animate-pulse" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-[var(--status-urgent)]">Sem próxima ação</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
-                  Defina o próximo passo para não perder o lead.
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Resumo IA — apenas com dados já existentes */}
-        {(() => {
-          const interesse = conversation.detectedInterest;
-          const objecao = (conversation.detectedObjections ?? [])[0];
-          const ultimoOrc = pendingQuote
-            ? `${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`
-            : null;
-          const proximaOp = conversation.leadReadyToClose
-            ? "Pronto para fechar"
-            : conversation.leadTemperature === "quente"
-              ? "Avançar para fechamento"
-              : conversation.leadTemperature === "morno"
-                ? "Aquecer com follow-up"
-                : null;
-          return (
-            <div className="p-4 border-b border-border">
-              <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-                <Sparkles className="h-3 w-3 text-primary" /> Resumo IA
-              </div>
-              <div className="space-y-2 text-xs">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Interesse principal</div>
-                  <div className="text-foreground">{interesse ?? <span className="text-muted-foreground">Ainda não identificado</span>}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Último orçamento</div>
-                  <div className="text-foreground">{ultimoOrc ?? <span className="text-muted-foreground">Nenhum orçamento ainda</span>}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Objeção detectada</div>
-                  <div className={cn(objecao ? "text-amber-500 font-medium" : "")}>
-                    {objecao ?? <span className="text-muted-foreground font-normal">Nenhuma no momento</span>}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Próxima oportunidade</div>
-                  <div className="text-foreground">{proximaOp ?? <span className="text-muted-foreground">Continuar qualificando</span>}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Detalhes secundários */}
-        <div className="p-4 border-b border-border space-y-2 text-xs">
-          <Row label="Atribuído a" value={lead.assignedTo ?? "Ninguém"} />
-          <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
-        </div>
-
-        <QualificationPanel conv={conversation} />
-        <AITimeline conversationId={conversationId} />
-
-        {/* Tags */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            <Tag className="h-3 w-3" /> Tags
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {lead.tags.length === 0 && (
-              <span className="text-xs text-muted-foreground">Nenhuma</span>
-            )}
-            {lead.tags.map((t: string) => (
-              <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
-                #{t}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Ações secundárias */}
-        <div className="p-4 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Mais ações</div>
-          <ActionButton
-            icon={quoteSuggesting ? Loader2 : FileText}
-            onClick={openNewQuote}
-            disabled={!!closedInfo || quoteSuggesting}
-          >
-            {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
-          </ActionButton>
-          <ActionButton
-            icon={Calendar}
-            onClick={() => setVisitOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Agendar visita
-          </ActionButton>
-          <ActionButton
-            icon={Target}
-            onClick={() => setNextActionOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Definir próxima ação
-          </ActionButton>
-          <ActionButton
-            icon={CheckCircle2}
-            variant="won"
-            onClick={() => setCloseOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Fechar venda
-          </ActionButton>
-          <ActionButton
-            icon={XCircle}
-            variant="lost"
-            onClick={() => setLostOpen(true)}
-            disabled={!!closedInfo || !isAdmin}
-            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
-          >
-            Marcar como perdido
-          </ActionButton>
-        </div>
+        {sidePanelContent}
       </aside>
+
+      {/* Nível 3 mobile/tablet — mesmo conteúdo em sheet de tela cheia. */}
+      <ConversationDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        title={lead.name}
+      >
+        {isAdmin && !closedInfo ? (
+          <div className="px-3 pt-3">
+            {/* Ação administrativa que sai do cabeçalho no mobile. */}
+            <button
+              type="button"
+              onClick={handleManualFollowup}
+              disabled={manualRunning}
+              className="w-full inline-flex items-center justify-center gap-1.5 h-11 px-3 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-sm font-semibold disabled:opacity-50"
+            >
+              {manualRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Executar Follow-up Agora
+            </button>
+          </div>
+        ) : null}
+        {sidePanelContent}
+      </ConversationDetailsSheet>
+
 
 
       {closeOpen && (

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
@@ -28,6 +28,8 @@ import { OpsCockpit } from "@/components/inbox/OpsCockpit";
 import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
 import { LayoutDashboard, List } from "lucide-react";
+import { readListScroll, saveListScroll } from "@/lib/inbox/mobile-session";
+
 
 
 const STATUS_FILTERS = [
@@ -254,6 +256,15 @@ function InboxPage() {
   const [oppCollapsed, setOppCollapsed] = useState(false);
   const [view, setView] = useState<"cockpit" | "classic">(readView);
   const { alertsByConv, totalConversations: coachCount } = useCoachAlerts();
+
+  // Fase 5.2 — a lista é o nível 1 da navegação mobile: voltar da conversa
+  // precisa devolver o dedo exatamente onde ele parou. Guardamos a posição a
+  // cada rolagem (throttle por rAF) e restauramos no primeiro layout após a
+  // lista ter itens renderizados.
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRestoredRef = useRef(false);
+
+
 
   const changeView = (v: "cockpit" | "classic") => {
     setView(v);
@@ -692,7 +703,25 @@ function InboxPage() {
 
 
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={(el) => {
+          listScrollRef.current = el;
+          if (el && !scrollRestoredRef.current) {
+            const top = readListScroll();
+            if (top > 0) {
+              // rAF garante que os itens já tenham altura antes do salto.
+              requestAnimationFrame(() => {
+                if (listScrollRef.current) listScrollRef.current.scrollTop = top;
+              });
+            }
+            scrollRestoredRef.current = true;
+          }
+        }}
+        onScroll={(e) => saveListScroll(e.currentTarget.scrollTop)}
+        data-testid="inbox-list-scroll"
+        className="flex-1 overflow-y-auto overscroll-contain"
+      >
+
         <OpportunityHub collapsed={oppCollapsed} onToggle={setOppCollapsed} />
         {showSeed && (
           <div className="mx-6 my-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex items-start gap-3">
