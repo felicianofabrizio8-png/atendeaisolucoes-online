@@ -5549,14 +5549,27 @@ function ConversationPage() {
           // Gatilho é um botão controlado, não um SheetTrigger: sem isto o
           // Radix devolveria o foco ao <body> e o vendedor precisaria de um
           // toque extra para voltar a digitar.
-          const target = focusComposerOnCloseRef.current
-            ? composerRef.current
-            : detailsTriggerRef.current;
+          //
+          // O foco precisa ser SÍNCRONO aqui. Com `requestAnimationFrame` o
+          // teardown do FocusScope do Radix rodava depois do nosso `focus()`
+          // e o blur final deixava o `document.body` como `activeElement`.
+          // Mantemos um reforço em `queueMicrotask` apenas para o caso de o
+          // alvo ainda estar sendo remontado (o `<aside>` volta a renderizar
+          // `sidePanelContent` no mesmo commit em que `detailsOpen` vira false).
+          const wantsComposer = focusComposerOnCloseRef.current;
           focusComposerOnCloseRef.current = false;
+          const pick = () => (wantsComposer ? composerRef.current : detailsTriggerRef.current);
+          const target = pick();
           if (!target) return false;
-          requestAnimationFrame(() => target.focus());
+          target.focus({ preventScroll: true });
+          queueMicrotask(() => {
+            if (document.activeElement === document.body) {
+              pick()?.focus({ preventScroll: true });
+            }
+          });
           return true;
         }}
+
       >
 
         {isAdmin && !closedInfo ? (

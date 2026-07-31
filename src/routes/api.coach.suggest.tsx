@@ -2,6 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server";
 import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
+import {
+  COACH_INVALID_OUTPUT_CONTRACT,
+  COACH_PROVIDER_TIMEOUT_MS,
+  COACH_TIMEOUT_CONTRACT,
+  classifyGatewayFailure,
+  sanitizeProviderBody,
+} from "@/lib/coach/gateway-errors";
+
 
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -168,72 +176,89 @@ Valor estimado: ${lead?.estimated_value ?? "—"}
 Conversa (cronológica):
 ${transcript || "(sem mensagens)"}`;
 
-        const aiRes = await fetch(GATEWAY_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: MODEL,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            tools: [
-              {
-                type: "function",
-                function: {
-                  name: "coach_output",
-                  description: "Devolve a orientação do Coach ao vendedor",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      situation: { type: "string" },
-                      next_action: { type: "string" },
-                      suggestion_text: { type: "string" },
-                      reasoning: { type: "string" },
-                      objection_type: {
-                        type: "string",
-                        enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
+        // Timeout explícito: sem isto uma indisponibilidade do provedor
+        // pendura a requisição do vendedor até o limite do runtime.
+        let aiRes: Response;
+        try {
+          aiRes = await fetch(GATEWAY_URL, {
+            method: "POST",
+            signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: MODEL,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              tools: [
+                {
+                  type: "function",
+                  function: {
+                    name: "coach_output",
+                    description: "Devolve a orientação do Coach ao vendedor",
+                    parameters: {
+                      type: "object",
+                      properties: {
+                        situation: { type: "string" },
+                        next_action: { type: "string" },
+                        suggestion_text: { type: "string" },
+                        reasoning: { type: "string" },
+                        objection_type: {
+                          type: "string",
+                          enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
+                        },
+                        urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                        risk_score: { type: "integer", minimum: 0, maximum: 100 },
                       },
-                      urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                      risk_score: { type: "integer", minimum: 0, maximum: 100 },
+                      required: [
+                        "situation",
+                        "next_action",
+                        "suggestion_text",
+                        "reasoning",
+                        "urgency",
+                        "risk_score",
+                      ],
                     },
-                    required: [
-                      "situation",
-                      "next_action",
-                      "suggestion_text",
-                      "reasoning",
-                      "urgency",
-                      "risk_score",
-                    ],
                   },
                 },
-              },
-            ],
-            tool_choice: { type: "function", function: { name: "coach_output" } },
-          }),
-        });
+              ],
+              tool_choice: { type: "function", function: { name: "coach_output" } },
+            }),
+          });
+        } catch {
+          // Aborto por timeout ou falha de rede — nunca 502 genérico.
+          console.error("[coach/suggest] provider unreachable or timed out");
+          return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
+        }
 
         if (!aiRes.ok) {
-          if (aiRes.status === 429)
-            return Response.json({ error: "Limite de uso da IA atingido. Tente em alguns minutos." }, { status: 429 });
-          if (aiRes.status === 402)
-            return Response.json({ error: "Créditos de IA esgotados. Adicione créditos no workspace." }, { status: 402 });
-          const errText = await aiRes.text();
-          return Response.json({ error: `Falha na IA: ${errText.slice(0, 200)}` }, { status: 502 });
+          const raw = await aiRes.text().catch(() => "");
+          const contract = classifyGatewayFailure(aiRes.status, raw);
+          // Corpo bruto só no log do servidor, sanitizado. Nunca na resposta.
+          console.error(
+            `[coach/suggest] provider ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`,
+          );
+          return Response.json(contract, { status: contract.status });
         }
 
         const payload = await aiRes.json();
         const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall) return Response.json({ error: "IA não retornou sugestão" }, { status: 502 });
+        if (!toolCall)
+          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
+            status: COACH_INVALID_OUTPUT_CONTRACT.status,
+          });
         let parsed: CoachOutput;
         try {
           parsed = JSON.parse(toolCall.function.arguments) as CoachOutput;
         } catch {
-          return Response.json({ error: "Resposta da IA inválida" }, { status: 502 });
+          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
+            status: COACH_INVALID_OUTPUT_CONTRACT.status,
+          });
         }
+
 
         const { data: ins, error: insErr } = await supabaseAdmin
           .from("coach_suggestions")
