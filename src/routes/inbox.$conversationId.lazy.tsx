@@ -53,7 +53,12 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { ConversationDetailsSheet } from "@/components/inbox/ConversationDetailsSheet";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
-import { clearDraft, readDraft, saveDraft } from "@/lib/inbox/mobile-session";
+import {
+  clearDraft,
+  consumeComposerFocus,
+  readDraft,
+  saveDraft,
+} from "@/lib/inbox/mobile-session";
 
 import { cn } from "@/lib/utils";
 import {
