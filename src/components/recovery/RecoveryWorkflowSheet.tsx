@@ -275,7 +275,8 @@ export function RecoveryWorkflowSheet({
 
           {step === 3 && (
             <ConfirmStep
-              recipient={plan?.context.leadPhoneMasked ?? null}
+              recipient={null}
+              recipientName={item?.leadName ?? "Cliente"}
               channelLabel={selectedTemplate ? "Template aprovado" : "Mensagem livre (janela aberta)"}
               preview={preview}
               sending={busy}

@@ -164,6 +164,7 @@ export function ChannelStep({
 
 export function ConfirmStep({
   recipient,
+  recipientName,
   channelLabel,
   preview,
   sending,
@@ -171,6 +172,7 @@ export function ConfirmStep({
   onBack,
 }: {
   recipient: string | null;
+  recipientName: string;
   channelLabel: string;
   preview: string;
   sending: boolean;
@@ -182,7 +184,9 @@ export function ConfirmStep({
       <dl className="rounded-md border border-border divide-y divide-border text-xs">
         <div className="flex justify-between gap-2 p-2.5">
           <dt className="text-muted-foreground">Para</dt>
-          <dd className="font-medium">{maskRecipient(recipient)}</dd>
+          <dd className="font-medium">
+            {recipientName} · {maskRecipient(recipient)}
+          </dd>
         </div>
         <div className="flex justify-between gap-2 p-2.5">
           <dt className="text-muted-foreground">Como</dt>
