@@ -110,7 +110,7 @@ export const listLearningPerformanceFn = createServerFn({ method: "GET" })
     );
     if (error) throw translateError(error);
 
-    const list = ((rows ?? []) as AnyRow[]) ?? [];
+    const list = (rows ?? []) as AnyRow[];
     const totalCount = list.length > 0 ? num(list[0].total_count) : 0;
     return {
       rows: list.map(mapRow),
@@ -188,7 +188,8 @@ export interface RetrievalTraceItem {
   fallback_reason: string | null;
   usage_counted: boolean;
   suggestion_feedback: string | null;
-  raw: Record<string, unknown>;
+  /** JSONB opaco — serializável para SSR. */
+  raw: Record<string, {}>;
 }
 
 export interface FeedbackEventItem {
@@ -254,14 +255,14 @@ export const getLearningPerformanceDetailFn = createServerFn({ method: "GET" })
     const learning = (learningRes.data ?? null) as CoachLearningRow | null;
     if (!learning) throw new Error("not_found");
 
-    const retrievalRows = ((retrievalRes.data ?? []) as AnyRow[]) ?? [];
+    const retrievalRows = (retrievalRes.data ?? []) as AnyRow[];
 
     // Feedback da sugestão em UMA consulta (nunca N+1).
     const refs = Array.from(
       new Set(
         retrievalRows
           .map((r) => (typeof r.generation_ref === "string" ? r.generation_ref : null))
-          .filter((v): v is string => Boolean(v) && /^[0-9a-f-]{36}$/i.test(v)),
+          .filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)),
       ),
     ).slice(0, 50);
     const feedbackBySuggestion = new Map<string, string | null>();
@@ -270,13 +271,13 @@ export const getLearningPerformanceDetailFn = createServerFn({ method: "GET" })
         .from("coach_suggestions" as never)
         .select("id, feedback_status")
         .in("id", refs);
-      for (const s of ((sugg ?? []) as AnyRow[]) ?? []) {
+      for (const s of (sugg ?? []) as AnyRow[]) {
         feedbackBySuggestion.set(String(s.id), str(s.feedback_status));
       }
     }
 
     const retrievals: RetrievalTraceItem[] = retrievalRows.map((r) => {
-      const meta = (r.ranking_metadata ?? {}) as Record<string, unknown>;
+      const meta = (r.ranking_metadata ?? {}) as Record<string, {}>;
       const ref = typeof r.generation_ref === "string" ? r.generation_ref : null;
       return {
         id: String(r.id),
@@ -301,7 +302,7 @@ export const getLearningPerformanceDetailFn = createServerFn({ method: "GET" })
       };
     });
 
-    const feedbackEvents: FeedbackEventItem[] = (((feedbackRes.data ?? []) as AnyRow[]) ?? []).map(
+    const feedbackEvents: FeedbackEventItem[] = ((feedbackRes.data ?? []) as AnyRow[]).map(
       (f) => ({
         id: String(f.id),
         created_at: String(f.created_at),
