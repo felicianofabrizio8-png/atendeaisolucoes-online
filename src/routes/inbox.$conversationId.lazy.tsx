@@ -4081,6 +4081,9 @@ function ConversationPage() {
     };
     setLocalMessages((prev: Message[]) => [...prev, msg]);
     setInput("");
+    // O rascunho já cumpriu seu papel: some junto com o texto enviado.
+    clearDraft(conversationId);
+
     setSendError(null);
     if (replySnapshot && !replyExternalId) setReplyingTo(null);
 
