@@ -148,7 +148,7 @@ export async function processStatusEvents(args: {
       if (!attempt) continue;
 
       // 4) propaga para a tentativa, sem nunca regredir.
-      const patch: Record<string, unknown> = { delivery_status: decision.nextMessageStatus };
+      const patch = { delivery_status: decision.nextMessageStatus };
       const nextStatus = decision.nextAttemptStatus;
       if (nextStatus && canTransition(attempt.status as RecoveryAttemptStatus, nextStatus)) {
         const { data: movedAttempt } = await supabaseAdmin
