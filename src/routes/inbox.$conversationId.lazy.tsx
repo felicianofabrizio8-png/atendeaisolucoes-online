@@ -5499,7 +5499,7 @@ function ConversationPage() {
               <button
                 onClick={() => sendMessage(input)}
                 disabled={!input.trim() || !!closedInfo}
-                className="h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
+                className="ml-auto md:ml-0 h-11 w-11 md:h-9 md:w-auto md:px-3 inline-flex items-center justify-center gap-1.5 rounded-full md:rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 text-sm font-medium shrink-0"
                 aria-label={isComment ? "Responder comentário" : "Enviar"}
               >
                 <Send className="h-5 w-5 md:h-3.5 md:w-3.5" />
