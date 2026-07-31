@@ -3105,7 +3105,29 @@ function ConversationPage() {
       setLocalMessages((prev) => prev.filter((m) => !shouldRemove(m)));
     }
   }, [repoMessages, localMessages]);
-  const [input, setInput] = useState("");
+  // Rascunho: inicializa a partir do que ficou salvo para ESTA conversa, de
+  // modo que voltar para a lista, abrir o Coach ou consultar o lead nunca
+  // descarte o que o vendedor já digitou.
+  const [input, setInput] = useState(() => readDraft(conversationId));
+  // Nível 3 da navegação mobile: Coach + lead + ações em sheet de tela cheia.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Altura do teclado virtual (0 no desktop e com teclado fechado).
+  const keyboardInset = useKeyboardInset();
+
+  // Troca de conversa: carrega o rascunho correspondente e fecha o painel.
+  useEffect(() => {
+    setInput(readDraft(conversationId));
+    setDetailsOpen(false);
+  }, [conversationId]);
+
+  // Persiste o rascunho enquanto o usuário digita (debounce curto para não
+  // gravar a cada tecla).
+  useEffect(() => {
+    const t = setTimeout(() => saveDraft(conversationId, input), 250);
+    return () => clearTimeout(t);
+  }, [conversationId, input]);
+
+
   const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
   const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
