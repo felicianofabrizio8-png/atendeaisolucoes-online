@@ -3133,7 +3133,13 @@ function ConversationPage() {
   const [audioState, setAudioState] = useState<"idle" | "recording" | "locked" | "processing" | "sending">("idle");
   const audioActive = audioState === "locked" || audioState === "processing" || audioState === "sending";
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  // Botão que abre o sheet de detalhes (mobile) e alvo padrão do retorno de foco.
+  const detailsTriggerRef = useRef<HTMLButtonElement>(null);
+  // Marca que o fechamento veio de "usar sugestão" — nesse caso o foco vai
+  // para o composer, não de volta para o gatilho.
+  const focusComposerOnCloseRef = useRef(false);
   const pendingTextSendsRef = useRef<Set<string>>(new Set());
+
   // Feature 3 — Reply V1: mensagem que o composer está citando (botão Responder).
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const replyComposeValue = useMemo(
@@ -4523,8 +4529,10 @@ function ConversationPage() {
             setInput(t);
             // No mobile o Coach vive dentro do sheet: aceitar a sugestão
             // precisa devolver o vendedor ao composer imediatamente.
+            focusComposerOnCloseRef.current = true;
             setDetailsOpen(false);
           }}
+
 
           messages={visibleMessages.map((m) => ({
             id: m.id,
@@ -4827,7 +4835,9 @@ function ConversationPage() {
               no desktop o mesmo conteúdo já está no painel fixo à direita. */}
           <button
             type="button"
+            ref={detailsTriggerRef}
             onClick={() => setDetailsOpen(true)}
+
             data-testid="open-conversation-details"
             className="lg:hidden h-11 w-11 inline-flex items-center justify-center rounded-md border border-border hover:bg-accent shrink-0"
             aria-label="Abrir detalhes do lead e Coach IA"
@@ -5518,17 +5528,37 @@ function ConversationPage() {
       </div>
 
 
-      {/* Side panel */}
+      {/* Side panel — desktop.
+          O conteúdo é montado em UM lugar por vez: quando o sheet mobile está
+          aberto, o `<aside>` fica vazio. Sem isso, `sidePanelContent` existiria
+          duas vezes na árvore (o aside é apenas `display:none` no mobile, não
+          desmontado), duplicando queries e derrubando a rota com
+          "cannot add postgres_changes callbacks after subscribe()" — dois
+          componentes tentando o mesmo tópico Realtime. */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
-        {sidePanelContent}
+        {detailsOpen ? null : sidePanelContent}
       </aside>
+
 
       {/* Nível 3 mobile/tablet — mesmo conteúdo em sheet de tela cheia. */}
       <ConversationDetailsSheet
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         title={lead.name}
+        onCloseFocus={() => {
+          // Gatilho é um botão controlado, não um SheetTrigger: sem isto o
+          // Radix devolveria o foco ao <body> e o vendedor precisaria de um
+          // toque extra para voltar a digitar.
+          const target = focusComposerOnCloseRef.current
+            ? composerRef.current
+            : detailsTriggerRef.current;
+          focusComposerOnCloseRef.current = false;
+          if (!target) return false;
+          requestAnimationFrame(() => target.focus());
+          return true;
+        }}
       >
+
         {isAdmin && !closedInfo ? (
           <div className="px-3 pt-3">
             {/* Ação administrativa que sai do cabeçalho no mobile. */}

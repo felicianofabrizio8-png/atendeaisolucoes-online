@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   MapPin,
@@ -70,6 +70,11 @@ function timeShort(iso: string) {
 
 export function AITimeline({ conversationId }: { conversationId: string }) {
   const [events, setEvents] = useState<FlowEvent[] | null>(null);
+  // Tópico único por instância: `supabase.channel(topic)` devolve o canal já
+  // existente quando o nome se repete, e chamar `.on()` nele depois do
+  // `subscribe()` lança. Duas instâncias simultâneas (painel desktop + sheet
+  // mobile, ou remontagem rápida) usariam o mesmo nome sem este sufixo.
+  const topicRef = useRef<string>(`flow-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -85,7 +90,7 @@ export function AITimeline({ conversationId }: { conversationId: string }) {
     };
     void load();
     const ch = supabase
-      .channel(`flow-${conversationId}`)
+      .channel(`${topicRef.current}-${conversationId}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "ai_flow_events", filter: `conversation_id=eq.${conversationId}` },
@@ -99,6 +104,7 @@ export function AITimeline({ conversationId }: { conversationId: string }) {
       void supabase.removeChannel(ch);
     };
   }, [conversationId]);
+
 
   return (
     <div className="p-4 border-b border-border">
