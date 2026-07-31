@@ -299,9 +299,11 @@ export function AppShell() {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto pb-[calc(60px+env(safe-area-inset-bottom))] md:pb-0">
           <Outlet />
         </div>
+
+        <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
       </main>
     </div>
   );
