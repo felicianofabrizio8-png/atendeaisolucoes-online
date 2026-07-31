@@ -63,9 +63,6 @@ async function getMetaBusinessConfig(): Promise<MetaBusinessConfig> {
   return (await res.json()) as MetaBusinessConfig;
 }
 
-
-
-
 function loadFbSdk(appId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined") return reject(new Error("no window"));
@@ -178,7 +175,6 @@ export function MetaIntegrationSection() {
     "whatsapp_business_messaging",
   ].join(",");
 
-
   const REDIRECT_URI = "https://app.atendeaisolucoes.online/auth/meta/callback";
 
   // Carrega páginas a partir de um user access_token (chamado após callback OAuth).
@@ -192,15 +188,13 @@ export function MetaIntegrationSection() {
 
     const intent =
       typeof window !== "undefined"
-        ? window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default"
+        ? (window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default")
         : "default";
 
     // /debug_token — escopos concedidos
     let grantedScopes: string[] = [];
     try {
-      const debugRes = await fetch(
-        `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
-      );
+      const debugRes = await fetch(`${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`);
       const debugJson = await debugRes.json();
       const debugData =
         (debugJson as { data?: { scopes?: string[]; granular_scopes?: unknown; app_id?: string } })
@@ -219,9 +213,8 @@ export function MetaIntegrationSection() {
     // Readiness OAuth: exigir escopos mínimos para intent=facebook_page ANTES
     // de listar páginas — evita mensagem genérica "nenhuma página encontrada"
     // quando na verdade faltou pages_show_list na Configuration do Meta.
-    const { evaluateFacebookPageReadiness, formatMissingScopesMessage } = await import(
-      "@/lib/meta-oauth/facebookPageReadiness"
-    );
+    const { evaluateFacebookPageReadiness, formatMissingScopesMessage } =
+      await import("@/lib/meta-oauth/facebookPageReadiness");
     const readiness = evaluateFacebookPageReadiness(grantedScopes, intent);
     if (!readiness.ok) {
       console.error("META_FB_PAGE_SCOPES_MISSING", {
@@ -251,7 +244,7 @@ export function MetaIntegrationSection() {
       );
       const bizJson = (await bizRes.json()) as Record<string, unknown>;
       const bizData = Array.isArray((bizJson as { data?: unknown[] }).data)
-        ? ((bizJson as { data: unknown[] }).data)
+        ? (bizJson as { data: unknown[] }).data
         : [];
       console.log("META_ME_BUSINESSES_RESPONSE", {
         status: bizRes.status,
@@ -299,13 +292,16 @@ export function MetaIntegrationSection() {
     };
     const accounts: RawPage[] = Array.isArray(root.data) ? (root.data as RawPage[]) : [];
 
-    console.log("META_PAGES_DETAIL", accounts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      ig: p.instagram_business_account?.id ?? null,
-      ig_username: p.instagram_business_account?.username ?? null,
-      whatsapp: p.connected_whatsapp_business_account?.id ?? null,
-    })));
+    console.log(
+      "META_PAGES_DETAIL",
+      accounts.map((p) => ({
+        id: p.id,
+        name: p.name,
+        ig: p.instagram_business_account?.id ?? null,
+        ig_username: p.instagram_business_account?.username ?? null,
+        whatsapp: p.connected_whatsapp_business_account?.id ?? null,
+      })),
+    );
 
     const list: AvailablePage[] = accounts.map((p) => ({
       id: p.id,
@@ -368,7 +364,10 @@ export function MetaIntegrationSection() {
       window.sessionStorage.removeItem("META_OAUTH_STATE");
       if (!expected || expected !== received) {
         setError("Sessão OAuth inválida. Tente conectar novamente.");
-        console.warn("META_OAUTH_STATE_MISMATCH", { hasExpected: !!expected, hasReceived: !!received });
+        console.warn("META_OAUTH_STATE_MISMATCH", {
+          hasExpected: !!expected,
+          hasReceived: !!received,
+        });
       } else {
         setConnecting(true);
         void exchangeCodeForToken(pendingCode).finally(() => setConnecting(false));
@@ -397,7 +396,9 @@ export function MetaIntegrationSection() {
         raw?: Record<string, string>;
       } | null;
       if (!data || data.type !== "META_OAUTH_RESULT") return;
-      console.log("META_OAUTH_CALLBACK_RESPONSE", { payload: { ...data, code: data.code ? "[redacted]" : undefined } });
+      console.log("META_OAUTH_CALLBACK_RESPONSE", {
+        payload: { ...data, code: data.code ? "[redacted]" : undefined },
+      });
       if (data.error) {
         console.error("META_OAUTH_POPUP_ERROR", {
           error: data.error,
@@ -413,7 +414,10 @@ export function MetaIntegrationSection() {
         const expected = window.sessionStorage.getItem("META_OAUTH_STATE");
         window.sessionStorage.removeItem("META_OAUTH_STATE");
         if (!expected || expected !== data.state) {
-          console.warn("META_OAUTH_STATE_MISMATCH", { hasExpected: !!expected, hasReceived: !!data.state });
+          console.warn("META_OAUTH_STATE_MISMATCH", {
+            hasExpected: !!expected,
+            hasReceived: !!data.state,
+          });
           setConnecting(false);
           setError("Sessão OAuth inválida. Tente conectar novamente.");
           return;
@@ -467,9 +471,7 @@ export function MetaIntegrationSection() {
         // usa uma config dedicada; default preserva o comportamento atual
         // (Instagram/Ads via businessConfigId).
         const chosenConfigId =
-          intent === "facebook_page"
-            ? config.pageLoginConfigId
-            : config.businessConfigId;
+          intent === "facebook_page" ? config.pageLoginConfigId : config.businessConfigId;
         const useBusinessConfig =
           intent === "facebook_page"
             ? !!config.hasPageLoginConfigId && !!config.pageLoginConfigId
@@ -501,7 +503,6 @@ export function MetaIntegrationSection() {
           app_id: config.appId,
           mode: useBusinessConfig ? "business_config" : "classic_scope",
         });
-
 
         // Abre em nova janela/popup para manter o app aberto
         const width = 600;
@@ -536,7 +537,7 @@ export function MetaIntegrationSection() {
     setSavingPageId(page.id);
     const intent =
       typeof window !== "undefined"
-        ? window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default"
+        ? (window.sessionStorage.getItem("META_OAUTH_INTENT") ?? "default")
         : "default";
     try {
       const { supabase } = await import("@/integrations/supabase/client");
@@ -561,9 +562,7 @@ export function MetaIntegrationSection() {
         webhook_subscribed?: boolean;
       };
       const savedName = result?.page?.name ?? page.name;
-      const igLabel = result?.page?.ig_username
-        ? ` · Instagram: @${result.page.ig_username}`
-        : "";
+      const igLabel = result?.page?.ig_username ? ` · Instagram: @${result.page.ig_username}` : "";
       const webhookLabel = result?.webhook_subscribed
         ? " · Webhook ativo"
         : " · Webhook não confirmado";
@@ -575,9 +574,7 @@ export function MetaIntegrationSection() {
         try {
           const GRAPH = "https://graph.facebook.com/v25.0";
           const tok = encodeURIComponent(shortToken);
-          const dbg = await fetch(
-            `${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`,
-          );
+          const dbg = await fetch(`${GRAPH}/debug_token?input_token=${tok}&access_token=${tok}`);
           const dbgJson = (await dbg.json()) as {
             data?: { scopes?: string[] };
           };
@@ -599,9 +596,7 @@ export function MetaIntegrationSection() {
               }. Refaça "Conectar publicação do Facebook" e marque essas permissões no dialog.`,
             );
           } else {
-            setInfo(
-              `✅ Facebook pronto para publicar: ${savedName}${igLabel}${webhookLabel}`,
-            );
+            setInfo(`✅ Facebook pronto para publicar: ${savedName}${igLabel}${webhookLabel}`);
           }
         } catch (e) {
           console.warn("META_FB_PAGE_PUBLISH_VALIDATION_FAIL", safeErrorMessage(e));
@@ -626,7 +621,6 @@ export function MetaIntegrationSection() {
       }
     }
   };
-
 
   const onDisconnect = async (pageId: string) => {
     if (!confirm("Desconectar esta página? Mensagens antigas serão mantidas.")) return;
@@ -656,14 +650,13 @@ export function MetaIntegrationSection() {
 
   return (
     <section className="rounded-lg border border-border bg-card p-5">
-
       <div className="flex items-center gap-2 mb-1">
         <Plug className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Instagram & Facebook (Meta)</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Conecte páginas do Facebook + Instagram Business para receber DMs, mensagens
-        do Messenger e comentários direto na sua caixa de atendimento.
+        Conecte páginas do Facebook + Instagram Business para receber DMs, mensagens do Messenger e
+        comentários direto na sua caixa de atendimento.
       </p>
 
       {error && (
@@ -686,9 +679,7 @@ export function MetaIntegrationSection() {
       {pages.length > 0 && (
         <p className="text-xs font-semibold mb-2">
           Páginas conectadas{" "}
-          <span className="text-muted-foreground font-normal">
-            ({pages.length})
-          </span>
+          <span className="text-muted-foreground font-normal">({pages.length})</span>
         </p>
       )}
       {pages.length > 0 && (
@@ -706,15 +697,12 @@ export function MetaIntegrationSection() {
                   {p.token_expires_at && (
                     <>
                       {" · "}
-                      Token expira{" "}
-                      {new Date(p.token_expires_at).toLocaleDateString("pt-BR")}
+                      Token expira {new Date(p.token_expires_at).toLocaleDateString("pt-BR")}
                     </>
                   )}
                 </p>
                 {p.last_error && (
-                  <p className="text-[11px] text-[var(--status-urgent)] truncate">
-                    {p.last_error}
-                  </p>
+                  <p className="text-[11px] text-[var(--status-urgent)] truncate">{p.last_error}</p>
                 )}
               </div>
               <button
@@ -770,8 +758,8 @@ export function MetaIntegrationSection() {
       {pages.length === 0 && available.length === 0 && !loading && (
         <div className="mb-4 rounded-md border border-dashed border-border bg-background px-3 py-4 text-center">
           <p className="text-xs text-muted-foreground">
-            Nenhuma página conectada ainda. Clique em{" "}
-            <strong>Conectar Instagram / Facebook</strong> abaixo.
+            Nenhuma página conectada ainda. Clique em <strong>Conectar Instagram / Facebook</strong>{" "}
+            abaixo.
           </p>
         </div>
       )}
@@ -831,8 +819,8 @@ export function MetaIntegrationSection() {
 
       {metaConfig?.hasAppId === false && (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Defina <code className="bg-muted px-1 rounded">META_APP_ID</code> com o App ID do
-          seu app Meta para habilitar o login.
+          Defina <code className="bg-muted px-1 rounded">META_APP_ID</code> com o App ID do seu app
+          Meta para habilitar o login.
         </p>
       )}
       {metaConfig?.hasAppId === true && metaConfig.hasBusinessConfigId === false && (

@@ -78,10 +78,9 @@ export function WhatsAppUnmappedPanel() {
             Mensagem recebida de número WhatsApp não vinculado à empresa
           </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Existem mensagens chegando para um número do seu Business Manager
-            que ainda <strong>não está conectado</strong> ao Atende Ai. Conecte
-            esse número como uma nova integração WhatsApp, ou peça para o
-            cliente usar o número oficialmente divulgado.
+            Existem mensagens chegando para um número do seu Business Manager que ainda{" "}
+            <strong>não está conectado</strong> ao Atende Ai. Conecte esse número como uma nova
+            integração WhatsApp, ou peça para o cliente usar o número oficialmente divulgado.
           </p>
         </div>
         <button
@@ -92,11 +91,7 @@ export function WhatsAppUnmappedPanel() {
           Atualizar
         </button>
       </div>
-      {error && (
-        <div className="text-[11px] text-[var(--status-urgent)] mb-2">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-[11px] text-[var(--status-urgent)] mb-2">{error}</div>}
       <ul className="space-y-2">
         {Array.from(grouped.entries()).map(([phoneId, list]) => {
           const first = list[0];

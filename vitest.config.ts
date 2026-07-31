@@ -38,10 +38,10 @@ export default defineConfig({
       "src/lib/recovery-exec/__tests__/**/*.test.ts",
       "src/lib/recovery-learning/__tests__/**/*.test.ts",
       "src/lib/whatsapp/__tests__/**/*.test.ts",
-
-
-
+      "src/lib/shared/__tests__/**/*.test.ts",
+      "src/components/orcamentos/__tests__/**/*.test.ts",
     ],
+
     environment: "node",
     globals: false,
   },

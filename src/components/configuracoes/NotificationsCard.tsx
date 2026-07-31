@@ -4,7 +4,13 @@
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { Bell } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { getNotificationPrefs, setNotificationPrefs, subscribeNotificationPrefs, getBrowserPermission, requestBrowserPermission } from "@/lib/notification-prefs";
+import {
+  getNotificationPrefs,
+  setNotificationPrefs,
+  subscribeNotificationPrefs,
+  getBrowserPermission,
+  requestBrowserPermission,
+} from "@/lib/notification-prefs";
 
 export function NotificationsCard() {
   const prefs = useSyncExternalStore(
@@ -12,9 +18,7 @@ export function NotificationsCard() {
     getNotificationPrefs,
     getNotificationPrefs,
   );
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    "default",
-  );
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
 
   useEffect(() => {
     setPermission(getBrowserPermission());
@@ -34,9 +38,8 @@ export function NotificationsCard() {
         <h2 className="text-sm font-semibold">Notificações de novas mensagens</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Avisos quando chegar uma nova mensagem de cliente em qualquer canal
-        (WhatsApp, Instagram, Facebook). Não notifica mensagens enviadas pelo
-        atendente.
+        Avisos quando chegar uma nova mensagem de cliente em qualquer canal (WhatsApp, Instagram,
+        Facebook). Não notifica mensagens enviadas pelo atendente.
       </p>
 
       <div className="space-y-3">
