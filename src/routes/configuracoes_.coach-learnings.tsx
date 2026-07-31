@@ -155,6 +155,12 @@ function CoachLearningsPage() {
             injetado no raciocínio antes de responder.
           </p>
         </div>
+        <Link
+          to="/configuracoes_/coach-desempenho"
+          className="inline-flex min-h-11 items-center gap-1 rounded border border-border px-3 text-xs hover:bg-muted"
+        >
+          <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" /> Desempenho
+        </Link>
         <button
           type="button"
           onClick={() => q.refetch()}
