@@ -5361,7 +5361,14 @@ function ConversationPage() {
             </div>
           )}
 
-          <div className="flex items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
+          {/*
+            Mobile: duas linhas (texto em cima, ações embaixo) via flex-wrap +
+            `basis-full` no textarea. Em 320px a linha única espremia o campo
+            de texto em ~90px, tornando impossível revisar o que se escreve.
+            Desktop (md+) volta a ser uma única linha, sem quebra.
+          */}
+          <div className="flex flex-wrap md:flex-nowrap items-end gap-1.5 md:gap-2 min-w-0 max-w-full">
+
             {!audioActive && (
               <button
                 onClick={generateAI}
