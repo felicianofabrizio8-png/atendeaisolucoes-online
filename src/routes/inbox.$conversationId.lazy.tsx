@@ -3122,6 +3122,21 @@ function ConversationPage() {
     setDetailsOpen(false);
   }, [conversationId]);
 
+  // SPRINT 6 · FASE 6.2 — "Usar no campo" do Recovery AI Assistant: o texto já
+  // chegou pelo rascunho; aqui apenas devolvemos o foco ao composer. Nunca
+  // envia nada.
+  useEffect(() => {
+    if (!consumeComposerFocus(conversationId)) return;
+    const t = requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return () => cancelAnimationFrame(t);
+  }, [conversationId]);
+
+
   // Persiste o rascunho enquanto o usuário digita (debounce curto para não
   // gravar a cada tecla).
   useEffect(() => {
