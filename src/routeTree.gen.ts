@@ -40,6 +40,7 @@ import { Route as InboxConversationIdRouteImport } from './routes/inbox.$convers
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
 import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configuracoes_.regras-coach'
+import { Route as ConfiguracoesRecoveryLearningRouteImport } from './routes/configuracoes_.recovery-learning'
 import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
 import { Route as ConfiguracoesCoachLearningsRouteImport } from './routes/configuracoes_.coach-learnings'
 import { Route as ConfiguracoesCoachInterpreterRouteImport } from './routes/configuracoes_.coach-interpreter'
@@ -284,6 +285,12 @@ const ConfiguracoesRegrasCoachRoute =
   ConfiguracoesRegrasCoachRouteImport.update({
     id: '/configuracoes_/regras-coach',
     path: '/configuracoes/regras-coach',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesRecoveryLearningRoute =
+  ConfiguracoesRecoveryLearningRouteImport.update({
+    id: '/configuracoes_/recovery-learning',
+    path: '/configuracoes/recovery-learning',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ConfiguracoesIdentidadeVisualRoute =
@@ -702,6 +709,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes/recovery-learning': typeof ConfiguracoesRecoveryLearningRoute
   '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
@@ -808,6 +816,7 @@ export interface FileRoutesByTo {
   '/configuracoes/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes/recovery-learning': typeof ConfiguracoesRecoveryLearningRoute
   '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
@@ -916,6 +925,7 @@ export interface FileRoutesById {
   '/configuracoes_/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes_/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes_/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
+  '/configuracoes_/recovery-learning': typeof ConfiguracoesRecoveryLearningRoute
   '/configuracoes_/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
@@ -1025,6 +1035,7 @@ export interface FileRouteTypes {
     | '/configuracoes/coach-interpreter'
     | '/configuracoes/coach-learnings'
     | '/configuracoes/identidade-visual'
+    | '/configuracoes/recovery-learning'
     | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
@@ -1131,6 +1142,7 @@ export interface FileRouteTypes {
     | '/configuracoes/coach-interpreter'
     | '/configuracoes/coach-learnings'
     | '/configuracoes/identidade-visual'
+    | '/configuracoes/recovery-learning'
     | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
@@ -1238,6 +1250,7 @@ export interface FileRouteTypes {
     | '/configuracoes_/coach-interpreter'
     | '/configuracoes_/coach-learnings'
     | '/configuracoes_/identidade-visual'
+    | '/configuracoes_/recovery-learning'
     | '/configuracoes_/regras-coach'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
@@ -1346,6 +1359,7 @@ export interface RootRouteChildren {
   ConfiguracoesCoachInterpreterRoute: typeof ConfiguracoesCoachInterpreterRoute
   ConfiguracoesCoachLearningsRoute: typeof ConfiguracoesCoachLearningsRoute
   ConfiguracoesIdentidadeVisualRoute: typeof ConfiguracoesIdentidadeVisualRoute
+  ConfiguracoesRecoveryLearningRoute: typeof ConfiguracoesRecoveryLearningRoute
   ConfiguracoesRegrasCoachRoute: typeof ConfiguracoesRegrasCoachRoute
   ConfiguracoesRespostasRapidasRoute: typeof ConfiguracoesRespostasRapidasRoute
   ConfiguracoesUsuariosRoute: typeof ConfiguracoesUsuariosRoute
@@ -1648,6 +1662,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/regras-coach'
       fullPath: '/configuracoes/regras-coach'
       preLoaderRoute: typeof ConfiguracoesRegrasCoachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes_/recovery-learning': {
+      id: '/configuracoes_/recovery-learning'
+      path: '/configuracoes/recovery-learning'
+      fullPath: '/configuracoes/recovery-learning'
+      preLoaderRoute: typeof ConfiguracoesRecoveryLearningRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes_/identidade-visual': {
@@ -2217,6 +2238,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfiguracoesCoachInterpreterRoute: ConfiguracoesCoachInterpreterRoute,
   ConfiguracoesCoachLearningsRoute: ConfiguracoesCoachLearningsRoute,
   ConfiguracoesIdentidadeVisualRoute: ConfiguracoesIdentidadeVisualRoute,
+  ConfiguracoesRecoveryLearningRoute: ConfiguracoesRecoveryLearningRoute,
   ConfiguracoesRegrasCoachRoute: ConfiguracoesRegrasCoachRoute,
   ConfiguracoesRespostasRapidasRoute: ConfiguracoesRespostasRapidasRoute,
   ConfiguracoesUsuariosRoute: ConfiguracoesUsuariosRoute,

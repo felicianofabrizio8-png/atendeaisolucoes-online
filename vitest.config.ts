@@ -36,6 +36,7 @@ export default defineConfig({
       "src/lib/recovery/__tests__/**/*.test.ts",
       "src/lib/recovery-ai/__tests__/**/*.test.ts",
       "src/lib/recovery-exec/__tests__/**/*.test.ts",
+      "src/lib/recovery-learning/__tests__/**/*.test.ts",
       "src/lib/whatsapp/__tests__/**/*.test.ts",
 
 
