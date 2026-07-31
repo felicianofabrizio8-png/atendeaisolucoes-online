@@ -224,13 +224,21 @@
     input, select, textarea {
       font-size: 16px !important;
     }
-    /* Comfortable minimum tap target for primary controls */
+    /* Comfortable minimum tap target for primary controls (WCAG 2.5.5) */
     button, [role="button"], a.btn, .tap-44 {
       min-height: 44px;
     }
+    /* Escala tipográfica mobile-first: leitura confortável a ~40cm, sem
+       aumentar densidade a ponto de exigir zoom. */
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-size: 15px; line-height: 1.5; }
+    h1 { font-size: 1.375rem; line-height: 1.25; }
+    h2 { font-size: 1.125rem; line-height: 1.3; }
+    h3 { font-size: 1rem; line-height: 1.35; }
     /* Allow wide tables to scroll inside their own container without breaking layout */
     table { display: block; max-width: 100%; overflow-x: auto; }
   }
+
 
   /* Pulse for urgent items */
   @keyframes urgent-pulse {
