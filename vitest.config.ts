@@ -40,6 +40,7 @@ export default defineConfig({
       "src/lib/whatsapp/__tests__/**/*.test.ts",
       "src/lib/shared/__tests__/**/*.test.ts",
       "src/components/orcamentos/__tests__/**/*.test.ts",
+      "src/components/inbox/__tests__/**/*.test.ts",
     ],
 
     environment: "node",
