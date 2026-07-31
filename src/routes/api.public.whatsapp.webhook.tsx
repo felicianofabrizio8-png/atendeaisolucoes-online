@@ -11,6 +11,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { markRecoveryReplied } from "@/lib/recovery-exec/reply.server";
+import { processStatusEvents } from "@/lib/whatsapp/status.server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { extractText } from "@/lib/whatsapp/extract-text";
 import type { WhatsAppMessage as SharedWhatsAppMessage } from "@/lib/whatsapp/extract-text";
@@ -100,6 +101,14 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
                 companyId: integration.company_id,
                 accessToken: integration.access_token ?? null,
                 value,
+              });
+
+              // Fase 6.3.1: callbacks de entrega/leitura. Resolve sempre —
+              // nunca derruba o webhook, mesmo com evento desconhecido.
+              await processStatusEvents({
+                companyId: integration.company_id,
+                integrationId: integration.id,
+                statuses: value.statuses,
               });
             }
           }

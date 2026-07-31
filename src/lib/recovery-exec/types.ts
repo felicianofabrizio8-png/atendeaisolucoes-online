@@ -47,6 +47,9 @@ export type RecoveryEventType =
   | "recovery_send_succeeded"
   | "recovery_send_failed"
   | "recovery_retry_started"
+  | "recovery_message_delivered"
+  | "recovery_message_read"
+  | "recovery_delivery_failed"
   | "recovery_reply_detected"
   | "recovery_marked_recovered"
   | "recovery_marked_not_recovered";

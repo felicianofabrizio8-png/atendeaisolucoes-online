@@ -32,3 +32,11 @@ export {
 export { buildAttemptMetrics, type RecoveryAttemptMetrics } from "./metrics";
 export { buildTimeline, describeEvent, type TimelineEntry } from "./timeline";
 export { maskRecipient } from "./mask";
+export {
+  reconcileDeliveryStatus,
+  normalizeProviderStatus,
+  deliveryRank,
+  DELIVERY_PRECEDENCE,
+  type DeliveryStatus,
+  type DeliveryDecision,
+} from "./reconcile";

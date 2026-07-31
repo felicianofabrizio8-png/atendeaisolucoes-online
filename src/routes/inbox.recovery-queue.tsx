@@ -11,6 +11,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft, Loader2, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { getRecoveryEngine } from "@/lib/recovery-engine.functions";
 import { RecoveryCards } from "@/components/recovery/RecoveryCards";
+import { RecoveryAttemptMetricsCards } from "@/components/recovery/RecoveryAttemptMetricsCards";
+import {
+  getRecoveryAttemptMetrics,
+  type MetricPeriod,
+} from "@/lib/recovery-attempts.functions";
 import { RecoveryQueueCard } from "@/components/recovery/RecoveryQueueCard";
 import { RecoveryDetailSheet } from "@/components/recovery/RecoveryDetailSheet";
 import { RecoveryWorkflowSheet } from "@/components/recovery/RecoveryWorkflowSheet";
@@ -54,6 +59,15 @@ function RecoveryQueuePage() {
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["recovery-engine"],
     queryFn: () => fetchEngine(),
+    staleTime: 60_000,
+  });
+
+  // Fase 6.3.1: métricas operacionais derivadas de tentativas REAIS.
+  const [period, setPeriod] = useState<MetricPeriod>("30d");
+  const fetchMetrics = useServerFn(getRecoveryAttemptMetrics);
+  const metricsQuery = useQuery({
+    queryKey: ["recovery-attempt-metrics", period],
+    queryFn: () => fetchMetrics({ data: { period } }),
     staleTime: 60_000,
   });
 
@@ -150,6 +164,15 @@ function RecoveryQueuePage() {
               }
             }
             loading={isLoading}
+          />
+
+          <RecoveryAttemptMetricsCards
+            metrics={metricsQuery.data?.metrics ?? null}
+            period={period}
+            onPeriodChange={setPeriod}
+            loading={metricsQuery.isLoading}
+            error={metricsQuery.isError || metricsQuery.data?.total === -1}
+            empty={(metricsQuery.data?.total ?? 0) === 0}
           />
 
           {data && data.approvedTemplates === 0 && data.cards.windowClosed > 0 && (
