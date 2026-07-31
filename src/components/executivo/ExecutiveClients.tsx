@@ -1,7 +1,12 @@
 // Tabela "Clientes que precisam de atenção".
 // Deriva de insights de forgotten_client + lossReasons (sem tocar em dados).
+// Mobile-first: no celular as linhas viram cards (sem rolagem horizontal).
 import { UserX } from "lucide-react";
 import type { ExecutiveDashboardBundle } from "@/lib/executive-ai/types";
+import {
+  ResponsiveDataView,
+  type ResponsiveColumn,
+} from "@/components/layout/ResponsiveDataView";
 
 function formatBRL(n: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -11,18 +16,79 @@ function formatBRL(n: number): string {
   }).format(n);
 }
 
+type ClientRow = {
+  key: string;
+  client: string;
+  clientItalic: boolean;
+  reason: string;
+  time: string;
+  risk: "Alto" | "Médio" | "Baixo";
+  action: string;
+};
+
+const riskClass: Record<ClientRow["risk"], string> = {
+  Alto: "bg-rose-500/10 text-rose-500",
+  Médio: "bg-amber-500/10 text-amber-500",
+  Baixo: "bg-muted text-muted-foreground",
+};
+
+const columns: ReadonlyArray<ResponsiveColumn<ClientRow>> = [
+  {
+    id: "client",
+    header: "Cliente / Segmento",
+    role: "primary",
+    cell: (r) => <span className={r.clientItalic ? "italic" : undefined}>{r.client}</span>,
+  },
+  { id: "reason", header: "Motivo", role: "secondary", cell: (r) => r.reason },
+  { id: "time", header: "Tempo", cell: (r) => r.time },
+  {
+    id: "risk",
+    header: "Risco",
+    role: "badge",
+    cell: (r) => (
+      <span
+        className={`inline-flex text-[10px] px-1.5 py-0.5 rounded ${riskClass[r.risk]}`}
+      >
+        {r.risk}
+      </span>
+    ),
+  },
+  { id: "action", header: "Ação recomendada", cell: (r) => r.action },
+];
+
 export function ExecutiveClients({ bundle }: { bundle: ExecutiveDashboardBundle }) {
   const forgotten = bundle.insights.filter((i) => i.category === "forgotten_client");
   const lossRows = bundle.metrics.lossReasons.slice(0, 5);
-  const hasAny = forgotten.length > 0 || lossRows.length > 0;
+
+  const rows: ClientRow[] = [
+    ...forgotten.map((i) => ({
+      key: i.id,
+      client: i.title,
+      clientItalic: false,
+      reason: i.description,
+      time: "—",
+      risk: (i.level === "critical" ? "Alto" : i.level === "warn" ? "Médio" : "Baixo") as
+        ClientRow["risk"],
+      action: i.recommendation ?? "—",
+    })),
+    ...lossRows.map((r) => ({
+      key: `loss-${r.reason}`,
+      client: `${r.count} perda${r.count === 1 ? "" : "s"} recentes`,
+      clientItalic: true,
+      reason: r.reason || "Motivo não informado",
+      time: "período atual",
+      risk: "Médio" as const,
+      action: `Revisar objeções · valor perdido ${formatBRL(r.value)}`,
+    })),
+  ];
 
   return (
     <section
       aria-labelledby="exec-clients-title"
-      className="rounded-2xl border border-border bg-card p-5"
+      className="rounded-2xl border border-border bg-card p-4 sm:p-5"
     >
       <div className="flex items-center gap-2 mb-2">
-        <UserX className="h-4 w-4 text-primary" aria-hidden="true" />
+        <UserX className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
         <h2 id="exec-clients-title" className="text-base font-semibold text-foreground">
           Clientes que precisam de atenção
         </h2>
@@ -32,62 +98,18 @@ export function ExecutiveClients({ bundle }: { bundle: ExecutiveDashboardBundle 
         endpoint para exibir clientes individuais.
       </p>
 
-      {!hasAny ? (
-        <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Nenhum cliente crítico identificado no período — ou o endpoint ainda não expõe essa lista.
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
-                <th className="text-left font-medium py-2 px-2">Cliente / Segmento</th>
-                <th className="text-left font-medium py-2 px-2">Motivo</th>
-                <th className="text-left font-medium py-2 px-2">Tempo</th>
-                <th className="text-left font-medium py-2 px-2">Risco</th>
-                <th className="text-left font-medium py-2 px-2">Ação recomendada</th>
-              </tr>
-            </thead>
-            <tbody>
-              {forgotten.map((i) => (
-                <tr key={i.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-2 px-2 text-foreground">{i.title}</td>
-                  <td className="py-2 px-2 text-muted-foreground">{i.description}</td>
-                  <td className="py-2 px-2 text-muted-foreground">—</td>
-                  <td className="py-2 px-2">
-                    <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500">
-                      {i.level === "critical" ? "Alto" : i.level === "warn" ? "Médio" : "Baixo"}
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-foreground">{i.recommendation ?? "—"}</td>
-                </tr>
-              ))}
-              {lossRows.map((r) => (
-                <tr
-                  key={`loss-${r.reason}`}
-                  className="border-b border-border/50 hover:bg-muted/30"
-                >
-                  <td className="py-2 px-2 text-muted-foreground italic">
-                    {r.count} perda{r.count === 1 ? "" : "s"} recentes
-                  </td>
-                  <td className="py-2 px-2 text-foreground">
-                    {r.reason || "Motivo não informado"}
-                  </td>
-                  <td className="py-2 px-2 text-muted-foreground">período atual</td>
-                  <td className="py-2 px-2">
-                    <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">
-                      Médio
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-muted-foreground">
-                    Revisar objeções · valor perdido {formatBRL(r.value)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ResponsiveDataView
+        label="Clientes que precisam de atenção"
+        columns={columns}
+        rows={rows}
+        getRowKey={(r) => r.key}
+        emptyState={
+          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Nenhum cliente crítico identificado no período — ou o endpoint ainda não expõe essa
+            lista.
+          </div>
+        }
+      />
     </section>
   );
 }

@@ -29,6 +29,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
 type NavItem = {
   to:
@@ -230,7 +231,9 @@ export function AppShell() {
     </div>
   );
 
-  const Brand = (
+  // `withThemeToggle=false` no menu mobile em tela cheia — o botão de fechar
+  // do Sheet ocupa o canto superior direito e colidiria com o toggle.
+  const renderBrand = (withThemeToggle = true) => (
     <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
       <img
         src="/icon-192.png"
@@ -241,9 +244,10 @@ export function AppShell() {
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
       </div>
-      <ThemeToggle />
+      {withThemeToggle ? <ThemeToggle /> : null}
     </div>
   );
+  const Brand = renderBrand(true);
 
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
@@ -281,7 +285,7 @@ export function AppShell() {
                 className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom"
               >
                 <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-                {Brand}
+                {renderBrand(false)}
                 {NavList}
                 <NeuralIntelligencePanel />
                 {FooterPanel}
@@ -299,9 +303,11 @@ export function AppShell() {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto pb-[calc(60px+env(safe-area-inset-bottom))] md:pb-0">
           <Outlet />
         </div>
+
+        <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
       </main>
     </div>
   );

@@ -52,23 +52,46 @@ const sheetVariants = cva(
 interface SheetContentProps
   extends
     React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  /**
+   * No mobile (< 640px) o painel ocupa a tela inteira em vez de um drawer
+   * estreito. Padrão: `true` para os lados esquerdo/direito — é o que torna
+   * drawers de detalhe utilizáveis com uma mão. Use `false` para manter o
+   * comportamento de drawer parcial.
+   */
+  mobileFullscreen?: boolean;
+}
+
+/** Classes aplicadas só abaixo de 640px para transformar o drawer em tela cheia. */
+const MOBILE_FULLSCREEN =
+  "max-sm:inset-0 max-sm:h-[100dvh] max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:p-4";
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(({ side = "right", className, children, mobileFullscreen, ...props }, ref) => {
+  const fullscreen =
+    mobileFullscreen ?? (side === "left" || side === "right");
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), fullscreen && MOBILE_FULLSCREEN, className)}
+        {...props}
+      >
+        <SheetPrimitive.Close
+          aria-label="Fechar"
+          className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary sm:right-4 sm:top-4 sm:h-auto sm:w-auto"
+        >
+          <X className="h-5 w-5 sm:h-4 sm:w-4" />
+          <span className="sr-only">Fechar</span>
+        </SheetPrimitive.Close>
+        {children}
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
