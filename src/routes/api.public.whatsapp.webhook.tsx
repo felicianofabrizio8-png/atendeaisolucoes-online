@@ -10,6 +10,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { markRecoveryReplied } from "@/lib/recovery-exec/reply.server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { extractText } from "@/lib/whatsapp/extract-text";
 import type { WhatsAppMessage as SharedWhatsAppMessage } from "@/lib/whatsapp/extract-text";
@@ -508,6 +509,10 @@ async function processMessages(args: {
         awaiting_reply: true,
       })
       .eq("id", conversationId);
+
+    // 5.1) fecha o ciclo da recuperação: se havia tentativa enviada nesta
+    // conversa e o cliente respondeu, marcamos `replied`. Não dispara nada.
+    await markRecoveryReplied({ companyId, conversationId, repliedAt: at });
   }
 
   await supabaseAdmin

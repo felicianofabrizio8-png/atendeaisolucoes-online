@@ -66,6 +66,7 @@ import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.
 import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
 import { Route as ApiRuntimeExecuteRouteImport } from './routes/api.runtime.execute'
 import { Route as ApiRuntimeAutonomyRouteImport } from './routes/api.runtime.autonomy'
+import { Route as ApiRecoveryExecuteRouteImport } from './routes/api.recovery.execute'
 import { Route as ApiRecoveryAssistRouteImport } from './routes/api.recovery.assist'
 import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
 import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
@@ -426,6 +427,11 @@ const ApiRuntimeAutonomyRoute = ApiRuntimeAutonomyRouteImport.update({
   path: '/api/runtime/autonomy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRecoveryExecuteRoute = ApiRecoveryExecuteRouteImport.update({
+  id: '/api/recovery/execute',
+  path: '/api/recovery/execute',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiRecoveryAssistRoute = ApiRecoveryAssistRouteImport.update({
   id: '/api/recovery/assist',
   path: '/api/recovery/assist',
@@ -740,6 +746,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/recovery/assist': typeof ApiRecoveryAssistRoute
+  '/api/recovery/execute': typeof ApiRecoveryExecuteRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -845,6 +852,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/recovery/assist': typeof ApiRecoveryAssistRoute
+  '/api/recovery/execute': typeof ApiRecoveryExecuteRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -952,6 +960,7 @@ export interface FileRoutesById {
   '/api/onboarding/status': typeof ApiOnboardingStatusRoute
   '/api/onboarding/test-send': typeof ApiOnboardingTestSendRoute
   '/api/recovery/assist': typeof ApiRecoveryAssistRoute
+  '/api/recovery/execute': typeof ApiRecoveryExecuteRoute
   '/api/runtime/autonomy': typeof ApiRuntimeAutonomyRoute
   '/api/runtime/execute': typeof ApiRuntimeExecuteRoute
   '/api/runtime/status': typeof ApiRuntimeStatusRoute
@@ -1060,6 +1069,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/recovery/assist'
+    | '/api/recovery/execute'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1165,6 +1175,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/recovery/assist'
+    | '/api/recovery/execute'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1271,6 +1282,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/status'
     | '/api/onboarding/test-send'
     | '/api/recovery/assist'
+    | '/api/recovery/execute'
     | '/api/runtime/autonomy'
     | '/api/runtime/execute'
     | '/api/runtime/status'
@@ -1373,6 +1385,7 @@ export interface RootRouteChildren {
   ApiOnboardingStatusRoute: typeof ApiOnboardingStatusRoute
   ApiOnboardingTestSendRoute: typeof ApiOnboardingTestSendRoute
   ApiRecoveryAssistRoute: typeof ApiRecoveryAssistRoute
+  ApiRecoveryExecuteRoute: typeof ApiRecoveryExecuteRoute
   ApiRuntimeAutonomyRoute: typeof ApiRuntimeAutonomyRoute
   ApiRuntimeExecuteRoute: typeof ApiRuntimeExecuteRoute
   ApiRuntimeStatusRoute: typeof ApiRuntimeStatusRoute
@@ -1819,6 +1832,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRuntimeAutonomyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/recovery/execute': {
+      id: '/api/recovery/execute'
+      path: '/api/recovery/execute'
+      fullPath: '/api/recovery/execute'
+      preLoaderRoute: typeof ApiRecoveryExecuteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/recovery/assist': {
       id: '/api/recovery/assist'
       path: '/api/recovery/assist'
@@ -2236,6 +2256,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingStatusRoute: ApiOnboardingStatusRoute,
   ApiOnboardingTestSendRoute: ApiOnboardingTestSendRoute,
   ApiRecoveryAssistRoute: ApiRecoveryAssistRoute,
+  ApiRecoveryExecuteRoute: ApiRecoveryExecuteRoute,
   ApiRuntimeAutonomyRoute: ApiRuntimeAutonomyRoute,
   ApiRuntimeExecuteRoute: ApiRuntimeExecuteRoute,
   ApiRuntimeStatusRoute: ApiRuntimeStatusRoute,
