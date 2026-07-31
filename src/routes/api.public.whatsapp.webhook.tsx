@@ -101,6 +101,14 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
                 accessToken: integration.access_token ?? null,
                 value,
               });
+
+              // Fase 6.3.1: callbacks de entrega/leitura. Resolve sempre —
+              // nunca derruba o webhook, mesmo com evento desconhecido.
+              await processStatusEvents({
+                companyId: integration.company_id,
+                integrationId: integration.id,
+                statuses: value.statuses,
+              });
             }
           }
         } catch (e) {
