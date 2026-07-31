@@ -34,6 +34,7 @@ import { Route as InboxIndexRouteImport } from './routes/inbox.index'
 import { Route as RuntimeValidacaoRouteImport } from './routes/runtime.validacao'
 import { Route as RuntimeObservabilityRouteImport } from './routes/runtime.observability'
 import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
+import { Route as InboxRecoveryQueueRouteImport } from './routes/inbox.recovery-queue'
 import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
@@ -248,6 +249,11 @@ const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
   getParentRoute: () => OnboardingRoute,
+} as any)
+const InboxRecoveryQueueRoute = InboxRecoveryQueueRouteImport.update({
+  id: '/recovery-queue',
+  path: '/recovery-queue',
+  getParentRoute: () => InboxRoute,
 } as any)
 const InboxRecoveryRoute = InboxRecoveryRouteImport.update({
   id: '/recovery',
@@ -689,6 +695,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
+  '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
@@ -792,6 +799,7 @@ export interface FileRoutesByTo {
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
+  '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
@@ -897,6 +905,7 @@ export interface FileRoutesById {
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
+  '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
   '/onboarding/whatsapp': typeof OnboardingWhatsappRoute
   '/runtime/observability': typeof RuntimeObservabilityRoute
   '/runtime/validacao': typeof RuntimeValidacaoRoute
@@ -1003,6 +1012,7 @@ export interface FileRouteTypes {
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
+    | '/inbox/recovery-queue'
     | '/onboarding/whatsapp'
     | '/runtime/observability'
     | '/runtime/validacao'
@@ -1106,6 +1116,7 @@ export interface FileRouteTypes {
     | '/configuracoes/usuarios'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
+    | '/inbox/recovery-queue'
     | '/onboarding/whatsapp'
     | '/runtime/observability'
     | '/runtime/validacao'
@@ -1210,6 +1221,7 @@ export interface FileRouteTypes {
     | '/configuracoes_/usuarios'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
+    | '/inbox/recovery-queue'
     | '/onboarding/whatsapp'
     | '/runtime/observability'
     | '/runtime/validacao'
@@ -1569,6 +1581,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/whatsapp'
       preLoaderRoute: typeof OnboardingWhatsappRouteImport
       parentRoute: typeof OnboardingRoute
+    }
+    '/inbox/recovery-queue': {
+      id: '/inbox/recovery-queue'
+      path: '/recovery-queue'
+      fullPath: '/inbox/recovery-queue'
+      preLoaderRoute: typeof InboxRecoveryQueueRouteImport
+      parentRoute: typeof InboxRoute
     }
     '/inbox/recovery': {
       id: '/inbox/recovery'
@@ -2108,12 +2127,14 @@ declare module '@tanstack/react-router' {
 interface InboxRouteChildren {
   InboxConversationIdRoute: typeof InboxConversationIdRoute
   InboxRecoveryRoute: typeof InboxRecoveryRoute
+  InboxRecoveryQueueRoute: typeof InboxRecoveryQueueRoute
   InboxIndexRoute: typeof InboxIndexRoute
 }
 
 const InboxRouteChildren: InboxRouteChildren = {
   InboxConversationIdRoute: InboxConversationIdRoute,
   InboxRecoveryRoute: InboxRecoveryRoute,
+  InboxRecoveryQueueRoute: InboxRecoveryQueueRoute,
   InboxIndexRoute: InboxIndexRoute,
 }
 
