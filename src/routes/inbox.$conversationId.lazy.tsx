@@ -5523,8 +5523,23 @@ function ConversationPage() {
         onOpenChange={setDetailsOpen}
         title={lead.name}
       >
+        {isAdmin && !closedInfo ? (
+          <div className="px-3 pt-3">
+            {/* Ação administrativa que sai do cabeçalho no mobile. */}
+            <button
+              type="button"
+              onClick={handleManualFollowup}
+              disabled={manualRunning}
+              className="w-full inline-flex items-center justify-center gap-1.5 h-11 px-3 rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-sm font-semibold disabled:opacity-50"
+            >
+              {manualRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Executar Follow-up Agora
+            </button>
+          </div>
+        ) : null}
         {sidePanelContent}
       </ConversationDetailsSheet>
+
 
 
       {closeOpen && (
