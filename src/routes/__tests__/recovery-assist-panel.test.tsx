@@ -154,6 +154,7 @@ describe("RecoveryAssistPanel", () => {
     render(<RecoveryAssistPanel conversationId={CONV} onUseInComposer={() => {}} />);
     await user.click(screen.getByRole("button", { name: /gerar estratégia/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/créditos de IA/i);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent ?? "").toMatch(/créditos de IA/i);
   });
 });
