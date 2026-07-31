@@ -44,15 +44,16 @@ function setup(props: Partial<React.ComponentProps<typeof RecoveryAttemptMetrics
 describe("cards de tentativas", () => {
   it("mostra todos os indicadores operacionais", () => {
     setup();
-    expect(screen.getByText("Tentativas hoje").parentElement?.parentElement).toHaveTextContent("4");
-    expect(screen.getByTestId("attempt-metric-sent")).toHaveTextContent("12");
-    expect(screen.getByTestId("attempt-metric-failed")).toHaveTextContent("2");
-    expect(screen.getByTestId("attempt-metric-waiting")).toHaveTextContent("5");
-    expect(screen.getByTestId("attempt-metric-replied")).toHaveTextContent("6");
-    expect(screen.getByTestId("attempt-metric-recovered")).toHaveTextContent("3");
-    expect(screen.getByTestId("attempt-metric-not_recovered")).toHaveTextContent("1");
-    expect(screen.getByTestId("attempt-metric-reply_rate")).toHaveTextContent("50%");
-    expect(screen.getByTestId("attempt-metric-recovery_rate")).toHaveTextContent("25%");
+    const val = (key: string) => screen.getByTestId(`attempt-metric-${key}`).textContent ?? "";
+    expect(val("today")).toContain("4");
+    expect(val("sent")).toContain("12");
+    expect(val("failed")).toContain("2");
+    expect(val("waiting")).toContain("5");
+    expect(val("replied")).toContain("6");
+    expect(val("recovered")).toContain("3");
+    expect(val("not_recovered")).toContain("1");
+    expect(val("reply_rate")).toContain("50%");
+    expect(val("recovery_rate")).toContain("25%");
   });
 
   it("layout mobile-first com desktop preservado", () => {
