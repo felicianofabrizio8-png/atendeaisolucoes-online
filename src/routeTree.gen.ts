@@ -42,6 +42,7 @@ import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configura
 import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
 import { Route as ConfiguracoesCoachLearningsRouteImport } from './routes/configuracoes_.coach-learnings'
 import { Route as ConfiguracoesCoachInterpreterRouteImport } from './routes/configuracoes_.coach-interpreter'
+import { Route as ConfiguracoesCoachDesempenhoRouteImport } from './routes/configuracoes_.coach-desempenho'
 import { Route as ApiSystemHealthRouteImport } from './routes/api.system-health'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
@@ -293,6 +294,12 @@ const ConfiguracoesCoachInterpreterRoute =
   ConfiguracoesCoachInterpreterRouteImport.update({
     id: '/configuracoes_/coach-interpreter',
     path: '/configuracoes/coach-interpreter',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesCoachDesempenhoRoute =
+  ConfiguracoesCoachDesempenhoRouteImport.update({
+    id: '/configuracoes_/coach-desempenho',
+    path: '/configuracoes/coach-desempenho',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiSystemHealthRoute = ApiSystemHealthRouteImport.update({
@@ -673,6 +680,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes/coach-desempenho': typeof ConfiguracoesCoachDesempenhoRoute
   '/configuracoes/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
@@ -775,6 +783,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes/coach-desempenho': typeof ConfiguracoesCoachDesempenhoRoute
   '/configuracoes/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
@@ -879,6 +888,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/whatsapp': typeof WhatsappRoute
   '/api/system-health': typeof ApiSystemHealthRoute
+  '/configuracoes_/coach-desempenho': typeof ConfiguracoesCoachDesempenhoRoute
   '/configuracoes_/coach-interpreter': typeof ConfiguracoesCoachInterpreterRoute
   '/configuracoes_/coach-learnings': typeof ConfiguracoesCoachLearningsRoute
   '/configuracoes_/identidade-visual': typeof ConfiguracoesIdentidadeVisualRoute
@@ -984,6 +994,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes/coach-desempenho'
     | '/configuracoes/coach-interpreter'
     | '/configuracoes/coach-learnings'
     | '/configuracoes/identidade-visual'
@@ -1086,6 +1097,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes/coach-desempenho'
     | '/configuracoes/coach-interpreter'
     | '/configuracoes/coach-learnings'
     | '/configuracoes/identidade-visual'
@@ -1189,6 +1201,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/whatsapp'
     | '/api/system-health'
+    | '/configuracoes_/coach-desempenho'
     | '/configuracoes_/coach-interpreter'
     | '/configuracoes_/coach-learnings'
     | '/configuracoes_/identidade-visual'
@@ -1293,6 +1306,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WhatsappRoute: typeof WhatsappRoute
   ApiSystemHealthRoute: typeof ApiSystemHealthRoute
+  ConfiguracoesCoachDesempenhoRoute: typeof ConfiguracoesCoachDesempenhoRoute
   ConfiguracoesCoachInterpreterRoute: typeof ConfiguracoesCoachInterpreterRoute
   ConfiguracoesCoachLearningsRoute: typeof ConfiguracoesCoachLearningsRoute
   ConfiguracoesIdentidadeVisualRoute: typeof ConfiguracoesIdentidadeVisualRoute
@@ -1610,6 +1624,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/coach-interpreter'
       fullPath: '/configuracoes/coach-interpreter'
       preLoaderRoute: typeof ConfiguracoesCoachInterpreterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes_/coach-desempenho': {
+      id: '/configuracoes_/coach-desempenho'
+      path: '/configuracoes/coach-desempenho'
+      fullPath: '/configuracoes/coach-desempenho'
+      preLoaderRoute: typeof ConfiguracoesCoachDesempenhoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/system-health': {
@@ -2131,6 +2152,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WhatsappRoute: WhatsappRoute,
   ApiSystemHealthRoute: ApiSystemHealthRoute,
+  ConfiguracoesCoachDesempenhoRoute: ConfiguracoesCoachDesempenhoRoute,
   ConfiguracoesCoachInterpreterRoute: ConfiguracoesCoachInterpreterRoute,
   ConfiguracoesCoachLearningsRoute: ConfiguracoesCoachLearningsRoute,
   ConfiguracoesIdentidadeVisualRoute: ConfiguracoesIdentidadeVisualRoute,
