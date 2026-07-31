@@ -11,6 +11,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { markRecoveryReplied } from "@/lib/recovery-exec/reply.server";
+import { processStatusEvents } from "@/lib/whatsapp/status.server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { extractText } from "@/lib/whatsapp/extract-text";
 import type { WhatsAppMessage as SharedWhatsAppMessage } from "@/lib/whatsapp/extract-text";
