@@ -20,7 +20,7 @@ export function stalledHoursOf(snap: RecoverySnapshot, now: number): number {
   return Math.max(0, (now - t) / HOUR_MS);
 }
 
-function isInbound Last(snap: RecoverySnapshot): boolean {
+function isInboundLast(snap: RecoverySnapshot): boolean {
   if (!snap.lastInboundAt) return false;
   if (!snap.lastOutboundAt) return true;
   return new Date(snap.lastInboundAt).getTime() > new Date(snap.lastOutboundAt).getTime();
