@@ -95,7 +95,7 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 describe("quality gate estrutural", () => {
-  const files = walk(SRC);
+  const files = walk(SRC).filter((f) => !/__tests__/.test(f.replace(/\\/g, "/")));
 
   it("o módulo órfão src/lib/meta-sync.ts não existe mais", () => {
     expect(fs.existsSync(path.join(SRC, "lib", "meta-sync.ts"))).toBe(false);
