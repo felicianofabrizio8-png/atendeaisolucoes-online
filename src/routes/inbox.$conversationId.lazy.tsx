@@ -53,7 +53,12 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { ConversationDetailsSheet } from "@/components/inbox/ConversationDetailsSheet";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
-import { clearDraft, readDraft, saveDraft } from "@/lib/inbox/mobile-session";
+import {
+  clearDraft,
+  consumeComposerFocus,
+  readDraft,
+  saveDraft,
+} from "@/lib/inbox/mobile-session";
 
 import { cn } from "@/lib/utils";
 import {
@@ -3121,6 +3126,21 @@ function ConversationPage() {
     setInput(readDraft(conversationId));
     setDetailsOpen(false);
   }, [conversationId]);
+
+  // SPRINT 6 · FASE 6.2 — "Usar no campo" do Recovery AI Assistant: o texto já
+  // chegou pelo rascunho; aqui apenas devolvemos o foco ao composer. Nunca
+  // envia nada.
+  useEffect(() => {
+    if (!consumeComposerFocus(conversationId)) return;
+    const t = requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return () => cancelAnimationFrame(t);
+  }, [conversationId]);
+
 
   // Persiste o rascunho enquanto o usuário digita (debounce curto para não
   // gravar a cada tecla).

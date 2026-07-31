@@ -34,6 +34,7 @@ export default defineConfig({
       "src/lib/scientific-knowledge/__tests__/**/*.test.ts",
       "src/lib/meta-webhook/__tests__/**/*.test.ts",
       "src/lib/recovery/__tests__/**/*.test.ts",
+      "src/lib/recovery-ai/__tests__/**/*.test.ts",
 
 
 

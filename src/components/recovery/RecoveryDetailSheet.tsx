@@ -5,6 +5,7 @@
 // Nada aqui dispara mensagem: os botões apenas navegam para a conversa.
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { RecoveryAssistPanel } from "@/components/recovery/RecoveryAssistPanel";
 import { cn } from "@/lib/utils";
 import {
   ACTION_LABEL,
@@ -18,6 +19,11 @@ export interface RecoveryDetailSheetProps {
   item: RecoveryQueueItem | null;
   onOpenChange: (open: boolean) => void;
   onOpenConversation: (item: RecoveryQueueItem) => void;
+  /**
+   * SPRINT 6 · FASE 6.2 — "Usar no campo": o texto já foi deixado no rascunho
+   * da conversa; aqui a rota apenas fecha o painel e navega. Nunca envia.
+   */
+  onUseInComposer?: (item: RecoveryQueueItem) => void;
 }
 
 function WindowLine({ item }: { item: RecoveryQueueItem }) {
@@ -48,6 +54,7 @@ export function RecoveryDetailSheet({
   item,
   onOpenChange,
   onOpenConversation,
+  onUseInComposer,
 }: RecoveryDetailSheetProps) {
   return (
     <Sheet open={!!item} onOpenChange={onOpenChange}>
@@ -148,6 +155,11 @@ export function RecoveryDetailSheet({
                 Prioridade {TIER_LABEL[item.tier].toLowerCase()} · parado há{" "}
                 {formatSpan(item.stalledHours * 3_600_000)}
               </p>
+
+              <RecoveryAssistPanel
+                conversationId={item.conversationId}
+                onUseInComposer={() => (onUseInComposer ?? onOpenConversation)(item)}
+              />
 
               <button
                 type="button"
