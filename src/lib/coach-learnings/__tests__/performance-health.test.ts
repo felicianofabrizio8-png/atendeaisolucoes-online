@@ -31,9 +31,10 @@ describe("classifyLearningHealth", () => {
     expect(classifyLearningHealth(base)).toBe("healthy");
   });
 
-  it("prioriza status arquivado/pausado sobre métricas", () => {
+  it("prioriza status arquivado sobre métricas", () => {
     expect(classifyLearningHealth({ ...base, status: "archived" })).toBe("archived");
-    expect(classifyLearningHealth({ ...base, status: "paused" })).toBe("paused");
+    // Pausado não é um estado de saúde: o status é exibido separadamente.
+    expect(classifyLearningHealth({ ...base, status: "paused" })).toBe("healthy");
   });
 
   it("marca ausência de evidência quando nunca foi recuperado", () => {
