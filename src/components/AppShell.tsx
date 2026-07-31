@@ -29,6 +29,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
 type NavItem = {
   to:
