@@ -5461,9 +5461,25 @@ export type Database = {
         }
         Returns: string
       }
+      coach_learning_health: {
+        Args: {
+          _confidence: number
+          _negative: number
+          _retrieved: number
+          _samples: number
+          _status: string
+          _success_rate: number
+          _usage: number
+        }
+        Returns: string
+      }
       coach_learning_normalize_text: {
         Args: { _input: string }
         Returns: string
+      }
+      coach_learning_performance_summary: {
+        Args: { _from?: string; _to?: string }
+        Returns: Json
       }
       coach_reserve_user_message: {
         Args: {
@@ -5682,6 +5698,57 @@ export type Database = {
           source_subtype: string
           status_updated_at: string
           text: string
+        }[]
+      }
+      list_coach_learning_performance: {
+        Args: {
+          _from?: string
+          _health?: string
+          _max_confidence?: number
+          _max_success?: number
+          _min_confidence?: number
+          _min_priority?: number
+          _min_samples?: number
+          _min_success?: number
+          _min_usage?: number
+          _only_negative?: boolean
+          _only_no_feedback?: boolean
+          _only_unused?: boolean
+          _page?: number
+          _page_size?: number
+          _search?: string
+          _sort?: string
+          _statuses?: string[]
+          _strategy?: string
+          _to?: string
+        }
+        Returns: {
+          category: string
+          confidence: number
+          created_at: string
+          feedback_sample_count: number
+          health: string
+          id: string
+          last_feedback_at: string
+          last_retrieved_at: string
+          last_used_at: string
+          negative_feedback_count: number
+          period_contextual: number
+          period_fallback: number
+          period_negative: number
+          period_positive: number
+          period_retrievals: number
+          positive_feedback_count: number
+          priority: number
+          product_ref: string
+          status: string
+          success_rate: number
+          times_retrieved: number
+          title: string
+          total_count: number
+          updated_at: string
+          usage_count: number
+          version: number
         }[]
       }
       log_audit: {
