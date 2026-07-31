@@ -285,8 +285,7 @@ export function AppShell() {
                 className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom"
               >
                 <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-                {/* pr extra evita colisão do ThemeToggle com o botão de fechar em tela cheia */}
-                <div className="[&>div]:pr-14 sm:[&>div]:pr-4">{Brand}</div>
+                {renderBrand(false)}
                 {NavList}
                 <NeuralIntelligencePanel />
                 {FooterPanel}
