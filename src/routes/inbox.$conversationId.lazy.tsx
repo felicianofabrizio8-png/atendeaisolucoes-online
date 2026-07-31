@@ -1625,7 +1625,11 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        "group flex flex-col w-fit max-w-[min(85%,calc(100%-1rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
+        // Mobile usa 92% da largura (Fase 5.2): em 320–390px os 85% antigos
+        // desperdiçavam uma coluna inteira e quebravam frases curtas em duas
+        // linhas. No desktop a leitura continua confortável em 70%.
+        "group flex flex-col w-fit max-w-[min(92%,calc(100%-0.75rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
+
         isAgent ? "ml-auto items-end" : "items-start",
       )}
     >
@@ -4475,6 +4479,238 @@ function ConversationPage() {
 
   const lastMessageAge = timeAgo(messages[messages.length - 1]?.at ?? conversation.lastMessageAt);
 
+  // Fase 5.2 — o conteúdo do painel (Coach IA, dados do lead, ações) é
+  // definido uma única vez e montado em dois lugares: no <aside> fixo do
+  // desktop e, no mobile, dentro de um sheet de tela cheia. Uma única fonte
+  // evita que as duas superfícies divirjam com o tempo.
+  const sidePanelContent = (
+    <>
+
+        <CoachPanel
+          conversationId={conversation.id}
+          onInsertSuggestion={(t: string) => setInput(t)}
+          messages={visibleMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            text: m.text,
+            at: m.at,
+            sourceSubtype: m.sourceSubtype,
+          }))}
+          composerHasDraft={input.trim().length > 0}
+        />
+
+
+        {/* Lead header */}
+        <div className="p-4 border-b border-border">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
+          <div className="text-base font-semibold">{lead.name}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{lead.phone ?? lead.handle}</div>
+        </div>
+
+        {/* HERO: Produto / Valor / Temperatura — destaque máximo */}
+        <div className="p-4 border-b border-border bg-gradient-to-br from-primary/5 to-transparent">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Produto</div>
+          <div className="text-sm font-semibold text-foreground mb-3 break-words">
+            {lead.product ?? <span className="text-muted-foreground font-normal">Sem produto definido</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                {closedInfo ? "Venda" : "Estimado"}
+              </div>
+              <div className="text-lg font-bold tabular-nums text-foreground">
+                {closedInfo
+                  ? formatBRL(closedInfo.value)
+                  : lead.estimatedValue
+                    ? formatBRL(lead.estimatedValue)
+                    : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Temperatura</div>
+              {conversation.leadTemperature ? (
+                <TempBadge temp={conversation.leadTemperature} score={conversation.leadScore} />
+              ) : (
+                <span className="text-xs text-muted-foreground">Sem dados</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* CTA principal — ação comercial mais importante */}
+        {!closedInfo && (() => {
+          const ready = conversation.leadReadyToClose;
+          const hasQuote = !!pendingQuote;
+          const noAction = !lead.nextAction;
+          let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
+            icon: Target,
+            label: "Definir próxima ação",
+            onClick: () => setNextActionOpen(true),
+            variant: "default",
+          };
+          if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
+          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
+          else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
+          const Icon = primary.icon;
+          return (
+            <div className="p-4 border-b border-border">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Ação recomendada</div>
+              <button
+                onClick={primary.onClick}
+                disabled={primary.variant === "won" ? !!closedInfo : false}
+                className={cn(
+                  "w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-sm transition",
+                  primary.variant === "won"
+                    ? "bg-[var(--status-won)] text-[var(--status-won-foreground)] hover:opacity-90"
+                    : "bg-primary text-primary-foreground hover:opacity-90",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {primary.label}
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Próxima ação — alerta destacado se não definida */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+            <Target className="h-3 w-3" /> Próxima ação
+          </div>
+          {lead.nextAction ? (
+            <div className="rounded-md border border-border bg-card/60 px-3 py-2">
+              <div className="text-sm font-medium">{lead.nextAction.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2.5 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-[var(--status-urgent)] shrink-0 mt-0.5 animate-pulse" />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-[var(--status-urgent)]">Sem próxima ação</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  Defina o próximo passo para não perder o lead.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Resumo IA — apenas com dados já existentes */}
+        {(() => {
+          const interesse = conversation.detectedInterest;
+          const objecao = (conversation.detectedObjections ?? [])[0];
+          const ultimoOrc = pendingQuote
+            ? `${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`
+            : null;
+          const proximaOp = conversation.leadReadyToClose
+            ? "Pronto para fechar"
+            : conversation.leadTemperature === "quente"
+              ? "Avançar para fechamento"
+              : conversation.leadTemperature === "morno"
+                ? "Aquecer com follow-up"
+                : null;
+          return (
+            <div className="p-4 border-b border-border">
+              <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                <Sparkles className="h-3 w-3 text-primary" /> Resumo IA
+              </div>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Interesse principal</div>
+                  <div className="text-foreground">{interesse ?? <span className="text-muted-foreground">Ainda não identificado</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Último orçamento</div>
+                  <div className="text-foreground">{ultimoOrc ?? <span className="text-muted-foreground">Nenhum orçamento ainda</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Objeção detectada</div>
+                  <div className={cn(objecao ? "text-amber-500 font-medium" : "")}>
+                    {objecao ?? <span className="text-muted-foreground font-normal">Nenhuma no momento</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Próxima oportunidade</div>
+                  <div className="text-foreground">{proximaOp ?? <span className="text-muted-foreground">Continuar qualificando</span>}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Detalhes secundários */}
+        <div className="p-4 border-b border-border space-y-2 text-xs">
+          <Row label="Atribuído a" value={lead.assignedTo ?? "Ninguém"} />
+          <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
+        </div>
+
+        <QualificationPanel conv={conversation} />
+        <AITimeline conversationId={conversationId} />
+
+        {/* Tags */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+            <Tag className="h-3 w-3" /> Tags
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {lead.tags.length === 0 && (
+              <span className="text-xs text-muted-foreground">Nenhuma</span>
+            )}
+            {lead.tags.map((t: string) => (
+              <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
+                #{t}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Ações secundárias */}
+        <div className="p-4 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Mais ações</div>
+          <ActionButton
+            icon={quoteSuggesting ? Loader2 : FileText}
+            onClick={openNewQuote}
+            disabled={!!closedInfo || quoteSuggesting}
+          >
+            {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
+          </ActionButton>
+          <ActionButton
+            icon={Calendar}
+            onClick={() => setVisitOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Agendar visita
+          </ActionButton>
+          <ActionButton
+            icon={Target}
+            onClick={() => setNextActionOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Definir próxima ação
+          </ActionButton>
+          <ActionButton
+            icon={CheckCircle2}
+            variant="won"
+            onClick={() => setCloseOpen(true)}
+            disabled={!!closedInfo}
+          >
+            Fechar venda
+          </ActionButton>
+          <ActionButton
+            icon={XCircle}
+            variant="lost"
+            onClick={() => setLostOpen(true)}
+            disabled={!!closedInfo || !isAdmin}
+            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
+          >
+            Marcar como perdido
+          </ActionButton>
+        </div>
+    </>
+  );
+
   return (
     <div className="flex-1 flex min-w-0 min-h-0 h-full max-w-full overflow-hidden">
       {/* Conversation column */}
@@ -5211,230 +5447,17 @@ function ConversationPage() {
 
       {/* Side panel */}
       <aside className="hidden lg:flex w-80 shrink-0 flex-col bg-card/40 overflow-y-auto min-h-0">
-
-        <CoachPanel
-          conversationId={conversation.id}
-          onInsertSuggestion={(t: string) => setInput(t)}
-          messages={visibleMessages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            at: m.at,
-            sourceSubtype: m.sourceSubtype,
-          }))}
-          composerHasDraft={input.trim().length > 0}
-        />
-
-
-        {/* Lead header */}
-        <div className="p-4 border-b border-border">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Lead</div>
-          <div className="text-base font-semibold">{lead.name}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">{lead.phone ?? lead.handle}</div>
-        </div>
-
-        {/* HERO: Produto / Valor / Temperatura — destaque máximo */}
-        <div className="p-4 border-b border-border bg-gradient-to-br from-primary/5 to-transparent">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Produto</div>
-          <div className="text-sm font-semibold text-foreground mb-3 break-words">
-            {lead.product ?? <span className="text-muted-foreground font-normal">Sem produto definido</span>}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
-                {closedInfo ? "Venda" : "Estimado"}
-              </div>
-              <div className="text-lg font-bold tabular-nums text-foreground">
-                {closedInfo
-                  ? formatBRL(closedInfo.value)
-                  : lead.estimatedValue
-                    ? formatBRL(lead.estimatedValue)
-                    : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Temperatura</div>
-              {conversation.leadTemperature ? (
-                <TempBadge temp={conversation.leadTemperature} score={conversation.leadScore} />
-              ) : (
-                <span className="text-xs text-muted-foreground">Sem dados</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* CTA principal — ação comercial mais importante */}
-        {!closedInfo && (() => {
-          const ready = conversation.leadReadyToClose;
-          const hasQuote = !!pendingQuote;
-          const noAction = !lead.nextAction;
-          let primary: { icon: typeof Target; label: string; onClick?: () => void; variant?: "won" | "default" } = {
-            icon: Target,
-            label: "Definir próxima ação",
-            onClick: () => setNextActionOpen(true),
-            variant: "default",
-          };
-          if (ready) primary = { icon: CheckCircle2, label: "Fechar venda", onClick: () => setCloseOpen(true), variant: "won" };
-          else if (hasQuote) primary = { icon: FileText, label: "Enviar orçamento", onClick: sendPendingQuote, variant: "default" };
-          else if (noAction || !lead.product) primary = { icon: FileText, label: "Criar orçamento", onClick: openNewQuote, variant: "default" };
-          const Icon = primary.icon;
-          return (
-            <div className="p-4 border-b border-border">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">Ação recomendada</div>
-              <button
-                onClick={primary.onClick}
-                disabled={primary.variant === "won" ? !!closedInfo : false}
-                className={cn(
-                  "w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-sm transition",
-                  primary.variant === "won"
-                    ? "bg-[var(--status-won)] text-[var(--status-won-foreground)] hover:opacity-90"
-                    : "bg-primary text-primary-foreground hover:opacity-90",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {primary.label}
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Próxima ação — alerta destacado se não definida */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            <Target className="h-3 w-3" /> Próxima ação
-          </div>
-          {lead.nextAction ? (
-            <div className="rounded-md border border-border bg-card/60 px-3 py-2">
-              <div className="text-sm font-medium">{lead.nextAction.label}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-md border border-[var(--status-urgent)]/40 bg-[var(--status-urgent)]/10 px-3 py-2.5 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-[var(--status-urgent)] shrink-0 mt-0.5 animate-pulse" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-[var(--status-urgent)]">Sem próxima ação</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
-                  Defina o próximo passo para não perder o lead.
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Resumo IA — apenas com dados já existentes */}
-        {(() => {
-          const interesse = conversation.detectedInterest;
-          const objecao = (conversation.detectedObjections ?? [])[0];
-          const ultimoOrc = pendingQuote
-            ? `${pendingQuote.productName} • ${formatBRL(pendingQuote.finalValue)}`
-            : null;
-          const proximaOp = conversation.leadReadyToClose
-            ? "Pronto para fechar"
-            : conversation.leadTemperature === "quente"
-              ? "Avançar para fechamento"
-              : conversation.leadTemperature === "morno"
-                ? "Aquecer com follow-up"
-                : null;
-          return (
-            <div className="p-4 border-b border-border">
-              <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-                <Sparkles className="h-3 w-3 text-primary" /> Resumo IA
-              </div>
-              <div className="space-y-2 text-xs">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Interesse principal</div>
-                  <div className="text-foreground">{interesse ?? <span className="text-muted-foreground">Ainda não identificado</span>}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Último orçamento</div>
-                  <div className="text-foreground">{ultimoOrc ?? <span className="text-muted-foreground">Nenhum orçamento ainda</span>}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Objeção detectada</div>
-                  <div className={cn(objecao ? "text-amber-500 font-medium" : "")}>
-                    {objecao ?? <span className="text-muted-foreground font-normal">Nenhuma no momento</span>}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Próxima oportunidade</div>
-                  <div className="text-foreground">{proximaOp ?? <span className="text-muted-foreground">Continuar qualificando</span>}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Detalhes secundários */}
-        <div className="p-4 border-b border-border space-y-2 text-xs">
-          <Row label="Atribuído a" value={lead.assignedTo ?? "Ninguém"} />
-          <Row label="Origem" value={<ChannelBadge channel={lead.channel} />} />
-        </div>
-
-        <QualificationPanel conv={conversation} />
-        <AITimeline conversationId={conversationId} />
-
-        {/* Tags */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            <Tag className="h-3 w-3" /> Tags
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {lead.tags.length === 0 && (
-              <span className="text-xs text-muted-foreground">Nenhuma</span>
-            )}
-            {lead.tags.map((t: string) => (
-              <span key={t} className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
-                #{t}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Ações secundárias */}
-        <div className="p-4 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Mais ações</div>
-          <ActionButton
-            icon={quoteSuggesting ? Loader2 : FileText}
-            onClick={openNewQuote}
-            disabled={!!closedInfo || quoteSuggesting}
-          >
-            {quoteSuggesting ? "Sugerindo produto…" : "Criar orçamento"}
-          </ActionButton>
-          <ActionButton
-            icon={Calendar}
-            onClick={() => setVisitOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Agendar visita
-          </ActionButton>
-          <ActionButton
-            icon={Target}
-            onClick={() => setNextActionOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Definir próxima ação
-          </ActionButton>
-          <ActionButton
-            icon={CheckCircle2}
-            variant="won"
-            onClick={() => setCloseOpen(true)}
-            disabled={!!closedInfo}
-          >
-            Fechar venda
-          </ActionButton>
-          <ActionButton
-            icon={XCircle}
-            variant="lost"
-            onClick={() => setLostOpen(true)}
-            disabled={!!closedInfo || !isAdmin}
-            title={!isAdmin ? "Apenas administradores podem marcar como perdido" : undefined}
-          >
-            Marcar como perdido
-          </ActionButton>
-        </div>
+        {sidePanelContent}
       </aside>
+
+      {/* Nível 3 mobile/tablet — mesmo conteúdo em sheet de tela cheia. */}
+      <ConversationDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        title={lead.name}
+      >
+        {sidePanelContent}
+      </ConversationDetailsSheet>
 
 
       {closeOpen && (

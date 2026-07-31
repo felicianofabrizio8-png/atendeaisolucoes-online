@@ -81,6 +81,15 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
 
+  // Fase 5.2 — decisão de layout (opção A): dentro de uma conversa aberta o
+  // rodapé pertence ao composer. Duas barras fixas competindo pelo mesmo
+  // espaço custam ~60px do histórico, empurram o campo de texto para fora do
+  // alcance confortável do polegar e brigam com o teclado virtual. A lista
+  // (/inbox) mantém a navegação inferior normalmente.
+  const isConversationRoute = /^\/inbox\/[^/]+$/.test(location.pathname);
+  const showBottomNav = !isConversationRoute;
+
+
   // Contador de não-lidas agregadas — usado no item "Caixa de atendimento".
   useEffect(() => {
     const recompute = () => {
@@ -303,11 +312,26 @@ export function AppShell() {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-auto pb-[calc(60px+env(safe-area-inset-bottom))] md:pb-0">
+        {/*
+          Na conversa o scroll pertence exclusivamente à lista de mensagens:
+          `overflow-hidden` aqui elimina a rolagem dupla (shell + Virtuoso) que
+          fazia o cabeçalho e o composer saírem da tela ao arrastar.
+        */}
+        <div
+          className={
+            "flex-1 min-w-0 min-h-0 flex flex-col md:pb-0 " +
+            (showBottomNav
+              ? "overflow-auto pb-[calc(60px+env(safe-area-inset-bottom))]"
+              : "overflow-hidden pb-0")
+          }
+        >
           <Outlet />
         </div>
 
-        <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
+        {showBottomNav ? (
+          <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
+        ) : null}
+
       </main>
     </div>
   );
