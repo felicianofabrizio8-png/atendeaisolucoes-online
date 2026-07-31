@@ -126,18 +126,27 @@ function RecoveryPage() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="h-9 px-3 text-xs rounded-md border border-border hover:bg-accent inline-flex items-center gap-1.5"
-          >
-            {isFetching ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Atualizar
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/inbox/recovery-queue"
+              className="h-9 px-3 text-xs rounded-md border border-primary/40 bg-primary/10 text-primary font-semibold hover:bg-primary/15 inline-flex items-center gap-1.5"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Fila inteligente</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="h-9 px-3 text-xs rounded-md border border-border hover:bg-accent inline-flex items-center gap-1.5"
+            >
+              {isFetching ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Atualizar
+            </button>
+          </div>
         </div>
       </header>
 

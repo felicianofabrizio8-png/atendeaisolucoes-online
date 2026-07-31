@@ -33,6 +33,7 @@ export default defineConfig({
       "src/lib/quote-send/__tests__/**/*.test.ts",
       "src/lib/scientific-knowledge/__tests__/**/*.test.ts",
       "src/lib/meta-webhook/__tests__/**/*.test.ts",
+      "src/lib/recovery/__tests__/**/*.test.ts",
 
 
 
