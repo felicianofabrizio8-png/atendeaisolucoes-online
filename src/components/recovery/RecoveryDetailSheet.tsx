@@ -24,6 +24,11 @@ export interface RecoveryDetailSheetProps {
    * da conversa; aqui a rota apenas fecha o painel e navega. Nunca envia.
    */
   onUseInComposer?: (item: RecoveryQueueItem) => void;
+  /**
+   * SPRINT 6 · FASE 6.3 — abre o workflow de execução assistida. Continua
+   * valendo a regra: nada é enviado sem confirmação explícita do vendedor.
+   */
+  onStartRecovery?: (item: RecoveryQueueItem) => void;
 }
 
 function WindowLine({ item }: { item: RecoveryQueueItem }) {
@@ -55,6 +60,7 @@ export function RecoveryDetailSheet({
   onOpenChange,
   onOpenConversation,
   onUseInComposer,
+  onStartRecovery,
 }: RecoveryDetailSheetProps) {
   return (
     <Sheet open={!!item} onOpenChange={onOpenChange}>
@@ -161,10 +167,20 @@ export function RecoveryDetailSheet({
                 onUseInComposer={() => (onUseInComposer ?? onOpenConversation)(item)}
               />
 
+              {onStartRecovery && (
+                <button
+                  type="button"
+                  onClick={() => onStartRecovery(item)}
+                  className="w-full h-11 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Recuperar este lead
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => onOpenConversation(item)}
-                className="w-full h-11 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full h-11 rounded-md border border-border text-sm font-semibold hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Abrir conversa
               </button>
