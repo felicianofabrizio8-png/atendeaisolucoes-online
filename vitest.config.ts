@@ -26,6 +26,7 @@ export default defineConfig({
       "src/lib/coach-rules/__tests__/**/*.test.ts",
       "src/lib/coach-interpreter/__tests__/**/*.test.ts",
       "src/lib/coach-learnings/__tests__/**/*.test.ts",
+      "src/lib/responsive/__tests__/**/*.test.ts",
       "src/lib/audit/__tests__/**/*.test.ts",
       "src/data/__tests__/**/*.test.ts",
       "src/lib/quote-send/__tests__/**/*.test.ts",
