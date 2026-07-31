@@ -231,7 +231,9 @@ export function AppShell() {
     </div>
   );
 
-  const Brand = (
+  // `withThemeToggle=false` no menu mobile em tela cheia — o botão de fechar
+  // do Sheet ocupa o canto superior direito e colidiria com o toggle.
+  const renderBrand = (withThemeToggle = true) => (
     <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
       <img
         src="/icon-192.png"
@@ -242,9 +244,10 @@ export function AppShell() {
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
       </div>
-      <ThemeToggle />
+      {withThemeToggle ? <ThemeToggle /> : null}
     </div>
   );
+  const Brand = renderBrand(true);
 
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
