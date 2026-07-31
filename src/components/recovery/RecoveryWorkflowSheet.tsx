@@ -97,7 +97,7 @@ export function RecoveryWorkflowSheet({
         const opened = await recoveryExec("open", {
           conversationId: item.conversationId,
           score: item.score,
-          chance: item.chance?.percent ?? null,
+          chance: item.chancePercent,
           tier: item.tier,
           windowState: item.window.state,
           strategyFingerprint: assist.fingerprint ?? null,
@@ -208,7 +208,7 @@ export function RecoveryWorkflowSheet({
           {step === 0 && plan && (
             <div className="space-y-2 text-xs">
               <p>
-                <strong>Motivo provável:</strong> {plan.plan.hypothesis}
+                <strong>Motivo provável:</strong> {plan.plan.probableReason}
               </p>
               <p>
                 <strong>Estratégia:</strong> {plan.plan.strategy}
@@ -275,7 +275,7 @@ export function RecoveryWorkflowSheet({
 
           {step === 3 && (
             <ConfirmStep
-              recipient={item?.leadPhone ?? null}
+              recipient={plan?.context.leadPhoneMasked ?? null}
               channelLabel={selectedTemplate ? "Template aprovado" : "Mensagem livre (janela aberta)"}
               preview={preview}
               sending={busy}
