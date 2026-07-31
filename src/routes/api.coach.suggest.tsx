@@ -2,6 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server";
 import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
+import {
+  COACH_INVALID_OUTPUT_CONTRACT,
+  COACH_PROVIDER_TIMEOUT_MS,
+  COACH_TIMEOUT_CONTRACT,
+  classifyGatewayFailure,
+  sanitizeProviderBody,
+} from "@/lib/coach/gateway-errors";
+
 
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
