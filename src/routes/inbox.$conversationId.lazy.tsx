@@ -4519,7 +4519,13 @@ function ConversationPage() {
 
         <CoachPanel
           conversationId={conversation.id}
-          onInsertSuggestion={(t: string) => setInput(t)}
+          onInsertSuggestion={(t: string) => {
+            setInput(t);
+            // No mobile o Coach vive dentro do sheet: aceitar a sugestão
+            // precisa devolver o vendedor ao composer imediatamente.
+            setDetailsOpen(false);
+          }}
+
           messages={visibleMessages.map((m) => ({
             id: m.id,
             role: m.role,
