@@ -16,7 +16,7 @@ import type {
 
 export type EditorAssetType = "logo_primary" | "favicon";
 
-export const EDITOR_ASSET_TYPES: readonly EditorAssetType[] = [
+export const EDITOR_ASSET_TYPES = [
   "logo_primary",
   "favicon",
 ] as const;
