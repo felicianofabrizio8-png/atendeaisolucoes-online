@@ -386,7 +386,7 @@ export function getConversationById(id: string): Conversation | undefined {
 }
 
 async function fetchInboxSnapshot(companyId: string) {
-  const latestMessagesRpc = supabase.rpc as unknown as InboxLatestMessagesRpc;
+  const latestMessagesRpc = supabase.rpc.bind(supabase) as unknown as InboxLatestMessagesRpc;
   const [leadsResult, conversationsResult, messagesResult] = await Promise.all([
     supabase.from("leads").select(LEAD_SELECT).eq("company_id", companyId),
     supabase.from("conversations").select(CONVERSATION_SELECT).eq("company_id", companyId),
