@@ -44,6 +44,15 @@ let loadingPromise: Promise<void> | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
 let realtimeCompanyId: string | null = null;
 let currentSlaMinutes = 30;
+let realtimeGeneration = 0;
+let hasSubscribedOnce = false;
+let reconciliationPromise: Promise<void> | null = null;
+const recoveryInFlight = new Map<string, Promise<void>>();
+const pendingConversationMessages = new Map<
+  string,
+  Array<DbMessage & { company_id: string; external_id?: string | null }>
+>();
+const appliedConversationBumps = new Set<string>();
 
 // P3 — Índice de mensagens por conversationId (O(1) por lookup).
 // Substitui filter+sort O(N total) do antigo getMessagesFor.
@@ -139,6 +148,7 @@ export function setRepoMode(next: Mode) {
 // ---------- mappers ----------
 type DbLead = {
   id: string;
+  company_id?: string;
   name: string;
   phone: string | null;
   handle: string | null;
@@ -181,6 +191,7 @@ function toLead(r: DbLead): Lead {
 
 type DbConversation = {
   id: string;
+  company_id?: string;
   lead_id: string;
   channel: "whatsapp" | "instagram" | "facebook";
   last_message_at: string;
@@ -277,6 +288,74 @@ function toMessage(r: DbMessage): Message {
   };
 }
 
+const LEAD_SELECT =
+  "id,company_id,name,phone,handle,channel,status,tags,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at";
+const CONVERSATION_SELECT =
+  "id,company_id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections";
+type InboxLatestMessagesRpc = (
+  fn: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: DbMessage[] | null; error: unknown }>;
+
+function diagnosticError(stage: string, error: unknown) {
+  console.error("[inbox-reconcile] falha", {
+    stage,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function upsertLeadIfMissing(row: DbLead) {
+  if (!remoteLeads.some((lead) => lead.id === row.id)) {
+    remoteLeads = [...remoteLeads, toLead(row)];
+  }
+}
+
+function upsertConversationIfMissing(row: DbConversation) {
+  if (!remoteConversations.some((conversation) => conversation.id === row.id)) {
+    remoteConversations = [...remoteConversations, toConversation(row, currentSlaMinutes)];
+  }
+}
+
+function bumpConversationForMessage(
+  row: DbMessage & { company_id: string; external_id?: string | null },
+) {
+  if (appliedConversationBumps.has(row.id)) return;
+  const convIdx = remoteConversations.findIndex(
+    (conversation) => conversation.id === row.conversation_id,
+  );
+  if (convIdx === -1) return;
+
+  const prev = remoteConversations[convIdx];
+  const ageMin = (Date.now() - new Date(row.at).getTime()) / 60_000;
+  const isLead = row.role === "lead";
+  const nextConv: Conversation = {
+    ...prev,
+    lastMessageAt:
+      new Date(row.at).getTime() >= new Date(prev.lastMessageAt).getTime()
+        ? row.at
+        : prev.lastMessageAt,
+    unread: isLead ? (prev.unread ?? 0) + 1 : prev.unread,
+    awaitingReply: isLead ? true : prev.awaitingReply,
+    slaBreached: isLead ? ageMin >= currentSlaMinutes : prev.slaBreached,
+  };
+  remoteConversations = [
+    ...remoteConversations.slice(0, convIdx),
+    nextConv,
+    ...remoteConversations.slice(convIdx + 1),
+  ];
+  appliedConversationBumps.add(row.id);
+}
+
+function flushPendingConversationMessages(conversationId: string) {
+  const conversation = remoteConversations.find((item) => item.id === conversationId);
+  if (!conversation || !remoteLeads.some((lead) => lead.id === conversation.leadId)) return;
+  const pending = pendingConversationMessages.get(conversationId);
+  if (!pending) return;
+  pendingConversationMessages.delete(conversationId);
+  for (const row of pending) bumpConversationForMessage(row);
+  notify();
+}
+
 // ---------- API pública ----------
 export function getLeads(): Lead[] {
   return mode === "remote" ? remoteLeads : getLeadsSnapshot();
@@ -306,44 +385,120 @@ export function getConversationById(id: string): Conversation | undefined {
   return getConversations().find((c) => c.id === id);
 }
 
+async function fetchInboxSnapshot(companyId: string) {
+  const latestMessagesRpc = supabase.rpc as unknown as InboxLatestMessagesRpc;
+  const [leadsResult, conversationsResult, messagesResult] = await Promise.all([
+    supabase.from("leads").select(LEAD_SELECT).eq("company_id", companyId),
+    supabase.from("conversations").select(CONVERSATION_SELECT).eq("company_id", companyId),
+    latestMessagesRpc("latest_messages_per_conversation", { _company_id: companyId }),
+  ]);
+  if (leadsResult.error) throw new Error(`leads: ${leadsResult.error.message}`);
+  if (conversationsResult.error) {
+    throw new Error(`conversations: ${conversationsResult.error.message}`);
+  }
+  if (messagesResult.error) throw new Error(`messages: ${String(messagesResult.error)}`);
+  return {
+    leads: (leadsResult.data ?? []).map((row) => toLead(row as DbLead)),
+    conversations: (conversationsResult.data ?? []).map((row) =>
+      toConversation(row as DbConversation, currentSlaMinutes),
+    ),
+    messages: (messagesResult.data ?? []).map((row) => toMessage(row)),
+  };
+}
+
+function mergeById<T extends { id: string }>(snapshot: T[], live: T[]): T[] {
+  const merged = new Map(snapshot.map((item) => [item.id, item]));
+  for (const item of live) merged.set(item.id, item);
+  return [...merged.values()];
+}
+
+async function reconcileInbox(companyId: string, generation: number) {
+  const snapshot = await fetchInboxSnapshot(companyId);
+  if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+  remoteLeads = mergeById(snapshot.leads, remoteLeads);
+  remoteConversations = mergeById(snapshot.conversations, remoteConversations);
+  remoteMessages = mergeById(snapshot.messages, remoteMessages);
+  idxRebuild(messagesIndex, remoteMessages);
+  remoteLoaded = true;
+  mode = "remote";
+  notify();
+  for (const conversationId of pendingConversationMessages.keys()) {
+    flushPendingConversationMessages(conversationId);
+  }
+}
+
+function scheduleReconciliation(companyId: string, generation: number) {
+  if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) {
+    return Promise.resolve();
+  }
+  if (reconciliationPromise) return reconciliationPromise;
+  reconciliationPromise = reconcileInbox(companyId, generation)
+    .catch((error) => diagnosticError("snapshot", error))
+    .finally(() => {
+      reconciliationPromise = null;
+    });
+  return reconciliationPromise;
+}
+
+function recoverConversationGraph(companyId: string, conversationId: string, generation: number) {
+  const existing = recoveryInFlight.get(conversationId);
+  if (existing) return existing;
+  const recovery = (async () => {
+    const cachedConversation = remoteConversations.find((item) => item.id === conversationId);
+    let fetchedConversation: DbConversation | null = null;
+    if (!cachedConversation) {
+      const { data, error } = await supabase
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", conversationId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (error) throw new Error(`conversation_lookup: ${error.message}`);
+      if (!data || (data as DbConversation).company_id !== companyId) {
+        throw new Error("conversation_not_found_in_company");
+      }
+      if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+      fetchedConversation = data as DbConversation;
+    }
+    const leadId = cachedConversation?.leadId ?? fetchedConversation?.lead_id;
+    if (!leadId) throw new Error("conversation_recovery_failed");
+    const lead = remoteLeads.find((item) => item.id === leadId);
+    let fetchedLead: DbLead | null = null;
+    if (!lead) {
+      const { data, error } = await supabase
+        .from("leads")
+        .select(LEAD_SELECT)
+        .eq("id", leadId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (error) throw new Error(`lead_lookup: ${error.message}`);
+      if (!data || (data as DbLead).company_id !== companyId) {
+        throw new Error("lead_not_found_in_company");
+      }
+      if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+      fetchedLead = data as DbLead;
+    }
+    if ((lead?.id ?? fetchedLead?.id) !== leadId) {
+      throw new Error("conversation_lead_relationship_invalid");
+    }
+    if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+    if (fetchedLead) upsertLeadIfMissing(fetchedLead);
+    if (fetchedConversation) upsertConversationIfMissing(fetchedConversation);
+    flushPendingConversationMessages(conversationId);
+  })()
+    .catch((error) => diagnosticError("message_graph", error))
+    .finally(() => recoveryInFlight.delete(conversationId));
+  recoveryInFlight.set(conversationId, recovery);
+  return recovery;
+}
+
 // ---------- carga remota ----------
 export async function loadRemote(companyId: string, slaMinutes = 30) {
   if (loadingPromise) return loadingPromise;
   currentSlaMinutes = slaMinutes;
   loadingPromise = (async () => {
-    const [{ data: ls }, { data: cs }, { data: ms }] = await Promise.all([
-      supabase
-        .from("leads")
-        .select(
-          "id,name,phone,handle,channel,status,tags,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at",
-        )
-        .eq("company_id", companyId),
-      supabase
-        .from("conversations")
-        .select("id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections")
-        .eq("company_id", companyId),
-      // Onda 2.3: somente a última mensagem de cada conversa (preview do inbox).
-      // O histórico de cada conversa é carregado sob demanda em loadConversationRecent().
-      (supabase.rpc as unknown as (
-        fn: string,
-        args: Record<string, unknown>,
-      ) => Promise<{ data: DbMessage[] | null; error: unknown }>)(
-        "latest_messages_per_conversation",
-        { _company_id: companyId },
-      ),
-    ]);
-    remoteLeads = (ls ?? []).map((r) => toLead(r as DbLead));
-    remoteConversations = (cs ?? []).map((r) =>
-      toConversation(r as DbConversation, slaMinutes),
-    );
-    remoteMessages = (ms ?? []).map((r) => toMessage(r as DbMessage));
-    // P3 — reconstrói o índice a partir do bulk inicial.
-    idxRebuild(messagesIndex, remoteMessages);
-
-    remoteLoaded = true;
-    mode = "remote";
-    notify();
-    subscribeRealtime(companyId);
+    const generation = subscribeRealtime(companyId);
+    await reconcileInbox(companyId, generation);
   })();
   try {
     await loadingPromise;
@@ -358,7 +513,7 @@ export function isRemoteLoaded() {
 
 // ---------- realtime (mensagens chegando via webhook) ----------
 function subscribeRealtime(companyId: string) {
-  if (realtimeCompanyId === companyId && realtimeChannel) return;
+  if (realtimeCompanyId === companyId && realtimeChannel) return realtimeGeneration;
   if (realtimeChannel) {
     void supabase.removeChannel(realtimeChannel);
     realtimeChannel = null;
@@ -368,7 +523,13 @@ function subscribeRealtime(companyId: string) {
     olderHasMore.clear();
     olderLoading.clear();
     recentLoaded.clear();
+    remoteLeads = [];
+    remoteConversations = [];
+    remoteMessages = [];
+    messagesIndex.clear();
   }
+  const generation = ++realtimeGeneration;
+  hasSubscribedOnce = false;
   realtimeCompanyId = companyId;
   realtimeChannel = supabase
     .channel(`inbox-${companyId}`)
@@ -391,33 +552,16 @@ function subscribeRealtime(companyId: string) {
         remoteMessages = [...remoteMessages, msg];
         idxUpsert(messagesIndex, msg);
 
-        // P2 — Bump local imediato da conversa correspondente. Sem esperar
-        // o trigger de banco emitir `conversations UPDATE`, a fila reordena
-        // no mesmo tick da chegada da mensagem. Quando o UPDATE chegar em
-        // seguida, o handler de `conversations` sobrescreve com o estado
-        // canônico (idempotente).
-        const convIdx = remoteConversations.findIndex(
-          (c) => c.id === row.conversation_id,
-        );
-        if (convIdx !== -1) {
-          const prev = remoteConversations[convIdx];
-          const ageMin =
-            (Date.now() - new Date(row.at).getTime()) / 60_000;
-          const isLead = row.role === "lead";
-          const nextConv: Conversation = {
-            ...prev,
-            lastMessageAt: row.at,
-            unread: isLead ? (prev.unread ?? 0) + 1 : prev.unread,
-            awaitingReply: isLead ? true : prev.awaitingReply,
-            slaBreached: isLead
-              ? ageMin >= currentSlaMinutes
-              : false,
-          };
-          remoteConversations = [
-            ...remoteConversations.slice(0, convIdx),
-            nextConv,
-            ...remoteConversations.slice(convIdx + 1),
-          ];
+        const cachedConversation = remoteConversations.find((c) => c.id === row.conversation_id);
+        if (
+          cachedConversation &&
+          remoteLeads.some((lead) => lead.id === cachedConversation.leadId)
+        ) {
+          bumpConversationForMessage(row);
+        } else {
+          const pending = pendingConversationMessages.get(row.conversation_id) ?? [];
+          pendingConversationMessages.set(row.conversation_id, [...pending, row]);
+          void recoverConversationGraph(companyId, row.conversation_id, generation);
         }
 
         notify();
@@ -470,6 +614,9 @@ function subscribeRealtime(companyId: string) {
         const row = payload.new as DbLead;
         if (remoteLeads.some((l) => l.id === row.id)) return;
         remoteLeads = [...remoteLeads, toLead(row)];
+        for (const conversation of remoteConversations) {
+          if (conversation.leadId === row.id) flushPendingConversationMessages(conversation.id);
+        }
         notify();
       },
     )
@@ -540,17 +687,44 @@ function subscribeRealtime(companyId: string) {
         remoteConversations = exists
           ? remoteConversations.map((c) => (c.id === next.id ? next : c))
           : [...remoteConversations, next];
+        if (!remoteLeads.some((lead) => lead.id === next.leadId)) {
+          void recoverConversationGraph(companyId, next.id, generation);
+        } else {
+          flushPendingConversationMessages(next.id);
+        }
         notify();
       },
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+      if (status === "SUBSCRIBED") {
+        const reconnect = hasSubscribedOnce;
+        hasSubscribedOnce = true;
+        if (loadingPromise) {
+          void loadingPromise
+            .catch(() => undefined)
+            .then(() => scheduleReconciliation(companyId, generation));
+        } else {
+          void scheduleReconciliation(companyId, generation);
+        }
+        if (reconnect) console.info("[inbox-reconcile] realtime reconectado");
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        diagnosticError("realtime_status", status);
+      }
+    });
+  return generation;
 }
 
 export function unsubscribeRealtime() {
   if (realtimeChannel) {
+    realtimeGeneration++;
     void supabase.removeChannel(realtimeChannel);
     realtimeChannel = null;
     realtimeCompanyId = null;
+    hasSubscribedOnce = false;
+    reconciliationPromise = null;
+    recoveryInFlight.clear();
+    pendingConversationMessages.clear();
   }
 }
 
