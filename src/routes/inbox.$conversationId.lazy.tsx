@@ -269,14 +269,14 @@ function ConversationPage() {
     const confirmedTextKeys = new Set(
       repoMessages
         .filter((m) => m.role === "agent")
-        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 19)}`),
     );
     const extras = localMessages.filter(
       (m) =>
         !ids.has(m.id) &&
         !(
           m.role === "agent" &&
-          confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`)
+          confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 19)}`)
         ),
     );
     return [...repoMessages, ...extras].sort(
@@ -312,12 +312,12 @@ function ConversationPage() {
     const confirmedTextKeys = new Set(
       repoMessages
         .filter((m) => m.role === "agent")
-        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`),
+        .map((m) => `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 19)}`),
     );
     const shouldRemove = (m: Message) =>
       ids.has(m.id) ||
       (m.role === "agent" &&
-        confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 16)}`));
+        confirmedTextKeys.has(`${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 19)}`));
     if (localMessages.some(shouldRemove)) {
       setLocalMessages((prev) => prev.filter((m) => !shouldRemove(m)));
     }
