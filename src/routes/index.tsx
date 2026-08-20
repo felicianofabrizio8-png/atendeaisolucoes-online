@@ -18,7 +18,7 @@ function Index() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <div className="max-w-2xl w-full space-y-8 text-center whitespace-pre-wrap">
         <h1 className="text-4xl font-bold tracking-tight sm:text-6xl text-left">
-          Existe ainda um problema funcional na Inbox do Atende Aí:
+          Aprove e execute este plano por completo de forma detalhada
         </h1>
         <div className="text-left text-muted-foreground space-y-4">
           <p className="text-xl font-bold text-foreground">
