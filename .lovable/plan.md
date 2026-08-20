@@ -1,58 +1,49 @@
-## Recuperação de Leads — Templates Meta fora da janela 24h
+# Plano de Correção: Duplicação de Conversas e Leads na Inbox
 
-Nova camada de recuperação no Inbox, sem alterar fluxos existentes. Tudo lê dados já existentes (`conversations`, `messages`, `whatsapp_templates`, `leads`).
+## Causa Raiz
+A investigação via `psql` e análise de código em `src/routes/api.public.whatsapp.webhook.tsx` revelou que a duplicação ocorre devido à falta de **atomicidade e chaves de unicidade** robustas no banco de dados.
 
-### 1. Nova rota `/inbox/recovery` (Recuperação 24h)
-Acessível por um botão "Recuperação 24h" no header da Caixa de Atendimento. Layout próprio, não interfere no Inbox atual.
+1.  **Race Condition no Webhook:** Quando múltiplas mensagens chegam simultaneamente (ex: 3 mensagens em 5 segundos para o mesmo número), o `findOrCreateLead` e `findOrCreateConversation` realizam um `SELECT` seguido de um `INSERT`. Em alta concorrência, ambos os processos podem ler "não existe" e realizar dois inserts paralelos.
+2.  **Chave de Unicidade Ausente:** Não existem constraints `UNIQUE` compostas no banco de dados para impedir que o mesmo `phone` ou `external_id` seja inserido múltiplas vezes para a mesma `company_id`.
+3.  **Inconsistência de Normalização:** O campo `phone` é populado diretamente com o `wa_id` da Meta (ex: `5515997...`), mas não há garantia de que outras partes do sistema não usem formatos diferentes.
 
-**Indicadores (cards no topo):**
-- Clientes fora da janela 24h (conversas WhatsApp com `last_inbound_at < now() - 24h` e sem resposta)
-- Templates enviados hoje (`messages` onde `source_subtype='wa_template_manual'` + data = hoje)
-- Taxa de resposta (templates enviados que receberam resposta do lead em até 24h)
-- Leads reativados (conversas que voltaram a receber mensagem do lead após template)
-- Vendas recuperadas (leads reativados com status `won`)
+## Ações Propostas
 
-**Lista de conversas fechadas:**
-Cards com: Nome, telefone, última interação (texto resumido), tempo desde última mensagem ("há 2d 4h"), produto de interesse (do lead), status do lead, badge "Fora da janela 24h".
+### 1. Banco de Dados (Remoto)
+Implementar constraints de unicidade para garantir integridade no nível do motor SQL, permitindo o uso de `ON CONFLICT` (upsert).
 
-**Ações por card:**
-- Enviar Template (abre `MetaTemplatesModal` já existente, pré-selecionando o recomendado)
-- Abrir conversa (link para `/inbox/$id`)
-- Ver histórico (drawer com últimas 10 mensagens)
-- Alterar template (toggle no modal já cobre)
+- **Leads:** Adicionar `UNIQUE(company_id, phone)` e `UNIQUE(company_id, external_id)`.
+- **Conversations:** Adicionar `UNIQUE(company_id, lead_id, channel)`.
 
-**Filtros:**
-- Filtro principal "Fora da Janela 24h" (sempre ativo na rota)
-- Pesquisa por nome/telefone
-- Filtro por produto/status (reusa padrão do OpportunityHub)
+### 2. Backend (Código)
+Refatorar `src/routes/api.public.whatsapp.webhook.tsx` para usar estratégias atômicas:
+- Substituir o fluxo "Select then Insert" por um único `upsert` com `onConflict`.
+- Garantir que `findOrCreateLead` e `findOrCreateConversation` sejam idempotentes e resilientes a race conditions.
 
-### 2. Recomendação automática de template
-Função pura `recommendTemplate(conversation, lead)` que mapeia contexto → nome de template Meta:
-- Lead status `qualified`/`new` + sem orçamento → `cliente_pesquisando`
-- Orçamento enviado (quote existe, sem fechamento) → `followup_orcamento`
-- Última mensagem do lead > 7 dias → `reativacao_cliente`
-- Visita agendada (`visits` próxima) → `confirmacao_visita`
-- Fallback → primeiro template APPROVED de categoria UTILITY
+### 3. Consolidação de Dados (Manual/Script)
+Existem atualmente duplicatas (ex: 5 leads para o telefone `5515997548186`).
+- **Plano de Fusão:** Mover todas as `messages` para a conversa/lead mais antigo e deletar os órfãos. *Esta ação será proposta detalhadamente após a correção estrutural.*
 
-Sugestão exibida no card como chip "Sugerido: nome_do_template". Modal já permite trocar.
+---
 
-### 3. Reuso de infraestrutura existente
-- `whatsapp_templates`: única fonte (sem tabela paralela). Mostra status APPROVED/PENDING/REJECTED, filtra APPROVED por padrão.
-- `MetaTemplatesModal` + `api.whatsapp.templates.send`: já implementados, apenas estendidos para aceitar `suggestedTemplate` opcional.
-- `WhatsappWindowAlert`: já alerta quando fora da janela; sem mudanças.
+## Detalhamento Técnico das Alterações
 
-### 4. Segurança (já garantida)
-- Endpoint `api.whatsapp.templates.send` só envia templates APPROVED via Meta Graph API.
-- Nenhuma mensagem livre é permitida fora da janela; o botão "Enviar" do composer já é bloqueado pelo `WhatsappWindowAlert`.
+### Migração SQL
+```sql
+-- Leads: Garante que um telefone é único por empresa
+ALTER TABLE public.leads ADD CONSTRAINT leads_company_phone_key UNIQUE (company_id, phone);
 
-### Arquivos
-**Novos:**
-- `src/routes/inbox.recovery.tsx` — rota com indicadores + lista
-- `src/lib/recovery.functions.ts` — serverFn `getRecoveryDashboard` (lista + métricas)
-- `src/lib/templateRecommend.ts` — função de recomendação
+-- Leads: Garante que um external_id (wa_id) é único por empresa
+ALTER TABLE public.leads ADD CONSTRAINT leads_company_external_id_key UNIQUE (company_id, external_id);
 
-**Editados (cirúrgicos):**
-- `src/routes/inbox.index.tsx` — botão "Recuperação 24h" no header
-- `src/components/MetaTemplatesModal.tsx` — aceitar `suggestedTemplateName?: string` para pré-seleção
+-- Conversations: Garante uma única conversa por lead/canal/empresa
+ALTER TABLE public.conversations ADD CONSTRAINT conversations_company_lead_channel_key UNIQUE (company_id, lead_id, channel);
+```
 
-Nada do fluxo atual do Inbox, do OpportunityHub, da IA, ou dos templates da Meta é alterado.
+### Refatoração de Código
+Ajustar `findOrCreateLead` para usar a lógica de `upsert` do Supabase/PostgreSQL que resolve o conflito atomicamente.
+
+---
+
+## Validação
+O sucesso será confirmado ao enviar mensagens rápidas sequenciais e verificar que apenas UM lead e UMA conversa existem no banco, com todas as mensagens vinculadas corretamente.
