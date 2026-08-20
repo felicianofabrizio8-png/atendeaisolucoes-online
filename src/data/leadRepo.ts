@@ -30,6 +30,7 @@ import {
   rebuildIndex as idxRebuild,
   getMessages as idxGet,
 } from "@/data/message-index";
+import { normalizePhone } from "@/lib/phone";
 
 
 // ---------- estado em memória sincronizado com o supabase ----------
@@ -1000,7 +1001,7 @@ export async function createLead(
     const newLead: Lead = {
       id: `l-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: input.name,
-      phone: input.phone,
+      phone: normalizePhone(input.phone),
       handle: input.handle,
       channel: input.channel,
       status: "novo",
@@ -1017,7 +1018,7 @@ export async function createLead(
     .insert({
       company_id: companyId,
       name: input.name,
-      phone: input.phone ?? null,
+      phone: input.phone ? normalizePhone(input.phone) : null,
       handle: input.handle ?? null,
       channel: input.channel,
       status: "novo",

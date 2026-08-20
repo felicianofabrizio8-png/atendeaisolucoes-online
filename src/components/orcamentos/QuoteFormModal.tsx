@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { formatBRL } from "@/data/mock";
 import { products, getProduct, activePrice } from "@/data/products";
 import { getLeads, subscribeRepo, createLead } from "@/data/leadRepo";
+import { normalizePhone } from "@/lib/phone";
 import { createQuote, buildQuoteMessage } from "@/data/quotes";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
@@ -91,6 +92,7 @@ export function QuoteFormModal({
 
   const filteredLeads = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();
+    const qNorm = normalizePhone(q);
     const sorted = [...leads].sort((a, b) => a.name.localeCompare(b.name));
     if (!q) return sorted.slice(0, 50);
     return sorted
@@ -98,6 +100,7 @@ export function QuoteFormModal({
         (l) =>
           l.name.toLowerCase().includes(q) ||
           (l.phone ?? "").toLowerCase().includes(q) ||
+          (l.phone && qNorm && l.phone.includes(qNorm)) ||
           (l.handle ?? "").toLowerCase().includes(q),
       )
       .slice(0, 50);
