@@ -14,6 +14,7 @@ import { markRecoveryReplied } from "@/lib/recovery-exec/reply.server";
 import { processStatusEvents } from "@/lib/whatsapp/status.server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { extractText } from "@/lib/whatsapp/extract-text";
+import { normalizePhone } from "@/lib/phone";
 import type { WhatsAppMessage as SharedWhatsAppMessage } from "@/lib/whatsapp/extract-text";
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
@@ -378,6 +379,7 @@ async function processMessages(args: {
     const waId = m.from;
     const contact = contactsById.get(waId);
     const leadName = contact?.profile?.name ?? waId;
+    const normalizedPhone = normalizePhone(waId);
     const at = m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString();
     const text = extractText(m);
 
@@ -386,6 +388,7 @@ async function processMessages(args: {
       companyId,
       integrationId,
       waId,
+      normalizedPhone,
       leadName,
     });
 
@@ -537,12 +540,13 @@ async function findOrCreateLead(args: {
   companyId: string;
   integrationId: string;
   waId: string;
+  normalizedPhone: string;
   leadName: string;
 }): Promise<string> {
-  const { companyId, integrationId, waId, leadName } = args;
+  const { companyId, integrationId, waId, normalizedPhone, leadName } = args;
 
   // Tenta o upsert atômico usando phone como chave de conflito.
-  // waId da Meta é usado tanto como phone quanto como external_id.
+  // waId da Meta é o external_id. O phone agora é normalizado (DDI 55).
   const { data: lead, error } = await supabaseAdmin
     .from("leads")
     .upsert(
@@ -551,7 +555,7 @@ async function findOrCreateLead(args: {
         integration_id: integrationId,
         external_id: waId,
         name: leadName,
-        phone: waId,
+        phone: normalizedPhone,
         channel: "whatsapp",
         status: "novo",
         tags: [],
@@ -571,7 +575,7 @@ async function findOrCreateLead(args: {
       .from("leads")
       .select("id")
       .eq("company_id", companyId)
-      .or(`external_id.eq.${waId},phone.eq.${waId}`)
+      .or(`external_id.eq.${waId},phone.eq.${normalizedPhone},phone.eq.${waId}`)
       .limit(1)
       .maybeSingle();
 
