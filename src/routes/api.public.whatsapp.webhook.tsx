@@ -541,49 +541,45 @@ async function findOrCreateLead(args: {
 }): Promise<string> {
   const { companyId, integrationId, waId, leadName } = args;
 
-  const { data: existing } = await supabaseAdmin
+  // Tenta o upsert atômico usando phone como chave de conflito.
+  // waId da Meta é usado tanto como phone quanto como external_id.
+  const { data: lead, error } = await supabaseAdmin
     .from("leads")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("integration_id", integrationId)
-    .eq("external_id", waId)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing?.id) return existing.id;
-
-  const { data: byPhone } = await supabaseAdmin
-    .from("leads")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("phone", waId)
-    .limit(1)
-    .maybeSingle();
-
-  if (byPhone?.id) {
-    await supabaseAdmin
-      .from("leads")
-      .update({ integration_id: integrationId, external_id: waId })
-      .eq("id", byPhone.id);
-    return byPhone.id;
-  }
-
-  const { data: created, error } = await supabaseAdmin
-    .from("leads")
-    .insert({
-      company_id: companyId,
-      integration_id: integrationId,
-      external_id: waId,
-      name: leadName,
-      phone: waId,
-      channel: "whatsapp",
-      status: "novo",
-      tags: [],
-    })
+    .upsert(
+      {
+        company_id: companyId,
+        integration_id: integrationId,
+        external_id: waId,
+        name: leadName,
+        phone: waId,
+        channel: "whatsapp",
+        status: "novo",
+        tags: [],
+      },
+      { 
+        onConflict: "company_id,phone",
+        ignoreDuplicates: false // queremos que atualize integration_id/external_id se já existir por telefone
+      }
+    )
     .select("id")
     .single();
-  if (error) throw error;
-  return created.id;
+
+  if (error) {
+    // Se falhar por conflito no external_id (caso seja diferente do phone, embora raro no WA Cloud API)
+    // fazemos um fallback seguro de busca.
+    const { data: existing } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("company_id", companyId)
+      .or(`external_id.eq.${waId},phone.eq.${waId}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) return existing.id;
+    throw error;
+  }
+
+  return lead.id;
 }
 
 async function findOrCreateConversation(args: {
@@ -592,30 +588,40 @@ async function findOrCreateConversation(args: {
   lastMessageAt: string;
 }): Promise<string> {
   const { companyId, leadId, lastMessageAt } = args;
-  const { data: existing } = await supabaseAdmin
-    .from("conversations")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("lead_id", leadId)
-    .eq("channel", "whatsapp")
-    .limit(1)
-    .maybeSingle();
-  if (existing?.id) return existing.id;
 
-  const { data: created, error } = await supabaseAdmin
+  const { data: conversation, error } = await supabaseAdmin
     .from("conversations")
-    .insert({
-      company_id: companyId,
-      lead_id: leadId,
-      channel: "whatsapp",
-      last_message_at: lastMessageAt,
-      unread: 1,
-      awaiting_reply: true,
-    })
+    .upsert(
+      {
+        company_id: companyId,
+        lead_id: leadId,
+        channel: "whatsapp",
+        last_message_at: lastMessageAt,
+        awaiting_reply: true,
+      },
+      { 
+        onConflict: "company_id,lead_id,channel",
+        ignoreDuplicates: false 
+      }
+    )
     .select("id")
     .single();
-  if (error) throw error;
-  return created.id;
+
+  if (error) {
+    const { data: existing } = await supabaseAdmin
+      .from("conversations")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("lead_id", leadId)
+      .eq("channel", "whatsapp")
+      .limit(1)
+      .maybeSingle();
+    
+    if (existing?.id) return existing.id;
+    throw error;
+  }
+
+  return conversation.id;
 }
 
 // ---------- tipos do payload ----------
