@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { SmartImage } from "@/components/SmartImage";
 import {
   createTrainingSession,
   getTrainingSession,
@@ -110,6 +111,27 @@ export function SalesTrainingChat() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{item.content}</p>
+                  {item.role === "agent" &&
+                    item.decision?.simulated_product_images &&
+                    item.decision.simulated_product_images.length > 0 && (
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {item.decision.simulated_product_images.map((image) => (
+                          <div key={image.product_id} className="space-y-1">
+                            <SmartImage
+                              src={image.image}
+                              alt={image.product_name}
+                              wrapperClassName="overflow-hidden rounded-md border bg-background"
+                              className="h-full w-full object-cover"
+                              aspectRatio="1/1"
+                              thumbWidth={320}
+                            />
+                            <p className="truncate text-xs text-muted-foreground">
+                              Simulação: {image.product_name}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   {item.role === "lead" && item.generation_status === "pending" && (
                     <p className="mt-2 text-xs opacity-80">Gerando resposta…</p>
                   )}

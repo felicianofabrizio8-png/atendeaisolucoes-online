@@ -94,6 +94,15 @@ describe("SalesAgentCore", () => {
     expect(request).not.toHaveProperty("reasoning_effort");
     expect(request.tool_choice).toBe("auto");
     expect(request.tools).toHaveLength(2);
+    expect(request.tools[0]).toMatchObject({
+      function: {
+        parameters: {
+          properties: {
+            send_product_images: { type: "array", maxItems: 5 },
+          },
+        },
+      },
+    });
     expect(request.tools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -147,6 +156,7 @@ describe("SalesAgentCore", () => {
                       purchase_timing: "30 dias",
                       customer_stage: "PESQUISANDO",
                       suggest_products: ["product-1"],
+                      send_product_images: ["product-1"],
                     }),
                   },
                 },
@@ -160,7 +170,7 @@ describe("SalesAgentCore", () => {
 
     const decision = await core.decide({
       ctx: context,
-      history: [],
+      history: [{ role: "lead", text: "Me manda as fotos desses modelos" }],
       leadName: null,
       model: salesModel,
     });
@@ -173,8 +183,44 @@ describe("SalesAgentCore", () => {
       purchase_timing: "30d",
       customer_stage: "pesquisando",
       suggested_products: ["product-1"],
+      product_image_ids: ["product-1"],
     });
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("ignora pedido de imagens do modelo quando o cliente não pediu fotos", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Temos o modelo 6x3.",
+                      send_product_images: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const core = new SalesAgentCore(complete);
+
+    const decision = await core.decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais modelos de 6 metros vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({ kind: "reply", product_image_ids: [] });
   });
 
   it("inclui produto e preço do grounding no contexto do modelo", () => {

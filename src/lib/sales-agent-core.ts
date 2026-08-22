@@ -89,6 +89,7 @@ export interface AgentDecision {
   purchase_timing?: PurchaseTiming | null;
   customer_stage?: CustomerStage | null;
   suggested_products?: string[];
+  product_image_ids?: string[];
   grounding_sources?: SalesAgentGroundingSource[];
 }
 
@@ -128,10 +129,21 @@ interface ToolReply {
   purchase_timing?: string;
   customer_stage?: string;
   suggest_products?: string[];
+  send_product_images?: string[];
 }
 
 interface ToolHandoff {
   reason: string;
+}
+
+export function customerAskedForProductImages(
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
+  if (!lastLeadMessage) return false;
+  return /\b(foto(?:s)?|imagen(?:s)?|imagem|ver\s+(?:os\s+)?modelos?|mostr\w*\s+(?:os\s+)?modelos?)\b/i.test(
+    lastLeadMessage,
+  );
 }
 
 function formatPrice(price: number | null): string {
@@ -167,7 +179,7 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     ctx.grounding.faqKnowledge.length > 0 ? ctx.grounding.faqKnowledge : ctx.knowledge;
   const productLines = groundedProducts
     .map((p, i) => {
-      const parts = [`${i + 1}. ${p.name}`];
+      const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
       if (p.description) parts.push(`   ${p.description}`);
       if (usesGroundedCatalog) parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
       if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
@@ -239,6 +251,7 @@ SUA MISSÃO:
 2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
 3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
+5. Somente quando o cliente pedir explicitamente para ver fotos, imagens ou modelos, preencha send_product_images com os IDs dos produtos adequados do catálogo. Nunca invente IDs ou URLs e selecione no máximo 5 produtos.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -306,6 +319,13 @@ export function buildSalesAgentCompletionRequest(
                 description: "Em que estágio o cliente está.",
               },
               suggest_products: { type: "array", items: { type: "string" } },
+              send_product_images: {
+                type: "array",
+                items: { type: "string" },
+                maxItems: 5,
+                description:
+                  "IDs de atÃ© 5 produtos do catÃ¡logo cujas fotos foram pedidas explicitamente pelo cliente. Nunca envie URLs.",
+              },
             },
             required: ["message"],
             additionalProperties: false,
@@ -384,6 +404,9 @@ export class SalesAgentCore {
       purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
       customer_stage: stage,
       suggested_products: reply.suggest_products ?? [],
+      product_image_ids: customerAskedForProductImages(params.history)
+        ? (reply.send_product_images ?? [])
+        : [],
       grounding_sources: groundingSources,
     };
   }

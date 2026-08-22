@@ -29,6 +29,8 @@ import {
 } from "./sales-agent-core";
 import { loadSalesAgentGrounding } from "./sales-agent-grounding.server";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
+import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import { detectFiberCatalogSize } from "./sales-agent-product-images";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
@@ -760,6 +762,36 @@ export async function runAgentTick(conversationId: string): Promise<{
         grounding_sources: decision.grounding_sources ?? [],
       });
       return { ok: true, action: "simulated", reason: "environment_guard" };
+    }
+
+    const productImageSelectionContext = {
+      history,
+      detectedPoolSize: decision.detected_pool_size ?? currentQual.detected_pool_size,
+      detectedInterest: decision.detected_interest ?? currentQual.detected_interest,
+    };
+    const requestedProductImageIds = decision.product_image_ids ?? [];
+    if (
+      requestedProductImageIds.length ||
+      detectFiberCatalogSize(productImageSelectionContext) !== null
+    ) {
+      try {
+        const media = await sendWhatsappProductImages({
+          companyId: conv.company_id,
+          conversationId: conv.id,
+          leadId: conv.lead_id,
+          productIds: requestedProductImageIds,
+          selectionContext: productImageSelectionContext,
+        });
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "product_images_processed", {
+          requested: requestedProductImageIds.length,
+          sent: media.sent,
+          failed: media.failed,
+        });
+      } catch {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "product_images_failed", {
+          requested: requestedProductImageIds.length,
+        });
+      }
     }
 
     // Atualiza counters + status IA (apenas envio real)

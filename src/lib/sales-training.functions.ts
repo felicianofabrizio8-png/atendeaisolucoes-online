@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
 import { normalizeTrainingReview } from "./sales-training-domain";
+import { loadValidatedProductImages } from "./sales-agent-product-images.server";
+import type { AgentDecision } from "./sales-agent-core";
 
 const SessionInput = z.object({ sessionId: z.string().uuid() });
 const SendInput = SessionInput.extend({ message: z.string().trim().min(1).max(4000) });
@@ -20,6 +22,13 @@ export interface TrainingMessage {
   correction_text: string | null;
   generation_status: "pending" | "completed" | "failed";
   generation_error: "generation_failed" | null;
+  decision: (AgentDecision & {
+    simulated_product_images?: Array<{
+      product_id: string;
+      product_name: string;
+      image: string;
+    }>;
+  }) | null;
   created_at: string;
 }
 
@@ -76,7 +85,7 @@ export const getTrainingSession = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("ai_training_messages" as never)
       .select(
-        "id, role, content, review_status, correction_text, generation_status, generation_error, created_at",
+        "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
       )
       .eq("session_id", input.sessionId)
       .eq("company_id", companyId)
@@ -128,6 +137,23 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
         decision.kind === "reply" && decision.message
           ? decision.message
           : `Atendimento humano solicitado: ${decision.reason ?? "sem motivo informado"}`;
+      const simulatedProductImages = (await loadValidatedProductImages(
+        companyId,
+        decision.product_image_ids,
+        {
+          history,
+          detectedPoolSize: decision.detected_pool_size,
+          detectedInterest: decision.detected_interest,
+        },
+      )).map((image) => ({
+        product_id: image.productId,
+        product_name: image.productName,
+        image: image.storedImage,
+      }));
+      const trainingDecision = {
+        ...decision,
+        simulated_product_images: simulatedProductImages,
+      };
 
       const { data: saved, error: agentError } = await context.supabase
         .from("ai_training_messages" as never)
@@ -136,11 +162,11 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           company_id: companyId,
           role: "agent",
           content,
-          decision,
+          decision: trainingDecision,
           generation_status: "completed",
         } as never)
         .select(
-          "id, role, content, review_status, correction_text, generation_status, generation_error, created_at",
+          "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
         )
         .single();
       if (agentError || !saved) throw new Error("training_response_save_failed");
@@ -178,7 +204,7 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .eq("company_id", companyId)
       .eq("role", "agent")
       .select(
-        "id, role, content, review_status, correction_text, generation_status, generation_error, created_at",
+        "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
       )
       .maybeSingle();
     if (error || !data) throw new Error("training_response_not_found");

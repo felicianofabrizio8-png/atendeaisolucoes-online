@@ -34,6 +34,12 @@ describe("Sales training contract", () => {
     expect(functionsSource).not.toMatch(/\.from\("(?:leads|conversations|messages)"/);
   });
 
+  it("simula imagens selecionadas sem executar envio externo", () => {
+    expect(functionsSource).toContain("loadValidatedProductImages(");
+    expect(functionsSource).toContain("simulated_product_images");
+    expect(functionsSource).not.toContain("sendWhatsappProductImages");
+  });
+
   it("persiste somente histórico e avaliações de treinamento", () => {
     const writtenTables = [...functionsSource.matchAll(/\.from\("([^"]+)" as never\)/g)].map(
       (match) => match[1],
