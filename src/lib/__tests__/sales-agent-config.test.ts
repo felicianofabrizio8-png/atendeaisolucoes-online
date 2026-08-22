@@ -46,6 +46,15 @@ describe("SalesAgent LLM configuration", () => {
     expect(trainingSource).not.toMatch(/LOVABLE_API_KEY|ai\.gateway\.lovable\.dev/);
   });
 
+  it("limita o diagnóstico HTTP a campos sanitizados sem alterar o erro público", () => {
+    const agentSource = read("../ai-agent.server.ts");
+    expect(agentSource).toContain('const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"]');
+    expect(agentSource).toContain('res.headers.get("x-request-id")');
+    expect(agentSource).toContain("parseGatewayErrorDiagnostic(rawError, apiKey)");
+    expect(agentSource).toContain('reason: `gateway_http_${res.status}`');
+    expect(agentSource).not.toMatch(/console\.error\([^\n]*(?:apiKey|payload|Authorization)/);
+  });
+
   it("mantém os fluxos de criativos com gateway e modelos atuais", () => {
     const creativeSource = read("../../routes/api.ai.creative-generator.tsx");
     expect(creativeSource).toContain("https://ai.gateway.lovable.dev/v1/chat/completions");

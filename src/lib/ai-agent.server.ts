@@ -34,6 +34,42 @@ export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-c
 
 const DEBOUNCE_MS = 30_000;
 
+const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"] as const;
+
+function sanitizeGatewayErrorValue(value: unknown, apiKey: string): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  let safe = String(value).replace(/[\r\n\t]+/g, " ").trim();
+  if (!safe) return undefined;
+  if (apiKey) safe = safe.split(apiKey).join("[redacted]");
+  safe = safe
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [redacted]")
+    .replace(/\b(?:sk|key)-[A-Za-z0-9_-]{12,}\b/gi, "[redacted]")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[jwt]")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone]");
+  return safe.slice(0, 400);
+}
+
+function parseGatewayErrorDiagnostic(raw: string, apiKey: string): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const nested = parsed.error;
+    const source =
+      nested && typeof nested === "object" && !Array.isArray(nested)
+        ? (nested as Record<string, unknown>)
+        : parsed;
+    const diagnostic: Record<string, string> = {};
+    for (const field of GATEWAY_ERROR_FIELDS) {
+      const value = sanitizeGatewayErrorValue(source[field], apiKey);
+      if (value) diagnostic[field] = value;
+    }
+    return diagnostic;
+  } catch {
+    return {};
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Tipos
 // ----------------------------------------------------------------------------
@@ -253,7 +289,13 @@ export async function runAgentTurn(params: {
       return { ok: false, reason: "gateway_network_fail" };
     }
     if (!res.ok) {
-      console.error("[AGENT_GATEWAY_HTTP]", res.status);
+      const rawError = (await res.text().catch(() => "")).slice(0, 4_096);
+      const diagnostic = parseGatewayErrorDiagnostic(rawError, apiKey);
+      const requestId = sanitizeGatewayErrorValue(res.headers.get("x-request-id"), apiKey);
+      console.error("[AGENT_GATEWAY_HTTP]", res.status, {
+        ...diagnostic,
+        ...(requestId ? { "x-request-id": requestId } : {}),
+      });
       return { ok: false, reason: `gateway_http_${res.status}` };
     }
     return { ok: true, data: await res.json() };
