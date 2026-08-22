@@ -20,7 +20,7 @@ import { getSettings, subscribeSettings } from "@/data/settings";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 import { QualificationInline } from "@/components/QualificationBadges";
-import { BUCKETS, computePriority, type Bucket } from "@/lib/inbox-priority";
+import { computePriority } from "@/lib/inbox-priority";
 import { computeWindow, closesToday, type WindowInfo } from "@/lib/whatsapp-window";
 import { WhatsappWindowBadge } from "@/components/WhatsappWindowBadge";
 import { OpportunityHub } from "@/components/inbox/OpportunityHub";
@@ -29,6 +29,11 @@ import { useCoachAlerts, type CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { CoachInboxBadge } from "@/components/coach/CoachInboxBadge";
 import { LayoutDashboard, List } from "lucide-react";
 import { readListScroll, saveListScroll } from "@/lib/inbox/mobile-session";
+import {
+  inboxMessagePreview,
+  inboxPrimaryAction,
+  sortInboxByRecentMessage,
+} from "@/lib/inbox-list-presentation";
 
 
 
@@ -206,7 +211,11 @@ function buildSortedItems(
       if (windowFilter !== "todos" && !matchesWindow(windowInfo, windowFilter, now)) return false;
       return true;
     })
-    .sort((a, b) => b.score - a.score);
+    .sort(
+      (a, b) =>
+        new Date(b.conv.lastMessageAt).getTime() -
+        new Date(a.conv.lastMessageAt).getTime(),
+    );
 }
 
 const VIEW_KEY = "inbox.view.v1";
@@ -743,68 +752,19 @@ function InboxPage() {
             </div>
           </div>
         )}
-        {(() => {
-          const grouped = statusFilter === "todos" && sourceFilter === "todos" && !lossReasonFilter;
-          if (!grouped) {
-            return (
-              <ul className="divide-y divide-border">
-                {items.map((it) => (
-                  <ConversationCard
-                    key={it.conv.id}
-                    item={it}
-                    slaMinutes={settings.slaMinutes}
-                    coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
-                    onOpen={() =>
-                      navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
-                    }
-                  />
-                ))}
-              </ul>
-            );
-          }
-          const byBucket = new Map<Bucket, typeof items>();
-          for (const it of items) {
-            const arr = byBucket.get(it.priority.bucket) ?? [];
-            arr.push(it);
-            byBucket.set(it.priority.bucket, arr);
-          }
-          return (
-            <div>
-              {BUCKETS.map((b) => {
-                const list = byBucket.get(b.key) ?? [];
-                if (list.length === 0) return null;
-                return (
-                  <section key={b.key}>
-                    <header
-                      className="sticky top-0 z-10 flex items-center gap-2 px-4 md:px-6 py-2 bg-background/95 backdrop-blur border-b border-border"
-                      style={{ boxShadow: `inset 3px 0 0 ${b.accent}` }}
-                    >
-                      <span className="text-sm">{b.icon}</span>
-                      <span className="text-xs font-semibold uppercase tracking-wide">{b.label}</span>
-                      <span className="text-[10px] font-bold tabular-nums rounded-full bg-secondary px-1.5 py-0.5">
-                        {list.length}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground hidden md:inline">· {b.hint}</span>
-                    </header>
-                    <ul className="divide-y divide-border">
-                      {list.map((it) => (
-                        <ConversationCard
-                          key={it.conv.id}
-                          item={it}
-                          slaMinutes={settings.slaMinutes}
-                          coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
-                          onOpen={() =>
-                            navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
-                          }
-                        />
-                      ))}
-                    </ul>
-                  </section>
-                );
-              })}
-            </div>
-          );
-        })()}
+        <ul className="divide-y divide-border">
+          {sortInboxByRecentMessage(items).map((it) => (
+            <ConversationCard
+              key={it.conv.id}
+              item={it}
+              slaMinutes={settings.slaMinutes}
+              coachAlert={alertsByConv.get(it.conv.id)?.[0] ?? null}
+              onOpen={() =>
+                navigate({ to: "/inbox/$conversationId", params: { conversationId: it.conv.id } })
+              }
+            />
+          ))}
+        </ul>
 
         <div className="p-6 text-center">
           <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">
@@ -840,6 +800,8 @@ function ConversationCard({
   const lead = getLeadById(c.leadId);
   if (!lead) return null;
   const alert = priority.alert;
+  const needsReply = last?.role === "lead" && c.awaitingReply;
+  const primaryContext = inboxPrimaryAction(last, c.awaitingReply, alert?.text ?? "Em atendimento");
   return (
     <li>
       <button
@@ -866,12 +828,30 @@ function ConversationCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("font-medium truncate", breached && "text-[var(--status-urgent)]")}>
+          <div className="flex items-center justify-between gap-3">
+            <span className={cn("font-medium truncate", (breached || c.unread > 0) && "font-semibold")}>
               {lead.name}
             </span>
+            <span className={cn("text-xs tabular-nums shrink-0", c.unread > 0 ? "text-primary font-semibold" : "text-muted-foreground")}>
+              {timeAgo(c.lastMessageAt)}
+            </span>
+          </div>
+
+          <p className={cn("mt-0.5 text-sm truncate", c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground")}>
+            {inboxMessagePreview(last)}
+          </p>
+
+          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
             <OriginBadge origin={origin} />
             {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
+            {needsReply && (
+              <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {primaryContext}
+              </span>
+            )}
+            {!needsReply && c.awaitingReply && (
+              <span className="text-[10px] font-medium text-primary">Aguardando resposta</span>
+            )}
             {windowInfo.state !== "not_applicable" && windowInfo.state !== "never_opened" && (
               <WhatsappWindowBadge info={windowInfo} live={false} />
             )}
@@ -898,7 +878,7 @@ function ConversationCard({
 
 
 
-          {alert && (
+          {alert && !needsReply && (
             <div
               className={cn(
                 "mt-1 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold",
@@ -910,10 +890,6 @@ function ConversationCard({
             </div>
           )}
 
-          <p className="mt-1 text-sm text-muted-foreground truncate">
-            {last?.role === "agent" && <span className="text-foreground/60">Você: </span>}
-            {last?.text ?? "—"}
-          </p>
           <QualificationInline conv={c} />
           {lead.tags.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -926,15 +902,7 @@ function ConversationCard({
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <span
-            className={cn(
-              "text-xs tabular-nums",
-              breached ? "text-[var(--status-urgent)] font-bold" : "text-muted-foreground",
-            )}
-          >
-            {timeAgo(c.lastMessageAt)}
-          </span>
+        <div className="flex flex-col items-end gap-1 shrink-0 pt-6">
           {breached && (
             <span className="text-[10px] font-semibold text-[var(--status-urgent)]">
               +{Math.max(1, Math.round(ageMin - slaMinutes))}min do SLA

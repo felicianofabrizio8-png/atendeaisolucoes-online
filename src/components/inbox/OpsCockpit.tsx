@@ -24,6 +24,12 @@ import {
 } from "@/lib/inbox-focus";
 import type { CoachAlertLite } from "@/hooks/useCoachAlerts";
 import { getSettings, subscribeSettings } from "@/data/settings";
+import {
+  inboxMessagePreview,
+  inboxPrimaryAction,
+  matchesInboxSearch,
+  sortInboxByRecentMessage,
+} from "@/lib/inbox-list-presentation";
 
 const ACTION_META: Record<ActionKind, { label: string; icon: typeof Send; tone: string }> = {
   responder: { label: "Responder", icon: Send, tone: "text-primary" },
@@ -47,27 +53,21 @@ const TIME_LABELS: Record<TimeBucket, string> = {
 };
 
 function useRepoTick() {
-  const [, setV] = useState(0);
+  const [version, setV] = useState(0);
   useEffect(() => {
     const u1 = subscribeRepo(() => setV((v) => v + 1));
     const u2 = subscribeQuotes(() => setV((v) => v + 1));
     return () => { u1(); u2(); };
   }, []);
+  return version;
 }
 
 function useSettingsSnap() {
   return useSyncExternalStore(subscribeSettings, getSettings, getSettings);
 }
 
-function normalize(s: unknown): string {
-  if (s == null) return "";
-  return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
 function matchesQuery(it: PrioritizedConversation, q: string): boolean {
-  if (!q) return true;
-  const query = normalize(q);
-  const fields = [
+  return matchesInboxSearch(q, [
     it.lead.name, it.lead.phone, it.lead.handle, it.lead.product,
     it.conv.detectedCity, it.conv.detectedState, it.conv.detectedInterest,
     it.conv.detectedIntent, it.last?.text,
@@ -75,13 +75,12 @@ function matchesQuery(it: PrioritizedConversation, q: string): boolean {
     ...it.quotes.map((q) => q.productName),
     it.lead.nextAction?.label,
     it.lead.lossReason,
-  ].map(normalize).join(" ");
-  return fields.includes(query);
+  ]);
 }
 
 export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAlertLite[]> }) {
   const navigate = useNavigate();
-  useRepoTick();
+  const repoTick = useRepoTick();
   const settings = useSettingsSnap();
   const favorites = useFavorites();
   const recentIds = useRecent();
@@ -98,12 +97,13 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
       includeClosed: false,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [settings.slaMinutes, alertsByConv, favorites],
+    [settings.slaMinutes, alertsByConv, favorites, repoTick],
   );
 
+  const chronological = useMemo(() => sortInboxByRecentMessage(ranked), [ranked]);
   const filtered = useMemo(
-    () => (query ? ranked.filter((it) => matchesQuery(it, query)) : ranked),
-    [query, ranked],
+    () => (query ? chronological.filter((it) => matchesQuery(it, query)) : chronological),
+    [query, chronological],
   );
   const dayStats = useMemo(() => computeDayPanel(ranked), [ranked]);
   const myDay = useMemo(() => computeMyDay(ranked), [ranked]);
@@ -414,6 +414,8 @@ function PriorityCard({ item, onOpen }: { item: PrioritizedConversation; onOpen:
   const meta = ACTION_META[item.action.kind];
   const Icon = meta.icon;
   const timeLeft = item.timeLeftMinutes;
+  const needsReply = item.last?.role === "lead" && item.conv.awaitingReply;
+  const primaryAction = inboxPrimaryAction(item.last, item.conv.awaitingReply, item.action.label);
   return (
     <button
       onClick={onOpen}
@@ -421,19 +423,36 @@ function PriorityCard({ item, onOpen }: { item: PrioritizedConversation; onOpen:
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-semibold text-sm truncate">{item.lead.name}</span>
-            <span className="text-[10px] uppercase text-muted-foreground">{item.lead.channel}</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{timeAgo(item.conv.lastMessageAt)}</span>
           </div>
-          <div className={cn("mt-0.5 text-xs flex items-center gap-1.5", meta.tone)}>
-            <Icon className="h-3 w-3" />
-            <span className="font-medium">{item.action.label}</span>
+          <div className={cn("mt-1 text-sm truncate", item.conv.unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground")}>
+            {inboxMessagePreview(item.last)}
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-[10px]">
+            <span className="uppercase text-muted-foreground">{item.lead.channel}</span>
+            {item.conv.awaitingReply && (
+              <span className={cn("font-semibold", needsReply ? "text-primary" : "text-muted-foreground")}>
+                {primaryAction}
+              </span>
+            )}
+            {item.conv.unread > 0 && (
+              <span className="rounded-full bg-primary text-primary-foreground font-bold px-1.5 min-w-[18px] text-center">
+                {item.conv.unread}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <TierPill score={item.score} />
           <FavoriteToggle id={item.conv.id} active={item.isFavorite} />
         </div>
+      </div>
+
+      <div className={cn("text-[11px] flex items-center gap-1.5", meta.tone)}>
+        <Icon className="h-3 w-3" />
+        <span>{item.action.label}</span>
       </div>
 
       {item.reasons[0] && (
@@ -443,7 +462,7 @@ function PriorityCard({ item, onOpen }: { item: PrioritizedConversation; onOpen:
       )}
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{timeAgo(item.conv.lastMessageAt)}</span>
+        <span>{needsReply ? "Aguardando sua resposta" : "Contexto comercial"}</span>
         {timeLeft !== null && (
           <span className={cn(timeLeft < 0 && "text-[var(--status-urgent)] font-semibold")}>
             {timeLeft < 0 ? `Vencido há ${Math.abs(timeLeft)}m` : `Em ${timeLeft}m`}
@@ -457,6 +476,8 @@ function PriorityCard({ item, onOpen }: { item: PrioritizedConversation; onOpen:
 
 function PriorityRow({ item, onOpen }: { item: PrioritizedConversation; onOpen: () => void }) {
   const meta = ACTION_META[item.action.kind];
+  const needsReply = item.last?.role === "lead" && item.conv.awaitingReply;
+  const primaryAction = inboxPrimaryAction(item.last, item.conv.awaitingReply, item.action.label);
   return (
     <li>
       <button onClick={onOpen} className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent text-left">
@@ -466,7 +487,17 @@ function PriorityRow({ item, onOpen }: { item: PrioritizedConversation; onOpen: 
             <span className="text-sm font-medium truncate">{item.lead.name}</span>
             <span className="text-[10px] text-muted-foreground uppercase">{item.lead.channel}</span>
           </div>
-          <div className={cn("text-[11px] truncate", meta.tone)}>{item.action.label}</div>
+          <div className={cn("text-[12px] truncate", item.conv.unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground")}>
+            {inboxMessagePreview(item.last)}
+          </div>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className={cn(needsReply ? "font-semibold text-primary" : meta.tone)}>{primaryAction}</span>
+            {item.conv.unread > 0 && (
+              <span className="rounded-full bg-primary text-primary-foreground font-bold px-1.5 min-w-[18px] text-center">
+                {item.conv.unread}
+              </span>
+            )}
+          </div>
         </div>
         <TierPill score={item.score} />
         <span className="text-[10px] text-muted-foreground w-14 text-right tabular-nums">
