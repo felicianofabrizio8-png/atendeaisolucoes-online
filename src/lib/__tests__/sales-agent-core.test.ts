@@ -149,23 +149,65 @@ describe("SalesAgentCore", () => {
     expect(complete).toHaveBeenCalledOnce();
   });
 
-  it("recebe preços, regras e aprendizados sem alterar o prompt atual", () => {
-    expect(context.grounding.catalog[0]).toMatchObject({ name: "Piscina 6x3", price: 20_000 });
-    expect(context.grounding.commercialRules).toEqual({
-      paymentMethods: "Pix e cartão",
-      commercialTerms: "Entrada de 50% conforme contrato",
-    });
-    expect(context.grounding.approvedCoachLearnings[0]).toMatchObject({
-      id: "learning-1",
-      rule: "Solicitações de desconto exigem atendimento humano",
-    });
+  it("inclui produto e preço do grounding no contexto do modelo", () => {
+    const request = buildSalesAgentCompletionRequest({ ctx: context, history: [], leadName: null });
 
-    const withGrounding = buildSalesAgentCompletionRequest({
-      ctx: context,
-      history: [],
-      leadName: null,
+    expect(request.messages[0].content).toContain("Piscina 6x3");
+    expect(request.messages[0].content).toContain("Preço cadastrado: R$ 20.000,00");
+  });
+
+  it("inclui FAQ e regras comerciais sem liberar negociação", () => {
+    const request = buildSalesAgentCompletionRequest({ ctx: context, history: [], leadName: null });
+
+    expect(request.messages[0].content).toContain("Atende interior? → Sim.");
+    expect(request.messages[0].content).toContain("Formas de pagamento: Pix e cartão");
+    expect(request.messages[0].content).toContain(
+      "Condições cadastradas: Entrada de 50% conforme contrato",
+    );
+    expect(request.messages[0].content).toContain(
+      "somente informe; nunca negocie nem crie condições",
+    );
+    expect(request.messages[0].content).toContain("NUNCA negocie desconto, preço, parcelamento");
+  });
+
+  it("inclui learning ativo e registra as fontes fornecidas", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "Vou encaminhar sua negociação." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
     });
-    const withoutNewGrounding = buildSalesAgentCompletionRequest({
+    const core = new SalesAgentCore(complete);
+
+    const decision = await core.decide({ ctx: context, history: [], leadName: null });
+    const request = complete.mock.calls[0][0];
+
+    expect(request.messages[0].content).toContain(
+      "Não prometer desconto: Solicitações de desconto exigem atendimento humano",
+    );
+    expect(decision.grounding_sources).toEqual([
+      "catalog",
+      "faq_knowledge",
+      "commercial_rules",
+      "coach_learnings",
+    ]);
+  });
+
+  it("sem grounding estruturado mantém catálogo e conhecimento legados como fallback", () => {
+    const request = buildSalesAgentCompletionRequest({
       ctx: {
         ...context,
         grounding: {
@@ -179,7 +221,11 @@ describe("SalesAgentCore", () => {
       leadName: null,
     });
 
-    expect(withGrounding).toEqual(withoutNewGrounding);
+    expect(request.messages[0].content).toContain("Piscina 6x3");
+    expect(request.messages[0].content).toContain("Atende interior? → Sim.");
+    expect(request.messages[0].content).not.toContain("Preço cadastrado:");
+    expect(request.messages[0].content).not.toContain("REGRAS COMERCIAIS CADASTRADAS");
+    expect(request.messages[0].content).not.toContain("APRENDIZADOS ATIVOS DO COACH");
   });
 
   it.each([
@@ -202,10 +248,13 @@ describe("SalesAgentCore", () => {
     ],
   ])("preserva os fallbacks de handoff", async (completion, reason) => {
     const core = new SalesAgentCore(vi.fn().mockResolvedValue(completion));
-    await expect(core.decide({ ctx: context, history: [], leadName: null })).resolves.toEqual({
-      kind: "handoff",
-      reason,
-    });
+    await expect(core.decide({ ctx: context, history: [], leadName: null })).resolves.toMatchObject(
+      {
+        kind: "handoff",
+        reason,
+        grounding_sources: ["catalog", "faq_knowledge", "commercial_rules", "coach_learnings"],
+      },
+    );
   });
 
   it("não contém acesso próprio a infraestrutura ou persistência", () => {

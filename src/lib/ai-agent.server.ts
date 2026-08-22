@@ -173,6 +173,7 @@ export function runSafetyLayer(decision: AgentDecision): AgentDecision {
       return {
         kind: "handoff",
         reason: `safety_block: ${reason}`,
+        grounding_sources: decision.grounding_sources,
       };
     }
   }
@@ -678,7 +679,10 @@ export async function runAgentTick(conversationId: string): Promise<{
       let evType = "handoff_human";
       if (reason.startsWith("safety_block")) evType = "safety_handoff";
       else if (reason.startsWith("gateway_")) evType = "gateway_timeout";
-      await logEvent(conv.company_id, conv.id, conv.lead_id, evType, { reason });
+      await logEvent(conv.company_id, conv.id, conv.lead_id, evType, {
+        reason,
+        grounding_sources: decision.grounding_sources ?? [],
+      });
       return { ok: true, action: "handoff", reason };
     }
 
@@ -710,6 +714,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         simulation_id: sent.simulationId,
         external_request_sent: false,
         suggested_products: decision.suggested_products ?? [],
+        grounding_sources: decision.grounding_sources ?? [],
       });
       return { ok: true, action: "simulated", reason: "environment_guard" };
     }
@@ -728,6 +733,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       message: decision.message.slice(0, 240),
       external_id: sent.externalId,
       suggested_products: decision.suggested_products ?? [],
+      grounding_sources: decision.grounding_sources ?? [],
     });
 
     return { ok: true, action: "replied" };

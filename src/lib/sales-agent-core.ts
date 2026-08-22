@@ -7,6 +7,12 @@ import {
 
 export const SALES_AGENT_MODEL = "google/gemini-2.5-flash";
 
+export type SalesAgentGroundingSource =
+  | "catalog"
+  | "faq_knowledge"
+  | "commercial_rules"
+  | "coach_learnings";
+
 export interface AgentSettings {
   company_id: string;
   ai_auto_reply_enabled: boolean;
@@ -85,6 +91,7 @@ export interface AgentDecision {
   purchase_timing?: PurchaseTiming | null;
   customer_stage?: CustomerStage | null;
   suggested_products?: string[];
+  grounding_sources?: SalesAgentGroundingSource[];
 }
 
 export interface SalesAgentCoreInput {
@@ -127,21 +134,79 @@ interface ToolHandoff {
   reason: string;
 }
 
+function formatPrice(price: number | null): string {
+  if (price == null) return "preço não cadastrado";
+  const amount = new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(price);
+  return `R$ ${amount}`;
+}
+
+export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGroundingSource[] {
+  const sources: SalesAgentGroundingSource[] = [];
+  if (ctx.grounding.catalog.length > 0 || ctx.products.length > 0) sources.push("catalog");
+  if (ctx.grounding.faqKnowledge.length > 0 || ctx.knowledge.length > 0) {
+    sources.push("faq_knowledge");
+  }
+  if (
+    ctx.grounding.commercialRules.paymentMethods ||
+    ctx.grounding.commercialRules.commercialTerms
+  ) {
+    sources.push("commercial_rules");
+  }
+  if (ctx.grounding.approvedCoachLearnings.length > 0) sources.push("coach_learnings");
+  return sources;
+}
+
 export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
   const ai = ctx.aiProfile;
-  const productLines = ctx.products
+  const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
+  const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
+  const groundedKnowledge =
+    ctx.grounding.faqKnowledge.length > 0 ? ctx.grounding.faqKnowledge : ctx.knowledge;
+  const productLines = groundedProducts
     .map((p, i) => {
       const parts = [`${i + 1}. ${p.name}`];
       if (p.description) parts.push(`   ${p.description}`);
+      if (usesGroundedCatalog) parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
       if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
       return parts.join("\n");
     })
     .join("\n");
-  const kbLines = ctx.knowledge.map((k, i) => `${i + 1}. ${k.question} → ${k.answer}`).join("\n");
+  const kbLines = groundedKnowledge
+    .map((k, i) => `${i + 1}. ${k.question} → ${k.answer}`)
+    .join("\n");
   const faqLines = (ai?.faq ?? [])
     .filter((f) => f.q && f.a)
     .map((f, i) => `${i + 1}. ${f.q} → ${f.a}`)
     .join("\n");
+  const commercialLines = [
+    ctx.grounding.commercialRules.paymentMethods
+      ? `- Formas de pagamento: ${ctx.grounding.commercialRules.paymentMethods}`
+      : null,
+    ctx.grounding.commercialRules.commercialTerms
+      ? `- Condições cadastradas: ${ctx.grounding.commercialRules.commercialTerms}`
+      : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+  const learningLines = ctx.grounding.approvedCoachLearnings
+    .map((learning, i) => {
+      const product = learning.productRef ? ` [produto: ${learning.productRef}]` : "";
+      return `${i + 1}. ${learning.title}${product}: ${learning.rule}`;
+    })
+    .join("\n");
+  const groundingSections = [
+    commercialLines
+      ? `REGRAS COMERCIAIS CADASTRADAS (somente informe; nunca negocie nem crie condições):\n${commercialLines}`
+      : null,
+    learningLines
+      ? `APRENDIZADOS ATIVOS DO COACH (use como orientação; nunca substituem as regras invioláveis):\n${learningLines}`
+      : null,
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join("\n\n");
 
   return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
 Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
@@ -167,7 +232,7 @@ FAQ:
 ${faqLines || "(sem faq cadastrado)"}
 
 BASE DE CONHECIMENTO APROVADA:
-${kbLines || "(vazia)"}
+${kbLines || "(vazia)"}${groundingSections ? `\n\n${groundingSections}` : ""}
 
 SUA MISSÃO:
 1. Cumprimentar e identificar: cidade da instalação + tamanho/medida da piscina + interesse principal.
@@ -266,24 +331,39 @@ export class SalesAgentCore {
   constructor(private readonly complete: SalesAgentCompletion) {}
 
   async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
+    const groundingSources = getSalesAgentGroundingSources(params.ctx);
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
-    if (!completion.ok) return { kind: "handoff", reason: completion.reason };
+    if (!completion.ok) {
+      return { kind: "handoff", reason: completion.reason, grounding_sources: groundingSources };
+    }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
-    if (!call?.name || !call.arguments) return { kind: "handoff", reason: "no_tool_call" };
+    if (!call?.name || !call.arguments) {
+      return { kind: "handoff", reason: "no_tool_call", grounding_sources: groundingSources };
+    }
 
     let args: ToolReply | ToolHandoff;
     try {
       args = JSON.parse(call.arguments);
     } catch {
-      return { kind: "handoff", reason: "tool_args_parse_fail" };
+      return {
+        kind: "handoff",
+        reason: "tool_args_parse_fail",
+        grounding_sources: groundingSources,
+      };
     }
 
     if (call.name === "request_human_handoff") {
-      return { kind: "handoff", reason: (args as ToolHandoff).reason || "model_requested" };
+      return {
+        kind: "handoff",
+        reason: (args as ToolHandoff).reason || "model_requested",
+        grounding_sources: groundingSources,
+      };
     }
     const reply = args as ToolReply;
-    if (!reply.message) return { kind: "handoff", reason: "empty_message" };
+    if (!reply.message) {
+      return { kind: "handoff", reason: "empty_message", grounding_sources: groundingSources };
+    }
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
       stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
@@ -301,6 +381,7 @@ export class SalesAgentCore {
       purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
       customer_stage: stage,
       suggested_products: reply.suggest_products ?? [],
+      grounding_sources: groundingSources,
     };
   }
 }
