@@ -1,0 +1,181 @@
+import { useState } from "react";
+import { Check, Loader2, MessageSquareText, ThumbsDown } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  createTrainingSession,
+  getTrainingSession,
+  reviewTrainingResponse,
+  sendTrainingMessage,
+  type TrainingMessage,
+} from "@/lib/sales-training.functions";
+
+export function SalesTrainingChat() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<TrainingMessage[]>([]);
+  const [message, setMessage] = useState("");
+  const [corrections, setCorrections] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  async function startSession() {
+    setBusy(true);
+    try {
+      const created = await createTrainingSession();
+      setSessionId(created.sessionId);
+      const session = await getTrainingSession({ data: { sessionId: created.sessionId } });
+      setMessages(session.messages);
+    } catch {
+      toast.error("Não foi possível iniciar o treinamento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send() {
+    if (!sessionId || !message.trim() || busy) return;
+    const leadText = message.trim();
+    setMessage("");
+    setBusy(true);
+    try {
+      await sendTrainingMessage({ data: { sessionId, message: leadText } });
+      const session = await getTrainingSession({ data: { sessionId } });
+      setMessages(session.messages);
+    } catch {
+      setMessage(leadText);
+      try {
+        const session = await getTrainingSession({ data: { sessionId } });
+        setMessages(session.messages);
+      } catch {
+        // Mantém o estado atual se a própria recarga falhar.
+      }
+      toast.error("Não foi possível gerar a resposta simulada.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function review(item: TrainingMessage, status: "approved" | "rejected" | "corrected") {
+    setBusy(true);
+    try {
+      const updated = await reviewTrainingResponse({
+        data: {
+          messageId: item.id,
+          status,
+          correctionText: status === "corrected" ? corrections[item.id]?.trim() || null : null,
+        },
+      });
+      setMessages((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    } catch {
+      toast.error(status === "corrected" ? "Informe a resposta corrigida." : "Falha ao avaliar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquareText className="h-5 w-5" /> Chat de Treinamento
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ambiente simulado. Não envia mensagens nem altera leads ou conversas reais.
+          </p>
+        </div>
+        <Button onClick={startSession} disabled={busy} variant={sessionId ? "outline" : "default"}>
+          {sessionId ? "Nova sessão" : "Iniciar sessão"}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!sessionId ? (
+          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            Inicie uma sessão para simular um cliente.
+          </div>
+        ) : (
+          <>
+            <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-lg border p-4">
+              {messages.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Envie a primeira mensagem.
+                </p>
+              )}
+              {messages.map((item) => (
+                <div
+                  key={item.id}
+                  className={`max-w-[85%] rounded-lg p-3 text-sm ${
+                    item.role === "lead" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{item.content}</p>
+                  {item.role === "lead" && item.generation_status === "pending" && (
+                    <p className="mt-2 text-xs opacity-80">Gerando resposta…</p>
+                  )}
+                  {item.role === "lead" && item.generation_status === "failed" && (
+                    <p className="mt-2 text-xs font-medium text-destructive-foreground">
+                      A geração falhou. Esta mensagem não recebeu resposta.
+                    </p>
+                  )}
+                  {item.role === "agent" && (
+                    <div className="mt-3 space-y-2 border-t pt-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => review(item, "approved")}
+                          disabled={busy}
+                        >
+                          <Check className="mr-1 h-3 w-3" /> Aprovar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => review(item, "rejected")}
+                          disabled={busy}
+                        >
+                          <ThumbsDown className="mr-1 h-3 w-3" /> Rejeitar
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={corrections[item.id] ?? item.correction_text ?? ""}
+                        onChange={(event) =>
+                          setCorrections((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Escreva a resposta correta"
+                        rows={2}
+                      />
+                      <Button size="sm" onClick={() => review(item, "corrected")} disabled={busy}>
+                        Salvar correção
+                      </Button>
+                      {item.review_status && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          Avaliação: {item.review_status}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Digite como se fosse o cliente..."
+                rows={2}
+              />
+              <Button onClick={send} disabled={busy || !message.trim()}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

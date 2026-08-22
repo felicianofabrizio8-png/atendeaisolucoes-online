@@ -21,6 +21,7 @@ import { AIPilotPanel } from "@/components/AIPilotPanel";
 import { AIAnalyticsDashboard } from "@/components/AIAnalyticsDashboard";
 import { AIFollowupPanel } from "@/components/AIFollowupPanel";
 import { WhatsappTemplatesPanel } from "@/components/WhatsappTemplatesPanel";
+import { SalesTrainingChat } from "@/components/ai/SalesTrainingChat";
 import { toast } from "sonner";
 
 
@@ -351,6 +352,7 @@ function ConfiguracoesIA() {
     { value: "followup", label: "Follow-up" },
     { value: "templates", label: "Templates" },
     { value: "automacao", label: "Automação" },
+    { value: "treinamento", label: "Treinamento" },
   ];
 
   return (
@@ -396,6 +398,7 @@ function ConfiguracoesIA() {
           <TabsTrigger value="automacao" className="shrink-0">
             <Bot className="h-3.5 w-3.5 mr-1" /> Automação
           </TabsTrigger>
+          <TabsTrigger value="treinamento" className="shrink-0">Treinamento</TabsTrigger>
         </TabsList>
 
 
@@ -817,6 +820,10 @@ function ConfiguracoesIA() {
               </Card>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="treinamento" className="space-y-4">
+          <SalesTrainingChat />
         </TabsContent>
       </Tabs>
     </div>
