@@ -13,7 +13,6 @@ import {
   detectObjections,
   detectReadyToClose,
   normalizeState,
-  normalizeTiming,
   computeLeadScore,
   temperatureFromScore,
   mergeObjections,
@@ -22,26 +21,21 @@ import {
   type PurchaseTiming,
   type Temperature,
 } from "./ai-qualifier.server";
+import {
+  SalesAgentCore,
+  type AgentContext,
+  type AgentDecision,
+  type AgentSettings,
+} from "./sales-agent-core";
+
+export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
 const DEBOUNCE_MS = 30_000;
 
 // ----------------------------------------------------------------------------
 // Tipos
 // ----------------------------------------------------------------------------
-
-export interface AgentSettings {
-  company_id: string;
-  ai_auto_reply_enabled: boolean;
-  ai_after_hours_only: boolean;
-  ai_initial_message: string | null;
-  ai_max_auto_replies: number;
-  ai_handoff_timeout_minutes: number;
-  ai_agent_name: string;
-  business_hours_start: string; // HH:MM:SS
-  business_hours_end: string;
-}
 
 export interface AgentConversation {
   id: string;
@@ -53,21 +47,6 @@ export interface AgentConversation {
   auto_reply_count: number;
   last_auto_reply_at: string | null;
   human_takeover_at: string | null;
-}
-
-export interface AgentDecision {
-  kind: "reply" | "handoff" | "skip";
-  message?: string;
-  reason?: string;
-  detected_city?: string | null;
-  detected_state?: string | null;
-  detected_pool_size?: string | null;
-  detected_intent?: string | null;
-  detected_interest?: string | null;
-  detected_budget?: string | null;
-  purchase_timing?: PurchaseTiming | null;
-  customer_stage?: CustomerStage | null;
-  suggested_products?: string[];
 }
 
 export type SkipReason =
@@ -203,30 +182,6 @@ export function runSafetyLayer(decision: AgentDecision): AgentDecision {
 // Context loader
 // ----------------------------------------------------------------------------
 
-export interface AgentContext {
-  settings: AgentSettings;
-  companyName: string;
-  aiProfile: {
-    tone: string;
-    description: string | null;
-    products: string | null;
-    payment_methods: string | null;
-    avg_lead_time: string | null;
-    region: string | null;
-    differentials: string | null;
-    faq: Array<{ q?: string; a?: string }>;
-  } | null;
-  products: Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    price: number | null;
-    images: string[];
-    notes: string | null;
-  }>;
-  knowledge: Array<{ question: string; answer: string; type: string }>;
-}
-
 export async function loadAgentContext(companyId: string): Promise<AgentContext | null> {
   const [{ data: settings }, { data: company }, { data: aiProfile }, { data: products }, { data: kb }] =
     await Promise.all([
@@ -281,79 +236,8 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
 }
 
 // ----------------------------------------------------------------------------
-// Prompt builder (curto, baseado em dados)
+// LLM gateway adapter (efeito externo mantido fora do SalesAgentCore)
 // ----------------------------------------------------------------------------
-
-function buildSystemPrompt(ctx: AgentContext): string {
-  const ai = ctx.aiProfile;
-  const productLines = ctx.products
-    .map((p, i) => {
-      const parts = [`${i + 1}. ${p.name}`];
-      if (p.description) parts.push(`   ${p.description}`);
-      if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
-      return parts.join("\n");
-    })
-    .join("\n");
-  const kbLines = ctx.knowledge.map((k, i) => `${i + 1}. ${k.question} → ${k.answer}`).join("\n");
-  const faqLines = (ai?.faq ?? [])
-    .filter((f) => f.q && f.a)
-    .map((f, i) => `${i + 1}. ${f.q} → ${f.a}`)
-    .join("\n");
-
-  return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
-Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
-
-REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
-- NUNCA negocie desconto, preço, parcelamento ou condição comercial.
-- NUNCA prometa prazo de instalação ou entrega.
-- NUNCA invente informação que não esteja no contexto abaixo.
-- NUNCA feche venda sozinho — apenas qualifique o lead.
-- Se o cliente pedir qualquer item acima, chame request_human_handoff.
-
-CONTEXTO DA EMPRESA:
-- Tom: ${ai?.tone ?? "comercial"}
-- Descrição: ${ai?.description ?? "—"}
-- Região atendida: ${ai?.region ?? "—"}
-- Diferenciais: ${ai?.differentials ?? "—"}
-- Pagamento (apenas mencionar formas, sem negociar): ${ai?.payment_methods ?? "—"}
-
-CATÁLOGO (use apenas estes produtos):
-${productLines || "(catálogo vazio)"}
-
-FAQ:
-${faqLines || "(sem faq cadastrado)"}
-
-BASE DE CONHECIMENTO APROVADA:
-${kbLines || "(vazia)"}
-
-SUA MISSÃO:
-1. Cumprimentar e identificar: cidade da instalação + tamanho/medida da piscina + interesse principal.
-2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
-3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
-4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
-
-Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
-}
-
-// ----------------------------------------------------------------------------
-// LLM call com tool-calling estruturado
-// ----------------------------------------------------------------------------
-
-interface ToolReply {
-  message: string;
-  detected_city?: string;
-  detected_state?: string;
-  detected_pool_size?: string;
-  detected_intent?: string;
-  detected_interest?: string;
-  detected_budget?: string;
-  purchase_timing?: string;
-  customer_stage?: string;
-  suggest_products?: string[];
-}
-interface ToolHandoff {
-  reason: string;
-}
 
 export async function runAgentTurn(params: {
   ctx: AgentContext;
@@ -363,136 +247,30 @@ export async function runAgentTurn(params: {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) return { kind: "handoff", reason: "missing_api_key" };
 
-  const systemPrompt = buildSystemPrompt(params.ctx);
-  const transcript = params.history
-    .slice(-20)
-    .map((m) => `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`)
-    .join("\n");
+  const core = new SalesAgentCore(async (payload) => {
+    let res: Response;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 20_000);
+      res = await fetch(GATEWAY_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+    } catch (e) {
+      console.error("[AGENT_GATEWAY_NETWORK]", e);
+      return { ok: false, reason: "gateway_network_fail" };
+    }
+    if (!res.ok) {
+      console.error("[AGENT_GATEWAY_HTTP]", res.status);
+      return { ok: false, reason: `gateway_http_${res.status}` };
+    }
+    return { ok: true, data: await res.json() };
+  });
 
-  const payload = {
-    model: MODEL,
-    messages: [
-      { role: "system", content: systemPrompt },
-      {
-        role: "user",
-        content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}\n\nResponda agora.`,
-      },
-    ],
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: "respond_to_customer",
-          description:
-            "Enviar mensagem ao cliente. Sempre que possível extraia também os campos de qualificação observados na conversa (cidade, estado, medida desejada, tipo de cliente, etc.).",
-          parameters: {
-            type: "object",
-            properties: {
-              message: { type: "string", description: "Texto enviado ao cliente (pt-BR, máx 4 frases)." },
-              detected_city: { type: "string", description: "Cidade da instalação." },
-              detected_state: { type: "string", description: "Estado/UF (ex.: SP, RJ)." },
-              detected_pool_size: { type: "string", description: "Medida/tamanho da piscina." },
-              detected_intent: {
-                type: "string",
-                description: "Intenção principal (informação, orçamento, instalação, etc.).",
-              },
-              detected_interest: {
-                type: "string",
-                description: "Interesse específico (piscina fibra, aquecimento, lona, manutenção).",
-              },
-              detected_budget: {
-                type: "string",
-                description: "Orçamento aproximado mencionado pelo cliente (ex.: 'até 20 mil').",
-              },
-              purchase_timing: {
-                type: "string",
-                enum: ["imediato", "30d", "60d", "90d+", "indefinido"],
-                description: "Quando o cliente pretende comprar.",
-              },
-              customer_stage: {
-                type: "string",
-                enum: ["curioso", "pesquisando", "pronto_para_comprar"],
-                description: "Em que estágio o cliente está.",
-              },
-              suggest_products: { type: "array", items: { type: "string" } },
-            },
-            required: ["message"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "request_human_handoff",
-          description: "Parar IA e marcar conversa para humano.",
-          parameters: {
-            type: "object",
-            properties: { reason: { type: "string" } },
-            required: ["reason"],
-            additionalProperties: false,
-          },
-        },
-      },
-    ],
-    tool_choice: "auto" as const,
-  };
-
-  let res: Response;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 20_000);
-    res = await fetch(GATEWAY_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
-  } catch (e) {
-    console.error("[AGENT_GATEWAY_NETWORK]", e);
-    return { kind: "handoff", reason: "gateway_network_fail" };
-  }
-  if (!res.ok) {
-    console.error("[AGENT_GATEWAY_HTTP]", res.status);
-    return { kind: "handoff", reason: `gateway_http_${res.status}` };
-  }
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> } }>;
-  };
-  const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
-  if (!call?.name || !call.arguments) return { kind: "handoff", reason: "no_tool_call" };
-
-  let args: ToolReply | ToolHandoff;
-  try {
-    args = JSON.parse(call.arguments);
-  } catch {
-    return { kind: "handoff", reason: "tool_args_parse_fail" };
-  }
-
-  if (call.name === "request_human_handoff") {
-    return { kind: "handoff", reason: (args as ToolHandoff).reason || "model_requested" };
-  }
-  const reply = args as ToolReply;
-  if (!reply.message) return { kind: "handoff", reason: "empty_message" };
-  const stageRaw = reply.customer_stage?.toLowerCase().trim();
-  const stage: CustomerStage | null =
-    stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
-      ? stageRaw
-      : null;
-  return {
-    kind: "reply",
-    message: reply.message,
-    detected_city: reply.detected_city ?? null,
-    detected_state: normalizeState(reply.detected_state) ?? reply.detected_state ?? null,
-    detected_pool_size: reply.detected_pool_size ?? null,
-    detected_intent: reply.detected_intent ?? null,
-    detected_interest: reply.detected_interest ?? null,
-    detected_budget: reply.detected_budget ?? null,
-    purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
-    customer_stage: stage,
-    suggested_products: reply.suggest_products ?? [],
-  };
+  return core.decide(params);
 }
 
 // ----------------------------------------------------------------------------
