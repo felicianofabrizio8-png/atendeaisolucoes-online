@@ -5,8 +5,6 @@ import {
   type PurchaseTiming,
 } from "./ai-qualifier.server";
 
-export const SALES_AGENT_MODEL = "google/gemini-2.5-flash";
-
 export type SalesAgentGroundingSource =
   | "catalog"
   | "faq_knowledge"
@@ -98,6 +96,7 @@ export interface SalesAgentCoreInput {
   ctx: AgentContext;
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
   leadName: string | null;
+  model: string;
 }
 
 export interface SalesAgentCompletionRequest {
@@ -255,7 +254,7 @@ export function buildSalesAgentCompletionRequest(
     .join("\n");
 
   return {
-    model: SALES_AGENT_MODEL,
+    model: params.model,
     messages: [
       { role: "system", content: buildSalesAgentSystemPrompt(params.ctx) },
       {

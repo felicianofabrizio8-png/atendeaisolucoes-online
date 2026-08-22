@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
-  SALES_AGENT_MODEL,
   SalesAgentCore,
   buildSalesAgentCompletionRequest,
   type AgentContext,
 } from "../sales-agent-core";
+
+const salesModel = "provider/sales-model";
 
 const context: AgentContext = {
   settings: {
@@ -82,9 +83,14 @@ describe("SalesAgentCore", () => {
       text: `mensagem-${index}`,
     }));
 
-    const request = buildSalesAgentCompletionRequest({ ctx: context, history, leadName: "Maria" });
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history,
+      leadName: "Maria",
+      model: salesModel,
+    });
 
-    expect(request.model).toBe(SALES_AGENT_MODEL);
+    expect(request.model).toBe(salesModel);
     expect(request.tool_choice).toBe("auto");
     expect(request.tools).toHaveLength(2);
     expect(request.tools).toEqual(
@@ -135,7 +141,12 @@ describe("SalesAgentCore", () => {
     });
     const core = new SalesAgentCore(complete);
 
-    const decision = await core.decide({ ctx: context, history: [], leadName: null });
+    const decision = await core.decide({
+      ctx: context,
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
 
     expect(decision).toMatchObject({
       kind: "reply",
@@ -150,14 +161,24 @@ describe("SalesAgentCore", () => {
   });
 
   it("inclui produto e preço do grounding no contexto do modelo", () => {
-    const request = buildSalesAgentCompletionRequest({ ctx: context, history: [], leadName: null });
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
 
     expect(request.messages[0].content).toContain("Piscina 6x3");
     expect(request.messages[0].content).toContain("Preço cadastrado: R$ 20.000,00");
   });
 
   it("inclui FAQ e regras comerciais sem liberar negociação", () => {
-    const request = buildSalesAgentCompletionRequest({ ctx: context, history: [], leadName: null });
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
 
     expect(request.messages[0].content).toContain("Atende interior? → Sim.");
     expect(request.messages[0].content).toContain("Formas de pagamento: Pix e cartão");
@@ -192,7 +213,12 @@ describe("SalesAgentCore", () => {
     });
     const core = new SalesAgentCore(complete);
 
-    const decision = await core.decide({ ctx: context, history: [], leadName: null });
+    const decision = await core.decide({
+      ctx: context,
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
     const request = complete.mock.calls[0][0];
 
     expect(request.messages[0].content).toContain(
@@ -219,6 +245,7 @@ describe("SalesAgentCore", () => {
       },
       history: [],
       leadName: null,
+      model: salesModel,
     });
 
     expect(request.messages[0].content).toContain("Piscina 6x3");
@@ -248,13 +275,13 @@ describe("SalesAgentCore", () => {
     ],
   ])("preserva os fallbacks de handoff", async (completion, reason) => {
     const core = new SalesAgentCore(vi.fn().mockResolvedValue(completion));
-    await expect(core.decide({ ctx: context, history: [], leadName: null })).resolves.toMatchObject(
-      {
-        kind: "handoff",
-        reason,
-        grounding_sources: ["catalog", "faq_knowledge", "commercial_rules", "coach_learnings"],
-      },
-    );
+    await expect(
+      core.decide({ ctx: context, history: [], leadName: null, model: salesModel }),
+    ).resolves.toMatchObject({
+      kind: "handoff",
+      reason,
+      grounding_sources: ["catalog", "faq_knowledge", "commercial_rules", "coach_learnings"],
+    });
   });
 
   it("não contém acesso próprio a infraestrutura ou persistência", () => {

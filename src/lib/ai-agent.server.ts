@@ -28,10 +28,10 @@ import {
   type AgentSettings,
 } from "./sales-agent-core";
 import { loadSalesAgentGrounding } from "./sales-agent-grounding.server";
+import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEBOUNCE_MS = 30_000;
 
 // ----------------------------------------------------------------------------
@@ -232,15 +232,16 @@ export async function runAgentTurn(params: {
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
   leadName: string | null;
 }): Promise<AgentDecision> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) return { kind: "handoff", reason: "missing_api_key" };
+  const resolved = resolveSalesAgentLlmConfig();
+  if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
+  const { endpoint, model, apiKey } = resolved.config;
 
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 20_000);
-      res = await fetch(GATEWAY_URL, {
+      res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -258,7 +259,7 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  return core.decide(params);
+  return core.decide({ ...params, model });
 }
 
 // ----------------------------------------------------------------------------
