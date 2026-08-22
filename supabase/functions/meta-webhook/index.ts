@@ -1,3 +1,7 @@
+ 
+
+
+
 // Edge Function: meta-webhook  (Instagram / Facebook / Messenger)
 // PUBLIC — verify_jwt=false (config.toml).
 //
@@ -637,91 +641,26 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
           : new Date().toISOString();
         const msgText = extractWaText(m);
 
-        // 1) lead
-        let leadId: string;
-        const { data: existingLead } = await sb
-          .from("leads")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("integration_id", integrationId)
-          .eq("external_id", waId)
-          .maybeSingle();
-
-        if (existingLead?.id) {
-          leadId = existingLead.id as string;
-          await sb.from("leads").update({ name: leadName }).eq("id", leadId);
-        } else {
-          const { data: byPhone } = await sb
-            .from("leads")
-            .select("id")
-            .eq("company_id", companyId)
-            .eq("phone", waId)
-            .maybeSingle();
-          if (byPhone?.id) {
-            leadId = byPhone.id as string;
-            await sb
-              .from("leads")
-              .update({ integration_id: integrationId, external_id: waId, name: leadName })
-              .eq("id", leadId);
-          } else {
-            const { data: created, error: leadErr } = await sb
-              .from("leads")
-              .insert({
-                company_id: companyId,
-                integration_id: integrationId,
-                external_id: waId,
-                name: leadName,
-                phone: waId,
-                channel: "whatsapp",
-                status: "novo",
-                tags: [],
-              })
-              .select("id")
-              .single();
-            if (leadErr) throw leadErr;
-            leadId = created!.id as string;
-          }
-        }
-
-        // 2) conversation
-        let conversationId: string;
-        const { data: existingConv } = await sb
-          .from("conversations")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("lead_id", leadId)
-          .eq("channel", "whatsapp")
-          .maybeSingle();
-        if (existingConv?.id) {
-          conversationId = existingConv.id as string;
-        } else {
-          const { data: newConv, error: convErr } = await sb
-            .from("conversations")
-            .insert({
-              company_id: companyId,
-              lead_id: leadId,
-              channel: "whatsapp",
-              last_message_at: at,
-              unread: 1,
-              awaiting_reply: true,
-            })
-            .select("id")
-            .single();
-          if (convErr) throw convErr;
-          conversationId = newConv!.id as string;
-        }
+        // 1-2) Identidade canônica + thread sob lock transacional. Os dois
+        // deployments do webhook passam a convergir para o mesmo grafo.
+        const { data: threadRows, error: threadErr } = await sb.rpc(
+          "resolve_whatsapp_thread",
+          {
+            _integration_id: integrationId,
+            _provider_external_id: waId,
+            _lead_name: leadName,
+          },
+        );
+        const thread = Array.isArray(threadRows) ? threadRows[0] : null;
+        if (threadErr || !thread) throw threadErr ?? new Error("whatsapp_thread_resolution_failed");
+        const leadId = thread.lead_id as string;
+        const conversationId = thread.conversation_id as string;
 
         // 3) message (idempotente)
         const externalId = m?.id ? String(m.id) : null;
+        let messageInserted = false;
         if (externalId) {
-          const { data: dup } = await sb
-            .from("messages")
-            .select("id")
-            .eq("integration_id", integrationId)
-            .eq("external_id", externalId)
-            .maybeSingle();
-          if (!dup?.id) {
-            // 3a) reply context (WhatsApp "responder a mensagem")
+          // 3a) reply context (WhatsApp "responder a mensagem")
             // Meta envia m.context = { from, id } quando o usuário responde
             // a uma mensagem. Buscamos a mensagem original para enriquecer
             // o metadata com um preview clicável.
@@ -759,21 +698,24 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
             const baseMeta: Record<string, unknown> = { wa_id: waId, raw: m };
             if (replyTo) baseMeta.reply_to = replyTo;
 
-            const { data: inserted } = await sb.from("messages").insert({
-              company_id: companyId,
-              conversation_id: conversationId,
-              role: "lead",
-              text: msgText,
-              at,
-              external_id: externalId,
-              integration_id: integrationId,
-              source: "whatsapp",
-              source_subtype: m?.type ?? "text",
-              source_metadata: baseMeta,
-            }).select("id").single();
+            const { data: recordedRows, error: recordErr } = await sb.rpc(
+              "record_whatsapp_message",
+              {
+                _integration_id: integrationId,
+                _conversation_id: conversationId,
+                _external_id: externalId,
+                _text: msgText,
+                _at: at,
+                _source_subtype: m?.type ?? "text",
+                _source_metadata: baseMeta,
+              },
+            );
+            const recorded = Array.isArray(recordedRows) ? recordedRows[0] : null;
+            if (recordErr || !recorded) throw recordErr ?? new Error("whatsapp_message_record_failed");
+            messageInserted = recorded.inserted === true;
 
             // 3b) media download (best-effort, must not break webhook)
-            const messageId = inserted?.id as string | undefined;
+            const messageId = recorded.inserted ? recorded.message_id as string : undefined;
             const mediaKind = m?.type as string | undefined;
             if (messageId && mediaKind && ["image", "audio", "video", "document", "sticker"].includes(mediaKind)) {
               try {
@@ -791,25 +733,20 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
                 console.error("META_WEBHOOK_MEDIA_UNCAUGHT", e instanceof Error ? e.message : String(e));
               }
             }
-          }
         }
 
-        // 4) atualiza conversa
-        await sb
-          .from("conversations")
-          .update({ last_message_at: at, awaiting_reply: true })
-          .eq("id", conversationId);
-
         // 5) espelha em whatsapp_messages (direction='in')
-        await sb.from("whatsapp_messages").insert({
-          company_id: companyId,
-          numero: waId,
-          mensagem: msgText,
-          direction: "in",
-          origem: "meta_cloud_api",
-          push_name: contact?.profile?.name ?? null,
-          whatsapp_jid: `${waId}@s.whatsapp.net`,
-        });
+        if (messageInserted) {
+          await sb.from("whatsapp_messages").insert({
+            company_id: companyId,
+            numero: waId,
+            mensagem: msgText,
+            direction: "in",
+            origem: "meta_cloud_api",
+            push_name: contact?.profile?.name ?? null,
+            whatsapp_jid: `${waId}@s.whatsapp.net`,
+          });
+        }
 
         console.log("META_WEBHOOK_WA_SAVED", { waId, conversationId, externalId });
       } catch (e) {
