@@ -17,7 +17,9 @@ function Index() {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <div className="max-w-2xl w-full space-y-8 text-center whitespace-pre-wrap">
-        Desfaça apenas a última alteração visual que colocou meu texto no Dashboard. Não altere mais nada.
+        Faça um plano completo e detalhado: Confirme a infraestrutura deste projeto: backend, Supabase ref, Lovable Cloud/Supabase integrado, ambientes disponíveis e como aplicar com segurança uma migration SQL já criada localmente.
+
+Apenas analise. Não altere nada.
       </div>
     </div>
   );
