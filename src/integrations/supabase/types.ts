@@ -5263,6 +5263,75 @@ export type Database = {
           },
         ]
       }
+      whatsapp_identities: {
+        Row: {
+          canonical_phone: string
+          company_id: string
+          conversation_id: string
+          created_at: string
+          integration_id: string | null
+          lead_id: string
+          provider_external_id: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_phone: string
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          integration_id?: string | null
+          lead_id: string
+          provider_external_id: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_phone?: string
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          integration_id?: string | null
+          lead_id?: string
+          provider_external_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_identities_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_identities_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_identities_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_identities_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_identities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           company_id: string
@@ -5525,6 +5594,7 @@ export type Database = {
           size_bytes: number
         }[]
       }
+      canonical_whatsapp_phone: { Args: { _value: string }; Returns: string }
       check_storage_quota: {
         Args: { _company_id: string; _new_size: number }
         Returns: boolean
@@ -5968,6 +6038,21 @@ export type Database = {
         }
         Returns: number
       }
+      record_whatsapp_message: {
+        Args: {
+          _at: string
+          _conversation_id: string
+          _external_id: string
+          _integration_id: string
+          _source_metadata?: Json
+          _source_subtype?: string
+          _text: string
+        }
+        Returns: {
+          inserted: boolean
+          message_id: string
+        }[]
+      }
       reject_coach_rule_version: {
         Args: { _reason: string; _version_id: string }
         Returns: undefined
@@ -5975,6 +6060,19 @@ export type Database = {
       replace_coach_rule: {
         Args: { _new_rule_id: string; _old_rule_id: string }
         Returns: undefined
+      }
+      resolve_whatsapp_thread: {
+        Args: {
+          _integration_id: string
+          _lead_name?: string
+          _provider_external_id: string
+        }
+        Returns: {
+          canonical_phone: string
+          company_id: string
+          conversation_id: string
+          lead_id: string
+        }[]
       }
       restore_coach_learning_version: {
         Args: {
