@@ -42,6 +42,37 @@ const context: AgentContext = {
     },
   ],
   knowledge: [{ question: "Atende interior?", answer: "Sim.", type: "faq" }],
+  grounding: {
+    catalog: [
+      {
+        id: "product-1",
+        name: "Piscina 6x3",
+        description: "Piscina de fibra",
+        price: 20_000,
+        images: [],
+        notes: "Filtro e bomba",
+      },
+    ],
+    faqKnowledge: [{ question: "Atende interior?", answer: "Sim.", type: "faq" }],
+    commercialRules: {
+      paymentMethods: "Pix e cartão",
+      commercialTerms: "Entrada de 50% conforme contrato",
+    },
+    approvedCoachLearnings: [
+      {
+        id: "learning-1",
+        category: "commercial",
+        title: "Não prometer desconto",
+        description: "Encaminhar negociação",
+        rule: "Solicitações de desconto exigem atendimento humano",
+        productRef: null,
+        positiveExample: null,
+        negativeExample: null,
+        priority: 90,
+        confidence: 0.9,
+      },
+    ],
+  },
 };
 
 describe("SalesAgentCore", () => {
@@ -116,6 +147,39 @@ describe("SalesAgentCore", () => {
       suggested_products: ["product-1"],
     });
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("recebe preços, regras e aprendizados sem alterar o prompt atual", () => {
+    expect(context.grounding.catalog[0]).toMatchObject({ name: "Piscina 6x3", price: 20_000 });
+    expect(context.grounding.commercialRules).toEqual({
+      paymentMethods: "Pix e cartão",
+      commercialTerms: "Entrada de 50% conforme contrato",
+    });
+    expect(context.grounding.approvedCoachLearnings[0]).toMatchObject({
+      id: "learning-1",
+      rule: "Solicitações de desconto exigem atendimento humano",
+    });
+
+    const withGrounding = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [],
+      leadName: null,
+    });
+    const withoutNewGrounding = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          catalog: [],
+          faqKnowledge: [],
+          commercialRules: { paymentMethods: null, commercialTerms: null },
+          approvedCoachLearnings: [],
+        },
+      },
+      history: [],
+      leadName: null,
+    });
+
+    expect(withGrounding).toEqual(withoutNewGrounding);
   });
 
   it.each([

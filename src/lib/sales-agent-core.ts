@@ -19,6 +19,34 @@ export interface AgentSettings {
   business_hours_end: string;
 }
 
+export interface SalesAgentGrounding {
+  catalog: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    price: number | null;
+    images: string[];
+    notes: string | null;
+  }>;
+  faqKnowledge: Array<{ question: string; answer: string; type: string }>;
+  commercialRules: {
+    paymentMethods: string | null;
+    commercialTerms: string | null;
+  };
+  approvedCoachLearnings: Array<{
+    id: string;
+    category: string;
+    title: string;
+    description: string;
+    rule: string;
+    productRef: string | null;
+    positiveExample: string | null;
+    negativeExample: string | null;
+    priority: number;
+    confidence: number;
+  }>;
+}
+
 export interface AgentContext {
   settings: AgentSettings;
   companyName: string;
@@ -41,6 +69,7 @@ export interface AgentContext {
     notes: string | null;
   }>;
   knowledge: Array<{ question: string; answer: string; type: string }>;
+  grounding: SalesAgentGrounding;
 }
 
 export interface AgentDecision {

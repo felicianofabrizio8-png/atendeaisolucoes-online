@@ -27,6 +27,7 @@ import {
   type AgentDecision,
   type AgentSettings,
 } from "./sales-agent-core";
+import { loadSalesAgentGrounding } from "./sales-agent-grounding.server";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
@@ -183,24 +184,12 @@ export function runSafetyLayer(decision: AgentDecision): AgentDecision {
 // ----------------------------------------------------------------------------
 
 export async function loadAgentContext(companyId: string): Promise<AgentContext | null> {
-  const [{ data: settings }, { data: company }, { data: aiProfile }, { data: products }, { data: kb }] =
+  const [{ data: settings }, { data: company }, { data: aiProfile }, grounding] =
     await Promise.all([
       supabaseAdmin.from("company_settings").select("*").eq("company_id", companyId).maybeSingle(),
       supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
       supabaseAdmin.from("ai_profiles").select("*").eq("company_id", companyId).maybeSingle(),
-      supabaseAdmin
-        .from("products")
-        .select("id, name, description, price, images, notes")
-        .eq("company_id", companyId)
-        .eq("active", true)
-        .limit(10),
-      supabaseAdmin
-        .from("ai_knowledge_proposals")
-        .select("question, answer, type")
-        .eq("company_id", companyId)
-        .eq("status", "approved")
-        .order("created_at", { ascending: false })
-        .limit(20),
+      loadSalesAgentGrounding(companyId),
     ]);
   if (!settings) return null;
   return {
@@ -220,18 +209,16 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
             : [],
         }
       : null,
-    products: (products ?? []).map((p) => {
-      const imgs = Array.isArray(p.images) ? (p.images as unknown[]).filter((x): x is string => typeof x === "string") : [];
-      return {
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: p.price as number | null,
-        images: imgs,
-        notes: p.notes,
-      };
-    }),
-    knowledge: kb ?? [],
+    products: grounding.catalog,
+    knowledge: grounding.faqKnowledge,
+    grounding: {
+      ...grounding,
+      commercialRules: {
+        ...grounding.commercialRules,
+        paymentMethods:
+          (aiProfile as { payment_methods?: string | null } | null)?.payment_methods ?? null,
+      },
+    },
   };
 }
 
