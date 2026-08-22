@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { SmartImage } from "@/components/SmartImage";
 import {
+  approveTrainingLearningCandidate,
+  createTrainingLearningCandidate,
   createTrainingSession,
   getTrainingSession,
   reviewTrainingResponse,
@@ -70,6 +72,25 @@ export function SalesTrainingChat() {
       setMessages((current) => current.map((row) => (row.id === updated.id ? updated : row)));
     } catch {
       toast.error(status === "corrected" ? "Informe a resposta corrigida." : "Falha ao avaliar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateLearning(item: TrainingMessage, action: "create" | "approve") {
+    setBusy(true);
+    try {
+      const updated = action === "create"
+        ? await createTrainingLearningCandidate({ data: { messageId: item.id } })
+        : await approveTrainingLearningCandidate({ data: { messageId: item.id } });
+      setMessages((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      toast.success(
+        action === "create"
+          ? "Candidato criado. Revise e aprove para ativar."
+          : "Aprendizado aprovado e ativado.",
+      );
+    } catch {
+      toast.error(action === "create" ? "Falha ao criar candidato." : "Falha ao aprovar aprendizado.");
     } finally {
       setBusy(false);
     }
@@ -174,6 +195,30 @@ export function SalesTrainingChat() {
                       <Button size="sm" onClick={() => review(item, "corrected")} disabled={busy}>
                         Salvar correção
                       </Button>
+                      {item.review_status === "corrected" && !item.promoted_learning_id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateLearning(item, "create")}
+                          disabled={busy}
+                        >
+                          Criar candidato a aprendizado
+                        </Button>
+                      )}
+                      {item.learning_promotion_status === "pending" && (
+                        <Button
+                          size="sm"
+                          onClick={() => updateLearning(item, "approve")}
+                          disabled={busy}
+                        >
+                          Aprovar aprendizado
+                        </Button>
+                      )}
+                      {item.learning_promotion_status === "approved" && (
+                        <span className="ml-2 text-xs text-emerald-600">
+                          Aprendizado ativo
+                        </span>
+                      )}
                       {item.review_status && (
                         <span className="ml-2 text-xs text-muted-foreground">
                           Avaliação: {item.review_status}

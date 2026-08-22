@@ -13,6 +13,7 @@ const ReviewInput = z.object({
   status: z.enum(["approved", "rejected", "corrected"]),
   correctionText: z.string().trim().min(1).max(4000).nullable().optional(),
 });
+const TrainingLearningInput = z.object({ messageId: z.string().uuid() });
 
 export interface TrainingMessage {
   id: string;
@@ -20,6 +21,8 @@ export interface TrainingMessage {
   content: string;
   review_status: "approved" | "rejected" | "corrected" | null;
   correction_text: string | null;
+  promoted_learning_id: string | null;
+  learning_promotion_status: "pending" | "approved" | null;
   generation_status: "pending" | "completed" | "failed";
   generation_error: "generation_failed" | null;
   decision: (AgentDecision & {
@@ -85,7 +88,7 @@ export const getTrainingSession = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("ai_training_messages" as never)
       .select(
-        "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
+        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .eq("session_id", input.sessionId)
       .eq("company_id", companyId)
@@ -166,7 +169,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           generation_status: "completed",
         } as never)
         .select(
-          "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
+          "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
         )
         .single();
       if (agentError || !saved) throw new Error("training_response_save_failed");
@@ -204,9 +207,43 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .eq("company_id", companyId)
       .eq("role", "agent")
       .select(
-        "id, role, content, review_status, correction_text, generation_status, generation_error, decision, created_at",
+        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .maybeSingle();
     if (error || !data) throw new Error("training_response_not_found");
     return data as unknown as TrainingMessage;
   });
+
+async function promoteTrainingLearning(
+  supabase: Parameters<typeof getTenant>[0],
+  userId: string,
+  messageId: string,
+  rpc: "create_training_learning_candidate" | "approve_training_learning_candidate",
+): Promise<TrainingMessage> {
+  const companyId = await getTenant(supabase, userId);
+  const { error } = await supabase.rpc(rpc as never, { _message_id: messageId } as never);
+  if (error) throw new Error(rpc === "create_training_learning_candidate" ? "training_learning_candidate_failed" : "training_learning_approval_failed");
+  const { data, error: loadError } = await supabase
+    .from("ai_training_messages" as never)
+    .select("id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at")
+    .eq("id", messageId)
+    .eq("company_id", companyId)
+    .eq("role", "agent")
+    .maybeSingle();
+  if (loadError || !data) throw new Error("training_response_not_found");
+  return data as unknown as TrainingMessage;
+}
+
+export const createTrainingLearningCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TrainingLearningInput.parse(input))
+  .handler(({ data, context }) =>
+    promoteTrainingLearning(context.supabase, context.userId, data.messageId, "create_training_learning_candidate"),
+  );
+
+export const approveTrainingLearningCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TrainingLearningInput.parse(input))
+  .handler(({ data, context }) =>
+    promoteTrainingLearning(context.supabase, context.userId, data.messageId, "approve_training_learning_candidate"),
+  );

@@ -16,6 +16,15 @@ const migrationSource = readFileSync(
   ),
   "utf8",
 );
+const promotionMigrationSource = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../supabase/migrations/20260822003000_promote_sales_training_corrections.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 
 describe("Sales training contract", () => {
   it("isola sessões e mensagens por empresa com RLS", () => {
@@ -65,6 +74,22 @@ describe("Sales training contract", () => {
     expect(() => normalizeTrainingReview({ status: "corrected", correctionText: " " })).toThrow(
       "correction_required",
     );
+  });
+
+  it("promove correção em duas etapas e só ativa após aprovação explícita", () => {
+    expect(promotionMigrationSource).toContain("create_training_learning_candidate");
+    expect(promotionMigrationSource).toContain("approve_training_learning_candidate");
+    expect(promotionMigrationSource).toContain("v_lead.content");
+    expect(promotionMigrationSource).toMatch(/version,[\s\S]+status[\s\S]+1,[\s\S]+'paused'/);
+    expect(promotionMigrationSource).toMatch(/SET status = 'active'/);
+    expect(functionsSource).toContain("createTrainingLearningCandidate");
+    expect(functionsSource).toContain("approveTrainingLearningCandidate");
+  });
+
+  it("isola promoção por empresa e exige administrador", () => {
+    expect(promotionMigrationSource).toContain("public.current_company_id()");
+    expect(promotionMigrationSource).toMatch(/public\.has_role\(\s*auth\.uid\(\),\s*v_company/);
+    expect(promotionMigrationSource).toMatch(/company_id = v_company/g);
   });
 
   it("não adiciona ferramentas ou ações comerciais", () => {

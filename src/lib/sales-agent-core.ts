@@ -91,6 +91,7 @@ export interface AgentDecision {
   suggested_products?: string[];
   product_image_ids?: string[];
   grounding_sources?: SalesAgentGroundingSource[];
+  learning_ids_used?: string[];
 }
 
 export interface SalesAgentCoreInput {
@@ -206,7 +207,13 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
   const learningLines = ctx.grounding.approvedCoachLearnings
     .map((learning, i) => {
       const product = learning.productRef ? ` [produto: ${learning.productRef}]` : "";
-      return `${i + 1}. ${learning.title}${product}: ${learning.rule}`;
+      const positive = learning.positiveExample
+        ? `\n   Exemplo recomendado: ${learning.positiveExample}`
+        : "";
+      const negative = learning.negativeExample
+        ? `\n   Evite responder assim: ${learning.negativeExample}`
+        : "";
+      return `${i + 1}. ${learning.title}${product}: ${learning.rule}${positive}${negative}`;
     })
     .join("\n");
   const groundingSections = [
@@ -355,14 +362,17 @@ export class SalesAgentCore {
 
   async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
     const groundingSources = getSalesAgentGroundingSources(params.ctx);
+    const learningIdsUsed = params.ctx.grounding.approvedCoachLearnings.map(
+      (learning) => learning.id,
+    );
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
     if (!completion.ok) {
-      return { kind: "handoff", reason: completion.reason, grounding_sources: groundingSources };
+      return { kind: "handoff", reason: completion.reason, grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
     }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
     if (!call?.name || !call.arguments) {
-      return { kind: "handoff", reason: "no_tool_call", grounding_sources: groundingSources };
+      return { kind: "handoff", reason: "no_tool_call", grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
     }
 
     let args: ToolReply | ToolHandoff;
@@ -373,6 +383,7 @@ export class SalesAgentCore {
         kind: "handoff",
         reason: "tool_args_parse_fail",
         grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
       };
     }
 
@@ -381,11 +392,12 @@ export class SalesAgentCore {
         kind: "handoff",
         reason: (args as ToolHandoff).reason || "model_requested",
         grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
       };
     }
     const reply = args as ToolReply;
     if (!reply.message) {
-      return { kind: "handoff", reason: "empty_message", grounding_sources: groundingSources };
+      return { kind: "handoff", reason: "empty_message", grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
     }
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
@@ -408,6 +420,7 @@ export class SalesAgentCore {
         ? (reply.send_product_images ?? [])
         : [],
       grounding_sources: groundingSources,
+      learning_ids_used: learningIdsUsed,
     };
   }
 }

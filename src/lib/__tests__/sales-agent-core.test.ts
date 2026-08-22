@@ -287,12 +287,37 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain(
       "Não prometer desconto: Solicitações de desconto exigem atendimento humano",
     );
+    expect(decision.learning_ids_used).toEqual(["learning-1"]);
     expect(decision.grounding_sources).toEqual([
       "catalog",
       "faq_knowledge",
       "commercial_rules",
       "coach_learnings",
     ]);
+  });
+
+  it("envia exemplos positivo e negativo do learning relevante ao modelo", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          approvedCoachLearnings: [{
+            ...context.grounding.approvedCoachLearnings[0],
+            positiveExample: "Claro! Temos opções de fibra. Qual tamanho procura?",
+            negativeExample: "Como posso ajudar?",
+          }],
+        },
+      },
+      history: [{ role: "lead", text: "Quero informações das piscinas" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(request.messages[0].content).toContain(
+      "Exemplo recomendado: Claro! Temos opções de fibra. Qual tamanho procura?",
+    );
+    expect(request.messages[0].content).toContain("Evite responder assim: Como posso ajudar?");
   });
 
   it("sem grounding estruturado mantém catálogo e conhecimento legados como fallback", () => {

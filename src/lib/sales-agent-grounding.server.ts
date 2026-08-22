@@ -1,9 +1,53 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { listActiveLearningsForGrounding } from "./coach-learnings/coach-learnings.repository";
+import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
+import { retrieveLearnings } from "./coach-learnings/retriever";
 import type { SalesAgentGrounding } from "./sales-agent-core";
 
+type AgentHistory = Array<{ role: "lead" | "agent" | "system"; text: string }>;
+
+function mapLearning(learning: Awaited<ReturnType<typeof listLearningCandidates>>[number]) {
+  return {
+    id: learning.id,
+    category: learning.category,
+    title: learning.title,
+    description: learning.description,
+    rule: learning.rule_structured,
+    productRef: learning.product_ref,
+    positiveExample: learning.positive_example,
+    negativeExample: learning.negative_example,
+    priority: learning.priority,
+    confidence: learning.confidence,
+  };
+}
+
+export async function loadRelevantSalesAgentLearnings(
+  companyId: string,
+  history: AgentHistory,
+): Promise<SalesAgentGrounding["approvedCoachLearnings"]> {
+  const candidates = await listLearningCandidates(supabaseAdmin, companyId, 50);
+  let lastLeadIndex = -1;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    if (history[index].role === "lead") {
+      lastLeadIndex = index;
+      break;
+    }
+  }
+  const currentMessage = lastLeadIndex >= 0 ? history[lastLeadIndex].text : null;
+  const recentMessages = history
+    .filter((_, index) => index !== lastLeadIndex)
+    .slice(-6);
+  const result = retrieveLearnings({
+    companyId,
+    currentMessage,
+    recentMessages,
+    candidates,
+    maxSelected: 5,
+  });
+  return result.selected.map(mapLearning);
+}
+
 export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
-  const [{ data: products }, { data: knowledge }, { data: commercial }, coachLearnings] =
+  const [{ data: products }, { data: knowledge }, { data: commercial }] =
     await Promise.all([
       supabaseAdmin
         .from("products")
@@ -23,7 +67,6 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
         .select("commercial_terms")
         .eq("company_id", companyId)
         .maybeSingle(),
-      listActiveLearningsForGrounding(supabaseAdmin, companyId, 5),
     ]);
 
   return {
@@ -44,17 +87,6 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,
     },
-    approvedCoachLearnings: coachLearnings.map((learning) => ({
-      id: learning.id,
-      category: learning.category,
-      title: learning.title,
-      description: learning.description,
-      rule: learning.rule_structured,
-      productRef: learning.product_ref,
-      positiveExample: learning.positive_example,
-      negativeExample: learning.negative_example,
-      priority: learning.priority,
-      confidence: learning.confidence,
-    })),
+    approvedCoachLearnings: [],
   };
 }

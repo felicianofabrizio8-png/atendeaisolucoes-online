@@ -27,7 +27,10 @@ import {
   type AgentDecision,
   type AgentSettings,
 } from "./sales-agent-core";
-import { loadSalesAgentGrounding } from "./sales-agent-grounding.server";
+import {
+  loadRelevantSalesAgentLearnings,
+  loadSalesAgentGrounding,
+} from "./sales-agent-grounding.server";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { detectFiberCatalogSize } from "./sales-agent-product-images";
@@ -273,6 +276,17 @@ export async function runAgentTurn(params: {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
   const { endpoint, model, apiKey } = resolved.config;
+  const approvedCoachLearnings = await loadRelevantSalesAgentLearnings(
+    params.ctx.settings.company_id,
+    params.history,
+  );
+  const contextualParams = {
+    ...params,
+    ctx: {
+      ...params.ctx,
+      grounding: { ...params.ctx.grounding, approvedCoachLearnings },
+    },
+  };
 
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;
@@ -303,7 +317,7 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  return core.decide({ ...params, model });
+  return core.decide({ ...contextualParams, model });
 }
 
 // ----------------------------------------------------------------------------
@@ -727,6 +741,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       await logEvent(conv.company_id, conv.id, conv.lead_id, evType, {
         reason,
         grounding_sources: decision.grounding_sources ?? [],
+        learning_ids_used: decision.learning_ids_used ?? [],
       });
       return { ok: true, action: "handoff", reason };
     }
@@ -760,6 +775,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         external_request_sent: false,
         suggested_products: decision.suggested_products ?? [],
         grounding_sources: decision.grounding_sources ?? [],
+        learning_ids_used: decision.learning_ids_used ?? [],
       });
       return { ok: true, action: "simulated", reason: "environment_guard" };
     }
@@ -809,6 +825,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       external_id: sent.externalId,
       suggested_products: decision.suggested_products ?? [],
       grounding_sources: decision.grounding_sources ?? [],
+      learning_ids_used: decision.learning_ids_used ?? [],
     });
 
     return { ok: true, action: "replied" };
