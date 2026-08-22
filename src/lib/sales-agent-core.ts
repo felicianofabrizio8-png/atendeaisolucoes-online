@@ -101,6 +101,7 @@ export interface SalesAgentCoreInput {
 
 export interface SalesAgentCompletionRequest {
   model: string;
+  reasoning_effort?: "none";
   messages: Array<{ role: "system" | "user"; content: string }>;
   tools: Array<Record<string, unknown>>;
   tool_choice: "auto";
@@ -255,6 +256,9 @@ export function buildSalesAgentCompletionRequest(
 
   return {
     model: params.model,
+    ...(params.model.split("/").at(-1) === "gpt-5.6-luna"
+      ? { reasoning_effort: "none" as const }
+      : {}),
     messages: [
       { role: "system", content: buildSalesAgentSystemPrompt(params.ctx) },
       {

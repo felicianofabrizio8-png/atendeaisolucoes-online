@@ -91,6 +91,7 @@ describe("SalesAgentCore", () => {
     });
 
     expect(request.model).toBe(salesModel);
+    expect(request).not.toHaveProperty("reasoning_effort");
     expect(request.tool_choice).toBe("auto");
     expect(request.tools).toHaveLength(2);
     expect(request.tools).toEqual(
@@ -111,6 +112,22 @@ describe("SalesAgentCore", () => {
     expect(request.messages[1].content).toContain("Cliente: mensagem-2");
     expect(request.messages[1].content).toContain("Atendente: mensagem-21");
   });
+
+  it.each(["gpt-5.6-luna", "openai/gpt-5.6-luna"])(
+    "desabilita reasoning para function tools no modelo %s",
+    (model) => {
+      const request = buildSalesAgentCompletionRequest({
+        ctx: context,
+        history: [],
+        leadName: null,
+        model,
+      });
+
+      expect(request.reasoning_effort).toBe("none");
+      expect(request.tool_choice).toBe("auto");
+      expect(request.tools).toHaveLength(2);
+    },
+  );
 
   it("mantém a decisão estruturada e a normalização atuais", async () => {
     const complete = vi.fn().mockResolvedValue({
