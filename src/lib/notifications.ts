@@ -90,6 +90,37 @@ function playBeep(volume = 0.18) {
   }
 }
 
+function playHandoffAlert() {
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  if (ctx.state === "suspended") void ctx.resume();
+  try {
+    const start = ctx.currentTime;
+    for (let index = 0; index < 3; index++) {
+      const at = start + index * 0.22;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(index === 1 ? 740 : 1040, at);
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(0.28, at + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.17);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(at);
+      osc.stop(at + 0.18);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function isHumanHandoffTransition(
+  previousStatus: string | null | undefined,
+  nextStatus: string | null | undefined,
+): boolean {
+  return previousStatus !== "aguardando_humano" && nextStatus === "aguardando_humano";
+}
+
 // ---------- preview por tipo ----------
 export function describeMessage(
   text: string | null | undefined,
@@ -167,6 +198,45 @@ export function notifyNewLeadMessage(input: NotifyInput) {
         }
         input.onOpen();
         n.close();
+      };
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export interface HumanHandoffNotifyInput {
+  conversationId: string;
+  leadName: string;
+  onOpen: () => void;
+}
+
+export function notifyHumanHandoff(input: HumanHandoffNotifyInput) {
+  const key = `handoff:${input.conversationId}:aguardando_humano`;
+  if (alreadySeen(key)) return;
+  rememberSeen(key);
+
+  const prefs = getNotificationPrefs();
+  if (prefs.soundEnabled) playHandoffAlert();
+
+  if (prefs.browserEnabled && typeof Notification !== "undefined") {
+    if (Notification.permission !== "granted") return;
+    try {
+      const notification = new Notification("Atendimento humano necessário", {
+        body: `${input.leadName} precisa de um atendente humano.`,
+        tag: `handoff-${input.conversationId}`,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        requireInteraction: true,
+      });
+      notification.onclick = () => {
+        try {
+          window.focus();
+        } catch {
+          // ignore
+        }
+        input.onOpen();
+        notification.close();
       };
     } catch {
       // ignore

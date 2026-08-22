@@ -3,8 +3,18 @@
 
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { subscribeNewLeadMessage, getLeadById, getConversationById } from "@/data/leadRepo";
-import { notifyNewLeadMessage, describeMessage, setupAudioUnlock } from "@/lib/notifications";
+import {
+  subscribeHumanHandoff,
+  subscribeNewLeadMessage,
+  getLeadById,
+  getConversationById,
+} from "@/data/leadRepo";
+import {
+  notifyHumanHandoff,
+  notifyNewLeadMessage,
+  describeMessage,
+  setupAudioUnlock,
+} from "@/lib/notifications";
 
 export function NotificationBridge() {
   const location = useLocation();
@@ -42,6 +52,25 @@ export function NotificationBridge() {
     });
     return unsub;
   }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeHumanHandoff((event) => {
+      const conversation = getConversationById(event.conversationId);
+      const lead = conversation ? getLeadById(conversation.leadId) : undefined;
+      const leadName = lead?.name ?? lead?.phone ?? lead?.handle ?? "Cliente";
+      notifyHumanHandoff({
+        conversationId: event.conversationId,
+        leadName,
+        onOpen: () => {
+          void navigate({
+            to: "/inbox/$conversationId",
+            params: { conversationId: event.conversationId },
+          });
+        },
+      });
+    });
+    return unsubscribe;
+  }, [navigate]);
 
   return null;
 }

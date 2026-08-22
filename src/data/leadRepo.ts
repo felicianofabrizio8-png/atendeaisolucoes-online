@@ -31,6 +31,7 @@ import {
   getMessages as idxGet,
 } from "@/data/message-index";
 import { normalizePhone } from "@/lib/phone";
+import { isHumanHandoffTransition } from "@/lib/notifications";
 
 
 // ---------- estado em memória sincronizado com o supabase ----------
@@ -110,6 +111,31 @@ export function subscribeNewLeadMessage(
   newLeadMessageListeners.add(cb);
   return () => {
     newLeadMessageListeners.delete(cb);
+  };
+}
+
+export type HumanHandoffEvent = {
+  conversationId: string;
+};
+
+const humanHandoffListeners = new Set<(event: HumanHandoffEvent) => void>();
+
+function emitHumanHandoff(event: HumanHandoffEvent) {
+  for (const listener of humanHandoffListeners) {
+    try {
+      listener(event);
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+export function subscribeHumanHandoff(
+  listener: (event: HumanHandoffEvent) => void,
+): () => void {
+  humanHandoffListeners.add(listener);
+  return () => {
+    humanHandoffListeners.delete(listener);
   };
 }
 
@@ -683,6 +709,7 @@ function subscribeRealtime(companyId: string) {
           return;
         }
         const row = payload.new as DbConversation;
+        const previous = remoteConversations.find((conversation) => conversation.id === row.id);
         const next = toConversation(row, currentSlaMinutes);
         const exists = remoteConversations.some((c) => c.id === next.id);
         remoteConversations = exists
@@ -692,6 +719,12 @@ function subscribeRealtime(companyId: string) {
           void recoverConversationGraph(companyId, next.id, generation);
         } else {
           flushPendingConversationMessages(next.id);
+        }
+        if (
+          payload.eventType === "UPDATE" &&
+          isHumanHandoffTransition(previous?.aiStatus, next.aiStatus)
+        ) {
+          emitHumanHandoff({ conversationId: next.id });
         }
         notify();
       },
