@@ -433,7 +433,6 @@ export function buildSalesAgentCompletionRequest(
                   type: "string",
                   enum: catalogProducts.map((product) => product.id),
                 },
-                maxItems: 5,
                 description: "IDs exatos de produtos existentes no catálogo fornecido.",
               },
               send_product_images: {

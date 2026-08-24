@@ -126,6 +126,43 @@ describe("SalesAgentCore", () => {
     expect(request.messages[1].content).toContain("Atendente: mensagem-21");
   });
 
+  it("permite sugerir todos os sete produtos reais de 6 metros e limita somente imagens", () => {
+    const catalog = Array.from({ length: 7 }, (_, index) => ({
+      id: `product-6m-${index + 1}`,
+      name: `Piscina 6 metros ${index + 1}`,
+      category: "Piscinas de fibra",
+      description: "Piscina com 6 metros de comprimento",
+      lengthM: 6,
+      price: 20_000 + index,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    }));
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        products: catalog,
+        grounding: { ...context.grounding, catalog },
+      },
+      history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const properties = (
+      request.tools[0] as {
+        function: {
+          parameters: {
+            properties: Record<string, { maxItems?: number; items?: { enum?: string[] } }>;
+          };
+        };
+      }
+    ).function.parameters.properties;
+
+    expect(properties.suggest_products).not.toHaveProperty("maxItems");
+    expect(properties.suggest_products.items?.enum).toEqual(catalog.map((product) => product.id));
+    expect(properties.send_product_images.maxItems).toBe(5);
+  });
+
   it.each(["gpt-5.6-luna", "openai/gpt-5.6-luna"])(
     "desabilita reasoning para function tools no modelo %s",
     (model) => {
