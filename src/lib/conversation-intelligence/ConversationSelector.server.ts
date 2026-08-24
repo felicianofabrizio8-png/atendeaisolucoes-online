@@ -10,6 +10,7 @@ interface SelectorOptions {
   channels?: string[]; // ex.: ['whatsapp','instagram']
   onlyTerminated?: boolean; // status fechado / perdido
   olderThanDays?: number;
+  offset?: number;
 }
 
 export async function selectConversations(opts: SelectorOptions): Promise<ConversationRaw[]> {
@@ -22,7 +23,8 @@ export async function selectConversations(opts: SelectorOptions): Promise<Conver
     )
     .eq("company_id", opts.companyId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(Math.min(opts.limit, 500));
+    .order("id", { ascending: false })
+    .range(opts.offset ?? 0, (opts.offset ?? 0) + Math.min(opts.limit, 500) - 1);
 
   if (opts.channels?.length) {
     q = q.in("channel", opts.channels as never);

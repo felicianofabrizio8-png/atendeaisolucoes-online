@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import type { ConversationRaw } from "@/lib/conversation-intelligence/ConversationIntelligenceTypes";
 import type { SimilarCandidate } from "../similarity";
 import {
+  consolidateHistoricalCandidates,
+  hasHistoricalSpecificFacts,
   isHistoricalConversationEligible,
   redactHistoricalPii,
   scoreHistoricalConversation,
   selectHistoricalConversations,
   shouldSkipHistoricalDuplicate,
 } from "../historical-learning";
+import type { CoachLearningDraft } from "../schema";
 
 const serviceSource = readFileSync(
   fileURLToPath(new URL("../historical-learning.service.ts", import.meta.url)),
@@ -48,6 +51,19 @@ function conversation(overrides: Partial<ConversationRaw> = {}): ConversationRaw
 }
 
 describe("historical learning V1", () => {
+  const draft = (overrides: Partial<CoachLearningDraft> = {}): CoachLearningDraft => ({
+    category: "closing",
+    product_ref: null,
+    title: "Confirmar o proximo passo",
+    description: "Conduzir o fechamento com clareza.",
+    rule_structured: "Confirmar interesse e combinar o proximo passo.",
+    positive_example: "Faz sentido avancarmos?",
+    negative_example: null,
+    priority: 60,
+    confidence: 0.8,
+    ...overrides,
+  });
+
   it("isola a selecao por company_id", () => {
     const other = conversation({ conversation_id: "conv-b", company_id: "company-b" });
     expect(selectHistoricalConversations([other, conversation()], "company-a")).toHaveLength(1);
@@ -108,21 +124,57 @@ describe("historical learning V1", () => {
     expect(shouldSkipHistoricalDuplicate([])).toBe(false);
   });
 
+  it("rejeita fatos de catalogo/cliente e aceita somente comportamento geral", () => {
+    expect(hasHistoricalSpecificFacts(draft())).toBe(false);
+    expect(hasHistoricalSpecificFacts(draft({ category: "pricing" }))).toBe(true);
+    expect(hasHistoricalSpecificFacts(draft({ product_ref: "sku-1" }))).toBe(true);
+    for (const fact of [
+      "Oferecer por R$ 199",
+      "Indicar a medida de 20 cm",
+      "Recomendar o modelo XPTO",
+      "Prometer prazo de entrega",
+      "Confirmar disponibilidade em estoque",
+      "O cliente precisa de uma unidade",
+    ]) {
+      expect(hasHistoricalSpecificFacts(draft({ rule_structured: fact }))).toBe(true);
+    }
+  });
+
+  it("consolida regras semelhantes e conta conversas como evidencias unicas", () => {
+    const candidates = consolidateHistoricalCandidates([
+      { draft: draft(), conversationId: "conv-1" },
+      {
+        draft: draft({
+          title: "Confirmar proximo passo",
+          rule_structured: "Confirmar o interesse e combinar proximo passo.",
+          confidence: 0.9,
+        }),
+        conversationId: "conv-2",
+      },
+      { draft: draft(), conversationId: "conv-1" },
+    ]);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].conversationIds).toEqual(["conv-1", "conv-2"]);
+    expect(candidates[0].draft.confidence).toBe(0.9);
+  });
+
   it("cria somente paused e exige admin; ativacao continua manual", () => {
     expect(serviceSource).toMatch(/status:\s*"paused"/g);
     expect(serviceSource).not.toMatch(/status:\s*"active"/);
     expect(serviceSource).toContain("source_conversation_id: null");
-    expect(serviceSource).toContain("conversation_id: conversation.conversation_id");
+    expect(serviceSource).toContain("conversation_id: conversationIds[0]");
     expect(functionsSource).toContain('if (!isAdmin) throw new Error("admin_required")');
     expect(adminRouteSource).toContain("updateCoachLearningFn");
     expect(adminRouteSource).toContain("status: draft.status as CoachLearningStatus");
   });
 
   it("separa falhas de IA e persistencia e expoe o resumo completo", () => {
-    expect(serviceSource).toContain('stage: "ai" | "persistence"');
     expect(serviceSource).toContain("aiFailed");
     expect(serviceSource).toContain("persistenceFailed");
     expect(serviceSource).toContain("aiFailureBreakdown");
+    expect(serviceSource).toContain("evidence_conversation_ids");
+    expect(serviceSource).toContain("processedConversationIds");
+    expect(serviceSource).toContain("offset: page * HISTORICAL_SCAN_LIMIT");
     for (const field of ["scanned", "analyzed", "created", "duplicatesSkipped", "failed"]) {
       expect(adminRouteSource).toContain(`analysisSummary.${field}`);
     }

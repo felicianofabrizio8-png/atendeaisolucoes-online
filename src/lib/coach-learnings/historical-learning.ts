@@ -1,10 +1,87 @@
 import type { ConversationRaw } from "@/lib/conversation-intelligence/ConversationIntelligenceTypes";
 import type { SimilarCandidate } from "./similarity";
+import type { CoachLearningDraft } from "./schema";
 
 export const HISTORICAL_SCAN_LIMIT = 30;
-export const HISTORICAL_ANALYSIS_LIMIT = 5;
+export const HISTORICAL_MAX_PAGES = 5;
+export const HISTORICAL_ANALYSIS_LIMIT = 25;
 export const HISTORICAL_CANDIDATE_LIMIT = 3;
 export const HISTORICAL_PROMPT_VERSION = "coach-history-v1@2026-08-24";
+
+const SPECIFIC_FACT_PATTERNS = [
+  /(?:r\$|reais?|centavos?|pre[cç]o|valor|desconto|parcel(?:a|amento))/iu,
+  /\b\d+(?:[.,]\d+)?\s*(?:mm|cm|m|km|g|kg|ml|l|w|v|gb|tb|polegadas?)\b/iu,
+  /\b(?:modelo|sku|c[oó]digo|refer[eê]ncia|produto|item)\b/iu,
+  /\b(?:prazo|dias? [uú]teis|entrega|previs[aã]o|data)\b/iu,
+  /\b(?:estoque|dispon[ií]vel|disponibilidade|indispon[ií]vel|pronta entrega)\b/iu,
+  /\b(?:cliente|comprador|empresa)\s+(?:disse|tem|possui|precisa|quer|solicitou|informou)\b/iu,
+  /\b\d{2,}\b/u,
+] as const;
+
+export function hasHistoricalSpecificFacts(draft: CoachLearningDraft): boolean {
+  if (
+    draft.product_ref ||
+    draft.category === "pricing" ||
+    draft.category === "product_positioning"
+  ) {
+    return true;
+  }
+  const content = [
+    draft.title,
+    draft.description,
+    draft.rule_structured,
+    draft.positive_example,
+    draft.negative_example,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return SPECIFIC_FACT_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function canonicalTokens(draft: CoachLearningDraft): Set<string> {
+  const stop = new Set(["para", "com", "uma", "que", "das", "dos", "por", "sem", "como"]);
+  return new Set(
+    `${draft.title} ${draft.rule_structured}`
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .match(/[a-z]{3,}/g)
+      ?.filter((token) => !stop.has(token)) ?? [],
+  );
+}
+
+export function areHistoricalDraftsSimilar(a: CoachLearningDraft, b: CoachLearningDraft): boolean {
+  if (a.category !== b.category) return false;
+  const left = canonicalTokens(a);
+  const right = canonicalTokens(b);
+  const intersection = [...left].filter((token) => right.has(token)).length;
+  const union = new Set([...left, ...right]).size;
+  return union > 0 && intersection / union >= 0.55;
+}
+
+export interface HistoricalCanonicalCandidate {
+  draft: CoachLearningDraft;
+  conversationIds: string[];
+}
+
+export function consolidateHistoricalCandidates(
+  extracted: Array<{ draft: CoachLearningDraft; conversationId: string }>,
+): HistoricalCanonicalCandidate[] {
+  const canonical: HistoricalCanonicalCandidate[] = [];
+  for (const item of extracted) {
+    const match = canonical.find((candidate) =>
+      areHistoricalDraftsSimilar(candidate.draft, item.draft),
+    );
+    if (match) {
+      if (!match.conversationIds.includes(item.conversationId))
+        match.conversationIds.push(item.conversationId);
+      if (item.draft.confidence > match.draft.confidence) match.draft = item.draft;
+    } else {
+      canonical.push({ draft: item.draft, conversationIds: [item.conversationId] });
+    }
+  }
+  return canonical;
+}
 
 export function redactHistoricalPii(value: string): string {
   return value

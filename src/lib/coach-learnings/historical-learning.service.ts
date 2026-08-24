@@ -9,10 +9,13 @@ import {
 } from "./historical-learning-extractor.server";
 import {
   buildRedactedHistoricalContext,
+  consolidateHistoricalCandidates,
   HISTORICAL_ANALYSIS_LIMIT,
   HISTORICAL_CANDIDATE_LIMIT,
+  HISTORICAL_MAX_PAGES,
   HISTORICAL_PROMPT_VERSION,
   HISTORICAL_SCAN_LIMIT,
+  hasHistoricalSpecificFacts,
   redactHistoricalDraft,
   selectHistoricalConversations,
   shouldSkipHistoricalDuplicate,
@@ -25,6 +28,9 @@ export interface HistoricalLearningRunResult {
   analyzed: number;
   created: number;
   duplicatesSkipped: number;
+  alreadyProcessed: number;
+  rejectedSpecific: number;
+  consolidated: number;
   failed: number;
   aiFailed: number;
   persistenceFailed: number;
@@ -36,18 +42,14 @@ export async function analyzeHistoricalLearnings(args: {
   companyId: string;
   userId: string;
 }): Promise<HistoricalLearningRunResult> {
-  const raw = await selectConversations({
-    companyId: args.companyId,
-    limit: HISTORICAL_SCAN_LIMIT,
-    onlyTerminated: false,
-    olderThanDays: 2,
-  });
-  const selected = selectHistoricalConversations(raw, args.companyId);
   const result: HistoricalLearningRunResult = {
-    scanned: raw.length,
+    scanned: 0,
     analyzed: 0,
     created: 0,
     duplicatesSkipped: 0,
+    alreadyProcessed: 0,
+    rejectedSpecific: 0,
+    consolidated: 0,
     failed: 0,
     aiFailed: 0,
     persistenceFailed: 0,
@@ -63,10 +65,59 @@ export async function analyzeHistoricalLearnings(args: {
   };
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+  const { data: historicalVersions, error: historyError } = await supabaseAdmin
+    .from("coach_learning_versions" as never)
+    .select("metadata")
+    .eq("company_id", args.companyId)
+    .eq("origin", "system")
+    .eq("prompt_version", HISTORICAL_PROMPT_VERSION)
+    .limit(10_000);
+  if (historyError) throw historyError;
+  const processedConversationIds = new Set<string>();
+  for (const row of (historicalVersions ?? []) as Array<{ metadata?: Record<string, unknown> }>) {
+    const metadata = row.metadata ?? {};
+    const ids = Array.isArray(metadata.evidence_conversation_ids)
+      ? metadata.evidence_conversation_ids
+      : [metadata.conversation_id];
+    for (const id of ids) if (typeof id === "string") processedConversationIds.add(id);
+  }
+
+  const selected = [] as Awaited<ReturnType<typeof selectConversations>>;
+  for (
+    let page = 0;
+    page < HISTORICAL_MAX_PAGES && selected.length < HISTORICAL_ANALYSIS_LIMIT;
+    page += 1
+  ) {
+    const raw = await selectConversations({
+      companyId: args.companyId,
+      limit: HISTORICAL_SCAN_LIMIT,
+      offset: page * HISTORICAL_SCAN_LIMIT,
+      onlyTerminated: false,
+      olderThanDays: 2,
+    });
+    result.scanned += raw.length;
+    if (raw.length === 0) break;
+    const fresh = raw.filter((conversation) => {
+      if (!processedConversationIds.has(conversation.conversation_id)) return true;
+      result.alreadyProcessed += 1;
+      return false;
+    });
+    selected.push(
+      ...selectHistoricalConversations(
+        fresh,
+        args.companyId,
+        HISTORICAL_ANALYSIS_LIMIT - selected.length,
+      ),
+    );
+    if (raw.length < HISTORICAL_SCAN_LIMIT) break;
+  }
+
+  const extractedCandidates: Array<{
+    draft: Awaited<ReturnType<typeof extractHistoricalLearningDraft>>["draft"];
+    conversationId: string;
+  }> = [];
   for (const conversation of selected.slice(0, HISTORICAL_ANALYSIS_LIMIT)) {
-    if (result.created >= HISTORICAL_CANDIDATE_LIMIT) break;
     result.analyzed += 1;
-    let stage: "ai" | "persistence" = "ai";
     try {
       const context = buildRedactedHistoricalContext(conversation);
       const extracted = await extractHistoricalLearningDraft({
@@ -74,7 +125,28 @@ export async function analyzeHistoricalLearnings(args: {
         userExplanation: context,
       });
       const draft = redactHistoricalDraft(extracted.draft);
-      stage = "persistence";
+      if (hasHistoricalSpecificFacts(draft)) {
+        result.rejectedSpecific += 1;
+        continue;
+      }
+      extractedCandidates.push({ draft, conversationId: conversation.conversation_id });
+    } catch (error) {
+      result.failed += 1;
+      result.aiFailed += 1;
+      const kind = error instanceof HistoricalLearningAiError ? error.kind : "http";
+      result.aiFailureBreakdown[kind] += 1;
+      console.warn("[historical-learning] ai_failure", {
+        kind,
+        status: error instanceof HistoricalLearningAiError ? error.status : null,
+      });
+    }
+  }
+
+  const canonicalCandidates = consolidateHistoricalCandidates(extractedCandidates);
+  result.consolidated = extractedCandidates.length - canonicalCandidates.length;
+  for (const candidate of canonicalCandidates.slice(0, HISTORICAL_CANDIDATE_LIMIT)) {
+    const { draft, conversationIds } = candidate;
+    try {
       const similar = await findSimilarCoachLearning(args.supabase, {
         category: draft.category,
         title: draft.title,
@@ -140,26 +212,16 @@ export async function analyzeHistoricalLearnings(args: {
           prompt_version: HISTORICAL_PROMPT_VERSION,
           metadata: {
             source: "historical_conversation",
-            conversation_id: conversation.conversation_id,
-            lead_status: conversation.lead_status,
-            quote_count: conversation.quote_count,
+            conversation_id: conversationIds[0],
+            evidence_conversation_ids: conversationIds,
+            evidence_count: conversationIds.length,
           },
         } as never);
       if (versionError) throw versionError;
       result.created += 1;
     } catch (error) {
       result.failed += 1;
-      if (stage === "ai") {
-        result.aiFailed += 1;
-        const kind = error instanceof HistoricalLearningAiError ? error.kind : "http";
-        result.aiFailureBreakdown[kind] += 1;
-        console.warn("[historical-learning] ai_failure", {
-          kind,
-          status: error instanceof HistoricalLearningAiError ? error.status : null,
-        });
-      } else {
-        result.persistenceFailed += 1;
-      }
+      result.persistenceFailed += 1;
     }
   }
 

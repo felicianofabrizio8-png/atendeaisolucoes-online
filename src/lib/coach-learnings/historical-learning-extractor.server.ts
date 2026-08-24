@@ -21,7 +21,7 @@ export class HistoricalLearningAiError extends Error {
   }
 }
 
-const SYSTEM_PROMPT = `Voce analisa uma conversa comercial real e extrai um aprendizado reutilizavel.
+const SYSTEM_PROMPT = `Voce analisa uma conversa comercial real e extrai SOMENTE comportamento comercial geral e reutilizavel.
 Retorne somente JSON valido com este formato:
 {
   "category": "objection" | "product_positioning" | "pricing" | "qualification" | "closing" | "followup" | "tone" | "process" | "other",
@@ -34,8 +34,10 @@ Retorne somente JSON valido com este formato:
   "priority": number,
   "confidence": number
 }
-Generalize o comportamento; nao copie dados pessoais, nomes, telefones, emails, documentos ou links.
-Nao invente preco, prazo, produto, desconto ou resultado que nao esteja no contexto.`;
+Use sempre product_ref null. Nao extraia nem mencione preco, medida, modelo, produto, prazo,
+disponibilidade, estoque ou qualquer fato especifico do cliente, mesmo que conste no contexto.
+Se a conversa depender desses fatos, generalize apenas a tecnica de comunicacao, qualificacao,
+tratamento de objecao, fechamento, follow-up, tom ou processo. Nao copie dados pessoais.`;
 
 function parseStructuredContent(content: unknown): unknown {
   if (typeof content !== "string" || !content.trim()) {
