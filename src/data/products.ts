@@ -9,6 +9,7 @@
 // reflete mudanças vindas de outras sessões.
 
 import { supabase } from "@/integrations/supabase/client";
+import type { ProductSpecifications, ProductVariant } from "@/lib/product-catalog-fields";
 
 export type ProductCategory =
   | "Piscinas de fibra"
@@ -32,14 +33,23 @@ export const PRODUCT_CATEGORIES: ProductCategory[] = [
 export interface Product {
   id: string;
   name: string;
+  model?: string | null;
+  sku?: string | null;
   category: ProductCategory;
   description?: string;
+  lengthM?: number | null;
+  widthM?: number | null;
+  depthM?: number | null;
+  capacityL?: number | null;
+  shape?: string | null;
+  specifications?: ProductSpecifications;
+  includedItems?: string[];
+  variants?: ProductVariant[];
   price: number;
   promoPrice?: number;
   notes?: string;
   images?: string[];
 }
-
 
 const STORAGE_KEY = "atendeai.products.v1";
 
@@ -184,18 +194,34 @@ function genId(): string {
 }
 
 // ---------- mappers ----------
-type DbProduct = {
+export type DbProduct = {
   id: string;
   name: string;
+  model?: string | null;
+  sku?: string | null;
   category: string | null;
   description: string | null;
+  length_m?: number | string | null;
+  width_m?: number | string | null;
+  depth_m?: number | string | null;
+  capacity_l?: number | string | null;
+  shape?: string | null;
+  specifications?: unknown;
+  included_items?: unknown;
+  variants?: unknown;
   price: number | string | null;
   promo_price: number | string | null;
   notes: string | null;
   images?: unknown;
 };
 
-function toProduct(r: DbProduct): Product {
+function optionalNumber(value: number | string | null | undefined): number | undefined {
+  if (value == null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function toProduct(r: DbProduct): Product {
   const cat = (r.category as ProductCategory) ?? PRODUCT_CATEGORIES[0];
   const images = Array.isArray(r.images)
     ? (r.images.filter((x) => typeof x === "string") as string[])
@@ -203,8 +229,28 @@ function toProduct(r: DbProduct): Product {
   return {
     id: r.id,
     name: r.name,
+    model: r.model?.trim() || undefined,
+    sku: r.sku?.trim() || undefined,
     category: PRODUCT_CATEGORIES.includes(cat) ? cat : PRODUCT_CATEGORIES[0],
     description: r.description ?? undefined,
+    lengthM: optionalNumber(r.length_m),
+    widthM: optionalNumber(r.width_m),
+    depthM: optionalNumber(r.depth_m),
+    capacityL: optionalNumber(r.capacity_l),
+    shape: r.shape?.trim() || undefined,
+    specifications:
+      r.specifications && typeof r.specifications === "object" && !Array.isArray(r.specifications)
+        ? (r.specifications as ProductSpecifications)
+        : {},
+    includedItems: Array.isArray(r.included_items)
+      ? r.included_items.filter((item): item is string => typeof item === "string")
+      : [],
+    variants: Array.isArray(r.variants)
+      ? r.variants.filter(
+          (item): item is ProductVariant =>
+            Boolean(item) && typeof item === "object" && !Array.isArray(item),
+        )
+      : [],
     price: r.price != null ? Number(r.price) : 0,
     promoPrice: r.promo_price != null ? Number(r.promo_price) : undefined,
     notes: r.notes ?? undefined,
@@ -212,6 +258,30 @@ function toProduct(r: DbProduct): Product {
   };
 }
 
+const PRODUCT_SELECT =
+  "id,name,model,sku,category,description,length_m,width_m,depth_m,capacity_l,shape,specifications,included_items,variants,price,promo_price,notes,images";
+
+export function toDbProductFields(input: Omit<Product, "id">) {
+  return {
+    name: input.name,
+    model: input.model ?? null,
+    sku: input.sku ?? null,
+    category: input.category,
+    description: input.description ?? null,
+    length_m: input.lengthM ?? null,
+    width_m: input.widthM ?? null,
+    depth_m: input.depthM ?? null,
+    capacity_l: input.capacityL ?? null,
+    shape: input.shape ?? null,
+    specifications: input.specifications ?? {},
+    included_items: input.includedItems ?? [],
+    variants: input.variants ?? [],
+    price: input.price,
+    promo_price: input.promoPrice ?? null,
+    notes: input.notes ?? null,
+    images: input.images ?? [],
+  };
+}
 
 // ---------- modo ----------
 export function getProductsMode(): Mode {
@@ -276,7 +346,7 @@ export async function loadProductsRemote(cid: string) {
   mode = "remote";
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,category,description,price,promo_price,notes,images")
+    .select(PRODUCT_SELECT)
 
     .eq("company_id", cid)
     .eq("active", true)
@@ -298,15 +368,9 @@ export async function createProduct(input: Omit<Product, "id">): Promise<Product
       .from("products")
       .insert({
         company_id: companyId,
-        name: input.name,
-        category: input.category,
-        description: input.description ?? null,
-        price: input.price,
-        promo_price: input.promoPrice ?? null,
-        notes: input.notes ?? null,
-        images: input.images ?? [],
+        ...toDbProductFields(input),
       })
-      .select("id,name,category,description,price,promo_price,notes,images")
+      .select(PRODUCT_SELECT)
       .single();
 
     if (error) throw error;
@@ -333,16 +397,36 @@ export async function updateProduct(
   if (mode === "remote" && companyId) {
     const dbPatch: {
       name?: string;
+      model?: string | null;
+      sku?: string | null;
       category?: string | null;
       description?: string | null;
+      length_m?: number | null;
+      width_m?: number | null;
+      depth_m?: number | null;
+      capacity_l?: number | null;
+      shape?: string | null;
+      specifications?: ProductSpecifications;
+      included_items?: string[];
+      variants?: ProductVariant[];
       price?: number;
       promo_price?: number | null;
       notes?: string | null;
       images?: string[];
     } = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.model !== undefined) dbPatch.model = patch.model ?? null;
+    if (patch.sku !== undefined) dbPatch.sku = patch.sku ?? null;
     if (patch.category !== undefined) dbPatch.category = patch.category;
     if (patch.description !== undefined) dbPatch.description = patch.description ?? null;
+    if (patch.lengthM !== undefined) dbPatch.length_m = patch.lengthM ?? null;
+    if (patch.widthM !== undefined) dbPatch.width_m = patch.widthM ?? null;
+    if (patch.depthM !== undefined) dbPatch.depth_m = patch.depthM ?? null;
+    if (patch.capacityL !== undefined) dbPatch.capacity_l = patch.capacityL ?? null;
+    if (patch.shape !== undefined) dbPatch.shape = patch.shape ?? null;
+    if (patch.specifications !== undefined) dbPatch.specifications = patch.specifications ?? {};
+    if (patch.includedItems !== undefined) dbPatch.included_items = patch.includedItems ?? [];
+    if (patch.variants !== undefined) dbPatch.variants = patch.variants ?? [];
     if (patch.price !== undefined) dbPatch.price = patch.price;
     if (patch.promoPrice !== undefined) dbPatch.promo_price = patch.promoPrice ?? null;
     if (patch.notes !== undefined) dbPatch.notes = patch.notes ?? null;
@@ -351,7 +435,7 @@ export async function updateProduct(
       .from("products")
       .update(dbPatch)
       .eq("id", id)
-      .select("id,name,category,description,price,promo_price,notes,images")
+      .select(PRODUCT_SELECT)
       .single();
 
     if (error) throw error;

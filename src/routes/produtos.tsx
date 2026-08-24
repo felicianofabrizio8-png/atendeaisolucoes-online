@@ -37,7 +37,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/SmartImage";
 import { motion } from "framer-motion";
-
+import {
+  parseIncludedItems,
+  parseOptionalCatalogNumber,
+  parseSpecifications,
+  parseVariants,
+} from "@/lib/product-catalog-fields";
 
 export const Route = createFileRoute("/produtos")({
   // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.
@@ -59,7 +64,6 @@ function useProducts(): Product[] {
 // Filtro compartilhado com a Biblioteca de Produtos do chat — ver
 // `@/lib/product-search`. Alterações devem ser feitas lá para manter as
 // duas superfícies em sincronia.
-
 
 function ProductsPage() {
   const navigate = useNavigate();
@@ -136,9 +140,7 @@ function ProductsPage() {
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm font-semibold">Nenhum produto cadastrado</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Toque em "+" para começar.
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Toque em "+" para começar.</p>
           </div>
         )}
 
@@ -169,8 +171,18 @@ function ProductsPage() {
                   onDuplicate={() => {
                     void createProduct({
                       name: `${p.name} (cópia)`,
+                      model: p.model,
+                      sku: undefined,
                       category: p.category,
                       description: p.description,
+                      lengthM: p.lengthM,
+                      widthM: p.widthM,
+                      depthM: p.depthM,
+                      capacityL: p.capacityL,
+                      shape: p.shape,
+                      specifications: p.specifications,
+                      includedItems: p.includedItems,
+                      variants: p.variants,
                       price: p.price,
                       promoPrice: p.promoPrice,
                       notes: p.notes,
@@ -188,7 +200,6 @@ function ProductsPage() {
             </div>
           </section>
         ))}
-
 
         {!query.trim() && products.length > 0 && (
           <div className="pt-2">
@@ -251,7 +262,15 @@ interface ProductCardProps {
   onQuote: () => void;
 }
 
-function ProductCard({ product, query, index, onEdit, onDelete, onDuplicate, onQuote }: ProductCardProps) {
+function ProductCard({
+  product,
+  query,
+  index,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onQuote,
+}: ProductCardProps) {
   const hasPromo = product.promoPrice && product.promoPrice < product.price;
   const cover = product.images?.[0];
   const displayPrice = hasPromo ? product.promoPrice! : product.price;
@@ -358,7 +377,8 @@ function CardIconButton({
       }}
       className={cn(
         "h-8 w-8 inline-flex items-center justify-center rounded-full bg-background/95 backdrop-blur border border-border/60 shadow-sm text-foreground hover:scale-110 transition-transform",
-        destructive && "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive",
+        destructive &&
+          "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive",
         !destructive && "hover:bg-primary hover:text-primary-foreground hover:border-primary",
       )}
     >
@@ -367,10 +387,11 @@ function CardIconButton({
   );
 }
 
-
 function ProductFormModal({ product, onClose }: { product: Product | null; onClose: () => void }) {
   const isEdit = !!product;
   const [name, setName] = useState(product?.name ?? "");
+  const [model, setModel] = useState(product?.model ?? "");
+  const [sku, setSku] = useState(product?.sku ?? "");
   const [category, setCategory] = useState<ProductCategory>(
     product?.category ?? PRODUCT_CATEGORIES[0],
   );
@@ -379,6 +400,18 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
     product?.promoPrice ? String(product.promoPrice) : "",
   );
   const [description, setDescription] = useState(product?.description ?? "");
+  const [lengthM, setLengthM] = useState(product?.lengthM != null ? String(product.lengthM) : "");
+  const [widthM, setWidthM] = useState(product?.widthM != null ? String(product.widthM) : "");
+  const [depthM, setDepthM] = useState(product?.depthM != null ? String(product.depthM) : "");
+  const [capacityL, setCapacityL] = useState(
+    product?.capacityL != null ? String(product.capacityL) : "",
+  );
+  const [shape, setShape] = useState(product?.shape ?? "");
+  const [specifications, setSpecifications] = useState(
+    JSON.stringify(product?.specifications ?? {}, null, 2),
+  );
+  const [includedItems, setIncludedItems] = useState((product?.includedItems ?? []).join("\n"));
+  const [variants, setVariants] = useState(JSON.stringify(product?.variants ?? [], null, 2));
   const [notes, setNotes] = useState(product?.notes ?? "");
   const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -399,12 +432,45 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
       setError("Preço promocional inválido.");
       return;
     }
+    let structured;
+    try {
+      structured = {
+        lengthM: parseOptionalCatalogNumber(lengthM),
+        widthM: parseOptionalCatalogNumber(widthM),
+        depthM: parseOptionalCatalogNumber(depthM),
+        capacityL: parseOptionalCatalogNumber(capacityL),
+        specifications: parseSpecifications(specifications),
+        includedItems: parseIncludedItems(includedItems),
+        variants: parseVariants(variants),
+      };
+    } catch (parseError) {
+      const reason = parseError instanceof Error ? parseError.message : "";
+      setError(
+        reason === "catalog_specifications_invalid"
+          ? "Especificações devem ser um objeto JSON válido."
+          : reason === "catalog_variants_invalid"
+            ? "Variantes devem ser uma lista JSON de objetos."
+            : "Medidas e capacidade devem ser números não negativos.",
+      );
+      return;
+    }
+    const emptyValue = isEdit ? null : undefined;
     const payload = {
       name: name.trim(),
+      model: model.trim() || emptyValue,
+      sku: sku.trim() || emptyValue,
       category,
       price: priceNum,
       promoPrice: promoNum,
       description: description.trim() || undefined,
+      lengthM: structured.lengthM ?? emptyValue,
+      widthM: structured.widthM ?? emptyValue,
+      depthM: structured.depthM ?? emptyValue,
+      capacityL: structured.capacityL ?? emptyValue,
+      shape: shape.trim() || emptyValue,
+      specifications: structured.specifications,
+      includedItems: structured.includedItems,
+      variants: structured.variants,
       notes: notes.trim() || undefined,
       images,
     };
@@ -416,12 +482,11 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
     onClose();
   };
 
-
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch md:items-center justify-center md:p-4">
       <form
         onSubmit={handleSubmit}
-        className="bg-card border-0 md:border border-border md:rounded-lg shadow-lg w-full md:max-w-md max-h-[100dvh] md:max-h-[90vh] overflow-y-auto safe-top safe-bottom"
+        className="bg-card border-0 md:border border-border md:rounded-lg shadow-lg w-full md:max-w-2xl max-h-[100dvh] md:max-h-[90vh] overflow-y-auto safe-top safe-bottom"
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-sm font-semibold">{isEdit ? "Editar produto" : "Novo produto"}</h2>
@@ -449,6 +514,33 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
             />
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Modelo (opcional)
+              </label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="Ex.: Caribe 6"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                SKU (opcional)
+              </label>
+              <input
+                type="text"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="Ex.: CAR-6X3-AZ"
+                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
               Categoria
@@ -472,9 +564,8 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 Preço (R$)
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0,00"
@@ -486,15 +577,56 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
                 Promo (opcional)
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
                 value={promoPrice}
                 onChange={(e) => setPromoPrice(e.target.value)}
                 placeholder="0,00"
                 className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+              Dimensões e capacidade (opcionais)
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                ["Comprimento (m)", lengthM, setLengthM],
+                ["Largura (m)", widthM, setWidthM],
+                ["Profundidade (m)", depthM, setDepthM],
+                ["Capacidade (L)", capacityL, setCapacityL],
+              ].map(([label, value, setter]) => (
+                <label key={label as string} className="text-[11px] text-muted-foreground">
+                  {label as string}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={value as string}
+                    onChange={(e) => (setter as (next: string) => void)(e.target.value)}
+                    placeholder="Opcional"
+                    className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Formato real (opcional)
+            </label>
+            <input
+              type="text"
+              value={shape}
+              onChange={(e) => setShape(e.target.value)}
+              placeholder="Ex.: quadrada, retangular, redonda"
+              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Informe o formato como ele é; o valor não será convertido para outro formato.
+            </p>
           </div>
 
           <div>
@@ -512,6 +644,42 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
 
           <div>
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Itens inclusos (opcional)
+            </label>
+            <textarea
+              value={includedItems}
+              onChange={(e) => setIncludedItems(e.target.value)}
+              rows={3}
+              placeholder={"Um item por linha\nFiltro\nBomba"}
+              className="mt-1 w-full px-3 py-2 font-mono text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Especificações JSON (opcional)
+              <textarea
+                value={specifications}
+                onChange={(e) => setSpecifications(e.target.value)}
+                rows={6}
+                spellCheck={false}
+                className="mt-1 w-full px-3 py-2 font-mono text-xs normal-case rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </label>
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Variantes/cores JSON (opcional)
+              <textarea
+                value={variants}
+                onChange={(e) => setVariants(e.target.value)}
+                rows={6}
+                spellCheck={false}
+                className="mt-1 w-full px-3 py-2 font-mono text-xs normal-case rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </label>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
               Observações (opcional)
             </label>
             <input
@@ -524,7 +692,6 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
           </div>
 
           <ProductImagesField images={images} onChange={setImages} />
-
 
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
@@ -637,13 +804,11 @@ function ProductImagesField({
         try {
           const compressed = await compressImage(file);
           const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-          const { error } = await supabase.storage
-            .from("product-images")
-            .upload(path, compressed, {
-              cacheControl: "31536000",
-              upsert: false,
-              contentType: compressed.type || "image/jpeg",
-            });
+          const { error } = await supabase.storage.from("product-images").upload(path, compressed, {
+            cacheControl: "31536000",
+            upsert: false,
+            contentType: compressed.type || "image/jpeg",
+          });
           if (error) {
             console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
             const msg = /quota/i.test(error.message)
@@ -834,10 +999,10 @@ function ProductImagesField({
           </div>
         </div>
         <p className="text-[10px] text-muted-foreground">
-          A primeira foto é a capa. Imagens são comprimidas automaticamente para envio rápido no WhatsApp.
+          A primeira foto é a capa. Imagens são comprimidas automaticamente para envio rápido no
+          WhatsApp.
         </p>
       </div>
     </div>
   );
 }
-

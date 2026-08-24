@@ -30,6 +30,7 @@ describe("SalesAgent product images", () => {
     expect(serverSource).toContain('.eq("company_id", companyId)');
     expect(serverSource).toContain('.eq("active", true)');
     expect(serverSource).toContain('.in("id", ids)');
+    expect(serverSource).toContain("const useFiberFallback = ids.length === 0");
     expect(serverSource).not.toMatch(/mediaUrl|send_product_images.*https?:/);
   });
 
@@ -50,9 +51,7 @@ describe("SalesAgent product images", () => {
   });
 
   it("aceita somente paths do bucket de imagens escopados pela empresa", () => {
-    expect(extractCompanyProductImagePath("company-1/a.jpg", companyId)).toBe(
-      "company-1/a.jpg",
-    );
+    expect(extractCompanyProductImagePath("company-1/a.jpg", companyId)).toBe("company-1/a.jpg");
     expect(
       extractCompanyProductImagePath(
         "https://project.supabase.co/storage/v1/object/public/product-images/company-1/b.jpg",
@@ -60,7 +59,9 @@ describe("SalesAgent product images", () => {
       ),
     ).toBe("company-1/b.jpg");
     expect(extractCompanyProductImagePath("company-2/a.jpg", companyId)).toBeNull();
-    expect(extractCompanyProductImagePath("https://example.com/inventada.jpg", companyId)).toBeNull();
+    expect(
+      extractCompanyProductImagePath("https://example.com/inventada.jpg", companyId),
+    ).toBeNull();
   });
 
   it("seleciona uma foto cadastrada por produto e ignora IDs sem produto ou imagem válida", () => {
@@ -69,7 +70,11 @@ describe("SalesAgent product images", () => {
         [ids.p2, ids.missing, ids.p1, ids.p2, ids.otherCompany],
         [
           { id: ids.p1, name: "Modelo 6x3", images: ["company-1/p1-a.jpg", "company-1/p1-b.jpg"] },
-          { id: ids.p2, name: "Modelo 6x2", images: ["https://example.com/falsa.jpg", "company-1/p2.jpg"] },
+          {
+            id: ids.p2,
+            name: "Modelo 6x2",
+            images: ["https://example.com/falsa.jpg", "company-1/p2.jpg"],
+          },
           { id: ids.otherCompany, name: "Inválido", images: ["company-2/x.jpg"] },
         ],
         companyId,

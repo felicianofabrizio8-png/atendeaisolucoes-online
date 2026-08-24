@@ -21,16 +21,17 @@ export async function loadValidatedProductImages(
   const fiberSize = detectFiberCatalogSize(selectionContext);
   const ids = normalizeRequestedProductIds(requestedIds);
   if (!fiberSize && ids.length === 0) return [];
+  const useFiberFallback = ids.length === 0 && fiberSize !== null;
   let query = supabaseAdmin
     .from("products")
     .select("id, name, images, category, description, notes")
     .eq("company_id", companyId)
     .eq("active", true);
-  if (!fiberSize) query = query.in("id", ids);
+  if (!useFiberFallback) query = query.in("id", ids);
   const { data, error } = await query;
   if (error) throw new Error("product_images_load_failed");
   const products = (data ?? []) as ProductImageCandidate[];
-  return fiberSize
+  return useFiberFallback
     ? resolveFiberCatalogImages(fiberSize, products, companyId)
     : resolveProductImages(ids, products, companyId);
 }

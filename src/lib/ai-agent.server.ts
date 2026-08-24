@@ -30,6 +30,7 @@ import {
 import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
+  selectRelevantSalesAgentProducts,
 } from "./sales-agent-grounding.server";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
@@ -43,7 +44,9 @@ const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"] as const;
 
 function sanitizeGatewayErrorValue(value: unknown, apiKey: string): string | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
-  let safe = String(value).replace(/[\r\n\t]+/g, " ").trim();
+  let safe = String(value)
+    .replace(/[\r\n\t]+/g, " ")
+    .trim();
   if (!safe) return undefined;
   if (apiKey) safe = safe.split(apiKey).join("[redacted]");
   safe = safe
@@ -226,13 +229,14 @@ export function runSafetyLayer(decision: AgentDecision): AgentDecision {
 // ----------------------------------------------------------------------------
 
 export async function loadAgentContext(companyId: string): Promise<AgentContext | null> {
-  const [{ data: settings }, { data: company }, { data: aiProfile }, grounding] =
-    await Promise.all([
+  const [{ data: settings }, { data: company }, { data: aiProfile }, grounding] = await Promise.all(
+    [
       supabaseAdmin.from("company_settings").select("*").eq("company_id", companyId).maybeSingle(),
       supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
       supabaseAdmin.from("ai_profiles").select("*").eq("company_id", companyId).maybeSingle(),
       loadSalesAgentGrounding(companyId),
-    ]);
+    ],
+  );
   if (!settings) return null;
   return {
     settings: settings as AgentSettings,
@@ -242,7 +246,8 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
           tone: (aiProfile as { tone?: string }).tone ?? "comercial",
           description: (aiProfile as { description?: string | null }).description ?? null,
           products: (aiProfile as { products?: string | null }).products ?? null,
-          payment_methods: (aiProfile as { payment_methods?: string | null }).payment_methods ?? null,
+          payment_methods:
+            (aiProfile as { payment_methods?: string | null }).payment_methods ?? null,
           avg_lead_time: (aiProfile as { avg_lead_time?: string | null }).avg_lead_time ?? null,
           region: (aiProfile as { region?: string | null }).region ?? null,
           differentials: (aiProfile as { differentials?: string | null }).differentials ?? null,
@@ -280,11 +285,20 @@ export async function runAgentTurn(params: {
     params.ctx.settings.company_id,
     params.history,
   );
+  const relevantCatalog = selectRelevantSalesAgentProducts(
+    params.ctx.grounding.catalog,
+    params.history,
+  );
   const contextualParams = {
     ...params,
     ctx: {
       ...params.ctx,
-      grounding: { ...params.ctx.grounding, approvedCoachLearnings },
+      products: relevantCatalog,
+      grounding: {
+        ...params.ctx.grounding,
+        catalog: relevantCatalog,
+        approvedCoachLearnings,
+      },
     },
   };
 
@@ -351,6 +365,7 @@ export async function sendWhatsappText(params: {
   conversationId: string;
   leadId: string;
   text: string;
+  productIds?: string[];
 }): Promise<SendWhatsappTextResult> {
   const { data: lead } = await supabaseAdmin
     .from("leads")
@@ -447,6 +462,9 @@ export async function sendWhatsappText(params: {
     external_id: externalId,
     integration_id: integration?.id ?? null,
     source: "ai_agent",
+    source_metadata: {
+      catalog_product_ids: (params.productIds ?? []).slice(0, 5),
+    },
   });
   await supabaseAdmin
     .from("conversations")
@@ -528,7 +546,10 @@ async function qualifyAndPersist(params: {
   next.lead_score = score;
   next.lead_temperature = temperature;
 
-  await supabaseAdmin.from("conversations").update(next as never).eq("id", conversationId);
+  await supabaseAdmin
+    .from("conversations")
+    .update(next as never)
+    .eq("id", conversationId);
 
   // Eventos de timeline — apenas diffs
   const diffs: Array<[string, unknown]> = [];
@@ -619,7 +640,8 @@ export async function runAgentTick(conversationId: string): Promise<{
     lead_temperature: (conv as { lead_temperature?: string | null }).lead_temperature ?? null,
     lead_score: (conv as { lead_score?: number }).lead_score ?? 0,
     lead_ready_to_close: (conv as { lead_ready_to_close?: boolean }).lead_ready_to_close ?? false,
-    detected_objections: (conv as { detected_objections?: string[] | null }).detected_objections ?? [],
+    detected_objections:
+      (conv as { detected_objections?: string[] | null }).detected_objections ?? [],
   };
 
   // Atualmente Fase 1 suporta apenas WhatsApp para envio
@@ -673,14 +695,26 @@ export async function runAgentTick(conversationId: string): Promise<{
     // Histórico do DB (não confia no body)
     const { data: msgs } = await supabaseAdmin
       .from("messages")
-      .select("role, text, at")
+      .select("role, text, at, source_metadata")
       .eq("conversation_id", conv.id)
       .order("at", { ascending: true })
       .limit(40);
-    const history = (msgs ?? []).map((m) => ({
-      role: m.role as "lead" | "agent" | "system",
-      text: m.text,
-    }));
+    const history = (msgs ?? []).map((m) => {
+      const metadata =
+        m.source_metadata &&
+        typeof m.source_metadata === "object" &&
+        !Array.isArray(m.source_metadata)
+          ? (m.source_metadata as Record<string, unknown>)
+          : {};
+      const productIds = Array.isArray(metadata.catalog_product_ids)
+        ? metadata.catalog_product_ids.filter((id): id is string => typeof id === "string")
+        : [];
+      return {
+        role: m.role as "lead" | "agent" | "system",
+        text: m.text,
+        ...(productIds.length > 0 ? { productIds } : {}),
+      };
+    });
 
     const lastLeadMsg = [...history].reverse().find((m) => m.role === "lead");
     if (!lastLeadMsg) {
@@ -755,6 +789,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       conversationId: conv.id,
       leadId: conv.lead_id,
       text: decision.message,
+      productIds: decision.suggested_products,
     });
 
     if (!sent.ok) {
@@ -831,9 +866,6 @@ export async function runAgentTick(conversationId: string): Promise<{
     return { ok: true, action: "replied" };
   } finally {
     // Libera lock
-    await supabaseAdmin
-      .from("conversations")
-      .update({ ai_handling: false })
-      .eq("id", conv.id);
+    await supabaseAdmin.from("conversations").update({ ai_handling: false }).eq("id", conv.id);
   }
 }

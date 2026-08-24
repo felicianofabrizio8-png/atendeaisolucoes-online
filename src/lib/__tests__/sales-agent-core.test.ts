@@ -36,8 +36,10 @@ const context: AgentContext = {
     {
       id: "product-1",
       name: "Piscina 6x3",
+      category: "Piscinas de fibra",
       description: "Piscina de fibra",
       price: 20_000,
+      promoPrice: 18_000,
       images: [],
       notes: "Filtro e bomba",
     },
@@ -48,8 +50,10 @@ const context: AgentContext = {
       {
         id: "product-1",
         name: "Piscina 6x3",
+        category: "Piscinas de fibra",
         description: "Piscina de fibra",
         price: 20_000,
+        promoPrice: 18_000,
         images: [],
         notes: "Filtro e bomba",
       },
@@ -177,7 +181,8 @@ describe("SalesAgentCore", () => {
 
     expect(decision).toMatchObject({
       kind: "reply",
-      message: "Posso ajudar com essa piscina.",
+      message:
+        "Encontrei no catálogo: Piscina 6x3 — categoria Piscinas de fibra; Piscina de fibra; observações: Filtro e bomba.",
       detected_city: "Campinas",
       detected_state: "São Paulo",
       purchase_timing: "30d",
@@ -201,6 +206,7 @@ describe("SalesAgentCore", () => {
                     name: "respond_to_customer",
                     arguments: JSON.stringify({
                       message: "Temos o modelo 6x3.",
+                      suggest_products: ["product-1"],
                       send_product_images: ["product-1"],
                     }),
                   },
@@ -232,7 +238,9 @@ describe("SalesAgentCore", () => {
     });
 
     expect(request.messages[0].content).toContain("Piscina 6x3");
+    expect(request.messages[0].content).toContain("Categoria: Piscinas de fibra");
     expect(request.messages[0].content).toContain("Preço cadastrado: R$ 20.000,00");
+    expect(request.messages[0].content).toContain("Preço promocional cadastrado: R$ 18.000,00");
   });
 
   it("inclui FAQ e regras comerciais sem liberar negociação", () => {
@@ -296,17 +304,20 @@ describe("SalesAgentCore", () => {
     ]);
   });
 
-  it("envia exemplos positivo e negativo do learning relevante ao modelo", () => {
+  it("não usa exemplos nem referência de produto do learning como fato de catálogo", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: {
         ...context,
         grounding: {
           ...context.grounding,
-          approvedCoachLearnings: [{
-            ...context.grounding.approvedCoachLearnings[0],
-            positiveExample: "Claro! Temos opções de fibra. Qual tamanho procura?",
-            negativeExample: "Como posso ajudar?",
-          }],
+          approvedCoachLearnings: [
+            {
+              ...context.grounding.approvedCoachLearnings[0],
+              positiveExample: "Claro! Temos opções de fibra. Qual tamanho procura?",
+              negativeExample: "Como posso ajudar?",
+              productRef: "Modelo Antigo 9x4",
+            },
+          ],
         },
       },
       history: [{ role: "lead", text: "Quero informações das piscinas" }],
@@ -314,10 +325,244 @@ describe("SalesAgentCore", () => {
       model: salesModel,
     });
 
-    expect(request.messages[0].content).toContain(
-      "Exemplo recomendado: Claro! Temos opções de fibra. Qual tamanho procura?",
-    );
-    expect(request.messages[0].content).toContain("Evite responder assim: Como posso ajudar?");
+    expect(request.messages[0].content).not.toContain("Exemplo recomendado");
+    expect(request.messages[0].content).not.toContain("Modelo Antigo 9x4");
+    expect(request.messages[0].content).toContain("somente orientação de comportamento comercial");
+  });
+
+  it("bloqueia produto inexistente antes do envio", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Temos o modelo Atlântida.",
+                      suggest_products: ["product-missing"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "handoff",
+      reason: "catalog_invalid_product_reference",
+    });
+  });
+
+  it("produto válido retorna somente dados reais do registro", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Modelo inventado com especificação inventada.",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quero conhecer a piscina de 6 metros" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.message).toContain("Piscina 6x3 — categoria Piscinas de fibra");
+    expect(decision.message).toContain("Piscina de fibra");
+    expect(decision.message).toContain("Filtro e bomba");
+    expect(decision.message).not.toContain("Modelo inventado");
+  });
+
+  it("usa somente fatos estruturados reais no prompt e na resposta validada", async () => {
+    const structuredProduct = {
+      ...context.grounding.catalog[0],
+      model: "Caribe 6",
+      sku: "CAR-6X3-AZ",
+      lengthM: 6,
+      widthM: 3,
+      depthM: 1.4,
+      capacityL: 24_000,
+      shape: "retangular",
+      specifications: { material: "fibra" },
+      includedItems: ["Filtro", "Bomba"],
+      variants: [{ name: "Azul", color: "azul" }],
+    };
+    const structuredContext: AgentContext = {
+      ...context,
+      products: [structuredProduct],
+      grounding: { ...context.grounding, catalog: [structuredProduct] },
+    };
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Dados inventados pelo modelo.",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: structuredContext,
+      history: [{ role: "lead", text: "Qual a profundidade e a cor dele?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const prompt = complete.mock.calls[0][0].messages[0].content;
+
+    expect(prompt).toContain("Modelo: Caribe 6");
+    expect(prompt).toContain("SKU: CAR-6X3-AZ");
+    expect(prompt).toContain("Comprimento: 6 m");
+    expect(prompt).toContain("Largura: 3 m");
+    expect(prompt).toContain("Profundidade: 1.4 m");
+    expect(prompt).toContain("Capacidade: 24000 L");
+    expect(prompt).toContain("Formato real: retangular");
+    expect(prompt).toContain('Especificações: {"material":"fibra"}');
+    expect(prompt).toContain('Variantes/cores: [{"name":"Azul","color":"azul"}]');
+    expect(decision.message).toContain("modelo Caribe 6");
+    expect(decision.message).toContain("dimensões 6 x 3 x 1.4 m");
+    expect(decision.message).toContain("capacidade 24000 L");
+    expect(decision.message).toContain("formato retangular");
+    expect(decision.message).toContain("variantes/cores: Azul/azul");
+    expect(decision.message).not.toContain("Dados inventados");
+  });
+
+  it("mantém formato real retangular ao atender intenção por quadrada", async () => {
+    const rectangularProduct = {
+      ...context.grounding.catalog[0],
+      shape: "retangular",
+    };
+    const rectangularContext: AgentContext = {
+      ...context,
+      products: [rectangularProduct],
+      grounding: { ...context.grounding, catalog: [rectangularProduct] },
+    };
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "É uma piscina quadrada." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: rectangularContext,
+      history: [{ role: "lead", text: "Quero uma piscina quadrada" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
+    expect(decision.message).toContain("formato retangular");
+    expect(decision.message).not.toContain("formato quadrado");
+  });
+
+  it("learning antigo não cria produto quando a resposta não traz ID válido", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "Temos o modelo Atlântida 9x4." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Tem o modelo Atlântida?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
+    expect(decision.message).toContain("Piscina 6x3");
+    expect(decision.message).not.toContain("Atlântida");
+  });
+
+  it("catálogo vazio não chama o modelo para inventar produto", async () => {
+    const complete = vi.fn();
+    const emptyContext: AgentContext = {
+      ...context,
+      products: [],
+      grounding: { ...context.grounding, catalog: [] },
+    };
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: emptyContext,
+      history: [{ role: "lead", text: "Quero uma piscina de 6 metros" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_product_not_found" });
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("sem grounding estruturado mantém catálogo e conhecimento legados como fallback", () => {

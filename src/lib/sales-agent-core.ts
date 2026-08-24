@@ -27,8 +27,20 @@ export interface SalesAgentGrounding {
   catalog: Array<{
     id: string;
     name: string;
+    model?: string | null;
+    sku?: string | null;
+    category: string | null;
     description: string | null;
+    lengthM?: number | null;
+    widthM?: number | null;
+    depthM?: number | null;
+    capacityL?: number | null;
+    shape?: string | null;
+    specifications?: unknown;
+    includedItems?: string[];
+    variants?: unknown[];
     price: number | null;
+    promoPrice: number | null;
     images: string[];
     notes: string | null;
   }>;
@@ -67,8 +79,20 @@ export interface AgentContext {
   products: Array<{
     id: string;
     name: string;
+    model?: string | null;
+    sku?: string | null;
+    category: string | null;
     description: string | null;
+    lengthM?: number | null;
+    widthM?: number | null;
+    depthM?: number | null;
+    capacityL?: number | null;
+    shape?: string | null;
+    specifications?: unknown;
+    includedItems?: string[];
+    variants?: unknown[];
     price: number | null;
+    promoPrice: number | null;
     images: string[];
     notes: string | null;
   }>;
@@ -137,14 +161,66 @@ interface ToolHandoff {
   reason: string;
 }
 
-export function customerAskedForProductImages(
-  history: SalesAgentCoreInput["history"],
-): boolean {
+export function customerAskedForProductImages(history: SalesAgentCoreInput["history"]): boolean {
   const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
   if (!lastLeadMessage) return false;
   return /\b(foto(?:s)?|imagen(?:s)?|imagem|ver\s+(?:os\s+)?modelos?|mostr\w*\s+(?:os\s+)?modelos?)\b/i.test(
     lastLeadMessage,
   );
+}
+
+export function customerAskedAboutProducts(history: SalesAgentCoreInput["history"]): boolean {
+  const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
+  if (!lastLeadMessage) return false;
+  return /\b(produto|catálogo|modelo|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]|retangular|redond[ao]|oval|cor|variante|\d{1,2}\s*(?:m|metros?))\b/i.test(
+    lastLeadMessage,
+  );
+}
+
+function messageClaimsProductReference(message: string): boolean {
+  return /\bmodelo\s+[\p{L}\d]|\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(
+    message,
+  );
+}
+
+export function buildValidatedCatalogReply(products: SalesAgentGrounding["catalog"]): string {
+  const items = products.map((product) => {
+    const specificationFacts =
+      product.specifications && typeof product.specifications === "object"
+        ? Object.entries(product.specifications as Record<string, unknown>)
+            .map(([key, value]) => `${key}: ${String(value)}`)
+            .join(", ")
+        : "";
+    const variantFacts = (product.variants ?? [])
+      .flatMap((variant) => {
+        if (!variant || typeof variant !== "object") return [];
+        const row = variant as Record<string, unknown>;
+        const values = [row.name, row.color].filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        );
+        return values.length > 0 ? [values.join("/")] : [];
+      })
+      .join(", ");
+    const facts = [
+      product.model ? `modelo ${product.model}` : null,
+      product.sku ? `SKU ${product.sku}` : null,
+      product.category ? `categoria ${product.category}` : null,
+      product.lengthM != null || product.widthM != null || product.depthM != null
+        ? `dimensões ${[product.lengthM, product.widthM, product.depthM]
+            .filter((value) => value != null)
+            .join(" x ")} m`
+        : null,
+      product.capacityL != null ? `capacidade ${product.capacityL} L` : null,
+      product.shape ? `formato ${product.shape}` : null,
+      product.description || null,
+      product.includedItems?.length ? `itens inclusos: ${product.includedItems.join(", ")}` : null,
+      specificationFacts ? `especificações: ${specificationFacts}` : null,
+      variantFacts ? `variantes/cores: ${variantFacts}` : null,
+      product.notes ? `observações: ${product.notes}` : null,
+    ].filter((fact): fact is string => Boolean(fact));
+    return `${product.name}${facts.length ? ` — ${facts.join("; ")}` : ""}.`;
+  });
+  return `Encontrei no catálogo: ${items.join(" ")}`;
 }
 
 function formatPrice(price: number | null): string {
@@ -181,9 +257,34 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
   const productLines = groundedProducts
     .map((p, i) => {
       const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
+      if (p.model) parts.push(`   Modelo: ${p.model}`);
+      if (p.sku) parts.push(`   SKU: ${p.sku}`);
+      if (p.category) parts.push(`   Categoria: ${p.category}`);
+      if (p.lengthM != null) parts.push(`   Comprimento: ${p.lengthM} m`);
+      if (p.widthM != null) parts.push(`   Largura: ${p.widthM} m`);
+      if (p.depthM != null) parts.push(`   Profundidade: ${p.depthM} m`);
+      if (p.capacityL != null) parts.push(`   Capacidade: ${p.capacityL} L`);
+      if (p.shape) parts.push(`   Formato real: ${p.shape}`);
       if (p.description) parts.push(`   ${p.description}`);
-      if (usesGroundedCatalog) parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
+      if (usesGroundedCatalog) {
+        parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
+        if (p.promoPrice != null) {
+          parts.push(`   Preço promocional cadastrado: ${formatPrice(p.promoPrice)}`);
+        }
+      }
       if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
+      if (p.includedItems?.length) {
+        parts.push(`   Itens inclusos: ${p.includedItems.join(", ")}`);
+      }
+      if (
+        p.specifications &&
+        typeof p.specifications === "object" &&
+        Object.keys(p.specifications).length > 0
+      ) {
+        parts.push(`   Especificações: ${JSON.stringify(p.specifications)}`);
+      }
+      if (p.variants?.length) parts.push(`   Variantes/cores: ${JSON.stringify(p.variants)}`);
+      if (p.images.length > 0) parts.push(`   Fotos cadastradas: ${p.images.length}`);
       return parts.join("\n");
     })
     .join("\n");
@@ -206,14 +307,7 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     .join("\n");
   const learningLines = ctx.grounding.approvedCoachLearnings
     .map((learning, i) => {
-      const product = learning.productRef ? ` [produto: ${learning.productRef}]` : "";
-      const positive = learning.positiveExample
-        ? `\n   Exemplo recomendado: ${learning.positiveExample}`
-        : "";
-      const negative = learning.negativeExample
-        ? `\n   Evite responder assim: ${learning.negativeExample}`
-        : "";
-      return `${i + 1}. ${learning.title}${product}: ${learning.rule}${positive}${negative}`;
+      return `${i + 1}. ${learning.title}: ${learning.rule}`;
     })
     .join("\n");
   const groundingSections = [
@@ -221,7 +315,7 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
       ? `REGRAS COMERCIAIS CADASTRADAS (somente informe; nunca negocie nem crie condições):\n${commercialLines}`
       : null,
     learningLines
-      ? `APRENDIZADOS ATIVOS DO COACH (use como orientação; nunca substituem as regras invioláveis):\n${learningLines}`
+      ? `APRENDIZADOS ATIVOS DO COACH (somente orientação de comportamento comercial; nomes, modelos, medidas, preços, descrições, categorias e exemplos de produto contidos em aprendizados NÃO são fatos e devem ser ignorados):\n${learningLines}`
       : null,
   ]
     .filter((section): section is string => Boolean(section))
@@ -247,6 +341,12 @@ CONTEXTO DA EMPRESA:
 CATÁLOGO (use apenas estes produtos):
 ${productLines || "(catálogo vazio)"}
 
+REGRA DE REFERÊNCIA DE PRODUTO:
+- Todo produto mencionado na resposta deve estar no CATÁLOGO acima e também ter seu ID incluído em suggest_products.
+- Nunca use FAQ, histórico ou aprendizados como fonte de nome, modelo, medida, preço ou especificação de produto.
+- Se o produto ou especificação pedida não estiver no catálogo, não proponha alternativa inventada: solicite atendimento humano.
+- Em piscinas, "quadrada" pode representar intenção por linhas retas. Quando o catálogo relevante trouxer apenas um produto reto/retangular como aproximação, descreva sempre o formato real cadastrado e nunca o chame de quadrado.
+
 FAQ:
 ${faqLines || "(sem faq cadastrado)"}
 
@@ -266,6 +366,8 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 export function buildSalesAgentCompletionRequest(
   params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
+  const catalogProducts =
+    params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
   const transcript = params.history
     .slice(-20)
     .map(
@@ -325,7 +427,15 @@ export function buildSalesAgentCompletionRequest(
                 enum: ["curioso", "pesquisando", "pronto_para_comprar"],
                 description: "Em que estágio o cliente está.",
               },
-              suggest_products: { type: "array", items: { type: "string" } },
+              suggest_products: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: catalogProducts.map((product) => product.id),
+                },
+                maxItems: 5,
+                description: "IDs exatos de produtos existentes no catálogo fornecido.",
+              },
               send_product_images: {
                 type: "array",
                 items: { type: "string" },
@@ -365,14 +475,32 @@ export class SalesAgentCore {
     const learningIdsUsed = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
+    if (params.ctx.grounding.catalog.length === 0 && customerAskedAboutProducts(params.history)) {
+      return {
+        kind: "handoff",
+        reason: "catalog_product_not_found",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
+    }
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
     if (!completion.ok) {
-      return { kind: "handoff", reason: completion.reason, grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
+      return {
+        kind: "handoff",
+        reason: completion.reason,
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
     }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
     if (!call?.name || !call.arguments) {
-      return { kind: "handoff", reason: "no_tool_call", grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
+      return {
+        kind: "handoff",
+        reason: "no_tool_call",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
     }
 
     let args: ToolReply | ToolHandoff;
@@ -397,7 +525,47 @@ export class SalesAgentCore {
     }
     const reply = args as ToolReply;
     if (!reply.message) {
-      return { kind: "handoff", reason: "empty_message", grounding_sources: groundingSources, learning_ids_used: learningIdsUsed };
+      return {
+        kind: "handoff",
+        reason: "empty_message",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
+    }
+    const catalogIds = new Set(params.ctx.grounding.catalog.map((product) => product.id));
+    const catalogById = new Map(
+      params.ctx.grounding.catalog.map((product) => [product.id, product]),
+    );
+    const modelSuggestions = Array.isArray(reply.suggest_products)
+      ? reply.suggest_products.filter((id): id is string => typeof id === "string")
+      : [];
+    const requestedSuggestions =
+      modelSuggestions.length === 0 &&
+      customerAskedAboutProducts(params.history) &&
+      params.ctx.grounding.catalog.length === 1
+        ? [params.ctx.grounding.catalog[0].id]
+        : modelSuggestions;
+    const requestedImages = Array.isArray(reply.send_product_images)
+      ? reply.send_product_images.filter((id): id is string => typeof id === "string")
+      : [];
+    if (
+      requestedSuggestions.some((id) => !catalogIds.has(id)) ||
+      requestedImages.some((id) => !catalogIds.has(id))
+    ) {
+      return {
+        kind: "handoff",
+        reason: "catalog_invalid_product_reference",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
+    }
+    if (messageClaimsProductReference(reply.message) && requestedSuggestions.length === 0) {
+      return {
+        kind: "handoff",
+        reason: "catalog_unvalidated_product_claim",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
     }
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
@@ -406,7 +574,15 @@ export class SalesAgentCore {
         : null;
     return {
       kind: "reply",
-      message: reply.message,
+      message:
+        requestedSuggestions.length > 0
+          ? buildValidatedCatalogReply(
+              requestedSuggestions.flatMap((id) => {
+                const product = catalogById.get(id);
+                return product ? [product] : [];
+              }),
+            )
+          : reply.message,
       detected_city: reply.detected_city ?? null,
       detected_state: normalizeState(reply.detected_state) ?? reply.detected_state ?? null,
       detected_pool_size: reply.detected_pool_size ?? null,
@@ -415,10 +591,8 @@ export class SalesAgentCore {
       detected_budget: reply.detected_budget ?? null,
       purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
       customer_stage: stage,
-      suggested_products: reply.suggest_products ?? [],
-      product_image_ids: customerAskedForProductImages(params.history)
-        ? (reply.send_product_images ?? [])
-        : [],
+      suggested_products: requestedSuggestions,
+      product_image_ids: customerAskedForProductImages(params.history) ? requestedImages : [],
       grounding_sources: groundingSources,
       learning_ids_used: learningIdsUsed,
     };

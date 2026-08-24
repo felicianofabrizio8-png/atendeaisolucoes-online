@@ -3932,11 +3932,21 @@ export type Database = {
           description: string | null
           id: string
           images: Json
+          included_items: string[]
+          capacity_l: number | null
+          depth_m: number | null
+          length_m: number | null
+          model: string | null
           name: string
           notes: string | null
           price: number | null
           promo_price: number | null
+          shape: string | null
+          sku: string | null
+          specifications: Json
           updated_at: string
+          variants: Json
+          width_m: number | null
         }
         Insert: {
           active?: boolean
@@ -3946,11 +3956,21 @@ export type Database = {
           description?: string | null
           id?: string
           images?: Json
+          included_items?: string[]
+          capacity_l?: number | null
+          depth_m?: number | null
+          length_m?: number | null
+          model?: string | null
           name: string
           notes?: string | null
           price?: number | null
           promo_price?: number | null
+          shape?: string | null
+          sku?: string | null
+          specifications?: Json
           updated_at?: string
+          variants?: Json
+          width_m?: number | null
         }
         Update: {
           active?: boolean
@@ -3960,11 +3980,21 @@ export type Database = {
           description?: string | null
           id?: string
           images?: Json
+          included_items?: string[]
+          capacity_l?: number | null
+          depth_m?: number | null
+          length_m?: number | null
+          model?: string | null
           name?: string
           notes?: string | null
           price?: number | null
           promo_price?: number | null
+          shape?: string | null
+          sku?: string | null
+          specifications?: Json
           updated_at?: string
+          variants?: Json
+          width_m?: number | null
         }
         Relationships: [
           {
