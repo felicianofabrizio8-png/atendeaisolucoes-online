@@ -1,5 +1,13 @@
 export type TrainingReviewStatus = "approved" | "rejected" | "corrected";
 
+export function getTrainingLearningDiagnostics(learningIdsUsed?: string[] | null) {
+  const learningIds = learningIdsUsed ?? [];
+  return {
+    learningIds,
+    count: learningIds.length,
+  };
+}
+
 export function normalizeTrainingReview(input: {
   status: TrainingReviewStatus;
   correctionText?: string | null;

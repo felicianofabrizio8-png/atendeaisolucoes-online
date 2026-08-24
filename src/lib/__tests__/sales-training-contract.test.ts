@@ -1,10 +1,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { normalizeTrainingReview } from "../sales-training-domain";
+import { getTrainingLearningDiagnostics, normalizeTrainingReview } from "../sales-training-domain";
 
 const functionsSource = readFileSync(
   fileURLToPath(new URL("../sales-training.functions.ts", import.meta.url)),
+  "utf8",
+);
+const trainingChatSource = readFileSync(
+  fileURLToPath(new URL("../../components/ai/SalesTrainingChat.tsx", import.meta.url)),
   "utf8",
 );
 const migrationSource = readFileSync(
@@ -47,6 +51,17 @@ describe("Sales training contract", () => {
     expect(functionsSource).toContain("loadValidatedProductImages(");
     expect(functionsSource).toContain("simulated_product_images");
     expect(functionsSource).not.toContain("sendWhatsappProductImages");
+  });
+
+  it("resume os aprendizados usados somente a partir da decision existente", () => {
+    expect(getTrainingLearningDiagnostics(["learning-1", "learning-2"])).toEqual({
+      learningIds: ["learning-1", "learning-2"],
+      count: 2,
+    });
+    expect(getTrainingLearningDiagnostics(undefined)).toEqual({ learningIds: [], count: 0 });
+    expect(trainingChatSource).toContain("item.decision?.learning_ids_used");
+    expect(trainingChatSource).toContain("learning_ids_used:");
+    expect(trainingChatSource).toContain("Aprendizados usados:");
   });
 
   it("persiste somente histórico e avaliações de treinamento", () => {
