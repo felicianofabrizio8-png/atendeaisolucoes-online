@@ -122,6 +122,7 @@ describe("historical learning V1", () => {
     expect(serviceSource).toContain('stage: "ai" | "persistence"');
     expect(serviceSource).toContain("aiFailed");
     expect(serviceSource).toContain("persistenceFailed");
+    expect(serviceSource).toContain("aiFailureBreakdown");
     for (const field of ["scanned", "analyzed", "created", "duplicatesSkipped", "failed"]) {
       expect(adminRouteSource).toContain(`analysisSummary.${field}`);
     }

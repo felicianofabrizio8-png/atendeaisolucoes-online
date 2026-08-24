@@ -2,7 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { selectConversations } from "@/lib/conversation-intelligence/ConversationSelector.server";
 import { findSimilarCoachLearning } from "./coach-learnings.repository";
-import { extractTeachModeDraft } from "./teach-mode.service";
+import {
+  extractHistoricalLearningDraft,
+  HistoricalLearningAiError,
+  type HistoricalLearningAiFailureKind,
+} from "./historical-learning-extractor.server";
 import {
   buildRedactedHistoricalContext,
   HISTORICAL_ANALYSIS_LIMIT,
@@ -24,6 +28,7 @@ export interface HistoricalLearningRunResult {
   failed: number;
   aiFailed: number;
   persistenceFailed: number;
+  aiFailureBreakdown: Record<HistoricalLearningAiFailureKind, number>;
 }
 
 export async function analyzeHistoricalLearnings(args: {
@@ -46,6 +51,15 @@ export async function analyzeHistoricalLearnings(args: {
     failed: 0,
     aiFailed: 0,
     persistenceFailed: 0,
+    aiFailureBreakdown: {
+      config: 0,
+      auth: 0,
+      credit: 0,
+      rate_limit: 0,
+      timeout: 0,
+      http: 0,
+      format: 0,
+    },
   };
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -55,12 +69,9 @@ export async function analyzeHistoricalLearnings(args: {
     let stage: "ai" | "persistence" = "ai";
     try {
       const context = buildRedactedHistoricalContext(conversation);
-      const extracted = await extractTeachModeDraft({
-        supabase: args.supabase,
+      const extracted = await extractHistoricalLearningDraft({
         companyId: args.companyId,
         userExplanation: context,
-        clientMessage: null,
-        suggestionText: null,
       });
       const draft = redactHistoricalDraft(extracted.draft);
       stage = "persistence";
@@ -136,10 +147,19 @@ export async function analyzeHistoricalLearnings(args: {
         } as never);
       if (versionError) throw versionError;
       result.created += 1;
-    } catch {
+    } catch (error) {
       result.failed += 1;
-      if (stage === "ai") result.aiFailed += 1;
-      else result.persistenceFailed += 1;
+      if (stage === "ai") {
+        result.aiFailed += 1;
+        const kind = error instanceof HistoricalLearningAiError ? error.kind : "http";
+        result.aiFailureBreakdown[kind] += 1;
+        console.warn("[historical-learning] ai_failure", {
+          kind,
+          status: error instanceof HistoricalLearningAiError ? error.status : null,
+        });
+      } else {
+        result.persistenceFailed += 1;
+      }
     }
   }
 

@@ -41,17 +41,19 @@ describe("SalesAgent LLM configuration", () => {
     const trainingSource = read("../sales-training.functions.ts");
     expect(agentSource).toContain("resolveSalesAgentLlmConfig()");
     expect(agentSource).toContain("fetch(endpoint");
-    expect(agentSource).toContain("core.decide({ ...params, model })");
+    expect(agentSource).toContain("core.decide({ ...contextualParams, model })");
     expect(trainingSource).toContain("runAgentTurn({ ctx, history");
     expect(trainingSource).not.toMatch(/LOVABLE_API_KEY|ai\.gateway\.lovable\.dev/);
   });
 
   it("limita o diagnóstico HTTP a campos sanitizados sem alterar o erro público", () => {
     const agentSource = read("../ai-agent.server.ts");
-    expect(agentSource).toContain('const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"]');
+    expect(agentSource).toContain(
+      'const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"]',
+    );
     expect(agentSource).toContain('res.headers.get("x-request-id")');
     expect(agentSource).toContain("parseGatewayErrorDiagnostic(rawError, apiKey)");
-    expect(agentSource).toContain('reason: `gateway_http_${res.status}`');
+    expect(agentSource).toContain("reason: `gateway_http_${res.status}`");
     expect(agentSource).not.toMatch(/console\.error\([^\n]*(?:apiKey|payload|Authorization)/);
   });
 

@@ -83,6 +83,7 @@ function CoachLearningsPage() {
     failed: number;
     aiFailed: number;
     persistenceFailed: number;
+    aiFailureBreakdown: Record<string, number>;
   } | null>(null);
   const analyzeHistoryMut = useMutation({
     mutationFn: () => analyzeHistoryFn(),
@@ -202,6 +203,15 @@ function CoachLearningsPage() {
           {analysisSummary.created} · Duplicatas ignoradas: {analysisSummary.duplicatesSkipped} ·
           Falhas: {analysisSummary.failed} (IA: {analysisSummary.aiFailed}, persistência:{" "}
           {analysisSummary.persistenceFailed})
+          {analysisSummary.aiFailed > 0 && (
+            <span className="ml-1">
+              · Diagnóstico IA:{" "}
+              {Object.entries(analysisSummary.aiFailureBreakdown)
+                .filter(([, count]) => count > 0)
+                .map(([kind, count]) => `${kind}: ${count}`)
+                .join(", ")}
+            </span>
+          )}
         </div>
       )}
 
