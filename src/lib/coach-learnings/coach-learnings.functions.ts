@@ -23,6 +23,7 @@ import {
 } from "./schema";
 import { extractTeachModeDraft } from "./teach-mode.service";
 import { HttpAudit } from "@/lib/audit/HttpAudit.server";
+import { analyzeHistoricalLearnings } from "./historical-learning.service";
 
 // ---------------------------------------------------------------------------
 // Helpers server-only para instrumentação sanitizada.
@@ -100,7 +101,6 @@ async function getCompanyIdSafe(
   }
 }
 
-
 const listInput = z.object({ includeArchived: z.boolean().optional() });
 
 export const listCoachLearningsFn = createServerFn({ method: "GET" })
@@ -111,6 +111,24 @@ export const listCoachLearningsFn = createServerFn({ method: "GET" })
       includeArchived: data.includeArchived ?? false,
     });
     return { learnings: rows };
+  });
+
+export const analyzeHistoricalLearningsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const companyId = await getCompanyIdSafe(context.supabase, context.userId);
+    if (!companyId) throw new Error("company_not_found");
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _company_id: companyId,
+      _role: "admin",
+    });
+    if (!isAdmin) throw new Error("admin_required");
+    return analyzeHistoricalLearnings({
+      supabase: context.supabase,
+      companyId,
+      userId: context.userId,
+    });
   });
 
 const getInput = z.object({ id: z.string().uuid() });
@@ -148,7 +166,8 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => createInput.parse(data))
   .handler(async ({ data, context }) => {
     const t0 = Date.now();
-    let stage: "rpc:create_coach_learning" | "rpc:submit_suggestion_feedback" = "rpc:create_coach_learning";
+    let stage: "rpc:create_coach_learning" | "rpc:submit_suggestion_feedback" =
+      "rpc:create_coach_learning";
     try {
       const id = await createCoachLearning(
         context.supabase,
@@ -246,24 +265,21 @@ export const createCoachLearningFn = createServerFn({ method: "POST" })
     }
   });
 
-
-
 const updateInput = z.object({
   id: z.string().uuid(),
   expectedVersion: z.number().int().min(1),
-  patch: z
-    .object({
-      category: z.enum(COACH_LEARNING_CATEGORIES),
-      product_ref: z.string().max(120).nullable().optional(),
-      title: z.string().min(3).max(120),
-      description: z.string().min(3).max(2000),
-      rule_structured: z.string().min(3).max(2000),
-      positive_example: z.string().max(2000).nullable().optional(),
-      negative_example: z.string().max(2000).nullable().optional(),
-      priority: z.number().int().min(0).max(100).optional(),
-      confidence: z.number().min(0).max(1).optional(),
-      status: z.enum(COACH_LEARNING_STATUSES).optional(),
-    }),
+  patch: z.object({
+    category: z.enum(COACH_LEARNING_CATEGORIES),
+    product_ref: z.string().max(120).nullable().optional(),
+    title: z.string().min(3).max(120),
+    description: z.string().min(3).max(2000),
+    rule_structured: z.string().min(3).max(2000),
+    positive_example: z.string().max(2000).nullable().optional(),
+    negative_example: z.string().max(2000).nullable().optional(),
+    priority: z.number().int().min(0).max(100).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    status: z.enum(COACH_LEARNING_STATUSES).optional(),
+  }),
   origin: z.enum(COACH_LEARNING_VERSION_ORIGINS).optional(),
   changeReason: z.string().max(500).nullable().optional(),
   promptVersion: z.string().max(120).nullable().optional(),
@@ -415,10 +431,8 @@ export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
     const payload = (result ?? {}) as Record<string, unknown>;
     return {
       ok: true as const,
-      previousFeedback:
-        (payload.previousFeedback as "positive" | "negative" | null) ?? null,
-      currentFeedback:
-        (payload.currentFeedback as "positive" | "negative" | null) ?? null,
+      previousFeedback: (payload.previousFeedback as "positive" | "negative" | null) ?? null,
+      currentFeedback: (payload.currentFeedback as "positive" | "negative" | null) ?? null,
       changed: payload.changed === true,
       affectedLearnings: Number(payload.affectedLearnings ?? 0),
       metricsUpdated: Number(payload.metricsUpdated ?? 0),

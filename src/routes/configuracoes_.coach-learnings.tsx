@@ -15,7 +15,9 @@ import {
   Search,
   X,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
   listCoachLearningsFn,
@@ -23,6 +25,7 @@ import {
   archiveCoachLearningFn,
   getCoachLearningFn,
   restoreCoachLearningVersionFn,
+  analyzeHistoricalLearningsFn,
 } from "@/lib/coach-learnings/coach-learnings.functions";
 import type {
   CoachLearningRow,
@@ -63,6 +66,7 @@ type SortKey = "priority" | "usage" | "retrieved" | "updated";
 function CoachLearningsPage() {
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
   const listFn = useServerFn(listCoachLearningsFn);
+  const analyzeHistoryFn = useServerFn(analyzeHistoricalLearningsFn);
   const qc = useQueryClient();
   const [includeArchived, setIncludeArchived] = useState(false);
   const [search, setSearch] = useState("");
@@ -71,6 +75,16 @@ function CoachLearningsPage() {
   const [product, setProduct] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("priority");
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const analyzeHistoryMut = useMutation({
+    mutationFn: () => analyzeHistoryFn(),
+    onSuccess: (result) => {
+      toast.success(
+        `${result.created} candidato(s) criado(s), ${result.duplicatesSkipped} duplicata(s) ignorada(s).`,
+      );
+      qc.invalidateQueries({ queryKey: ["coach-learnings"] });
+    },
+    onError: () => toast.error("Não foi possível analisar o histórico."),
+  });
 
   const q = useQuery({
     queryKey: ["coach-learnings", { includeArchived }],
@@ -91,9 +105,7 @@ function CoachLearningsPage() {
     return rows
       .filter((r) => (category === "all" ? true : r.category === category))
       .filter((r) => (status === "all" ? true : r.status === status))
-      .filter((r) =>
-        product === "all" ? true : (r.product_ref ?? "") === product,
-      )
+      .filter((r) => (product === "all" ? true : (r.product_ref ?? "") === product))
       .filter((r) => {
         if (!term) return true;
         return (
@@ -107,9 +119,7 @@ function CoachLearningsPage() {
         if (sort === "priority") return b.priority - a.priority;
         if (sort === "usage") return b.usage_count - a.usage_count;
         if (sort === "retrieved") return b.times_retrieved - a.times_retrieved;
-        return (
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        );
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
       });
   }, [rows, category, status, product, search, sort]);
 
@@ -131,29 +141,36 @@ function CoachLearningsPage() {
   }
   if (!isAdmin) {
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Acesso restrito a administradores.
-      </div>
+      <div className="p-6 text-sm text-muted-foreground">Acesso restrito a administradores.</div>
     );
   }
 
   return (
     <div className="max-w-6xl mx-auto p-4 lg:p-6 space-y-4">
       <header className="flex items-center gap-3 flex-wrap">
-        <Link
-          to="/configuracoes"
-          className="p-1.5 rounded hover:bg-muted"
-          aria-label="Voltar"
-        >
+        <Link to="/configuracoes" className="p-1.5 rounded hover:bg-muted" aria-label="Voltar">
           <ArrowLeft className="h-4 w-4" />
         </Link>
+        <button
+          type="button"
+          onClick={() => analyzeHistoryMut.mutate()}
+          disabled={analyzeHistoryMut.isPending}
+          className="inline-flex min-h-11 items-center gap-1 rounded border border-border px-3 text-xs hover:bg-muted disabled:opacity-50"
+        >
+          {analyzeHistoryMut.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          Analisar histórico
+        </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <Brain className="h-5 w-5 text-primary" /> Aprendizados do Coach
           </h1>
           <p className="text-xs text-muted-foreground">
-            Regras conversacionais que a equipe ensinou à IA. Cada aprendizado é
-            injetado no raciocínio antes de responder.
+            Regras conversacionais que a equipe ensinou à IA. Cada aprendizado é injetado no
+            raciocínio antes de responder.
           </p>
         </div>
         <Link
@@ -171,13 +188,14 @@ function CoachLearningsPage() {
         </button>
       </header>
 
-      <section
-        className="grid grid-cols-2 md:grid-cols-4 gap-2"
-        data-testid="learnings-stats"
-      >
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="learnings-stats">
         <Stat label="Total" value={totals.total} />
         <Stat label="Ativos" value={totals.active} />
-        <Stat label="Recuperados" value={totals.retrieved} hint="Somatório de vezes que o Coach usou como contexto" />
+        <Stat
+          label="Recuperados"
+          value={totals.retrieved}
+          hint="Somatório de vezes que o Coach usou como contexto"
+        />
         <Stat label="Confirmados" value={totals.used} hint="Somatório de feedback positivo" />
       </section>
 
@@ -270,9 +288,7 @@ function CoachLearningsPage() {
           <LearningCard
             key={r.id}
             row={r}
-            onChanged={() =>
-              qc.invalidateQueries({ queryKey: ["coach-learnings"] })
-            }
+            onChanged={() => qc.invalidateQueries({ queryKey: ["coach-learnings"] })}
             onOpenHistory={() => setHistoryId(r.id)}
           />
         ))}
@@ -282,33 +298,21 @@ function CoachLearningsPage() {
         <HistoryDialog
           learningId={historyId}
           onClose={() => setHistoryId(null)}
-          onRestored={() =>
-            qc.invalidateQueries({ queryKey: ["coach-learnings"] })
-          }
+          onRestored={() => qc.invalidateQueries({ queryKey: ["coach-learnings"] })}
         />
       )}
     </div>
   );
 }
 
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-}) {
+function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div
       className="rounded border border-border bg-card p-2"
       title={hint}
       data-testid={`stat-${label.toLowerCase()}`}
     >
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
   );
@@ -354,8 +358,7 @@ function LearningCard({
               title: draft.title,
               description: draft.description,
               rule_structured: draft.rule_structured,
-              category:
-                draft.category as (typeof COACH_LEARNING_CATEGORIES)[number],
+              category: draft.category as (typeof COACH_LEARNING_CATEGORIES)[number],
               product_ref: draft.product_ref,
               positive_example: draft.positive_example,
               negative_example: draft.negative_example,
@@ -401,9 +404,7 @@ function LearningCard({
           className="flex-1 text-left min-w-0"
         >
           <div className="font-medium text-sm truncate">{row.title}</div>
-          <div className="text-xs text-muted-foreground line-clamp-2">
-            {row.rule_structured}
-          </div>
+          <div className="text-xs text-muted-foreground line-clamp-2">{row.rule_structured}</div>
         </button>
         <StatusBadge status={row.status} />
       </div>
@@ -416,9 +417,7 @@ function LearningCard({
         <span>·</span>
         <span title="Feedback positivo">👍 {row.usage_count}</span>
         <span>·</span>
-        <span title="Vezes recuperado como contexto pelo Coach">
-          ⇢ {row.times_retrieved}
-        </span>
+        <span title="Vezes recuperado como contexto pelo Coach">⇢ {row.times_retrieved}</span>
         {row.product_ref && (
           <>
             <span>·</span>
@@ -443,9 +442,7 @@ function LearningCard({
               <select
                 className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
                 value={draft.category}
-                onChange={(e) =>
-                  setDraft({ ...draft, category: e.target.value })
-                }
+                onChange={(e) => setDraft({ ...draft, category: e.target.value })}
               >
                 {COACH_LEARNING_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -464,10 +461,7 @@ function LearningCard({
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    priority: Math.max(
-                      0,
-                      Math.min(100, Number(e.target.value) || 0),
-                    ),
+                    priority: Math.max(0, Math.min(100, Number(e.target.value) || 0)),
                   })
                 }
               />
@@ -483,13 +477,11 @@ function LearningCard({
                   })
                 }
               >
-                {COACH_LEARNING_STATUSES.filter((s) => s !== "archived").map(
-                  (s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABEL_PT[s]}
-                    </option>
-                  ),
-                )}
+                {COACH_LEARNING_STATUSES.filter((s) => s !== "archived").map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL_PT[s]}
+                  </option>
+                ))}
               </select>
             </FormRow>
           </div>
@@ -498,9 +490,7 @@ function LearningCard({
               rows={2}
               className="w-full rounded border border-border bg-background px-2 py-1 text-sm resize-none"
               value={draft.description}
-              onChange={(e) =>
-                setDraft({ ...draft, description: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
             />
           </FormRow>
           <FormRow label="Regra estruturada">
@@ -508,14 +498,10 @@ function LearningCard({
               rows={3}
               className="w-full rounded border border-border bg-background px-2 py-1 text-sm resize-none"
               value={draft.rule_structured}
-              onChange={(e) =>
-                setDraft({ ...draft, rule_structured: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, rule_structured: e.target.value })}
             />
           </FormRow>
-          {err && (
-            <div className="text-xs text-red-600 dark:text-red-400">{err}</div>
-          )}
+          {err && <div className="text-xs text-red-600 dark:text-red-400">{err}</div>}
           <div className="flex items-center justify-end gap-2 flex-wrap">
             <button
               type="button"
@@ -538,11 +524,7 @@ function LearningCard({
               disabled={saving}
               className="inline-flex items-center gap-1 rounded bg-primary text-primary-foreground px-2 py-1 text-xs hover:opacity-90 disabled:opacity-40"
             >
-              {saving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               Salvar (nova versão)
             </button>
           </div>
@@ -574,13 +556,9 @@ function HistoryDialog({
 
   const learning = q.data?.learning as CoachLearningRow | undefined;
   const versions = (q.data?.versions ?? []) as CoachLearningVersionRow[];
-  const current = learning
-    ? (versions.find((v) => v.version === learning.version) ?? null)
-    : null;
+  const current = learning ? (versions.find((v) => v.version === learning.version) ?? null) : null;
   const selected =
-    selectedVersion !== null
-      ? (versions.find((v) => v.version === selectedVersion) ?? null)
-      : null;
+    selectedVersion !== null ? (versions.find((v) => v.version === selectedVersion) ?? null) : null;
 
   async function handleRestore() {
     if (!learning || !selected) return;
@@ -661,15 +639,10 @@ function HistoryDialog({
                 >
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">v{v.version}</span>
-                    {isCurrent && (
-                      <span className="text-[9px] uppercase text-primary">
-                        atual
-                      </span>
-                    )}
+                    {isCurrent && <span className="text-[9px] uppercase text-primary">atual</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    {v.origin} ·{" "}
-                    {new Date(v.created_at).toLocaleString("pt-BR")}
+                    {v.origin} · {new Date(v.created_at).toLocaleString("pt-BR")}
                   </div>
                 </button>
               );
@@ -686,30 +659,16 @@ function HistoryDialog({
                 <div className="text-xs text-muted-foreground">
                   Comparando <strong>v{selected.version}</strong> com{" "}
                   <strong>v{current.version}</strong> (atual)
-                  {selected.change_reason && (
-                    <span> · motivo: {selected.change_reason}</span>
-                  )}
+                  {selected.change_reason && <span> · motivo: {selected.change_reason}</span>}
                 </div>
-                <DiffField
-                  label="Título"
-                  before={selected.title}
-                  after={current.title}
-                />
-                <DiffField
-                  label="Categoria"
-                  before={selected.category}
-                  after={current.category}
-                />
+                <DiffField label="Título" before={selected.title} after={current.title} />
+                <DiffField label="Categoria" before={selected.category} after={current.category} />
                 <DiffField
                   label="Prioridade"
                   before={String(selected.priority)}
                   after={String(current.priority)}
                 />
-                <DiffField
-                  label="Status"
-                  before={selected.status}
-                  after={current.status}
-                />
+                <DiffField label="Status" before={selected.status} after={current.status} />
                 <DiffField
                   label="Regra"
                   before={selected.rule_structured}
@@ -721,10 +680,7 @@ function HistoryDialog({
                   after={current.description}
                 />
                 {err && (
-                  <div
-                    role="alert"
-                    className="text-xs text-red-600 dark:text-red-400"
-                  >
+                  <div role="alert" className="text-xs text-red-600 dark:text-red-400">
                     {err}
                   </div>
                 )}
@@ -739,11 +695,7 @@ function HistoryDialog({
                   <button
                     type="button"
                     onClick={handleRestore}
-                    disabled={
-                      restoring ||
-                      !selected ||
-                      selected.version === current.version
-                    }
+                    disabled={restoring || !selected || selected.version === current.version}
                     data-testid="history-restore"
                     className="inline-flex items-center gap-1 min-h-9 rounded bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:opacity-90 disabled:opacity-40"
                   >
@@ -764,40 +716,24 @@ function HistoryDialog({
   );
 }
 
-function DiffField({
-  label,
-  before,
-  after,
-}: {
-  label: string;
-  before: string;
-  after: string;
-}) {
+function DiffField({ label, before, after }: { label: string; before: string; after: string }) {
   const changed = before !== after;
   return (
-    <div
-      className="space-y-1"
-      data-testid={`diff-${label.toLowerCase()}`}
-      data-changed={changed}
-    >
+    <div className="space-y-1" data-testid={`diff-${label.toLowerCase()}`} data-changed={changed}>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label} {changed && <span className="text-amber-600">·  alterado</span>}
+        {label} {changed && <span className="text-amber-600">· alterado</span>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <pre
           className={`whitespace-pre-wrap text-xs rounded border p-2 ${
-            changed
-              ? "border-red-500/40 bg-red-500/5"
-              : "border-border bg-muted/30"
+            changed ? "border-red-500/40 bg-red-500/5" : "border-border bg-muted/30"
           }`}
         >
           {before || "—"}
         </pre>
         <pre
           className={`whitespace-pre-wrap text-xs rounded border p-2 ${
-            changed
-              ? "border-emerald-500/40 bg-emerald-500/5"
-              : "border-border bg-muted/30"
+            changed ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/30"
           }`}
         >
           {after || "—"}
@@ -821,26 +757,16 @@ function StatusBadge({ status }: { status: string }) {
         ? STATUS_LABEL_PT.paused
         : STATUS_LABEL_PT.archived;
   return (
-    <span
-      className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${style}`}
-    >
+    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${style}`}>
       {label}
     </span>
   );
 }
 
-function FormRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
       {children}
     </label>
   );
