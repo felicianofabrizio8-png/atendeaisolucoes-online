@@ -6,23 +6,13 @@
 
 export const ANALYZER_VERSION = "det-v1.0.0" as const;
 
-export type LifecycleStatus =
-  | "in_progress"
-  | "sold"
-  | "lost"
-  | "abandoned"
-  | "completed";
+export type LifecycleStatus = "in_progress" | "sold" | "lost" | "abandoned" | "completed";
 
 export type ExtractionMethod = "deterministic" | "hybrid";
 
 export type SentimentLabel = "positive" | "neutral" | "negative" | "mixed";
 
-export type ProcessingStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "skipped"
-  | "failed";
+export type ProcessingStatus = "pending" | "processing" | "completed" | "skipped" | "failed";
 
 /** Mensagem simplificada — apenas metadados + texto em memória. */
 export interface RawMessage {
@@ -47,6 +37,12 @@ export interface ConversationRaw {
   quote_count: number;
   quote_last_sent_at: string | null;
   follow_up_count: number;
+  last_message_at?: string | null;
+  fact_sale_detected?: boolean;
+  fact_loss_detected?: boolean;
+  fact_quote_detected?: boolean;
+  qualified_quote_count?: number;
+  commercial_signal_count?: number;
   messages: RawMessage[]; // já ordenadas asc por `at`
 }
 

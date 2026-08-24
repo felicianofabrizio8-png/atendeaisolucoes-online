@@ -75,12 +75,20 @@ function CoachLearningsPage() {
   const [product, setProduct] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("priority");
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [analysisSummary, setAnalysisSummary] = useState<{
+    scanned: number;
+    analyzed: number;
+    created: number;
+    duplicatesSkipped: number;
+    failed: number;
+    aiFailed: number;
+    persistenceFailed: number;
+  } | null>(null);
   const analyzeHistoryMut = useMutation({
     mutationFn: () => analyzeHistoryFn(),
     onSuccess: (result) => {
-      toast.success(
-        `${result.created} candidato(s) criado(s), ${result.duplicatesSkipped} duplicata(s) ignorada(s).`,
-      );
+      setAnalysisSummary(result);
+      toast.success(`Análise concluída: ${result.created} candidato(s) criado(s).`);
       qc.invalidateQueries({ queryKey: ["coach-learnings"] });
     },
     onError: () => toast.error("Não foi possível analisar o histórico."),
@@ -187,6 +195,15 @@ function CoachLearningsPage() {
           <RefreshCcw className="h-3 w-3" /> Atualizar
         </button>
       </header>
+
+      {analysisSummary && (
+        <div className="rounded border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Escaneadas: {analysisSummary.scanned} · Analisadas: {analysisSummary.analyzed} · Criadas:{" "}
+          {analysisSummary.created} · Duplicatas ignoradas: {analysisSummary.duplicatesSkipped} ·
+          Falhas: {analysisSummary.failed} (IA: {analysisSummary.aiFailed}, persistência:{" "}
+          {analysisSummary.persistenceFailed})
+        </div>
+      )}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="learnings-stats">
         <Stat label="Total" value={totals.total} />

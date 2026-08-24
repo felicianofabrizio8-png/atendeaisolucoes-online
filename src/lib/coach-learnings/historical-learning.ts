@@ -25,10 +25,27 @@ export function scoreHistoricalConversation(conversation: ConversationRaw): numb
 
   let score = Math.min(conversation.messages.length, 20);
   if (conversation.lead_status === "fechado" && conversation.lead_closed_at) score += 100;
+  if (conversation.fact_sale_detected) score += 90;
   if (conversation.lead_status === "perdido" && conversation.lead_lost_at) score += 70;
-  if (conversation.quote_count > 0) score += conversation.lead_status === "fechado" ? 30 : 10;
+  if (conversation.fact_loss_detected) score += 65;
+  if (conversation.fact_quote_detected) score += 25;
+  if ((conversation.qualified_quote_count ?? 0) > 0) score += 30;
+  else if (conversation.quote_count > 0) score += 10;
+  score += Math.min(conversation.commercial_signal_count ?? 0, 5) * 5;
   if (conversation.lead_estimated_value && conversation.lead_estimated_value > 0) score += 5;
   return score;
+}
+
+export function isHistoricalConversationEligible(conversation: ConversationRaw): boolean {
+  const hasClearOutcome =
+    conversation.lead_status === "fechado" ||
+    conversation.lead_status === "perdido" ||
+    conversation.fact_sale_detected === true ||
+    conversation.fact_loss_detected === true;
+  const hasQuote =
+    conversation.fact_quote_detected === true || (conversation.qualified_quote_count ?? 0) > 0;
+  const hasEnoughCommercialSignals = (conversation.commercial_signal_count ?? 0) >= 2;
+  return hasClearOutcome || hasQuote || hasEnoughCommercialSignals;
 }
 
 export function selectHistoricalConversations(
@@ -38,6 +55,7 @@ export function selectHistoricalConversations(
 ): ConversationRaw[] {
   return conversations
     .filter((conversation) => conversation.company_id === companyId)
+    .filter(isHistoricalConversationEligible)
     .map((conversation) => ({ conversation, score: scoreHistoricalConversation(conversation) }))
     .filter((entry) => entry.score >= 0)
     .sort((a, b) => b.score - a.score)

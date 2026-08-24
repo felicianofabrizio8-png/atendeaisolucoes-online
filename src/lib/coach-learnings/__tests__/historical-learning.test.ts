@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { ConversationRaw } from "@/lib/conversation-intelligence/ConversationIntelligenceTypes";
 import type { SimilarCandidate } from "../similarity";
 import {
+  isHistoricalConversationEligible,
   redactHistoricalPii,
   scoreHistoricalConversation,
   selectHistoricalConversations,
@@ -66,6 +67,30 @@ describe("historical learning V1", () => {
     );
   });
 
+  it("aceita fatos, orcamento qualificado e sinais comerciais sem status terminal", () => {
+    const open = { lead_status: "quente", lead_closed_at: null, lead_lost_at: null };
+    expect(
+      isHistoricalConversationEligible(conversation({ ...open, fact_sale_detected: true })),
+    ).toBe(true);
+    expect(
+      isHistoricalConversationEligible(conversation({ ...open, fact_loss_detected: true })),
+    ).toBe(true);
+    expect(
+      isHistoricalConversationEligible(conversation({ ...open, fact_quote_detected: true })),
+    ).toBe(true);
+    expect(
+      isHistoricalConversationEligible(conversation({ ...open, qualified_quote_count: 1 })),
+    ).toBe(true);
+    expect(
+      isHistoricalConversationEligible(conversation({ ...open, commercial_signal_count: 2 })),
+    ).toBe(true);
+    expect(
+      isHistoricalConversationEligible(
+        conversation({ ...open, commercial_signal_count: 1, quote_count: 0 }),
+      ),
+    ).toBe(false);
+  });
+
   it("remove email, telefone, documento, link, usuario e nome declarado", () => {
     const clean = redactHistoricalPii(
       "Meu nome e Maria Silva, email maria@site.com, telefone (11) 99999-8888, CPF 123.456.789-00, https://site.com e @maria",
@@ -91,5 +116,14 @@ describe("historical learning V1", () => {
     expect(functionsSource).toContain('if (!isAdmin) throw new Error("admin_required")');
     expect(adminRouteSource).toContain("updateCoachLearningFn");
     expect(adminRouteSource).toContain("status: draft.status as CoachLearningStatus");
+  });
+
+  it("separa falhas de IA e persistencia e expoe o resumo completo", () => {
+    expect(serviceSource).toContain('stage: "ai" | "persistence"');
+    expect(serviceSource).toContain("aiFailed");
+    expect(serviceSource).toContain("persistenceFailed");
+    for (const field of ["scanned", "analyzed", "created", "duplicatesSkipped", "failed"]) {
+      expect(adminRouteSource).toContain(`analysisSummary.${field}`);
+    }
   });
 });

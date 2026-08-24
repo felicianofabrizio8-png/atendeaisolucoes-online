@@ -22,6 +22,8 @@ export interface HistoricalLearningRunResult {
   created: number;
   duplicatesSkipped: number;
   failed: number;
+  aiFailed: number;
+  persistenceFailed: number;
 }
 
 export async function analyzeHistoricalLearnings(args: {
@@ -32,7 +34,7 @@ export async function analyzeHistoricalLearnings(args: {
   const raw = await selectConversations({
     companyId: args.companyId,
     limit: HISTORICAL_SCAN_LIMIT,
-    onlyTerminated: true,
+    onlyTerminated: false,
     olderThanDays: 2,
   });
   const selected = selectHistoricalConversations(raw, args.companyId);
@@ -42,12 +44,15 @@ export async function analyzeHistoricalLearnings(args: {
     created: 0,
     duplicatesSkipped: 0,
     failed: 0,
+    aiFailed: 0,
+    persistenceFailed: 0,
   };
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   for (const conversation of selected.slice(0, HISTORICAL_ANALYSIS_LIMIT)) {
     if (result.created >= HISTORICAL_CANDIDATE_LIMIT) break;
     result.analyzed += 1;
+    let stage: "ai" | "persistence" = "ai";
     try {
       const context = buildRedactedHistoricalContext(conversation);
       const extracted = await extractTeachModeDraft({
@@ -58,6 +63,7 @@ export async function analyzeHistoricalLearnings(args: {
         suggestionText: null,
       });
       const draft = redactHistoricalDraft(extracted.draft);
+      stage = "persistence";
       const similar = await findSimilarCoachLearning(args.supabase, {
         category: draft.category,
         title: draft.title,
@@ -132,6 +138,8 @@ export async function analyzeHistoricalLearnings(args: {
       result.created += 1;
     } catch {
       result.failed += 1;
+      if (stage === "ai") result.aiFailed += 1;
+      else result.persistenceFailed += 1;
     }
   }
 
