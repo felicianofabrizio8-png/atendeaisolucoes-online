@@ -87,8 +87,6 @@ export async function extractHistoricalLearningDraft(args: {
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: args.userExplanation.slice(0, 7000) },
         ],
-        temperature: 0.2,
-        max_tokens: 1100,
         response_format: { type: "json_object" },
       }),
       signal: ctrl.signal,

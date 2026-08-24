@@ -25,6 +25,8 @@ describe("historical learning extractor", () => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("provider/model");
       expect(body.response_format).toEqual({ type: "json_object" });
+      expect(body.temperature).toBeUndefined();
+      expect(body.max_tokens).toBeUndefined();
       expect(body.tools).toBeUndefined();
       expect((init?.headers as Record<string, string>).authorization).toBe("Bearer test-secret");
       return new Response(
