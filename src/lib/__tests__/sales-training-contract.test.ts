@@ -29,6 +29,15 @@ const promotionMigrationSource = readFileSync(
   ),
   "utf8",
 );
+const replacementMigrationSource = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../supabase/migrations/20260824010000_replace_training_learnings_on_approval.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 
 describe("Sales training contract", () => {
   it("isola sessões e mensagens por empresa com RLS", () => {
@@ -99,6 +108,28 @@ describe("Sales training contract", () => {
     expect(promotionMigrationSource).toMatch(/SET status = 'active'/);
     expect(functionsSource).toContain("createTrainingLearningCandidate");
     expect(functionsSource).toContain("approveTrainingLearningCandidate");
+  });
+
+  it("aprova o novo learning e pausa somente os IDs usados na resposta corrigida", () => {
+    expect(replacementMigrationSource).toContain("v_agent.decision -> 'learning_ids_used'");
+    expect(replacementMigrationSource).toContain("l.id = ANY(v_replaced_ids)");
+    expect(replacementMigrationSource).toContain("l.company_id = v_company");
+    expect(replacementMigrationSource).toContain("l.status = 'active'");
+    expect(replacementMigrationSource).toContain("SET status = 'paused'");
+    expect(replacementMigrationSource).toContain("SET status = 'active'");
+    expect(replacementMigrationSource).toContain("'replaces_learning_ids'");
+  });
+
+  it("eleva a prioridade da correção aprovada para o retrieval", () => {
+    expect(replacementMigrationSource).toContain("v_replaced_max_priority + 1");
+    expect(replacementMigrationSource).toContain("GREATEST(90");
+    expect(replacementMigrationSource).toContain("priority = v_new_priority");
+  });
+
+  it("preserva a correção no campo de regra efetivamente usado pelo grounding", () => {
+    expect(replacementMigrationSource).toContain("rule_structured = left(");
+    expect(replacementMigrationSource).toContain("btrim(v_agent.correction_text)");
+    expect(replacementMigrationSource).toContain("RETURNING * INTO v_learning");
   });
 
   it("isola promoção por empresa e exige administrador", () => {
