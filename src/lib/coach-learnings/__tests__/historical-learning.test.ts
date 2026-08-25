@@ -7,9 +7,11 @@ import {
   consolidateHistoricalCandidates,
   hasHistoricalSpecificFacts,
   isHistoricalConversationEligible,
+  mergeHistoricalCandidateBatches,
   redactHistoricalPii,
   scoreHistoricalConversation,
   selectHistoricalConversations,
+  selectMostRecurrentHistoricalCandidates,
   shouldSkipHistoricalDuplicate,
 } from "../historical-learning";
 import type { CoachLearningDraft } from "../schema";
@@ -24,6 +26,15 @@ const functionsSource = readFileSync(
 );
 const adminRouteSource = readFileSync(
   fileURLToPath(new URL("../../../routes/configuracoes_.coach-learnings.tsx", import.meta.url)),
+  "utf8",
+);
+const checkpointMigration = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../../supabase/migrations/20260825000000_create_historical_learning_checkpoints.sql",
+      import.meta.url,
+    ),
+  ),
   "utf8",
 );
 
@@ -135,9 +146,34 @@ describe("historical learning V1", () => {
       "Prometer prazo de entrega",
       "Confirmar disponibilidade em estoque",
       "O cliente precisa de uma unidade",
+      "A garantia oficial e de cinco anos",
+      "Aceitamos pagamento por Pix",
+      "O frete e gratuito",
+      "A instalacao esta inclusa",
+      "Oferecer um brinde",
+      "Filtro incluso no pacote",
     ]) {
       expect(hasHistoricalSpecificFacts(draft({ rule_structured: fact }))).toBe(true);
     }
+  });
+
+  it("consolida entre lotes e mantém somente as regras mais recorrentes", () => {
+    const first = consolidateHistoricalCandidates([
+      { draft: draft(), conversationId: "conv-1" },
+      { draft: draft({ title: "Perguntar objetivo", rule_structured: "Perguntar o objetivo principal." }), conversationId: "conv-3" },
+    ]);
+    const merged = mergeHistoricalCandidateBatches(first, [
+      {
+        draft: draft({ title: "Confirmar proximo passo", rule_structured: "Confirmar interesse e combinar o proximo passo." }),
+        conversationId: "conv-2",
+      },
+    ]);
+
+    expect(merged).toHaveLength(2);
+    expect(selectMostRecurrentHistoricalCandidates(merged, 1)[0].conversationIds).toEqual([
+      "conv-1",
+      "conv-2",
+    ]);
   });
 
   it("consolida regras semelhantes e conta conversas como evidencias unicas", () => {
@@ -162,7 +198,8 @@ describe("historical learning V1", () => {
     expect(serviceSource).toMatch(/status:\s*"paused"/g);
     expect(serviceSource).not.toMatch(/status:\s*"active"/);
     expect(serviceSource).toContain("source_conversation_id: null");
-    expect(serviceSource).toContain("conversation_id: conversationIds[0]");
+    expect(serviceSource).not.toContain("conversation_id: conversationIds[0]");
+    expect(serviceSource).toContain("evidence_conversation_ids: conversationIds");
     expect(functionsSource).toContain('if (!isAdmin) throw new Error("admin_required")');
     expect(adminRouteSource).toContain("updateCoachLearningFn");
     expect(adminRouteSource).toContain("status: draft.status as CoachLearningStatus");
@@ -174,9 +211,22 @@ describe("historical learning V1", () => {
     expect(serviceSource).toContain("aiFailureBreakdown");
     expect(serviceSource).toContain("evidence_conversation_ids");
     expect(serviceSource).toContain("processedConversationIds");
-    expect(serviceSource).toContain("offset: page * HISTORICAL_SCAN_LIMIT");
+    expect(serviceSource).toContain("for (;;)");
+    expect(serviceSource).toContain("coach_historical_learning_checkpoints");
+    expect(serviceSource).toContain('status: "completed"');
     for (const field of ["scanned", "analyzed", "created", "duplicatesSkipped", "failed"]) {
       expect(adminRouteSource).toContain(`analysisSummary.${field}`);
     }
+  });
+
+  it("mantém checkpoint persistente, idempotente e sem transcrições", () => {
+    expect(checkpointMigration).toContain(
+      "CREATE TABLE IF NOT EXISTS public.coach_historical_learning_checkpoints",
+    );
+    expect(checkpointMigration).toContain("PRIMARY KEY (company_id, prompt_version)");
+    expect(checkpointMigration).toContain("company_id = private.current_company_id()");
+    expect(checkpointMigration).toContain("metadata jsonb");
+    expect(checkpointMigration).not.toMatch(/\b(transcript|conversation_text|message_text)\b/i);
+    expect(serviceSource).toContain('metadata: { candidates: checkpoint.candidates }');
   });
 });

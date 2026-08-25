@@ -3,8 +3,7 @@ import type { SimilarCandidate } from "./similarity";
 import type { CoachLearningDraft } from "./schema";
 
 export const HISTORICAL_SCAN_LIMIT = 30;
-export const HISTORICAL_MAX_PAGES = 5;
-export const HISTORICAL_ANALYSIS_LIMIT = 25;
+export const HISTORICAL_ANALYSIS_LIMIT = 500;
 export const HISTORICAL_CANDIDATE_LIMIT = 3;
 export const HISTORICAL_PROMPT_VERSION = "coach-history-v1@2026-08-24";
 
@@ -14,6 +13,12 @@ const SPECIFIC_FACT_PATTERNS = [
   /\b(?:modelo|sku|c[oó]digo|refer[eê]ncia|produto|item)\b/iu,
   /\b(?:prazo|dias? [uú]teis|entrega|previs[aã]o|data)\b/iu,
   /\b(?:estoque|dispon[ií]vel|disponibilidade|indispon[ií]vel|pronta entrega)\b/iu,
+  /\b(?:garantia|garantido|cobertura)\b/iu,
+  /\b(?:pagamento|pix|cart[aã]o|boleto|financiamento|entrada)\b/iu,
+  /\b(?:frete|transportadora|retirada)\b/iu,
+  /\b(?:instala[cç][aã]o|instalar|montagem)\b/iu,
+  /\b(?:brinde|presente|cortesia)\b/iu,
+  /\b(?:inclus[oa]s?|inclu[ií]d[oa]s?|acompanha)\b/iu,
   /\b(?:cliente|comprador|empresa)\s+(?:disse|tem|possui|precisa|quer|solicitou|informou)\b/iu,
   /\b\d{2,}\b/u,
 ] as const;
@@ -81,6 +86,36 @@ export function consolidateHistoricalCandidates(
     }
   }
   return canonical;
+}
+
+export function mergeHistoricalCandidateBatches(
+  existing: HistoricalCanonicalCandidate[],
+  extracted: Array<{ draft: CoachLearningDraft; conversationId: string }>,
+): HistoricalCanonicalCandidate[] {
+  return consolidateHistoricalCandidates([
+    ...existing.flatMap((candidate) =>
+      candidate.conversationIds.map((conversationId) => ({
+        draft: candidate.draft,
+        conversationId,
+      })),
+    ),
+    ...extracted,
+  ]);
+}
+
+export function selectMostRecurrentHistoricalCandidates(
+  candidates: HistoricalCanonicalCandidate[],
+  limit = HISTORICAL_CANDIDATE_LIMIT,
+): HistoricalCanonicalCandidate[] {
+  return candidates
+    .slice()
+    .sort(
+      (a, b) =>
+        b.conversationIds.length - a.conversationIds.length ||
+        b.draft.confidence - a.draft.confidence ||
+        b.draft.priority - a.draft.priority,
+    )
+    .slice(0, Math.max(0, limit));
 }
 
 export function redactHistoricalPii(value: string): string {

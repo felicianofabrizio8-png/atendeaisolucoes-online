@@ -34,8 +34,9 @@ Retorne somente JSON valido com este formato:
   "priority": number,
   "confidence": number
 }
-Use sempre product_ref null. Nao extraia nem mencione preco, medida, modelo, produto, prazo,
-disponibilidade, estoque ou qualquer fato especifico do cliente, mesmo que conste no contexto.
+Use sempre product_ref null. Nao extraia nem mencione produto, preco, medida, modelo, prazo,
+disponibilidade, estoque, garantia, pagamento, frete, instalacao, brindes, itens inclusos ou
+qualquer outro fato ou politica comercial, mesmo que conste no contexto.
 Se a conversa depender desses fatos, generalize apenas a tecnica de comunicacao, qualificacao,
 tratamento de objecao, fechamento, follow-up, tom ou processo. Nao copie dados pessoais.`;
 
