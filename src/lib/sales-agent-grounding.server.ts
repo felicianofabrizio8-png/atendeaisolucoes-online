@@ -2,6 +2,10 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
 import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
+import type {
+  ConversationProductAttributes,
+  ConversationSalesState,
+} from "./conversation-sales-state";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -29,9 +33,54 @@ function collectVariantTerms(value: unknown): string[] {
   return [];
 }
 
+export function extractCurrentProductAttributes(
+  history: AgentHistory,
+): ConversationProductAttributes {
+  const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
+  const normalized = normalizeCatalogText(lastLeadText);
+  const decimal = (value: string | undefined): number | undefined => {
+    if (!value) return undefined;
+    const parsed = Number(value.replace(",", "."));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  };
+  const dimension =
+    /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?/.exec(
+      normalized,
+    );
+  const width = /largura\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
+    normalized,
+  );
+  const depth = /profundidade\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
+    normalized,
+  );
+  const capacity = /(\d+(?:[.,]\d+)?)\s*(mil\s*)?(?:l|litros?)\b/.exec(normalized);
+  const capacityBase = decimal(capacity?.[1]);
+  const variant = /\b(?:cor|variante)\s+(?:(?:na|em|de)\s+)?([\p{L}\d-]+)/u.exec(normalized);
+  const asksRectangular = /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
+  const shape = asksRectangular
+    ? "retangular"
+    : (["retangular", "redond", "oval"].find((term) => normalized.includes(term)) ?? undefined);
+  const lengthM = getRequestedProductLength(history);
+  return {
+    ...(lengthM != null ? { lengthM } : {}),
+    ...(decimal(dimension?.[2] ?? width?.[1]) != null
+      ? { widthM: decimal(dimension?.[2] ?? width?.[1]) }
+      : {}),
+    ...(decimal(dimension?.[3] ?? depth?.[1]) != null
+      ? { depthM: decimal(dimension?.[3] ?? depth?.[1]) }
+      : {}),
+    ...(capacityBase != null
+      ? { capacityL: capacityBase * (capacity?.[2] ? 1_000 : 1) }
+      : {}),
+    ...(shape ? { shape } : {}),
+    ...(variant?.[1] ? { variantTerms: [variant[1]] } : {}),
+  };
+}
+
 export function selectRelevantSalesAgentProducts(
   products: CatalogProduct[],
   history: AgentHistory,
+  salesState: ConversationSalesState | null = null,
 ): CatalogProduct[] {
   const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
   const normalized = normalizeCatalogText(lastLeadText);
@@ -40,30 +89,29 @@ export function selectRelevantSalesAgentProducts(
     const parsed = Number(value.replace(",", "."));
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   };
-  const dimensionMatch =
-    /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?/.exec(
-      normalized,
-    );
-  const widthMatch = /largura\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
-    normalized,
-  );
-  const depthMatch = /profundidade\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
-    normalized,
-  );
   const capacityMatch = /(\d+(?:[.,]\d+)?)\s*(mil\s*)?(?:l|litros?)\b/.exec(normalized);
-  const requestedLength = getRequestedProductLength(history);
-  const requestedWidth = decimal(dimensionMatch?.[2] ?? widthMatch?.[1]);
-  const requestedDepth = decimal(dimensionMatch?.[3] ?? depthMatch?.[1]);
+  const currentAttributes = extractCurrentProductAttributes(history);
+  const effectiveAttributes = { ...(salesState?.attributes ?? {}), ...currentAttributes };
+  const requestedLength = effectiveAttributes.lengthM ?? null;
+  const requestedWidth = effectiveAttributes.widthM ?? null;
+  const requestedDepth = effectiveAttributes.depthM ?? null;
   const requestedCapacityBase = decimal(capacityMatch?.[1]);
   const requestedCapacity =
-    requestedCapacityBase == null ? null : requestedCapacityBase * (capacityMatch?.[2] ? 1_000 : 1);
+    effectiveAttributes.capacityL ??
+    (requestedCapacityBase == null
+      ? null
+      : requestedCapacityBase * (capacityMatch?.[2] ? 1_000 : 1));
   const selectedIds = new Set(
-    [...history].reverse().find((item) => item.role === "agent" && item.productIds?.length)
-      ?.productIds ?? [],
+    salesState?.productIds.length
+      ? salesState.productIds
+      : ([...history].reverse().find((item) => item.role === "agent" && item.productIds?.length)
+          ?.productIds ?? salesState?.lastValidProductIds ?? []),
   );
   const usesChosenProductContext =
     selectedIds.size > 0 &&
-    /\b(ele|ela|dele|dela|desse|dessa|esse|essa|este|esta|nesse|nessa)\b/.test(normalized);
+    (/\b(ele|ela|dele|dela|desse|dessa|esse|essa|este|esta|nesse|nessa)\b/.test(normalized) ||
+      ((currentAttributes.variantTerms?.length || currentAttributes.shape) &&
+        currentAttributes.lengthM == null));
 
   let candidates = usesChosenProductContext
     ? products.filter((product) => selectedIds.has(product.id))
@@ -99,9 +147,7 @@ export function selectRelevantSalesAgentProducts(
   }
 
   const asksRectangularPool = /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
-  const requestedShapeTerm = asksRectangularPool
-    ? "retangular"
-    : (["retangular", "redond", "oval"].find((term) => normalized.includes(term)) ?? null);
+  const requestedShapeTerm = effectiveAttributes.shape ?? null;
   const shapeMatches = candidates.filter((product) => {
     const shape = normalizeCatalogText(product.shape ?? "");
     if (asksRectangularPool) {
@@ -113,7 +159,9 @@ export function selectRelevantSalesAgentProducts(
       : Boolean(shape && normalized.includes(shape));
   });
   const asksShape =
-    asksRectangularPool || /\b(retangular|redond[ao]s?|oval|formato)\b/.test(normalized);
+    Boolean(requestedShapeTerm) ||
+    asksRectangularPool ||
+    /\b(retangular|redond[ao]s?|oval|formato)\b/.test(normalized);
   if (shapeMatches.length > 0) {
     hasStructuredFilter = true;
     candidates = shapeMatches;
@@ -122,10 +170,20 @@ export function selectRelevantSalesAgentProducts(
     candidates = [];
   }
 
+  const requestedVariantTerms = effectiveAttributes.variantTerms ?? [];
   const variantMatches = candidates.filter((product) => {
-    return collectVariantTerms(product.variants ?? []).some((value) => normalized.includes(value));
+    const productTerms = collectVariantTerms(product.variants ?? []);
+    return requestedVariantTerms.length > 0
+      ? requestedVariantTerms.some((requested) =>
+          productTerms.some((value) => value.includes(requested) || requested.includes(value)),
+        )
+      : productTerms.some((value) => normalized.includes(value));
   });
-  if (variantMatches.length > 0 || /\b(cor|variante)\b/.test(normalized)) {
+  if (
+    variantMatches.length > 0 ||
+    requestedVariantTerms.length > 0 ||
+    /\b(cor|variante)\b/.test(normalized)
+  ) {
     hasStructuredFilter = true;
     candidates = variantMatches;
   }

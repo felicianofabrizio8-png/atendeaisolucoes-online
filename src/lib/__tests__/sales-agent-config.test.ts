@@ -42,7 +42,8 @@ describe("SalesAgent LLM configuration", () => {
     expect(agentSource).toContain("resolveSalesAgentLlmConfig()");
     expect(agentSource).toContain("fetch(endpoint");
     expect(agentSource).toContain("core.decide({ ...contextualParams, model })");
-    expect(trainingSource).toContain("runAgentTurn({ ctx, history");
+    expect(trainingSource).toContain("runAgentTurn({");
+    expect(trainingSource).toContain("salesStateScope:");
     expect(trainingSource).not.toMatch(/LOVABLE_API_KEY|ai\.gateway\.lovable\.dev/);
   });
 

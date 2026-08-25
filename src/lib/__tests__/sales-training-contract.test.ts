@@ -54,7 +54,8 @@ describe("Sales training contract", () => {
 
   it("usa o agente e grounding atuais sem envio ou mutação do atendimento real", () => {
     expect(functionsSource).toContain("loadAgentContext(companyId)");
-    expect(functionsSource).toContain("runAgentTurn({ ctx, history");
+    expect(functionsSource).toContain("runAgentTurn({");
+    expect(functionsSource).toContain('scopeType: "training_session"');
     expect(functionsSource).toContain("runSafetyLayer");
     expect(functionsSource).not.toMatch(/sendWhatsappText|postGraph|meta-send|meta-webhook/);
     expect(functionsSource).not.toMatch(/\.from\("(?:leads|conversations|messages)"/);
@@ -122,7 +123,7 @@ describe("Sales training contract", () => {
       },
     ]);
     expect(functionsSource).toContain("extractSessionTrainingCorrections(sessionMessages)");
-    expect(functionsSource).toContain("sessionCorrections })");
+    expect(functionsSource).toContain("sessionCorrections,");
   });
 
   it("promove correção em duas etapas e só ativa após aprovação explícita", () => {

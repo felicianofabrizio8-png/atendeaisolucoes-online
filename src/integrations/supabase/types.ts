@@ -2552,6 +2552,53 @@ export type Database = {
           },
         ]
       }
+      conversation_sales_states: {
+        Row: {
+          attributes: Json
+          company_id: string
+          created_at: string
+          id: string
+          intent: string | null
+          last_valid_product_ids: string[]
+          product_ids: string[]
+          scope_id: string
+          scope_type: string
+          updated_at: string
+        }
+        Insert: {
+          attributes?: Json
+          company_id: string
+          created_at?: string
+          id?: string
+          intent?: string | null
+          last_valid_product_ids?: string[]
+          product_ids?: string[]
+          scope_id: string
+          scope_type: string
+          updated_at?: string
+        }
+        Update: {
+          attributes?: Json
+          company_id?: string
+          created_at?: string
+          id?: string
+          intent?: string | null
+          last_valid_product_ids?: string[]
+          product_ids?: string[]
+          scope_id?: string
+          scope_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_sales_states_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           ai_handling: boolean

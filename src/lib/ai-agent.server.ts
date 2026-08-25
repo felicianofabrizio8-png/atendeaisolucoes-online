@@ -23,6 +23,8 @@ import {
 } from "./ai-qualifier.server";
 import {
   SalesAgentCore,
+  customerAskedAboutProducts,
+  customerAskedForProductImages,
   type AgentContext,
   type AgentDecision,
   type AgentSettings,
@@ -30,8 +32,15 @@ import {
 import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
+  extractCurrentProductAttributes,
   selectRelevantSalesAgentProducts,
 } from "./sales-agent-grounding.server";
+import { mergeConversationSalesState } from "./conversation-sales-state";
+import {
+  loadConversationSalesState,
+  saveConversationSalesState,
+  type ConversationSalesStateScope,
+} from "./conversation-sales-state.server";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { detectFiberCatalogSize } from "./sales-agent-product-images";
@@ -280,6 +289,7 @@ export async function runAgentTurn(params: {
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
   leadName: string | null;
   sessionCorrections?: Array<{ question: string; correction: string }>;
+  salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
 }): Promise<AgentDecision> {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
@@ -288,10 +298,26 @@ export async function runAgentTurn(params: {
     params.ctx.settings.company_id,
     params.history,
   );
+  const stateScope = params.salesStateScope
+    ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
+    : null;
+  const previousSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
   const relevantCatalog = selectRelevantSalesAgentProducts(
     params.ctx.grounding.catalog,
     params.history,
+    previousSalesState,
   );
+  const currentIntent = customerAskedForProductImages(params.history)
+    ? "product_images"
+    : customerAskedAboutProducts(params.history)
+      ? "product_inquiry"
+      : null;
+  const filteredSalesState = mergeConversationSalesState(previousSalesState, {
+    attributes: extractCurrentProductAttributes(params.history),
+    intent: currentIntent,
+    candidateProductIds: relevantCatalog.map((product) => product.id),
+  });
+  if (stateScope) await saveConversationSalesState(stateScope, filteredSalesState);
   const contextualParams = {
     ...params,
     ctx: {
@@ -334,7 +360,20 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  return core.decide({ ...contextualParams, model });
+  const decision = await core.decide({ ...contextualParams, model });
+  if (stateScope) {
+    await saveConversationSalesState(
+      stateScope,
+      mergeConversationSalesState(filteredSalesState, {
+        intent: decision.detected_intent ?? currentIntent,
+        candidateProductIds: relevantCatalog.map((product) => product.id),
+        ...(decision.suggested_products?.length
+          ? { selectedProductIds: decision.suggested_products }
+          : {}),
+      }),
+    );
+  }
+  return decision;
 }
 
 // ----------------------------------------------------------------------------
@@ -700,9 +739,9 @@ export async function runAgentTick(conversationId: string): Promise<{
       .from("messages")
       .select("role, text, at, source_metadata")
       .eq("conversation_id", conv.id)
-      .order("at", { ascending: true })
+      .order("at", { ascending: false })
       .limit(40);
-    const history = (msgs ?? []).map((m) => {
+    const history = [...(msgs ?? [])].reverse().map((m) => {
       const metadata =
         m.source_metadata &&
         typeof m.source_metadata === "object" &&
@@ -711,7 +750,9 @@ export async function runAgentTick(conversationId: string): Promise<{
           : {};
       const productIds = Array.isArray(metadata.catalog_product_ids)
         ? metadata.catalog_product_ids.filter((id): id is string => typeof id === "string")
-        : [];
+        : typeof metadata.product_id === "string"
+          ? [metadata.product_id]
+          : [];
       return {
         role: m.role as "lead" | "agent" | "system",
         text: m.text,
@@ -753,7 +794,12 @@ export async function runAgentTick(conversationId: string): Promise<{
       .maybeSingle();
 
     const decision = runSafetyLayer(
-      await runAgentTurn({ ctx, history, leadName: lead?.name ?? null }),
+      await runAgentTurn({
+        ctx,
+        history,
+        leadName: lead?.name ?? null,
+        salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+      }),
     );
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística

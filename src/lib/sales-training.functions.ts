@@ -140,7 +140,13 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
         .map((row) => ({ role: row.role, text: row.content }));
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const decision = runSafetyLayer(
-        await runAgentTurn({ ctx, history, leadName: "Cliente simulado", sessionCorrections }),
+        await runAgentTurn({
+          ctx,
+          history,
+          leadName: "Cliente simulado",
+          sessionCorrections,
+          salesStateScope: { scopeType: "training_session", scopeId: input.sessionId },
+        }),
       );
       const content =
         decision.kind === "reply" && decision.message
