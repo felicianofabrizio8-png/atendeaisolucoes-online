@@ -3421,12 +3421,18 @@ export type Database = {
           forbidden_words: string
           gifts: string
           guarantees: string
+          heating_policy: string
           id: string
+          included_items_policy: string
+          installation_policy: string
+          payment_policy: string
           preferred_words: string
           products_services: string
+          shipping_policy: string
           tone_of_voice: string
           updated_at: string
           updated_by: string | null
+          visit_policy: string
         }
         Insert: {
           brand_identity?: string
@@ -3440,12 +3446,18 @@ export type Database = {
           forbidden_words?: string
           gifts?: string
           guarantees?: string
+          heating_policy?: string
           id?: string
+          included_items_policy?: string
+          installation_policy?: string
+          payment_policy?: string
           preferred_words?: string
           products_services?: string
+          shipping_policy?: string
           tone_of_voice?: string
           updated_at?: string
           updated_by?: string | null
+          visit_policy?: string
         }
         Update: {
           brand_identity?: string
@@ -3459,12 +3471,18 @@ export type Database = {
           forbidden_words?: string
           gifts?: string
           guarantees?: string
+          heating_policy?: string
           id?: string
+          included_items_policy?: string
+          installation_policy?: string
+          payment_policy?: string
           preferred_words?: string
           products_services?: string
+          shipping_policy?: string
           tone_of_voice?: string
           updated_at?: string
           updated_by?: string | null
+          visit_policy?: string
         }
         Relationships: [
           {

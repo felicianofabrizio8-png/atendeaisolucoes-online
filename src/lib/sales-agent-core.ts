@@ -48,6 +48,12 @@ export interface SalesAgentGrounding {
   commercialRules: {
     paymentMethods: string | null;
     commercialTerms: string | null;
+    paymentPolicy: string | null;
+    installationPolicy: string | null;
+    visitPolicy: string | null;
+    heatingPolicy: string | null;
+    shippingPolicy: string | null;
+    includedItemsPolicy: string | null;
   };
   approvedCoachLearnings: Array<{
     id: string;
@@ -257,7 +263,13 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
   }
   if (
     ctx.grounding.commercialRules.paymentMethods ||
-    ctx.grounding.commercialRules.commercialTerms
+    ctx.grounding.commercialRules.commercialTerms ||
+    ctx.grounding.commercialRules.paymentPolicy ||
+    ctx.grounding.commercialRules.installationPolicy ||
+    ctx.grounding.commercialRules.visitPolicy ||
+    ctx.grounding.commercialRules.heatingPolicy ||
+    ctx.grounding.commercialRules.shippingPolicy ||
+    ctx.grounding.commercialRules.includedItemsPolicy
   ) {
     sources.push("commercial_rules");
   }
@@ -313,8 +325,25 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     .map((f, i) => `${i + 1}. ${f.q} → ${f.a}`)
     .join("\n");
   const commercialLines = [
-    ctx.grounding.commercialRules.paymentMethods
-      ? `- Formas de pagamento: ${ctx.grounding.commercialRules.paymentMethods}`
+    ctx.grounding.commercialRules.paymentPolicy
+      ? `- Pagamento: ${ctx.grounding.commercialRules.paymentPolicy}`
+      : ctx.grounding.commercialRules.paymentMethods
+        ? `- Pagamento (cadastro legado): ${ctx.grounding.commercialRules.paymentMethods}`
+        : null,
+    ctx.grounding.commercialRules.installationPolicy
+      ? `- Instalação: ${ctx.grounding.commercialRules.installationPolicy}`
+      : null,
+    ctx.grounding.commercialRules.visitPolicy
+      ? `- Visita: ${ctx.grounding.commercialRules.visitPolicy}`
+      : null,
+    ctx.grounding.commercialRules.heatingPolicy
+      ? `- Aquecimento: ${ctx.grounding.commercialRules.heatingPolicy}`
+      : null,
+    ctx.grounding.commercialRules.shippingPolicy
+      ? `- Frete: ${ctx.grounding.commercialRules.shippingPolicy}`
+      : null,
+    ctx.grounding.commercialRules.includedItemsPolicy
+      ? `- Inclusos: ${ctx.grounding.commercialRules.includedItemsPolicy}`
       : null,
     ctx.grounding.commercialRules.commercialTerms
       ? `- Condições cadastradas: ${ctx.grounding.commercialRules.commercialTerms}`
@@ -329,7 +358,7 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     .join("\n");
   const groundingSections = [
     commercialLines
-      ? `REGRAS COMERCIAIS CADASTRADAS (somente informe; nunca negocie nem crie condições):\n${commercialLines}`
+      ? `POLÍTICAS OFICIAIS (prevalecem sobre Coach e FAQ; somente informe, nunca negocie nem crie condições; não use como fonte de fatos de produto):\n${commercialLines}`
       : null,
     learningLines
       ? `APRENDIZADOS ATIVOS DO COACH (somente orientação de comportamento comercial; nomes, modelos, medidas, preços, descrições, categorias e exemplos de produto contidos em aprendizados NÃO são fatos e devem ser ignorados):\n${learningLines}`

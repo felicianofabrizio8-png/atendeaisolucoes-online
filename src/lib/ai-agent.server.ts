@@ -263,7 +263,9 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
       commercialRules: {
         ...grounding.commercialRules,
         paymentMethods:
-          (aiProfile as { payment_methods?: string | null } | null)?.payment_methods ?? null,
+          grounding.commercialRules.paymentPolicy
+            ? null
+            : (aiProfile as { payment_methods?: string | null } | null)?.payment_methods ?? null,
       },
     },
   };

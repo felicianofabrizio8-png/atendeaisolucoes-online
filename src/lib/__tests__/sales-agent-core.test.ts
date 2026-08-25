@@ -63,6 +63,12 @@ const context: AgentContext = {
     commercialRules: {
       paymentMethods: "Pix e cartão",
       commercialTerms: "Entrada de 50% conforme contrato",
+      paymentPolicy: null,
+      installationPolicy: null,
+      visitPolicy: null,
+      heatingPolicy: null,
+      shippingPolicy: null,
+      includedItemsPolicy: null,
     },
     approvedCoachLearnings: [
       {
@@ -290,14 +296,89 @@ describe("SalesAgentCore", () => {
     });
 
     expect(request.messages[0].content).toContain("Atende interior? → Sim.");
-    expect(request.messages[0].content).toContain("Formas de pagamento: Pix e cartão");
+    expect(request.messages[0].content).toContain("Pagamento (cadastro legado): Pix e cartão");
     expect(request.messages[0].content).toContain(
       "Condições cadastradas: Entrada de 50% conforme contrato",
     );
     expect(request.messages[0].content).toContain(
-      "somente informe; nunca negocie nem crie condições",
+      "POLÍTICAS OFICIAIS",
     );
     expect(request.messages[0].content).toContain("NUNCA negocie desconto, preço, parcelamento");
+  });
+
+  it("prioriza política oficial de pagamento e separa políticas de fatos do catálogo", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          commercialRules: {
+            ...context.grounding.commercialRules,
+            paymentPolicy: "Pagamento somente após validação da equipe",
+            installationPolicy: "Instalação sujeita a avaliação técnica",
+          },
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+    const prompt = request.messages[0].content;
+
+    expect(prompt).toContain("Pagamento: Pagamento somente após validação da equipe");
+    expect(prompt).not.toContain("Pagamento (cadastro legado): Pix e cartão");
+    expect(prompt).toContain("Instalação: Instalação sujeita a avaliação técnica");
+    expect(prompt).toContain("prevalecem sobre Coach e FAQ");
+    expect(prompt).toContain("não use como fonte de fatos de produto");
+  });
+
+  it("registra políticas oficiais como fonte mesmo sem campos legados", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "Podemos orientar a visita." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const core = new SalesAgentCore(complete);
+    const decision = await core.decide({
+      ctx: {
+        ...context,
+        knowledge: [],
+        grounding: {
+          ...context.grounding,
+          faqKnowledge: [],
+          approvedCoachLearnings: [],
+          commercialRules: {
+            paymentMethods: null,
+            commercialTerms: null,
+            paymentPolicy: null,
+            installationPolicy: null,
+            visitPolicy: "Visitas precisam ser agendadas",
+            heatingPolicy: null,
+            shippingPolicy: null,
+            includedItemsPolicy: null,
+          },
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.grounding_sources).toContain("commercial_rules");
   });
 
   it("inclui learning ativo e registra as fontes fornecidas", async () => {
@@ -621,7 +702,16 @@ describe("SalesAgentCore", () => {
         grounding: {
           catalog: [],
           faqKnowledge: [],
-          commercialRules: { paymentMethods: null, commercialTerms: null },
+          commercialRules: {
+            paymentMethods: null,
+            commercialTerms: null,
+            paymentPolicy: null,
+            installationPolicy: null,
+            visitPolicy: null,
+            heatingPolicy: null,
+            shippingPolicy: null,
+            includedItemsPolicy: null,
+          },
           approvedCoachLearnings: [],
         },
       },

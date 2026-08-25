@@ -230,7 +230,9 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
       .limit(20),
     supabaseAdmin
       .from("marketing_knowledge_base")
-      .select("commercial_terms")
+      .select(
+        "commercial_terms, payment_policy, installation_policy, visit_policy, heating_policy, shipping_policy, included_items_policy",
+      )
       .eq("company_id", companyId)
       .maybeSingle(),
   ]);
@@ -275,6 +277,12 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,
+      paymentPolicy: commercial?.payment_policy?.trim() || null,
+      installationPolicy: commercial?.installation_policy?.trim() || null,
+      visitPolicy: commercial?.visit_policy?.trim() || null,
+      heatingPolicy: commercial?.heating_policy?.trim() || null,
+      shippingPolicy: commercial?.shipping_policy?.trim() || null,
+      includedItemsPolicy: commercial?.included_items_policy?.trim() || null,
     },
     approvedCoachLearnings: [],
   };

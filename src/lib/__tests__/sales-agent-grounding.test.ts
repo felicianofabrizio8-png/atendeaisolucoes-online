@@ -62,7 +62,17 @@ describe("SalesAgent grounding", () => {
       ],
     });
     const knowledge = query({ data: [{ question: "Instala?", answer: "Sim.", type: "faq" }] });
-    const commercial = query({ data: { commercial_terms: "Entrada de 50%" } });
+    const commercial = query({
+      data: {
+        commercial_terms: "Entrada de 50%",
+        payment_policy: "Pix ou cartão conforme condição vigente",
+        installation_policy: "Confirmar avaliação técnica",
+        visit_policy: "Agendar com a equipe",
+        heating_policy: "Validar compatibilidade antes de oferecer",
+        shipping_policy: "Frete confirmado pela equipe",
+        included_items_policy: "Informar somente itens cadastrados no produto",
+      },
+    });
     from.mockImplementation((table: string) => {
       if (table === "products") return products;
       if (table === "ai_knowledge_proposals") return knowledge;
@@ -91,6 +101,14 @@ describe("SalesAgent grounding", () => {
     });
     expect(grounding.faqKnowledge).toEqual([{ question: "Instala?", answer: "Sim.", type: "faq" }]);
     expect(grounding.commercialRules.commercialTerms).toBe("Entrada de 50%");
+    expect(grounding.commercialRules).toMatchObject({
+      paymentPolicy: "Pix ou cartão conforme condição vigente",
+      installationPolicy: "Confirmar avaliação técnica",
+      visitPolicy: "Agendar com a equipe",
+      heatingPolicy: "Validar compatibilidade antes de oferecer",
+      shippingPolicy: "Frete confirmado pela equipe",
+      includedItemsPolicy: "Informar somente itens cadastrados no produto",
+    });
     expect(grounding.approvedCoachLearnings).toEqual([]);
     expect(products.eq).toHaveBeenCalledWith("active", true);
     expect(products.limit).not.toHaveBeenCalled();
