@@ -1,8 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
-import type { SalesAgentGrounding } from "./sales-agent-core";
-import { productMatchesMeasure } from "./product-measure-filter";
+import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -45,9 +44,6 @@ export function selectRelevantSalesAgentProducts(
     /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?/.exec(
       normalized,
     );
-  const explicitLengthMatch =
-    /comprimento\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(normalized);
-  const genericLengthMatch = /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/.exec(normalized);
   const widthMatch = /largura\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
     normalized,
   );
@@ -55,11 +51,7 @@ export function selectRelevantSalesAgentProducts(
     normalized,
   );
   const capacityMatch = /(\d+(?:[.,]\d+)?)\s*(mil\s*)?(?:l|litros?)\b/.exec(normalized);
-  const requestedLength = decimal(
-    dimensionMatch?.[1] ??
-      explicitLengthMatch?.[1] ??
-      (!widthMatch && !depthMatch ? genericLengthMatch?.[1] : undefined),
-  );
+  const requestedLength = getRequestedProductLength(history);
   const requestedWidth = decimal(dimensionMatch?.[2] ?? widthMatch?.[1]);
   const requestedDepth = decimal(dimensionMatch?.[3] ?? depthMatch?.[1]);
   const requestedCapacityBase = decimal(capacityMatch?.[1]);
@@ -79,14 +71,7 @@ export function selectRelevantSalesAgentProducts(
   let hasStructuredFilter = false;
   if (requestedLength != null) {
     hasStructuredFilter = true;
-    candidates = candidates.filter((product) =>
-      product.lengthM != null
-        ? product.lengthM === requestedLength
-        : productMatchesMeasure(
-            { name: product.name, description: product.description },
-            requestedLength,
-          ),
-    );
+    candidates = candidates.filter((product) => product.lengthM === requestedLength);
   }
   if (requestedWidth != null) {
     hasStructuredFilter = true;

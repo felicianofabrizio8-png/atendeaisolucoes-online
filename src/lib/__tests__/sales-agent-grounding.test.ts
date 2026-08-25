@@ -122,6 +122,7 @@ describe("SalesAgent grounding", () => {
         name: "Piscina 6x3",
         category: "Piscinas de fibra",
         description: "Modelo com 6 metros de comprimento",
+        lengthM: 6,
         price: 20_000,
         promoPrice: null,
         images: [],
@@ -132,6 +133,7 @@ describe("SalesAgent grounding", () => {
         name: "Piscina 5x2,5",
         category: "Piscinas de fibra",
         description: "Modelo compacto",
+        lengthM: 5,
         price: 15_000,
         promoPrice: null,
         images: [],
@@ -144,6 +146,69 @@ describe("SalesAgent grounding", () => {
         { role: "lead", text: "Quero ver piscinas de 6 metros" },
       ]).map((product) => product.id),
     ).toEqual(["six"]);
+  });
+
+  it.each([
+    [4, ["Sol 400", "Sol 401 Canyon", "Sol 402 Tapajós"]],
+    [5, ["Sol 500", "Sol 500 Praia", "Sol 501 Canyon"]],
+    [
+      6,
+      [
+        "Sol 600",
+        "Sol 600 Praia",
+        "Sol 601 Canyon",
+        "Sol 601 SPA",
+        "Sol 602 Tapajós",
+        "Sol 603 Enseada",
+        "Sol 604 Salinas",
+        "Sol 604 Salinas Semi Pastilhada",
+        "Sol 604 Pastilhada",
+      ],
+    ],
+    [7, ["Sol 700", "Sol 700 Praia"]],
+    [8, ["Sol 800", "Sol 800 Praia", "Sol 801 Canyon", "Sol 801 SPA"]],
+    [10, ["Sol 1000", "Sol 1000 Praia"]],
+  ])("retorna todos os produtos reais com length_m %i", (length, names) => {
+    const catalog = [
+      ...names.map((name, index) => ({
+        id: `${length}-${index}`,
+        name,
+        category: "Piscinas de fibra",
+        description: null,
+        lengthM: length,
+        price: null,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      })),
+      {
+        id: `other-${length}`,
+        name: `Outro tamanho ${length}`,
+        category: "Piscinas de fibra",
+        description: null,
+        lengthM: length + 1,
+        price: null,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: `legacy-${length}`,
+        name: `Nome legado ${length} metros`,
+        category: "Piscinas de fibra",
+        description: null,
+        price: null,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: `Quero conhecer as piscinas de ${length} m` },
+      ]).map((product) => product.name),
+    ).toEqual(names);
   });
 
   it("combina dimensão, profundidade, litragem, shape, modelo, SKU e variante", () => {

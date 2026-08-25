@@ -486,6 +486,54 @@ describe("SalesAgentCore", () => {
     });
   });
 
+  it("responde com todos os comprimentos compatíveis mesmo se o modelo pedir handoff", async () => {
+    const products = [
+      { ...context.grounding.catalog[0], id: "sol-600", name: "Sol 600", lengthM: 6, images: [] },
+      { ...context.grounding.catalog[0], id: "sol-601", name: "Sol 601 Canyon", lengthM: 6, images: [] },
+    ];
+    const core = new SalesAgentCore(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: "request_human_handoff",
+                      arguments: JSON.stringify({ reason: "sem fotos ou disponibilidade" }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    const decision = await core.decide({
+      ctx: {
+        ...context,
+        products,
+        grounding: { ...context.grounding, catalog: products },
+      },
+      history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      suggested_products: ["sol-600", "sol-601"],
+      product_image_ids: [],
+    });
+    expect(decision.message).toContain("Sol 600");
+    expect(decision.message).toContain("Sol 601 Canyon");
+    expect(decision.message).not.toMatch(/dispon[ií]vel|estoque/i);
+  });
+
   it("produto válido retorna somente dados reais do registro", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,

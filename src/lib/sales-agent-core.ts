@@ -183,6 +183,30 @@ export function customerAskedAboutProducts(history: SalesAgentCoreInput["history
   );
 }
 
+export function getRequestedProductLength(
+  history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
+): number | null {
+  const text = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const dimension = /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*\d{1,2}(?:[.,]\d+)?/.exec(
+    normalized,
+  );
+  const explicit = /comprimento\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
+    normalized,
+  );
+  const mentionsOtherDimension = /\b(?:largura|profundidade)\b/.test(normalized);
+  const generic = mentionsOtherDimension
+    ? null
+    : /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/.exec(normalized);
+  const raw = dimension?.[1] ?? explicit?.[1] ?? generic?.[1];
+  if (!raw) return null;
+  const parsed = Number(raw.replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function messageClaimsProductReference(message: string): boolean {
   return /\bmodelo\s+[\p{L}\d]|\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(
     message,
@@ -405,6 +429,7 @@ SUA MISSÃO:
 3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
 5. Somente quando o cliente pedir explicitamente para ver fotos, imagens ou modelos, preencha send_product_images com os IDs dos produtos adequados do catálogo. Nunca invente IDs ou URLs e selecione no máximo 10 produtos.
+6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e só envie fotos quando forem pedidas.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -520,6 +545,10 @@ export class SalesAgentCore {
     const learningIdsUsed = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
+    const requestedLength = getRequestedProductLength(params.history);
+    const lengthMatches = requestedLength == null
+      ? []
+      : params.ctx.grounding.catalog.filter((product) => product.lengthM === requestedLength);
     if (params.ctx.grounding.catalog.length === 0 && customerAskedAboutProducts(params.history)) {
       return {
         kind: "handoff",
@@ -561,6 +590,16 @@ export class SalesAgentCore {
     }
 
     if (call.name === "request_human_handoff") {
+      if (lengthMatches.length > 0) {
+        return {
+          kind: "reply",
+          message: buildValidatedCatalogReply(lengthMatches),
+          suggested_products: lengthMatches.map((product) => product.id),
+          product_image_ids: [],
+          grounding_sources: groundingSources,
+          learning_ids_used: learningIdsUsed,
+        };
+      }
       return {
         kind: "handoff",
         reason: (args as ToolHandoff).reason || "model_requested",
@@ -585,12 +624,15 @@ export class SalesAgentCore {
       ? reply.suggest_products.filter((id): id is string => typeof id === "string")
       : [];
     const requestedSuggestions =
-      modelSuggestions.length === 0 &&
-      customerAskedAboutProducts(params.history) &&
-      params.ctx.grounding.catalog.length === 1
-        ? [params.ctx.grounding.catalog[0].id]
-        : modelSuggestions;
-    const requestedImages = Array.isArray(reply.send_product_images)
+      lengthMatches.length > 0
+        ? lengthMatches.map((product) => product.id)
+        : modelSuggestions.length === 0 &&
+            customerAskedAboutProducts(params.history) &&
+            params.ctx.grounding.catalog.length === 1
+          ? [params.ctx.grounding.catalog[0].id]
+          : modelSuggestions;
+    const requestedImages =
+      customerAskedForProductImages(params.history) && Array.isArray(reply.send_product_images)
       ? reply.send_product_images.filter((id): id is string => typeof id === "string")
       : [];
     if (
@@ -638,7 +680,7 @@ export class SalesAgentCore {
       purchase_timing: normalizeTiming(reply.purchase_timing) ?? null,
       customer_stage: stage,
       suggested_products: requestedSuggestions,
-      product_image_ids: customerAskedForProductImages(params.history) ? requestedImages : [],
+      product_image_ids: requestedImages,
       grounding_sources: groundingSources,
       learning_ids_used: learningIdsUsed,
     };
