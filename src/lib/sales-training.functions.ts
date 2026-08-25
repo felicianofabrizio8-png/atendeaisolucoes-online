@@ -2,7 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
-import { normalizeTrainingReview } from "./sales-training-domain";
+import {
+  extractSessionTrainingCorrections,
+  normalizeTrainingReview,
+  type SessionTrainingMessage,
+} from "./sales-training-domain";
 import { loadValidatedProductImages } from "./sales-agent-product-images.server";
 import type { AgentDecision } from "./sales-agent-core";
 
@@ -121,20 +125,22 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
     try {
       const { data: rows, error: historyError } = await context.supabase
         .from("ai_training_messages" as never)
-        .select("role, content")
+        .select("role, content, review_status, correction_text")
         .eq("session_id", input.sessionId)
         .eq("company_id", companyId)
-        .order("created_at", { ascending: true })
-        .limit(40);
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (historyError) throw new Error("training_history_load_failed");
 
       const ctx = await loadAgentContext(companyId);
       if (!ctx) throw new Error("training_context_not_found");
-      const history = (
-        (rows ?? []) as unknown as Array<{ role: "lead" | "agent"; content: string }>
-      ).map((row) => ({ role: row.role, text: row.content }));
+      const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
+      const history = sessionMessages
+        .slice(-40)
+        .map((row) => ({ role: row.role, text: row.content }));
+      const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const decision = runSafetyLayer(
-        await runAgentTurn({ ctx, history, leadName: "Cliente simulado" }),
+        await runAgentTurn({ ctx, history, leadName: "Cliente simulado", sessionCorrections }),
       );
       const content =
         decision.kind === "reply" && decision.message

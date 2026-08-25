@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { getTrainingLearningDiagnostics, normalizeTrainingReview } from "../sales-training-domain";
+import {
+  extractSessionTrainingCorrections,
+  getTrainingLearningDiagnostics,
+  normalizeTrainingReview,
+} from "../sales-training-domain";
 
 const functionsSource = readFileSync(
   fileURLToPath(new URL("../sales-training.functions.ts", import.meta.url)),
@@ -98,6 +102,27 @@ describe("Sales training contract", () => {
     expect(() => normalizeTrainingReview({ status: "corrected", correctionText: " " })).toThrow(
       "correction_required",
     );
+  });
+
+  it("mantém a correção salva isolada no histórico da sessão", () => {
+    expect(
+      extractSessionTrainingCorrections([
+        { role: "lead", content: "Como devo começar o atendimento?" },
+        {
+          role: "agent",
+          content: "Resposta errada",
+          review_status: "corrected",
+          correction_text: "Comece entendendo a necessidade do cliente.",
+        },
+      ]),
+    ).toEqual([
+      {
+        question: "Como devo começar o atendimento?",
+        correction: "Comece entendendo a necessidade do cliente.",
+      },
+    ]);
+    expect(functionsSource).toContain("extractSessionTrainingCorrections(sessionMessages)");
+    expect(functionsSource).toContain("sessionCorrections })");
   });
 
   it("promove correção em duas etapas e só ativa após aprovação explícita", () => {

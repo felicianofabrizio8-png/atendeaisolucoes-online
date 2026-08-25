@@ -279,6 +279,7 @@ export async function runAgentTurn(params: {
   ctx: AgentContext;
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
   leadName: string | null;
+  sessionCorrections?: Array<{ question: string; correction: string }>;
 }): Promise<AgentDecision> {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };

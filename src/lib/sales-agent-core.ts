@@ -129,6 +129,7 @@ export interface SalesAgentCoreInput {
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
   leadName: string | null;
   model: string;
+  sessionCorrections?: Array<{ question: string; correction: string }>;
 }
 
 export interface SalesAgentCompletionRequest {
@@ -446,6 +447,15 @@ export function buildSalesAgentCompletionRequest(
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
     )
     .join("\n");
+  const sessionCorrections = (params.sessionCorrections ?? [])
+    .map(
+      (item, index) =>
+        `${index + 1}. Pergunta anterior: ${item.question}\n   Correção salva: ${item.correction}`,
+    )
+    .join("\n");
+  const sessionCorrectionsBlock = sessionCorrections
+    ? `\n\nCORREÇÕES APROVADAS DESTA SESSÃO:\n${sessionCorrections}\n\nEstas correções têm prioridade sobre os aprendizados do Coach apenas como comportamento e instrução de atendimento. Nunca use uma correção como fonte de fatos de produto ou políticas comerciais: catálogo e POLÍTICAS OFICIAIS continuam soberanos.`
+    : "";
 
   return {
     model: params.model,
@@ -456,7 +466,7 @@ export function buildSalesAgentCompletionRequest(
       { role: "system", content: buildSalesAgentSystemPrompt(params.ctx) },
       {
         role: "user",
-        content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}\n\nResponda agora.`,
+        content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
       },
     ],
     tools: [

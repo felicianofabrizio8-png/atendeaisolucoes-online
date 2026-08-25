@@ -6,6 +6,7 @@ import {
   buildSalesAgentCompletionRequest,
   hasRectangularPoolIntent,
   type AgentContext,
+  type SalesAgentCompletionRequest,
 } from "../sales-agent-core";
 
 const salesModel = "provider/sales-model";
@@ -88,6 +89,52 @@ const context: AgentContext = {
 };
 
 describe("SalesAgentCore", () => {
+  it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
+    const correction = "Comece entendendo a necessidade do cliente antes de sugerir uma solução.";
+    const complete = vi.fn(async (request: SalesAgentCompletionRequest) => {
+      const prompt = request.messages[1].content;
+      expect(prompt).toContain("CORREÇÕES APROVADAS DESTA SESSÃO");
+      expect(prompt).toContain("Como devo começar o atendimento?");
+      expect(prompt).toContain(correction);
+      expect(prompt.indexOf("Conversa até agora")).toBeLessThan(
+        prompt.indexOf("CORREÇÕES APROVADAS DESTA SESSÃO"),
+      );
+      expect(prompt).toContain("prioridade sobre os aprendizados do Coach");
+      expect(prompt).toContain("catálogo e POLÍTICAS OFICIAIS continuam soberanos");
+      return {
+        ok: true as const,
+        data: {
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: "respond_to_customer",
+                      arguments: JSON.stringify({ message: correction }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Qual é a melhor forma de iniciar o atendimento?" }],
+      leadName: "Cliente simulado",
+      model: salesModel,
+      sessionCorrections: [
+        { question: "Como devo começar o atendimento?", correction },
+      ],
+    });
+
+    expect(decision).toMatchObject({ kind: "reply", message: correction });
+  });
+
   it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
     const history = Array.from({ length: 22 }, (_, index) => ({
       role: (index % 2 === 0 ? "lead" : "agent") as "lead" | "agent",
