@@ -34,7 +34,7 @@ describe("SalesAgent product images", () => {
     expect(serverSource).not.toMatch(/mediaUrl|send_product_images.*https?:/);
   });
 
-  it("deduplica IDs, ignora valores inválidos e limita a cinco produtos", () => {
+  it("deduplica IDs, ignora valores inválidos e permite até dez produtos", () => {
     expect(
       normalizeRequestedProductIds([
         ids.p1,
@@ -47,7 +47,26 @@ describe("SalesAgent product images", () => {
         ids.p5,
         ids.p6,
       ]),
-    ).toEqual([ids.p1, ids.p2, ids.p3, ids.p4, ids.p5]);
+    ).toEqual([ids.p1, ids.p2, ids.p3, ids.p4, ids.p5, ids.p6]);
+  });
+
+  it("mantém product_id e seleciona 9 fotos válidas sem duplicar imagem", () => {
+    const productIds = Array.from(
+      { length: 9 },
+      (_, index) => `40000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    );
+    const products = productIds.map((id, index) => ({
+      id,
+      name: `Produto ${index + 1}`,
+      images: [`company-1/produto-${index + 1}.jpg`],
+    }));
+    products[8].images = ["company-1/produto-1.jpg", "company-1/produto-9.jpg"];
+
+    const selected = resolveProductImages(productIds, products, companyId);
+
+    expect(selected).toHaveLength(9);
+    expect(selected.map((image) => image.productId)).toEqual(productIds);
+    expect(new Set(selected.map((image) => image.path)).size).toBe(9);
   });
 
   it("aceita somente paths do bucket de imagens escopados pela empresa", () => {

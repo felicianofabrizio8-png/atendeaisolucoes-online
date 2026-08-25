@@ -358,7 +358,7 @@ SUA MISSÃO:
 2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
 3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
-5. Somente quando o cliente pedir explicitamente para ver fotos, imagens ou modelos, preencha send_product_images com os IDs dos produtos adequados do catálogo. Nunca invente IDs ou URLs e selecione no máximo 5 produtos.
+5. Somente quando o cliente pedir explicitamente para ver fotos, imagens ou modelos, preencha send_product_images com os IDs dos produtos adequados do catálogo. Nunca invente IDs ou URLs e selecione no máximo 10 produtos.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -438,9 +438,9 @@ export function buildSalesAgentCompletionRequest(
               send_product_images: {
                 type: "array",
                 items: { type: "string" },
-                maxItems: 5,
+                maxItems: 10,
                 description:
-                  "IDs de atÃ© 5 produtos do catÃ¡logo cujas fotos foram pedidas explicitamente pelo cliente. Nunca envie URLs.",
+                  "IDs de atÃ© 10 produtos do catÃ¡logo cujas fotos foram pedidas explicitamente pelo cliente. Nunca envie URLs.",
               },
             },
             required: ["message"],

@@ -102,7 +102,7 @@ describe("SalesAgentCore", () => {
       function: {
         parameters: {
           properties: {
-            send_product_images: { type: "array", maxItems: 5 },
+            send_product_images: { type: "array", maxItems: 10 },
           },
         },
       },
@@ -160,7 +160,7 @@ describe("SalesAgentCore", () => {
 
     expect(properties.suggest_products).not.toHaveProperty("maxItems");
     expect(properties.suggest_products.items?.enum).toEqual(catalog.map((product) => product.id));
-    expect(properties.send_product_images.maxItems).toBe(5);
+    expect(properties.send_product_images.maxItems).toBe(10);
   });
 
   it.each(["gpt-5.6-luna", "openai/gpt-5.6-luna"])(

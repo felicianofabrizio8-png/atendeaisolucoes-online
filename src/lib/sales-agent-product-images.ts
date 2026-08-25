@@ -1,4 +1,4 @@
-export const MAX_SALES_AGENT_PRODUCT_IMAGES = 5;
+export const MAX_SALES_AGENT_PRODUCT_IMAGES = 10;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface ProductImageCandidate {
@@ -26,7 +26,10 @@ export interface ProductImageSelectionContext {
 const FIBER_SIZES = [4, 5, 6, 7, 8, 10] as const;
 
 function normalizeText(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function findFiberSize(value: string): number | null {
@@ -52,26 +55,40 @@ export function resolveFiberCatalogImages(
 ): ResolvedProductImage[] {
   const matchingProducts = products.filter((product) => {
     if (!normalizeText(product.category ?? "").includes("piscinas de fibra")) return false;
-    return findFiberSize(
-      [product.name, product.description, product.notes].filter(Boolean).join(" "),
-    ) === size;
+    return (
+      findFiberSize(
+        [product.name, product.description, product.notes].filter(Boolean).join(" "),
+      ) === size
+    );
   });
-  return matchingProducts.flatMap((product) => {
-    if (!Array.isArray(product.images)) return [];
+  return resolveUniqueProductImages(matchingProducts, companyId);
+}
+
+function resolveUniqueProductImages(
+  products: ProductImageCandidate[],
+  companyId: string,
+): ResolvedProductImage[] {
+  const resolved: ResolvedProductImage[] = [];
+  const seenPaths = new Set<string>();
+  for (const product of products) {
+    if (!Array.isArray(product.images)) continue;
     for (const image of product.images) {
       if (typeof image !== "string") continue;
       const path = extractCompanyProductImagePath(image, companyId);
-      if (path) {
-        return [{
+      if (path && !seenPaths.has(path)) {
+        seenPaths.add(path);
+        resolved.push({
           productId: product.id,
           productName: product.name,
           storedImage: image,
           path,
-        }];
+        });
+        break;
       }
     }
-    return [];
-  });
+    if (resolved.length === MAX_SALES_AGENT_PRODUCT_IMAGES) break;
+  }
+  return resolved;
 }
 
 export function normalizeRequestedProductIds(ids: unknown): string[] {
@@ -113,16 +130,9 @@ export function resolveProductImages(
   companyId: string,
 ): ResolvedProductImage[] {
   const byId = new Map(products.map((product) => [product.id, product]));
-  return normalizeRequestedProductIds(requestedIds).flatMap((productId) => {
+  const orderedProducts = normalizeRequestedProductIds(requestedIds).flatMap((productId) => {
     const product = byId.get(productId);
-    if (!product || !Array.isArray(product.images)) return [];
-    for (const image of product.images) {
-      if (typeof image !== "string") continue;
-      const path = extractCompanyProductImagePath(image, companyId);
-      if (path) {
-        return [{ productId, productName: product.name, storedImage: image, path }];
-      }
-    }
-    return [];
+    return product ? [product] : [];
   });
+  return resolveUniqueProductImages(orderedProducts, companyId);
 }
