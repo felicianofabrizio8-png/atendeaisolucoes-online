@@ -228,7 +228,14 @@ describe("SalesAgent grounding", () => {
     ).toEqual([]);
   });
 
-  it("interpreta quadrada como intenção por linhas retas sem alterar shape", () => {
+  it.each([
+    "piscina quadrada",
+    "modelos quadrados",
+    "modelo quadrada",
+    "piscina mais quadrada",
+    "piscina reta",
+    "modelos retos",
+  ])("interpreta %s como intenção por linhas retas sem alterar shape", (text) => {
     const rectangular = {
       id: "rect",
       name: "Piscina reta",
@@ -240,9 +247,10 @@ describe("SalesAgent grounding", () => {
       images: [],
       notes: null,
     };
+    const round = { ...rectangular, id: "round", name: "Piscina curva", shape: "redonda" };
     const selected = selectRelevantSalesAgentProducts(
-      [rectangular],
-      [{ role: "lead", text: "Quero uma piscina quadrada" }],
+      [rectangular, round],
+      [{ role: "lead", text }],
     );
 
     expect(selected).toEqual([rectangular]);

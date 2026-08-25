@@ -101,7 +101,8 @@ export function selectRelevantSalesAgentProducts(
     candidates = candidates.filter((product) => product.capacityL === requestedCapacity);
   }
 
-  const explicitModelOrSku = /\b(modelo|sku)\b/.test(normalized);
+  const explicitModelOrSku =
+    /\b(modelo|sku)\b/.test(normalized) && !/\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
   const modelMatches = candidates.filter((product) =>
     [product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))
@@ -112,27 +113,25 @@ export function selectRelevantSalesAgentProducts(
     candidates = modelMatches;
   }
 
-  const asksSquare = /\bquadrad[ao]\b/.test(normalized);
-  const requestedShapeTerm = asksSquare
-    ? "quadrad"
+  const asksRectangularPool = /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
+  const requestedShapeTerm = asksRectangularPool
+    ? "retangular"
     : (["retangular", "redond", "oval"].find((term) => normalized.includes(term)) ?? null);
   const shapeMatches = candidates.filter((product) => {
     const shape = normalizeCatalogText(product.shape ?? "");
+    if (asksRectangularPool) {
+      const category = normalizeCatalogText(product.category ?? "");
+      return /piscina/.test(category) && /retangular|\bret[ao]\b|linhas retas/.test(shape);
+    }
     return requestedShapeTerm
       ? shape.includes(requestedShapeTerm)
       : Boolean(shape && normalized.includes(shape));
   });
-  const asksShape = asksSquare || /\b(retangular|redond[ao]|oval|formato)\b/.test(normalized);
+  const asksShape =
+    asksRectangularPool || /\b(retangular|redond[ao]s?|oval|formato)\b/.test(normalized);
   if (shapeMatches.length > 0) {
     hasStructuredFilter = true;
     candidates = shapeMatches;
-  } else if (asksSquare) {
-    hasStructuredFilter = true;
-    candidates = candidates.filter((product) => {
-      const category = normalizeCatalogText(product.category ?? "");
-      const shape = normalizeCatalogText(product.shape ?? "");
-      return /piscina/.test(category) && /retangular|reto|linhas retas/.test(shape);
-    });
   } else if (asksShape) {
     hasStructuredFilter = true;
     candidates = [];

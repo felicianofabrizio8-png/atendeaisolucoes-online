@@ -172,7 +172,7 @@ export function customerAskedForProductImages(history: SalesAgentCoreInput["hist
 export function customerAskedAboutProducts(history: SalesAgentCoreInput["history"]): boolean {
   const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
   if (!lastLeadMessage) return false;
-  return /\b(produto|catálogo|modelo|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]|retangular|redond[ao]|oval|cor|variante|\d{1,2}\s*(?:m|metros?))\b/i.test(
+  return /\b(produto|catálogo|modelos?|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]s?|retangular|ret[ao]s?|redond[ao]s?|oval|cor|variante|\d{1,2}\s*(?:m|metros?))\b/i.test(
     lastLeadMessage,
   );
 }
@@ -183,7 +183,10 @@ function messageClaimsProductReference(message: string): boolean {
   );
 }
 
-export function buildValidatedCatalogReply(products: SalesAgentGrounding["catalog"]): string {
+export function buildValidatedCatalogReply(
+  products: SalesAgentGrounding["catalog"],
+  options: { rectangularPoolIntent?: boolean } = {},
+): string {
   const items = products.map((product) => {
     const specificationFacts =
       product.specifications && typeof product.specifications === "object"
@@ -220,7 +223,21 @@ export function buildValidatedCatalogReply(products: SalesAgentGrounding["catalo
     ].filter((fact): fact is string => Boolean(fact));
     return `${product.name}${facts.length ? ` — ${facts.join("; ")}` : ""}.`;
   });
-  return `Encontrei no catálogo: ${items.join(" ")}`;
+  const confirmation = options.rectangularPoolIntent
+    ? "Entendi: você procura uma piscina com linhas retas, em formato retangular. "
+    : "";
+  return `${confirmation}Encontrei no catálogo: ${items.join(" ")}`;
+}
+
+export function hasRectangularPoolIntent(
+  history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
+): boolean {
+  const lastLead = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
+  const normalized = lastLead
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
 }
 
 function formatPrice(price: number | null): string {
@@ -345,7 +362,7 @@ REGRA DE REFERÊNCIA DE PRODUTO:
 - Todo produto mencionado na resposta deve estar no CATÁLOGO acima e também ter seu ID incluído em suggest_products.
 - Nunca use FAQ, histórico ou aprendizados como fonte de nome, modelo, medida, preço ou especificação de produto.
 - Se o produto ou especificação pedida não estiver no catálogo, não proponha alternativa inventada: solicite atendimento humano.
-- Em piscinas, "quadrada" pode representar intenção por linhas retas. Quando o catálogo relevante trouxer apenas um produto reto/retangular como aproximação, descreva sempre o formato real cadastrado e nunca o chame de quadrado.
+- Em piscinas, variações como "quadrada", "quadrado", plurais, erros de gênero e "reta" significam intenção provável por linhas retas. Confirme esse entendimento naturalmente e use somente produtos cujo formato real no catálogo seja reto/retangular; nunca altere nem chame o formato real de quadrado.
 
 FAQ:
 ${faqLines || "(sem faq cadastrado)"}
@@ -580,6 +597,7 @@ export class SalesAgentCore {
                 const product = catalogById.get(id);
                 return product ? [product] : [];
               }),
+              { rectangularPoolIntent: hasRectangularPoolIntent(params.history) },
             )
           : reply.message,
       detected_city: reply.detected_city ?? null,

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SalesAgentCore,
   buildSalesAgentCompletionRequest,
+  hasRectangularPoolIntent,
   type AgentContext,
 } from "../sales-agent-core";
 
@@ -546,8 +547,19 @@ describe("SalesAgentCore", () => {
     });
 
     expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
+    expect(decision.message).toContain("você procura uma piscina com linhas retas");
     expect(decision.message).toContain("formato retangular");
     expect(decision.message).not.toContain("formato quadrado");
+  });
+
+  it.each([
+    "piscina quadrada",
+    "modelos quadrados",
+    "modelo quadrada",
+    "piscina mais quadrada/reta",
+    "modelo reto",
+  ])("normaliza a variação comercial %s", (text) => {
+    expect(hasRectangularPoolIntent([{ role: "lead", text }])).toBe(true);
   });
 
   it("learning antigo não cria produto quando a resposta não traz ID válido", async () => {
