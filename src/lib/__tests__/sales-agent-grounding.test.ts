@@ -269,6 +269,53 @@ describe("SalesAgent grounding", () => {
     expect(select("Preciso de profundidade 9 m")).toEqual([]);
   });
 
+  it("inclui produtos de aquecimento e suas specifications para a pergunta técnica", () => {
+    const heatingByCategory = {
+      id: "heat-category",
+      name: "Equipamento térmico",
+      category: "Aquecedores",
+      description: null,
+      specifications: { potencia_btu: 75_000, tecnologia: "trocador de calor" },
+      price: null,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    };
+    const heatingBySpecifications = {
+      id: "heat-specifications",
+      name: "Linha Conforto",
+      category: "Climatização",
+      description: null,
+      specifications: { tipo: "aquecedor solar", funcionamento: "circulação de água" },
+      price: null,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    };
+    const irrelevant = {
+      id: "irrelevant",
+      name: "Kit de limpeza",
+      category: "Acessórios",
+      description: "Itens para manutenção",
+      specifications: { material: "plástico" },
+      price: null,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    };
+
+    const selected = selectRelevantSalesAgentProducts(
+      [heatingByCategory, heatingBySpecifications, irrelevant],
+      [{ role: "lead", text: "Como funciona o aquecimento da piscina?" }],
+    );
+
+    expect(selected).toEqual([heatingByCategory, heatingBySpecifications]);
+    expect(selected.map((product) => product.specifications)).toEqual([
+      heatingByCategory.specifications,
+      heatingBySpecifications.specifications,
+    ]);
+  });
+
   it("preserva product_id escolhido em pergunta seguinte", () => {
     const catalog = [
       {

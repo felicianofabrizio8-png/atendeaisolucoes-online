@@ -194,24 +194,29 @@ export function selectRelevantSalesAgentProducts(
     if (selected.length > 0) return selected;
   }
 
-  const intentTerms = [
-    "fibra",
-    "vinil",
-    "spa",
-    "banheira",
-    "aquecedor",
-    "aquecimento",
-    "acessorio",
-    "tratamento",
-  ].filter((term) => normalized.includes(term));
-  if (intentTerms.length === 0) return products;
+  const intentConcepts = [
+    /\bfibr/,
+    /\bvinil/,
+    /\bspa\b/,
+    /\bbanheir/,
+    /\baquec/,
+    /\bacessor/,
+    /\btratament/,
+  ].filter((concept) => concept.test(normalized));
+  if (intentConcepts.length === 0) return products;
   return products.filter((product) => {
     const haystack = normalizeCatalogText(
-      [product.name, product.category, product.description, product.notes]
+      [
+        product.name,
+        product.category,
+        product.description,
+        product.notes,
+        product.specifications ? JSON.stringify(product.specifications) : null,
+      ]
         .filter(Boolean)
         .join(" "),
     );
-    return intentTerms.some((term) => haystack.includes(term));
+    return intentConcepts.some((concept) => concept.test(haystack));
   });
 }
 
