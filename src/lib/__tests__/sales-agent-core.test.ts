@@ -8,6 +8,7 @@ import {
   type AgentContext,
   type SalesAgentCompletionRequest,
 } from "../sales-agent-core";
+import { runSafetyLayer } from "../ai-agent.server";
 
 const salesModel = "provider/sales-model";
 
@@ -228,7 +229,7 @@ describe("SalesAgentCore", () => {
       ]),
     );
     expect(request.messages[0].content).toContain('Você é "Ana", pré-atendente automático');
-    expect(request.messages[0].content).toContain("NUNCA negocie desconto, preço, parcelamento");
+    expect(request.messages[0].content).toContain("NUNCA invente nem negocie desconto, preço");
     expect(request.messages[0].content).toContain("Piscina 6x3");
     expect(request.messages[1].content).not.toContain("Cliente: mensagem-0\n");
     expect(request.messages[1].content).not.toContain("Atendente: mensagem-1\n");
@@ -452,6 +453,82 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain("Preço promocional cadastrado: R$ 18.000,00");
   });
 
+  it("preserva o preço promocional cadastrado do produto selecionado", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "A primeira está por R$ 18.000,00.",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Gostei da primeira, quanto custa?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      message: "A primeira está por R$ 18.000,00.",
+      suggested_products: ["product-1"],
+    });
+    expect(runSafetyLayer(decision)).toEqual(decision);
+  });
+
+  it("rejeita preço sem fonte e usa fallback factual", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "A primeira custa R$ 17.500,00.",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quanto custa?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.message).toContain("Encontrei no catálogo");
+    expect(decision.message).toContain("preço R$ 18.000,00");
+    expect(decision.message).not.toContain("17.500");
+    expect(decision.learning_ids_used).toEqual([]);
+  });
+
   it("inclui FAQ e regras comerciais sem liberar negociação", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
@@ -468,7 +545,7 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain(
       "POLÍTICAS OFICIAIS",
     );
-    expect(request.messages[0].content).toContain("NUNCA negocie desconto, preço, parcelamento");
+    expect(request.messages[0].content).toContain("NUNCA invente nem negocie desconto, preço");
   });
 
   it("prioriza política oficial de pagamento e separa políticas de fatos do catálogo", () => {

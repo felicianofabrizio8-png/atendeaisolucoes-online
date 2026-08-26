@@ -101,6 +101,30 @@ describe("ConversationSalesState", () => {
     },
   );
 
+  it("resolve a primeira opção e preserva o produto para a pergunta de preço", () => {
+    const firstHistory = [{ role: "lead" as const, text: "mostre itens de 7 metros" }];
+    const firstCandidates = selectRelevantSalesAgentProducts(catalog, firstHistory);
+    const firstState = mergeConversationSalesState(EMPTY_CONVERSATION_SALES_STATE, {
+      candidateProductIds: firstCandidates.map((product) => product.id),
+      selectedProductIds: firstCandidates.map((product) => product.id),
+    });
+    const choiceHistory = [{ role: "lead" as const, text: "Gostei da primeira" }];
+    const chosen = selectRelevantSalesAgentProducts(catalog, choiceHistory, firstState);
+    const chosenState = mergeConversationSalesState(firstState, {
+      candidateProductIds: chosen.map((product) => product.id),
+      selectedProductIds: chosen.map((product) => product.id),
+    });
+    const priceCandidates = selectRelevantSalesAgentProducts(
+      catalog,
+      [{ role: "lead", text: "quanto custa?" }],
+      chosenState,
+    );
+
+    expect(firstCandidates.map((product) => product.id)).toEqual(["length-a", "length-b"]);
+    expect(chosen.map((product) => product.id)).toEqual(["length-a"]);
+    expect(priceCandidates.map((product) => product.id)).toEqual(["length-a"]);
+  });
+
   it("isola estado por empresa e escopo e conecta os dois canais", () => {
     expect(migrationSource).toContain("UNIQUE (company_id, scope_type, scope_id)");
     expect(migrationSource).toContain("company_id = public.current_company_id()");

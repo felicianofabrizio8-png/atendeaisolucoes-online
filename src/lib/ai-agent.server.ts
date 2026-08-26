@@ -209,7 +209,6 @@ export function detectHandoffNeeded(text: string): { needed: boolean; reason?: s
 // ----------------------------------------------------------------------------
 
 const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
-  { pattern: /\bR\$\s*\d/i, reason: "tentou cotar preço" },
   { pattern: /\b\d+\s?%/i, reason: "tentou aplicar percentual/desconto" },
   { pattern: /\bdesconto\b/i, reason: "ofereceu desconto" },
   { pattern: /\bgaranto\b/i, reason: "fez promessa" },

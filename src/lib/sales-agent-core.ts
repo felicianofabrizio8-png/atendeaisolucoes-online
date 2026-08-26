@@ -180,7 +180,7 @@ export function customerAskedForProductImages(history: SalesAgentCoreInput["hist
 export function customerAskedAboutProducts(history: SalesAgentCoreInput["history"]): boolean {
   const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
   if (!lastLeadMessage) return false;
-  return /\b(produto|catálogo|modelos?|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]s?|retangular|ret[ao]s?|redond[ao]s?|oval|cor|variante|\d{1,2}\s*(?:m|metros?))\b/i.test(
+  return /\b(produto|catálogo|modelos?|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]s?|retangular|ret[ao]s?|redond[ao]s?|oval|cor|variante|preço|valor|custa|\d{1,2}\s*(?:m|metros?))\b/i.test(
     lastLeadMessage,
   );
 }
@@ -221,6 +221,11 @@ function messagePromisesProductPresentation(message: string): boolean {
   );
 }
 
+function customerAskedForPrice(history: SalesAgentCoreInput["history"]): boolean {
+  const lastLead = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
+  return /\b(?:quanto\s+(?:custa|é)|qual\s+(?:é\s+)?o\s+(?:preço|valor)|preço|valor)\b/i.test(lastLead);
+}
+
 function messageHasOnlyValidatedProductFacts(
   message: string,
   selectedProducts: SalesAgentGrounding["catalog"],
@@ -254,6 +259,21 @@ function messageHasOnlyValidatedProductFacts(
     ),
   );
   if (!claimedMeasures.every((measure) => validMeasures.has(measure))) return false;
+  const claimedPrices = [...message.matchAll(/R\$\s*([\d.]+(?:,\d{1,2})?)/gi)]
+    .map((match) => Number(match[1].replace(/\./g, "").replace(",", ".")))
+    .filter(Number.isFinite);
+  const validPrices = new Set(
+    selectedProducts.flatMap((product) => {
+      const effectivePrice =
+        product.promoPrice != null && Number.isFinite(product.promoPrice) && product.promoPrice > 0
+          ? product.promoPrice
+          : product.price != null && Number.isFinite(product.price) && product.price > 0
+            ? product.price
+            : null;
+      return effectivePrice == null ? [] : [effectivePrice];
+    }),
+  );
+  if (!claimedPrices.every((price) => validPrices.has(price))) return false;
   const claimedShape = ["retangular", "quadrad", "redond", "oval"].find((shape) =>
     normalized.includes(shape),
   );
@@ -269,7 +289,7 @@ function messageHasOnlyValidatedProductFacts(
 
 export function buildValidatedCatalogReply(
   products: SalesAgentGrounding["catalog"],
-  options: { rectangularPoolIntent?: boolean } = {},
+  options: { rectangularPoolIntent?: boolean; includePrice?: boolean } = {},
 ): string {
   const items = products.map((product) => {
     const specificationFacts =
@@ -292,6 +312,15 @@ export function buildValidatedCatalogReply(
       product.model ? `modelo ${product.model}` : null,
       product.sku ? `SKU ${product.sku}` : null,
       product.category ? `categoria ${product.category}` : null,
+      options.includePrice
+        ? `preço ${formatPrice(
+            product.promoPrice != null &&
+              Number.isFinite(product.promoPrice) &&
+              product.promoPrice > 0
+              ? product.promoPrice
+              : product.price,
+          )}`
+        : null,
       product.lengthM != null || product.widthM != null || product.depthM != null
         ? `dimensões ${[product.lengthM, product.widthM, product.depthM]
             .filter((value) => value != null)
@@ -449,7 +478,7 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
 Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
 
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
-- NUNCA negocie desconto, preço, parcelamento ou condição comercial.
+- NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
 - NUNCA prometa prazo de instalação ou entrega.
 - NUNCA invente informação que não esteja no contexto abaixo.
 - NUNCA feche venda sozinho — apenas qualifique o lead.
@@ -634,6 +663,7 @@ export class SalesAgentCore {
             kind: "reply",
             message: buildValidatedCatalogReply(fallbackProducts, {
               rectangularPoolIntent: hasRectangularPoolIntent(params.history),
+              includePrice: customerAskedForPrice(params.history),
             }),
             suggested_products: fallbackProducts.map((product) => product.id),
             product_image_ids: [],

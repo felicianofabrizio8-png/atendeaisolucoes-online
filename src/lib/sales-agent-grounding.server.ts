@@ -107,6 +107,15 @@ export function selectRelevantSalesAgentProducts(
       : ([...history].reverse().find((item) => item.role === "agent" && item.productIds?.length)
           ?.productIds ?? salesState?.lastValidProductIds ?? []),
   );
+  const selectedProducts = products.filter((product) => selectedIds.has(product.id));
+  const ordinalMatch = /\b(?:a\s+)?(?:primeir[ao]|1[ªº])\b/.test(normalized)
+    ? 0
+    : /\b(?:a\s+)?(?:segund[ao]|2[ªº])\b/.test(normalized)
+      ? 1
+      : null;
+  if (ordinalMatch != null && selectedProducts[ordinalMatch]) {
+    return [selectedProducts[ordinalMatch]];
+  }
   const usesChosenProductContext =
     selectedIds.size > 0 &&
     (/\b(ele|ela|dele|dela|desse|dessa|esse|essa|este|esta|nesse|nessa)\b/.test(normalized) ||
