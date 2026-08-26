@@ -3,6 +3,23 @@ import type { Json } from "@/integrations/supabase/types";
 export type ProductSpecifications = { [key: string]: Json | undefined };
 export type ProductVariant = { [key: string]: Json | undefined };
 
+export function categoryRequiresDimensions(
+  category: string,
+  requiredCategories: string[],
+): boolean {
+  return requiredCategories.includes(category);
+}
+
+export function hasCompleteProductDimensions(
+  values: Record<string, unknown> & {
+    lengthM?: number | null;
+    widthM?: number | null;
+    depthM?: number | null;
+  },
+): boolean {
+  return values.lengthM != null && values.widthM != null && values.depthM != null;
+}
+
 export function parseOptionalCatalogNumber(value: string): number | undefined {
   const normalized = value.trim().replace(",", ".");
   if (!normalized) return undefined;

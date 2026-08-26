@@ -31,7 +31,7 @@ import {
   Eye,
 } from "lucide-react";
 import { compressImage, isMobileDevice } from "@/lib/image-compress";
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { productMatches, normalizeSearch } from "@/lib/product-search";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,8 @@ import {
   parseOptionalCatalogNumber,
   parseSpecifications,
   parseVariants,
+  categoryRequiresDimensions,
+  hasCompleteProductDimensions,
 } from "@/lib/product-catalog-fields";
 
 export const Route = createFileRoute("/produtos")({
@@ -72,6 +74,20 @@ function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
   const [query, setQuery] = useState("");
+  const [dimensionRequiredCategories, setDimensionRequiredCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    const companyId = getProductsCompanyId();
+    if (!companyId) return;
+    void supabase
+      .from("company_settings")
+      .select("product_dimension_required_categories")
+      .eq("company_id", companyId)
+      .maybeSingle()
+      .then(({ data }) =>
+        setDimensionRequiredCategories(data?.product_dimension_required_categories ?? []),
+      );
+  }, []);
 
   const filtered = useMemo(() => {
     return products.filter((p) => productMatches(p, query));
@@ -213,6 +229,7 @@ function ProductsPage() {
       {(creating || editing) && (
         <ProductFormModal
           product={editing}
+          dimensionRequiredCategories={dimensionRequiredCategories}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -387,7 +404,15 @@ function CardIconButton({
   );
 }
 
-function ProductFormModal({ product, onClose }: { product: Product | null; onClose: () => void }) {
+function ProductFormModal({
+  product,
+  dimensionRequiredCategories,
+  onClose,
+}: {
+  product: Product | null;
+  dimensionRequiredCategories: string[];
+  onClose: () => void;
+}) {
   const isEdit = !!product;
   const [name, setName] = useState(product?.name ?? "");
   const [model, setModel] = useState(product?.model ?? "");
@@ -452,6 +477,13 @@ function ProductFormModal({ product, onClose }: { product: Product | null; onClo
             ? "Variantes devem ser uma lista JSON de objetos."
             : "Medidas e capacidade devem ser números não negativos.",
       );
+      return;
+    }
+    if (
+      categoryRequiresDimensions(category, dimensionRequiredCategories) &&
+      !hasCompleteProductDimensions(structured)
+    ) {
+      setError("Comprimento, largura e profundidade são obrigatórios para esta categoria.");
       return;
     }
     const emptyValue = isEdit ? null : undefined;

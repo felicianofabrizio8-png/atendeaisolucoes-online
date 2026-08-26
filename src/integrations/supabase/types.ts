@@ -2251,6 +2251,7 @@ export type Database = {
           default_quote_included_items: string | null
           greeting_message: string | null
           location: Json | null
+          product_dimension_required_categories: string[]
           runtime_autonomy_enabled: boolean
           runtime_business_brain_enabled: boolean
           runtime_kill_switch: boolean
@@ -2305,6 +2306,7 @@ export type Database = {
           default_quote_included_items?: string | null
           greeting_message?: string | null
           location?: Json | null
+          product_dimension_required_categories?: string[]
           runtime_autonomy_enabled?: boolean
           runtime_business_brain_enabled?: boolean
           runtime_kill_switch?: boolean
@@ -2359,6 +2361,7 @@ export type Database = {
           default_quote_included_items?: string | null
           greeting_message?: string | null
           location?: Json | null
+          product_dimension_required_categories?: string[]
           runtime_autonomy_enabled?: boolean
           runtime_business_brain_enabled?: boolean
           runtime_kill_switch?: boolean
