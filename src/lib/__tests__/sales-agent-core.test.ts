@@ -135,6 +135,62 @@ describe("SalesAgentCore", () => {
     expect(decision).toMatchObject({ kind: "reply", message: correction });
   });
 
+  it("preserva a correção salva ao repetir uma pergunta por comprimento", async () => {
+    const correction =
+      "Temos sim. Temos duas opções de 7 metros: a Sol 700 e a Sol 700 Praia. Vou te mostrar as duas para você conhecer.";
+    const products = [
+      { ...context.grounding.catalog[0], id: "sol-700", name: "Sol 700", lengthM: 7 },
+      {
+        ...context.grounding.catalog[0],
+        id: "sol-700-praia",
+        name: "Sol 700 Praia",
+        lengthM: 7,
+      },
+    ];
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: correction,
+                      suggest_products: ["sol-700", "sol-700-praia"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: {
+        ...context,
+        products,
+        grounding: { ...context.grounding, catalog: products },
+      },
+      history: [{ role: "lead", text: "Você tem piscina de 7 metros?" }],
+      leadName: "Cliente simulado",
+      model: salesModel,
+      sessionCorrections: [{ question: "Você tem piscina de 7 metros?", correction }],
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      message: correction,
+      suggested_products: ["sol-700", "sol-700-praia"],
+      learning_ids_used: [],
+    });
+    expect(decision.message).not.toContain("Encontrei no catálogo");
+  });
+
   it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
     const history = Array.from({ length: 22 }, (_, index) => ({
       role: (index % 2 === 0 ? "lead" : "agent") as "lead" | "agent",
@@ -264,7 +320,17 @@ describe("SalesAgentCore", () => {
     const core = new SalesAgentCore(complete);
 
     const decision = await core.decide({
-      ctx: context,
+      ctx: {
+        ...context,
+        products: context.products.map((product) => ({ ...product, images: ["image.jpg"] })),
+        grounding: {
+          ...context.grounding,
+          catalog: context.grounding.catalog.map((product) => ({
+            ...product,
+            images: ["image.jpg"],
+          })),
+        },
+      },
       history: [{ role: "lead", text: "Me manda as fotos desses modelos" }],
       leadName: null,
       model: salesModel,
@@ -272,8 +338,7 @@ describe("SalesAgentCore", () => {
 
     expect(decision).toMatchObject({
       kind: "reply",
-      message:
-        "Encontrei no catálogo: Piscina 6x3 — categoria Piscinas de fibra; Piscina de fibra; observações: Filtro e bomba.",
+      message: "Posso ajudar com essa piscina.",
       detected_city: "Campinas",
       detected_state: "São Paulo",
       purchase_timing: "30d",
@@ -284,7 +349,7 @@ describe("SalesAgentCore", () => {
     expect(complete).toHaveBeenCalledOnce();
   });
 
-  it("ignora pedido de imagens do modelo quando o cliente não pediu fotos", async () => {
+  it("aceita imagens válidas indicadas pelo modelo sem exigir pedido de fotos", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
       data: {
@@ -296,7 +361,7 @@ describe("SalesAgentCore", () => {
                   function: {
                     name: "respond_to_customer",
                     arguments: JSON.stringify({
-                      message: "Temos o modelo 6x3.",
+                      message: "Temos a Piscina 6x3.",
                       suggest_products: ["product-1"],
                       send_product_images: ["product-1"],
                     }),
@@ -311,13 +376,66 @@ describe("SalesAgentCore", () => {
     const core = new SalesAgentCore(complete);
 
     const decision = await core.decide({
-      ctx: context,
+      ctx: {
+        ...context,
+        products: context.products.map((product) => ({ ...product, images: ["image.jpg"] })),
+        grounding: {
+          ...context.grounding,
+          catalog: context.grounding.catalog.map((product) => ({
+            ...product,
+            images: ["image.jpg"],
+          })),
+        },
+      },
       history: [{ role: "lead", text: "Quais modelos de 6 metros vocês têm?" }],
       leadName: null,
       model: salesModel,
     });
 
-    expect(decision).toMatchObject({ kind: "reply", product_image_ids: [] });
+    expect(decision).toMatchObject({ kind: "reply", product_image_ids: ["product-1"] });
+  });
+
+  it("envia imagens válidas no mesmo turno quando promete mostrar o produto", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Temos essa opção. Vou te mostrar o produto agora.",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const product = { ...context.grounding.catalog[0], images: ["image.jpg"] };
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: {
+        ...context,
+        products: [product],
+        grounding: { ...context.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      message: "Temos essa opção. Vou te mostrar o produto agora.",
+      product_image_ids: ["product-1"],
+    });
   });
 
   it("inclui produto e preço do grounding no contexto do modelo", () => {
@@ -439,7 +557,10 @@ describe("SalesAgentCore", () => {
                 {
                   function: {
                     name: "respond_to_customer",
-                    arguments: JSON.stringify({ message: "Vou encaminhar sua negociação." }),
+                    arguments: JSON.stringify({
+                      message: "Vou encaminhar sua negociação.",
+                      learning_ids_used: ["learning-1"],
+                    }),
                   },
                 },
               ],
@@ -496,7 +617,7 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain("somente orientação de comportamento comercial");
   });
 
-  it("bloqueia produto inexistente antes do envio", async () => {
+  it("usa fallback factual para produto inexistente", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
       data: {
@@ -528,9 +649,12 @@ describe("SalesAgentCore", () => {
     });
 
     expect(decision).toMatchObject({
-      kind: "handoff",
-      reason: "catalog_invalid_product_reference",
+      kind: "reply",
+      suggested_products: ["product-1"],
+      learning_ids_used: [],
     });
+    expect(decision.message).toContain("Encontrei no catálogo");
+    expect(decision.message).not.toContain("Atlântida");
   });
 
   it("responde com todos os comprimentos compatíveis mesmo se o modelo pedir handoff", async () => {

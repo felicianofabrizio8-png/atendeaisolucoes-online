@@ -162,6 +162,7 @@ interface ToolReply {
   customer_stage?: string;
   suggest_products?: string[];
   send_product_images?: string[];
+  learning_ids_used?: string[];
 }
 
 interface ToolHandoff {
@@ -212,6 +213,58 @@ function messageClaimsProductReference(message: string): boolean {
   return /\bmodelo\s+[\p{L}\d]|\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(
     message,
   );
+}
+
+function messagePromisesProductPresentation(message: string): boolean {
+  return /\b(?:(?:vou|vamos|posso|podemos)\s+(?:te\s+|lhe\s+)?(?:mostrar|enviar|apresentar)|(?:te|lhe)\s+(?:mostro|envio|apresento))\b/i.test(
+    message,
+  );
+}
+
+function messageHasOnlyValidatedProductFacts(
+  message: string,
+  selectedProducts: SalesAgentGrounding["catalog"],
+  catalog: SalesAgentGrounding["catalog"],
+): boolean {
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  const normalized = normalize(message);
+  const selectedIds = new Set(selectedProducts.map((product) => product.id));
+  const mentionsIdentity = (product: SalesAgentGrounding["catalog"][number]) =>
+    [product.name, product.model, product.sku]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .some((value) => normalized.includes(normalize(value)));
+  if (catalog.some((product) => mentionsIdentity(product) && !selectedIds.has(product.id))) {
+    return false;
+  }
+  if (/\b(?:modelo|sku)\b/.test(normalized) && !selectedProducts.some(mentionsIdentity)) {
+    return false;
+  }
+  const claimedMeasures = [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
+    .map((match) => Number(match[1].replace(",", ".")))
+    .filter(Number.isFinite);
+  const validMeasures = new Set(
+    selectedProducts.flatMap((product) =>
+      [product.lengthM, product.widthM, product.depthM].filter(
+        (value): value is number => value != null,
+      ),
+    ),
+  );
+  if (!claimedMeasures.every((measure) => validMeasures.has(measure))) return false;
+  const claimedShape = ["retangular", "quadrad", "redond", "oval"].find((shape) =>
+    normalized.includes(shape),
+  );
+  if (claimedShape) {
+    const shapeMatches = selectedProducts.some((product) => {
+      const shape = normalize(product.shape ?? "");
+      return shape.includes(claimedShape);
+    });
+    if (!shapeMatches) return false;
+  }
+  return true;
 }
 
 export function buildValidatedCatalogReply(
@@ -429,8 +482,8 @@ SUA MISSÃO:
 2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
 3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
-5. Somente quando o cliente pedir explicitamente para ver fotos, imagens ou modelos, preencha send_product_images com os IDs dos produtos adequados do catálogo. Nunca invente IDs ou URLs e selecione no máximo 10 produtos.
-6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e só envie fotos quando forem pedidas.
+5. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
+6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -521,7 +574,16 @@ export function buildSalesAgentCompletionRequest(
                 items: { type: "string" },
                 maxItems: 10,
                 description:
-                  "IDs de atÃ© 10 produtos do catÃ¡logo cujas fotos foram pedidas explicitamente pelo cliente. Nunca envie URLs.",
+                  "IDs de até 10 produtos do catálogo com fotos cadastradas. Use quando o cliente pedir imagens ou quando a resposta prometer mostrar, enviar ou apresentar produtos. Nunca envie URLs.",
+              },
+              learning_ids_used: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: params.ctx.grounding.approvedCoachLearnings.map((learning) => learning.id),
+                },
+                description:
+                  "IDs dos aprendizados do Coach que influenciaram materialmente esta resposta. Não inclua aprendizados apenas por estarem no contexto.",
               },
             },
             required: ["message"],
@@ -552,39 +614,54 @@ export class SalesAgentCore {
 
   async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
     const groundingSources = getSalesAgentGroundingSources(params.ctx);
-    const learningIdsUsed = params.ctx.grounding.approvedCoachLearnings.map(
+    const availableLearningIds = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
     const requestedLength = getRequestedProductLength(params.history);
-    const lengthMatches = requestedLength == null
-      ? []
-      : params.ctx.grounding.catalog.filter((product) => product.lengthM === requestedLength);
+    const lengthMatches =
+      requestedLength == null
+        ? []
+        : params.ctx.grounding.catalog.filter((product) => product.lengthM === requestedLength);
+    const fallbackProducts =
+      lengthMatches.length > 0
+        ? lengthMatches
+        : customerAskedAboutProducts(params.history)
+          ? params.ctx.grounding.catalog
+          : [];
+    const deterministicFallback = (reason: string): AgentDecision =>
+      fallbackProducts.length > 0
+        ? {
+            kind: "reply",
+            message: buildValidatedCatalogReply(fallbackProducts, {
+              rectangularPoolIntent: hasRectangularPoolIntent(params.history),
+            }),
+            suggested_products: fallbackProducts.map((product) => product.id),
+            product_image_ids: [],
+            grounding_sources: groundingSources,
+            learning_ids_used: [],
+          }
+        : {
+            kind: "handoff",
+            reason,
+            grounding_sources: groundingSources,
+            learning_ids_used: [],
+          };
     if (params.ctx.grounding.catalog.length === 0 && customerAskedAboutProducts(params.history)) {
       return {
         kind: "handoff",
         reason: "catalog_product_not_found",
         grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
+        learning_ids_used: [],
       };
     }
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
     if (!completion.ok) {
-      return {
-        kind: "handoff",
-        reason: completion.reason,
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback(completion.reason);
     }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
     if (!call?.name || !call.arguments) {
-      return {
-        kind: "handoff",
-        reason: "no_tool_call",
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback("no_tool_call");
     }
 
     let args: ToolReply | ToolHandoff;
@@ -595,36 +672,16 @@ export class SalesAgentCore {
         kind: "handoff",
         reason: "tool_args_parse_fail",
         grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
+        learning_ids_used: [],
       };
     }
 
     if (call.name === "request_human_handoff") {
-      if (lengthMatches.length > 0) {
-        return {
-          kind: "reply",
-          message: buildValidatedCatalogReply(lengthMatches),
-          suggested_products: lengthMatches.map((product) => product.id),
-          product_image_ids: [],
-          grounding_sources: groundingSources,
-          learning_ids_used: learningIdsUsed,
-        };
-      }
-      return {
-        kind: "handoff",
-        reason: (args as ToolHandoff).reason || "model_requested",
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback((args as ToolHandoff).reason || "model_requested");
     }
     const reply = args as ToolReply;
     if (!reply.message) {
-      return {
-        kind: "handoff",
-        reason: "empty_message",
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback("empty_message");
     }
     const catalogIds = new Set(params.ctx.grounding.catalog.map((product) => product.id));
     const catalogById = new Map(
@@ -633,6 +690,15 @@ export class SalesAgentCore {
     const modelSuggestions = Array.isArray(reply.suggest_products)
       ? reply.suggest_products.filter((id): id is string => typeof id === "string")
       : [];
+    const modelImageIds = Array.isArray(reply.send_product_images)
+      ? reply.send_product_images.filter((id): id is string => typeof id === "string")
+      : [];
+    if (
+      modelSuggestions.some((id) => !catalogIds.has(id)) ||
+      modelImageIds.some((id) => !catalogIds.has(id))
+    ) {
+      return deterministicFallback("catalog_invalid_product_reference");
+    }
     const requestedSuggestions =
       lengthMatches.length > 0
         ? lengthMatches.map((product) => product.id)
@@ -641,29 +707,31 @@ export class SalesAgentCore {
             params.ctx.grounding.catalog.length === 1
           ? [params.ctx.grounding.catalog[0].id]
           : modelSuggestions;
-    const requestedImages =
-      customerAskedForProductImages(params.history) && Array.isArray(reply.send_product_images)
-      ? reply.send_product_images.filter((id): id is string => typeof id === "string")
-      : [];
+    const selectedProducts = requestedSuggestions.flatMap((id) => {
+      const product = catalogById.get(id);
+      return product ? [product] : [];
+    });
     if (
-      requestedSuggestions.some((id) => !catalogIds.has(id)) ||
-      requestedImages.some((id) => !catalogIds.has(id))
+      !messageHasOnlyValidatedProductFacts(
+        reply.message,
+        selectedProducts,
+        params.ctx.grounding.catalog,
+      )
     ) {
-      return {
-        kind: "handoff",
-        reason: "catalog_invalid_product_reference",
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback("catalog_invalid_product_fact");
     }
     if (messageClaimsProductReference(reply.message) && requestedSuggestions.length === 0) {
-      return {
-        kind: "handoff",
-        reason: "catalog_unvalidated_product_claim",
-        grounding_sources: groundingSources,
-        learning_ids_used: learningIdsUsed,
-      };
+      return deterministicFallback("catalog_unvalidated_product_claim");
     }
+    const promisedImageIds = messagePromisesProductPresentation(reply.message)
+      ? selectedProducts.filter((product) => product.images.length > 0).map((product) => product.id)
+      : [];
+    const requestedImages = [...new Set([...modelImageIds, ...promisedImageIds])]
+      .filter((id) => (catalogById.get(id)?.images.length ?? 0) > 0)
+      .slice(0, 10);
+    const learningIdsUsed = Array.isArray(reply.learning_ids_used)
+      ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
+      : [];
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
       stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
@@ -671,16 +739,7 @@ export class SalesAgentCore {
         : null;
     return {
       kind: "reply",
-      message:
-        requestedSuggestions.length > 0
-          ? buildValidatedCatalogReply(
-              requestedSuggestions.flatMap((id) => {
-                const product = catalogById.get(id);
-                return product ? [product] : [];
-              }),
-              { rectangularPoolIntent: hasRectangularPoolIntent(params.history) },
-            )
-          : reply.message,
+      message: reply.message,
       detected_city: reply.detected_city ?? null,
       detected_state: normalizeState(reply.detected_state) ?? reply.detected_state ?? null,
       detected_pool_size: reply.detected_pool_size ?? null,
