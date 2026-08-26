@@ -26,6 +26,16 @@ describe("generic product dimension backfill", () => {
     expect(migration).not.toMatch(/Solário|Solario|Sol 700|sku|p\.name/i);
   });
 
+  it("handles a description without matches from the left join without aggregating null arrays", () => {
+    expect(migration).toContain("LEFT JOIN LATERAL regexp_matches");
+    expect(migration).toContain("count(m.parts)::integer");
+    expect(migration).toContain("max(replace(m.parts[1], ',', '.')::numeric)");
+    expect(migration).toContain("max(replace(m.parts[2], ',', '.')::numeric)");
+    expect(migration).toContain("max(replace(m.parts[3], ',', '.')::numeric)");
+    expect(migration).not.toContain("array_agg(m.parts)");
+    expect(migration).toContain("WHEN c.match_count = 0 THEN 'description_without_unambiguous_triple'");
+  });
+
   it("records migrated and pending products and is rerunnable", () => {
     expect(migration).toContain("product_dimension_backfill_report");
     expect(migration).toContain("description_with_multiple_triples");

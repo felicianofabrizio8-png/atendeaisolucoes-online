@@ -43,9 +43,9 @@ BEGIN
     p.id,
     p.company_id,
     count(m.parts)::integer,
-    CASE WHEN count(m.parts) = 1 THEN replace((array_agg(m.parts))[1][1], ',', '.')::numeric END,
-    CASE WHEN count(m.parts) = 1 THEN replace((array_agg(m.parts))[1][2], ',', '.')::numeric END,
-    CASE WHEN count(m.parts) = 1 THEN replace((array_agg(m.parts))[1][3], ',', '.')::numeric END
+    CASE WHEN count(m.parts) = 1 THEN max(replace(m.parts[1], ',', '.')::numeric) END,
+    CASE WHEN count(m.parts) = 1 THEN max(replace(m.parts[2], ',', '.')::numeric) END,
+    CASE WHEN count(m.parts) = 1 THEN max(replace(m.parts[3], ',', '.')::numeric) END
   FROM public.products p
   LEFT JOIN LATERAL regexp_matches(
     coalesce(p.description, ''),
