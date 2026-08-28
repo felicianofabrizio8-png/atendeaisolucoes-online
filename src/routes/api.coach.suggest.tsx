@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server";
 import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
+import { resolveSalesAgentLlmConfig } from "@/lib/sales-agent-config.server";
 import {
   COACH_INVALID_OUTPUT_CONTRACT,
   COACH_PROVIDER_TIMEOUT_MS,
@@ -11,9 +12,6 @@ import {
 } from "@/lib/coach/gateway-errors";
 
 
-
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
 
 interface SuggestBody {
   conversation_id: string;
@@ -48,9 +46,21 @@ export const Route = createFileRoute("/api/coach/suggest")({
           return Response.json({ error: "perfil sem empresa" }, { status: 403 });
         const companyId = profile.company_id as string;
 
-        const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey)
-          return Response.json({ error: "LOVABLE_API_KEY ausente" }, { status: 500 });
+        // O Coach compartilha o adaptador OpenAI-compatible já configurado para
+        // o Sales Agent: endpoint, modelo GPT e credencial têm uma única fonte.
+        const llm = resolveSalesAgentLlmConfig();
+        if (!llm.ok) {
+          console.error(`[coach/suggest] ${llm.reason}`);
+          return Response.json(
+            {
+              error: "A integração OpenAI do sistema não está configurada. Avise o administrador.",
+              code: "provider_unauthorized",
+              retryable: false,
+            },
+            { status: 503 },
+          );
+        }
+        const { endpoint, model, apiKey } = llm.config;
 
         let body: SuggestBody;
         try {
@@ -180,7 +190,7 @@ ${transcript || "(sem mensagens)"}`;
         // pendura a requisição do vendedor até o limite do runtime.
         let aiRes: Response;
         try {
-          aiRes = await fetch(GATEWAY_URL, {
+          aiRes = await fetch(endpoint, {
             method: "POST",
             signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
             headers: {
@@ -188,7 +198,7 @@ ${transcript || "(sem mensagens)"}`;
               Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: MODEL,
+              model,
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },

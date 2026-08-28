@@ -8,7 +8,6 @@
 
 export type CoachErrorCode =
   | "rate_limited"
-  | "credits_exhausted"
   | "provider_unauthorized"
   | "provider_invalid_response"
   | "provider_unavailable"
@@ -36,26 +35,17 @@ export function sanitizeProviderBody(body: string, max = 300): string {
     .slice(0, max);
 }
 
-/** Tipo declarado pelo gateway no corpo do erro, quando presente. */
-function providerType(body: string): string {
-  const m = /"type"\s*:\s*"([^"]+)"/.exec(body);
-  return m ? m[1] : "";
-}
-
 /**
  * Traduz `status` HTTP + corpo do provedor no contrato de erro do Coach.
  *
  * Regras:
  *  · 429                        → 429 rate_limited (retentável)
- *  · 402 ou `credit_limit_reached` → 402 credits_exhausted (não retentável)
- *  · 401/403 sem crédito        → 503 provider_unauthorized (configuração)
+ *  · 401/402/403                → 503 provider_unauthorized (configuração)
  *  · 408/504                    → 504 provider_timeout
  *  · 5xx                        → 503 provider_unavailable (retentável)
  *  · demais 4xx                 → 502 provider_invalid_response
  */
-export function classifyGatewayFailure(status: number, body = ""): CoachErrorContract {
-  const type = providerType(body);
-
+export function classifyGatewayFailure(status: number, _body = ""): CoachErrorContract {
   if (status === 429) {
     return {
       status: 429,
@@ -65,17 +55,7 @@ export function classifyGatewayFailure(status: number, body = ""): CoachErrorCon
     };
   }
 
-  if (status === 402 || type === "credit_limit_reached" || /credit limit/i.test(body)) {
-    return {
-      status: 402,
-      code: "credits_exhausted",
-      error:
-        "Os créditos de IA do workspace acabaram. Adicione créditos para o Coach voltar a gerar sugestões.",
-      retryable: false,
-    };
-  }
-
-  if (status === 401 || status === 403) {
+  if (status === 401 || status === 402 || status === 403) {
     return {
       status: 503,
       code: "provider_unauthorized",

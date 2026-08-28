@@ -6,22 +6,21 @@ import {
   sanitizeProviderBody,
 } from "@/lib/coach/gateway-errors";
 
-// SPRINT 5 · FASE 5.2.2 — o 502 observado na validação da Inbox mobile era um
-// `403 credit_limit_reached` do gateway colapsado em "502 genérico". Estes
-// testes travam o contrato de erros para que isso não volte.
+// Contrato público de falhas do provedor OpenAI-compatible usado pelo Coach.
 describe("classifyGatewayFailure", () => {
-  it("classifica limite de créditos (403 credit_limit_reached) como 402", () => {
+  it("não expõe a validação de créditos legada do Gemini/Lovable", () => {
     const c = classifyGatewayFailure(
       403,
       '{"status":403,"type":"credit_limit_reached","message":"Workspace credit limit reached"}',
     );
-    expect(c.status).toBe(402);
-    expect(c.code).toBe("credits_exhausted");
+    expect(c.status).toBe(503);
+    expect(c.code).toBe("provider_unauthorized");
+    expect(c.error).not.toMatch(/crédito|workspace/i);
     expect(c.retryable).toBe(false);
   });
 
-  it("classifica 402 direto como créditos esgotados", () => {
-    expect(classifyGatewayFailure(402, "").code).toBe("credits_exhausted");
+  it("classifica 402 como credencial/configuração do provedor", () => {
+    expect(classifyGatewayFailure(402, "").code).toBe("provider_unauthorized");
   });
 
   it("classifica 429 como rate limit retentável", () => {
