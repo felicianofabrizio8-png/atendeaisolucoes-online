@@ -1059,4 +1059,32 @@ describe("SalesAgentCore", () => {
     expect(source).not.toMatch(/\bsupabase\b|\.from\s*\(|\bfetch\s*\(|\bpostGraph\b|process\.env/);
     expect(source).not.toMatch(/sendWhatsapp|ai_flow_events|conversations|leads/);
   });
+
+  it("orienta prazo normal pelas regras de carga e instalação e limita o handoff", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          commercialRules: {
+            ...context.grounding.commercialRules,
+            installationPolicy: "Instalação em até 10 dias úteis",
+            shippingPolicy: "Carga em até 2 dias úteis",
+          },
+        },
+      },
+      history: [{ role: "lead", text: "Qual o prazo normal?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const prompt = request.messages[0].content;
+
+    expect(prompt).toContain("REGRAS DE CARGA E INSTALAÇÃO");
+    expect(prompt).toContain("Instalação: Instalação em até 10 dias úteis");
+    expect(prompt).toContain("Frete: Carga em até 2 dias úteis");
+    expect(prompt).toContain(
+      "Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada",
+    );
+    expect(prompt).not.toContain("Se o cliente pedir qualquer item acima, chame request_human_handoff.");
+  });
 });
