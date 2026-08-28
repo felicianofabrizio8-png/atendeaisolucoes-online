@@ -313,7 +313,7 @@ async function loadKnowledgeBase(sb: SB, companyId: string) {
   const { data } = await sb
     .from("marketing_knowledge_base")
     .select(
-      "brand_identity, tone_of_voice, differentiators, products_services, guarantees, cities_served, gifts, commercial_terms, preferred_words, forbidden_words, copy_best_practices, extra_notes",
+      "brand_identity, tone_of_voice, differentiators, products_services, guarantees, cities_served, gifts, commercial_terms, next_load_forecast, preferred_words, forbidden_words, copy_best_practices, extra_notes",
     )
     .eq("company_id", companyId)
     .maybeSingle();
@@ -331,6 +331,7 @@ function buildKnowledgeBlock(kb: Awaited<ReturnType<typeof loadKnowledgeBase>>):
     ["Cidades atendidas", kb.cities_served],
     ["Brindes", kb.gifts],
     ["Condições comerciais", kb.commercial_terms],
+    ["Próxima carga prevista", kb.next_load_forecast],
     ["Palavras e expressões preferidas", kb.preferred_words],
     ["Palavras PROIBIDAS (nunca usar)", kb.forbidden_words],
     ["Boas práticas de copy", kb.copy_best_practices],

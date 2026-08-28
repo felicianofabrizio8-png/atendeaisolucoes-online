@@ -3621,6 +3621,7 @@ export type Database = {
           id: string
           included_items_policy: string
           installation_policy: string
+          next_load_forecast: string
           payment_policy: string
           preferred_words: string
           products_services: string
@@ -3646,6 +3647,7 @@ export type Database = {
           id?: string
           included_items_policy?: string
           installation_policy?: string
+          next_load_forecast?: string
           payment_policy?: string
           preferred_words?: string
           products_services?: string
@@ -3671,6 +3673,7 @@ export type Database = {
           id?: string
           included_items_policy?: string
           installation_policy?: string
+          next_load_forecast?: string
           payment_policy?: string
           preferred_words?: string
           products_services?: string

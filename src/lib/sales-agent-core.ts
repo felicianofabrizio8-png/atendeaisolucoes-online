@@ -50,6 +50,7 @@ export interface SalesAgentGrounding {
     commercialTerms: string | null;
     paymentPolicy: string | null;
     installationPolicy: string | null;
+    nextLoadForecast?: string | null;
     visitPolicy: string | null;
     heatingPolicy: string | null;
     shippingPolicy: string | null;
@@ -209,9 +210,18 @@ export function getRequestedProductLength(
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function messageClaimsSpecificModel(message: string): boolean {
+  const genericModelReference =
+    /\b(?:do|da|de|um|uma|o|a|pelo|pela|nosso|nossa|seu|sua)\s+modelo\b(?!\s+[\p{L}\d])|\bmodelo\s+(?:e|ou|para|de vocês|da empresa|do catálogo|em questão|mencionado|espec[ií]fico|ideal|adequado|dispon[ií]vel|informado|escolhido)\b/iu.test(
+      message,
+    );
+  return /\bmodelo\s+[\p{L}\d]/iu.test(message) && !genericModelReference;
+}
+
 function messageClaimsProductReference(message: string): boolean {
-  return /\bmodelo\s+[\p{L}\d]|\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(
-    message,
+  return (
+    messageClaimsSpecificModel(message) ||
+    /\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(message)
   );
 }
 
@@ -245,7 +255,10 @@ function messageHasOnlyValidatedProductFacts(
   if (catalog.some((product) => mentionsIdentity(product) && !selectedIds.has(product.id))) {
     return false;
   }
-  if (/\b(?:modelo|sku)\b/.test(normalized) && !selectedProducts.some(mentionsIdentity)) {
+  if (
+    (/\bsku\b/.test(normalized) || messageClaimsSpecificModel(normalized)) &&
+    !selectedProducts.some(mentionsIdentity)
+  ) {
     return false;
   }
   const claimedMeasures = [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
@@ -373,6 +386,7 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
     ctx.grounding.commercialRules.commercialTerms ||
     ctx.grounding.commercialRules.paymentPolicy ||
     ctx.grounding.commercialRules.installationPolicy ||
+    ctx.grounding.commercialRules.nextLoadForecast ||
     ctx.grounding.commercialRules.visitPolicy ||
     ctx.grounding.commercialRules.heatingPolicy ||
     ctx.grounding.commercialRules.shippingPolicy ||
@@ -440,6 +454,9 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     ctx.grounding.commercialRules.installationPolicy
       ? `- Instalação: ${ctx.grounding.commercialRules.installationPolicy}`
       : null,
+    ctx.grounding.commercialRules.nextLoadForecast
+      ? `- Próxima carga prevista: ${ctx.grounding.commercialRules.nextLoadForecast}`
+      : null,
     ctx.grounding.commercialRules.visitPolicy
       ? `- Visita: ${ctx.grounding.commercialRules.visitPolicy}`
       : null,
@@ -479,7 +496,7 @@ Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto
 
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
-- Perguntas normais sobre prazo de carga/instalação devem ser respondidas pelas REGRAS DE CARGA E INSTALAÇÃO cadastradas abaixo; nunca invente nem prometa prazo além delas.
+- Perguntas normais sobre prazo de carga/instalação devem ser respondidas pelas REGRAS DE CARGA E INSTALAÇÃO cadastradas abaixo; só informe a próxima carga quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
 - NUNCA invente informação que não esteja no contexto abaixo.
 - NUNCA feche venda sozinho — apenas qualifique o lead.
 - Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.

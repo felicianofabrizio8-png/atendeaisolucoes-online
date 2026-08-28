@@ -74,6 +74,12 @@ const FIELDS: FieldDef[] = [
     rows: 3,
   },
   {
+    key: "next_load_forecast",
+    label: "Próxima carga prevista",
+    placeholder: "Ex.: próxima carga prevista para a primeira quinzena do mês…",
+    rows: 2,
+  },
+  {
     key: "preferred_words",
     label: "Palavras e expressões preferidas",
     placeholder: "Ex.: 'especialistas', 'sob medida', 'atendimento humano'…",
@@ -108,6 +114,7 @@ const EMPTY: Record<FieldDef["key"], string> = {
   cities_served: "",
   gifts: "",
   commercial_terms: "",
+  next_load_forecast: "",
   preferred_words: "",
   forbidden_words: "",
   copy_best_practices: "",

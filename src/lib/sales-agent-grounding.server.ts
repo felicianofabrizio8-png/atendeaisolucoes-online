@@ -288,7 +288,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     supabaseAdmin
       .from("marketing_knowledge_base")
       .select(
-        "commercial_terms, payment_policy, installation_policy, visit_policy, heating_policy, shipping_policy, included_items_policy",
+        "commercial_terms, payment_policy, installation_policy, next_load_forecast, visit_policy, heating_policy, shipping_policy, included_items_policy",
       )
       .eq("company_id", companyId)
       .maybeSingle(),
@@ -336,6 +336,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
       commercialTerms: commercial?.commercial_terms ?? null,
       paymentPolicy: commercial?.payment_policy?.trim() || null,
       installationPolicy: commercial?.installation_policy?.trim() || null,
+      nextLoadForecast: commercial?.next_load_forecast?.trim() || null,
       visitPolicy: commercial?.visit_policy?.trim() || null,
       heatingPolicy: commercial?.heating_policy?.trim() || null,
       shippingPolicy: commercial?.shipping_policy?.trim() || null,

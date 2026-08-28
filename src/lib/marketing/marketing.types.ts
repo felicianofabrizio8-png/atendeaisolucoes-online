@@ -137,6 +137,7 @@ export interface MarketingKnowledgeBaseRow {
   cities_served: string;
   gifts: string;
   commercial_terms: string;
+  next_load_forecast: string;
   preferred_words: string;
   forbidden_words: string;
   copy_best_practices: string;

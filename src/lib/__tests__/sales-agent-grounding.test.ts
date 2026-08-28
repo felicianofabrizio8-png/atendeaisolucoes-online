@@ -67,6 +67,7 @@ describe("SalesAgent grounding", () => {
         commercial_terms: "Entrada de 50%",
         payment_policy: "Pix ou cartão conforme condição vigente",
         installation_policy: "Confirmar avaliação técnica",
+        next_load_forecast: "Primeira quinzena do mês",
         visit_policy: "Agendar com a equipe",
         heating_policy: "Validar compatibilidade antes de oferecer",
         shipping_policy: "Frete confirmado pela equipe",
@@ -104,6 +105,7 @@ describe("SalesAgent grounding", () => {
     expect(grounding.commercialRules).toMatchObject({
       paymentPolicy: "Pix ou cartão conforme condição vigente",
       installationPolicy: "Confirmar avaliação técnica",
+      nextLoadForecast: "Primeira quinzena do mês",
       visitPolicy: "Agendar com a equipe",
       heatingPolicy: "Validar compatibilidade antes de oferecer",
       shippingPolicy: "Frete confirmado pela equipe",

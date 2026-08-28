@@ -849,7 +849,7 @@ describe("SalesAgentCore", () => {
                   function: {
                     name: "respond_to_customer",
                     arguments: JSON.stringify({
-                      message: "Dados inventados pelo modelo.",
+                      message: "Modelo Atlântida com especificação inventada.",
                       suggest_products: ["product-1"],
                     }),
                   },
@@ -1070,6 +1070,7 @@ describe("SalesAgentCore", () => {
             ...context.grounding.commercialRules,
             installationPolicy: "Instalação em até 10 dias úteis",
             shippingPolicy: "Carga em até 2 dias úteis",
+            nextLoadForecast: "Primeira quinzena do mês",
           },
         },
       },
@@ -1082,9 +1083,46 @@ describe("SalesAgentCore", () => {
     expect(prompt).toContain("REGRAS DE CARGA E INSTALAÇÃO");
     expect(prompt).toContain("Instalação: Instalação em até 10 dias úteis");
     expect(prompt).toContain("Frete: Carga em até 2 dias úteis");
+    expect(prompt).toContain("Próxima carga prevista: Primeira quinzena do mês");
     expect(prompt).toContain(
       "Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada",
     );
     expect(prompt).not.toContain("Se o cliente pedir qualquer item acima, chame request_human_handoff.");
+  });
+
+  it("não invalida resposta que usa modelo genericamente sem produto específico", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "O prazo depende do modelo e da agenda de instalação.",
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Qual o prazo para instalação de vocês?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      message: "O prazo depende do modelo e da agenda de instalação.",
+    });
   });
 });
