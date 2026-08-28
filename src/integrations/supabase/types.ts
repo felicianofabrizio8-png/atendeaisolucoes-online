@@ -250,6 +250,117 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_training_messages: {
+        Row: {
+          company_id: string
+          content: string
+          correction_text: string | null
+          created_at: string
+          decision: Json | null
+          generation_error: string | null
+          generation_status: string
+          id: string
+          learning_promotion_status: string | null
+          promoted_learning_id: string | null
+          review_status: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          role: string
+          session_id: string
+        }
+        Insert: {
+          company_id: string
+          content: string
+          correction_text?: string | null
+          created_at?: string
+          decision?: Json | null
+          generation_error?: string | null
+          generation_status?: string
+          id?: string
+          learning_promotion_status?: string | null
+          promoted_learning_id?: string | null
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          role: string
+          session_id: string
+        }
+        Update: {
+          company_id?: string
+          content?: string
+          correction_text?: string | null
+          created_at?: string
+          decision?: Json | null
+          generation_error?: string | null
+          generation_status?: string
+          id?: string
+          learning_promotion_status?: string | null
+          promoted_learning_id?: string | null
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_training_messages_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_messages_promoted_learning_fkey"
+            columns: ["promoted_learning_id"]
+            isOneToOne: false
+            referencedRelation: "coach_learnings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_training_sessions: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_training_sessions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_usage_counters: {
         Row: {
           company_id: string
@@ -1082,6 +1193,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "coach_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_historical_learning_checkpoints: {
+        Row: {
+          company_id: string
+          metadata: Json
+          next_offset: number
+          prompt_version: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          metadata?: Json
+          next_offset?: number
+          prompt_version: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          metadata?: Json
+          next_offset?: number
+          prompt_version?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_historical_learning_checkpoints_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -3991,18 +4137,66 @@ export type Database = {
         }
         Relationships: []
       }
+      product_dimension_backfill_report: {
+        Row: {
+          company_id: string
+          extracted_depth_m: number | null
+          extracted_length_m: number | null
+          extracted_width_m: number | null
+          product_id: string
+          reason: string
+          reported_at: string
+          status: string
+        }
+        Insert: {
+          company_id: string
+          extracted_depth_m?: number | null
+          extracted_length_m?: number | null
+          extracted_width_m?: number | null
+          product_id: string
+          reason: string
+          reported_at?: string
+          status: string
+        }
+        Update: {
+          company_id?: string
+          extracted_depth_m?: number | null
+          extracted_length_m?: number | null
+          extracted_width_m?: number | null
+          product_id?: string
+          reason?: string
+          reported_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_dimension_backfill_report_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_dimension_backfill_report_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           active: boolean
+          capacity_l: number | null
           category: string | null
           company_id: string
           created_at: string
+          depth_m: number | null
           description: string | null
           id: string
           images: Json
           included_items: string[]
-          capacity_l: number | null
-          depth_m: number | null
           length_m: number | null
           model: string | null
           name: string
@@ -4018,15 +4212,15 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          capacity_l?: number | null
           category?: string | null
           company_id: string
           created_at?: string
+          depth_m?: number | null
           description?: string | null
           id?: string
           images?: Json
           included_items?: string[]
-          capacity_l?: number | null
-          depth_m?: number | null
           length_m?: number | null
           model?: string | null
           name: string
@@ -4042,15 +4236,15 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          capacity_l?: number | null
           category?: string | null
           company_id?: string
           created_at?: string
+          depth_m?: number | null
           description?: string | null
           id?: string
           images?: Json
           included_items?: string[]
-          capacity_l?: number | null
-          depth_m?: number | null
           length_m?: number | null
           model?: string | null
           name?: string
@@ -5679,11 +5873,22 @@ export type Database = {
         Args: { _critical_confirmed?: boolean; _version_id: string }
         Returns: undefined
       }
+      approve_training_learning_candidate: {
+        Args: { _message_id: string }
+        Returns: string
+      }
       archive_coach_learning: {
         Args: { _learning_id: string }
         Returns: undefined
       }
       archive_coach_rule: { Args: { _rule_id: string }; Returns: undefined }
+      backfill_product_dimensions_from_description: {
+        Args: never
+        Returns: {
+          migrated_count: number
+          pending_count: number
+        }[]
+      }
       brand_asset_storage_metadata: {
         Args: { _bucket: string; _path: string }
         Returns: {
@@ -5918,6 +6123,10 @@ export type Database = {
           _scope_ref?: Json
           _title: string
         }
+        Returns: string
+      }
+      create_training_learning_candidate: {
+        Args: { _message_id: string }
         Returns: string
       }
       current_company_id: { Args: never; Returns: string }
