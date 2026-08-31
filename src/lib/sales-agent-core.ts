@@ -74,6 +74,8 @@ export interface SalesAgentGrounding {
 export interface AgentContext {
   settings: AgentSettings;
   companyName: string;
+  /** IDs do catálogo completo; o catálogo enviado ao prompt pode ser reduzido. */
+  catalogProductIds?: string[];
   aiProfile: {
     tone: string;
     description: string | null;
@@ -733,7 +735,9 @@ export class SalesAgentCore {
     if (!reply.message) {
       return deterministicFallback("empty_message");
     }
-    const catalogIds = new Set(params.ctx.grounding.catalog.map((product) => product.id));
+    const catalogIds = new Set(
+      params.ctx.catalogProductIds ?? params.ctx.grounding.catalog.map((product) => product.id),
+    );
     const catalogById = new Map(
       params.ctx.grounding.catalog.map((product) => [product.id, product]),
     );

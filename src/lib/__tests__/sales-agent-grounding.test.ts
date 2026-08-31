@@ -412,7 +412,7 @@ describe("SalesAgent grounding", () => {
       { role: "lead", text: "Gostaria de informações das piscinas" },
     ]);
 
-    expect(listLearningCandidates).toHaveBeenCalledWith(expect.anything(), "company-1", 50);
+    expect(listLearningCandidates).toHaveBeenCalledWith(expect.anything(), "company-1", 30);
     expect(retrieveLearnings).toHaveBeenCalledWith(
       expect.objectContaining({
         companyId: "company-1",
@@ -425,6 +425,83 @@ describe("SalesAgent grounding", () => {
       positiveExample: "Claro! Qual tamanho você procura?",
       negativeExample: "Como posso ajudar?",
     });
+  });
+
+  it("limita o catálogo sem filtro a três produtos", () => {
+    const catalog = Array.from({ length: 5 }, (_, index) => ({
+      id: `product-${index}`,
+      name: `Piscina ${index + 1}`,
+      category: "Piscinas",
+      description: null,
+      price: 10_000,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    }));
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quero conhecer as opcoes" },
+      ]),
+    ).toHaveLength(3);
+  });
+
+  it("ranqueia o modelo mencionado antes de limitar as opcoes", () => {
+    const catalog = ["Outro 6", "Alto 6", "Caribe 6", "Compacto 6"].map((model) => ({
+      id: model,
+      name: `Piscina ${model}`,
+      model: null,
+      category: "Piscinas",
+      description: null,
+      price: 10_000,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    }));
+
+    const selected = selectRelevantSalesAgentProducts(catalog, [
+      { role: "lead", text: "Quero uma piscina com Caribe" },
+    ]);
+
+    expect(selected).toHaveLength(3);
+    expect(selected[0].id).toBe("Caribe 6");
+  });
+
+  it("usa medida persistida para filtrar mesmo sem repeti-la no texto", () => {
+    const catalog = [
+      {
+        id: "six",
+        name: "Piscina 6x3",
+        category: "Piscinas",
+        description: null,
+        lengthM: 6,
+        widthM: 3,
+        price: 10_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "five",
+        name: "Piscina 5x3",
+        category: "Piscinas",
+        description: null,
+        lengthM: 5,
+        widthM: 3,
+        price: 9_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(
+        catalog,
+        [{ role: "lead", text: "Pode me mostrar as opcoes?" }],
+        { attributes: { lengthM: 6, widthM: 3 }, productIds: [], intent: null, lastValidProductIds: [] },
+      ).map((product) => product.id),
+    ).toEqual(["six"]);
   });
 
   it("não cria efeitos externos durante o grounding", async () => {

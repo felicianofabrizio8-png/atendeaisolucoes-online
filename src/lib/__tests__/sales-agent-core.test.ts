@@ -195,7 +195,7 @@ describe("SalesAgentCore", () => {
   it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
     const history = Array.from({ length: 22 }, (_, index) => ({
       role: (index % 2 === 0 ? "lead" : "agent") as "lead" | "agent",
-      text: `mensagem-${index}`,
+      text: index === 20 ? "Quero saber pagamento, garantia e prazo" : `mensagem-${index}`,
     }));
 
     const request = buildSalesAgentCompletionRequest({
@@ -442,7 +442,7 @@ describe("SalesAgentCore", () => {
   it("inclui produto e preço do grounding no contexto do modelo", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
-      history: [],
+      history: [{ role: "lead", text: "Quero saber pagamento" }],
       leadName: null,
       model: salesModel,
     });

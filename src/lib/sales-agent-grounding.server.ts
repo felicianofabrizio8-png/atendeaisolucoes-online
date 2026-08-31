@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
 import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
+import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -31,6 +32,49 @@ function collectVariantTerms(value: unknown): string[] {
     return Object.values(value as Record<string, unknown>).flatMap(collectVariantTerms);
   }
   return [];
+}
+
+function rankRelevantProducts(products: CatalogProduct[], history: AgentHistory): CatalogProduct[] {
+  const recentText = normalizeCatalogText(
+    history
+      .slice(-8)
+      .filter((item) => item.role !== "system")
+      .map((item) => item.text)
+      .join(" "),
+  );
+  const recentTokens = new Set(recentText.split(/\s+/).filter((token) => token.length >= 3));
+  const mentionedIds = new Set(
+    history
+      .slice(-8)
+      .filter((item) => item.role === "agent")
+      .flatMap((item) => item.productIds ?? []),
+  );
+
+  return products
+    .map((product, index) => {
+      const searchable = normalizeCatalogText(
+        [
+          product.name,
+          product.model,
+          product.sku,
+          product.category,
+          product.description,
+          product.notes,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      const productTokens = searchable.split(/\s+/).filter((token) => token.length >= 3);
+      const overlap = productTokens.filter((token) => recentTokens.has(token)).length;
+      const exactModel = [product.model, product.sku]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .some((value) => recentText.includes(normalizeCatalogText(value)));
+      const score =
+        (mentionedIds.has(product.id) ? 1_000 : 0) + (exactModel ? 100 : 0) + overlap * 5;
+      return { product, index, score };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ product }) => product);
 }
 
 export function extractCurrentProductAttributes(
@@ -212,8 +256,10 @@ export function selectRelevantSalesAgentProducts(
     /\bacessor/,
     /\btratament/,
   ].filter((concept) => concept.test(normalized));
-  if (intentConcepts.length === 0) return products;
-  return products.filter((product) => {
+  if (intentConcepts.length === 0) {
+    return rankRelevantProducts(products, history).slice(0, SALES_AGENT_MAX_OPTIONS);
+  }
+  return rankRelevantProducts(products.filter((product) => {
     const haystack = normalizeCatalogText(
       [
         product.name,
@@ -226,7 +272,7 @@ export function selectRelevantSalesAgentProducts(
         .join(" "),
     );
     return intentConcepts.some((concept) => concept.test(haystack));
-  });
+  }), history).slice(0, SALES_AGENT_MAX_OPTIONS);
 }
 
 function mapLearning(learning: Awaited<ReturnType<typeof listLearningCandidates>>[number]) {
@@ -244,11 +290,31 @@ function mapLearning(learning: Awaited<ReturnType<typeof listLearningCandidates>
   };
 }
 
+function selectDiverseLearnings(
+  learnings: Awaited<ReturnType<typeof listLearningCandidates>>,
+  maxSelected: number,
+) {
+  const selected: typeof learnings = [];
+  const categories = new Set<string>();
+  for (const learning of learnings) {
+    if (selected.length >= maxSelected) break;
+    if (!categories.has(learning.category)) {
+      selected.push(learning);
+      categories.add(learning.category);
+    }
+  }
+  for (const learning of learnings) {
+    if (selected.length >= maxSelected) break;
+    if (!selected.some((item) => item.id === learning.id)) selected.push(learning);
+  }
+  return selected;
+}
+
 export async function loadRelevantSalesAgentLearnings(
   companyId: string,
   history: AgentHistory,
 ): Promise<SalesAgentGrounding["approvedCoachLearnings"]> {
-  const candidates = await listLearningCandidates(supabaseAdmin, companyId, 50);
+  const candidates = await listLearningCandidates(supabaseAdmin, companyId, 30);
   let lastLeadIndex = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     if (history[index].role === "lead") {
@@ -265,7 +331,7 @@ export async function loadRelevantSalesAgentLearnings(
     candidates,
     maxSelected: 5,
   });
-  return result.selected.map(mapLearning);
+  return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
 }
 
 export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
