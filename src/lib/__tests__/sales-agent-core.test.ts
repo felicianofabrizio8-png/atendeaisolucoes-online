@@ -1125,4 +1125,41 @@ describe("SalesAgentCore", () => {
       message: "O prazo depende do modelo e da agenda de instalação.",
     });
   });
+
+  it("valida todos os IDs antes de limitar recomendações a três", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Encontrei algumas opções.",
+                      suggest_products: ["product-1", "product-1", "product-1", "product-missing"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.kind).toBe("reply");
+    expect(decision.message).toContain("Encontrei no catálogo");
+    expect(decision.message).not.toContain("product-missing");
+    expect(decision.suggested_products).not.toContain("product-missing");
+  });
 });

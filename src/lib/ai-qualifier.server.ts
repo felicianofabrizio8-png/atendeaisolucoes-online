@@ -29,10 +29,10 @@ const OBJECTION_PATTERNS: { id: Objection; re: RegExp }[] = [
 ];
 
 const READY_TO_CLOSE_PATTERNS: RegExp[] = [
-  /\b(vou fechar|quero fechar|fecho (com|hoje|agora)|pode fechar)\b/i,
-  /\b(quero (instal|comprar|adquirir)|quando (consegu|pode)e?m? (entreg|instal|chega))\b/i,
-  /\b(manda (a|o) (proposta|contrato|nota|pagamento)|me passa o (pix|boleto))\b/i,
-  /\b(pode mandar (o|a) (link|pagamento|boleto|pix))\b/i,
+  /\b(vou|quero|vamos|pode)\s+(fechar|comprar|adquirir)\b/i,
+  /\bfecho\s+(com|hoje|agora)\b/i,
+  /\bquero fazer\s+(?:o\s+)?contrato\b/i,
+  /\bpode fazer\s+(?:o\s+)?pedido\b/i,
 ];
 
 const BR_STATES_RE =

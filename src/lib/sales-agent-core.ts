@@ -4,6 +4,7 @@ import {
   type CustomerStage,
   type PurchaseTiming,
 } from "./ai-qualifier.server";
+import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -494,6 +495,8 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
   return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
 Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
 
+${SALES_AGENT_PLAYBOOK}
+
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
 - Perguntas normais sobre prazo de carga/instalação devem ser respondidas pelas REGRAS DE CARGA E INSTALAÇÃO cadastradas abaixo; só informe a próxima carga quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
@@ -609,11 +612,11 @@ export function buildSalesAgentCompletionRequest(
               },
               suggest_products: {
                 type: "array",
-                items: {
-                  type: "string",
-                  enum: catalogProducts.map((product) => product.id),
-                },
-                description: "IDs exatos de produtos existentes no catálogo fornecido.",
+                  items: {
+                    type: "string",
+                    enum: catalogProducts.map((product) => product.id),
+                  },
+                  description: "IDs exatos de produtos existentes no catálogo fornecido.",
               },
               send_product_images: {
                 type: "array",
@@ -753,7 +756,7 @@ export class SalesAgentCore {
             customerAskedAboutProducts(params.history) &&
             params.ctx.grounding.catalog.length === 1
           ? [params.ctx.grounding.catalog[0].id]
-          : modelSuggestions;
+          : modelSuggestions.slice(0, SALES_AGENT_MAX_OPTIONS);
     const selectedProducts = requestedSuggestions.flatMap((id) => {
       const product = catalogById.get(id);
       return product ? [product] : [];
