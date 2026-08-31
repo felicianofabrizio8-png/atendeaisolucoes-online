@@ -107,6 +107,19 @@ export type CoachRuleScopeRef = {
   channel?: (typeof COACH_CHANNELS)[number];
 };
 
+export interface ActiveCoachRuleGrounding {
+  ruleId: string;
+  versionId: string;
+  versionNumber: number;
+  category: CoachRuleCategory;
+  ruleType: CoachRuleType;
+  title: string;
+  content: string;
+  priority: number;
+  scopeKind: CoachRuleScopeKind;
+  scopeRef: Database["public"]["Tables"]["coach_rules"]["Row"]["scope_ref"];
+}
+
 // ------------------------------------------------------------------
 // READS
 // ------------------------------------------------------------------
@@ -117,6 +130,63 @@ export async function listCoachRules(): Promise<CoachRuleRow[]> {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function listActiveCoachRulesForGrounding(
+  companyId: string,
+  limit = 20,
+): Promise<ActiveCoachRuleGrounding[]> {
+  const safeLimit = Math.min(50, Math.max(1, limit));
+  const { data: rules, error: rulesError } = await supabase
+    .from("coach_rules")
+    .select("id, active_version_id, category, priority")
+    .eq("company_id", companyId)
+    .eq("status", "active")
+    .order("priority", { ascending: false })
+    .limit(safeLimit);
+  if (rulesError) throw rulesError;
+
+  const activeRules = (rules ?? []).filter(
+    (rule): rule is Pick<CoachRuleRow, "id" | "active_version_id" | "category" | "priority"> =>
+      typeof rule.active_version_id === "string",
+  );
+  if (activeRules.length === 0) return [];
+
+  const activeVersionIds = activeRules.map((rule) => rule.active_version_id);
+  const { data: versions, error: versionsError } = await supabase
+    .from("coach_rule_versions")
+    .select(
+      "id, rule_id, company_id, version_number, rule_type, category, title, content, priority, scope_kind, scope_ref, status",
+    )
+    .eq("company_id", companyId)
+    .eq("status", "active")
+    .in("id", activeVersionIds);
+  if (versionsError) throw versionsError;
+
+  const versionsById = new Map((versions ?? []).map((version) => [version.id, version]));
+  return activeRules.flatMap((rule) => {
+    const version = versionsById.get(rule.active_version_id);
+    if (
+      !version ||
+      version.rule_id !== rule.id ||
+      version.company_id !== companyId ||
+      version.status !== "active"
+    ) {
+      return [];
+    }
+    return [{
+      ruleId: rule.id,
+      versionId: version.id,
+      versionNumber: version.version_number,
+      category: version.category,
+      ruleType: version.rule_type,
+      title: version.title,
+      content: version.content,
+      priority: version.priority ?? rule.priority,
+      scopeKind: version.scope_kind,
+      scopeRef: version.scope_ref,
+    }];
+  });
 }
 
 export async function getCoachRule(ruleId: string): Promise<CoachRuleRow | null> {
