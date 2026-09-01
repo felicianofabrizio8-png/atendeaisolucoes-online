@@ -668,6 +668,51 @@ describe("SalesAgentCore", () => {
     ]);
   });
 
+  it("registra quick_replies somente quando hÃ¡ quick reply no grounding", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "Segue a informaÃ§Ã£o." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          quickReplies: [
+            {
+              name: "Por Conta do Cliente",
+              category: "OrÃ§amento",
+              content: "Contrapiso e Ã¡gua.",
+              sort_order: 12,
+            },
+          ],
+        },
+      },
+      history: [{ role: "lead", text: "O que fica por conta do cliente?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.grounding_sources).toContain("quick_replies");
+    expect(complete.mock.calls[0][0].messages[0].content).toContain("Contrapiso e Ã¡gua.");
+  });
+
   it("não usa exemplos nem referência de produto do learning como fato de catálogo", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: {

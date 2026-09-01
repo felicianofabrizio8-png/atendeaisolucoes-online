@@ -13,7 +13,8 @@ export type SalesAgentGroundingSource =
   | "faq_knowledge"
   | "commercial_rules"
   | "coach_learnings"
-  | "coach_rules";
+  | "coach_rules"
+  | "quick_replies";
 
 export interface AgentSettings {
   company_id: string;
@@ -404,6 +405,7 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
   }
   if (ctx.grounding.approvedCoachLearnings.length > 0) sources.push("coach_learnings");
   if ((ctx.grounding.activeCoachRules ?? []).length > 0) sources.push("coach_rules");
+  if ((ctx.grounding.quickReplies ?? []).length > 0) sources.push("quick_replies");
   return sources;
 }
 
