@@ -2,6 +2,7 @@
 // Todas as leituras usam o client autenticado (RLS aplica).
 // Todas as escritas são feitas via RPC (SECURITY DEFINER) que valida admin.
 import { supabase } from "@/integrations/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
 export type CoachRuleCategory = Database["public"]["Enums"]["coach_rule_category"];
@@ -135,9 +136,10 @@ export async function listCoachRules(): Promise<CoachRuleRow[]> {
 export async function listActiveCoachRulesForGrounding(
   companyId: string,
   limit = 20,
+  client: SupabaseClient<Database> = supabase,
 ): Promise<ActiveCoachRuleGrounding[]> {
   const safeLimit = Math.min(50, Math.max(1, limit));
-  const { data: rules, error: rulesError } = await supabase
+  const { data: rules, error: rulesError } = await client
     .from("coach_rules")
     .select("id, active_version_id, category, priority")
     .eq("company_id", companyId)
@@ -147,19 +149,23 @@ export async function listActiveCoachRulesForGrounding(
   if (rulesError) throw rulesError;
 
   const activeRules = (rules ?? []).filter(
-    (rule): rule is Pick<CoachRuleRow, "id" | "active_version_id" | "category" | "priority"> =>
+    (
+      rule,
+    ): rule is Pick<CoachRuleRow, "id" | "active_version_id" | "category" | "priority"> & {
+      active_version_id: string;
+    } =>
       typeof rule.active_version_id === "string",
   );
   if (activeRules.length === 0) return [];
 
   const activeVersionIds = activeRules.map((rule) => rule.active_version_id);
-  const { data: versions, error: versionsError } = await supabase
+  const { data: versions, error: versionsError } = await client
     .from("coach_rule_versions")
     .select(
       "id, rule_id, company_id, version_number, rule_type, category, title, content, priority, scope_kind, scope_ref, status",
     )
     .eq("company_id", companyId)
-    .eq("status", "active")
+    .eq("status", "active" as never)
     .in("id", activeVersionIds);
   if (versionsError) throw versionsError;
 
@@ -170,7 +176,7 @@ export async function listActiveCoachRulesForGrounding(
       !version ||
       version.rule_id !== rule.id ||
       version.company_id !== companyId ||
-      version.status !== "active"
+      (version.status as string) !== "active"
     ) {
       return [];
     }

@@ -5,12 +5,14 @@ import {
   type PurchaseTiming,
 } from "./ai-qualifier.server";
 import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
+import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 
 export type SalesAgentGroundingSource =
   | "catalog"
   | "faq_knowledge"
   | "commercial_rules"
-  | "coach_learnings";
+  | "coach_learnings"
+  | "coach_rules";
 
 export interface AgentSettings {
   company_id: string;
@@ -69,6 +71,7 @@ export interface SalesAgentGrounding {
     priority: number;
     confidence: number;
   }>;
+  activeCoachRules?: ActiveCoachRuleGrounding[];
 }
 
 export interface AgentContext {
@@ -398,6 +401,7 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
     sources.push("commercial_rules");
   }
   if (ctx.grounding.approvedCoachLearnings.length > 0) sources.push("coach_learnings");
+  if ((ctx.grounding.activeCoachRules ?? []).length > 0) sources.push("coach_rules");
   return sources;
 }
 
@@ -483,12 +487,18 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
       return `${i + 1}. ${learning.title}: ${learning.rule}`;
     })
     .join("\n");
+  const coachRuleLines = (ctx.grounding.activeCoachRules ?? [])
+    .map((rule, i) => `${i + 1}. ${rule.title}: ${rule.content}`)
+    .join("\n");
   const groundingSections = [
     commercialLines
       ? `POLÍTICAS OFICIAIS (prevalecem sobre Coach e FAQ; somente informe, nunca negocie nem crie condições; não use como fonte de fatos de produto):\n${commercialLines}`
       : null,
     learningLines
       ? `APRENDIZADOS ATIVOS DO COACH (somente orientação de comportamento comercial; nomes, modelos, medidas, preços, descrições, categorias e exemplos de produto contidos em aprendizados NÃO são fatos e devem ser ignorados):\n${learningLines}`
+      : null,
+    coachRuleLines
+      ? `REGRAS ATIVAS APLICÁVEIS (fonte cadastrada; não substituem o playbook):\n${coachRuleLines}`
       : null,
   ]
     .filter((section): section is string => Boolean(section))

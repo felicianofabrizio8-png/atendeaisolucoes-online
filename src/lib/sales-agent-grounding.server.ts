@@ -7,6 +7,7 @@ import type {
   ConversationProductAttributes,
   ConversationSalesState,
 } from "./conversation-sales-state";
+import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -14,6 +15,80 @@ export type AgentHistory = Array<{
   productIds?: string[];
 }>;
 type CatalogProduct = SalesAgentGrounding["catalog"][number];
+export type ProductSelectionContext = {
+  detectedPoolSize?: string | null;
+  detectedInterest?: string | null;
+  detectedIntent?: string | null;
+  detectedBudget?: string | null;
+};
+
+const PLAYBOOK_RULE_CATEGORIES = new Set([
+  "identity",
+  "tone",
+  "qualification",
+  "human_handoff",
+]);
+const COACH_RULE_CATEGORY_TERMS: Record<string, string[]> = {
+  sales: ["piscina", "modelo", "medida", "tamanho", "instal"],
+  pricing: ["preco", "valor", "orcamento"],
+  payments: ["pagamento", "parcel", "pix", "cartao", "boleto", "entrada"],
+  discounts: ["desconto", "negoci"],
+  negotiation: ["desconto", "negoci", "condicao"],
+  after_sales: ["garantia", "casco", "estrutura", "filtro", "motobomba"],
+  prohibitions: ["invent", "promet", "preco", "desconto"],
+  safety: ["segur", "risco", "instal", "acesso"],
+};
+
+export function selectRelevantSalesAgentCoachRules(
+  rules: ActiveCoachRuleGrounding[],
+  history: AgentHistory,
+  context: ProductSelectionContext = {},
+): ActiveCoachRuleGrounding[] {
+  const conversation = normalizeCatalogText(
+    [
+      ...history.slice(-8).filter((item) => item.role !== "system").map((item) => item.text),
+      context.detectedPoolSize,
+      context.detectedInterest,
+      context.detectedIntent,
+      context.detectedBudget,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+  if (!conversation) return [];
+
+  const scored = rules
+    .filter((rule) => !PLAYBOOK_RULE_CATEGORIES.has(rule.category))
+    .map((rule, index) => {
+      const ruleText = normalizeCatalogText(`${rule.title} ${rule.content}`);
+      const terms = ruleText.split(/\s+/).filter((term) => term.length >= 4);
+      const overlap = terms.filter((term) => conversation.includes(term)).length;
+      const categoryTerms = COACH_RULE_CATEGORY_TERMS[rule.category] ?? [];
+      const categoryMatch = categoryTerms.some((term) => conversation.includes(term));
+      const directTopicMatch = categoryTerms.some(
+        (term) => conversation.includes(term) && ruleText.includes(term),
+      );
+      const score = categoryMatch ? 100 + (directTopicMatch ? 25 : 0) + overlap * 5 : 0;
+      return { rule, index, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || b.rule.priority - a.rule.priority || a.index - b.index);
+
+  const selected: ActiveCoachRuleGrounding[] = [];
+  const categories = new Set<string>();
+  for (const entry of scored) {
+    if (selected.length >= SALES_AGENT_MAX_OPTIONS) break;
+    if (!categories.has(entry.rule.category)) {
+      selected.push(entry.rule);
+      categories.add(entry.rule.category);
+    }
+  }
+  for (const entry of scored) {
+    if (selected.length >= SALES_AGENT_MAX_OPTIONS) break;
+    if (!selected.some((rule) => rule.ruleId === entry.rule.ruleId)) selected.push(entry.rule);
+  }
+  return selected;
+}
 
 function normalizeCatalogText(value: string): string {
   return value

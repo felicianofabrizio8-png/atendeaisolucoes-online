@@ -13,8 +13,30 @@ vi.mock("../coach-learnings/retriever", () => ({ retrieveLearnings }));
 import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
+  selectRelevantSalesAgentCoachRules,
   selectRelevantSalesAgentProducts,
 } from "../sales-agent-grounding.server";
+import type { ActiveCoachRuleGrounding } from "../coach-rules/coach-rules.repository";
+
+function coachRule(
+  id: string,
+  category: string,
+  title: string,
+  content: string,
+): ActiveCoachRuleGrounding {
+  return {
+    ruleId: id,
+    versionId: `version-${id}`,
+    versionNumber: 1,
+    category: category as ActiveCoachRuleGrounding["category"],
+    ruleType: "instruction",
+    title,
+    content,
+    priority: 50,
+    scopeKind: "company",
+    scopeRef: {},
+  };
+}
 
 function query(result: { data: unknown }) {
   const builder = {
@@ -35,6 +57,51 @@ function query(result: { data: unknown }) {
 
 describe("SalesAgent grounding", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("inclui regra ativa relevante e exclui regra irrelevante", () => {
+    const selected = selectRelevantSalesAgentCoachRules(
+      [
+        coachRule("payment", "payments", "Pagamento", "Informe Pix e cartão."),
+        coachRule("tone", "tone", "Tom", "Seja cordial."),
+      ],
+      [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+    );
+
+    expect(selected.map((rule) => rule.ruleId)).toEqual(["payment"]);
+  });
+
+  it("limita regras relevantes a no mÃ¡ximo trÃªs", () => {
+    const rules = [
+      coachRule("payment", "payments", "Pagamento", "Informe pagamento e Pix."),
+      coachRule("warranty", "after_sales", "Garantia", "Explique a garantia do casco."),
+      coachRule("installation", "sales", "Instalação", "Explique a instalação e materiais."),
+      coachRule("discount", "discounts", "Desconto", "Não conceda desconto."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentCoachRules(rules, [
+        { role: "lead", text: "Quero saber pagamento, garantia, instalação e desconto" },
+      ]),
+    ).toHaveLength(3);
+  });
+
+  it("nÃ£o retorna regras sem contexto aplicÃ¡vel", () => {
+    expect(
+      selectRelevantSalesAgentCoachRules(
+        [coachRule("payment", "payments", "Pagamento", "Informe Pix.")],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejeita coincidÃªncia genÃ©rica sem sinal de tÃ³pico", () => {
+    expect(
+      selectRelevantSalesAgentCoachRules(
+        [coachRule("generic", "sales", "Orientação", "Atenda o cliente com atenção.")],
+        [{ role: "lead", text: "Olá, tudo bem?" }],
+      ),
+    ).toEqual([]);
+  });
 
   it("carrega catálogo, conhecimento e regras comerciais da empresa", async () => {
     const products = query({
