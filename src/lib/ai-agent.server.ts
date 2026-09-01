@@ -391,6 +391,7 @@ export async function runAgentTurn(params: {
     ...params,
     ctx: {
       ...params.ctx,
+      catalogForValidation: params.ctx.grounding.catalog,
       products: relevantCatalog,
       grounding: {
         ...params.ctx.grounding,

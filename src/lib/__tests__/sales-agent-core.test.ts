@@ -7,6 +7,7 @@ import {
   hasRectangularPoolIntent,
   type AgentContext,
   type SalesAgentCompletionRequest,
+  type SalesAgentCoreInput,
 } from "../sales-agent-core";
 import { runSafetyLayer } from "../ai-agent.server";
 
@@ -88,6 +89,7 @@ const context: AgentContext = {
     ],
   },
 };
+context.catalogForValidation = context.grounding.catalog;
 
 describe("SalesAgentCore", () => {
   it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
@@ -190,6 +192,281 @@ describe("SalesAgentCore", () => {
       learning_ids_used: [],
     });
     expect(decision.message).not.toContain("Encontrei no catálogo");
+  });
+  const validatedProduct = {
+    ...context.products[0],
+    name: "Piscina 6x3",
+    model: "Caribe 6",
+    lengthM: 6,
+    widthM: 3,
+    depthM: 1.4,
+    capacityL: 24000,
+    shape: "retangular",
+    specifications: { material: "fibra" },
+    includedItems: ["Filtro", "Bomba"],
+  };
+const validationContext: AgentContext = {
+    ...context,
+    products: [validatedProduct],
+    catalogForValidation: [validatedProduct],
+    grounding: { ...context.grounding, catalog: [validatedProduct] },
+};
+
+  function completionWithMessage(message: string, suggestProducts = ["product-1"]) {
+    return {
+      ok: true as const,
+      data: {
+        choices: [{
+          message: {
+            tool_calls: [{
+              function: {
+                name: "respond_to_customer",
+                arguments: JSON.stringify({ message, suggest_products: suggestProducts }),
+              },
+            }],
+          },
+        }],
+      },
+    };
+  }
+
+  it.each([
+    ["preço inventado", "A Piscina 6x3 custa R$ 99.999,00.", "catalog_unvalidated_objective_claim"],
+    ["preço antigo", "A Piscina 6x3 custa R$ 19.000,00.", "catalog_unvalidated_objective_claim"],
+    ["medida inventada", "A Piscina 6x3 mede 7x3 m.", "catalog_unvalidated_objective_claim"],
+    ["característica inventada", "A Piscina 6x3 tem aquecimento solar.", "catalog_unvalidated_objective_claim"],
+    ["dado correto do catálogo", "A Piscina 6x3 custa R$ 20.000,00 e mede 6x3 m.", "reply"],
+    ["conversa sem dado objetivo", "Claro, posso entender melhor o que você procura.", "reply"],
+  ])("valida %s contra o catálogo atual", async (_, message, expectedReason) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Quero conhecer esse modelo" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
+  });
+
+  it("não confunde price com promoPrice e aceita preço em milhares", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 custa R$ 20 mil e a promoção custa R$ 20 mil."),
+    ));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual é o preço?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it.each([
+    "A Piscina 6x3 custa 20 mil.",
+    "A Piscina 6x3 fica em 20.000.",
+    "20 mil",
+    "20.000",
+  ])("reconhece %s como preço em contexto monetário", async (message) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual é o preço dessa piscina?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não trata 20.000 como preço sem contexto monetário", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual a capacidade da piscina?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each([
+    ["potência correta", "A Piscina 6x3 tem potência 2 cv.", "reply"],
+    ["potência incorreta", "A Piscina 6x3 tem potência 3 cv.", "catalog_unvalidated_objective_claim"],
+    ["sinônimo técnico correto", "A Piscina 6x3 tem tensão 220 V.", "reply"],
+    ["campo técnico diferente", "A Piscina 6x3 tem tensão 2 cv.", "catalog_unvalidated_objective_claim"],
+  ])("valida %s no campo semântico correto", async (_, message, expected) => {
+    const product = {
+      ...validatedProduct,
+      specifications: { potencia: "2 cv", voltagem: "220 V" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quero os dados técnicos" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
+  });
+
+  it("não valida fato objetivo com catálogo compacto quando falta o catálogo completo", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 custa R$ 99.999,00"),
+    ));
+    const decision = await core.decide({
+      ctx: { ...validationContext, catalogForValidation: undefined },
+      history: [{ role: "lead", text: "Qual é o preço?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it("não aceita característica confirmada apenas em campo semântico errado", async () => {
+    const wrongFieldProduct = {
+      ...validatedProduct,
+      variants: [{ name: "Azul", color: "azul" }],
+      specifications: { cor: "fibra" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 tem cor fibra."),
+    ));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [wrongFieldProduct],
+        catalogForValidation: [wrongFieldProduct],
+        grounding: { ...validationContext.grounding, catalog: [wrongFieldProduct] },
+      },
+      history: [{ role: "lead", text: "Qual a cor?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it.each([
+    "Vou verificar o preço.",
+    "Posso consultar a medida?",
+    "Qual o modelo?",
+  ])("não bloqueia intenção de consulta: %s", async (message) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Pode me ajudar?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each<[string, SalesAgentCoreInput["history"]]>([
+    ["A Piscina 6x3 custa 20 mil.", [{ role: "lead", text: "Quero o preço dessa piscina" }]],
+    ["20 mil", [{ role: "lead", text: "Qual é o preço?" }]],
+    ["20.000", [{ role: "lead", text: "Qual é o preço?" }]],
+  ])("reconhece preço com contexto atual/imediato: %s", async (message, history) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({ ctx: validationContext, history, leadName: null, model: salesModel });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("prioriza contexto técnico atual sobre histórico antigo de preço", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "E a capacidade em litros?" },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não usa menção monetária antiga sem resposta direta", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "Também gostaria de saber sobre instalação." },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não valida perguntas, hipóteses ou intenções como fatos do agente", async () => {
+    for (const message of [
+      "Qual o preço de R$ 99.999?",
+      "Seria 20 mil?",
+      "Pode ser 2 cv?",
+      "Vou consultar o valor de 20 mil.",
+    ]) {
+      const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+      const decision = await core.decide({
+        ctx: validationContext,
+        history: [{ role: "lead", text: "Pode verificar isso?" }],
+        leadName: null,
+        model: salesModel,
+      });
+      expect(decision.kind).toBe("reply");
+    }
+  });
+
+  it("não transforma capacidade em preço após histórico monetário", async () => {
+    const product = { ...validatedProduct, capacityL: 20_000 };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A capacidade é 20.000 L."),
+    ));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "Qual a capacidade?" },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each([
+    ["A Piscina 6x3 tem potência 2 cv.", "reply"],
+    ["A Piscina 6x3 tem potência 20 cv.", "catalog_unvalidated_objective_claim"],
+    ["A Piscina 6x3 tem potência 2.5 cv.", "catalog_unvalidated_objective_claim"],
+    ["A Piscina 6x3 tem tensão 220 V.", "reply"],
+    ["A Piscina 6x3 tem tensão 2 cv.", "catalog_unvalidated_objective_claim"],
+  ])("valida valor técnico e unidade exatamente: %s", async (message, expected) => {
+    const product = {
+      ...validatedProduct,
+      specifications: { potencia: "2 cv", voltagem: "220 V" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quero os dados técnicos" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
 
   it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
@@ -1081,6 +1358,7 @@ describe("SalesAgentCore", () => {
     const structuredContext: AgentContext = {
       ...context,
       products: [structuredProduct],
+      catalogForValidation: [structuredProduct],
       grounding: { ...context.grounding, catalog: [structuredProduct] },
     };
     const complete = vi.fn().mockResolvedValue({
