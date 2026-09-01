@@ -453,7 +453,130 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain("Preço promocional cadastrado: R$ 18.000,00");
   });
 
-  it("preserva o preço promocional cadastrado do produto selecionado", async () => {
+  it("inclui FAQ e regras comerciais sem liberar negociação", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Quero saber pagamento e se atende interior" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(request.messages[0].content).toContain("Atende interior? → Sim.");
+    expect(request.messages[0].content).toContain("Pagamento (cadastro legado): Pix e cartão");
+    expect(request.messages[0].content).toContain(
+      "Condições cadastradas: Entrada de 50% conforme contrato",
+    );
+    expect(request.messages[0].content).toContain(
+      "somente informe, nunca negocie nem crie condições",
+    );
+    expect(request.messages[0].content).toContain("NUNCA invente nem negocie desconto, preço");
+  });
+
+  it("filtra FAQ irrelevante e prioriza a fonte aprovada", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [
+            { q: "Como funciona o pagamento?", a: "Resposta do perfil." },
+            { q: "Qual a garantia?", a: "Resposta irrelevante." },
+          ],
+        },
+        grounding: {
+          ...context.grounding,
+          faqKnowledge: [
+            { question: "Como funciona o pagamento?", answer: "Resposta aprovada.", type: "faq" },
+          ],
+        },
+      },
+      history: [{ role: "lead", text: "Quero saber como funciona o pagamento" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(request.messages[0].content).toContain("Resposta aprovada.");
+    expect(request.messages[0].content).not.toContain("Resposta do perfil.");
+    expect(request.messages[0].content).not.toContain("Resposta irrelevante.");
+  });
+
+  it("deduplica FAQ normalizada e limita a seis itens de 400 caracteres", () => {
+    const faqs = Array.from({ length: 8 }, (_, index) => ({
+      question: `Pagamento opção ${index + 1}`,
+      answer: `${"Condição cadastrada. ".repeat(40)}${index + 1}`,
+      type: "faq",
+    }));
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: " PAGAMENTO OPÇÃO 1 ", a: `${"Condição cadastrada. ".repeat(40)}1` }],
+        },
+        grounding: { ...context.grounding, faqKnowledge: faqs },
+      },
+      history: [{ role: "lead", text: "Quero informações de pagamento" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const faqSection = request.messages[0].content.split("FAQ:\n")[1].split("\n\nBASE")[0];
+    expect(faqSection.match(/^\d+\. /gm)).toHaveLength(6);
+    expect(faqSection.split("\n").every((line) => line.length <= 400)).toBe(true);
+  });
+
+  it("deduplica conteúdo normalizado mesmo com perguntas diferentes", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          faqKnowledge: [
+            { question: "Qual o pagamento?", answer: "Aceitamos Pix e cartão.", type: "faq" },
+          ],
+        },
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: "Quais formas de pagar?", a: "aceitamos PIX e cartão." }],
+        },
+      },
+      history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const content = request.messages[0].content;
+    expect(content.match(/Aceitamos Pix e cartão\./gi)).toHaveLength(1);
+  });
+
+  it("usa ctx.knowledge como fallback sem duplicar o FAQ do perfil", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: { ...context.grounding, faqKnowledge: [] },
+        knowledge: [{ question: "Atende interior?", answer: "Sim.", type: "faq" }],
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: "Atende interior?", a: "Sim." }],
+        },
+      },
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const content = request.messages[0].content;
+    expect(content.match(/Atende interior\? → Sim\./g)).toHaveLength(1);
+  });
+
+  it("não inclui FAQ quando não há relevância na conversa", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Olá, tudo bem?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(request.messages[0].content).not.toContain("Atende interior? → Sim.");
+  });
+
+  it("faz handoff quando o cliente pede parcelamento diferente do cadastrado", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
       data: {
@@ -532,7 +655,7 @@ describe("SalesAgentCore", () => {
   it("inclui FAQ e regras comerciais sem liberar negociação", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
-      history: [],
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
       leadName: null,
       model: salesModel,
     });
@@ -1056,7 +1179,7 @@ describe("SalesAgentCore", () => {
           approvedCoachLearnings: [],
         },
       },
-      history: [],
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
       leadName: null,
       model: salesModel,
     });

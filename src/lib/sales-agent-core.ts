@@ -409,12 +409,102 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
   return sources;
 }
 
-export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
+function normalizePromptText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+const FAQ_MAX_ITEMS = 6;
+const FAQ_MAX_ITEM_CHARS = 400;
+
+function faqTokens(value: string): Set<string> {
+  const stopwords = new Set([
+    "a", "ao", "as", "com", "da", "das", "de", "do", "dos", "e", "em", "o", "os",
+    "para", "por", "que", "se", "um", "uma", "voce", "voces", "cliente", "piscina",
+  ]);
+  return new Set(
+    normalizePromptText(value)
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9]/g, ""))
+      .filter((token) => token.length >= 3 && !stopwords.has(token)),
+  );
+}
+
+function truncateFaqItem(
+  faq: SalesAgentGrounding["faqKnowledge"][number],
+): SalesAgentGrounding["faqKnowledge"][number] {
+  const prefix = `${faq.question} → `;
+  if (prefix.length + faq.answer.length <= FAQ_MAX_ITEM_CHARS) return faq;
+  const available = Math.max(0, FAQ_MAX_ITEM_CHARS - prefix.length - 1);
+  return { ...faq, answer: `${faq.answer.slice(0, available).trimEnd()}…` };
+}
+
+function selectRelevantFaqs(
+  faqKnowledge: SalesAgentGrounding["faqKnowledge"],
+  profileFaq: Array<{ q?: string; a?: string }>,
+  fallbackKnowledge: SalesAgentGrounding["faqKnowledge"],
+  history: SalesAgentCoreInput["history"],
+): SalesAgentGrounding["faqKnowledge"] {
+  const conversation = history
+    .slice(-8)
+    .filter((message) => message.role === "lead")
+    .map((message) => message.text)
+    .join(" ");
+  const conversationTokens = faqTokens(conversation);
+  if (conversationTokens.size === 0) return [];
+
+  const approved = faqKnowledge.length > 0 ? faqKnowledge : fallbackKnowledge;
+  const candidates = [
+    ...approved.map((faq) => ({ question: faq.question, answer: faq.answer, type: faq.type })),
+    ...profileFaq
+      .filter((faq): faq is { q: string; a: string } => Boolean(faq.q && faq.a))
+      .map((faq) => ({ question: faq.q, answer: faq.a, type: "profile" })),
+  ];
+  const seenQuestions = new Set<string>();
+  const seenContents = new Set<string>();
+  return candidates
+    .map((faq, index) => {
+      const questionKey = normalizePromptText(faq.question).replace(/\s+/g, " ").trim();
+      const contentKey = normalizePromptText(faq.answer).replace(/\s+/g, " ").trim();
+      const overlap = [...faqTokens(`${faq.question} ${faq.answer}`)].filter((token) =>
+        conversationTokens.has(token),
+      ).length;
+      return {
+        faq,
+        index,
+        questionKey,
+        contentKey,
+        score: overlap,
+        sourcePriority: index < approved.length ? 0 : 1,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => a.sourcePriority - b.sourcePriority || b.score - a.score || a.index - b.index)
+    .filter((entry) => {
+      if (seenQuestions.has(entry.questionKey) || seenContents.has(entry.contentKey)) return false;
+      seenQuestions.add(entry.questionKey);
+      seenContents.add(entry.contentKey);
+      return true;
+    })
+    .slice(0, FAQ_MAX_ITEMS)
+    .map(({ faq }) => truncateFaqItem(faq));
+}
+
+export function buildSalesAgentSystemPrompt(
+  ctx: AgentContext,
+  history: SalesAgentCoreInput["history"] = [],
+): string {
   const ai = ctx.aiProfile;
   const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
   const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
-  const groundedKnowledge =
-    ctx.grounding.faqKnowledge.length > 0 ? ctx.grounding.faqKnowledge : ctx.knowledge;
+  const relevantFaqs = selectRelevantFaqs(
+    ctx.grounding.faqKnowledge,
+    ai?.faq ?? [],
+    ctx.knowledge,
+    history,
+  );
   const productLines = groundedProducts
     .map((p, i) => {
       const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
@@ -449,13 +539,15 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
       return parts.join("\n");
     })
     .join("\n");
-  const kbLines = groundedKnowledge
-    .map((k, i) => `${i + 1}. ${k.question} → ${k.answer}`)
+  const faqLines = relevantFaqs
+    .map((k, i) => {
+      const line = `${i + 1}. ${k.question} → ${k.answer}`;
+      return line.length <= FAQ_MAX_ITEM_CHARS
+        ? line
+        : `${line.slice(0, FAQ_MAX_ITEM_CHARS - 1).trimEnd()}…`;
+    })
     .join("\n");
-  const faqLines = (ai?.faq ?? [])
-    .filter((f) => f.q && f.a)
-    .map((f, i) => `${i + 1}. ${f.q} → ${f.a}`)
-    .join("\n");
+  const kbLines = "";
   const commercialLines = [
     ctx.grounding.commercialRules.paymentPolicy
       ? `- Pagamento: ${ctx.grounding.commercialRules.paymentPolicy}`
@@ -587,7 +679,7 @@ export function buildSalesAgentCompletionRequest(
       ? { reasoning_effort: "none" as const }
       : {}),
     messages: [
-      { role: "system", content: buildSalesAgentSystemPrompt(params.ctx) },
+      { role: "system", content: buildSalesAgentSystemPrompt(params.ctx, params.history) },
       {
         role: "user",
         content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
