@@ -8,6 +8,10 @@ import type {
   ConversationSalesState,
 } from "./conversation-sales-state";
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
+import {
+  listActiveQuickRepliesForGrounding,
+  type QuickReplyGrounding,
+} from "./quick-replies/quick-replies.repository";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -38,6 +42,198 @@ const COACH_RULE_CATEGORY_TERMS: Record<string, string[]> = {
   prohibitions: ["invent", "promet", "preco", "desconto"],
   safety: ["segur", "risco", "instal", "acesso"],
 };
+
+const QUICK_REPLY_MAX_CANDIDATES = 20;
+const QUICK_REPLY_MAX_SELECTED = 2;
+const QUICK_REPLY_MAX_CONTENT_CHARS = 500;
+const QUICK_REPLY_TOPIC_TERMS: Record<string, string[]> = {
+  inclusos: ["inclus", "brinde", "item", "itens"],
+  responsabilidade: [
+    "por conta",
+    "responsabilidade",
+    "cliente fornece",
+    "cliente precisa",
+    "contrapiso",
+    "piso",
+    "agua",
+    "energia",
+    "drenagem",
+    "pluvial",
+    "retirada",
+    "terra",
+    "material",
+    "materiais",
+  ],
+  instalacao: ["instal", "escav", "obra", "casa de maquina"],
+  faq: ["horario", "endereco", "prazo", "entrega", "atendimento", "link"],
+  payment: ["pagamento", "pix", "cartao", "boleto", "parcel", "entrada"],
+  guarantee: ["garantia", "garantias", "casco"],
+};
+const NON_OPERATIONAL_QUICK_REPLY_CATEGORIES = new Set([
+  "identity",
+  "tom",
+  "tone",
+  "qualification",
+  "human_handoff",
+]);
+
+export interface QuickReplyDedupSources {
+  paymentMethods?: string | null;
+  guarantees?: string | null;
+  coachRules?: Array<{ title?: string | null; content?: string | null }>;
+  playbook?: string | null;
+  catalog?: Array<Record<string, unknown> | string>;
+}
+
+function quickReplyConversation(
+  history: AgentHistory,
+  context: ProductSelectionContext = {},
+): string {
+  return normalizeCatalogText(
+    [
+      ...history.slice(-8).filter((item) => item.role !== "system").map((item) => item.text),
+      context.detectedPoolSize,
+      context.detectedInterest,
+      context.detectedIntent,
+      context.detectedBudget,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function sourceText(source: Record<string, unknown> | string): string {
+  if (typeof source === "string") return source;
+  return Object.values(source)
+    .filter((value) => typeof value === "string" || Array.isArray(value))
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+}
+
+function significantTokens(value: string): Set<string> {
+  const stopwords = new Set([
+    "para",
+    "como",
+    "com",
+    "uma",
+    "dos",
+    "das",
+    "que",
+    "por",
+    "cliente",
+    "piscina",
+  ]);
+  return new Set(
+    normalizeCatalogText(value)
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9]/g, ""))
+      .filter((token) => token.length >= 4 && !stopwords.has(token)),
+  );
+}
+
+function overlapsStructuredSource(replyText: string, source: string): boolean {
+  const reply = normalizeCatalogText(replyText);
+  const normalizedSource = normalizeCatalogText(source);
+  if (!reply || !normalizedSource) return false;
+  if (reply.includes(normalizedSource) || normalizedSource.includes(reply)) return true;
+  const sourceTokens = significantTokens(normalizedSource);
+  const sharedTokens = [...significantTokens(reply)].filter((token) => sourceTokens.has(token));
+  return sharedTokens.length >= 2;
+}
+
+function duplicatesStructuredSource(
+  reply: QuickReplyGrounding,
+  sources: QuickReplyDedupSources,
+): boolean {
+  const replyText = `${reply.name} ${reply.category ?? ""} ${reply.content}`;
+  const replyTopics = normalizeCatalogText(replyText);
+  if (
+    sources.paymentMethods &&
+    QUICK_REPLY_TOPIC_TERMS.payment.some((term) => replyTopics.includes(term))
+  ) {
+    return true;
+  }
+  if (
+    sources.guarantees &&
+    QUICK_REPLY_TOPIC_TERMS.guarantee.some((term) => replyTopics.includes(term))
+  ) {
+    return true;
+  }
+  const otherSources = [
+    ...(sources.coachRules ?? []).map((rule) => `${rule.title ?? ""} ${rule.content ?? ""}`),
+    sources.playbook ?? "",
+    ...(sources.catalog ?? []).map(sourceText),
+  ];
+  return otherSources.some((source) => overlapsStructuredSource(replyText, source));
+}
+
+function truncateQuickReply(reply: QuickReplyGrounding): QuickReplyGrounding {
+  if (reply.content.length <= QUICK_REPLY_MAX_CONTENT_CHARS) return reply;
+  return {
+    ...reply,
+    content: `${reply.content.slice(0, QUICK_REPLY_MAX_CONTENT_CHARS - 1).trimEnd()}…`,
+  };
+}
+
+export function selectRelevantSalesAgentQuickReplies(
+  replies: QuickReplyGrounding[],
+  history: AgentHistory,
+  context: ProductSelectionContext = {},
+  sources: QuickReplyDedupSources = {},
+): QuickReplyGrounding[] {
+  const conversation = quickReplyConversation(history, context);
+  if (!conversation) return [];
+
+  const scored = replies
+    .filter(
+      (reply) =>
+        !NON_OPERATIONAL_QUICK_REPLY_CATEGORIES.has(
+          normalizeCatalogText(reply.category ?? "").trim(),
+        ),
+    )
+    .filter((reply) => !duplicatesStructuredSource(reply, sources))
+    .map((reply, index) => {
+      const haystack = normalizeCatalogText(
+        `${reply.name} ${reply.category ?? ""} ${reply.content}`,
+      );
+      const matchedTopics = Object.values(QUICK_REPLY_TOPIC_TERMS).filter((terms) =>
+        terms.some((term) => conversation.includes(term) && haystack.includes(term)),
+      ).length;
+      const directNameOrCategory = normalizeCatalogText(
+        `${reply.name} ${reply.category ?? ""}`,
+      );
+      const directMatch = Object.values(QUICK_REPLY_TOPIC_TERMS).some((terms) =>
+        terms.some((term) => conversation.includes(term) && directNameOrCategory.includes(term)),
+      );
+      return { reply, index, score: matchedTopics * 100 + (directMatch ? 25 : 0) };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  return scored.slice(0, QUICK_REPLY_MAX_SELECTED).map((entry) =>
+    truncateQuickReply(entry.reply),
+  );
+}
+
+export async function loadRelevantSalesAgentQuickReplies(
+  companyId: string,
+  history: AgentHistory,
+  context: ProductSelectionContext = {},
+  sources: QuickReplyDedupSources = {},
+): Promise<QuickReplyGrounding[]> {
+  try {
+    const candidates = await listActiveQuickRepliesForGrounding(
+      companyId,
+      supabaseAdmin,
+      QUICK_REPLY_MAX_CANDIDATES,
+    );
+    return selectRelevantSalesAgentQuickReplies(candidates, history, context, sources);
+  } catch {
+    console.warn("[SALES_AGENT_QUICK_REPLIES_LOAD_FAILED]", { source: "quick_replies" });
+    return [];
+  }
+}
 
 export function selectRelevantSalesAgentCoachRules(
   rules: ActiveCoachRuleGrounding[],

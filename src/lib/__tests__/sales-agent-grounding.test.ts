@@ -14,9 +14,11 @@ import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   selectRelevantSalesAgentCoachRules,
+  selectRelevantSalesAgentQuickReplies,
   selectRelevantSalesAgentProducts,
 } from "../sales-agent-grounding.server";
 import type { ActiveCoachRuleGrounding } from "../coach-rules/coach-rules.repository";
+import type { QuickReplyGrounding } from "../quick-replies/quick-replies.repository";
 
 function coachRule(
   id: string,
@@ -36,6 +38,15 @@ function coachRule(
     scopeKind: "company",
     scopeRef: {},
   };
+}
+
+function quickReply(
+  name: string,
+  category: string,
+  content: string,
+  sort_order = 0,
+): QuickReplyGrounding {
+  return { name, category, content, sort_order };
 }
 
 function query(result: { data: unknown }) {
@@ -99,6 +110,108 @@ describe("SalesAgent grounding", () => {
       selectRelevantSalesAgentCoachRules(
         [coachRule("generic", "sales", "Orientação", "Atenda o cliente com atenção.")],
         [{ role: "lead", text: "Olá, tudo bem?" }],
+      ),
+    ).toEqual([]);
+  });
+
+  it("encontra Por Conta do Cliente por responsabilidade e itens da obra", () => {
+    const porConta = quickReply(
+      "Por Conta do Cliente",
+      "Orçamento",
+      "Remoção da terra, água, contrapiso, energia, drenagem e materiais.",
+    );
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "Quais itens ficam por conta do cliente?" }],
+      ),
+    ).toEqual([porConta]);
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "O contrapiso e a energia ficam com quem?" }],
+      ),
+    ).toEqual([porConta]);
+  });
+
+  it("nÃ£o inclui quick reply para mensagem irrelevante", () => {
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [quickReply("Por Conta do Cliente", "Orçamento", "Água e materiais.")],
+        [{ role: "lead", text: "Olá, tudo bem?" }],
+      ),
+    ).toEqual([]);
+  });
+
+  it("nÃ£o suprime quick replies por tÃ³pico do histÃ³rico sem fonte duplicada", () => {
+    const porConta = quickReply("Por Conta do Cliente", "Orçamento", "Água e materiais.");
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "Falamos de pagamento antes; agora, o que fica por conta?" }],
+      ),
+    ).toEqual([porConta]);
+  });
+
+  it("limita quick replies relevantes a no máximo duas", () => {
+    const replies = [
+      quickReply("Por Conta do Cliente", "Orçamento", "Contrapiso, água e energia."),
+      quickReply("Materiais da instalação", "Orçamento", "Materiais e drenagem."),
+      quickReply("Itens inclusos", "Orçamento", "Itens e brindes inclusos."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Quais itens, materiais e o que fica por conta do cliente?" },
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it("trunca o conteúdo selecionado sem alterar sua origem", () => {
+    const content = "contrapiso ".repeat(100);
+    const selected = selectRelevantSalesAgentQuickReplies(
+      [quickReply("Por Conta do Cliente", "Orçamento", content)],
+      [{ role: "lead", text: "O contrapiso fica por conta do cliente?" }],
+    );
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0].content).toHaveLength(500);
+    expect(selected[0].content.endsWith("…")).toBe(true);
+  });
+
+  it("nÃ£o duplica fontes estruturadas de pagamento ou garantia", () => {
+    const replies = [
+      quickReply("Pagamento", "Orçamento", "Pix, cartão e parcelamento."),
+      quickReply("Garantia", "Orçamento", "Garantia do casco."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Quais formas de pagamento vocês aceitam?" },
+      ], {}, { paymentMethods: "Pix e cartão em até 10 vezes." }),
+    ).toEqual([]);
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Qual é a garantia do casco?" },
+      ], {}, { guarantees: "Garantia de 10 anos para o casco." }),
+    ).toEqual([]);
+  });
+
+  it("nÃ£o duplica coach rules, playbook ou catÃ¡logo", () => {
+    const reply = quickReply("Orientação", "Orçamento", "Apresente a piscina Caribe com instalação.");
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [reply],
+        [{ role: "lead", text: "Quero saber sobre a instalação da piscina Caribe." }],
+        {},
+        {
+          coachRules: [{ title: "Instalação", content: "Apresente a piscina Caribe com instalação." }],
+          playbook: "Apresente a piscina Caribe com instalação.",
+          catalog: [{ name: "Piscina Caribe", description: "Instalação inclusa." }],
+        },
       ),
     ).toEqual([]);
   });
