@@ -218,8 +218,8 @@ export function detectHandoffNeeded(text: string): { needed: boolean; reason?: s
 // ----------------------------------------------------------------------------
 
 const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
-  { pattern: /\b\d+\s?%/i, reason: "tentou aplicar percentual/desconto" },
   { pattern: /\bdesconto\b/i, reason: "ofereceu desconto" },
+  { pattern: /\bnegoci\w*/i, reason: "tentou negociar" },
   { pattern: /\bgaranto\b/i, reason: "fez promessa" },
   { pattern: /\bprometo\b/i, reason: "fez promessa" },
   { pattern: /\bfecho\b/i, reason: "tentou fechar venda" },
@@ -227,8 +227,30 @@ const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
   { pattern: /\bparcelo\b/i, reason: "negociou parcelamento" },
 ];
 
-export function runSafetyLayer(decision: AgentDecision): AgentDecision {
+const PERCENTAGE_PATTERN = /\b\d+(?:[.,]\d+)?\s?%/gi;
+
+function canonicalPercentage(value: string): string {
+  return value.replace(/\s+/g, "").replace(",", ".");
+}
+
+export function runSafetyLayer(
+  decision: AgentDecision,
+  commercialTerms?: string | null,
+): AgentDecision {
   if (decision.kind !== "reply" || !decision.message) return decision;
+  const registeredPercentages = new Set(
+    (commercialTerms?.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage),
+  );
+  const unregisteredPercentage = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
+    (percentage) => !registeredPercentages.has(canonicalPercentage(percentage)),
+  );
+  if (unregisteredPercentage) {
+    return {
+      kind: "handoff",
+      reason: "safety_block: tentou aplicar percentual/desconto",
+      grounding_sources: decision.grounding_sources,
+    };
+  }
   for (const { pattern, reason } of SAFETY_BLOCK_PATTERNS) {
     if (pattern.test(decision.message)) {
       return {
@@ -855,6 +877,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
         qualification: currentQual,
       }),
+      ctx.grounding.commercialRules.commercialTerms,
     );
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística

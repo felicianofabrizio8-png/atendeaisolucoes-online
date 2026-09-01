@@ -75,4 +75,38 @@ describe("Sales Agent handoff boundaries", () => {
       reason,
     });
   });
+
+  it("permite percentual cadastrado nos termos comerciais", () => {
+    expect(
+      runSafetyLayer(
+        { kind: "reply", message: "A entrada é de 50%." },
+        "Entrada de 50% e saldo na entrega.",
+      ),
+    ).toEqual({ kind: "reply", message: "A entrada é de 50%." });
+  });
+
+  it("bloqueia percentual não cadastrado", () => {
+    expect(
+      runSafetyLayer({ kind: "reply", message: "A entrada é de 30%." }, "Entrada de 50%."),
+    ).toMatchObject({
+      kind: "handoff",
+      reason: "safety_block: tentou aplicar percentual/desconto",
+    });
+  });
+
+  it("bloqueia desconto mesmo quando o percentual está cadastrado", () => {
+    expect(
+      runSafetyLayer(
+        { kind: "reply", message: "Posso oferecer 10% de desconto." },
+        "Desconto cadastrado de 10%.",
+      ),
+    ).toMatchObject({ kind: "handoff", reason: "safety_block: ofereceu desconto" });
+  });
+
+  it("bloqueia negociacao na resposta comercial do agente", () => {
+    expect(
+      runSafetyLayer({ kind: "reply", message: "Podemos negociar essa condicao." }),
+    ).toMatchObject({ kind: "handoff", reason: "safety_block: tentou negociar" });
+  });
+
 });
