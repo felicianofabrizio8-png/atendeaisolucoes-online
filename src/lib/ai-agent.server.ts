@@ -30,6 +30,7 @@ import {
   type AgentSettings,
 } from "./sales-agent-core";
 import {
+  loadRelevantSalesAgentQuickReplies,
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
@@ -44,6 +45,7 @@ import {
   type ConversationSalesStateScope,
 } from "./conversation-sales-state.server";
 import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
+import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { detectFiberCatalogSize } from "./sales-agent-product-images";
@@ -352,6 +354,18 @@ export async function runAgentTurn(params: {
     candidateProductIds: relevantCatalog.map((product) => product.id),
   });
   if (stateScope) await saveConversationSalesState(stateScope, filteredSalesState);
+  const relevantQuickReplies = await loadRelevantSalesAgentQuickReplies(
+    params.ctx.settings.company_id,
+    params.history,
+    qualificationContext,
+    {
+      paymentMethods: params.ctx.grounding.commercialRules.paymentMethods,
+      guarantees: null,
+      coachRules: activeCoachRules,
+      playbook: SALES_AGENT_PLAYBOOK,
+      catalog: params.ctx.grounding.catalog,
+    },
+  );
   const contextualParams = {
     ...params,
     ctx: {
@@ -362,6 +376,7 @@ export async function runAgentTurn(params: {
         catalog: relevantCatalog,
         approvedCoachLearnings,
         activeCoachRules: relevantCoachRules,
+        quickReplies: relevantQuickReplies,
       },
     },
   };

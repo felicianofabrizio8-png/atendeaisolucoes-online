@@ -114,14 +114,19 @@ function query(data: unknown, error: unknown = null) {
 function configureCoachRules(options: {
   rules?: unknown[];
   versions?: unknown[];
+  quickReplies?: unknown[];
   error?: unknown;
 }) {
   const rulesQuery = query(options.rules ?? [], options.error ?? null);
   const versionsQuery = query(options.versions ?? []);
-  from.mockImplementation((table: string) =>
-    table === "coach_rules" ? rulesQuery : versionsQuery,
-  );
-  return { rulesQuery, versionsQuery };
+  const quickRepliesQuery = query(options.quickReplies ?? []);
+  from.mockImplementation((table: string) => {
+    if (table === "coach_rules") return rulesQuery;
+    if (table === "coach_rule_versions") return versionsQuery;
+    if (table === "quick_replies") return quickRepliesQuery;
+    throw new Error(`unexpected table: ${table}`);
+  });
+  return { rulesQuery, versionsQuery, quickRepliesQuery };
 }
 
 function configureGateway() {
@@ -195,6 +200,74 @@ describe("runAgentTurn coach_rules integration", () => {
     expect(rulesQuery.eq).toHaveBeenCalledWith("company_id", companyId);
     expect(versionsQuery.eq).toHaveBeenCalledWith("company_id", companyId);
     expect(versionsQuery.eq).toHaveBeenCalledWith("status", "active");
+  });
+
+  it("coloca quick reply relevante no prompt e preserva company_id", async () => {
+    const { quickRepliesQuery } = configureCoachRules({
+      quickReplies: [
+        {
+          name: "Por Conta do Cliente",
+          category: "Orçamento",
+          content: "Contrapiso, água, energia e materiais.",
+          sort_order: 12,
+        },
+      ],
+    });
+
+    await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "O contrapiso fica por conta do cliente?" }],
+      leadName: null,
+    });
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(request.messages[0].content).toContain("Contrapiso, água, energia e materiais.");
+    expect(quickRepliesQuery.eq).toHaveBeenCalledWith("company_id", companyId);
+    expect(quickRepliesQuery.eq).toHaveBeenCalledWith("active", true);
+    expect(quickRepliesQuery.limit).toHaveBeenCalledWith(20);
+  });
+
+  it("nÃ£o coloca quick reply irrelevante no prompt", async () => {
+    configureCoachRules({
+      quickReplies: [
+        {
+          name: "Por Conta do Cliente",
+          category: "Orçamento",
+          content: "Contrapiso, água e energia.",
+          sort_order: 12,
+        },
+      ],
+    });
+
+    await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "Olá, tudo bem?" }],
+      leadName: null,
+    });
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(request.messages[0].content).not.toContain("Contrapiso, água e energia.");
+  });
+
+  it("continua o turno quando a leitura de quick replies falha", async () => {
+    const rulesQuery = query([]);
+    const versionsQuery = query([]);
+    const quickRepliesQuery = query([], new Error("database unavailable"));
+    from.mockImplementation((table: string) => {
+      if (table === "coach_rules") return rulesQuery;
+      if (table === "coach_rule_versions") return versionsQuery;
+      if (table === "quick_replies") return quickRepliesQuery;
+      throw new Error(`unexpected table: ${table}`);
+    });
+
+    const decision = await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "O contrapiso fica por conta do cliente?" }],
+      leadName: null,
+    });
+
+    expect(decision.kind).toBe("reply");
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("continua o turno quando a leitura de coach_rules falha", async () => {

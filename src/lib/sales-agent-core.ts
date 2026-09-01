@@ -6,6 +6,7 @@ import {
 } from "./ai-qualifier.server";
 import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
+import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -72,6 +73,7 @@ export interface SalesAgentGrounding {
     confidence: number;
   }>;
   activeCoachRules?: ActiveCoachRuleGrounding[];
+  quickReplies?: QuickReplyGrounding[];
 }
 
 export interface AgentContext {
@@ -490,6 +492,9 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
   const coachRuleLines = (ctx.grounding.activeCoachRules ?? [])
     .map((rule, i) => `${i + 1}. ${rule.title}: ${rule.content}`)
     .join("\n");
+  const quickReplyLines = (ctx.grounding.quickReplies ?? [])
+    .map((reply, i) => `${i + 1}. ${reply.name}: ${reply.content}`)
+    .join("\n");
   const groundingSections = [
     commercialLines
       ? `POLÍTICAS OFICIAIS (prevalecem sobre Coach e FAQ; somente informe, nunca negocie nem crie condições; não use como fonte de fatos de produto):\n${commercialLines}`
@@ -499,6 +504,9 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
       : null,
     coachRuleLines
       ? `REGRAS ATIVAS APLICÁVEIS (fonte cadastrada; não substituem o playbook):\n${coachRuleLines}`
+      : null,
+    quickReplyLines
+      ? `CONTEXTO OPERACIONAL DE RESPOSTAS RÃPIDAS (fonte cadastrada; nÃ£o Ã© regra comportamental):\n${quickReplyLines}`
       : null,
   ]
     .filter((section): section is string => Boolean(section))
