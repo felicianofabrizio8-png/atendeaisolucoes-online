@@ -418,6 +418,93 @@ function normalizePromptText(value: string): string {
 
 const FAQ_MAX_ITEMS = 6;
 const FAQ_MAX_ITEM_CHARS = 400;
+const PRODUCT_DESCRIPTION_MAX_CHARS = 240;
+const PRODUCT_NOTES_MAX_CHARS = 200;
+const PRODUCT_SPECIFICATIONS_MAX_CHARS = 300;
+const HISTORY_MAX_CHARS = 6000;
+const COACH_RULE_MAX_CHARS = 600;
+const LEARNING_MAX_CHARS = 600;
+
+function truncateProductText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+function comparablePromptText(value: string): string {
+  return normalizePromptText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatPromptSpecifications(
+  value: unknown,
+  product: SalesAgentGrounding["catalog"][number],
+): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const duplicateValues = new Set(
+    [
+      product.model,
+      product.description,
+      product.shape,
+      product.capacityL == null ? null : String(product.capacityL),
+      product.lengthM == null ? null : String(product.lengthM),
+      product.widthM == null ? null : String(product.widthM),
+      product.depthM == null ? null : String(product.depthM),
+      product.lengthM == null || product.widthM == null
+        ? null
+        : `${product.lengthM} x ${product.widthM}${product.depthM == null ? "" : ` x ${product.depthM}`} m`,
+    ]
+      .filter((entry): entry is string => Boolean(entry))
+      .map(comparablePromptText),
+  );
+  const technical = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) =>
+      typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean",
+    )
+    .filter(([key, entry]) => {
+      const keyText = comparablePromptText(key);
+      const entryText = comparablePromptText(String(entry));
+      if (/^internal(?: |_)|^private(?: |_)|metadata|sku|image|foto|count|total/.test(keyText)) {
+        return false;
+      }
+      const isDuplicateDescription = /descricao|description/.test(keyText) && duplicateValues.has(entryText);
+      const isDuplicateModel = /modelo|model/.test(keyText) && duplicateValues.has(entryText);
+      const isDuplicateMeasure = /comprimento|largura|profundidade|dimens|tamanho|capacidade|volume|formato|shape/.test(
+        keyText,
+      ) && duplicateValues.has(entryText);
+      return !isDuplicateDescription && !isDuplicateModel && !isDuplicateMeasure;
+    })
+    .map(([key, entry]) => `${key}: ${entry}`)
+    .join("; ");
+  return technical ? truncateProductText(technical, PRODUCT_SPECIFICATIONS_MAX_CHARS) : null;
+}
+
+function formatPromptVariants(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const variants = value
+    .filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+    )
+    .map((entry) => [entry.name, entry.color]
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .join("/"))
+    .filter(Boolean)
+    .slice(0, 3);
+  return variants.length > 0 ? variants.join(", ") : null;
+}
+
+function notesDuplicateIncludedItems(notes: string, includedItems: string[]): boolean {
+  const ignored = new Set(["a", "as", "e", "o", "os", "itens", "inclui", "incluido", "incluidos", "incluso", "inclusos"]);
+  const tokenize = (value: string) => comparablePromptText(value)
+    .split(" ")
+    .filter((token) => token && !ignored.has(token))
+    .sort();
+  const normalizedNotes = tokenize(notes);
+  const normalizedItems = tokenize(includedItems.join(" "));
+  if (normalizedNotes.length === 0 || normalizedItems.length === 0) return false;
+  return normalizedNotes.join(" ") === normalizedItems.join(" ");
+}
 
 function faqTokens(value: string): Set<string> {
   const stopwords = new Set([
@@ -580,11 +667,11 @@ export function buildSalesAgentSystemPrompt(
     .join("\n");
   const learningLines = ctx.grounding.approvedCoachLearnings
     .map((learning, i) => {
-      return `${i + 1}. ${learning.title}: ${learning.rule}`;
+      return `${i + 1}. ${truncateProductText(`${learning.title}: ${learning.rule}`, LEARNING_MAX_CHARS)}`;
     })
     .join("\n");
   const coachRuleLines = (ctx.grounding.activeCoachRules ?? [])
-    .map((rule, i) => `${i + 1}. ${rule.title}: ${rule.content}`)
+    .map((rule, i) => `${i + 1}. ${truncateProductText(`${rule.title}: ${rule.content}`, COACH_RULE_MAX_CHARS)}`)
     .join("\n");
   const quickReplyLines = (ctx.grounding.quickReplies ?? [])
     .map((reply, i) => `${i + 1}. ${reply.name}: ${reply.content}`)
@@ -623,7 +710,7 @@ CONTEXTO DA EMPRESA:
 - Descrição: ${ai?.description ?? "—"}
 - Região atendida: ${ai?.region ?? "—"}
 - Diferenciais: ${ai?.differentials ?? "—"}
-- Pagamento (apenas mencionar formas, sem negociar): ${ai?.payment_methods ?? "—"}
+- Pagamento (apenas mencionar formas, sem negociar): ${ctx.grounding.commercialRules.paymentPolicy || ctx.grounding.commercialRules.paymentMethods ? "—" : ai?.payment_methods ?? "—"}
 
 CATÁLOGO (use apenas estes produtos):
 ${productLines || "(catálogo vazio)"}
@@ -656,13 +743,12 @@ export function buildSalesAgentCompletionRequest(
 ): SalesAgentCompletionRequest {
   const catalogProducts =
     params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
-  const transcript = params.history
+  const transcriptEntries = params.history
     .slice(-20)
     .map(
       (m) =>
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
-    )
-    .join("\n");
+    );
   const sessionCorrections = (params.sessionCorrections ?? [])
     .map(
       (item, index) =>
@@ -671,7 +757,17 @@ export function buildSalesAgentCompletionRequest(
     .join("\n");
   const sessionCorrectionsBlock = sessionCorrections
     ? `\n\nCORREÇÕES APROVADAS DESTA SESSÃO:\n${sessionCorrections}\n\nEstas correções têm prioridade sobre os aprendizados do Coach apenas como comportamento e instrução de atendimento. Nunca use uma correção como fonte de fatos de produto ou políticas comerciais: catálogo e POLÍTICAS OFICIAIS continuam soberanos.`
-    : "";
+      : "";
+  const transcript: string[] = [];
+  let remainingHistoryChars = HISTORY_MAX_CHARS;
+  for (let index = transcriptEntries.length - 1; index >= 0 && remainingHistoryChars > 0; index -= 1) {
+    const entry = transcriptEntries[index];
+    const selected = entry.length <= remainingHistoryChars
+      ? entry
+      : truncateProductText(entry, remainingHistoryChars);
+    transcript.unshift(selected);
+    remainingHistoryChars -= selected.length + (transcript.length > 1 ? 1 : 0);
+  }
 
   return {
     model: params.model,
@@ -682,7 +778,7 @@ export function buildSalesAgentCompletionRequest(
       { role: "system", content: buildSalesAgentSystemPrompt(params.ctx, params.history) },
       {
         role: "user",
-        content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
+      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
       },
     ],
     tools: [

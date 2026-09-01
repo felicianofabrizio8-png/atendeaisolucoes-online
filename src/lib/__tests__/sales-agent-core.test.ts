@@ -290,6 +290,83 @@ describe("SalesAgentCore", () => {
     },
   );
 
+  it("não duplica payment_methods no prompt", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(request.messages[0].content.match(/Pix e cartão/g)).toHaveLength(1);
+  });
+
+  it("limita histórico longo por caracteres e preserva o mais recente", () => {
+    const history = Array.from({ length: 20 }, (_, index) => ({
+      role: "lead" as const,
+      text: `mensagem-antiga-${index} ${"x".repeat(600)}`,
+    }));
+    history[19].text = `mensagem-mais-recente ${"y".repeat(600)}`;
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history,
+      leadName: null,
+      model: salesModel,
+    });
+    const userPrompt = request.messages[1].content;
+    expect(userPrompt.length).toBeLessThan(6500);
+    expect(userPrompt).toContain("mensagem-mais-recente");
+    expect(userPrompt).not.toContain("mensagem-antiga-0");
+  });
+
+  it("trunca cada coach rule longa", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          activeCoachRules: [{
+            ruleId: "rule-1",
+            versionId: "version-1",
+            versionNumber: 1,
+            category: "sales",
+            ruleType: "instruction",
+            title: "Regra longa",
+            content: "z".repeat(2000),
+            priority: 1,
+            scopeKind: "company",
+            scopeRef: null,
+          }],
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+    const line = request.messages[0].content.split("\n").find((item) => item.includes("Regra longa"));
+    expect(line?.length ?? 0).toBeLessThanOrEqual(603);
+  });
+
+  it("trunca cada learning longo", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          approvedCoachLearnings: [{
+            ...context.grounding.approvedCoachLearnings[0],
+            title: "Learning longo",
+            rule: "z".repeat(2000),
+          }],
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+    const line = request.messages[0].content.split("\n").find((item) => item.includes("Learning longo"));
+    expect(line?.length ?? 0).toBeLessThanOrEqual(603);
+  });
+
   it("mantém a decisão estruturada e a normalização atuais", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
