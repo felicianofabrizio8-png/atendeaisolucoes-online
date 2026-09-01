@@ -33,7 +33,9 @@ import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
+  selectRelevantSalesAgentCoachRules,
   selectRelevantSalesAgentProducts,
+  type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
 import { mergeConversationSalesState } from "./conversation-sales-state";
 import {
@@ -41,6 +43,7 @@ import {
   saveConversationSalesState,
   type ConversationSalesStateScope,
 } from "./conversation-sales-state.server";
+import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { detectFiberCatalogSize } from "./sales-agent-product-images";
@@ -198,6 +201,11 @@ const HANDOFF_PATTERNS: RegExp[] = [
 ];
 
 export function detectHandoffNeeded(text: string): { needed: boolean; reason?: string } {
+  const normalized = text.trim();
+  const informationalQuestion =
+    /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
+    /^se\s+eu\s+fechar\b/i.test(normalized);
+  if (informationalQuestion) return { needed: false };
   for (const re of HANDOFF_PATTERNS) {
     if (re.test(text)) return { needed: true, reason: re.source };
   }
@@ -265,6 +273,7 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
         }
       : null,
     products: grounding.catalog,
+    catalogProductIds: grounding.catalog.map((product) => product.id),
     knowledge: grounding.faqKnowledge,
     grounding: {
       ...grounding,
@@ -289,13 +298,39 @@ export async function runAgentTurn(params: {
   leadName: string | null;
   sessionCorrections?: Array<{ question: string; correction: string }>;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
+  qualification?: {
+    detected_pool_size: string | null;
+    detected_interest: string | null;
+    detected_intent: string | null;
+    detected_budget: string | null;
+  };
 }): Promise<AgentDecision> {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
   const { endpoint, model, apiKey } = resolved.config;
-  const approvedCoachLearnings = await loadRelevantSalesAgentLearnings(
-    params.ctx.settings.company_id,
+  const [approvedCoachLearnings, activeCoachRules] = await Promise.all([
+    loadRelevantSalesAgentLearnings(params.ctx.settings.company_id, params.history),
+    listActiveCoachRulesForGrounding(
+      params.ctx.settings.company_id,
+      12,
+      supabaseAdmin,
+    ).catch(() => {
+      console.warn("[SALES_AGENT_COACH_RULES_LOAD_FAILED]", { source: "coach_rules" });
+      return [];
+    }),
+  ]);
+  const qualificationContext: ProductSelectionContext | undefined = params.qualification
+    ? {
+        detectedPoolSize: params.qualification.detected_pool_size,
+        detectedInterest: params.qualification.detected_interest,
+        detectedIntent: params.qualification.detected_intent,
+        detectedBudget: params.qualification.detected_budget,
+      }
+    : undefined;
+  const relevantCoachRules = selectRelevantSalesAgentCoachRules(
+    activeCoachRules,
     params.history,
+    qualificationContext,
   );
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
@@ -326,6 +361,7 @@ export async function runAgentTurn(params: {
         ...params.ctx.grounding,
         catalog: relevantCatalog,
         approvedCoachLearnings,
+        activeCoachRules: relevantCoachRules,
       },
     },
   };
@@ -766,7 +802,8 @@ export async function runAgentTick(conversationId: string): Promise<{
 
     // Pre-check handoff — sempre qualifica antes para timeline ficar completa
     const triggerCheck = detectHandoffNeeded(lastLeadMsg.text);
-    if (triggerCheck.needed) {
+    const readyToClose = detectReadyToClose(lastLeadMsg.text);
+    if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
         companyId: conv.company_id,
         conversationId: conv.id,
@@ -781,9 +818,13 @@ export async function runAgentTick(conversationId: string): Promise<{
         .eq("id", conv.id);
       await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
         source: "pre_check",
-        pattern: triggerCheck.reason,
+        pattern: triggerCheck.reason ?? (readyToClose ? "ready_to_close" : undefined),
       });
-      return { ok: true, action: "handoff", reason: "pre_check_pattern" };
+      return {
+        ok: true,
+        action: "handoff",
+        reason: readyToClose && !triggerCheck.needed ? "ready_to_close" : "pre_check_pattern",
+      };
     }
 
     const { data: lead } = await supabaseAdmin
@@ -798,6 +839,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         history,
         leadName: lead?.name ?? null,
         salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+        qualification: currentQual,
       }),
     );
 
