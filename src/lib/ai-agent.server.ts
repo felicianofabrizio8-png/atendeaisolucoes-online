@@ -48,7 +48,6 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { detectFiberCatalogSize } from "./sales-agent-product-images";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
@@ -926,10 +925,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       detectedInterest: decision.detected_interest ?? currentQual.detected_interest,
     };
     const requestedProductImageIds = decision.product_image_ids ?? [];
-    if (
-      requestedProductImageIds.length ||
-      detectFiberCatalogSize(productImageSelectionContext) !== null
-    ) {
+    if (requestedProductImageIds.length > 0) {
       try {
         const media = await sendWhatsappProductImages({
           companyId: conv.company_id,
