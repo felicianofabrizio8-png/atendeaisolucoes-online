@@ -49,14 +49,17 @@ function quickReply(
   return { name, category, content, sort_order };
 }
 
-function query(result: { data: unknown }) {
+function query(result: { data: unknown; error?: unknown }, reject?: Error) {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
     maybeSingle: vi.fn(),
-    then: (resolve: (value: { data: unknown }) => unknown) => Promise.resolve(resolve(result)),
+    then: (
+      resolve: (value: { data: unknown; error?: unknown }) => unknown,
+      rejectPromise: (reason: Error) => unknown,
+    ) => (reject ? rejectPromise(reject) : resolve(result)),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
@@ -295,6 +298,55 @@ describe("SalesAgent grounding", () => {
     expect(products.eq).toHaveBeenCalledWith("active", true);
     expect(products.limit).not.toHaveBeenCalled();
     expect(knowledge.eq).toHaveBeenCalledWith("status", "approved");
+  });
+
+  it("usa fallback quando o catálogo falha sem derrubar o grounding", async () => {
+    const products = query({ data: null }, new Error("catalog unavailable"));
+    const knowledge = query({ data: [{ question: "Instala?", answer: "Sim.", type: "faq" }] });
+    const commercial = query({
+      data: { commercial_terms: "Entrada", payment_policy: "Pix", next_load_forecast: null },
+    });
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [],
+      faqKnowledge: [{ question: "Instala?", answer: "Sim.", type: "faq" }],
+      commercialRules: { commercialTerms: "Entrada", paymentPolicy: "Pix" },
+    });
+  });
+
+  it("preserva as demais fontes quando a FAQ retorna erro do Supabase", async () => {
+    const products = query({ data: [{ id: "product-1", name: "Piscina" }] });
+    const knowledge = query({ data: null, error: new Error("faq unavailable") });
+    const commercial = query({
+      data: { commercial_terms: "Entrada", payment_policy: "Pix", next_load_forecast: null },
+    });
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [{ id: "product-1" }],
+      faqKnowledge: [],
+      commercialRules: { commercialTerms: "Entrada", paymentPolicy: "Pix" },
+    });
+  });
+
+  it("preserva catálogo e FAQ quando as regras comerciais falham", async () => {
+    const products = query({ data: [{ id: "product-1", name: "Piscina" }] });
+    const knowledge = query({ data: [{ question: "Instala?", answer: "Sim.", type: "faq" }] });
+    const commercial = query({ data: null }, new Error("commercial unavailable"));
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [{ id: "product-1" }],
+      faqKnowledge: [{ question: "Instala?" }],
+      commercialRules: { commercialTerms: null, paymentPolicy: null, nextLoadForecast: null },
+    });
   });
 
   it("seleciona por 6 metros somente produtos reais correspondentes", () => {

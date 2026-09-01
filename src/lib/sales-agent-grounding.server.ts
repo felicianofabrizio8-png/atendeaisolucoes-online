@@ -606,33 +606,63 @@ export async function loadRelevantSalesAgentLearnings(
 }
 
 export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
-  const [{ data: products }, { data: knowledge }, { data: commercial }] = await Promise.all([
-    supabaseAdmin
-      .from("products")
-      .select(
-        "id, name, model, sku, category, description, length_m, width_m, depth_m, capacity_l, shape, specifications, included_items, variants, price, promo_price, images, notes",
-      )
-      .eq("company_id", companyId)
-      .eq("active", true)
-      .order("name", { ascending: true }),
-    supabaseAdmin
-      .from("ai_knowledge_proposals")
-      .select("question, answer, type")
-      .eq("company_id", companyId)
-      .eq("status", "approved")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabaseAdmin
-      .from("marketing_knowledge_base")
-      .select(
-        "commercial_terms, payment_policy, installation_policy, next_load_forecast, visit_policy, heating_policy, shipping_policy, included_items_policy",
-      )
-      .eq("company_id", companyId)
-      .maybeSingle(),
+  const safeSource = async <T>(
+    request: PromiseLike<{ data: T | null; error?: unknown }>,
+    fallback: T,
+  ): Promise<T> => {
+    try {
+      const result = await request;
+      return result.error ? fallback : (result.data ?? fallback);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const [products, knowledge, commercial] = await Promise.all([
+    safeSource(
+      supabaseAdmin
+        .from("products")
+        .select(
+          "id, name, model, sku, category, description, length_m, width_m, depth_m, capacity_l, shape, specifications, included_items, variants, price, promo_price, images, notes",
+        )
+        .eq("company_id", companyId)
+        .eq("active", true)
+        .order("name", { ascending: true }),
+      [],
+    ),
+    safeSource(
+      supabaseAdmin
+        .from("ai_knowledge_proposals")
+        .select("question, answer, type")
+        .eq("company_id", companyId)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
+        .limit(20),
+      [],
+    ),
+    safeSource<{
+      commercial_terms: string | null;
+      payment_policy: string | null;
+      installation_policy: string | null;
+      next_load_forecast: string | null;
+      visit_policy: string | null;
+      heating_policy: string | null;
+      shipping_policy: string | null;
+      included_items_policy: string | null;
+    } | null>(
+      supabaseAdmin
+        .from("marketing_knowledge_base")
+        .select(
+          "commercial_terms, payment_policy, installation_policy, next_load_forecast, visit_policy, heating_policy, shipping_policy, included_items_policy",
+        )
+        .eq("company_id", companyId)
+        .maybeSingle(),
+      null,
+    ),
   ]);
 
   return {
-    catalog: (products ?? []).map((product) => ({
+    catalog: products.map((product) => ({
       id: product.id,
       name: product.name,
       model: product.model,
@@ -667,7 +697,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
         : [],
       notes: product.notes,
     })),
-    faqKnowledge: knowledge ?? [],
+    faqKnowledge: knowledge,
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,
