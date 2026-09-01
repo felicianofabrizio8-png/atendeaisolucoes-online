@@ -182,7 +182,7 @@ describe("runAgentTurn coach_rules integration", () => {
           rule_id: "rule-1",
           company_id: companyId,
           version_number: 2,
-          status: "active",
+          status: "approved",
           title: "Pagamento",
           content: "Informe Pix e cartão.",
         },
@@ -199,7 +199,7 @@ describe("runAgentTurn coach_rules integration", () => {
     expect(from).toHaveBeenCalledWith("coach_rule_versions");
     expect(rulesQuery.eq).toHaveBeenCalledWith("company_id", companyId);
     expect(versionsQuery.eq).toHaveBeenCalledWith("company_id", companyId);
-    expect(versionsQuery.eq).toHaveBeenCalledWith("status", "active");
+    expect(versionsQuery.eq).toHaveBeenCalledWith("status", "approved");
   });
 
   it("coloca quick reply relevante no prompt e preserva company_id", async () => {
@@ -303,7 +303,7 @@ describe("runAgentTurn coach_rules integration", () => {
           rule_id: "rule-payment",
           company_id: companyId,
           version_number: 1,
-          status: "active",
+          status: "approved",
           category: "payments",
           rule_type: "instruction",
           title: "Pagamento",

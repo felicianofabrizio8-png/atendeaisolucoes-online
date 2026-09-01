@@ -44,7 +44,7 @@ describe("listActiveCoachRulesForGrounding", () => {
         priority: 90,
         scope_kind: "company",
         scope_ref: {},
-        status: "active",
+        status: "approved",
       },
     ]);
     from.mockImplementation((table: string) => (table === "coach_rules" ? rules : versions));
@@ -75,7 +75,7 @@ describe("listActiveCoachRulesForGrounding", () => {
         priority: 80,
         scope_kind: "company",
         scope_ref: {},
-        status: "active",
+        status: "approved",
       },
       {
         id: "version-2",
@@ -89,7 +89,7 @@ describe("listActiveCoachRulesForGrounding", () => {
         priority: 80,
         scope_kind: "company",
         scope_ref: {},
-        status: "active",
+        status: "approved",
       },
     ]);
     from.mockImplementation((table: string) => (table === "coach_rules" ? rules : versions));
@@ -127,6 +127,6 @@ describe("listActiveCoachRulesForGrounding", () => {
     from.mockImplementation((table: string) => (table === "coach_rules" ? rules : versions));
 
     await expect(listActiveCoachRulesForGrounding("company-1")).resolves.toEqual([]);
-    expect(versions.eq).toHaveBeenCalledWith("status", "active");
+    expect(versions.eq).toHaveBeenCalledWith("status", "approved");
   });
 });

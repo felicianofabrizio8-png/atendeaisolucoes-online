@@ -165,7 +165,7 @@ export async function listActiveCoachRulesForGrounding(
       "id, rule_id, company_id, version_number, rule_type, category, title, content, priority, scope_kind, scope_ref, status",
     )
     .eq("company_id", companyId)
-    .eq("status", "active" as never)
+    .eq("status", "approved")
     .in("id", activeVersionIds);
   if (versionsError) throw versionsError;
 
@@ -176,7 +176,7 @@ export async function listActiveCoachRulesForGrounding(
       !version ||
       version.rule_id !== rule.id ||
       version.company_id !== companyId ||
-      (version.status as string) !== "active"
+      version.status !== "approved"
     ) {
       return [];
     }
