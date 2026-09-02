@@ -30,10 +30,13 @@ import {
   type AgentSettings,
 } from "./sales-agent-core";
 import {
+  loadRelevantSalesAgentQuickReplies,
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
+  selectRelevantSalesAgentCoachRules,
   selectRelevantSalesAgentProducts,
+  type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
 import { mergeConversationSalesState } from "./conversation-sales-state";
 import {
@@ -41,9 +44,10 @@ import {
   saveConversationSalesState,
   type ConversationSalesStateScope,
 } from "./conversation-sales-state.server";
+import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
+import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { detectFiberCatalogSize } from "./sales-agent-product-images";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
@@ -198,6 +202,11 @@ const HANDOFF_PATTERNS: RegExp[] = [
 ];
 
 export function detectHandoffNeeded(text: string): { needed: boolean; reason?: string } {
+  const normalized = text.trim();
+  const informationalQuestion =
+    /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
+    /^se\s+eu\s+fechar\b/i.test(normalized);
+  if (informationalQuestion) return { needed: false };
   for (const re of HANDOFF_PATTERNS) {
     if (re.test(text)) return { needed: true, reason: re.source };
   }
@@ -209,8 +218,8 @@ export function detectHandoffNeeded(text: string): { needed: boolean; reason?: s
 // ----------------------------------------------------------------------------
 
 const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
-  { pattern: /\b\d+\s?%/i, reason: "tentou aplicar percentual/desconto" },
   { pattern: /\bdesconto\b/i, reason: "ofereceu desconto" },
+  { pattern: /\bnegoci\w*/i, reason: "tentou negociar" },
   { pattern: /\bgaranto\b/i, reason: "fez promessa" },
   { pattern: /\bprometo\b/i, reason: "fez promessa" },
   { pattern: /\bfecho\b/i, reason: "tentou fechar venda" },
@@ -218,8 +227,30 @@ const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
   { pattern: /\bparcelo\b/i, reason: "negociou parcelamento" },
 ];
 
-export function runSafetyLayer(decision: AgentDecision): AgentDecision {
+const PERCENTAGE_PATTERN = /\b\d+(?:[.,]\d+)?\s?%/gi;
+
+function canonicalPercentage(value: string): string {
+  return value.replace(/\s+/g, "").replace(",", ".");
+}
+
+export function runSafetyLayer(
+  decision: AgentDecision,
+  commercialTerms?: string | null,
+): AgentDecision {
   if (decision.kind !== "reply" || !decision.message) return decision;
+  const registeredPercentages = new Set(
+    (commercialTerms?.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage),
+  );
+  const unregisteredPercentage = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
+    (percentage) => !registeredPercentages.has(canonicalPercentage(percentage)),
+  );
+  if (unregisteredPercentage) {
+    return {
+      kind: "handoff",
+      reason: "safety_block: tentou aplicar percentual/desconto",
+      grounding_sources: decision.grounding_sources,
+    };
+  }
   for (const { pattern, reason } of SAFETY_BLOCK_PATTERNS) {
     if (pattern.test(decision.message)) {
       return {
@@ -265,6 +296,7 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
         }
       : null,
     products: grounding.catalog,
+    catalogProductIds: grounding.catalog.map((product) => product.id),
     knowledge: grounding.faqKnowledge,
     grounding: {
       ...grounding,
@@ -289,13 +321,39 @@ export async function runAgentTurn(params: {
   leadName: string | null;
   sessionCorrections?: Array<{ question: string; correction: string }>;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
+  qualification?: {
+    detected_pool_size: string | null;
+    detected_interest: string | null;
+    detected_intent: string | null;
+    detected_budget: string | null;
+  };
 }): Promise<AgentDecision> {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
   const { endpoint, model, apiKey } = resolved.config;
-  const approvedCoachLearnings = await loadRelevantSalesAgentLearnings(
-    params.ctx.settings.company_id,
+  const [approvedCoachLearnings, activeCoachRules] = await Promise.all([
+    loadRelevantSalesAgentLearnings(params.ctx.settings.company_id, params.history),
+    listActiveCoachRulesForGrounding(
+      params.ctx.settings.company_id,
+      12,
+      supabaseAdmin,
+    ).catch(() => {
+      console.warn("[SALES_AGENT_COACH_RULES_LOAD_FAILED]", { source: "coach-rules" });
+      return [];
+    }),
+  ]);
+  const qualificationContext: ProductSelectionContext | undefined = params.qualification
+    ? {
+        detectedPoolSize: params.qualification.detected_pool_size,
+        detectedInterest: params.qualification.detected_interest,
+        detectedIntent: params.qualification.detected_intent,
+        detectedBudget: params.qualification.detected_budget,
+      }
+    : undefined;
+  const relevantCoachRules = selectRelevantSalesAgentCoachRules(
+    activeCoachRules,
     params.history,
+    qualificationContext,
   );
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
@@ -317,15 +375,30 @@ export async function runAgentTurn(params: {
     candidateProductIds: relevantCatalog.map((product) => product.id),
   });
   if (stateScope) await saveConversationSalesState(stateScope, filteredSalesState);
+  const relevantQuickReplies = await loadRelevantSalesAgentQuickReplies(
+    params.ctx.settings.company_id,
+    params.history,
+    qualificationContext,
+    {
+      paymentMethods: params.ctx.grounding.commercialRules.paymentMethods,
+      guarantees: null,
+      coachRules: activeCoachRules,
+      playbook: SALES_AGENT_PLAYBOOK,
+      catalog: params.ctx.grounding.catalog,
+    },
+  );
   const contextualParams = {
     ...params,
     ctx: {
       ...params.ctx,
+      catalogForValidation: params.ctx.grounding.catalog,
       products: relevantCatalog,
       grounding: {
         ...params.ctx.grounding,
         catalog: relevantCatalog,
         approvedCoachLearnings,
+        activeCoachRules: relevantCoachRules,
+        quickReplies: relevantQuickReplies,
       },
     },
   };
@@ -766,7 +839,8 @@ export async function runAgentTick(conversationId: string): Promise<{
 
     // Pre-check handoff — sempre qualifica antes para timeline ficar completa
     const triggerCheck = detectHandoffNeeded(lastLeadMsg.text);
-    if (triggerCheck.needed) {
+    const readyToClose = detectReadyToClose(lastLeadMsg.text);
+    if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
         companyId: conv.company_id,
         conversationId: conv.id,
@@ -781,9 +855,13 @@ export async function runAgentTick(conversationId: string): Promise<{
         .eq("id", conv.id);
       await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
         source: "pre_check",
-        pattern: triggerCheck.reason,
+        pattern: triggerCheck.reason ?? (readyToClose ? "ready_to_close" : undefined),
       });
-      return { ok: true, action: "handoff", reason: "pre_check_pattern" };
+      return {
+        ok: true,
+        action: "handoff",
+        reason: readyToClose && !triggerCheck.needed ? "ready_to_close" : "pre_check_pattern",
+      };
     }
 
     const { data: lead } = await supabaseAdmin
@@ -798,7 +876,9 @@ export async function runAgentTick(conversationId: string): Promise<{
         history,
         leadName: lead?.name ?? null,
         salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+        qualification: currentQual,
       }),
+      ctx.grounding.commercialRules.commercialTerms,
     );
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
@@ -869,10 +949,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       detectedInterest: decision.detected_interest ?? currentQual.detected_interest,
     };
     const requestedProductImageIds = decision.product_image_ids ?? [];
-    if (
-      requestedProductImageIds.length ||
-      detectFiberCatalogSize(productImageSelectionContext) !== null
-    ) {
+    if (requestedProductImageIds.length > 0) {
       try {
         const media = await sendWhatsappProductImages({
           companyId: conv.company_id,

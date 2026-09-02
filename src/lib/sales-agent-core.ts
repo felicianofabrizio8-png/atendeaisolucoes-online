@@ -4,12 +4,17 @@ import {
   type CustomerStage,
   type PurchaseTiming,
 } from "./ai-qualifier.server";
+import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
+import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
+import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 
 export type SalesAgentGroundingSource =
   | "catalog"
   | "faq_knowledge"
   | "commercial_rules"
-  | "coach_learnings";
+  | "coach_learnings"
+  | "coach_rules"
+  | "quick_replies";
 
 export interface AgentSettings {
   company_id: string;
@@ -68,11 +73,15 @@ export interface SalesAgentGrounding {
     priority: number;
     confidence: number;
   }>;
+  activeCoachRules?: ActiveCoachRuleGrounding[];
+  quickReplies?: QuickReplyGrounding[];
 }
 
 export interface AgentContext {
   settings: AgentSettings;
   companyName: string;
+  /** IDs do catálogo completo; o catálogo enviado ao prompt pode ser reduzido. */
+  catalogProductIds?: string[];
   aiProfile: {
     tone: string;
     description: string | null;
@@ -103,6 +112,8 @@ export interface AgentContext {
     images: string[];
     notes: string | null;
   }>;
+  /** Catálogo completo usado para validar afirmações objetivas fora do prompt compacto. */
+  catalogForValidation?: SalesAgentGrounding["catalog"];
   knowledge: Array<{ question: string; answer: string; type: string }>;
   grounding: SalesAgentGrounding;
 }
@@ -395,15 +406,429 @@ export function getSalesAgentGroundingSources(ctx: AgentContext): SalesAgentGrou
     sources.push("commercial_rules");
   }
   if (ctx.grounding.approvedCoachLearnings.length > 0) sources.push("coach_learnings");
+  if ((ctx.grounding.activeCoachRules ?? []).length > 0) sources.push("coach_rules");
+  if ((ctx.grounding.quickReplies ?? []).length > 0) sources.push("quick_replies");
   return sources;
 }
 
-export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
+function normalizePromptText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+const FAQ_MAX_ITEMS = 6;
+const FAQ_MAX_ITEM_CHARS = 400;
+const PRODUCT_DESCRIPTION_MAX_CHARS = 240;
+const PRODUCT_NOTES_MAX_CHARS = 200;
+const PRODUCT_SPECIFICATIONS_MAX_CHARS = 300;
+const HISTORY_MAX_CHARS = 6000;
+const COACH_RULE_MAX_CHARS = 600;
+const LEARNING_MAX_CHARS = 600;
+
+function truncateProductText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+function comparablePromptText(value: string): string {
+  return normalizePromptText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatPromptSpecifications(
+  value: unknown,
+  product: SalesAgentGrounding["catalog"][number],
+): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const duplicateValues = new Set(
+    [
+      product.model,
+      product.description,
+      product.shape,
+      product.capacityL == null ? null : String(product.capacityL),
+      product.lengthM == null ? null : String(product.lengthM),
+      product.widthM == null ? null : String(product.widthM),
+      product.depthM == null ? null : String(product.depthM),
+      product.lengthM == null || product.widthM == null
+        ? null
+        : `${product.lengthM} x ${product.widthM}${product.depthM == null ? "" : ` x ${product.depthM}`} m`,
+    ]
+      .filter((entry): entry is string => Boolean(entry))
+      .map(comparablePromptText),
+  );
+  const technical = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) =>
+      typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean",
+    )
+    .filter(([key, entry]) => {
+      const keyText = comparablePromptText(key);
+      const entryText = comparablePromptText(String(entry));
+      if (/^internal(?: |_)|^private(?: |_)|metadata|sku|image|foto|count|total/.test(keyText)) {
+        return false;
+      }
+      const isDuplicateDescription = /descricao|description/.test(keyText) && duplicateValues.has(entryText);
+      const isDuplicateModel = /modelo|model/.test(keyText) && duplicateValues.has(entryText);
+      const isDuplicateMeasure = /comprimento|largura|profundidade|dimens|tamanho|capacidade|volume|formato|shape/.test(
+        keyText,
+      ) && duplicateValues.has(entryText);
+      return !isDuplicateDescription && !isDuplicateModel && !isDuplicateMeasure;
+    })
+    .map(([key, entry]) => `${key}: ${entry}`)
+    .join("; ");
+  return technical ? truncateProductText(technical, PRODUCT_SPECIFICATIONS_MAX_CHARS) : null;
+}
+
+function formatPromptVariants(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const variants = value
+    .filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+    )
+    .map((entry) => [entry.name, entry.color]
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .join("/"))
+    .filter(Boolean)
+    .slice(0, 3);
+  return variants.length > 0 ? variants.join(", ") : null;
+}
+
+function notesDuplicateIncludedItems(notes: string, includedItems: string[]): boolean {
+  const ignored = new Set(["a", "as", "e", "o", "os", "itens", "inclui", "incluido", "incluidos", "incluso", "inclusos"]);
+  const tokenize = (value: string) => comparablePromptText(value)
+    .split(" ")
+    .filter((token) => token && !ignored.has(token))
+    .sort();
+  const normalizedNotes = tokenize(notes);
+  const normalizedItems = tokenize(includedItems.join(" "));
+  if (normalizedNotes.length === 0 || normalizedItems.length === 0) return false;
+  return normalizedNotes.join(" ") === normalizedItems.join(" ");
+}
+
+function parseCatalogNumber(value: string): number | null {
+  const normalized = value.replace(/\s/g, "");
+  const parsed = normalized.includes(",")
+    ? Number(normalized.replace(/\./g, "").replace(",", "."))
+    : Number(normalized.replace(/\.(?=\d{3}(?:\D|$))/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseMoneyClaim(value: string, unit?: string): number | null {
+  const amount = parseCatalogNumber(value);
+  if (amount == null) return null;
+  return unit?.toLowerCase() === "mil" || unit?.toLowerCase() === "k" ? amount * 1000 : amount;
+}
+
+function sameCatalogNumber(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.001;
+}
+
+const TECHNICAL_FIELD_SYNONYMS: Record<string, string[]> = {
+  material: ["material", "composicao", "revestimento"],
+  potencia: ["potencia"],
+  voltagem: ["voltagem", "tensao"],
+  acabamento: ["acabamento"],
+  estrutura: ["estrutura"],
+  filtragem: ["filtragem", "filtro"],
+  bomba: ["bomba", "motobomba"],
+  aquecimento: ["aquecimento"],
+};
+
+function hasMonetaryContext(
+  message: string,
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  const monetaryPattern = /\b(pre[cç]o|valor|custa|custo|or[cç]amento|financeir|pagamento|pix|cart[aã]o|parcel|entrada|dinheiro)\b/i;
+  const technicalPattern = /\b(capacidade|litros?|medid|comprimento|largura|profundidade|dimens|metros?|voltagem|tens[aã]o|pot[eê]ncia)\b/i;
+  if (technicalPattern.test(message) && !monetaryPattern.test(message)) return false;
+  if (monetaryPattern.test(message)) return true;
+
+  const previous = history.filter((item) => item.role !== "system").at(-1)?.text ?? "";
+  return monetaryPattern.test(previous) && !technicalPattern.test(previous);
+}
+
+function isNonFactualObjectiveMessage(message: string): boolean {
+  const trimmed = message.trim();
+  return /[?]\s*$/.test(trimmed) ||
+    /^(?:qual|quais|seria|pode ser|posso|vou consultar|gostaria|quero saber)\b/i.test(trimmed);
+}
+
+function normalizedTechnicalTokens(value: string): string[] {
+  return normalizePromptText(value)
+    .replace(/,/g, ".")
+    .replace(/(\d)\s+(?=[a-z])/g, "$1")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function technicalValueMatches(actual: string, expected: string): boolean {
+  const actualTokens = normalizedTechnicalTokens(actual);
+  const expectedTokens = normalizedTechnicalTokens(expected);
+  for (let index = 0; index <= actualTokens.length - expectedTokens.length; index += 1) {
+    if (expectedTokens.every((token, offset) => actualTokens[index + offset] === token)) return true;
+  }
+  return false;
+}
+
+function objectiveClaimSentences(message: string): string[] {
+  return message
+    .split(/[.!?;\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) =>
+      /\b(pre[cç]o|valor|r\$|medid|comprimento|largura|profundidade|capacidade|litros?|modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|pot[eê]ncia|voltagem|tens[aã]o|instala[cç][aã]o|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(
+        sentence,
+      ),
+    )
+    .filter((sentence) =>
+      !/^(?:vou|posso|podemos|qual|quais|como|gostaria|quero|vamos)\b/i.test(sentence),
+    )
+    .filter((sentence) =>
+      !/\bmodelo\b/i.test(sentence) || messageClaimsSpecificModel(sentence),
+    );
+}
+
+function validateObjectiveProductClaims(
+  message: string,
+  products: SalesAgentGrounding["catalog"] | undefined,
+  suggestedProductIds: string[],
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  if (isNonFactualObjectiveMessage(message)) return true;
+  const objectiveSentences = objectiveClaimSentences(message);
+  const priceClaims = [
+    ...message.matchAll(/\b(pre[cç]o|valor|custa|fica)(?:\s+(promocional|promo[cç][aã]o|promo))?[^\d]{0,20}(?:r\$\s*)?([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?/gi),
+    ...[...message.matchAll(/r\$\s*([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?/gi)].map((match) => {
+      const normalized = [...match] as RegExpMatchArray;
+      normalized[3] = normalized[1];
+      normalized[4] = normalized[2];
+      normalized.index = match.index;
+      return normalized;
+    }),
+  ]
+    .map((match) => ({
+      value: parseMoneyClaim(match[3], match[4]),
+      promo: /promo/i.test(
+        `${match[2] ?? ""} ${message.slice(Math.max(0, (match.index ?? 0) - 30), match.index ?? 0)}`,
+      ),
+      index: match.index ?? 0,
+    }))
+    .filter((claim): claim is { value: number; promo: boolean; index: number } => claim.value != null)
+    .filter((claim, index, claims) => claims.findIndex((item) => item.index === claim.index) === index);
+  const standaloneMoney = message.trim().match(/^([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?$/i);
+  if (standaloneMoney && hasMonetaryContext(message, history)) {
+    const value = parseMoneyClaim(standaloneMoney[1], standaloneMoney[2]);
+    if (value != null) priceClaims.push({ value, promo: false, index: 0 });
+  }
+  const dimensionClaims = [...message.matchAll(
+    /(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?\s*(?:m|metros?)?/gi,
+  )]
+    .filter((match) => /\b(?:m|metros?)\b/i.test(match[0]))
+    .map((match) => match.slice(1).filter(Boolean).map((value) => parseCatalogNumber(value)));
+  const capacityClaims = [...message.matchAll(/([\d.]+(?:,\d+)?)\s*l(?:itros?)?\b/gi)]
+    .map((match) => parseCatalogNumber(match[1]))
+    .filter((value): value is number => value != null);
+  const hasObjectiveValue = priceClaims.length > 0 || dimensionClaims.length > 0 || capacityClaims.length > 0 || objectiveSentences.length > 0;
+  if (!hasObjectiveValue) return true;
+  if (!products) return false;
+
+  const normalizedMessage = comparablePromptText(message);
+  const byMention = products.filter((product) =>
+    [product.name, product.model]
+      .filter((value): value is string => Boolean(value))
+      .some((value) => normalizedMessage.includes(comparablePromptText(value))),
+  );
+  const candidates = byMention;
+  if (candidates.length === 0) return true;
+
+  if (priceClaims.some((claim) =>
+    !candidates.some((product) => {
+      if (claim.promo) {
+        return product.promoPrice != null && sameCatalogNumber(product.promoPrice, claim.value);
+      }
+      return [product.price, product.promoPrice]
+        .some((price) => price != null && sameCatalogNumber(price, claim.value));
+    }),
+  )) return false;
+
+  if (dimensionClaims.some((claim) => {
+    const dimensions = claim.filter((value): value is number => value != null);
+    return !candidates.some((product) => {
+      const productDimensions = [product.lengthM, product.widthM, product.depthM]
+        .filter((value): value is number => value != null);
+      return dimensions.length <= productDimensions.length && dimensions.every((value, index) =>
+        sameCatalogNumber(value, productDimensions[index]),
+      );
+    });
+  })) return false;
+
+  if (capacityClaims.some((claim) =>
+    !candidates.some((product) => product.capacityL != null && sameCatalogNumber(product.capacityL, claim)),
+  )) return false;
+
+  const semanticFacts = candidates.map((product) => ({
+    model: comparablePromptText(`${product.name} ${product.model ?? ""}`),
+    color: comparablePromptText(JSON.stringify(product.variants ?? [])),
+    shape: comparablePromptText(product.shape ?? ""),
+    basic: comparablePromptText(JSON.stringify({
+      name: product.name,
+      model: product.model,
+      lengthM: product.lengthM,
+      widthM: product.widthM,
+      depthM: product.depthM,
+      capacityL: product.capacityL,
+      shape: product.shape,
+    })),
+    specifications: Object.entries(
+      product.specifications && typeof product.specifications === "object" && !Array.isArray(product.specifications)
+        ? product.specifications
+        : {},
+    ).map(([key, value]) => ({ key: comparablePromptText(key), value: comparablePromptText(String(value)) })),
+    components: comparablePromptText((product.includedItems ?? []).join(" ")),
+  }));
+  return objectiveSentences.every((sentence) => {
+    const normalizedSentence = comparablePromptText(sentence);
+    const relevantFacts = /\bmodelo\b/.test(normalizedSentence)
+      ? semanticFacts.map((facts) => facts.model).join(" ")
+      : /\bcor\b/.test(normalizedSentence)
+        ? semanticFacts.map((facts) => facts.color).join(" ")
+        : /\bformato\b/.test(normalizedSentence)
+          ? semanticFacts.map((facts) => facts.shape).join(" ")
+          : /\b(?:material|fibra|vinil)\b/.test(normalizedSentence)
+            ? semanticFacts.flatMap((facts) => facts.specifications
+              .filter((specification) => /material|composicao|revestimento|tipo/.test(specification.key))
+              .map((specification) => `${specification.key} ${specification.value}`)).join(" ")
+            : /\b(?:filtro|bomba|inclus[oa]s?)\b/.test(normalizedSentence)
+              ? semanticFacts.flatMap((facts) => [facts.components, ...facts.specifications
+                .filter((specification) => /filtro|bomba|motobomba|inclus/.test(specification.key))
+                .map((specification) => `${specification.key} ${specification.value}`)]).join(" ")
+              : /\b(?:comprimento|largura|profundidade|capacidade|litros?)\b/.test(normalizedSentence)
+                ? semanticFacts.map((facts) => `${facts.basic} ${facts.color}`).join(" ")
+                : semanticFacts.flatMap((facts) => facts.specifications
+                  .filter((specification) => Object.values(TECHNICAL_FIELD_SYNONYMS).some((aliases) =>
+                    aliases.some((alias) => specification.key === alias && normalizedSentence.includes(alias)),
+                  ))
+                  .map((specification) => `${specification.key} ${specification.value}`)).join(" ");
+    const claimTokens = normalizedSentence
+      .split(" ")
+      .filter((token) => token.length >= 4 && !new Set([
+        "preco", "valor", "modelo", "produto", "piscina", "temos", "tem", "combina", "espaco", "profundidade",
+        "capacidade", "litros", "comprimento", "largura", "medida",
+        "voce", "descreveu", "disponivel", "com", "para", "uma", "esta", "esse", "essa", "que",
+        "de", "do", "da", "e", "metros",
+      ]).has(token));
+    if (claimTokens.length === 0) return true;
+    const technicalFieldClaim = Object.entries(TECHNICAL_FIELD_SYNONYMS).find(([, aliases]) =>
+      aliases.some((alias) => normalizedSentence.includes(alias)),
+    );
+    if (technicalFieldClaim) {
+      const matchingSpecifications = semanticFacts.flatMap((facts) => facts.specifications.filter((specification) =>
+        technicalFieldClaim[1].includes(specification.key),
+      ));
+      if (matchingSpecifications.length === 0) return false;
+      const claimValue = normalizedSentence
+        .replace(new RegExp(`.*?(?:${technicalFieldClaim[1].join("|")})`, "i"), "")
+        .trim();
+      return matchingSpecifications.some((specification) => {
+        return technicalValueMatches(claimValue, specification.value);
+      });
+    }
+    if (!/\b(?:modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|pot[eÃª]ncia|voltagem|tens[aÃ£]o|instala[cÃ§][aÃ£]o|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(normalizedSentence)) {
+      return true;
+    }
+    return claimTokens.every((token) => relevantFacts.includes(token));
+  });
+}
+
+function faqTokens(value: string): Set<string> {
+  const stopwords = new Set([
+    "a", "ao", "as", "com", "da", "das", "de", "do", "dos", "e", "em", "o", "os",
+    "para", "por", "que", "se", "um", "uma", "voce", "voces", "cliente", "piscina",
+  ]);
+  return new Set(
+    normalizePromptText(value)
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9]/g, ""))
+      .filter((token) => token.length >= 3 && !stopwords.has(token)),
+  );
+}
+
+function truncateFaqItem(
+  faq: SalesAgentGrounding["faqKnowledge"][number],
+): SalesAgentGrounding["faqKnowledge"][number] {
+  const prefix = `${faq.question} → `;
+  if (prefix.length + faq.answer.length <= FAQ_MAX_ITEM_CHARS) return faq;
+  const available = Math.max(0, FAQ_MAX_ITEM_CHARS - prefix.length - 1);
+  return { ...faq, answer: `${faq.answer.slice(0, available).trimEnd()}…` };
+}
+
+function selectRelevantFaqs(
+  faqKnowledge: SalesAgentGrounding["faqKnowledge"],
+  profileFaq: Array<{ q?: string; a?: string }>,
+  fallbackKnowledge: SalesAgentGrounding["faqKnowledge"],
+  history: SalesAgentCoreInput["history"],
+): SalesAgentGrounding["faqKnowledge"] {
+  const conversation = history
+    .slice(-8)
+    .filter((message) => message.role === "lead")
+    .map((message) => message.text)
+    .join(" ");
+  const conversationTokens = faqTokens(conversation);
+  if (conversationTokens.size === 0) return [];
+
+  const approved = faqKnowledge.length > 0 ? faqKnowledge : fallbackKnowledge;
+  const candidates = [
+    ...approved.map((faq) => ({ question: faq.question, answer: faq.answer, type: faq.type })),
+    ...profileFaq
+      .filter((faq): faq is { q: string; a: string } => Boolean(faq.q && faq.a))
+      .map((faq) => ({ question: faq.q, answer: faq.a, type: "profile" })),
+  ];
+  const seenQuestions = new Set<string>();
+  const seenContents = new Set<string>();
+  return candidates
+    .map((faq, index) => {
+      const questionKey = normalizePromptText(faq.question).replace(/\s+/g, " ").trim();
+      const contentKey = normalizePromptText(faq.answer).replace(/\s+/g, " ").trim();
+      const overlap = [...faqTokens(`${faq.question} ${faq.answer}`)].filter((token) =>
+        conversationTokens.has(token),
+      ).length;
+      return {
+        faq,
+        index,
+        questionKey,
+        contentKey,
+        score: overlap,
+        sourcePriority: index < approved.length ? 0 : 1,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => a.sourcePriority - b.sourcePriority || b.score - a.score || a.index - b.index)
+    .filter((entry) => {
+      if (seenQuestions.has(entry.questionKey) || seenContents.has(entry.contentKey)) return false;
+      seenQuestions.add(entry.questionKey);
+      seenContents.add(entry.contentKey);
+      return true;
+    })
+    .slice(0, FAQ_MAX_ITEMS)
+    .map(({ faq }) => truncateFaqItem(faq));
+}
+
+export function buildSalesAgentSystemPrompt(
+  ctx: AgentContext,
+  history: SalesAgentCoreInput["history"] = [],
+): string {
   const ai = ctx.aiProfile;
   const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
   const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
-  const groundedKnowledge =
-    ctx.grounding.faqKnowledge.length > 0 ? ctx.grounding.faqKnowledge : ctx.knowledge;
+  const relevantFaqs = selectRelevantFaqs(
+    ctx.grounding.faqKnowledge,
+    ai?.faq ?? [],
+    ctx.knowledge,
+    history,
+  );
   const productLines = groundedProducts
     .map((p, i) => {
       const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
@@ -438,13 +863,15 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
       return parts.join("\n");
     })
     .join("\n");
-  const kbLines = groundedKnowledge
-    .map((k, i) => `${i + 1}. ${k.question} → ${k.answer}`)
+  const faqLines = relevantFaqs
+    .map((k, i) => {
+      const line = `${i + 1}. ${k.question} → ${k.answer}`;
+      return line.length <= FAQ_MAX_ITEM_CHARS
+        ? line
+        : `${line.slice(0, FAQ_MAX_ITEM_CHARS - 1).trimEnd()}…`;
+    })
     .join("\n");
-  const faqLines = (ai?.faq ?? [])
-    .filter((f) => f.q && f.a)
-    .map((f, i) => `${i + 1}. ${f.q} → ${f.a}`)
-    .join("\n");
+  const kbLines = "";
   const commercialLines = [
     ctx.grounding.commercialRules.paymentPolicy
       ? `- Pagamento: ${ctx.grounding.commercialRules.paymentPolicy}`
@@ -477,8 +904,14 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     .join("\n");
   const learningLines = ctx.grounding.approvedCoachLearnings
     .map((learning, i) => {
-      return `${i + 1}. ${learning.title}: ${learning.rule}`;
+      return `${i + 1}. ${truncateProductText(`${learning.title}: ${learning.rule}`, LEARNING_MAX_CHARS)}`;
     })
+    .join("\n");
+  const coachRuleLines = (ctx.grounding.activeCoachRules ?? [])
+    .map((rule, i) => `${i + 1}. ${truncateProductText(`${rule.title}: ${rule.content}`, COACH_RULE_MAX_CHARS)}`)
+    .join("\n");
+  const quickReplyLines = (ctx.grounding.quickReplies ?? [])
+    .map((reply, i) => `${i + 1}. ${reply.name}: ${reply.content}`)
     .join("\n");
   const groundingSections = [
     commercialLines
@@ -487,12 +920,20 @@ export function buildSalesAgentSystemPrompt(ctx: AgentContext): string {
     learningLines
       ? `APRENDIZADOS ATIVOS DO COACH (somente orientação de comportamento comercial; nomes, modelos, medidas, preços, descrições, categorias e exemplos de produto contidos em aprendizados NÃO são fatos e devem ser ignorados):\n${learningLines}`
       : null,
+    coachRuleLines
+      ? `REGRAS ATIVAS APLICÁVEIS (fonte cadastrada; não substituem o playbook):\n${coachRuleLines}`
+      : null,
+    quickReplyLines
+      ? `CONTEXTO OPERACIONAL DE RESPOSTAS RÃPIDAS (fonte cadastrada; nÃ£o Ã© regra comportamental):\n${quickReplyLines}`
+      : null,
   ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 
   return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
 Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
+
+${SALES_AGENT_PLAYBOOK}
 
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
@@ -506,7 +947,7 @@ CONTEXTO DA EMPRESA:
 - Descrição: ${ai?.description ?? "—"}
 - Região atendida: ${ai?.region ?? "—"}
 - Diferenciais: ${ai?.differentials ?? "—"}
-- Pagamento (apenas mencionar formas, sem negociar): ${ai?.payment_methods ?? "—"}
+- Pagamento (apenas mencionar formas, sem negociar): ${ctx.grounding.commercialRules.paymentPolicy || ctx.grounding.commercialRules.paymentMethods ? "—" : ai?.payment_methods ?? "—"}
 
 CATÁLOGO (use apenas estes produtos):
 ${productLines || "(catálogo vazio)"}
@@ -539,13 +980,12 @@ export function buildSalesAgentCompletionRequest(
 ): SalesAgentCompletionRequest {
   const catalogProducts =
     params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
-  const transcript = params.history
+  const transcriptEntries = params.history
     .slice(-20)
     .map(
       (m) =>
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
-    )
-    .join("\n");
+    );
   const sessionCorrections = (params.sessionCorrections ?? [])
     .map(
       (item, index) =>
@@ -554,7 +994,17 @@ export function buildSalesAgentCompletionRequest(
     .join("\n");
   const sessionCorrectionsBlock = sessionCorrections
     ? `\n\nCORREÇÕES APROVADAS DESTA SESSÃO:\n${sessionCorrections}\n\nEstas correções têm prioridade sobre os aprendizados do Coach apenas como comportamento e instrução de atendimento. Nunca use uma correção como fonte de fatos de produto ou políticas comerciais: catálogo e POLÍTICAS OFICIAIS continuam soberanos.`
-    : "";
+      : "";
+  const transcript: string[] = [];
+  let remainingHistoryChars = HISTORY_MAX_CHARS;
+  for (let index = transcriptEntries.length - 1; index >= 0 && remainingHistoryChars > 0; index -= 1) {
+    const entry = transcriptEntries[index];
+    const selected = entry.length <= remainingHistoryChars
+      ? entry
+      : truncateProductText(entry, remainingHistoryChars);
+    transcript.unshift(selected);
+    remainingHistoryChars -= selected.length + (transcript.length > 1 ? 1 : 0);
+  }
 
   return {
     model: params.model,
@@ -562,10 +1012,10 @@ export function buildSalesAgentCompletionRequest(
       ? { reasoning_effort: "none" as const }
       : {}),
     messages: [
-      { role: "system", content: buildSalesAgentSystemPrompt(params.ctx) },
+      { role: "system", content: buildSalesAgentSystemPrompt(params.ctx, params.history) },
       {
         role: "user",
-        content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
+      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
       },
     ],
     tools: [
@@ -609,11 +1059,11 @@ export function buildSalesAgentCompletionRequest(
               },
               suggest_products: {
                 type: "array",
-                items: {
-                  type: "string",
-                  enum: catalogProducts.map((product) => product.id),
-                },
-                description: "IDs exatos de produtos existentes no catálogo fornecido.",
+                  items: {
+                    type: "string",
+                    enum: catalogProducts.map((product) => product.id),
+                  },
+                  description: "IDs exatos de produtos existentes no catálogo fornecido.",
               },
               send_product_images: {
                 type: "array",
@@ -730,7 +1180,14 @@ export class SalesAgentCore {
     if (!reply.message) {
       return deterministicFallback("empty_message");
     }
-    const catalogIds = new Set(params.ctx.grounding.catalog.map((product) => product.id));
+    const isSessionCorrection = (params.sessionCorrections ?? []).some(
+      ({ correction }) => correction.trim() === reply.message.trim(),
+    );
+    const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
+    const catalogIds = new Set(
+      params.ctx.catalogProductIds ??
+        params.ctx.grounding.catalog.map((product) => product.id),
+    );
     const catalogById = new Map(
       params.ctx.grounding.catalog.map((product) => [product.id, product]),
     );
@@ -753,13 +1210,28 @@ export class SalesAgentCore {
             customerAskedAboutProducts(params.history) &&
             params.ctx.grounding.catalog.length === 1
           ? [params.ctx.grounding.catalog[0].id]
-          : modelSuggestions;
+          : modelSuggestions.slice(0, SALES_AGENT_MAX_OPTIONS);
     const selectedProducts = requestedSuggestions.flatMap((id) => {
       const product = catalogById.get(id);
       return product ? [product] : [];
     });
+    const learningIdsUsed = Array.isArray(reply.learning_ids_used)
+      ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
+      : [];
+    const catalogForValidation = params.ctx.catalogForValidation;
     if (
-      !messageHasOnlyValidatedProductFacts(
+      !isSessionCorrection &&
+      !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
+    ) {
+      return {
+        kind: "handoff",
+        reason: "catalog_unvalidated_objective_claim",
+        grounding_sources: groundingSources,
+        learning_ids_used: learningIdsUsed,
+      };
+    }
+    if (
+      !isSessionCorrection && !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
         reply.message,
         selectedProducts,
         params.ctx.grounding.catalog,
@@ -767,7 +1239,12 @@ export class SalesAgentCore {
     ) {
       return deterministicFallback("catalog_invalid_product_fact");
     }
-    if (messageClaimsProductReference(reply.message) && requestedSuggestions.length === 0) {
+    if (
+      !isSessionCorrection &&
+      !isNonFactualReply &&
+      messageClaimsProductReference(reply.message) &&
+      requestedSuggestions.length === 0
+    ) {
       return deterministicFallback("catalog_unvalidated_product_claim");
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
@@ -776,9 +1253,6 @@ export class SalesAgentCore {
     const requestedImages = [...new Set([...modelImageIds, ...promisedImageIds])]
       .filter((id) => (catalogById.get(id)?.images.length ?? 0) > 0)
       .slice(0, 10);
-    const learningIdsUsed = Array.isArray(reply.learning_ids_used)
-      ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
-      : [];
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
       stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"

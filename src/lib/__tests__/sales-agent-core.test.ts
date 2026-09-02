@@ -7,6 +7,7 @@ import {
   hasRectangularPoolIntent,
   type AgentContext,
   type SalesAgentCompletionRequest,
+  type SalesAgentCoreInput,
 } from "../sales-agent-core";
 import { runSafetyLayer } from "../ai-agent.server";
 
@@ -88,6 +89,7 @@ const context: AgentContext = {
     ],
   },
 };
+context.catalogForValidation = context.grounding.catalog;
 
 describe("SalesAgentCore", () => {
   it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
@@ -191,11 +193,286 @@ describe("SalesAgentCore", () => {
     });
     expect(decision.message).not.toContain("Encontrei no catálogo");
   });
+  const validatedProduct = {
+    ...context.products[0],
+    name: "Piscina 6x3",
+    model: "Caribe 6",
+    lengthM: 6,
+    widthM: 3,
+    depthM: 1.4,
+    capacityL: 24000,
+    shape: "retangular",
+    specifications: { material: "fibra" },
+    includedItems: ["Filtro", "Bomba"],
+  };
+const validationContext: AgentContext = {
+    ...context,
+    products: [validatedProduct],
+    catalogForValidation: [validatedProduct],
+    grounding: { ...context.grounding, catalog: [validatedProduct] },
+};
+
+  function completionWithMessage(message: string, suggestProducts = ["product-1"]) {
+    return {
+      ok: true as const,
+      data: {
+        choices: [{
+          message: {
+            tool_calls: [{
+              function: {
+                name: "respond_to_customer",
+                arguments: JSON.stringify({ message, suggest_products: suggestProducts }),
+              },
+            }],
+          },
+        }],
+      },
+    };
+  }
+
+  it.each([
+    ["preço inventado", "A Piscina 6x3 custa R$ 99.999,00.", "catalog_unvalidated_objective_claim"],
+    ["preço antigo", "A Piscina 6x3 custa R$ 19.000,00.", "catalog_unvalidated_objective_claim"],
+    ["medida inventada", "A Piscina 6x3 mede 7x3 m.", "catalog_unvalidated_objective_claim"],
+    ["característica inventada", "A Piscina 6x3 tem aquecimento solar.", "catalog_unvalidated_objective_claim"],
+    ["dado correto do catálogo", "A Piscina 6x3 custa R$ 20.000,00 e mede 6x3 m.", "reply"],
+    ["conversa sem dado objetivo", "Claro, posso entender melhor o que você procura.", "reply"],
+  ])("valida %s contra o catálogo atual", async (_, message, expectedReason) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Quero conhecer esse modelo" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
+  });
+
+  it("não confunde price com promoPrice e aceita preço em milhares", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 custa R$ 20 mil e a promoção custa R$ 20 mil."),
+    ));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual é o preço?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it.each([
+    "A Piscina 6x3 custa 20 mil.",
+    "A Piscina 6x3 fica em 20.000.",
+    "20 mil",
+    "20.000",
+  ])("reconhece %s como preço em contexto monetário", async (message) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual é o preço dessa piscina?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não trata 20.000 como preço sem contexto monetário", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Qual a capacidade da piscina?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each([
+    ["potência correta", "A Piscina 6x3 tem potência 2 cv.", "reply"],
+    ["potência incorreta", "A Piscina 6x3 tem potência 3 cv.", "catalog_unvalidated_objective_claim"],
+    ["sinônimo técnico correto", "A Piscina 6x3 tem tensão 220 V.", "reply"],
+    ["campo técnico diferente", "A Piscina 6x3 tem tensão 2 cv.", "catalog_unvalidated_objective_claim"],
+  ])("valida %s no campo semântico correto", async (_, message, expected) => {
+    const product = {
+      ...validatedProduct,
+      specifications: { potencia: "2 cv", voltagem: "220 V" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quero os dados técnicos" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
+  });
+
+  it("não valida fato objetivo com catálogo compacto quando falta o catálogo completo", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 custa R$ 99.999,00"),
+    ));
+    const decision = await core.decide({
+      ctx: { ...validationContext, catalogForValidation: undefined },
+      history: [{ role: "lead", text: "Qual é o preço?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it("não aceita característica confirmada apenas em campo semântico errado", async () => {
+    const wrongFieldProduct = {
+      ...validatedProduct,
+      variants: [{ name: "Azul", color: "azul" }],
+      specifications: { cor: "fibra" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Piscina 6x3 tem cor fibra."),
+    ));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [wrongFieldProduct],
+        catalogForValidation: [wrongFieldProduct],
+        grounding: { ...validationContext.grounding, catalog: [wrongFieldProduct] },
+      },
+      history: [{ role: "lead", text: "Qual a cor?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
+
+  it.each([
+    "Vou verificar o preço.",
+    "Posso consultar a medida?",
+    "Qual o modelo?",
+  ])("não bloqueia intenção de consulta: %s", async (message) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [{ role: "lead", text: "Pode me ajudar?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each<[string, SalesAgentCoreInput["history"]]>([
+    ["A Piscina 6x3 custa 20 mil.", [{ role: "lead", text: "Quero o preço dessa piscina" }]],
+    ["20 mil", [{ role: "lead", text: "Qual é o preço?" }]],
+    ["20.000", [{ role: "lead", text: "Qual é o preço?" }]],
+  ])("reconhece preço com contexto atual/imediato: %s", async (message, history) => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({ ctx: validationContext, history, leadName: null, model: salesModel });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("prioriza contexto técnico atual sobre histórico antigo de preço", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "E a capacidade em litros?" },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não usa menção monetária antiga sem resposta direta", async () => {
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage("20.000")));
+    const decision = await core.decide({
+      ctx: validationContext,
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "Também gostaria de saber sobre instalação." },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it("não valida perguntas, hipóteses ou intenções como fatos do agente", async () => {
+    for (const message of [
+      "Qual o preço de R$ 99.999?",
+      "Seria 20 mil?",
+      "Pode ser 2 cv?",
+      "Vou consultar o valor de 20 mil.",
+    ]) {
+      const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+      const decision = await core.decide({
+        ctx: validationContext,
+        history: [{ role: "lead", text: "Pode verificar isso?" }],
+        leadName: null,
+        model: salesModel,
+      });
+      expect(decision.kind).toBe("reply");
+    }
+  });
+
+  it("não transforma capacidade em preço após histórico monetário", async () => {
+    const product = { ...validatedProduct, capacityL: 20_000 };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A capacidade é 20.000 L."),
+    ));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [
+        { role: "lead", text: "Qual é o preço?" },
+        { role: "lead", text: "Qual a capacidade?" },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind).toBe("reply");
+  });
+
+  it.each([
+    ["A Piscina 6x3 tem potência 2 cv.", "reply"],
+    ["A Piscina 6x3 tem potência 20 cv.", "catalog_unvalidated_objective_claim"],
+    ["A Piscina 6x3 tem potência 2.5 cv.", "catalog_unvalidated_objective_claim"],
+    ["A Piscina 6x3 tem tensão 220 V.", "reply"],
+    ["A Piscina 6x3 tem tensão 2 cv.", "catalog_unvalidated_objective_claim"],
+  ])("valida valor técnico e unidade exatamente: %s", async (message, expected) => {
+    const product = {
+      ...validatedProduct,
+      specifications: { potencia: "2 cv", voltagem: "220 V" },
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quero os dados técnicos" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
+  });
 
   it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
     const history = Array.from({ length: 22 }, (_, index) => ({
       role: (index % 2 === 0 ? "lead" : "agent") as "lead" | "agent",
-      text: `mensagem-${index}`,
+      text: index === 20 ? "Quero saber pagamento, garantia e prazo" : `mensagem-${index}`,
     }));
 
     const request = buildSalesAgentCompletionRequest({
@@ -289,6 +566,83 @@ describe("SalesAgentCore", () => {
       expect(request.tools).toHaveLength(2);
     },
   );
+
+  it("não duplica payment_methods no prompt", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(request.messages[0].content.match(/Pix e cartão/g)).toHaveLength(1);
+  });
+
+  it("limita histórico longo por caracteres e preserva o mais recente", () => {
+    const history = Array.from({ length: 20 }, (_, index) => ({
+      role: "lead" as const,
+      text: `mensagem-antiga-${index} ${"x".repeat(600)}`,
+    }));
+    history[19].text = `mensagem-mais-recente ${"y".repeat(600)}`;
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history,
+      leadName: null,
+      model: salesModel,
+    });
+    const userPrompt = request.messages[1].content;
+    expect(userPrompt.length).toBeLessThan(6500);
+    expect(userPrompt).toContain("mensagem-mais-recente");
+    expect(userPrompt).not.toContain("mensagem-antiga-0");
+  });
+
+  it("trunca cada coach rule longa", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          activeCoachRules: [{
+            ruleId: "rule-1",
+            versionId: "version-1",
+            versionNumber: 1,
+            category: "sales",
+            ruleType: "instruction",
+            title: "Regra longa",
+            content: "z".repeat(2000),
+            priority: 1,
+            scopeKind: "company",
+            scopeRef: null,
+          }],
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+    const line = request.messages[0].content.split("\n").find((item) => item.includes("Regra longa"));
+    expect(line?.length ?? 0).toBeLessThanOrEqual(603);
+  });
+
+  it("trunca cada learning longo", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          approvedCoachLearnings: [{
+            ...context.grounding.approvedCoachLearnings[0],
+            title: "Learning longo",
+            rule: "z".repeat(2000),
+          }],
+        },
+      },
+      history: [],
+      leadName: null,
+      model: salesModel,
+    });
+    const line = request.messages[0].content.split("\n").find((item) => item.includes("Learning longo"));
+    expect(line?.length ?? 0).toBeLessThanOrEqual(603);
+  });
 
   it("mantém a decisão estruturada e a normalização atuais", async () => {
     const complete = vi.fn().mockResolvedValue({
@@ -442,7 +796,7 @@ describe("SalesAgentCore", () => {
   it("inclui produto e preço do grounding no contexto do modelo", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
-      history: [],
+      history: [{ role: "lead", text: "Quero saber pagamento" }],
       leadName: null,
       model: salesModel,
     });
@@ -453,7 +807,130 @@ describe("SalesAgentCore", () => {
     expect(request.messages[0].content).toContain("Preço promocional cadastrado: R$ 18.000,00");
   });
 
-  it("preserva o preço promocional cadastrado do produto selecionado", async () => {
+  it("inclui FAQ e regras comerciais sem liberar negociação", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Quero saber pagamento e se atende interior" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(request.messages[0].content).toContain("Atende interior? → Sim.");
+    expect(request.messages[0].content).toContain("Pagamento (cadastro legado): Pix e cartão");
+    expect(request.messages[0].content).toContain(
+      "Condições cadastradas: Entrada de 50% conforme contrato",
+    );
+    expect(request.messages[0].content).toContain(
+      "somente informe, nunca negocie nem crie condições",
+    );
+    expect(request.messages[0].content).toContain("NUNCA invente nem negocie desconto, preço");
+  });
+
+  it("filtra FAQ irrelevante e prioriza a fonte aprovada", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [
+            { q: "Como funciona o pagamento?", a: "Resposta do perfil." },
+            { q: "Qual a garantia?", a: "Resposta irrelevante." },
+          ],
+        },
+        grounding: {
+          ...context.grounding,
+          faqKnowledge: [
+            { question: "Como funciona o pagamento?", answer: "Resposta aprovada.", type: "faq" },
+          ],
+        },
+      },
+      history: [{ role: "lead", text: "Quero saber como funciona o pagamento" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(request.messages[0].content).toContain("Resposta aprovada.");
+    expect(request.messages[0].content).not.toContain("Resposta do perfil.");
+    expect(request.messages[0].content).not.toContain("Resposta irrelevante.");
+  });
+
+  it("deduplica FAQ normalizada e limita a seis itens de 400 caracteres", () => {
+    const faqs = Array.from({ length: 8 }, (_, index) => ({
+      question: `Pagamento opção ${index + 1}`,
+      answer: `${"Condição cadastrada. ".repeat(40)}${index + 1}`,
+      type: "faq",
+    }));
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: " PAGAMENTO OPÇÃO 1 ", a: `${"Condição cadastrada. ".repeat(40)}1` }],
+        },
+        grounding: { ...context.grounding, faqKnowledge: faqs },
+      },
+      history: [{ role: "lead", text: "Quero informações de pagamento" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const faqSection = request.messages[0].content.split("FAQ:\n")[1].split("\n\nBASE")[0];
+    expect(faqSection.match(/^\d+\. /gm)).toHaveLength(6);
+    expect(faqSection.split("\n").every((line) => line.length <= 400)).toBe(true);
+  });
+
+  it("deduplica conteúdo normalizado mesmo com perguntas diferentes", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          faqKnowledge: [
+            { question: "Qual o pagamento?", answer: "Aceitamos Pix e cartão.", type: "faq" },
+          ],
+        },
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: "Quais formas de pagar?", a: "aceitamos PIX e cartão." }],
+        },
+      },
+      history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const content = request.messages[0].content;
+    expect(content.match(/Aceitamos Pix e cartão\./gi)).toHaveLength(1);
+  });
+
+  it("usa ctx.knowledge como fallback sem duplicar o FAQ do perfil", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        grounding: { ...context.grounding, faqKnowledge: [] },
+        knowledge: [{ question: "Atende interior?", answer: "Sim.", type: "faq" }],
+        aiProfile: {
+          ...context.aiProfile!,
+          faq: [{ q: "Atende interior?", a: "Sim." }],
+        },
+      },
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    const content = request.messages[0].content;
+    expect(content.match(/Atende interior\? → Sim\./g)).toHaveLength(1);
+  });
+
+  it("não inclui FAQ quando não há relevância na conversa", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: context,
+      history: [{ role: "lead", text: "Olá, tudo bem?" }],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(request.messages[0].content).not.toContain("Atende interior? → Sim.");
+  });
+
+  it("faz handoff quando o cliente pede parcelamento diferente do cadastrado", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
       data: {
@@ -532,7 +1009,7 @@ describe("SalesAgentCore", () => {
   it("inclui FAQ e regras comerciais sem liberar negociação", () => {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
-      history: [],
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
       leadName: null,
       model: salesModel,
     });
@@ -666,6 +1143,51 @@ describe("SalesAgentCore", () => {
       "commercial_rules",
       "coach_learnings",
     ]);
+  });
+
+  it("registra quick_replies somente quando hÃ¡ quick reply no grounding", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({ message: "Segue a informaÃ§Ã£o." }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: {
+        ...context,
+        grounding: {
+          ...context.grounding,
+          quickReplies: [
+            {
+              name: "Por Conta do Cliente",
+              category: "OrÃ§amento",
+              content: "Contrapiso e Ã¡gua.",
+              sort_order: 12,
+            },
+          ],
+        },
+      },
+      history: [{ role: "lead", text: "O que fica por conta do cliente?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.grounding_sources).toContain("quick_replies");
+    expect(complete.mock.calls[0][0].messages[0].content).toContain("Contrapiso e Ã¡gua.");
   });
 
   it("não usa exemplos nem referência de produto do learning como fato de catálogo", () => {
@@ -836,6 +1358,7 @@ describe("SalesAgentCore", () => {
     const structuredContext: AgentContext = {
       ...context,
       products: [structuredProduct],
+      catalogForValidation: [structuredProduct],
       grounding: { ...context.grounding, catalog: [structuredProduct] },
     };
     const complete = vi.fn().mockResolvedValue({
@@ -1011,7 +1534,7 @@ describe("SalesAgentCore", () => {
           approvedCoachLearnings: [],
         },
       },
-      history: [],
+      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
       leadName: null,
       model: salesModel,
     });
@@ -1124,5 +1647,42 @@ describe("SalesAgentCore", () => {
       kind: "reply",
       message: "O prazo depende do modelo e da agenda de instalação.",
     });
+  });
+
+  it("valida todos os IDs antes de limitar recomendações a três", async () => {
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "Encontrei algumas opções.",
+                      suggest_products: ["product-1", "product-1", "product-1", "product-missing"],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision.kind).toBe("reply");
+    expect(decision.message).toContain("Encontrei no catálogo");
+    expect(decision.message).not.toContain("product-missing");
+    expect(decision.suggested_products).not.toContain("product-missing");
   });
 });

@@ -13,17 +13,53 @@ vi.mock("../coach-learnings/retriever", () => ({ retrieveLearnings }));
 import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
+  selectRelevantSalesAgentCoachRules,
+  selectRelevantSalesAgentQuickReplies,
   selectRelevantSalesAgentProducts,
 } from "../sales-agent-grounding.server";
+import type { ActiveCoachRuleGrounding } from "../coach-rules/coach-rules.repository";
+import type { QuickReplyGrounding } from "../quick-replies/quick-replies.repository";
 
-function query(result: { data: unknown }) {
+function coachRule(
+  id: string,
+  category: string,
+  title: string,
+  content: string,
+): ActiveCoachRuleGrounding {
+  return {
+    ruleId: id,
+    versionId: `version-${id}`,
+    versionNumber: 1,
+    category: category as ActiveCoachRuleGrounding["category"],
+    ruleType: "instruction",
+    title,
+    content,
+    priority: 50,
+    scopeKind: "company",
+    scopeRef: {},
+  };
+}
+
+function quickReply(
+  name: string,
+  category: string,
+  content: string,
+  sort_order = 0,
+): QuickReplyGrounding {
+  return { name, category, content, sort_order };
+}
+
+function query(result: { data: unknown; error?: unknown }, reject?: Error) {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
     maybeSingle: vi.fn(),
-    then: (resolve: (value: { data: unknown }) => unknown) => Promise.resolve(resolve(result)),
+    then: (
+      resolve: (value: { data: unknown; error?: unknown }) => unknown,
+      rejectPromise: (reason: Error) => unknown,
+    ) => (reject ? rejectPromise(reject) : resolve(result)),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
@@ -35,6 +71,153 @@ function query(result: { data: unknown }) {
 
 describe("SalesAgent grounding", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("inclui regra ativa relevante e exclui regra irrelevante", () => {
+    const selected = selectRelevantSalesAgentCoachRules(
+      [
+        coachRule("payment", "payments", "Pagamento", "Informe Pix e cartão."),
+        coachRule("tone", "tone", "Tom", "Seja cordial."),
+      ],
+      [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
+    );
+
+    expect(selected.map((rule) => rule.ruleId)).toEqual(["payment"]);
+  });
+
+  it("limita regras relevantes a no mÃ¡ximo trÃªs", () => {
+    const rules = [
+      coachRule("payment", "payments", "Pagamento", "Informe pagamento e Pix."),
+      coachRule("warranty", "after_sales", "Garantia", "Explique a garantia do casco."),
+      coachRule("installation", "sales", "Instalação", "Explique a instalação e materiais."),
+      coachRule("discount", "discounts", "Desconto", "Não conceda desconto."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentCoachRules(rules, [
+        { role: "lead", text: "Quero saber pagamento, garantia, instalação e desconto" },
+      ]),
+    ).toHaveLength(3);
+  });
+
+  it("nÃ£o retorna regras sem contexto aplicÃ¡vel", () => {
+    expect(
+      selectRelevantSalesAgentCoachRules(
+        [coachRule("payment", "payments", "Pagamento", "Informe Pix.")],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejeita coincidÃªncia genÃ©rica sem sinal de tÃ³pico", () => {
+    expect(
+      selectRelevantSalesAgentCoachRules(
+        [coachRule("generic", "sales", "Orientação", "Atenda o cliente com atenção.")],
+        [{ role: "lead", text: "Olá, tudo bem?" }],
+      ),
+    ).toEqual([]);
+  });
+
+  it("encontra Por Conta do Cliente por responsabilidade e itens da obra", () => {
+    const porConta = quickReply(
+      "Por Conta do Cliente",
+      "Orçamento",
+      "Remoção da terra, água, contrapiso, energia, drenagem e materiais.",
+    );
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "Quais itens ficam por conta do cliente?" }],
+      ),
+    ).toEqual([porConta]);
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "O contrapiso e a energia ficam com quem?" }],
+      ),
+    ).toEqual([porConta]);
+  });
+
+  it("nÃ£o inclui quick reply para mensagem irrelevante", () => {
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [quickReply("Por Conta do Cliente", "Orçamento", "Água e materiais.")],
+        [{ role: "lead", text: "Olá, tudo bem?" }],
+      ),
+    ).toEqual([]);
+  });
+
+  it("nÃ£o suprime quick replies por tÃ³pico do histÃ³rico sem fonte duplicada", () => {
+    const porConta = quickReply("Por Conta do Cliente", "Orçamento", "Água e materiais.");
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [porConta],
+        [{ role: "lead", text: "Falamos de pagamento antes; agora, o que fica por conta?" }],
+      ),
+    ).toEqual([porConta]);
+  });
+
+  it("limita quick replies relevantes a no máximo duas", () => {
+    const replies = [
+      quickReply("Por Conta do Cliente", "Orçamento", "Contrapiso, água e energia."),
+      quickReply("Materiais da instalação", "Orçamento", "Materiais e drenagem."),
+      quickReply("Itens inclusos", "Orçamento", "Itens e brindes inclusos."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Quais itens, materiais e o que fica por conta do cliente?" },
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it("trunca o conteúdo selecionado sem alterar sua origem", () => {
+    const content = "contrapiso ".repeat(100);
+    const selected = selectRelevantSalesAgentQuickReplies(
+      [quickReply("Por Conta do Cliente", "Orçamento", content)],
+      [{ role: "lead", text: "O contrapiso fica por conta do cliente?" }],
+    );
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0].content).toHaveLength(500);
+    expect(selected[0].content.endsWith("…")).toBe(true);
+  });
+
+  it("nÃ£o duplica fontes estruturadas de pagamento ou garantia", () => {
+    const replies = [
+      quickReply("Pagamento", "Orçamento", "Pix, cartão e parcelamento."),
+      quickReply("Garantia", "Orçamento", "Garantia do casco."),
+    ];
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Quais formas de pagamento vocês aceitam?" },
+      ], {}, { paymentMethods: "Pix e cartão em até 10 vezes." }),
+    ).toEqual([]);
+    expect(
+      selectRelevantSalesAgentQuickReplies(replies, [
+        { role: "lead", text: "Qual é a garantia do casco?" },
+      ], {}, { guarantees: "Garantia de 10 anos para o casco." }),
+    ).toEqual([]);
+  });
+
+  it("nÃ£o duplica coach rules, playbook ou catÃ¡logo", () => {
+    const reply = quickReply("Orientação", "Orçamento", "Apresente a piscina Caribe com instalação.");
+
+    expect(
+      selectRelevantSalesAgentQuickReplies(
+        [reply],
+        [{ role: "lead", text: "Quero saber sobre a instalação da piscina Caribe." }],
+        {},
+        {
+          coachRules: [{ title: "Instalação", content: "Apresente a piscina Caribe com instalação." }],
+          playbook: "Apresente a piscina Caribe com instalação.",
+          catalog: [{ name: "Piscina Caribe", description: "Instalação inclusa." }],
+        },
+      ),
+    ).toEqual([]);
+  });
 
   it("carrega catálogo, conhecimento e regras comerciais da empresa", async () => {
     const products = query({
@@ -115,6 +298,55 @@ describe("SalesAgent grounding", () => {
     expect(products.eq).toHaveBeenCalledWith("active", true);
     expect(products.limit).not.toHaveBeenCalled();
     expect(knowledge.eq).toHaveBeenCalledWith("status", "approved");
+  });
+
+  it("usa fallback quando o catálogo falha sem derrubar o grounding", async () => {
+    const products = query({ data: null }, new Error("catalog unavailable"));
+    const knowledge = query({ data: [{ question: "Instala?", answer: "Sim.", type: "faq" }] });
+    const commercial = query({
+      data: { commercial_terms: "Entrada", payment_policy: "Pix", next_load_forecast: null },
+    });
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [],
+      faqKnowledge: [{ question: "Instala?", answer: "Sim.", type: "faq" }],
+      commercialRules: { commercialTerms: "Entrada", paymentPolicy: "Pix" },
+    });
+  });
+
+  it("preserva as demais fontes quando a FAQ retorna erro do Supabase", async () => {
+    const products = query({ data: [{ id: "product-1", name: "Piscina" }] });
+    const knowledge = query({ data: null, error: new Error("faq unavailable") });
+    const commercial = query({
+      data: { commercial_terms: "Entrada", payment_policy: "Pix", next_load_forecast: null },
+    });
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [{ id: "product-1" }],
+      faqKnowledge: [],
+      commercialRules: { commercialTerms: "Entrada", paymentPolicy: "Pix" },
+    });
+  });
+
+  it("preserva catálogo e FAQ quando as regras comerciais falham", async () => {
+    const products = query({ data: [{ id: "product-1", name: "Piscina" }] });
+    const knowledge = query({ data: [{ question: "Instala?", answer: "Sim.", type: "faq" }] });
+    const commercial = query({ data: null }, new Error("commercial unavailable"));
+    from.mockImplementation((table: string) =>
+      table === "products" ? products : table === "ai_knowledge_proposals" ? knowledge : commercial,
+    );
+
+    await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
+      catalog: [{ id: "product-1" }],
+      faqKnowledge: [{ question: "Instala?" }],
+      commercialRules: { commercialTerms: null, paymentPolicy: null, nextLoadForecast: null },
+    });
   });
 
   it("seleciona por 6 metros somente produtos reais correspondentes", () => {
@@ -412,7 +644,7 @@ describe("SalesAgent grounding", () => {
       { role: "lead", text: "Gostaria de informações das piscinas" },
     ]);
 
-    expect(listLearningCandidates).toHaveBeenCalledWith(expect.anything(), "company-1", 50);
+    expect(listLearningCandidates).toHaveBeenCalledWith(expect.anything(), "company-1", 30);
     expect(retrieveLearnings).toHaveBeenCalledWith(
       expect.objectContaining({
         companyId: "company-1",
@@ -425,6 +657,83 @@ describe("SalesAgent grounding", () => {
       positiveExample: "Claro! Qual tamanho você procura?",
       negativeExample: "Como posso ajudar?",
     });
+  });
+
+  it("limita o catálogo sem filtro a três produtos", () => {
+    const catalog = Array.from({ length: 5 }, (_, index) => ({
+      id: `product-${index}`,
+      name: `Piscina ${index + 1}`,
+      category: "Piscinas",
+      description: null,
+      price: 10_000,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    }));
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quero conhecer as opcoes" },
+      ]),
+    ).toHaveLength(3);
+  });
+
+  it("ranqueia o modelo mencionado antes de limitar as opcoes", () => {
+    const catalog = ["Outro 6", "Alto 6", "Caribe 6", "Compacto 6"].map((model) => ({
+      id: model,
+      name: `Piscina ${model}`,
+      model: null,
+      category: "Piscinas",
+      description: null,
+      price: 10_000,
+      promoPrice: null,
+      images: [],
+      notes: null,
+    }));
+
+    const selected = selectRelevantSalesAgentProducts(catalog, [
+      { role: "lead", text: "Quero uma piscina com Caribe" },
+    ]);
+
+    expect(selected).toHaveLength(3);
+    expect(selected[0].id).toBe("Caribe 6");
+  });
+
+  it("usa medida persistida para filtrar mesmo sem repeti-la no texto", () => {
+    const catalog = [
+      {
+        id: "six",
+        name: "Piscina 6x3",
+        category: "Piscinas",
+        description: null,
+        lengthM: 6,
+        widthM: 3,
+        price: 10_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "five",
+        name: "Piscina 5x3",
+        category: "Piscinas",
+        description: null,
+        lengthM: 5,
+        widthM: 3,
+        price: 9_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(
+        catalog,
+        [{ role: "lead", text: "Pode me mostrar as opcoes?" }],
+        { attributes: { lengthM: 6, widthM: 3 }, productIds: [], intent: null, lastValidProductIds: [] },
+      ).map((product) => product.id),
+    ).toEqual(["six"]);
   });
 
   it("não cria efeitos externos durante o grounding", async () => {
