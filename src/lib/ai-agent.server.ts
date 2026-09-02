@@ -338,7 +338,7 @@ export async function runAgentTurn(params: {
       12,
       supabaseAdmin,
     ).catch(() => {
-      console.warn("[SALES_AGENT_COACH_RULES_LOAD_FAILED]", { source: "coach_rules" });
+      console.warn("[SALES_AGENT_COACH_RULES_LOAD_FAILED]", { source: "coach-rules" });
       return [];
     }),
   ]);
