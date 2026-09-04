@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SalesAgentCore,
   buildSalesAgentCompletionRequest,
+  getAutomaticProductImageIds,
   hasRectangularPoolIntent,
   type AgentContext,
   type SalesAgentCompletionRequest,
@@ -92,6 +93,90 @@ const context: AgentContext = {
 context.catalogForValidation = context.grounding.catalog;
 
 describe("SalesAgentCore", () => {
+  it.each([5, 6, 7, 8, 9])("seleciona imagens dinamicamente para a medida %sm", (lengthM) => {
+    const catalog = [
+      { ...context.grounding.catalog[0], id: `pool-${lengthM}-a`, name: `Sol ${lengthM} Praia`, lengthM, images: ["same.jpg"] },
+      { ...context.grounding.catalog[0], id: `pool-${lengthM}-b`, name: `Sol ${lengthM} Classic`, lengthM, images: ["other.jpg"] },
+      { ...context.grounding.catalog[0], id: "pool-other", name: "Sol 10", lengthM: 10, images: ["other-size.jpg"] },
+    ];
+
+    expect(getAutomaticProductImageIds(
+      [{ role: "lead", text: `Quero conhecer as piscinas de ${lengthM}m` }],
+      catalog,
+    )).toEqual([`pool-${lengthM}-a`, `pool-${lengthM}-b`]);
+  });
+
+  it("prioriza a medida atual e deduplica IDs, sem disparar para pergunta genérica", () => {
+    const catalog = [
+      { ...context.grounding.catalog[0], id: "pool-5", lengthM: 5, images: ["5.jpg"] },
+      { ...context.grounding.catalog[0], id: "pool-6", lengthM: 6, images: ["6.jpg"] },
+      { ...context.grounding.catalog[0], id: "pool-6", lengthM: 6, images: ["6-duplicate.jpg"] },
+    ];
+
+    expect(getAutomaticProductImageIds(
+      [
+        { role: "lead", text: "Gostei da piscina de 5m" },
+        { role: "agent", text: "Temos a Sol 5 Praia." },
+        { role: "lead", text: "E os modelos de 6m?" },
+      ],
+      catalog,
+    )).toEqual(["pool-6"]);
+    expect(getAutomaticProductImageIds(
+      [{ role: "lead", text: "Quais modelos vocês têm?" }],
+      catalog,
+    )).toEqual([]);
+    expect(getAutomaticProductImageIds(
+      [{ role: "lead", text: "Quanto custa o modelo 500?" }],
+      catalog,
+    )).toEqual([]);
+  });
+
+  it("autoriza imagens automaticamente quando a resposta trata da medida atual", async () => {
+    const product = {
+      ...context.grounding.catalog[0],
+      id: "pool-6",
+      name: "Sol 500 Praia",
+      lengthM: 6,
+      images: ["catalog-image.jpg"],
+    };
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [{
+          message: {
+            tool_calls: [{
+              function: {
+                name: "respond_to_customer",
+                arguments: JSON.stringify({
+                  message: "Temos essa opção de 6m.",
+                  suggest_products: [product.id],
+                }),
+              },
+            }],
+          },
+        }],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: {
+        ...context,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...context.grounding, catalog: [product] },
+      },
+      history: [{ role: "lead", text: "Quero uma piscina de 6m" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      suggested_products: [product.id],
+      product_image_ids: [product.id],
+    });
+  });
+
   it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
     const correction = "Comece entendendo a necessidade do cliente antes de sugerir uma solução.";
     const complete = vi.fn(async (request: SalesAgentCompletionRequest) => {
