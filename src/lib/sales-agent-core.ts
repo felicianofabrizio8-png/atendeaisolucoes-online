@@ -8,6 +8,7 @@ import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-pla
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 import { resolveCatalogProductReference } from "./sales-agent-product-resolution";
+import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -220,6 +221,23 @@ export function getRequestedProductLength(
   if (!raw) return null;
   const parsed = Number(raw.replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function getAutomaticProductImageIds(
+  history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
+  catalog: SalesAgentGrounding["catalog"],
+): string[] {
+  const requestedLength = getRequestedProductLength(history);
+  if (requestedLength == null) return [];
+  return catalog
+    .filter(
+      (product) =>
+        product.lengthM === requestedLength &&
+        product.images.some((image) => typeof image === "string" && image.trim().length > 0),
+    )
+    .map((product) => product.id)
+    .filter((id, index, ids) => ids.indexOf(id) === index)
+    .slice(0, MAX_SALES_AGENT_PRODUCT_IMAGES);
 }
 
 function messageClaimsSpecificModel(message: string): boolean {
@@ -1129,6 +1147,10 @@ export class SalesAgentCore {
         : customerAskedAboutProducts(params.history)
           ? params.ctx.grounding.catalog
           : [];
+    const automaticProductImageIds = getAutomaticProductImageIds(
+      params.history,
+      params.ctx.grounding.catalog,
+    );
     const deterministicFallback = (reason: string): AgentDecision =>
       fallbackProducts.length > 0
         ? {
@@ -1138,7 +1160,7 @@ export class SalesAgentCore {
               includePrice: customerAskedForPrice(params.history),
             }),
             suggested_products: fallbackProducts.map((product) => product.id),
-            product_image_ids: [],
+            product_image_ids: automaticProductImageIds,
             grounding_sources: groundingSources,
             learning_ids_used: [],
           }
@@ -1255,7 +1277,11 @@ export class SalesAgentCore {
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
       ? selectedProducts.filter((product) => product.images.length > 0).map((product) => product.id)
       : [];
-    const requestedImages = [...new Set([...modelImageIds, ...promisedImageIds])]
+    const requestedImages = [...new Set([
+      ...automaticProductImageIds,
+      ...modelImageIds,
+      ...promisedImageIds,
+    ])]
       .filter((id) => (catalogById.get(id)?.images.length ?? 0) > 0)
       .slice(0, 10);
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
