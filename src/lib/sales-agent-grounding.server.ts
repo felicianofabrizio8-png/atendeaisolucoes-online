@@ -399,6 +399,29 @@ export function selectRelevantSalesAgentProducts(
 ): CatalogProduct[] {
   const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
   const normalized = normalizeCatalogText(lastLeadText);
+  const exactNameMatches = products
+    .filter((product) => {
+      const name = normalizeCatalogText(product.name).trim();
+      if (!name) return false;
+      const escapedName = name
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\s+/g, "\\s+");
+      return new RegExp(
+        `(?:^|[^\\p{L}\\p{N}])${escapedName}(?=$|[^\\p{L}\\p{N}])`,
+        "u",
+      ).test(normalized);
+    })
+    .sort(
+      (left, right) =>
+        normalizeCatalogText(right.name).trim().split(/\s+/).length -
+        normalizeCatalogText(left.name).trim().split(/\s+/).length,
+    );
+  if (exactNameMatches.length > 0) {
+    const longestNameSize = normalizeCatalogText(exactNameMatches[0].name).trim().split(/\s+/).length;
+    return exactNameMatches
+      .filter((product) => normalizeCatalogText(product.name).trim().split(/\s+/).length === longestNameSize)
+      .slice(0, SALES_AGENT_MAX_OPTIONS);
+  }
   const decimal = (value: string | undefined): number | null => {
     if (!value) return null;
     const parsed = Number(value.replace(",", "."));

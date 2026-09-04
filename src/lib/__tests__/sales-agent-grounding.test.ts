@@ -699,6 +699,104 @@ describe("SalesAgent grounding", () => {
     expect(selected[0].id).toBe("Caribe 6");
   });
 
+  it("encontra produto por nome exato normalizado", () => {
+    const catalog = [
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "sol-501",
+        name: "Sol 501 Canyon",
+        category: "Piscinas",
+        description: null,
+        price: 21_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "E a SOL 500 PRAIA, quanto está?" },
+      ]).map((product) => product.id),
+    ).toEqual(["sol-500-praia"]);
+  });
+
+  it("não trata nome semelhante como match exato", () => {
+    const catalog = [
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "sol-500-praiano",
+        name: "Sol 500 Praiano",
+        category: "Piscinas",
+        description: null,
+        price: 21_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quanto está a Sol 500 Praiano?" },
+      ]).map((product) => product.id),
+    ).toContain("sol-500-praiano");
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quanto está a Sol 500 Praiano?" },
+      ]).map((product) => product.id),
+    ).not.toContain("sol-500-praia");
+  });
+
+  it("mantém o produto encontrado por nome entre os três selecionados", () => {
+    const catalog = [
+      ...Array.from({ length: 4 }, (_, index) => ({
+        id: `other-${index}`,
+        name: `Outra piscina ${index}`,
+        category: "Piscinas",
+        description: null,
+        price: 10_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      })),
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quero saber o preço da Sol 500 Praia" },
+      ]).map((product) => product.id),
+    ).toContain("sol-500-praia");
+  });
+
   it("usa medida persistida para filtrar mesmo sem repeti-la no texto", () => {
     const catalog = [
       {
