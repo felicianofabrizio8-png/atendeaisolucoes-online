@@ -7,6 +7,7 @@ import {
 import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
+import { resolveCatalogProductReference } from "./sales-agent-product-resolution";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -636,11 +637,15 @@ function validateObjectiveProductClaims(
   if (!products) return false;
 
   const normalizedMessage = comparablePromptText(message);
-  const byMention = products.filter((product) =>
+  const resolvedProduct = resolveCatalogProductReference(message, products);
+  if (resolvedProduct.ambiguous) return false;
+  const byMention = resolvedProduct.product
+    ? [resolvedProduct.product]
+    : products.filter((product) =>
     [product.name, product.model]
       .filter((value): value is string => Boolean(value))
       .some((value) => normalizedMessage.includes(comparablePromptText(value))),
-  );
+      );
   const candidates = byMention;
   if (candidates.length === 0) return true;
 

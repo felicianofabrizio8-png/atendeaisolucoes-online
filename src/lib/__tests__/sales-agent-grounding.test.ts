@@ -797,6 +797,101 @@ describe("SalesAgent grounding", () => {
     ).toContain("sol-500-praia");
   });
 
+  it("resolve alias seguro após produto 501 ter sido selecionado", () => {
+    const catalog = [
+      {
+        id: "sol-501",
+        name: "Sol 501",
+        category: "Piscinas",
+        description: null,
+        price: 21_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(
+        catalog,
+        [
+          { role: "agent", text: "Apresentei a Sol 501", productIds: ["sol-501"] },
+          { role: "lead", text: "E a 500 praia?" },
+        ],
+        { productIds: ["sol-501"], attributes: {}, intent: null, lastValidProductIds: ["sol-501"] },
+      ).map((product) => product.id),
+    ).toEqual(["sol-500-praia"]);
+  });
+
+  it("não resolve alias ambíguo entre nomes semelhantes", () => {
+    const catalog = [
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+      {
+        id: "sol-500-praia-plus",
+        name: "Sol 500 Praia Plus",
+        category: "Piscinas",
+        description: null,
+        price: 22_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quanto está a 500 praia?" },
+      ]).map((product) => product.id),
+    ).not.toContain("sol-500-praia");
+  });
+
+  it("mantém model e SKU funcionando com alias de nome", () => {
+    const catalog = [
+      {
+        id: "sol-500-praia",
+        name: "Sol 500 Praia",
+        model: "Praia 500",
+        sku: "SOL-500-P",
+        category: "Piscinas",
+        description: null,
+        price: 20_000,
+        promoPrice: null,
+        images: [],
+        notes: null,
+      },
+    ];
+
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "Quero o modelo Praia 500" },
+      ]).map((product) => product.id),
+    ).toEqual(["sol-500-praia"]);
+    expect(
+      selectRelevantSalesAgentProducts(catalog, [
+        { role: "lead", text: "SKU SOL-500-P" },
+      ]).map((product) => product.id),
+    ).toEqual(["sol-500-praia"]);
+  });
+
   it("usa medida persistida para filtrar mesmo sem repeti-la no texto", () => {
     const catalog = [
       {

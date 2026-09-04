@@ -249,6 +249,34 @@ const validationContext: AgentContext = {
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
   });
 
+  it.each([
+    ["A 500 praia custa R$ 20.000,00.", "reply"],
+    ["A 500 praia custa R$ 99.999,00.", "catalog_unvalidated_objective_claim"],
+  ])("valida preço de alias de produto: %s", async (message, expected) => {
+    const product = {
+      ...validatedProduct,
+      name: "Sol 500 Praia",
+      price: 20_000,
+      promoPrice: null,
+    };
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products: [product],
+        catalogForValidation: [product],
+        grounding: { ...validationContext.grounding, catalog: [product] },
+      },
+      history: [
+        { role: "agent", text: "Apresentei a Sol 501" },
+        { role: "lead", text: "E a 500 praia?" },
+      ],
+      leadName: null,
+      model: salesModel,
+    });
+    expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
+  });
+
   it("não confunde price com promoPrice e aceita preço em milhares", async () => {
     const core = new SalesAgentCore(vi.fn().mockResolvedValue(
       completionWithMessage("A Piscina 6x3 custa R$ 20 mil e a promoção custa R$ 20 mil."),
