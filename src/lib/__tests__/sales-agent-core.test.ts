@@ -1412,8 +1412,7 @@ const validationContext: AgentContext = {
       suggested_products: ["sol-600", "sol-601"],
       product_image_ids: [],
     });
-    expect(decision.message).toContain("Sol 600");
-    expect(decision.message).toContain("Sol 601 Canyon");
+    expect(decision.message).toBe("Temos sim. Vou te enviar os modelos dessa medida para você conhecer!");
     expect(decision.message).not.toMatch(/dispon[ií]vel|estoque/i);
   });
 

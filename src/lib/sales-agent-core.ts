@@ -266,6 +266,33 @@ function customerAskedForPrice(history: SalesAgentCoreInput["history"]): boolean
   return /\b(?:quanto\s+(?:custa|é)|qual\s+(?:é\s+)?o\s+(?:preço|valor)|preço|valor)\b/i.test(lastLead);
 }
 
+function customerAskedForMeasureDetails(history: SalesAgentCoreInput["history"]): boolean {
+  const lastLead = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
+  const normalized = lastLead
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(?:preco|valor|dimens(?:ao|oes)|litros?|capacidade|largura|profundidade|comprimento)\b/.test(
+    normalized,
+  );
+}
+
+function shouldUseBriefMeasureReply(
+  history: SalesAgentCoreInput["history"],
+  hasCatalogMatch: boolean,
+): boolean {
+  return (
+    hasCatalogMatch &&
+    getRequestedProductLength(history) !== null &&
+    !customerAskedForPrice(history) &&
+    !customerAskedForMeasureDetails(history)
+  );
+}
+
+function buildBriefMeasureReply(): string {
+  return "Temos sim. Vou te enviar os modelos dessa medida para você conhecer!";
+}
+
 function messageHasOnlyValidatedProductFacts(
   message: string,
   selectedProducts: SalesAgentGrounding["catalog"],
@@ -993,7 +1020,7 @@ SUA MISSÃO:
 3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
 5. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
-6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
+6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Se o cliente apenas demonstrar interesse pela medida, responda em uma frase curta e natural, sem listar preços, dimensões ou litragem; só informe esses fatos se forem pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -1151,14 +1178,20 @@ export class SalesAgentCore {
       params.history,
       params.ctx.grounding.catalog,
     );
+    const shouldUseBriefReply = shouldUseBriefMeasureReply(
+      params.history,
+      lengthMatches.length > 0,
+    );
     const deterministicFallback = (reason: string): AgentDecision =>
       fallbackProducts.length > 0
         ? {
             kind: "reply",
-            message: buildValidatedCatalogReply(fallbackProducts, {
-              rectangularPoolIntent: hasRectangularPoolIntent(params.history),
-              includePrice: customerAskedForPrice(params.history),
-            }),
+            message: shouldUseBriefReply
+              ? buildBriefMeasureReply()
+              : buildValidatedCatalogReply(fallbackProducts, {
+                  rectangularPoolIntent: hasRectangularPoolIntent(params.history),
+                  includePrice: customerAskedForPrice(params.history),
+                }),
             suggested_products: fallbackProducts.map((product) => product.id),
             product_image_ids: automaticProductImageIds,
             grounding_sources: groundingSources,
@@ -1291,7 +1324,9 @@ export class SalesAgentCore {
         : null;
     return {
       kind: "reply",
-      message: reply.message,
+      message: !isSessionCorrection && shouldUseBriefReply
+        ? buildBriefMeasureReply()
+        : reply.message,
       detected_city: reply.detected_city ?? null,
       detected_state: normalizeState(reply.detected_state) ?? reply.detected_state ?? null,
       detected_pool_size: reply.detected_pool_size ?? null,
