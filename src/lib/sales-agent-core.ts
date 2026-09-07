@@ -7,7 +7,10 @@ import {
 import { SALES_AGENT_MAX_OPTIONS, SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
-import { resolveCatalogProductReference } from "./sales-agent-product-resolution";
+import {
+  getPresentedProductIds,
+  resolveCatalogProductReferenceWithContext,
+} from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 
 export type SalesAgentGroundingSource =
@@ -140,7 +143,7 @@ export interface AgentDecision {
 
 export interface SalesAgentCoreInput {
   ctx: AgentContext;
-  history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
+  history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   model: string;
   sessionCorrections?: Array<{ question: string; correction: string }>;
@@ -682,7 +685,16 @@ function validateObjectiveProductClaims(
   if (!products) return false;
 
   const normalizedMessage = comparablePromptText(message);
-  const resolvedProduct = resolveCatalogProductReference(message, products);
+  const presentedIds = getPresentedProductIds(history);
+  const presentedProducts = presentedIds.flatMap((id) => {
+    const product = products.find((candidate) => candidate.id === id);
+    return product ? [product] : [];
+  });
+  const resolvedProduct = resolveCatalogProductReferenceWithContext(
+    message,
+    products,
+    presentedProducts,
+  );
   if (resolvedProduct.ambiguous) return false;
   const byMention = resolvedProduct.product
     ? [resolvedProduct.product]

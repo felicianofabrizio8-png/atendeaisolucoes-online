@@ -317,7 +317,7 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
 
 export async function runAgentTurn(params: {
   ctx: AgentContext;
-  history: Array<{ role: "lead" | "agent" | "system"; text: string }>;
+  history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   sessionCorrections?: Array<{ question: string; correction: string }>;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;

@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
 import {
   extractSessionTrainingCorrections,
+  getTrainingMessageProductIds,
   normalizeTrainingReview,
   type SessionTrainingMessage,
 } from "./sales-training-domain";
@@ -125,7 +126,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
     try {
       const { data: rows, error: historyError } = await context.supabase
         .from("ai_training_messages" as never)
-        .select("role, content, review_status, correction_text")
+        .select("role, content, review_status, correction_text, decision")
         .eq("session_id", input.sessionId)
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
@@ -137,7 +138,14 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
       const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
       const history = sessionMessages
         .slice(-40)
-        .map((row) => ({ role: row.role, text: row.content }));
+        .map((row) => {
+          const ids = getTrainingMessageProductIds(row.decision);
+          return {
+            role: row.role,
+            text: row.content,
+            ...(ids.length > 0 ? { productIds: [...new Set(ids)] } : {}),
+          };
+        });
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const decision = runSafetyLayer(
         await runAgentTurn({
