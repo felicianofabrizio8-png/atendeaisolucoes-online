@@ -3,8 +3,24 @@ export type TrainingReviewStatus = "approved" | "rejected" | "corrected";
 export interface SessionTrainingMessage {
   role: "lead" | "agent";
   content: string;
+  decision?: {
+    suggested_products?: unknown;
+    product_image_ids?: unknown;
+    simulated_product_images?: Array<{ product_id?: unknown }>;
+  } | null;
   review_status?: TrainingReviewStatus | null;
   correction_text?: string | null;
+}
+
+export function getTrainingMessageProductIds(
+  decision: SessionTrainingMessage["decision"],
+): string[] {
+  const ids = [
+    ...(Array.isArray(decision?.suggested_products) ? decision.suggested_products : []),
+    ...(Array.isArray(decision?.product_image_ids) ? decision.product_image_ids : []),
+    ...(decision?.simulated_product_images ?? []).map((image) => image.product_id),
+  ].filter((id): id is string => typeof id === "string");
+  return [...new Set(ids)];
 }
 
 export function extractSessionTrainingCorrections(messages: SessionTrainingMessage[]) {

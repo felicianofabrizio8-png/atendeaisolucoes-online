@@ -12,7 +12,10 @@ import {
   listActiveQuickRepliesForGrounding,
   type QuickReplyGrounding,
 } from "./quick-replies/quick-replies.repository";
-import { resolveCatalogProductReference } from "./sales-agent-product-resolution";
+import {
+  getPresentedProductIds,
+  resolveCatalogProductReferenceWithContext,
+} from "./sales-agent-product-resolution";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -400,7 +403,19 @@ export function selectRelevantSalesAgentProducts(
 ): CatalogProduct[] {
   const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
   const normalized = normalizeCatalogText(lastLeadText);
-  const resolvedProduct = resolveCatalogProductReference(normalized, products);
+  const presentedIds = [
+    ...getPresentedProductIds(history),
+    ...(salesState?.productIds ?? []),
+  ].filter((id, index, ids) => ids.indexOf(id) === index);
+  const presentedProducts = presentedIds.flatMap((id) => {
+    const product = products.find((candidate) => candidate.id === id);
+    return product ? [product] : [];
+  });
+  const resolvedProduct = resolveCatalogProductReferenceWithContext(
+    normalized,
+    products,
+    presentedProducts,
+  );
   if (resolvedProduct.product) return [resolvedProduct.product];
   if (resolvedProduct.ambiguous) return [];
   const decimal = (value: string | undefined): number | null => {
