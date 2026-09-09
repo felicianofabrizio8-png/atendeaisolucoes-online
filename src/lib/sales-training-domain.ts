@@ -1,4 +1,5 @@
 export type TrainingReviewStatus = "approved" | "rejected" | "corrected";
+import type { ConversationSalesState } from "./conversation-sales-state";
 
 export interface SessionTrainingMessage {
   role: "lead" | "agent";
@@ -21,6 +22,50 @@ export function getTrainingMessageProductIds(
     ...(decision?.simulated_product_images ?? []).map((image) => image.product_id),
   ].filter((id): id is string => typeof id === "string");
   return [...new Set(ids)];
+}
+
+/**
+ * Apenas respostas não reprovadas podem servir como contexto positivo.
+ * Correções permanecem disponíveis exclusivamente via sessionCorrections.
+ */
+export function isTrainingMessageUsableInHistory(message: SessionTrainingMessage): boolean {
+  return message.role !== "agent" ||
+    message.review_status == null ||
+    message.review_status === "approved";
+}
+
+export function buildTrainingHistory(messages: SessionTrainingMessage[]) {
+  return messages
+    .filter(isTrainingMessageUsableInHistory)
+    .map((message) => {
+      const productIds =
+        message.role === "agent" ? getTrainingMessageProductIds(message.decision) : [];
+      return {
+        role: message.role,
+        text: message.content,
+        ...(productIds.length > 0 ? { productIds } : {}),
+      };
+    });
+}
+
+export function getApprovedTrainingProductIds(messages: SessionTrainingMessage[]): string[] {
+  return [...new Set(
+    messages
+      .filter((message) => message.role === "agent" && message.review_status === "approved")
+      .flatMap((message) => getTrainingMessageProductIds(message.decision)),
+  )];
+}
+
+export function rebuildTrainingStateFromValidMessages(
+  previous: ConversationSalesState,
+  messages: SessionTrainingMessage[],
+): ConversationSalesState {
+  const approvedProductIds = getApprovedTrainingProductIds(messages);
+  return {
+    ...previous,
+    productIds: approvedProductIds,
+    lastValidProductIds: approvedProductIds,
+  };
 }
 
 export function extractSessionTrainingCorrections(messages: SessionTrainingMessage[]) {

@@ -4,12 +4,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
 import {
   extractSessionTrainingCorrections,
-  getTrainingMessageProductIds,
+  buildTrainingHistory,
+  rebuildTrainingStateFromValidMessages,
   normalizeTrainingReview,
   type SessionTrainingMessage,
 } from "./sales-training-domain";
 import { loadValidatedProductImages } from "./sales-agent-product-images.server";
 import type { AgentDecision } from "./sales-agent-core";
+import { loadConversationSalesState, saveConversationSalesState } from "./conversation-sales-state.server";
 
 const SessionInput = z.object({ sessionId: z.string().uuid() });
 const SendInput = SessionInput.extend({ message: z.string().trim().min(1).max(4000) });
@@ -136,16 +138,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
       const ctx = await loadAgentContext(companyId);
       if (!ctx) throw new Error("training_context_not_found");
       const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
-      const history = sessionMessages
-        .slice(-40)
-        .map((row) => {
-          const ids = getTrainingMessageProductIds(row.decision);
-          return {
-            role: row.role,
-            text: row.content,
-            ...(ids.length > 0 ? { productIds: [...new Set(ids)] } : {}),
-          };
-        });
+      const history = buildTrainingHistory(sessionMessages).slice(-40);
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const decision = runSafetyLayer(
         await runAgentTurn({
@@ -227,10 +220,31 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .eq("company_id", companyId)
       .eq("role", "agent")
       .select(
-        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+        "id, session_id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .maybeSingle();
     if (error || !data) throw new Error("training_response_not_found");
+    if (review.status === "rejected" || review.status === "corrected") {
+      const sessionId = (data as { session_id?: string }).session_id;
+      if (!sessionId) throw new Error("training_session_not_found");
+      const { data: sessionRows, error: sessionError } = await context.supabase
+        .from("ai_training_messages" as never)
+        .select("role, content, review_status, correction_text, decision")
+        .eq("session_id", sessionId)
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: true });
+      if (sessionError) throw new Error("training_history_load_failed");
+      const scope = {
+        companyId,
+        scopeType: "training_session" as const,
+        scopeId: sessionId,
+      };
+      const currentState = await loadConversationSalesState(scope);
+      await saveConversationSalesState(
+        scope,
+        rebuildTrainingStateFromValidMessages(currentState, (sessionRows ?? []) as unknown as SessionTrainingMessage[]),
+      );
+    }
     return data as unknown as TrainingMessage;
   });
 

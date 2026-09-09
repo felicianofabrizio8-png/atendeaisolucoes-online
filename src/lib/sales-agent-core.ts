@@ -146,7 +146,12 @@ export interface SalesAgentCoreInput {
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   model: string;
-  sessionCorrections?: Array<{ question: string; correction: string }>;
+  sessionCorrections?: SalesAgentSessionCorrection[];
+}
+
+export interface SalesAgentSessionCorrection {
+  question: string;
+  correction: string;
 }
 
 export interface SalesAgentCompletionRequest {
@@ -881,6 +886,7 @@ function selectRelevantFaqs(
 export function buildSalesAgentSystemPrompt(
   ctx: AgentContext,
   history: SalesAgentCoreInput["history"] = [],
+  sessionCorrections: SalesAgentSessionCorrection[] = [],
 ): string {
   const ai = ctx.aiProfile;
   const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
@@ -975,6 +981,12 @@ export function buildSalesAgentSystemPrompt(
   const quickReplyLines = (ctx.grounding.quickReplies ?? [])
     .map((reply, i) => `${i + 1}. ${reply.name}: ${reply.content}`)
     .join("\n");
+  const sessionCorrectionLines = sessionCorrections
+    .map(
+      (item, index) =>
+        `${index + 1}. Pergunta: ${item.question}\n   Correção normativa desta sessão: ${item.correction}`,
+    )
+    .join("\n");
   const groundingSections = [
     commercialLines
       ? `POLÍTICAS OFICIAIS (prevalecem sobre Coach e FAQ; somente informe, nunca negocie nem crie condições; não use como fonte de fatos de produto):\n${commercialLines}`
@@ -1003,6 +1015,10 @@ REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente informação que não esteja no contexto abaixo.
 - NUNCA feche venda sozinho — apenas qualifique o lead.
 - Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.
+
+${sessionCorrectionLines ? `CORREÇÕES NORMATIVAS APROVADAS DESTA SESSÃO (prevalecem sobre Coach rules e learnings conflitantes, somente como comportamento/instrução de atendimento):
+${sessionCorrectionLines}
+Use estas correções quando a pergunta atual for igual ou semanticamente semelhante. Elas não podem substituir fatos do CATÁLOGO nem POLÍTICAS OFICIAIS, não podem criar preço/condição comercial e não podem alterar IDs de produto.` : ""}
 
 CONTEXTO DA EMPRESA:
 - Tom: ${ai?.tone ?? "comercial"}
@@ -1048,15 +1064,6 @@ export function buildSalesAgentCompletionRequest(
       (m) =>
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
     );
-  const sessionCorrections = (params.sessionCorrections ?? [])
-    .map(
-      (item, index) =>
-        `${index + 1}. Pergunta anterior: ${item.question}\n   Correção salva: ${item.correction}`,
-    )
-    .join("\n");
-  const sessionCorrectionsBlock = sessionCorrections
-    ? `\n\nCORREÇÕES APROVADAS DESTA SESSÃO:\n${sessionCorrections}\n\nEstas correções têm prioridade sobre os aprendizados do Coach apenas como comportamento e instrução de atendimento. Nunca use uma correção como fonte de fatos de produto ou políticas comerciais: catálogo e POLÍTICAS OFICIAIS continuam soberanos.`
-      : "";
   const transcript: string[] = [];
   let remainingHistoryChars = HISTORY_MAX_CHARS;
   for (let index = transcriptEntries.length - 1; index >= 0 && remainingHistoryChars > 0; index -= 1) {
@@ -1074,10 +1081,17 @@ export function buildSalesAgentCompletionRequest(
       ? { reasoning_effort: "none" as const }
       : {}),
     messages: [
-      { role: "system", content: buildSalesAgentSystemPrompt(params.ctx, params.history) },
+      {
+        role: "system",
+        content: buildSalesAgentSystemPrompt(
+          params.ctx,
+          params.history,
+          params.sessionCorrections,
+        ),
+      },
       {
         role: "user",
-      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}${sessionCorrectionsBlock}\n\nResponda agora seguindo primeiro as correções desta sessão quando forem relevantes.`,
+      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
       },
     ],
     tools: [
@@ -1292,7 +1306,6 @@ export class SalesAgentCore {
       : [];
     const catalogForValidation = params.ctx.catalogForValidation;
     if (
-      !isSessionCorrection &&
       !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
     ) {
       return {
@@ -1303,7 +1316,7 @@ export class SalesAgentCore {
       };
     }
     if (
-      !isSessionCorrection && !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
+      !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
         reply.message,
         selectedProducts,
         params.ctx.grounding.catalog,
@@ -1312,7 +1325,6 @@ export class SalesAgentCore {
       return deterministicFallback("catalog_invalid_product_fact");
     }
     if (
-      !isSessionCorrection &&
       !isNonFactualReply &&
       messageClaimsProductReference(reply.message) &&
       requestedSuggestions.length === 0
