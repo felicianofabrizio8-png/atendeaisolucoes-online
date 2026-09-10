@@ -2,9 +2,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  buildTrainingHistory,
   extractSessionTrainingCorrections,
+  getApprovedTrainingProductIds,
   getTrainingLearningDiagnostics,
+  isTrainingMessageUsableInHistory,
   normalizeTrainingReview,
+  rebuildTrainingStateFromValidMessages,
 } from "../sales-training-domain";
 
 const functionsSource = readFileSync(
@@ -124,6 +128,85 @@ describe("Sales training contract", () => {
     ]);
     expect(functionsSource).toContain("extractSessionTrainingCorrections(sessionMessages)");
     expect(functionsSource).toContain("sessionCorrections,");
+  });
+
+  it("não usa resposta rejeitada/corrigida como exemplo positivo nem seus productIds", () => {
+    const history = buildTrainingHistory([
+      { role: "lead", content: "Qual modelo você recomenda?" },
+      {
+        role: "agent",
+        content: "Resposta errada",
+        review_status: "rejected",
+        decision: { suggested_products: ["bad-product"] },
+      },
+      {
+        role: "agent",
+        content: "Resposta corrigida",
+        review_status: "corrected",
+        correction_text: "Resposta correta",
+        decision: { suggested_products: ["also-bad-product"] },
+      },
+      {
+        role: "agent",
+        content: "Resposta aprovada",
+        review_status: "approved",
+        decision: { suggested_products: ["valid-product"] },
+      },
+    ]);
+
+    expect(history).toEqual([
+      { role: "lead", text: "Qual modelo você recomenda?" },
+      { role: "agent", text: "Resposta aprovada", productIds: ["valid-product"] },
+    ]);
+    expect(isTrainingMessageUsableInHistory({
+      role: "agent",
+      content: "Resposta errada",
+      review_status: "rejected",
+    })).toBe(false);
+    expect(isTrainingMessageUsableInHistory({
+      role: "agent",
+      content: "Resposta corrigida",
+      review_status: "corrected",
+    })).toBe(false);
+  });
+
+  it("reconstrói estado contaminado somente com IDs de respostas aprovadas", () => {
+    const messages = [
+      { role: "lead" as const, content: "Quais modelos?" },
+      {
+        role: "agent" as const,
+        content: "Errado",
+        review_status: "rejected" as const,
+        decision: { suggested_products: ["rejected-id"] },
+      },
+      {
+        role: "agent" as const,
+        content: "Válido",
+        review_status: "approved" as const,
+        decision: { suggested_products: ["approved-id"] },
+      },
+    ];
+    const rebuilt = rebuildTrainingStateFromValidMessages(
+      {
+        productIds: ["rejected-id"],
+        attributes: { lengthM: 6 },
+        intent: "product_inquiry",
+        lastValidProductIds: ["rejected-id"],
+      },
+      messages,
+    );
+    expect(getApprovedTrainingProductIds(messages)).toEqual(["approved-id"]);
+    expect(rebuilt).toMatchObject({
+      productIds: ["approved-id"],
+      lastValidProductIds: ["approved-id"],
+      attributes: { lengthM: 6 },
+    });
+  });
+
+  it("mantém o escopo training_session e o company_id na reconstrução", () => {
+    expect(functionsSource).toContain('scopeType: "training_session" as const');
+    expect(functionsSource).toContain("companyId,");
+    expect(functionsSource).toContain('.eq("company_id", companyId)');
   });
 
   it("promove correção em duas etapas e só ativa após aprovação explícita", () => {

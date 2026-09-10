@@ -254,6 +254,9 @@ export type Database = {
         Row: {
           company_id: string
           content: string
+          correction_domain: string | null
+          correction_intent: string | null
+          correction_conflict_key: string | null
           correction_text: string | null
           created_at: string
           decision: Json | null
@@ -271,6 +274,9 @@ export type Database = {
         Insert: {
           company_id: string
           content: string
+          correction_domain?: string | null
+          correction_intent?: string | null
+          correction_conflict_key?: string | null
           correction_text?: string | null
           created_at?: string
           decision?: Json | null
@@ -288,6 +294,9 @@ export type Database = {
         Update: {
           company_id?: string
           content?: string
+          correction_domain?: string | null
+          correction_intent?: string | null
+          correction_conflict_key?: string | null
           correction_text?: string | null
           created_at?: string
           decision?: Json | null
@@ -1465,9 +1474,12 @@ export type Database = {
           confidence: number
           content_hash: string
           created_at: string
+          domain: string | null
+          conflict_key: string | null
           description: string
           feedback_sample_count: number
           id: string
+          intent: string | null
           last_feedback_at: string | null
           last_negative_feedback_at: string | null
           last_positive_feedback_at: string | null
@@ -1483,6 +1495,7 @@ export type Database = {
           product_ref: string | null
           rule_structured: string
           source_conversation_id: string | null
+          source_training_message_id: string | null
           status: string
           success_rate: number
           taught_by: string | null
@@ -1500,9 +1513,12 @@ export type Database = {
           confidence?: number
           content_hash: string
           created_at?: string
+          domain?: string | null
+          conflict_key?: string | null
           description: string
           feedback_sample_count?: number
           id?: string
+          intent?: string | null
           last_feedback_at?: string | null
           last_negative_feedback_at?: string | null
           last_positive_feedback_at?: string | null
@@ -1518,6 +1534,7 @@ export type Database = {
           product_ref?: string | null
           rule_structured: string
           source_conversation_id?: string | null
+          source_training_message_id?: string | null
           status?: string
           success_rate?: number
           taught_by?: string | null
@@ -1535,9 +1552,12 @@ export type Database = {
           confidence?: number
           content_hash?: string
           created_at?: string
+          domain?: string | null
+          conflict_key?: string | null
           description?: string
           feedback_sample_count?: number
           id?: string
+          intent?: string | null
           last_feedback_at?: string | null
           last_negative_feedback_at?: string | null
           last_positive_feedback_at?: string | null
@@ -1553,6 +1573,7 @@ export type Database = {
           product_ref?: string | null
           rule_structured?: string
           source_conversation_id?: string | null
+          source_training_message_id?: string | null
           status?: string
           success_rate?: number
           taught_by?: string | null
@@ -2017,7 +2038,10 @@ export type Database = {
           company_id: string
           created_at: string
           created_by: string
+          domain: string | null
+          conflict_key: string | null
           id: string
+          intent: string | null
           paused_at: string | null
           priority: number
           replaced_at: string | null
@@ -2038,6 +2062,9 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by: string
+          domain?: string | null
+          intent?: string | null
+          conflict_key?: string | null
           id?: string
           paused_at?: string | null
           priority?: number
@@ -2059,6 +2086,9 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by?: string
+          domain?: string | null
+          intent?: string | null
+          conflict_key?: string | null
           id?: string
           paused_at?: string | null
           priority?: number
@@ -4315,6 +4345,7 @@ export type Database = {
           category: string | null
           company_id: string
           content: string
+          conflict_key: string | null
           created_at: string
           icon: string | null
           id: string
@@ -4327,6 +4358,7 @@ export type Database = {
           category?: string | null
           company_id: string
           content: string
+          conflict_key?: string | null
           created_at?: string
           icon?: string | null
           id?: string
@@ -4339,6 +4371,7 @@ export type Database = {
           category?: string | null
           company_id?: string
           content?: string
+          conflict_key?: string | null
           created_at?: string
           icon?: string | null
           id?: string

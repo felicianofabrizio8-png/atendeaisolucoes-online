@@ -131,4 +131,31 @@ describe("resolução contextual de produtos", () => {
     });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
+
+  it("não permite que a correção da sessão bypass o preço do catálogo", async () => {
+    const correction = "A 401 custa R$ 99.000.";
+    const complete = async () => ({
+      ok: true as const,
+      data: {
+        choices: [{
+          message: {
+            tool_calls: [{
+              function: {
+                name: "respond_to_customer",
+                arguments: JSON.stringify({ message: correction, suggest_products: ["a"] }),
+              },
+            }],
+          },
+        }],
+      },
+    });
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: coreContext(catalog.slice(0, 2)),
+      history: [{ role: "lead", text: "Qual o valor da 401?" }],
+      leadName: null,
+      model: "provider/sales-model",
+      sessionCorrections: [{ question: "Qual o valor da 401?", correction }],
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+  });
 });

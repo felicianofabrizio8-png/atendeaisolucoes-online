@@ -4,12 +4,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
 import {
   extractSessionTrainingCorrections,
-  getTrainingMessageProductIds,
+  buildTrainingHistory,
+  rebuildTrainingStateFromValidMessages,
   normalizeTrainingReview,
   type SessionTrainingMessage,
 } from "./sales-training-domain";
 import { loadValidatedProductImages } from "./sales-agent-product-images.server";
 import type { AgentDecision } from "./sales-agent-core";
+import { loadConversationSalesState, saveConversationSalesState } from "./conversation-sales-state.server";
 
 const SessionInput = z.object({ sessionId: z.string().uuid() });
 const SendInput = SessionInput.extend({ message: z.string().trim().min(1).max(4000) });
@@ -17,6 +19,9 @@ const ReviewInput = z.object({
   messageId: z.string().uuid(),
   status: z.enum(["approved", "rejected", "corrected"]),
   correctionText: z.string().trim().min(1).max(4000).nullable().optional(),
+  correctionDomain: z.string().trim().min(1).max(120).nullable().optional(),
+  correctionIntent: z.string().trim().min(1).max(120).nullable().optional(),
+  correctionConflictKey: z.string().trim().min(1).max(240).nullable().optional(),
 });
 const TrainingLearningInput = z.object({ messageId: z.string().uuid() });
 
@@ -26,6 +31,9 @@ export interface TrainingMessage {
   content: string;
   review_status: "approved" | "rejected" | "corrected" | null;
   correction_text: string | null;
+  correction_domain: string | null;
+  correction_intent: string | null;
+  correction_conflict_key: string | null;
   promoted_learning_id: string | null;
   learning_promotion_status: "pending" | "approved" | null;
   generation_status: "pending" | "completed" | "failed";
@@ -93,7 +101,7 @@ export const getTrainingSession = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("ai_training_messages" as never)
       .select(
-        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+        "id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .eq("session_id", input.sessionId)
       .eq("company_id", companyId)
@@ -126,7 +134,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
     try {
       const { data: rows, error: historyError } = await context.supabase
         .from("ai_training_messages" as never)
-        .select("role, content, review_status, correction_text, decision")
+        .select("role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, decision")
         .eq("session_id", input.sessionId)
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
@@ -136,16 +144,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
       const ctx = await loadAgentContext(companyId);
       if (!ctx) throw new Error("training_context_not_found");
       const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
-      const history = sessionMessages
-        .slice(-40)
-        .map((row) => {
-          const ids = getTrainingMessageProductIds(row.decision);
-          return {
-            role: row.role,
-            text: row.content,
-            ...(ids.length > 0 ? { productIds: [...new Set(ids)] } : {}),
-          };
-        });
+      const history = buildTrainingHistory(sessionMessages).slice(-40);
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const decision = runSafetyLayer(
         await runAgentTurn({
@@ -189,7 +188,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           generation_status: "completed",
         } as never)
         .select(
-          "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+          "id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
         )
         .single();
       if (agentError || !saved) throw new Error("training_response_save_failed");
@@ -220,6 +219,9 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .update({
         review_status: review.status,
         correction_text: review.correctionText,
+        correction_domain: input.correctionDomain ?? null,
+        correction_intent: input.correctionIntent ?? null,
+        correction_conflict_key: input.correctionConflictKey ?? null,
         reviewed_at: new Date().toISOString(),
         reviewed_by: context.userId,
       } as never)
@@ -227,10 +229,31 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .eq("company_id", companyId)
       .eq("role", "agent")
       .select(
-        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+        "id, session_id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .maybeSingle();
     if (error || !data) throw new Error("training_response_not_found");
+    if (review.status === "rejected" || review.status === "corrected") {
+      const sessionId = (data as { session_id?: string }).session_id;
+      if (!sessionId) throw new Error("training_session_not_found");
+      const { data: sessionRows, error: sessionError } = await context.supabase
+        .from("ai_training_messages" as never)
+        .select("role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, decision")
+        .eq("session_id", sessionId)
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: true });
+      if (sessionError) throw new Error("training_history_load_failed");
+      const scope = {
+        companyId,
+        scopeType: "training_session" as const,
+        scopeId: sessionId,
+      };
+      const currentState = await loadConversationSalesState(scope);
+      await saveConversationSalesState(
+        scope,
+        rebuildTrainingStateFromValidMessages(currentState, (sessionRows ?? []) as unknown as SessionTrainingMessage[]),
+      );
+    }
     return data as unknown as TrainingMessage;
   });
 
@@ -245,7 +268,7 @@ async function promoteTrainingLearning(
   if (error) throw new Error(rpc === "create_training_learning_candidate" ? "training_learning_candidate_failed" : "training_learning_approval_failed");
   const { data, error: loadError } = await supabase
     .from("ai_training_messages" as never)
-    .select("id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at")
+    .select("id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at")
     .eq("id", messageId)
     .eq("company_id", companyId)
     .eq("role", "agent")

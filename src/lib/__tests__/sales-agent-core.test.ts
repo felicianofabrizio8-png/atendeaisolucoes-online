@@ -180,15 +180,16 @@ describe("SalesAgentCore", () => {
   it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
     const correction = "Comece entendendo a necessidade do cliente antes de sugerir uma solução.";
     const complete = vi.fn(async (request: SalesAgentCompletionRequest) => {
-      const prompt = request.messages[1].content;
-      expect(prompt).toContain("CORREÇÕES APROVADAS DESTA SESSÃO");
-      expect(prompt).toContain("Como devo começar o atendimento?");
-      expect(prompt).toContain(correction);
-      expect(prompt.indexOf("Conversa até agora")).toBeLessThan(
-        prompt.indexOf("CORREÇÕES APROVADAS DESTA SESSÃO"),
+      const prompt = request.messages[0].content;
+      expect(prompt).toContain("NORMATIVAS APROVADAS");
+      expect(prompt).toContain("Como devo");
+      expect(prompt).toContain("Comece entendendo");
+      expect(request.messages[1].content).not.toContain(correction);
+      expect(prompt).toContain("prevalecem sobre Coach rules e learnings conflitantes");
+      expect(prompt).toContain("não podem substituir fatos do CATÁLOGO nem POLÍTICAS OFICIAIS");
+      expect(prompt.indexOf("NORMATIVAS APROVADAS")).toBeLessThan(
+        prompt.indexOf("APRENDIZADOS ATIVOS DO COACH"),
       );
-      expect(prompt).toContain("prioridade sobre os aprendizados do Coach");
-      expect(prompt).toContain("catálogo e POLÍTICAS OFICIAIS continuam soberanos");
       return {
         ok: true as const,
         data: {

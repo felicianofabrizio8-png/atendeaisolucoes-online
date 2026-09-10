@@ -16,6 +16,7 @@ import {
   getPresentedProductIds,
   resolveCatalogProductReferenceWithContext,
 } from "./sales-agent-product-resolution";
+import { resolvePersistedSalesAgentLearnings } from "./sales-agent-normative-resolver";
 
 export type AgentHistory = Array<{
   role: "lead" | "agent" | "system";
@@ -577,6 +578,11 @@ function mapLearning(learning: Awaited<ReturnType<typeof listLearningCandidates>
     negativeExample: learning.negative_example,
     priority: learning.priority,
     confidence: learning.confidence,
+    companyId: learning.company_id,
+    domain: learning.domain ?? null,
+    intent: learning.intent ?? null,
+    conflictKey: learning.conflict_key ?? null,
+    sourceTrainingMessageId: learning.source_training_message_id ?? null,
   };
 }
 
@@ -605,6 +611,12 @@ export async function loadRelevantSalesAgentLearnings(
   history: AgentHistory,
 ): Promise<SalesAgentGrounding["approvedCoachLearnings"]> {
   const candidates = await listLearningCandidates(supabaseAdmin, companyId, 30);
+  const resolvedCandidateIds = new Set(
+    resolvePersistedSalesAgentLearnings(companyId, candidates.map(mapLearning)).map(
+      (learning) => learning.id,
+    ),
+  );
+  const resolvedCandidates = candidates.filter((learning) => resolvedCandidateIds.has(learning.id));
   let lastLeadIndex = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     if (history[index].role === "lead") {
@@ -618,7 +630,7 @@ export async function loadRelevantSalesAgentLearnings(
     companyId,
     currentMessage,
     recentMessages,
-    candidates,
+    candidates: resolvedCandidates,
     maxSelected: 5,
   });
   return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
