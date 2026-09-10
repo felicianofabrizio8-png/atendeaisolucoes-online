@@ -77,6 +77,11 @@ export interface SalesAgentGrounding {
     negativeExample: string | null;
     priority: number;
     confidence: number;
+    companyId?: string | null;
+    domain?: string | null;
+    intent?: string | null;
+    conflictKey?: string | null;
+    sourceTrainingMessageId?: string | null;
   }>;
   activeCoachRules?: ActiveCoachRuleGrounding[];
   quickReplies?: QuickReplyGrounding[];
@@ -152,6 +157,10 @@ export interface SalesAgentCoreInput {
 export interface SalesAgentSessionCorrection {
   question: string;
   correction: string;
+  companyId?: string | null;
+  domain?: string | null;
+  intent?: string | null;
+  conflictKey?: string | null;
 }
 
 export interface SalesAgentCompletionRequest {

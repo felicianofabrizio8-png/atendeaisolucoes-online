@@ -60,6 +60,10 @@ export interface CoachLearningRow {
   company_id: string;
   category: string;
   product_ref: string | null;
+  domain?: string | null;
+  intent?: string | null;
+  conflict_key?: string | null;
+  source_training_message_id?: string | null;
   title: string;
   description: string;
   rule_structured: string;

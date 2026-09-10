@@ -19,6 +19,9 @@ const ReviewInput = z.object({
   messageId: z.string().uuid(),
   status: z.enum(["approved", "rejected", "corrected"]),
   correctionText: z.string().trim().min(1).max(4000).nullable().optional(),
+  correctionDomain: z.string().trim().min(1).max(120).nullable().optional(),
+  correctionIntent: z.string().trim().min(1).max(120).nullable().optional(),
+  correctionConflictKey: z.string().trim().min(1).max(240).nullable().optional(),
 });
 const TrainingLearningInput = z.object({ messageId: z.string().uuid() });
 
@@ -28,6 +31,9 @@ export interface TrainingMessage {
   content: string;
   review_status: "approved" | "rejected" | "corrected" | null;
   correction_text: string | null;
+  correction_domain: string | null;
+  correction_intent: string | null;
+  correction_conflict_key: string | null;
   promoted_learning_id: string | null;
   learning_promotion_status: "pending" | "approved" | null;
   generation_status: "pending" | "completed" | "failed";
@@ -95,7 +101,7 @@ export const getTrainingSession = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("ai_training_messages" as never)
       .select(
-        "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+        "id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .eq("session_id", input.sessionId)
       .eq("company_id", companyId)
@@ -128,7 +134,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
     try {
       const { data: rows, error: historyError } = await context.supabase
         .from("ai_training_messages" as never)
-        .select("role, content, review_status, correction_text, decision")
+        .select("role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, decision")
         .eq("session_id", input.sessionId)
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
@@ -182,7 +188,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           generation_status: "completed",
         } as never)
         .select(
-          "id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+          "id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
         )
         .single();
       if (agentError || !saved) throw new Error("training_response_save_failed");
@@ -213,6 +219,9 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .update({
         review_status: review.status,
         correction_text: review.correctionText,
+        correction_domain: input.correctionDomain ?? null,
+        correction_intent: input.correctionIntent ?? null,
+        correction_conflict_key: input.correctionConflictKey ?? null,
         reviewed_at: new Date().toISOString(),
         reviewed_by: context.userId,
       } as never)
@@ -220,7 +229,7 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       .eq("company_id", companyId)
       .eq("role", "agent")
       .select(
-        "id, session_id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
+        "id, session_id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at",
       )
       .maybeSingle();
     if (error || !data) throw new Error("training_response_not_found");
@@ -229,7 +238,7 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
       if (!sessionId) throw new Error("training_session_not_found");
       const { data: sessionRows, error: sessionError } = await context.supabase
         .from("ai_training_messages" as never)
-        .select("role, content, review_status, correction_text, decision")
+        .select("role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, decision")
         .eq("session_id", sessionId)
         .eq("company_id", companyId)
         .order("created_at", { ascending: true });
@@ -259,7 +268,7 @@ async function promoteTrainingLearning(
   if (error) throw new Error(rpc === "create_training_learning_candidate" ? "training_learning_candidate_failed" : "training_learning_approval_failed");
   const { data, error: loadError } = await supabase
     .from("ai_training_messages" as never)
-    .select("id, role, content, review_status, correction_text, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at")
+    .select("id, role, content, review_status, correction_text, correction_domain, correction_intent, correction_conflict_key, promoted_learning_id, learning_promotion_status, generation_status, generation_error, decision, created_at")
     .eq("id", messageId)
     .eq("company_id", companyId)
     .eq("role", "agent")

@@ -119,6 +119,10 @@ export interface ActiveCoachRuleGrounding {
   priority: number;
   scopeKind: CoachRuleScopeKind;
   scopeRef: Database["public"]["Tables"]["coach_rules"]["Row"]["scope_ref"];
+  companyId?: string | null;
+  domain?: string | null;
+  intent?: string | null;
+  conflictKey?: string | null;
 }
 
 // ------------------------------------------------------------------
@@ -141,7 +145,7 @@ export async function listActiveCoachRulesForGrounding(
   const safeLimit = Math.min(50, Math.max(1, limit));
   const { data: rules, error: rulesError } = await client
     .from("coach_rules")
-    .select("id, active_version_id, category, priority")
+    .select("id, active_version_id, category, priority, company_id, domain, intent, conflict_key")
     .eq("company_id", companyId)
     .eq("status", "active")
     .order("priority", { ascending: false })
@@ -151,7 +155,7 @@ export async function listActiveCoachRulesForGrounding(
   const activeRules = (rules ?? []).filter(
     (
       rule,
-    ): rule is Pick<CoachRuleRow, "id" | "active_version_id" | "category" | "priority"> & {
+    ): rule is Pick<CoachRuleRow, "id" | "active_version_id" | "category" | "priority" | "company_id" | "domain" | "intent" | "conflict_key"> & {
       active_version_id: string;
     } =>
       typeof rule.active_version_id === "string",
@@ -191,6 +195,10 @@ export async function listActiveCoachRulesForGrounding(
       priority: version.priority ?? rule.priority,
       scopeKind: version.scope_kind,
       scopeRef: version.scope_ref,
+      companyId: rule.company_id,
+      domain: rule.domain,
+      intent: rule.intent,
+      conflictKey: rule.conflict_key,
     }];
   });
 }

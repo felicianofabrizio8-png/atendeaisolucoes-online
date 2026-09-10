@@ -52,7 +52,7 @@ describe("listActiveQuickRepliesForGrounding", () => {
     const builder = query(rows);
     const client = { from: vi.fn().mockReturnValue(builder) } as unknown as SupabaseClient<any>;
 
-    await expect(listActiveQuickRepliesForGrounding("company-1", client)).resolves.toEqual(rows);
-    expect(builder.select).toHaveBeenCalledWith("name, category, content, sort_order");
+    await expect(listActiveQuickRepliesForGrounding("company-1", client)).resolves.toMatchObject(rows);
+    expect(builder.select).toHaveBeenCalledWith("name, category, content, sort_order, company_id, conflict_key");
   });
 });

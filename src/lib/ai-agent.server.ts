@@ -48,6 +48,8 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
+import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 
@@ -319,7 +321,7 @@ export async function runAgentTurn(params: {
   ctx: AgentContext;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
-  sessionCorrections?: Array<{ question: string; correction: string }>;
+  sessionCorrections?: NormativeCorrection[];
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
   qualification?: {
     detected_pool_size: string | null;
@@ -355,6 +357,18 @@ export async function runAgentTurn(params: {
     params.history,
     qualificationContext,
   );
+  const baseNormative = resolveSalesAgentNormativeContext({
+    companyId: params.ctx.settings.company_id,
+    context: {
+      ...params.ctx,
+      grounding: {
+        ...params.ctx.grounding,
+        approvedCoachLearnings,
+        activeCoachRules: relevantCoachRules,
+      },
+    },
+    sessionCorrections: params.sessionCorrections,
+  });
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
@@ -382,13 +396,27 @@ export async function runAgentTurn(params: {
     {
       paymentMethods: params.ctx.grounding.commercialRules.paymentMethods,
       guarantees: null,
-      coachRules: activeCoachRules,
+      coachRules: baseNormative.grounding.activeCoachRules,
       playbook: SALES_AGENT_PLAYBOOK,
       catalog: params.ctx.grounding.catalog,
     },
   );
+  const normative = resolveSalesAgentNormativeContext({
+    companyId: params.ctx.settings.company_id,
+    context: {
+      ...params.ctx,
+      grounding: {
+        ...params.ctx.grounding,
+        approvedCoachLearnings: baseNormative.grounding.approvedCoachLearnings,
+        activeCoachRules: baseNormative.grounding.activeCoachRules,
+        quickReplies: relevantQuickReplies,
+      },
+    },
+    sessionCorrections: baseNormative.sessionCorrections,
+  });
   const contextualParams = {
     ...params,
+    sessionCorrections: normative.sessionCorrections,
     ctx: {
       ...params.ctx,
       catalogForValidation: params.ctx.grounding.catalog,
@@ -396,9 +424,9 @@ export async function runAgentTurn(params: {
       grounding: {
         ...params.ctx.grounding,
         catalog: relevantCatalog,
-        approvedCoachLearnings,
-        activeCoachRules: relevantCoachRules,
-        quickReplies: relevantQuickReplies,
+        approvedCoachLearnings: normative.grounding.approvedCoachLearnings,
+        activeCoachRules: normative.grounding.activeCoachRules,
+        quickReplies: normative.grounding.quickReplies,
       },
     },
   };

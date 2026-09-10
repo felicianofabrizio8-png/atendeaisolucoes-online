@@ -11,6 +11,9 @@ export interface SessionTrainingMessage {
   } | null;
   review_status?: TrainingReviewStatus | null;
   correction_text?: string | null;
+  correction_domain?: string | null;
+  correction_intent?: string | null;
+  correction_conflict_key?: string | null;
 }
 
 export function getTrainingMessageProductIds(
@@ -70,7 +73,13 @@ export function rebuildTrainingStateFromValidMessages(
 
 export function extractSessionTrainingCorrections(messages: SessionTrainingMessage[]) {
   let lastLeadQuestion: string | null = null;
-  const corrections: Array<{ question: string; correction: string }> = [];
+  const corrections: Array<{
+    question: string;
+    correction: string;
+    domain?: string | null;
+    intent?: string | null;
+    conflictKey?: string | null;
+  }> = [];
 
   for (const message of messages) {
     if (message.role === "lead") {
@@ -79,7 +88,13 @@ export function extractSessionTrainingCorrections(messages: SessionTrainingMessa
     }
     const correction = message.correction_text?.trim();
     if (message.review_status === "corrected" && correction && lastLeadQuestion) {
-      corrections.push({ question: lastLeadQuestion, correction });
+      corrections.push({
+        question: lastLeadQuestion,
+        correction,
+        ...(message.correction_domain ? { domain: message.correction_domain } : {}),
+        ...(message.correction_intent ? { intent: message.correction_intent } : {}),
+        ...(message.correction_conflict_key ? { conflictKey: message.correction_conflict_key } : {}),
+      });
     }
   }
 
