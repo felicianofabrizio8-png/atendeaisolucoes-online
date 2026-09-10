@@ -28,7 +28,7 @@ BEGIN
     ALTER TABLE public.coach_learnings ADD CONSTRAINT coach_learnings_source_training_company_fk
       FOREIGN KEY (source_training_message_id, company_id)
       REFERENCES public.ai_training_messages(id, company_id)
-      ON DELETE SET NULL (source_training_message_id);
+      ON DELETE SET NULL;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
