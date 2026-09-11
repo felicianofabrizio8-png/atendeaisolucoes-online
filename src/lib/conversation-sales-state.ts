@@ -5,6 +5,9 @@ export interface ConversationProductAttributes {
   widthM?: number;
   depthM?: number;
   capacityL?: number;
+  spaceLengthM?: number;
+  spaceWidthM?: number;
+  sizeComparison?: "larger" | "smaller";
   shape?: string;
   variantTerms?: string[];
 }

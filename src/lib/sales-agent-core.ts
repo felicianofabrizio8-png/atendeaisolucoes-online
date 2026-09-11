@@ -227,6 +227,8 @@ export function getRequestedProductLength(
   const dimension = /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*\d{1,2}(?:[.,]\d+)?/.exec(
     normalized,
   );
+  const dimensionIsSpace =
+    dimension && /\b(?:espaco|terreno|area|quintal|local)\b[^\d]{0,18}$/.test(normalized.slice(0, dimension.index));
   const explicit = /comprimento\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
     normalized,
   );
@@ -234,7 +236,7 @@ export function getRequestedProductLength(
   const generic = mentionsOtherDimension
     ? null
     : /(?:^|\D)(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/.exec(normalized);
-  const raw = dimension?.[1] ?? explicit?.[1] ?? generic?.[1];
+  const raw = dimensionIsSpace ? explicit?.[1] : dimension?.[1] ?? explicit?.[1] ?? generic?.[1];
   if (!raw) return null;
   const parsed = Number(raw.replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;

@@ -373,6 +373,8 @@ export function extractCurrentProductAttributes(
   const depth = /profundidade\s*(?:de)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)?\b/.exec(
     normalized,
   );
+  const dimensionPrefix = dimension ? normalized.slice(0, dimension.index) : "";
+  const dimensionIsSpace = /\b(?:espaco|terreno|area|quintal|local)\b[^\d]{0,18}$/.test(dimensionPrefix);
   const capacity = /(\d+(?:[.,]\d+)?)\s*(mil\s*)?(?:l|litros?)\b/.exec(normalized);
   const capacityBase = decimal(capacity?.[1]);
   const variant = /\b(?:cor|variante)\s+(?:(?:na|em|de)\s+)?([\p{L}\d-]+)/u.exec(normalized);
@@ -381,9 +383,22 @@ export function extractCurrentProductAttributes(
     ? "retangular"
     : (["retangular", "redond", "oval"].find((term) => normalized.includes(term)) ?? undefined);
   const lengthM = getRequestedProductLength(history);
+  const sizeComparison = /\b(?:maior(?:es)?|mais\s+espaco|aproveitar\s+mais\s+(?:o\s+)?espaco)\b/.test(
+    normalized,
+  )
+    ? "larger"
+    : /\b(?:menor(?:es)?|menos\s+espaco)\b/.test(normalized)
+      ? "smaller"
+      : undefined;
   return {
-    ...(lengthM != null ? { lengthM } : {}),
-    ...(decimal(dimension?.[2] ?? width?.[1]) != null
+    ...(dimensionIsSpace && decimal(dimension?.[1]) != null
+      ? { spaceLengthM: decimal(dimension?.[1]) }
+      : lengthM != null
+        ? { lengthM }
+        : {}),
+    ...(dimensionIsSpace && decimal(dimension?.[2]) != null
+      ? { spaceWidthM: decimal(dimension?.[2]) }
+      : decimal(dimension?.[2] ?? width?.[1]) != null
       ? { widthM: decimal(dimension?.[2] ?? width?.[1]) }
       : {}),
     ...(decimal(dimension?.[3] ?? depth?.[1]) != null
@@ -393,6 +408,7 @@ export function extractCurrentProductAttributes(
       ? { capacityL: capacityBase * (capacity?.[2] ? 1_000 : 1) }
       : {}),
     ...(shape ? { shape } : {}),
+    ...(sizeComparison ? { sizeComparison } : {}),
     ...(variant?.[1] ? { variantTerms: [variant[1]] } : {}),
   };
 }
@@ -407,6 +423,7 @@ export function selectRelevantSalesAgentProducts(
   const presentedIds = [
     ...getPresentedProductIds(history),
     ...(salesState?.productIds ?? []),
+    ...(salesState?.lastValidProductIds ?? []),
   ].filter((id, index, ids) => ids.indexOf(id) === index);
   const presentedProducts = presentedIds.flatMap((id) => {
     const product = products.find((candidate) => candidate.id === id);
@@ -430,6 +447,9 @@ export function selectRelevantSalesAgentProducts(
   const requestedLength = effectiveAttributes.lengthM ?? null;
   const requestedWidth = effectiveAttributes.widthM ?? null;
   const requestedDepth = effectiveAttributes.depthM ?? null;
+  const spaceLength = effectiveAttributes.spaceLengthM ?? null;
+  const spaceWidth = effectiveAttributes.spaceWidthM ?? null;
+  const sizeComparison = currentAttributes.sizeComparison ?? null;
   const requestedCapacityBase = decimal(capacityMatch?.[1]);
   const requestedCapacity =
     effectiveAttributes.capacityL ??
@@ -461,6 +481,15 @@ export function selectRelevantSalesAgentProducts(
     ? products.filter((product) => selectedIds.has(product.id))
     : products;
   let hasStructuredFilter = false;
+  if (spaceLength != null || spaceWidth != null) {
+    hasStructuredFilter = true;
+    candidates = candidates.filter((product) =>
+      product.lengthM != null &&
+      product.widthM != null &&
+      (spaceLength == null || product.lengthM <= spaceLength) &&
+      (spaceWidth == null || product.widthM <= spaceWidth),
+    );
+  }
   if (requestedLength != null) {
     hasStructuredFilter = true;
     candidates = candidates.filter((product) => product.lengthM === requestedLength);
@@ -478,8 +507,24 @@ export function selectRelevantSalesAgentProducts(
     candidates = candidates.filter((product) => product.capacityL === requestedCapacity);
   }
 
+  if (sizeComparison && selectedProducts.length > 0) {
+    const areas = selectedProducts
+      .filter((product) => product.lengthM != null && product.widthM != null)
+      .map((product) => product.lengthM! * product.widthM!);
+    if (areas.length > 0) {
+      const referenceArea = sizeComparison === "larger" ? Math.max(...areas) : Math.min(...areas);
+      hasStructuredFilter = true;
+      candidates = candidates.filter((product) => {
+        if (product.lengthM == null || product.widthM == null) return false;
+        const area = product.lengthM * product.widthM;
+        return sizeComparison === "larger" ? area > referenceArea : area < referenceArea;
+      });
+    }
+  }
+
   const explicitModelOrSku =
-    /\b(modelo|sku)\b/.test(normalized) && !/\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
+    /\b(?:modelo|sku)\s+(?!(?:e|ou|para|de|da|do|em|ideal|adequado|disponivel)\b)[\p{L}\d-]+/u.test(normalized) &&
+    !/\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
   const modelMatches = candidates.filter((product) =>
     [product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))
