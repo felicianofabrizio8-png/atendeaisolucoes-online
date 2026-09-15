@@ -93,6 +93,10 @@ export class SalesAgentEvalHarness {
       history,
       leadName: "Cliente simulado",
       model: "eval/mock-sales-model",
+      catalogSearch: {
+        status: "matches",
+        products: this.fixture.context.grounding.catalog,
+      },
       sessionCorrections: corrections,
     });
 

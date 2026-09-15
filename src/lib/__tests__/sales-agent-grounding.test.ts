@@ -312,8 +312,7 @@ describe("SalesAgent grounding", () => {
 
     await expect(loadSalesAgentGrounding("company-1")).resolves.toMatchObject({
       catalog: [],
-      faqKnowledge: [{ question: "Instala?", answer: "Sim.", type: "faq" }],
-      commercialRules: { commercialTerms: "Entrada", paymentPolicy: "Pix" },
+      catalogSearch: { status: "query_error" },
     });
   });
 

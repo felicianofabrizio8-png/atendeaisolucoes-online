@@ -24,12 +24,139 @@ export type AgentHistory = Array<{
   productIds?: string[];
 }>;
 type CatalogProduct = SalesAgentGrounding["catalog"][number];
+export type CatalogSearchStatus =
+  | "query_error"
+  | "empty_catalog"
+  | "no_match"
+  | "ambiguous"
+  | "matches";
+
+export type CatalogSearchResult =
+  | { status: "query_error"; error: unknown }
+  | { status: "empty_catalog"; products: [] }
+  | { status: "no_match"; products: [] }
+  | { status: "ambiguous"; products: CatalogProduct[] }
+  | { status: "matches"; products: CatalogProduct[] };
+
 export type ProductSelectionContext = {
   detectedPoolSize?: string | null;
   detectedInterest?: string | null;
   detectedIntent?: string | null;
   detectedBudget?: string | null;
 };
+
+function catalogSearchText(product: CatalogProduct): string {
+  return normalizeCatalogText(
+    [
+      product.name,
+      product.model,
+      product.sku,
+      product.category,
+      product.description,
+      product.notes,
+      product.lengthM,
+      product.lengthM == null ? null : `${product.lengthM}m`,
+      product.widthM,
+      product.widthM == null ? null : `${product.widthM}m`,
+      product.depthM,
+      product.depthM == null ? null : `${product.depthM}m`,
+      product.capacityL,
+      product.shape,
+      product.specifications ? JSON.stringify(product.specifications) : null,
+      product.includedItems?.join(" "),
+      product.variants ? JSON.stringify(product.variants) : null,
+      product.price,
+      product.promoPrice,
+    ]
+      .filter((value) => value != null)
+      .join(" "),
+  );
+}
+
+function catalogSearchTerms(value: string): string[] {
+  return normalizeCatalogText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+}
+
+function isGenericProductQuestion(text: string): boolean {
+  return /\b(produto|produtos|catalogo|modelo|modelos|sku|preco|valor|custa|comparar|comparacao|opcao|opcoes|disponivel|caracteristica|especificacao|medida|tamanho|cor|variante)\b/i.test(
+    normalizeCatalogText(text),
+  );
+}
+
+function isSpecificProductQuestion(text: string): boolean {
+  return /\b(?:modelo|sku|produto)\s+[\p{L}\d][\p{L}\d-]*/iu.test(text) ||
+    /\b(?:preco|valor|quanto custa)\b.*\b(?:modelo|produto|sku)\b/iu.test(text) ||
+    /\b(?:quero|procuro|gostaria|tem|possui)\b.{0,40}\b(?:o|a|um|uma)?\s*[\p{L}\d][\p{L}\d-]{3,}/iu.test(text);
+}
+
+/**
+ * Deterministic catalog tool. It only receives the active catalog already
+ * loaded for one company and returns an explicit search state; it never
+ * converts a query failure into an empty result.
+ */
+export function searchSalesAgentCatalog(
+  companyId: string,
+  products: CatalogProduct[],
+  history: AgentHistory,
+  salesState: ConversationSalesState | null = null,
+  scope: { companyId: string; activeOnly: true } | undefined = undefined,
+): CatalogSearchResult {
+  if (!companyId.trim()) return { status: "query_error", error: new Error("company_id_required") };
+  if (!scope || scope.companyId !== companyId || scope.activeOnly !== true) {
+    return { status: "query_error", error: new Error("catalog_scope_invalid") };
+  }
+  if (!Array.isArray(products)) return { status: "query_error", error: new Error("invalid_catalog") };
+  if (products.length === 0) return { status: "empty_catalog", products: [] };
+
+  const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
+  const query = normalizeCatalogText(lastLeadText);
+  const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
+  const selectedIds = new Set([
+    ...(salesState?.productIds ?? []),
+    ...(salesState?.lastValidProductIds ?? []),
+    ...getPresentedProductIds(history),
+  ]);
+  const selectedProducts = products.filter((product) => selectedIds.has(product.id));
+  const explicitMatches = products.filter((product) =>
+    [product.name, product.model, product.sku]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .some((value) => query.includes(normalizeCatalogText(value))),
+  );
+  if (explicitMatches.length > 1) {
+    const distinct = [...new Map(explicitMatches.map((product) => [product.id, product])).values()];
+    return comparison
+      ? { status: "matches", products: distinct }
+      : distinct.length > 1
+        ? { status: "ambiguous", products: distinct }
+        : { status: "matches", products: distinct };
+  }
+  if (explicitMatches.length === 1) return { status: "matches", products: explicitMatches };
+
+  if (comparison && selectedProducts.length > 0) {
+    return { status: "matches", products: selectedProducts };
+  }
+  if (selectedProducts.length > 0 && /\b(esse|essa|este|esta|ele|ela|dele|dela|primeir|segund|ultimo|ultima)\b/i.test(query)) {
+    return { status: "matches", products: selectedProducts };
+  }
+
+  const terms = catalogSearchTerms(query);
+  const ranked = products
+    .map((product, index) => {
+      const haystack = catalogSearchText(product);
+      const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+      return { product, index, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.product);
+  if (ranked.length > 0) return { status: "matches", products: ranked };
+  if (isSpecificProductQuestion(query)) return { status: "no_match", products: [] };
+  if (isGenericProductQuestion(query)) return { status: "matches", products };
+  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS) };
+}
 
 const PLAYBOOK_RULE_CATEGORIES = new Set([
   "identity",
@@ -682,6 +809,7 @@ export async function loadRelevantSalesAgentLearnings(
 }
 
 export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
+  let catalogQueryError: unknown = null;
   const safeSource = async <T>(
     request: PromiseLike<{ data: T | null; error?: unknown }>,
     fallback: T,
@@ -694,18 +822,33 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     }
   };
 
-  const [products, knowledge, commercial] = await Promise.all([
-    safeSource(
-      supabaseAdmin
+  const loadCatalog = async () => {
+    try {
+      const result = await supabaseAdmin
         .from("products")
         .select(
           "id, name, model, sku, category, description, length_m, width_m, depth_m, capacity_l, shape, specifications, included_items, variants, price, promo_price, images, notes",
         )
         .eq("company_id", companyId)
         .eq("active", true)
-        .order("name", { ascending: true }),
-      [],
-    ),
+        .order("name", { ascending: true });
+      if (result.error) {
+        catalogQueryError = result.error;
+        return null;
+      }
+      if (!Array.isArray(result.data)) {
+        catalogQueryError = new Error("invalid_catalog_response");
+        return null;
+      }
+      return result.data;
+    } catch (error) {
+      catalogQueryError = error;
+      return null;
+    }
+  };
+
+  const [products, knowledge, commercial] = await Promise.all([
+    loadCatalog(),
     safeSource(
       supabaseAdmin
         .from("ai_knowledge_proposals")
@@ -738,7 +881,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
   ]);
 
   return {
-    catalog: products.map((product) => ({
+    catalog: (products ?? []).map((product) => ({
       id: product.id,
       name: product.name,
       model: product.model,
@@ -774,6 +917,12 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
       notes: product.notes,
     })),
     faqKnowledge: knowledge,
+    catalogScope: catalogQueryError ? undefined : { companyId, activeOnly: true as const },
+    catalogSearch: catalogQueryError
+      ? { status: "query_error" as const, error: catalogQueryError }
+      : products?.length
+        ? { status: "matches" as const, products: [] }
+        : { status: "empty_catalog" as const, products: [] },
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,
