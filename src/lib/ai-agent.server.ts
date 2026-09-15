@@ -33,9 +33,9 @@ import {
   loadRelevantSalesAgentQuickReplies,
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
+  searchSalesAgentCatalog,
   extractCurrentProductAttributes,
   selectRelevantSalesAgentCoachRules,
-  selectRelevantSalesAgentProducts,
   type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
 import { mergeConversationSalesState } from "./conversation-sales-state";
@@ -300,6 +300,7 @@ export async function loadAgentContext(companyId: string): Promise<AgentContext 
     products: grounding.catalog,
     catalogProductIds: grounding.catalog.map((product) => product.id),
     knowledge: grounding.faqKnowledge,
+    catalogSearch: grounding.catalogSearch,
     grounding: {
       ...grounding,
       commercialRules: {
@@ -373,11 +374,16 @@ export async function runAgentTurn(params: {
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
   const previousSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
-  const relevantCatalog = selectRelevantSalesAgentProducts(
-    params.ctx.grounding.catalog,
-    params.history,
-    previousSalesState,
-  );
+  const catalogSearch = params.ctx.catalogSearch?.status === "query_error"
+    ? params.ctx.catalogSearch
+    : searchSalesAgentCatalog(
+        params.ctx.settings.company_id,
+        params.ctx.grounding.catalog,
+        params.history,
+        previousSalesState,
+        params.ctx.grounding.catalogScope,
+      );
+  const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
   const currentIntent = customerAskedForProductImages(params.history)
     ? "product_images"
     : customerAskedAboutProducts(params.history)
@@ -460,7 +466,7 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  const decision = await core.decide({ ...contextualParams, model });
+  const decision = await core.decide({ ...contextualParams, model, catalogSearch });
   if (stateScope) {
     await saveConversationSalesState(
       stateScope,

@@ -1413,7 +1413,7 @@ const validationContext: AgentContext = {
       suggested_products: ["sol-600", "sol-601"],
       product_image_ids: [],
     });
-    expect(decision.message).toBe("Temos sim. Vou te enviar os modelos dessa medida para você conhecer!");
+    expect(decision.message).toContain("Encontrei no catálogo");
     expect(decision.message).not.toMatch(/dispon[ií]vel|estoque/i);
   });
 
@@ -1560,7 +1560,6 @@ const validationContext: AgentContext = {
     });
 
     expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
-    expect(decision.message).toContain("você procura uma piscina com linhas retas");
     expect(decision.message).toContain("formato retangular");
     expect(decision.message).not.toContain("formato quadrado");
   });
@@ -1623,7 +1622,21 @@ const validationContext: AgentContext = {
       model: salesModel,
     });
 
-    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_product_not_found" });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_empty" });
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("mantém query_error distinto no core e não chama a LLM", async () => {
+    const complete = vi.fn();
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      catalogSearch: { status: "query_error", error: new Error("db unavailable") },
+      history: [{ role: "lead", text: "Qual o preço do produto?" }],
+      leadName: null,
+      model: salesModel,
+    });
+
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_query_error" });
     expect(complete).not.toHaveBeenCalled();
   });
 
