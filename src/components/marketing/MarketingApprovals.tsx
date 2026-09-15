@@ -21,6 +21,7 @@ import {
   Play,
 } from "lucide-react";
 import { toast } from "sonner";
+import { openSettings } from "@/lib/settings-dialog";
 import {
   apiListContents,
   apiListMedia,
@@ -353,7 +354,7 @@ export function MarketingApprovals({ companyId }: Props) {
             size="sm"
             variant="outline"
             onClick={() => {
-              window.location.href = "/configuracoes#meta";
+              openSettings("conexoes");
             }}
           >
             <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar Meta

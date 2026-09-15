@@ -25,8 +25,9 @@ import { loadRemote, setRepoMode, subscribeRepo, getConversations } from "@/data
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBridge } from "@/components/NotificationBridge";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { openSettings } from "@/lib/settings-dialog";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
@@ -40,7 +41,6 @@ type NavItem = {
     | "/produtos"
     | "/relatorios"
     | "/executivo"
-    | "/configuracoes"
     | "/ia"
     | "/campanhas"
     | "/criativos"
@@ -69,7 +69,6 @@ const nav: NavItem[] = [
   { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
   { to: "/saude", label: "Saúde do sistema", icon: Activity },
   { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
 export function AppShell() {
@@ -154,6 +153,33 @@ export function AppShell() {
     setDemoMode(true);
   };
 
+  const handleOpenSettings = () => {
+    setMobileOpen(false);
+    openSettings();
+  };
+
+  const SettingsButton = (
+    <button
+      onClick={handleOpenSettings}
+      title="Configurações"
+      aria-label="Configurações"
+      className="p-1.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+    >
+      <Settings className="h-4 w-4" />
+    </button>
+  );
+
+  const SignOutButton = user ? (
+    <button
+      onClick={handleSignOut}
+      title="Sair"
+      aria-label="Sair"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+    >
+      <LogOut className="h-4 w-4" />
+    </button>
+  ) : null;
+
   const NavList = (
     <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
       {nav
@@ -201,13 +227,7 @@ export function AppShell() {
               {company?.name ?? "Carregando…"}
             </div>
           </div>
-          <button
-            onClick={handleSignOut}
-            title="Sair"
-            className="p-1.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          {SettingsButton}
         </div>
       ) : (
         <div className="space-y-2">
@@ -219,6 +239,7 @@ export function AppShell() {
               <div className="text-sm font-medium truncate">Visitante</div>
               <div className="text-[11px] text-muted-foreground truncate">Modo demo</div>
             </div>
+            {SettingsButton}
           </div>
           <button
             onClick={() => navigate({ to: "/login" })}
@@ -240,9 +261,9 @@ export function AppShell() {
     </div>
   );
 
-  // `withThemeToggle=false` no menu mobile em tela cheia — o botão de fechar
-  // do Sheet ocupa o canto superior direito e colidiria com o toggle.
-  const renderBrand = (withThemeToggle = true) => (
+  // `withSignOut=false` no menu mobile em tela cheia — o botão de fechar
+  // do Sheet ocupa o canto superior direito e colidiria com o botão Sair.
+  const renderBrand = (withSignOut = true) => (
     <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
       <img
         src="/icon-192.png"
@@ -253,7 +274,7 @@ export function AppShell() {
         <div className="text-sm font-semibold">Atende Ai!</div>
         <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
       </div>
-      {withThemeToggle ? <ThemeToggle /> : null}
+      {withSignOut ? SignOutButton : null}
     </div>
   );
   const Brand = renderBrand(true);
@@ -261,6 +282,7 @@ export function AppShell() {
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
       <NotificationBridge />
+      <SettingsDialog />
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
@@ -308,7 +330,7 @@ export function AppShell() {
               />
               <span className="text-sm font-semibold truncate">Atende Ai!</span>
             </div>
-            <ThemeToggle />
+            {SignOutButton}
           </div>
         </div>
 
