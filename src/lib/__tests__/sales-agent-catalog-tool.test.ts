@@ -77,6 +77,45 @@ describe("sales-agent catalog tool", () => {
     expect(result).toMatchObject({ status: "matches", products: [{ id: "chair-1" }] });
   });
 
+  it.each(["Tem mais?", "Outro modelo?", "Outras opções?", "E mais algum?"])(
+    "continua a última busca para a frase %s e exclui produtos já apresentados",
+    (continuation) => {
+      const extendedCatalog = [
+        ...catalog,
+        { ...catalog[0], id: "chair-2", name: "Cadeira Orion", model: "OR-200", sku: "ORI-200" },
+      ];
+      const result = searchSalesAgentCatalog(
+        "company-1",
+        extendedCatalog,
+        [
+          { role: "lead", text: "Quais produtos vocês têm?" },
+          { role: "agent", text: "Apresentei duas opções.", productIds: ["chair-1", "lamp-1"] },
+          { role: "lead", text: continuation },
+        ],
+        { attributes: {}, productIds: [], intent: "product_inquiry", lastValidProductIds: ["chair-1", "lamp-1", "chair-2"] },
+        scope,
+      );
+
+      expect(result).toMatchObject({ status: "matches", products: [{ id: "chair-2" }] });
+    },
+  );
+
+  it("mantém os critérios da última busca e não vira no_match quando não há mais opções", () => {
+    const result = searchSalesAgentCatalog(
+      "company-1",
+      catalog,
+      [
+        { role: "lead", text: "Quais produtos vocês têm?" },
+        { role: "agent", text: "Apresentei todas as opções.", productIds: ["chair-1", "lamp-1"] },
+        { role: "lead", text: "Tem mais?" },
+      ],
+      { attributes: {}, productIds: [], intent: "product_inquiry", lastValidProductIds: ["chair-1", "lamp-1"] },
+      scope,
+    );
+
+    expect(result).toEqual({ status: "matches", products: [] });
+  });
+
   it("distingue produto inexistente, catálogo vazio e erro de consulta", () => {
     expect(searchSalesAgentCatalog("company-1", catalog, [{ role: "lead", text: "Tem o produto Atlantis?" }], null, scope)).toMatchObject({
       status: "no_match",
