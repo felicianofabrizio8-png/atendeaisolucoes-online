@@ -11,6 +11,7 @@ import {
   type SalesAgentCoreInput,
 } from "../sales-agent-core";
 import { runSafetyLayer } from "../ai-agent.server";
+import { searchSalesAgentCatalog } from "../sales-agent-grounding.server";
 
 const salesModel = "provider/sales-model";
 
@@ -333,6 +334,48 @@ const validationContext: AgentContext = {
     });
 
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
+  });
+
+  it("resolve Sol 600 seguido de E a 601 pelo catálogo e valida os fatos reais", async () => {
+    const products = [
+      { ...validatedProduct, id: "sol-600", name: "Sol 600", price: 20_000 },
+      { ...validatedProduct, id: "sol-601", name: "Sol 601 Canyon", price: 24_000 },
+    ];
+    const history = [
+      { role: "lead" as const, text: "Quero conhecer a Sol 600" },
+      { role: "agent" as const, text: "Apresentei a Sol 600.", productIds: ["sol-600"] },
+      { role: "lead" as const, text: "E a 601?" },
+    ];
+    const catalogSearch = searchSalesAgentCatalog(
+      "company-1",
+      products,
+      history,
+      { attributes: {}, productIds: ["sol-600"], intent: "product_inquiry", lastValidProductIds: ["sol-600"] },
+      { companyId: "company-1", activeOnly: true },
+    );
+    expect(catalogSearch).toMatchObject({
+      status: "matches",
+      products: [{ id: "sol-601", name: "Sol 601 Canyon", price: 24_000 }],
+    });
+
+    const core = new SalesAgentCore(vi.fn().mockResolvedValue(
+      completionWithMessage("A Sol 601 custa R$ 24.000,00.", ["sol-601"]),
+    ));
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        products,
+        catalogForValidation: products,
+        grounding: { ...validationContext.grounding, catalog: products },
+      },
+      history,
+      leadName: null,
+      model: salesModel,
+      catalogSearch,
+    });
+
+    expect(decision).toMatchObject({ kind: "reply", suggested_products: ["sol-601"] });
+    expect(decision).not.toMatchObject({ reason: "catalog_unvalidated_objective_claim" });
   });
 
   it.each([

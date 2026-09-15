@@ -92,6 +92,12 @@ function isSpecificProductQuestion(text: string): boolean {
     /\b(?:quero|procuro|gostaria|tem|possui)\b.{0,40}\b(?:o|a|um|uma)?\s*[\p{L}\d][\p{L}\d-]{3,}/iu.test(text);
 }
 
+function isCatalogContinuationQuery(text: string): boolean {
+  return /^(?:(?:e|tem)\s+)?(?:mais(?:\s+(?:algum|alguma|um|uma|produto|modelo))?|outro\s+modelo|outras?\s+(?:opcoes?|alternativas?)|e\s+mais\s+algum)\b/i.test(
+    normalizeCatalogText(text),
+  );
+}
+
 /**
  * Deterministic catalog tool. It only receives the active catalog already
  * loaded for one company and returns an explicit search state; it never
@@ -111,14 +117,53 @@ export function searchSalesAgentCatalog(
   if (!Array.isArray(products)) return { status: "query_error", error: new Error("invalid_catalog") };
   if (products.length === 0) return { status: "empty_catalog", products: [] };
 
-  const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
+  const lastLeadIndex = [...history].map((item) => item.role).lastIndexOf("lead");
+  const lastLeadText = lastLeadIndex >= 0 ? history[lastLeadIndex].text : "";
   const query = normalizeCatalogText(lastLeadText);
-  const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
   const selectedIds = new Set([
     ...(salesState?.productIds ?? []),
     ...(salesState?.lastValidProductIds ?? []),
     ...getPresentedProductIds(history),
   ]);
+
+  if (isCatalogContinuationQuery(lastLeadText) && lastLeadIndex >= 0) {
+    const lastBaseLeadIndex = [...history]
+      .slice(0, lastLeadIndex)
+      .map((item, index) => ({ item, index }))
+      .reverse()
+      .find(({ item }) => item.role === "lead" && !isCatalogContinuationQuery(item.text))?.index;
+    const previousCandidateIds = salesState?.lastValidProductIds ?? [];
+    const previousCandidates = previousCandidateIds.length > 0
+      ? products.filter((product) => previousCandidateIds.includes(product.id))
+      : lastBaseLeadIndex == null
+        ? []
+        : (() => {
+            const previousSearch = searchSalesAgentCatalog(
+              companyId,
+              products,
+              history.slice(0, lastBaseLeadIndex + 1),
+              null,
+              scope,
+            );
+            return previousSearch.status === "matches" ? previousSearch.products : [];
+          })();
+    const presentedSinceBase = new Set(
+      history
+        .slice(lastBaseLeadIndex == null ? 0 : lastBaseLeadIndex + 1, lastLeadIndex)
+        .flatMap((item) => item.role === "agent" ? item.productIds ?? [] : []),
+    );
+    const excludedIds = new Set([
+      ...(salesState?.productIds ?? []),
+      ...getPresentedProductIds(history),
+      ...presentedSinceBase,
+    ]);
+    return {
+      status: "matches",
+      products: previousCandidates.filter((product) => !excludedIds.has(product.id)),
+    };
+  }
+
+  const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
   const selectedProducts = products.filter((product) => selectedIds.has(product.id));
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]
