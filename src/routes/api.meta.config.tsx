@@ -5,6 +5,7 @@ export const Route = createFileRoute("/api/meta/config")({
     handlers: {
       GET: async () => {
         const appId = process.env.META_APP_ID ?? "";
+        const instagramAppId = process.env.META_INSTAGRAM_APP_ID ?? "";
         const businessConfigId =
           process.env.META_BUSINESS_CONFIG_ID ?? process.env.META_CONFIG_ID ?? "";
         // Configuration ID dedicada ao Facebook Login for Business com
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/api/meta/config")({
 
         return Response.json({
           appId,
+          instagramAppId,
           businessConfigId,
           pageLoginConfigId,
           hasAppId: Boolean(appId),

@@ -18,6 +18,10 @@ const callbackSource = readFileSync(
   fileURLToPath(new URL("../../routes/auth.meta.callback.tsx", import.meta.url)),
   "utf8",
 );
+const configSource = readFileSync(
+  fileURLToPath(new URL("../../routes/api.meta.config.tsx", import.meta.url)),
+  "utf8",
+);
 
 describe("configuração segura do token Instagram", () => {
   it("troca o código no servidor e persiste apenas na coluna do Instagram", () => {
@@ -46,5 +50,13 @@ describe("configuração segura do token Instagram", () => {
     expect(integrationSource).toContain('response_type=code');
     expect(callbackSource).toContain("payload.intent = oauthIntent");
     expect(callbackSource).toContain("sensitiveParam");
+  });
+
+  it("usa o App ID do Instagram sem alterar o App ID do Facebook", () => {
+    expect(configSource).toContain('process.env.META_INSTAGRAM_APP_ID');
+    expect(configSource).toContain('instagramAppId');
+    expect(integrationSource).toContain('encodeURIComponent(config.instagramAppId)');
+    expect(integrationSource).toContain('encodeURIComponent(config.appId)');
+    expect(integrationSource).not.toContain('META_INSTAGRAM_APP_SECRET');
   });
 });

@@ -50,6 +50,7 @@ declare global {
 
 interface MetaBusinessConfig {
   appId: string;
+  instagramAppId: string;
   businessConfigId: string;
   pageLoginConfigId: string;
   hasAppId: boolean;
@@ -561,13 +562,13 @@ export function MetaIntegrationSection() {
       const targetPageId = instagramTargetPageId || (pages.length === 1 ? pages[0]?.page_id : "");
       if (!targetPageId) throw new Error("Conecte uma pÃ¡gina Meta e selecione-a antes de vincular o Instagram.");
       const config = await getMetaBusinessConfig();
-      if (!config.hasAppId) throw new Error("Configure META_APP_ID no projeto antes de conectar.");
+      if (!config.instagramAppId) throw new Error("Configure META_INSTAGRAM_APP_ID no projeto antes de conectar.");
       const state = crypto.randomUUID();
       window.sessionStorage.setItem("META_OAUTH_STATE", state);
       window.sessionStorage.setItem("META_OAUTH_INTENT", "instagram_login");
       const oauthUrl =
         `https://www.instagram.com/oauth/authorize` +
-        `?client_id=${encodeURIComponent(config.appId)}` +
+        `?client_id=${encodeURIComponent(config.instagramAppId)}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
         `&scope=${encodeURIComponent("instagram_business_basic,instagram_business_manage_messages")}` +
