@@ -80,7 +80,6 @@ function context(companyId = "company-a"): AgentContext {
       activeCoachRules: [],
       quickReplies: [],
     },
-    catalogSearch: { status: "matches", products: [] },
   };
 }
 

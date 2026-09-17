@@ -57,7 +57,7 @@ export const Route = createFileRoute("/api/ai/test-now")({
         steps.push({
           name: "Carregar contexto",
           ok: !!ctx,
-          detail: ctx ? `Tom: ${ctx.aiProfile?.tone ?? "—"}, produtos: ${ctx.products.length}` : "ctx vazio",
+          detail: ctx ? `Tom: ${ctx.aiProfile?.tone ?? "—"}, produtos: ${ctx.grounding.catalog.length}` : "ctx vazio",
         });
 
         if (!ctx) {

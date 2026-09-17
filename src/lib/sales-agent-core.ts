@@ -128,8 +128,12 @@ export interface AgentContext {
   catalogForValidation?: SalesAgentGrounding["catalog"];
   knowledge: Array<{ question: string; answer: string; type: string }>;
   grounding: SalesAgentGrounding;
-  catalogSearch: SalesAgentCatalogSearch;
 }
+
+export type SalesAgentGroundingBase = Omit<SalesAgentGrounding, "catalogSearch">;
+export type AgentContextBase = Omit<AgentContext, "grounding"> & {
+  grounding: SalesAgentGroundingBase;
+};
 
 export interface AgentDecision {
   kind: "reply" | "handoff" | "skip";
@@ -162,6 +166,11 @@ export interface SalesAgentCoreInput {
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
+  interpretation: {
+    intent: "product_images" | "product_inquiry" | null;
+    attributes: object;
+    references: { lastLeadText: string; productIds: string[] };
+  };
   sessionCorrections?: SalesAgentSessionCorrection[];
 }
 
@@ -911,7 +920,7 @@ export function buildSalesAgentSystemPrompt(
   sessionCorrections: SalesAgentSessionCorrection[] = [],
 ): string {
   const ai = ctx.aiProfile;
-  const catalogSearch = ctx.catalogSearch;
+  const catalogSearch = ctx.grounding.catalogSearch;
   const usesGroundedCatalog = catalogSearch.status === "matches";
   const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
   const relevantFaqs = selectRelevantFaqs(

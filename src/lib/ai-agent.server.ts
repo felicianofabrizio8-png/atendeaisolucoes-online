@@ -26,6 +26,8 @@ import {
   customerAskedAboutProducts,
   customerAskedForProductImages,
   type AgentContext,
+  type AgentContextBase,
+  type SalesAgentCatalogSearch,
   type AgentDecision,
   type AgentSettings,
 } from "./sales-agent-core";
@@ -34,6 +36,7 @@ import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
+  searchSalesAgentCatalog,
   selectRelevantSalesAgentCoachRules,
   type AgentHistory,
   type ProductSelectionContext,
@@ -53,6 +56,60 @@ import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resol
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
+export type { AgentContextBase } from "./sales-agent-core";
+
+export interface SalesAgentTurnInterpretation {
+  intent: "product_images" | "product_inquiry" | null;
+  attributes: ReturnType<typeof extractCurrentProductAttributes>;
+  references: { lastLeadText: string; productIds: string[] };
+  history: AgentHistory;
+}
+
+/** Stage 1: interpret the request without reading or deriving product facts. */
+export function interpretSalesAgentTurn(
+  history: AgentHistory,
+): SalesAgentTurnInterpretation {
+  const lastLeadText = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
+  return {
+    intent: customerAskedForProductImages(history)
+      ? "product_images"
+      : customerAskedAboutProducts(history)
+        ? "product_inquiry"
+        : null,
+    attributes: extractCurrentProductAttributes(history),
+    references: {
+      lastLeadText,
+      productIds: history.flatMap((item) => item.productIds ?? []),
+    },
+    history,
+  };
+}
+
+/** Stage 2: execute the canonical deterministic catalog tool for this turn. */
+export function resolveSalesAgentCatalogSearch(
+  interpretation: SalesAgentTurnInterpretation,
+  context: {
+    grounding: Pick<AgentContext["grounding"], "catalog" | "catalogScope">;
+  },
+  salesState: ConversationSalesState | null = null,
+): SalesAgentCatalogSearch {
+  const scope = context.grounding.catalogScope;
+  if (!scope) return { status: "query_error", error: new Error("catalog_scope_missing") };
+  return searchSalesAgentCatalog(
+    scope.companyId,
+    context.grounding.catalog,
+    interpretation.history,
+    salesState,
+    scope,
+  );
+}
+
+/** Stage 4: communicate only the already validated decision. */
+export function redactSalesAgentDecision(decision: AgentDecision): AgentDecision {
+  return decision.kind === "reply" && typeof decision.message === "string"
+    ? { ...decision, message: decision.message.trim() }
+    : { ...decision };
+}
 
 const DEBOUNCE_MS = 30_000;
 
@@ -274,13 +331,13 @@ export async function loadAgentContext(
   companyId: string,
   history: AgentHistory = [],
   salesState: ConversationSalesState | null = null,
-): Promise<AgentContext | null> {
+): Promise<AgentContextBase | null> {
   const [{ data: settings }, { data: company }, { data: aiProfile }, grounding] = await Promise.all(
     [
       supabaseAdmin.from("company_settings").select("*").eq("company_id", companyId).maybeSingle(),
       supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
       supabaseAdmin.from("ai_profiles").select("*").eq("company_id", companyId).maybeSingle(),
-      loadSalesAgentGrounding(companyId, history, salesState),
+      loadSalesAgentGrounding(companyId, history, salesState, { deferCatalogSearch: true }),
     ],
   );
   if (!settings) return null;
@@ -302,13 +359,10 @@ export async function loadAgentContext(
             : [],
         }
       : null,
-    products: grounding.catalogSearch.status === "matches" ? grounding.catalogSearch.products : [],
+    products: grounding.catalog,
     catalogProductIds:
-      grounding.catalogSearch.status === "matches"
-        ? grounding.catalogSearch.products.map((product) => product.id)
-        : [],
+      grounding.catalog.map((product) => product.id),
     knowledge: grounding.faqKnowledge,
-    catalogSearch: grounding.catalogSearch,
     grounding: {
       ...grounding,
       commercialRules: {
@@ -327,7 +381,7 @@ export async function loadAgentContext(
 // ----------------------------------------------------------------------------
 
 export async function runAgentTurn(params: {
-  ctx: AgentContext;
+  ctx: AgentContextBase;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   sessionCorrections?: NormativeCorrection[];
@@ -382,16 +436,13 @@ export async function runAgentTurn(params: {
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
   const previousSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
-  const catalogSearch = params.ctx.catalogSearch;
+  // Explicit pipeline: interpretation -> catalogSearch -> decision -> redaÃ§Ã£o.
+  const interpretation = interpretSalesAgentTurn(params.history);
+  const catalogSearch = resolveSalesAgentCatalogSearch(interpretation, params.ctx, previousSalesState);
   const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
-  const currentIntent = customerAskedForProductImages(params.history)
-    ? "product_images"
-    : customerAskedAboutProducts(params.history)
-      ? "product_inquiry"
-      : null;
   const filteredSalesState = mergeConversationSalesState(previousSalesState, {
-    attributes: extractCurrentProductAttributes(params.history),
-    intent: currentIntent,
+    attributes: interpretation.attributes,
+    intent: interpretation.intent,
     candidateProductIds: relevantCatalog.map((product) => product.id),
   });
   if (stateScope) await saveConversationSalesState(stateScope, filteredSalesState);
@@ -404,10 +455,7 @@ export async function runAgentTurn(params: {
       guarantees: null,
       coachRules: baseNormative.grounding.activeCoachRules,
       playbook: SALES_AGENT_PLAYBOOK,
-      catalog:
-        params.ctx.catalogSearch.status === "matches"
-          ? params.ctx.catalogSearch.products
-          : [],
+      catalog: catalogSearch.status === "matches" ? catalogSearch.products : [],
     },
   );
   const normative = resolveSalesAgentNormativeContext({
@@ -433,6 +481,7 @@ export async function runAgentTurn(params: {
       products: relevantCatalog,
       grounding: {
         ...params.ctx.grounding,
+        catalogSearch,
         catalog: relevantCatalog,
         approvedCoachLearnings: normative.grounding.approvedCoachLearnings,
         activeCoachRules: normative.grounding.activeCoachRules,
@@ -470,12 +519,17 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  const decision = await core.decide({ ...contextualParams, model, catalogSearch });
+  const decision = await core.decide({
+    ...contextualParams,
+    model,
+    catalogSearch,
+    interpretation,
+  });
   if (stateScope) {
     await saveConversationSalesState(
       stateScope,
       mergeConversationSalesState(filteredSalesState, {
-        intent: decision.detected_intent ?? currentIntent,
+        intent: decision.detected_intent ?? interpretation.intent,
         candidateProductIds: relevantCatalog.map((product) => product.id),
         ...(decision.suggested_products?.length
           ? { selectedProductIds: decision.suggested_products }
@@ -483,7 +537,7 @@ export async function runAgentTurn(params: {
       }),
     );
   }
-  return decision;
+  return redactSalesAgentDecision(decision);
 }
 
 // ----------------------------------------------------------------------------

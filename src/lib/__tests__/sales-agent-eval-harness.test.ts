@@ -72,7 +72,6 @@ function context(companyId = companyA): AgentContext {
       activeCoachRules: [],
       quickReplies: [],
     },
-    catalogSearch: { status: "matches", products: [productA] },
   };
 }
 

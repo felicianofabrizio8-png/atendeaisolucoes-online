@@ -1,7 +1,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
-import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
+import {
+  getRequestedProductLength,
+  type SalesAgentGrounding,
+  type SalesAgentGroundingBase,
+} from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import type {
   ConversationProductAttributes,
@@ -853,11 +857,24 @@ export async function loadRelevantSalesAgentLearnings(
   return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
 }
 
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory,
+  salesState: ConversationSalesState | null,
+  options: { deferCatalogSearch: true },
+): Promise<SalesAgentGroundingBase>;
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history?: AgentHistory,
+  salesState?: ConversationSalesState | null,
+  options?: { deferCatalogSearch?: false },
+): Promise<SalesAgentGrounding>;
 export async function loadSalesAgentGrounding(
   companyId: string,
   history: AgentHistory = [],
   salesState: ConversationSalesState | null = null,
-): Promise<SalesAgentGrounding> {
+  options: { deferCatalogSearch?: boolean } = {},
+): Promise<SalesAgentGrounding | SalesAgentGroundingBase> {
   let catalogQueryError: unknown = null;
   const safeSource = async <T>(
     request: PromiseLike<{ data: T | null; error?: unknown }>,
@@ -970,12 +987,14 @@ export async function loadSalesAgentGrounding(
     catalog,
     faqKnowledge: knowledge,
     catalogScope,
-    catalogSearch: catalogQueryError
+    ...(options.deferCatalogSearch
+      ? {}
+      : { catalogSearch: catalogQueryError
       ? { status: "query_error" as const, error: catalogQueryError }
       : searchSalesAgentCatalog(companyId, catalog, history, salesState, {
           companyId,
           activeOnly: true,
-        }),
+        }) }),
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,

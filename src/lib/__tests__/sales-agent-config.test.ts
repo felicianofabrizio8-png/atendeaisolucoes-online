@@ -41,7 +41,7 @@ describe("SalesAgent LLM configuration", () => {
     const trainingSource = read("../sales-training.functions.ts");
     expect(agentSource).toContain("resolveSalesAgentLlmConfig()");
     expect(agentSource).toContain("fetch(endpoint");
-    expect(agentSource).toContain("core.decide({ ...contextualParams, model, catalogSearch })");
+    expect(agentSource).toContain("catalogSearch,");
     expect(trainingSource).toContain("runAgentTurn({");
     expect(trainingSource).toContain("salesStateScope:");
     expect(trainingSource).not.toMatch(/LOVABLE_API_KEY|ai\.gateway\.lovable\.dev/);

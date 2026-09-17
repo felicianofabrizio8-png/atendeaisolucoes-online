@@ -22,7 +22,7 @@ vi.mock("../sales-agent-config.server", () => ({
 }));
 
 import { runAgentTurn } from "../ai-agent.server";
-import type { AgentContext } from "../sales-agent-core";
+import { SalesAgentCore, type AgentContext } from "../sales-agent-core";
 
 const companyId = "company-1";
 
@@ -78,6 +78,7 @@ const context: AgentContext = {
       },
     ],
     catalogSearch: { status: "matches", products: [] },
+    catalogScope: { companyId, activeOnly: true },
     faqKnowledge: [],
     commercialRules: {
       paymentMethods: null,
@@ -92,7 +93,6 @@ const context: AgentContext = {
     },
     approvedCoachLearnings: [],
   },
-  catalogSearch: { status: "matches", products: [] },
 };
 
 function query(data: unknown, error: unknown = null) {
@@ -162,6 +162,92 @@ describe("runAgentTurn coach_rules integration", () => {
     listLearningCandidates.mockResolvedValue([]);
     retrieveLearnings.mockReturnValue({ selected: [], scored: [], metrics: {} });
     configureGateway();
+  });
+
+  it("executa o pipeline produtivo na ordem contexto -> interpretação -> catálogo -> decisão -> redação", async () => {
+    const events: string[] = [];
+    let interpretationObserved = false;
+    const catalogRows = new Proxy([...context.grounding.catalog], {
+      get(target, property, receiver) {
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const groundedContext: AgentContext = {
+      ...context,
+      grounding: { ...context.grounding },
+    };
+    Object.defineProperty(groundedContext.grounding, "catalog", {
+      configurable: true,
+      get: () => {
+        events.push(interpretationObserved ? "catalogSearch" : "context");
+        return catalogRows;
+      },
+    });
+    const history = new Proxy(
+      [{ role: "lead" as const, text: "Qual o preço do Modelo 6x3?" }],
+      {
+        get(target, property, receiver) {
+          if (property === Symbol.iterator && !interpretationObserved) {
+            interpretationObserved = true;
+            events.push("interpretation");
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    fetchMock.mockImplementation(async () => {
+      events.push("gateway");
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => {
+          events.push("decision");
+          return {
+            choices: [{
+              message: {
+                tool_calls: [{
+                  function: {
+                    name: "respond_to_customer",
+                    arguments: JSON.stringify({
+                      message: "  Posso ajudar você com esse produto.  ",
+                      suggest_products: ["product-1"],
+                    }),
+                  },
+                }],
+              },
+            }],
+          };
+        },
+      };
+    });
+    configureCoachRules({});
+    const decideSpy = vi.spyOn(SalesAgentCore.prototype, "decide");
+
+    const result = await runAgentTurn({
+      ctx: groundedContext,
+      history,
+      leadName: null,
+    });
+
+    expect(events.indexOf("interpretation")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("catalogSearch")).toBeGreaterThan(events.indexOf("interpretation"));
+    expect(events.indexOf("decision")).toBeGreaterThan(events.indexOf("catalogSearch"));
+    expect(result).toMatchObject({ kind: "reply", message: "Posso ajudar você com esse produto." });
+    expect(decideSpy).toHaveBeenCalledTimes(1);
+    expect(decideSpy.mock.calls[0][0].interpretation).toMatchObject({
+      intent: "product_inquiry",
+      references: { lastLeadText: "Qual o preço do Modelo 6x3?" },
+    });
+    expect(decideSpy.mock.calls[0][0].catalogSearch).toMatchObject({
+      status: "matches",
+      products: [{ id: "product-1", model: "Modelo 6x3", price: 20_000 }],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(events.slice(events.indexOf("decision") + 1)).not.toContain("catalogSearch");
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(request.messages.some((message: { content?: string }) =>
+      message.content?.includes("Modelo 6x3"))).toBe(true);
+    decideSpy.mockRestore();
   });
 
   it("carrega regras pelo supabaseAdmin com o company_id correto", async () => {

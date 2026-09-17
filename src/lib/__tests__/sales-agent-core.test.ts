@@ -14,6 +14,11 @@ import { runSafetyLayer } from "../ai-agent.server";
 import { searchSalesAgentCatalog } from "../sales-agent-grounding.server";
 
 const salesModel = "provider/sales-model";
+const testInterpretation: SalesAgentCoreInput["interpretation"] = {
+  intent: null,
+  attributes: {},
+  references: { lastLeadText: "", productIds: [] },
+};
 
 const context: AgentContext = {
   settings: {
@@ -91,10 +96,8 @@ const context: AgentContext = {
       },
     ],
   },
-  catalogSearch: { status: "matches", products: [] },
 };
 context.catalogForValidation = context.grounding.catalog;
-context.catalogSearch = { status: "matches", products: context.grounding.catalog };
 context.grounding.catalogSearch = { status: "matches", products: context.grounding.catalog };
 
 describe("SalesAgentCore", () => {
@@ -173,6 +176,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Quero uma piscina de 6m" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [product] },
     });
 
@@ -222,6 +226,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Qual é a melhor forma de iniciar o atendimento?" }],
       leadName: "Cliente simulado",
       model: salesModel,
+      interpretation: testInterpretation,
        catalogSearch: context.grounding.catalogSearch,
       sessionCorrections: [
         { question: "Como devo começar o atendimento?", correction },
@@ -275,6 +280,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Você tem piscina de 7 metros?" }],
       leadName: "Cliente simulado",
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products },
       sessionCorrections: [{ question: "Você tem piscina de 7 metros?", correction }],
     });
@@ -338,6 +344,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero conhecer esse modelo" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [validatedProduct] },
    });
 
@@ -379,6 +386,7 @@ const validationContext: AgentContext = {
       history,
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch,
     });
 
@@ -410,6 +418,7 @@ const validationContext: AgentContext = {
       ],
      leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
@@ -424,6 +433,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual é o preço?" }],
      leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
@@ -441,6 +451,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual é o preço dessa piscina?" }],
      leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -453,6 +464,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual a capacidade da piscina?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -479,6 +491,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
@@ -493,6 +506,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual é o preço?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: validationContext.grounding.catalogSearch,
    });
    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
@@ -517,6 +531,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual a cor?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
@@ -533,6 +548,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Pode me ajudar?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -549,6 +565,7 @@ const validationContext: AgentContext = {
       history,
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: validationContext.grounding.catalogSearch,
     });
     expect(decision.kind).toBe("reply");
@@ -564,6 +581,7 @@ const validationContext: AgentContext = {
       ],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -579,6 +597,7 @@ const validationContext: AgentContext = {
       ],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -597,6 +616,7 @@ const validationContext: AgentContext = {
         history: [{ role: "lead", text: "Pode verificar isso?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
       expect(decision.kind).toBe("reply");
@@ -621,6 +641,7 @@ const validationContext: AgentContext = {
       ],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -648,6 +669,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
@@ -664,6 +686,7 @@ const validationContext: AgentContext = {
       history,
       leadName: "Maria",
       model: salesModel,
+      interpretation: testInterpretation,
         catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -720,6 +743,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: catalog },
    });
     const properties = (
@@ -745,6 +769,7 @@ const validationContext: AgentContext = {
         history: [],
         leadName: null,
         model,
+        interpretation: testInterpretation,
        catalogSearch: context.grounding.catalogSearch,
       });
 
@@ -760,6 +785,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(request.messages[0].content.match(/Pix e cartão/g)).toHaveLength(1);
@@ -776,6 +802,7 @@ const validationContext: AgentContext = {
       history,
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const userPrompt = request.messages[1].content;
@@ -807,6 +834,7 @@ const validationContext: AgentContext = {
       history: [],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const line = request.messages[0].content.split("\n").find((item) => item.includes("Regra longa"));
@@ -829,6 +857,7 @@ const validationContext: AgentContext = {
       history: [],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const line = request.messages[0].content.split("\n").find((item) => item.includes("Learning longo"));
@@ -880,6 +909,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Me manda as fotos desses modelos" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: {
         status: "matches",
         products: context.grounding.catalog.map((product) => ({ ...product, images: ["image.jpg"] })),
@@ -940,6 +970,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos de 6 metros vocês têm?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: {
         status: "matches",
         products: context.grounding.catalog.map((product) => ({ ...product, images: ["image.jpg"] })),
@@ -983,6 +1014,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [product] },
    });
 
@@ -999,6 +1031,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero saber pagamento" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1014,6 +1047,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero saber pagamento e se atende interior" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1049,6 +1083,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero saber como funciona o pagamento" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1075,6 +1110,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero informações de pagamento" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const faqSection = request.messages[0].content.split("FAQ:\n")[1].split("\n\nBASE")[0];
@@ -1100,6 +1136,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const content = request.messages[0].content;
@@ -1120,6 +1157,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Vocês atendem o interior?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const content = request.messages[0].content;
@@ -1132,6 +1170,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Olá, tudo bem?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(request.messages[0].content).not.toContain("Atende interior? → Sim.");
@@ -1166,6 +1205,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Gostei da primeira, quanto custa?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1206,6 +1246,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quanto custa?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1221,6 +1262,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Vocês atendem o interior?" }],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1251,6 +1293,7 @@ const validationContext: AgentContext = {
       history: [],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
     const prompt = request.messages[0].content;
@@ -1306,6 +1349,7 @@ const validationContext: AgentContext = {
       history: [],
      leadName: null,
      model: salesModel,
+     interpretation: testInterpretation,
       catalogSearch: (context).grounding.catalogSearch,
    });
 
@@ -1342,6 +1386,7 @@ const validationContext: AgentContext = {
       history: [],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
     const request = complete.mock.calls[0][0];
@@ -1397,6 +1442,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "O que fica por conta do cliente?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1423,6 +1469,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero informações das piscinas" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1460,6 +1507,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1508,6 +1556,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products },
     });
 
@@ -1549,6 +1598,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero conhecer a piscina de 6 metros" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1575,7 +1625,6 @@ const validationContext: AgentContext = {
     const structuredContext: AgentContext = {
       ...context,
       products: [structuredProduct],
-      catalogSearch: { status: "matches", products: [structuredProduct] },
       catalogForValidation: [structuredProduct],
       grounding: {
         ...context.grounding,
@@ -1611,6 +1660,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual a profundidade e a cor dele?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: structuredContext.grounding.catalogSearch,
     });
     const prompt = complete.mock.calls[0][0].messages[0].content;
@@ -1671,6 +1721,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero uma piscina quadrada" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: rectangularContext.grounding.catalogSearch,
     });
 
@@ -1715,6 +1766,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Tem o modelo Atlântida?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
        catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1740,6 +1792,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero uma piscina de 6 metros" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: emptyContext.grounding.catalogSearch,
     });
 
@@ -1754,6 +1807,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o preço do produto?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "query_error", error: new Error("db unavailable") },
     });
 
@@ -1787,6 +1841,7 @@ const validationContext: AgentContext = {
         history: [],
         leadName: null,
         model: salesModel,
+        interpretation: testInterpretation,
         catalogSearch: context.grounding.catalogSearch,
       }),
     ).resolves.toMatchObject({
@@ -1821,6 +1876,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o prazo normal?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "query_error", error: new Error("db unavailable") },
     });
     const prompt = request.messages[0].content;
@@ -1863,6 +1919,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o prazo para instalação de vocês?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1901,6 +1958,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: context.grounding.catalogSearch,
     });
 
@@ -1923,6 +1981,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero conhecer o catálogo" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: { status: "matches", products: [context.products[0]] },
     });
 
@@ -1940,6 +1999,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o preço?" }],
       leadName: null,
       model: salesModel,
+      interpretation: testInterpretation,
       catalogSearch: undefined as never,
     });
 
