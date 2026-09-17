@@ -86,7 +86,10 @@ export function resolveSalesAgentNormativeContext(input: {
     ...input.context,
     grounding: {
       ...input.context.grounding,
-      catalog: input.context.grounding.catalog,
+      catalog:
+        input.context.catalogSearch.status === "matches"
+          ? input.context.catalogSearch.products
+          : [],
       commercialRules: input.context.grounding.commercialRules,
       approvedCoachLearnings: resolvePersistedSalesAgentLearnings(
         companyId,

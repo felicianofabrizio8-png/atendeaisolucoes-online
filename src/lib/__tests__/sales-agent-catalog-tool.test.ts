@@ -47,6 +47,18 @@ const scope = { companyId: "company-1", activeOnly: true as const };
 const otherScope = { companyId: "company-2", activeOnly: true as const };
 
 describe("sales-agent catalog tool", () => {
+  it("exige company_id e escopo ativo no contrato da ferramenta", () => {
+    expect(searchSalesAgentCatalog("company-1", catalog, [], null, null as never)).toMatchObject({
+      status: "query_error",
+    });
+    expect(searchSalesAgentCatalog("company-1", catalog, [], null, { companyId: "company-2", activeOnly: true })).toMatchObject({
+      status: "query_error",
+    });
+    expect(searchSalesAgentCatalog("company-1", catalog, [], null, { companyId: "company-1", activeOnly: false as never })).toMatchObject({
+      status: "query_error",
+    });
+  });
+
   it("encontra produto existente por nome e modelo e preserva preço", () => {
     const byName = searchSalesAgentCatalog("company-1", catalog, [{ role: "lead", text: "Quero a Cadeira Atlas" }], null, scope);
     const byModel = searchSalesAgentCatalog("company-1", catalog, [{ role: "lead", text: "Qual o valor da AT-100?" }], null, scope);

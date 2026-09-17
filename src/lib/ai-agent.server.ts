@@ -302,8 +302,11 @@ export async function loadAgentContext(
             : [],
         }
       : null,
-    products: grounding.catalog,
-    catalogProductIds: grounding.catalog.map((product) => product.id),
+    products: grounding.catalogSearch.status === "matches" ? grounding.catalogSearch.products : [],
+    catalogProductIds:
+      grounding.catalogSearch.status === "matches"
+        ? grounding.catalogSearch.products.map((product) => product.id)
+        : [],
     knowledge: grounding.faqKnowledge,
     catalogSearch: grounding.catalogSearch,
     grounding: {
@@ -401,7 +404,10 @@ export async function runAgentTurn(params: {
       guarantees: null,
       coachRules: baseNormative.grounding.activeCoachRules,
       playbook: SALES_AGENT_PLAYBOOK,
-      catalog: params.ctx.grounding.catalog,
+      catalog:
+        params.ctx.catalogSearch.status === "matches"
+          ? params.ctx.catalogSearch.products
+          : [],
     },
   );
   const normative = resolveSalesAgentNormativeContext({
@@ -422,7 +428,8 @@ export async function runAgentTurn(params: {
     sessionCorrections: normative.sessionCorrections,
     ctx: {
       ...params.ctx,
-      catalogForValidation: params.ctx.grounding.catalog,
+      catalogProductIds: relevantCatalog.map((product) => product.id),
+      catalogForValidation: relevantCatalog,
       products: relevantCatalog,
       grounding: {
         ...params.ctx.grounding,

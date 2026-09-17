@@ -911,8 +911,9 @@ export function buildSalesAgentSystemPrompt(
   sessionCorrections: SalesAgentSessionCorrection[] = [],
 ): string {
   const ai = ctx.aiProfile;
-  const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
-  const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
+  const catalogSearch = ctx.catalogSearch;
+  const usesGroundedCatalog = catalogSearch.status === "matches";
+  const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
   const relevantFaqs = selectRelevantFaqs(
     ctx.grounding.faqKnowledge,
     ai?.faq ?? [],
@@ -1078,8 +1079,9 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 export function buildSalesAgentCompletionRequest(
   params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
-  const catalogProducts =
-    params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
+  const catalogProducts = params.catalogSearch.status === "matches"
+    ? params.catalogSearch.products
+    : [];
   const transcriptEntries = params.history
     .slice(-20)
     .map(
@@ -1237,7 +1239,7 @@ export class SalesAgentCore {
     }
     const automaticProductImageIds = getAutomaticProductImageIds(
       params.history,
-      params.ctx.grounding.catalog,
+      catalogSearch.products,
     );
     const deterministicProducts = params.history.some(
       (message) => message.role === "lead" && message.text.trim().length > 0,
@@ -1291,11 +1293,10 @@ export class SalesAgentCore {
     }
     const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
     const catalogIds = new Set(
-      params.ctx.catalogProductIds ??
-        params.ctx.grounding.catalog.map((product) => product.id),
+      catalogSearch.products.map((product) => product.id),
     );
     const catalogById = new Map(
-      params.ctx.grounding.catalog.map((product) => [product.id, product]),
+      catalogSearch.products.map((product) => [product.id, product]),
     );
     const modelSuggestions = Array.isArray(reply.suggest_products)
       ? reply.suggest_products.filter((id): id is string => typeof id === "string")
@@ -1319,7 +1320,7 @@ export class SalesAgentCore {
     const learningIdsUsed = Array.isArray(reply.learning_ids_used)
       ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
       : [];
-    const catalogForValidation = params.ctx.catalogForValidation;
+    const catalogForValidation = catalogSearch.products;
     if (
       !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
     ) {
@@ -1334,7 +1335,7 @@ export class SalesAgentCore {
       !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
         reply.message,
         selectedProducts,
-        params.ctx.grounding.catalog,
+        catalogSearch.products,
       )
     ) {
       return deterministicFallback("catalog_invalid_product_fact");

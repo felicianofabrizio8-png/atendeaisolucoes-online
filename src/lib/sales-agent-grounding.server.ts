@@ -108,7 +108,7 @@ export function searchSalesAgentCatalog(
   products: CatalogProduct[],
   history: AgentHistory,
   salesState: ConversationSalesState | null = null,
-  scope: { companyId: string; activeOnly: true } | undefined = undefined,
+  scope: { companyId: string; activeOnly: true },
 ): CatalogSearchResult {
   if (!companyId.trim()) return { status: "query_error", error: new Error("company_id_required") };
   if (!scope || scope.companyId !== companyId || scope.activeOnly !== true) {
@@ -972,7 +972,10 @@ export async function loadSalesAgentGrounding(
     catalogScope,
     catalogSearch: catalogQueryError
       ? { status: "query_error" as const, error: catalogQueryError }
-      : searchSalesAgentCatalog(companyId, catalog, history, salesState, catalogScope),
+      : searchSalesAgentCatalog(companyId, catalog, history, salesState, {
+          companyId,
+          activeOnly: true,
+        }),
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,

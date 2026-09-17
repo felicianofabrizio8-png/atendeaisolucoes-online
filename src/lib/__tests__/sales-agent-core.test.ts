@@ -275,7 +275,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Você tem piscina de 7 metros?" }],
       leadName: "Cliente simulado",
       model: salesModel,
-      catalogSearch: context.grounding.catalogSearch,
+      catalogSearch: { status: "matches", products },
       sessionCorrections: [{ question: "Você tem piscina de 7 metros?", correction }],
     });
 
@@ -336,9 +336,9 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Quero conhecer esse modelo" }],
-     leadName: null,
-     model: salesModel,
-    catalogSearch: (context).grounding.catalogSearch,
+      leadName: null,
+      model: salesModel,
+      catalogSearch: { status: "matches", products: [validatedProduct] },
    });
 
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
@@ -409,8 +409,8 @@ const validationContext: AgentContext = {
         { role: "lead", text: "E a 500 praia?" },
       ],
      leadName: null,
-     model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      model: salesModel,
+      catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
@@ -423,7 +423,7 @@ const validationContext: AgentContext = {
       ctx: validationContext,
       history: [{ role: "lead", text: "Qual é o preço?" }],
      leadName: null,
-     model: salesModel,
+      model: salesModel,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
@@ -440,7 +440,7 @@ const validationContext: AgentContext = {
       ctx: validationContext,
       history: [{ role: "lead", text: "Qual é o preço dessa piscina?" }],
      leadName: null,
-     model: salesModel,
+      model: salesModel,
       catalogSearch: (context).grounding.catalogSearch,
    });
     expect(decision.kind).toBe("reply");
@@ -479,7 +479,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
@@ -493,9 +493,9 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual é o preço?" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: validationContext.grounding.catalogSearch,
    });
-    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+   expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
   });
 
   it("não aceita característica confirmada apenas em campo semântico errado", async () => {
@@ -648,7 +648,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
@@ -720,7 +720,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: { status: "matches", products: catalog },
    });
     const properties = (
       request.tools[0] as {
@@ -880,7 +880,10 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Me manda as fotos desses modelos" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: {
+        status: "matches",
+        products: context.grounding.catalog.map((product) => ({ ...product, images: ["image.jpg"] })),
+      },
    });
 
     expect(decision).toMatchObject({
@@ -937,7 +940,10 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos de 6 metros vocês têm?" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: {
+        status: "matches",
+        products: context.grounding.catalog.map((product) => ({ ...product, images: ["image.jpg"] })),
+      },
    });
 
     expect(decision).toMatchObject({ kind: "reply", product_image_ids: ["product-1"] });
@@ -977,7 +983,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
      leadName: null,
      model: salesModel,
-      catalogSearch: (context).grounding.catalogSearch,
+      catalogSearch: { status: "matches", products: [product] },
    });
 
     expect(decision).toMatchObject({
@@ -1569,6 +1575,7 @@ const validationContext: AgentContext = {
     const structuredContext: AgentContext = {
       ...context,
       products: [structuredProduct],
+      catalogSearch: { status: "matches", products: [structuredProduct] },
       catalogForValidation: [structuredProduct],
       grounding: {
         ...context.grounding,
@@ -1901,6 +1908,29 @@ const validationContext: AgentContext = {
     expect(decision.message).toContain("Encontrei no catálogo");
     expect(decision.message).not.toContain("product-missing");
     expect(decision.suggested_products).not.toContain("product-missing");
+  });
+
+  it("usa somente os produtos de catalogSearch no prompt e nas referências", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: {
+        ...context,
+        products: [context.products[0]],
+        grounding: {
+          ...context.grounding,
+          catalog: [{ ...context.products[0], id: "stale-product", name: "Produto fora da busca" }],
+        },
+      },
+      history: [{ role: "lead", text: "Quero conhecer o catálogo" }],
+      leadName: null,
+      model: salesModel,
+      catalogSearch: { status: "matches", products: [context.products[0]] },
+    });
+
+    const parameters = (request.tools[0] as { function: { parameters: unknown } }).function.parameters as {
+      properties: { suggest_products: { items: { enum: string[] } } };
+    };
+    expect(parameters.properties.suggest_products.items.enum).toEqual(["product-1"]);
+    expect(String(request.messages[0].content)).not.toContain("Produto fora da busca");
   });
 
   it("trata ausência do resultado determinístico como erro de consulta", async () => {
