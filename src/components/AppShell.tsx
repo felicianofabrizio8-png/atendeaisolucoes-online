@@ -36,6 +36,7 @@ type NavItem = {
   to:
     | "/"
     | "/inbox"
+    | "/atendimento"
     | "/agenda"
     | "/orcamentos"
     | "/produtos"
@@ -58,6 +59,7 @@ const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/onboarding", label: "Primeiros passos", icon: Rocket, adminOnly: true },
   { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
+  { to: "/atendimento", label: "Atendimento 2.0", icon: MessagesSquare },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText },
   { to: "/campanhas", label: "Campanhas", icon: Megaphone },

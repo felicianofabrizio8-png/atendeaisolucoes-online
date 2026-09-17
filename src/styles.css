@@ -420,3 +420,10 @@ iframe[src*="lovable.dev/badge"] {
   height: 0 !important;
 }
 /* NEXUS-PRO:WATERMARK-HIDE:END */
+
+/* Tela de atendimento — barrinha de 7s do carrossel de métricas.
+   Anima só a largura de um span já posicionado; sem reflow do resto. */
+@keyframes atendimento-tick {
+  from { width: 0%; }
+  to { width: 100%; }
+}
