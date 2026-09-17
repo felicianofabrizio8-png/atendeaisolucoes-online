@@ -53,7 +53,7 @@ export const Route = createFileRoute("/api/ai/test-now")({
           detail: readiness.canActivate ? "Todos OK" : `Faltando: ${readiness.missing.join("; ")}`,
         });
 
-        const ctx = await loadAgentContext(companyId);
+        const ctx = await loadAgentContext(companyId, [{ role: "lead", text: sample }]);
         steps.push({
           name: "Carregar contexto",
           ok: !!ctx,

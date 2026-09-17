@@ -83,7 +83,7 @@ export interface SalesAgentGrounding {
     conflictKey?: string | null;
     sourceTrainingMessageId?: string | null;
   }>;
-  catalogSearch?: SalesAgentCatalogSearch;
+  catalogSearch: SalesAgentCatalogSearch;
   catalogScope?: { companyId: string; activeOnly: true };
   activeCoachRules?: ActiveCoachRuleGrounding[];
   quickReplies?: QuickReplyGrounding[];
@@ -128,7 +128,7 @@ export interface AgentContext {
   catalogForValidation?: SalesAgentGrounding["catalog"];
   knowledge: Array<{ question: string; answer: string; type: string }>;
   grounding: SalesAgentGrounding;
-  catalogSearch?: SalesAgentCatalogSearch;
+  catalogSearch: SalesAgentCatalogSearch;
 }
 
 export interface AgentDecision {
@@ -1076,7 +1076,7 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 }
 
 export function buildSalesAgentCompletionRequest(
-  params: Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: SalesAgentCatalogSearch },
+  params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
   const catalogProducts =
     params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
@@ -1206,18 +1206,12 @@ export function buildSalesAgentCompletionRequest(
 export class SalesAgentCore {
   constructor(private readonly complete: SalesAgentCompletion) {}
 
-  async decide(
-    params: SalesAgentCoreInput | (Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: undefined }),
-  ): Promise<AgentDecision> {
+  async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
     const groundingSources = getSalesAgentGroundingSources(params.ctx);
     const availableLearningIds = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
-    const catalogSearch = params.catalogSearch ?? (
-      params.ctx.grounding.catalog.length > 0
-        ? { status: "matches" as const, products: params.ctx.grounding.catalog }
-        : { status: "empty_catalog" as const, products: [] as SalesAgentGrounding["catalog"] }
-    );
+    const catalogSearch = params.catalogSearch;
     if (!catalogSearch) {
       return {
         kind: "handoff",

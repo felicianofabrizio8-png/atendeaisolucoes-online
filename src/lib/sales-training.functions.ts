@@ -141,11 +141,11 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
         .limit(200);
       if (historyError) throw new Error("training_history_load_failed");
 
-      const ctx = await loadAgentContext(companyId);
-      if (!ctx) throw new Error("training_context_not_found");
       const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
       const history = buildTrainingHistory(sessionMessages).slice(-40);
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
+      const ctx = await loadAgentContext(companyId, history);
+      if (!ctx) throw new Error("training_context_not_found");
       const decision = runSafetyLayer(
         await runAgentTurn({
           ctx,

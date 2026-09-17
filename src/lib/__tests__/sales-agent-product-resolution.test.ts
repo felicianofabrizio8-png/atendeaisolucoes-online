@@ -41,6 +41,7 @@ function coreContext(products: typeof catalog): AgentContext {
     knowledge: [],
     grounding: {
       catalog: mapped,
+      catalogSearch: { status: "matches", products: mapped },
       faqKnowledge: [],
       commercialRules: {
         paymentMethods: null,
@@ -54,6 +55,7 @@ function coreContext(products: typeof catalog): AgentContext {
       },
       approvedCoachLearnings: [],
     },
+    catalogSearch: { status: "matches", products: mapped },
   };
 }
 
@@ -128,6 +130,7 @@ describe("resolução contextual de produtos", () => {
       ],
       leadName: null,
       model: "provider/sales-model",
+      catalogSearch: coreContext(productCatalog).grounding.catalogSearch,
     });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
@@ -154,6 +157,7 @@ describe("resolução contextual de produtos", () => {
       history: [{ role: "lead", text: "Qual o valor da 401?" }],
       leadName: null,
       model: "provider/sales-model",
+      catalogSearch: coreContext(catalog.slice(0, 2)).grounding.catalogSearch,
       sessionCorrections: [{ question: "Qual o valor da 401?", correction }],
     });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });

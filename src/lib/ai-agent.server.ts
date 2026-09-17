@@ -33,9 +33,9 @@ import {
   loadRelevantSalesAgentQuickReplies,
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
-  searchSalesAgentCatalog,
   extractCurrentProductAttributes,
   selectRelevantSalesAgentCoachRules,
+  type AgentHistory,
   type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
 import { mergeConversationSalesState } from "./conversation-sales-state";
@@ -44,6 +44,7 @@ import {
   saveConversationSalesState,
   type ConversationSalesStateScope,
 } from "./conversation-sales-state.server";
+import type { ConversationSalesState } from "./conversation-sales-state";
 import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
@@ -269,13 +270,17 @@ export function runSafetyLayer(
 // Context loader
 // ----------------------------------------------------------------------------
 
-export async function loadAgentContext(companyId: string): Promise<AgentContext | null> {
+export async function loadAgentContext(
+  companyId: string,
+  history: AgentHistory = [],
+  salesState: ConversationSalesState | null = null,
+): Promise<AgentContext | null> {
   const [{ data: settings }, { data: company }, { data: aiProfile }, grounding] = await Promise.all(
     [
       supabaseAdmin.from("company_settings").select("*").eq("company_id", companyId).maybeSingle(),
       supabaseAdmin.from("companies").select("name").eq("id", companyId).maybeSingle(),
       supabaseAdmin.from("ai_profiles").select("*").eq("company_id", companyId).maybeSingle(),
-      loadSalesAgentGrounding(companyId),
+      loadSalesAgentGrounding(companyId, history, salesState),
     ],
   );
   if (!settings) return null;
@@ -374,15 +379,7 @@ export async function runAgentTurn(params: {
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
   const previousSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
-  const catalogSearch = params.ctx.catalogSearch?.status === "query_error"
-    ? params.ctx.catalogSearch
-    : searchSalesAgentCatalog(
-        params.ctx.settings.company_id,
-        params.ctx.grounding.catalog,
-        params.history,
-        previousSalesState,
-        params.ctx.grounding.catalogScope,
-      );
+  const catalogSearch = params.ctx.catalogSearch;
   const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
   const currentIntent = customerAskedForProductImages(params.history)
     ? "product_images"
@@ -904,9 +901,12 @@ export async function runAgentTick(conversationId: string): Promise<{
       .eq("id", conv.lead_id)
       .maybeSingle();
 
+    const turnCtx = await loadAgentContext(conv.company_id, history);
+    if (!turnCtx) return { ok: false, action: "error", reason: "no_settings" };
+
     const decision = runSafetyLayer(
       await runAgentTurn({
-        ctx,
+        ctx: turnCtx,
         history,
         leadName: lead?.name ?? null,
         salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },

@@ -64,6 +64,7 @@ const context: AgentContext = {
         notes: "Filtro e bomba",
       },
     ],
+    catalogSearch: { status: "matches", products: [] },
     faqKnowledge: [{ question: "Atende interior?", answer: "Sim.", type: "faq" }],
     commercialRules: {
       paymentMethods: "Pix e cartão",
@@ -90,8 +91,11 @@ const context: AgentContext = {
       },
     ],
   },
+  catalogSearch: { status: "matches", products: [] },
 };
 context.catalogForValidation = context.grounding.catalog;
+context.catalogSearch = { status: "matches", products: context.grounding.catalog };
+context.grounding.catalogSearch = { status: "matches", products: context.grounding.catalog };
 
 describe("SalesAgentCore", () => {
   it.each([5, 6, 7, 8, 9])("seleciona imagens dinamicamente para a medida %sm", (lengthM) => {
@@ -169,6 +173,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Quero uma piscina de 6m" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: { status: "matches", products: [product] },
     });
 
     expect(decision).toMatchObject({
@@ -217,6 +222,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Qual é a melhor forma de iniciar o atendimento?" }],
       leadName: "Cliente simulado",
       model: salesModel,
+       catalogSearch: context.grounding.catalogSearch,
       sessionCorrections: [
         { question: "Como devo começar o atendimento?", correction },
       ],
@@ -269,6 +275,7 @@ describe("SalesAgentCore", () => {
       history: [{ role: "lead", text: "Você tem piscina de 7 metros?" }],
       leadName: "Cliente simulado",
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
       sessionCorrections: [{ question: "Você tem piscina de 7 metros?", correction }],
     });
 
@@ -329,9 +336,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Quero conhecer esse modelo" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+    catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
   });
@@ -400,9 +408,10 @@ const validationContext: AgentContext = {
         { role: "agent", text: "Apresentei a Sol 501" },
         { role: "lead", text: "E a 500 praia?" },
       ],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
 
@@ -413,9 +422,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Qual é o preço?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
   });
 
@@ -429,9 +439,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Qual é o preço dessa piscina?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -440,9 +451,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Qual a capacidade da piscina?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -465,9 +477,10 @@ const validationContext: AgentContext = {
         grounding: { ...validationContext.grounding, catalog: [product] },
       },
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
 
@@ -478,9 +491,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: { ...validationContext, catalogForValidation: undefined },
       history: [{ role: "lead", text: "Qual é o preço?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
   });
 
@@ -501,9 +515,10 @@ const validationContext: AgentContext = {
         grounding: { ...validationContext.grounding, catalog: [wrongFieldProduct] },
       },
       history: [{ role: "lead", text: "Qual a cor?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
   });
 
@@ -516,9 +531,10 @@ const validationContext: AgentContext = {
     const decision = await core.decide({
       ctx: validationContext,
       history: [{ role: "lead", text: "Pode me ajudar?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -528,7 +544,13 @@ const validationContext: AgentContext = {
     ["20.000", [{ role: "lead", text: "Qual é o preço?" }]],
   ])("reconhece preço com contexto atual/imediato: %s", async (message, history) => {
     const core = new SalesAgentCore(vi.fn().mockResolvedValue(completionWithMessage(message)));
-    const decision = await core.decide({ ctx: validationContext, history, leadName: null, model: salesModel });
+    const decision = await core.decide({
+      ctx: validationContext,
+      history,
+      leadName: null,
+      model: salesModel,
+      catalogSearch: validationContext.grounding.catalogSearch,
+    });
     expect(decision.kind).toBe("reply");
   });
 
@@ -540,9 +562,10 @@ const validationContext: AgentContext = {
         { role: "lead", text: "Qual é o preço?" },
         { role: "lead", text: "E a capacidade em litros?" },
       ],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -554,9 +577,10 @@ const validationContext: AgentContext = {
         { role: "lead", text: "Qual é o preço?" },
         { role: "lead", text: "Também gostaria de saber sobre instalação." },
       ],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -571,9 +595,10 @@ const validationContext: AgentContext = {
       const decision = await core.decide({
         ctx: validationContext,
         history: [{ role: "lead", text: "Pode verificar isso?" }],
-        leadName: null,
-        model: salesModel,
-      });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
       expect(decision.kind).toBe("reply");
     }
   });
@@ -594,9 +619,10 @@ const validationContext: AgentContext = {
         { role: "lead", text: "Qual é o preço?" },
         { role: "lead", text: "Qual a capacidade?" },
       ],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind).toBe("reply");
   });
 
@@ -620,9 +646,10 @@ const validationContext: AgentContext = {
         grounding: { ...validationContext.grounding, catalog: [product] },
       },
       history: [{ role: "lead", text: "Quero os dados técnicos" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
 
@@ -637,6 +664,7 @@ const validationContext: AgentContext = {
       history,
       leadName: "Maria",
       model: salesModel,
+        catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(request.model).toBe(salesModel);
@@ -690,9 +718,10 @@ const validationContext: AgentContext = {
         grounding: { ...context.grounding, catalog },
       },
       history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const properties = (
       request.tools[0] as {
         function: {
@@ -716,6 +745,7 @@ const validationContext: AgentContext = {
         history: [],
         leadName: null,
         model,
+       catalogSearch: context.grounding.catalogSearch,
       });
 
       expect(request.reasoning_effort).toBe("none");
@@ -728,9 +758,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(request.messages[0].content.match(/Pix e cartão/g)).toHaveLength(1);
   });
 
@@ -743,9 +774,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history,
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const userPrompt = request.messages[1].content;
     expect(userPrompt.length).toBeLessThan(6500);
     expect(userPrompt).toContain("mensagem-mais-recente");
@@ -773,9 +805,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const line = request.messages[0].content.split("\n").find((item) => item.includes("Regra longa"));
     expect(line?.length ?? 0).toBeLessThanOrEqual(603);
   });
@@ -794,9 +827,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const line = request.messages[0].content.split("\n").find((item) => item.includes("Learning longo"));
     expect(line?.length ?? 0).toBeLessThanOrEqual(603);
   });
@@ -844,9 +878,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [{ role: "lead", text: "Me manda as fotos desses modelos" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision).toMatchObject({
       kind: "reply",
@@ -900,9 +935,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [{ role: "lead", text: "Quais modelos de 6 metros vocês têm?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision).toMatchObject({ kind: "reply", product_image_ids: ["product-1"] });
   });
@@ -939,9 +975,10 @@ const validationContext: AgentContext = {
         grounding: { ...context.grounding, catalog: [product] },
       },
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision).toMatchObject({
       kind: "reply",
@@ -954,9 +991,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history: [{ role: "lead", text: "Quero saber pagamento" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(request.messages[0].content).toContain("Piscina 6x3");
     expect(request.messages[0].content).toContain("Categoria: Piscinas de fibra");
@@ -968,9 +1006,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history: [{ role: "lead", text: "Quero saber pagamento e se atende interior" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(request.messages[0].content).toContain("Atende interior? → Sim.");
     expect(request.messages[0].content).toContain("Pagamento (cadastro legado): Pix e cartão");
@@ -1002,9 +1041,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [{ role: "lead", text: "Quero saber como funciona o pagamento" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(request.messages[0].content).toContain("Resposta aprovada.");
     expect(request.messages[0].content).not.toContain("Resposta do perfil.");
@@ -1027,9 +1067,10 @@ const validationContext: AgentContext = {
         grounding: { ...context.grounding, faqKnowledge: faqs },
       },
       history: [{ role: "lead", text: "Quero informações de pagamento" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const faqSection = request.messages[0].content.split("FAQ:\n")[1].split("\n\nBASE")[0];
     expect(faqSection.match(/^\d+\. /gm)).toHaveLength(6);
     expect(faqSection.split("\n").every((line) => line.length <= 400)).toBe(true);
@@ -1051,9 +1092,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [{ role: "lead", text: "Quais formas de pagamento vocês aceitam?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const content = request.messages[0].content;
     expect(content.match(/Aceitamos Pix e cartão\./gi)).toHaveLength(1);
   });
@@ -1070,9 +1112,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [{ role: "lead", text: "Vocês atendem o interior?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const content = request.messages[0].content;
     expect(content.match(/Atende interior\? → Sim\./g)).toHaveLength(1);
   });
@@ -1081,9 +1124,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history: [{ role: "lead", text: "Olá, tudo bem?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     expect(request.messages[0].content).not.toContain("Atende interior? → Sim.");
   });
 
@@ -1114,9 +1158,10 @@ const validationContext: AgentContext = {
     const decision = await new SalesAgentCore(complete).decide({
       ctx: context,
       history: [{ role: "lead", text: "Gostei da primeira, quanto custa?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision).toMatchObject({
       kind: "reply",
@@ -1153,9 +1198,10 @@ const validationContext: AgentContext = {
     const decision = await new SalesAgentCore(complete).decide({
       ctx: context,
       history: [{ role: "lead", text: "Quanto custa?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision.message).toContain("Encontrei no catálogo");
     expect(decision.message).toContain("preço R$ 18.000,00");
@@ -1167,9 +1213,10 @@ const validationContext: AgentContext = {
     const request = buildSalesAgentCompletionRequest({
       ctx: context,
       history: [{ role: "lead", text: "Vocês atendem o interior?" }],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(request.messages[0].content).toContain("Atende interior? → Sim.");
     expect(request.messages[0].content).toContain("Pagamento (cadastro legado): Pix e cartão");
@@ -1196,9 +1243,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
     const prompt = request.messages[0].content;
 
     expect(prompt).toContain("Pagamento: Pagamento somente após validação da equipe");
@@ -1250,9 +1298,10 @@ const validationContext: AgentContext = {
         },
       },
       history: [],
-      leadName: null,
-      model: salesModel,
-    });
+     leadName: null,
+     model: salesModel,
+      catalogSearch: (context).grounding.catalogSearch,
+   });
 
     expect(decision.grounding_sources).toContain("commercial_rules");
   });
@@ -1287,6 +1336,7 @@ const validationContext: AgentContext = {
       history: [],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
     const request = complete.mock.calls[0][0];
 
@@ -1341,6 +1391,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "O que fica por conta do cliente?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision.grounding_sources).toContain("quick_replies");
@@ -1366,6 +1417,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero informações das piscinas" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(request.messages[0].content).not.toContain("Exemplo recomendado");
@@ -1402,6 +1454,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision).toMatchObject({
@@ -1449,6 +1502,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais piscinas de 6 metros vocês têm?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: { status: "matches", products },
     });
 
     expect(decision).toMatchObject({
@@ -1489,6 +1543,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero conhecer a piscina de 6 metros" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision.message).toContain("Piscina 6x3 — categoria Piscinas de fibra");
@@ -1515,7 +1570,11 @@ const validationContext: AgentContext = {
       ...context,
       products: [structuredProduct],
       catalogForValidation: [structuredProduct],
-      grounding: { ...context.grounding, catalog: [structuredProduct] },
+      grounding: {
+        ...context.grounding,
+        catalog: [structuredProduct],
+        catalogSearch: { status: "matches", products: [structuredProduct] },
+      },
     };
     const complete = vi.fn().mockResolvedValue({
       ok: true,
@@ -1545,6 +1604,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual a profundidade e a cor dele?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: structuredContext.grounding.catalogSearch,
     });
     const prompt = complete.mock.calls[0][0].messages[0].content;
 
@@ -1573,7 +1633,11 @@ const validationContext: AgentContext = {
     const rectangularContext: AgentContext = {
       ...context,
       products: [rectangularProduct],
-      grounding: { ...context.grounding, catalog: [rectangularProduct] },
+      grounding: {
+        ...context.grounding,
+        catalog: [rectangularProduct],
+        catalogSearch: { status: "matches", products: [rectangularProduct] },
+      },
     };
     const complete = vi.fn().mockResolvedValue({
       ok: true,
@@ -1600,6 +1664,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero uma piscina quadrada" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: rectangularContext.grounding.catalogSearch,
     });
 
     expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
@@ -1643,6 +1708,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Tem o modelo Atlântida?" }],
       leadName: null,
       model: salesModel,
+       catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
@@ -1655,7 +1721,11 @@ const validationContext: AgentContext = {
     const emptyContext: AgentContext = {
       ...context,
       products: [],
-      grounding: { ...context.grounding, catalog: [] },
+      grounding: {
+        ...context.grounding,
+        catalog: [],
+        catalogSearch: { status: "empty_catalog", products: [] },
+      },
     };
 
     const decision = await new SalesAgentCore(complete).decide({
@@ -1663,6 +1733,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quero uma piscina de 6 metros" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: emptyContext.grounding.catalogSearch,
     });
 
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_empty" });
@@ -1673,46 +1744,14 @@ const validationContext: AgentContext = {
     const complete = vi.fn();
     const decision = await new SalesAgentCore(complete).decide({
       ctx: context,
-      catalogSearch: { status: "query_error", error: new Error("db unavailable") },
       history: [{ role: "lead", text: "Qual o preço do produto?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: { status: "query_error", error: new Error("db unavailable") },
     });
 
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_query_error" });
     expect(complete).not.toHaveBeenCalled();
-  });
-
-  it("sem grounding estruturado mantém catálogo e conhecimento legados como fallback", () => {
-    const request = buildSalesAgentCompletionRequest({
-      ctx: {
-        ...context,
-        grounding: {
-          catalog: [],
-          faqKnowledge: [],
-          commercialRules: {
-            paymentMethods: null,
-            commercialTerms: null,
-            paymentPolicy: null,
-            installationPolicy: null,
-            visitPolicy: null,
-            heatingPolicy: null,
-            shippingPolicy: null,
-            includedItemsPolicy: null,
-          },
-          approvedCoachLearnings: [],
-        },
-      },
-      history: [{ role: "lead", text: "Vocês atendem o interior?" }],
-      leadName: null,
-      model: salesModel,
-    });
-
-    expect(request.messages[0].content).toContain("Piscina 6x3");
-    expect(request.messages[0].content).toContain("Atende interior? → Sim.");
-    expect(request.messages[0].content).not.toContain("Preço cadastrado:");
-    expect(request.messages[0].content).not.toContain("REGRAS COMERCIAIS CADASTRADAS");
-    expect(request.messages[0].content).not.toContain("APRENDIZADOS ATIVOS DO COACH");
   });
 
   it.each([
@@ -1736,7 +1775,13 @@ const validationContext: AgentContext = {
   ])("preserva os fallbacks de handoff", async (completion, reason) => {
     const core = new SalesAgentCore(vi.fn().mockResolvedValue(completion));
     await expect(
-      core.decide({ ctx: context, history: [], leadName: null, model: salesModel }),
+      core.decide({
+        ctx: context,
+        history: [],
+        leadName: null,
+        model: salesModel,
+        catalogSearch: context.grounding.catalogSearch,
+      }),
     ).resolves.toMatchObject({
       kind: "handoff",
       reason,
@@ -1769,6 +1814,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o prazo normal?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: { status: "query_error", error: new Error("db unavailable") },
     });
     const prompt = request.messages[0].content;
 
@@ -1810,6 +1856,7 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Qual o prazo para instalação de vocês?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision).toMatchObject({
@@ -1847,11 +1894,25 @@ const validationContext: AgentContext = {
       history: [{ role: "lead", text: "Quais modelos vocês têm?" }],
       leadName: null,
       model: salesModel,
+      catalogSearch: context.grounding.catalogSearch,
     });
 
     expect(decision.kind).toBe("reply");
     expect(decision.message).toContain("Encontrei no catálogo");
     expect(decision.message).not.toContain("product-missing");
     expect(decision.suggested_products).not.toContain("product-missing");
+  });
+
+  it("trata ausência do resultado determinístico como erro de consulta", async () => {
+    const core = new SalesAgentCore(vi.fn());
+    const decision = await core.decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Qual o preço?" }],
+      leadName: null,
+      model: salesModel,
+      catalogSearch: undefined as never,
+    });
+
+    expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_query_error" });
   });
 });

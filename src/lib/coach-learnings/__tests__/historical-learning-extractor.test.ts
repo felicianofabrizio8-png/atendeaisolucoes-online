@@ -130,7 +130,7 @@ describe("historical learning extractor", () => {
       /LOVABLE_API_KEY|ai\.gateway\.lovable/i,
     );
     expect(extractorSource).toContain("resolveSalesAgentLlmConfig");
-    expect(salesAgentSource).toContain("core.decide({ ...contextualParams, model })");
+    expect(salesAgentSource).toContain("core.decide({ ...contextualParams, model, catalogSearch })");
     expect(creativeSource).toContain("LOVABLE_API_KEY");
   });
 });

@@ -283,6 +283,10 @@ describe("SalesAgent grounding", () => {
       promoPrice: 18_000,
       images: ["image.jpg"],
     });
+    expect(grounding.catalogSearch).toMatchObject({
+      status: "matches",
+      products: [{ id: "product-1", model: "Caribe 6", price: 20_000 }],
+    });
     expect(grounding.faqKnowledge).toEqual([{ question: "Instala?", answer: "Sim.", type: "faq" }]);
     expect(grounding.commercialRules.commercialTerms).toBe("Entrada de 50%");
     expect(grounding.commercialRules).toMatchObject({
@@ -296,6 +300,7 @@ describe("SalesAgent grounding", () => {
     });
     expect(grounding.approvedCoachLearnings).toEqual([]);
     expect(products.eq).toHaveBeenCalledWith("active", true);
+    expect(products.eq).toHaveBeenCalledWith("company_id", "company-1");
     expect(products.limit).not.toHaveBeenCalled();
     expect(knowledge.eq).toHaveBeenCalledWith("status", "approved");
   });

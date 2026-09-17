@@ -77,6 +77,7 @@ const context: AgentContext = {
         notes: null,
       },
     ],
+    catalogSearch: { status: "matches", products: [] },
     faqKnowledge: [],
     commercialRules: {
       paymentMethods: null,
@@ -91,6 +92,7 @@ const context: AgentContext = {
     },
     approvedCoachLearnings: [],
   },
+  catalogSearch: { status: "matches", products: [] },
 };
 
 function query(data: unknown, error: unknown = null) {

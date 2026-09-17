@@ -853,7 +853,11 @@ export async function loadRelevantSalesAgentLearnings(
   return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
 }
 
-export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
+export async function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory = [],
+  salesState: ConversationSalesState | null = null,
+): Promise<SalesAgentGrounding> {
   let catalogQueryError: unknown = null;
   const safeSource = async <T>(
     request: PromiseLike<{ data: T | null; error?: unknown }>,
@@ -925,8 +929,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     ),
   ]);
 
-  return {
-    catalog: (products ?? []).map((product) => ({
+  const catalog = (products ?? []).map((product) => ({
       id: product.id,
       name: product.name,
       model: product.model,
@@ -960,14 +963,16 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
           )
         : [],
       notes: product.notes,
-    })),
+    }));
+  const catalogScope = catalogQueryError ? undefined : { companyId, activeOnly: true as const };
+
+  return {
+    catalog,
     faqKnowledge: knowledge,
-    catalogScope: catalogQueryError ? undefined : { companyId, activeOnly: true as const },
+    catalogScope,
     catalogSearch: catalogQueryError
       ? { status: "query_error" as const, error: catalogQueryError }
-      : products?.length
-        ? { status: "matches" as const, products: [] }
-        : { status: "empty_catalog" as const, products: [] },
+      : searchSalesAgentCatalog(companyId, catalog, history, salesState, catalogScope),
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,

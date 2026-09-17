@@ -57,7 +57,7 @@ describe("Sales training contract", () => {
   });
 
   it("usa o agente e grounding atuais sem envio ou mutação do atendimento real", () => {
-    expect(functionsSource).toContain("loadAgentContext(companyId)");
+    expect(functionsSource).toContain("loadAgentContext(companyId, history)");
     expect(functionsSource).toContain("runAgentTurn({");
     expect(functionsSource).toContain('scopeType: "training_session"');
     expect(functionsSource).toContain("runSafetyLayer");

@@ -45,6 +45,7 @@ function context(companyId = companyA): AgentContext {
     knowledge: [],
     grounding: {
       catalog: [productA],
+      catalogSearch: { status: "matches", products: [productA] },
       faqKnowledge: [],
       commercialRules: {
         paymentMethods: "Pix e cartão",
@@ -71,6 +72,7 @@ function context(companyId = companyA): AgentContext {
       activeCoachRules: [],
       quickReplies: [],
     },
+    catalogSearch: { status: "matches", products: [productA] },
   };
 }
 
