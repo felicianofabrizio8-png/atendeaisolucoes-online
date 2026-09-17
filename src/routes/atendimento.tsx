@@ -42,7 +42,8 @@ function useIsCompact(): boolean | null {
 }
 
 function AtendimentoPage() {
-  const { contacts, isSimulated } = useAtendimentoData();
+  const [forceSimulated, setForceSimulated] = useState(false);
+  const { contacts, isSimulated } = useAtendimentoData({ forceSimulated });
   const compact = useIsCompact();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -147,15 +148,32 @@ function AtendimentoPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {isSimulated && (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[10px] font-bold text-muted-foreground"
-              title="Nenhuma conversa real encontrada nesta empresa. A tela está usando clientes simulados só para visualização — nada é gravado no banco."
-            >
-              <FlaskConical className="h-3 w-3" />
-              <span className="hidden sm:inline">Clientes simulados</span>
+          {/* O botão só aparece quando existe base real para alternar; com a
+              empresa vazia o rótulo é informativo, não um interruptor. */}
+          <button
+            type="button"
+            disabled={isSimulated && !forceSimulated}
+            onClick={() => setForceSimulated((v) => !v)}
+            title={
+              isSimulated && !forceSimulated
+                ? "Nenhuma conversa real encontrada nesta empresa. A tela está usando clientes simulados só para visualização — nada é gravado no banco."
+                : forceSimulated
+                  ? "Voltar para as conversas reais da empresa"
+                  : "Ver a tela com clientes de exemplo, sem expor dados reais"
+            }
+            className={cn(
+              "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors",
+              isSimulated
+                ? "border-border text-muted-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
+              "disabled:cursor-default",
+            )}
+          >
+            <FlaskConical className="h-3 w-3" />
+            <span className="hidden sm:inline">
+              {isSimulated ? "Clientes simulados" : "Ver exemplos"}
             </span>
-          )}
+          </button>
           {selected && (
             <Sheet>
               <SheetTrigger asChild>

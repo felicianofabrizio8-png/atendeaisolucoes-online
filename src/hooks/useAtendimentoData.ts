@@ -83,13 +83,25 @@ function useRepoVersion(): number {
   return useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
 }
 
-export function useAtendimentoData(): AtendimentoData {
+export interface AtendimentoDataOptions {
+  /**
+   * Força os clientes simulados mesmo quando a empresa tem conversas reais.
+   * Serve para trabalhar no visual sem abrir dados de cliente na tela — e
+   * para conferir estados que a base real não tem no momento (lead perdido,
+   * cliente fiel, conversa inativa há dias).
+   */
+  forceSimulated?: boolean;
+}
+
+export function useAtendimentoData({
+  forceSimulated = false,
+}: AtendimentoDataOptions = {}): AtendimentoData {
   const repoVersion = useRepoVersion();
 
   return useMemo(() => {
     const conversations = getConversations();
 
-    if (conversations.length === 0) {
+    if (forceSimulated || conversations.length === 0) {
       return {
         isSimulated: true,
         contacts: buildDemoInbox().map((c) => ({
@@ -123,5 +135,5 @@ export function useAtendimentoData(): AtendimentoData {
 
     return { contacts, isSimulated: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoVersion]);
+  }, [repoVersion, forceSimulated]);
 }
