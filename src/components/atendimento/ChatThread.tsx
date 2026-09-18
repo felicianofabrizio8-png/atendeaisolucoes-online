@@ -1,10 +1,93 @@
-import { useEffect, useRef } from "react";
-import { Paperclip, Send, Smile } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Camera, FileUp, Images, Paperclip, Send, Smile } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ContactAvatar } from "./ContactAvatar";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
+
+/**
+ * Menu do clipe. Cada opção abre o seletor nativo do sistema com o filtro
+ * certo — arquivo livre, galeria de fotos e vídeos, ou câmera. São ações
+ * reais, não itens decorativos: o que esta tela ainda não faz é enviar, e o
+ * aviso depois da escolha diz isso em vez de fingir que mandou.
+ */
+function AttachmentMenu() {
+  const [open, setOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [picker, setPicker] = useState<{ accept: string; capture?: "environment" }>({
+    accept: "*/*",
+  });
+
+  const options = [
+    { key: "arquivo", icon: FileUp, label: "Enviar arquivo", hint: "PDF, planilha, contrato", accept: "*/*" },
+    { key: "midia", icon: Images, label: "Fotos e vídeos", hint: "Da galeria do aparelho", accept: "image/*,video/*" },
+    { key: "camera", icon: Camera, label: "Tirar foto", hint: "Abre a câmera", accept: "image/*", capture: "environment" as const },
+  ];
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        accept={picker.accept}
+        {...(picker.capture ? { capture: picker.capture } : {})}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            toast.info(`“${file.name}” selecionado`, {
+              description: "Prévia da interface: o anexo não é enviado ao cliente nesta tela.",
+            });
+          }
+          e.target.value = "";
+        }}
+      />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Anexar"
+            className={cn(
+              "rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+              open && "bg-secondary text-foreground",
+            )}
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" side="top" sideOffset={12} className="w-60 p-1.5">
+          {options.map((opt) => {
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => {
+                  setPicker({ accept: opt.accept, capture: opt.capture });
+                  setOpen(false);
+                  // Deixa o estado do input aplicar antes de abrir o seletor.
+                  window.setTimeout(() => fileRef.current?.click(), 0);
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium leading-tight">{opt.label}</span>
+                  <span className="block text-[11px] text-muted-foreground">{opt.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -83,9 +166,13 @@ export function ChatThread({
                 <div
                   className={cn(
                     "max-w-[78%] rounded-3xl px-4 py-2.5 text-sm leading-relaxed",
+                    // Minhas mensagens usam a cor de destaque do app: sobre o
+                    // fundo preto, um cinza um pouco mais claro que o outro
+                    // balão não era diferença suficiente para bater o olho e
+                    // saber quem falou.
                     mine
-                      ? "self-end bg-secondary text-foreground rounded-br-lg"
-                      : "self-start border border-border bg-transparent text-foreground rounded-bl-lg",
+                      ? "self-end rounded-br-lg border border-primary/30 bg-primary/20 text-foreground"
+                      : "self-start rounded-bl-lg border border-border bg-secondary/50 text-foreground",
                   )}
                 >
                   <p className="whitespace-pre-wrap break-words">{m.text}</p>
@@ -107,11 +194,12 @@ export function ChatThread({
             e.preventDefault();
             onSend();
           }}
-          className="mx-auto flex max-w-[680px] items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 focus-within:ring-2 focus-within:ring-ring"
+          // Sem anel de foco colorido: ao clicar, o único sinal é o cursor
+          // piscando no campo, como pedido.
+          className="mx-auto flex max-w-[680px] items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5"
         >
-          <button type="button" className="rounded-full p-2 text-muted-foreground hover:bg-secondary" aria-label="Anexar arquivo">
-            <Paperclip className="h-4 w-4" />
-          </button>
+          <AttachmentMenu />
+
           <input
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
@@ -124,7 +212,11 @@ export function ChatThread({
             placeholder="Mandar mensagem"
             className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground"
           />
-          <button type="button" className="rounded-full p-2 text-muted-foreground hover:bg-secondary" aria-label="Emojis">
+          <button
+            type="button"
+            aria-label="Emojis"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
             <Smile className="h-4 w-4" />
           </button>
           <button

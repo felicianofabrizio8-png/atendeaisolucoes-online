@@ -41,7 +41,7 @@ function SegmentedToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => vo
     <div
       role="tablist"
       aria-label="Painel lateral"
-      className="relative flex self-end rounded-full bg-secondary/70 p-1 text-sm font-semibold"
+      className="relative flex self-center rounded-full bg-secondary p-1 text-sm font-semibold"
     >
       {/* Pastilha deslizante: dá continuidade visual entre as duas abas. */}
       <span
@@ -113,7 +113,10 @@ function Field({
         onClick={copy}
         title={value ? "Clique para copiar" : undefined}
         className={cn(
-          "group relative w-full rounded-2xl bg-secondary/70 px-3.5 text-left text-sm transition-colors hover:bg-secondary",
+          // Superfície cheia + borda: os campos precisam se ler como caixas
+          // com contorno próprio, não como manchas um pouco mais claras que
+          // o fundo preto.
+          "group relative w-full rounded-2xl border border-border bg-secondary px-3.5 text-left text-sm transition-colors hover:bg-accent",
           multiline ? "min-h-[110px] py-3 leading-relaxed" : "h-11 flex items-center",
           empty && "text-muted-foreground",
         )}
@@ -185,7 +188,7 @@ function InfoTab({ contact }: { contact: AtendimentoContact }) {
 
 function MiniStat({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="rounded-xl bg-secondary/50 px-3 py-2">
+    <div className="rounded-xl border border-border bg-secondary px-3 py-2">
       <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-xs font-medium leading-snug">{value ?? "—"}</dd>
     </div>
@@ -294,7 +297,7 @@ function AiTab({
             </button>
           </div>
 
-          <p className="mt-2.5 rounded-2xl bg-secondary/70 p-3.5 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-2.5 rounded-2xl border border-border bg-secondary p-3.5 text-xs leading-relaxed text-muted-foreground">
             {suggestion.rationale}
           </p>
         </section>
@@ -324,9 +327,12 @@ function AiTab({
             <div
               className={cn(
                 "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+                // Minhas perguntas usam a cor de destaque do app; a resposta
+                // da IA fica na superfície neutra. Mesma lógica dos balões do
+                // chat com o cliente, para o olho não ter que reaprender.
                 entry.role === "user"
-                  ? "ml-6 bg-primary/15 text-foreground"
-                  : "bg-secondary/70",
+                  ? "ml-6 border border-primary/30 bg-primary/20 text-foreground"
+                  : "border border-border bg-secondary",
               )}
             >
               <p className="whitespace-pre-wrap">

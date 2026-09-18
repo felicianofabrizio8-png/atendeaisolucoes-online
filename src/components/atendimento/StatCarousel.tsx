@@ -84,7 +84,7 @@ export function StatCarousel({
         if (e.key === "ArrowLeft") { e.preventDefault(); go(index - 1); }
       }}
     >
-      <div className="overflow-hidden rounded-[28px]">
+      <div className="relative overflow-hidden rounded-[28px]">
         <div
           className="flex"
           style={{
@@ -108,7 +108,9 @@ export function StatCarousel({
                 title={`${stat.caption} — clique para filtrar a fila`}
                 className={cn(
                   "group relative shrink-0 basis-full text-left",
-                  "aspect-[16/11] max-h-[230px] rounded-[28px] p-5 flex flex-col justify-between",
+                  // pt maior que o resto: o topo agora é a faixa dos
+                  // indicadores, que passou para dentro do cartão.
+                  "aspect-[16/11] max-h-[230px] rounded-[28px] p-5 pt-14 flex flex-col justify-between",
                   "outline-none transition-[box-shadow,transform] duration-200",
                   "focus-visible:ring-2 focus-visible:ring-white/70",
                   selected && "ring-2 ring-white/80",
@@ -144,40 +146,50 @@ export function StatCarousel({
             );
           })}
         </div>
-      </div>
 
-      {/* Indicadores: barrinha que enche em 7s no ativo, ponto nos demais.
-          O <button> é só a área de toque (o app impõe 44px de altura mínima
-          no mobile); quem desenha o traço é o <span> centralizado dentro. */}
-      <div className="flex items-center gap-1.5 px-1">
-        {stats.map((stat, i) => (
-          <button
-            key={stat.key}
-            type="button"
-            aria-label={`Ver métrica ${stat.label}`}
-            aria-current={i === index}
-            onClick={() => go(i)}
-            className="flex h-8 items-center py-3"
-          >
-            <span
-              className={cn(
-                "block h-1 overflow-hidden rounded-full transition-all duration-300",
-                i === index ? "w-7 bg-foreground/30" : "w-1.5 bg-foreground/20 hover:bg-foreground/40",
-              )}
+        {/* Indicadores dentro do cartão, no topo e centralizados. A barra do
+            slide ativo enche em 7s — é ela que comunica o ritmo da troca e o
+            estado de pausa (a animação congela no hover), então não sobra
+            nenhum rótulo de texto para explicar isso.
+
+            O <button> é só a área de toque, porque o app impõe 44px de altura
+            mínima em telas pequenas; quem desenha o traço é o <span> dentro.
+            O container é pointer-events-none para não roubar o clique do
+            cartão nos vãos entre as barras. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center gap-1.5 px-4 pt-2.5">
+          {stats.map((stat, i) => (
+            <button
+              key={stat.key}
+              type="button"
+              aria-label={`Ver métrica ${stat.label}`}
+              aria-current={i === index}
+              onClick={() => go(i)}
+              className="pointer-events-auto flex h-6 flex-1 items-center py-2"
             >
-              {i === index && !paused && !reduceMotion && (
-                <span
-                  key={`${index}-${tick}`}
-                  className="block h-full rounded-full bg-foreground"
-                  style={{ animation: `atendimento-tick ${ROTATION_MS}ms linear forwards` }}
-                />
-              )}
-            </span>
-          </button>
-        ))}
-        <span className="ml-auto text-[10px] font-medium text-muted-foreground">
-          {paused ? "pausado" : "troca a cada 7s"}
-        </span>
+              <span
+                className={cn(
+                  "block h-1.5 w-full overflow-hidden rounded-full shadow-sm transition-colors duration-300",
+                  i === index ? "bg-black/25" : "bg-white/35 hover:bg-white/60",
+                )}
+              >
+                {i === index && (
+                  <span
+                    key={`${index}-${tick}`}
+                    className="block h-full rounded-full bg-white"
+                    style={
+                      reduceMotion
+                        ? { width: "100%" }
+                        : {
+                            animation: `atendimento-tick ${ROTATION_MS}ms linear forwards`,
+                            animationPlayState: paused ? "paused" : "running",
+                          }
+                    }
+                  />
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -30,7 +30,9 @@ export function ConversationRail({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Buscar cliente, cidade ou produto…"
-          className="h-10 w-full rounded-full bg-secondary/60 pl-9 pr-3 text-sm outline-none ring-0 placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+          // Sem anel colorido no foco: o sinal de que o campo está ativo é o
+          // cursor piscando, apoiado por um leve clareamento do fundo.
+          className="h-10 w-full rounded-full bg-secondary/60 pl-9 pr-3 text-sm outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:bg-secondary"
         />
       </div>
 
