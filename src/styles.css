@@ -400,6 +400,78 @@
   padding-right: env(safe-area-inset-right);
 }
 
+/* ==========================================================================
+   Barra lateral minimizável (AppShell)
+
+   A largura mora numa custom property no <html>, alternada pelo atributo
+   data-sidebar. Isso resolve três coisas de uma vez:
+
+   1. Sem flash: APPEARANCE_BOOT_SCRIPT grava o atributo antes do primeiro
+      paint, então a sidebar já nasce na largura certa. O React renderiza a
+      mesma marcação nos dois lados — nada de divergência de hidratação.
+   2. O conteúdo acompanha sozinho: <main> é flex-1, então animar só a
+      largura do <aside> faz a área principal ceder e ocupar o espaço no
+      mesmo frame. É a interface inteira se reorganizando, não um painel
+      passando por cima do conteúdo.
+   3. Só uma propriedade animada, na mesma curva para todo mundo.
+
+   As regras de estado ficam presas a `.app-sidebar` de propósito: a mesma
+   lista de navegação é reaproveitada na gaveta mobile, que nunca deve
+   aparecer recolhida.
+   ========================================================================== */
+:root {
+  --app-sidebar-width: 15rem; /* 240px — a mesma largura de antes (w-60) */
+  --app-sidebar-width-collapsed: 4.5rem; /* 72px — trilho só de ícones */
+  --app-sidebar-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root[data-sidebar="collapsed"] {
+  --app-sidebar-width: var(--app-sidebar-width-collapsed);
+}
+
+.app-sidebar {
+  width: var(--app-sidebar-width);
+  transition: width var(--app-sidebar-transition);
+}
+
+/* Trechos que só existem no estado expandido (rótulos, tagline, contadores). */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-when-expanded {
+  display: none;
+}
+
+/* Contrapartes de ícone, escondidas por padrão inclusive na gaveta mobile. */
+.sidebar-when-collapsed {
+  display: none;
+}
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-when-collapsed {
+  display: flex;
+}
+
+/* Linhas de navegação viram alvos quadrados e centralizados no trilho. */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-row {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Ícones um pouco maiores quando são a única pista visual disponível. */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-row svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-header {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar {
+    transition: none;
+  }
+}
+
 /* NEXUS-PRO:WATERMARK-HIDE:START */
 /* Overlay do badge oficial ocultado por conflito com UI custom.
    Bloco idempotente gerenciado pela extensão Nexus Pro.

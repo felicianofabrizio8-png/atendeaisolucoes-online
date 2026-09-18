@@ -1,8 +1,11 @@
-// Preferências de aparência (tema, cor de destaque e fonte), salvas por
-// navegador. APPEARANCE_BOOT_SCRIPT roda inline em __root.tsx antes da
-// hidratação para evitar flash; este módulo mantém o estado em sincronia depois.
+// Preferências de aparência (tema, cor de destaque, fonte e estado da barra
+// lateral), salvas por navegador. APPEARANCE_BOOT_SCRIPT roda inline em
+// __root.tsx antes da hidratação para evitar flash; este módulo mantém o
+// estado em sincronia depois.
 
 export type ThemeMode = "black" | "dark" | "light";
+/** Barra lateral do AppShell: largura cheia com textos, ou trilho só de ícones. */
+export type SidebarState = "expanded" | "collapsed";
 export type AccentColor = "cyan" | "blue" | "violet" | "green" | "orange";
 export type AppFont =
   | "system"
@@ -73,11 +76,22 @@ export function googleFontsHref(fonts: AppFont[]): string | null {
 const THEME_KEY = "atendeai.theme";
 const ACCENT_KEY = "atendeai.accent";
 const FONT_KEY = "atendeai.font";
+const SIDEBAR_KEY = "atendeai.sidebar";
 const FONT_LINK_ID = "atendeai-font";
 
-export type Appearance = { theme: ThemeMode; accent: AccentColor; font: AppFont };
+export type Appearance = {
+  theme: ThemeMode;
+  accent: AccentColor;
+  font: AppFont;
+  sidebar: SidebarState;
+};
 
-const DEFAULT: Appearance = { theme: "dark", accent: "cyan", font: "system" };
+const DEFAULT: Appearance = {
+  theme: "dark",
+  accent: "cyan",
+  font: "system",
+  sidebar: "expanded",
+};
 
 function isTheme(v: unknown): v is ThemeMode {
   return THEME_OPTIONS.some((o) => o.value === v);
@@ -89,6 +103,10 @@ function isAccent(v: unknown): v is AccentColor {
 
 function isFont(v: unknown): v is AppFont {
   return FONT_OPTIONS.some((o) => o.value === v);
+}
+
+function isSidebar(v: unknown): v is SidebarState {
+  return v === "expanded" || v === "collapsed";
 }
 
 /** Script inline (sem dependências) que aplica as preferências antes do primeiro paint. */
@@ -105,6 +123,7 @@ var f=s.getItem(${JSON.stringify(FONT_KEY)});var fonts=${JSON.stringify(
   ),
 )};
 if(f&&fonts[f]){d.style.setProperty('--app-font-family',fonts[f].family);var l=document.createElement('link');l.id=${JSON.stringify(FONT_LINK_ID)};l.rel='stylesheet';l.href=fonts[f].href;document.head.appendChild(l);}
+var sb=s.getItem(${JSON.stringify(SIDEBAR_KEY)});if(sb==='collapsed'){d.setAttribute('data-sidebar','collapsed');}
 }catch(e){}})();`;
 
 function readStorage(key: string): string | null {
@@ -133,21 +152,30 @@ function ensureInit() {
   const t = readStorage(THEME_KEY);
   const a = readStorage(ACCENT_KEY);
   const f = readStorage(FONT_KEY);
+  const sb = readStorage(SIDEBAR_KEY);
   current = {
     theme: isTheme(t) ? t : DEFAULT.theme,
     accent: isAccent(a) ? a : DEFAULT.accent,
     font: isFont(f) ? f : DEFAULT.font,
+    sidebar: isSidebar(sb) ? sb : DEFAULT.sidebar,
   };
   apply(current);
 }
 
-function apply({ theme, accent, font }: Appearance) {
+function apply({ theme, accent, font, sidebar }: Appearance) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.classList.toggle("light", theme === "light");
   root.classList.toggle("black", theme === "black");
   if (accent === "cyan") root.removeAttribute("data-accent");
   else root.setAttribute("data-accent", accent);
+
+  // A largura da sidebar sai de uma custom property presa a este atributo
+  // (ver styles.css). Mantendo a decisão no <html>, o mesmo estado já vale no
+  // primeiro paint — via APPEARANCE_BOOT_SCRIPT — e o React não precisa
+  // renderizar uma marcação diferente no servidor e no cliente.
+  if (sidebar === "collapsed") root.setAttribute("data-sidebar", "collapsed");
+  else root.removeAttribute("data-sidebar");
 
   const href = googleFontsHref([font]);
   let link = document.getElementById(FONT_LINK_ID) as HTMLLinkElement | null;
@@ -207,4 +235,13 @@ export function setAccent(accent: AccentColor) {
 export function setFont(font: AppFont) {
   writeStorage(FONT_KEY, font);
   update({ font });
+}
+
+export function setSidebar(sidebar: SidebarState) {
+  writeStorage(SIDEBAR_KEY, sidebar);
+  update({ sidebar });
+}
+
+export function toggleSidebar() {
+  setSidebar(getAppearance().sidebar === "collapsed" ? "expanded" : "collapsed");
 }
