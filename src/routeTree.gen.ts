@@ -28,6 +28,7 @@ import { Route as IaRouteImport } from './routes/ia'
 import { Route as ExecutivoRouteImport } from './routes/executivo'
 import { Route as CriativosRouteImport } from './routes/criativos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as AtendimentoRouteImport } from './routes/atendimento'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
@@ -202,6 +203,11 @@ const CriativosRoute = CriativosRouteImport.update({
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtendimentoRoute = AtendimentoRouteImport.update({
+  id: '/atendimento',
+  path: '/atendimento',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgendaRoute = AgendaRouteImport.update({
@@ -687,6 +693,7 @@ const ApiExecutiveConversationIntelligenceInspectRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
+  '/atendimento': typeof AtendimentoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -795,6 +802,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
+  '/atendimento': typeof AtendimentoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -903,6 +911,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
+  '/atendimento': typeof AtendimentoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -1013,6 +1022,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agenda'
+    | '/atendimento'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1121,6 +1131,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/agenda'
+    | '/atendimento'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1228,6 +1239,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/agenda'
+    | '/atendimento'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1337,6 +1349,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
+  AtendimentoRoute: typeof AtendimentoRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   CriativosRoute: typeof CriativosRoute
   ExecutivoRoute: typeof ExecutivoRoute
@@ -1557,6 +1570,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/configuracoes'
       preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atendimento': {
+      id: '/atendimento'
+      path: '/atendimento'
+      fullPath: '/atendimento'
+      preLoaderRoute: typeof AtendimentoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agenda': {
@@ -2216,6 +2236,7 @@ const OnboardingRouteWithChildren = OnboardingRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
+  AtendimentoRoute: AtendimentoRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   CriativosRoute: CriativosRoute,
   ExecutivoRoute: ExecutivoRoute,
