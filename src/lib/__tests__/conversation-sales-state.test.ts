@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_CONVERSATION_SALES_STATE,
   mergeConversationSalesState,
+  revalidateConversationSalesState,
   type ConversationSalesScopeType,
 } from "../conversation-sales-state";
 import {
@@ -24,6 +25,15 @@ const migrationSource = readFileSync(
   fileURLToPath(
     new URL(
       "../../../supabase/migrations/20260825010000_create_conversation_sales_states.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
+const stateMigrationSource = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../supabase/migrations/20260917010000_add_last_catalog_query_to_conversation_sales_states.sql",
       import.meta.url,
     ),
   ),
@@ -70,6 +80,82 @@ const catalog = [
 ];
 
 describe("ConversationSalesState", () => {
+  it("persiste critérios e estado da última busca sem fatos de produto", () => {
+    const state = mergeConversationSalesState(EMPTY_CONVERSATION_SALES_STATE, {
+      attributes: { lengthM: 6, variantTerms: ["azul"] },
+      intent: "product_inquiry",
+      candidateProductIds: ["product-1", "product-2"],
+      selectedProductIds: ["product-1"],
+      lastCatalogQuery: {
+        status: "matches",
+        criteria: { lengthM: 6, variantTerms: ["azul"] },
+        referencedProductIds: ["product-1"],
+      },
+    });
+
+    expect(state.lastCatalogQuery).toEqual({
+      status: "matches",
+      criteria: { lengthM: 6, variantTerms: ["azul"] },
+      referencedProductIds: ["product-1"],
+    });
+    expect(state.lastCatalogQuery).not.toHaveProperty("price");
+    expect(state.lastCatalogQuery).not.toHaveProperty("description");
+  });
+
+  it("sanitiza o update do merge e remove chaves factuais ou desconhecidas", () => {
+    const state = mergeConversationSalesState(EMPTY_CONVERSATION_SALES_STATE, {
+      attributes: {
+        lengthM: 6,
+        price: 9999,
+        description: "fato proibido",
+        specs: { capacity: 1000 },
+        availability: true,
+        unknownKey: "remover",
+      } as never,
+      lastCatalogQuery: {
+        status: "matches",
+        criteria: {
+          widthM: 3,
+          price: 9999,
+          description: "fato proibido",
+          specs: { capacity: 1000 },
+          availability: true,
+          unknownKey: "remover",
+        },
+        referencedProductIds: ["product-1"],
+        price: 9999,
+        description: "fato proibido",
+        availability: "in_stock",
+        unknownKey: "remover",
+      } as never,
+    });
+
+    expect(state.attributes).toEqual({ lengthM: 6 });
+    expect(state.lastCatalogQuery).toEqual({
+      status: "matches",
+      criteria: { widthM: 3 },
+      referencedProductIds: ["product-1"],
+    });
+    expect(JSON.stringify(state)).not.toMatch(/price|description|specs|availability|unknownKey/);
+  });
+
+  it("remove IDs desativados ou excluídos antes da continuidade", () => {
+    const state = revalidateConversationSalesState({
+      productIds: ["active", "disabled"],
+      attributes: {},
+      intent: "product_inquiry",
+      lastValidProductIds: ["active", "deleted"],
+      lastCatalogQuery: {
+        status: "matches",
+        criteria: {},
+        referencedProductIds: ["active", "disabled"],
+      },
+    }, ["active"]);
+
+    expect(state.productIds).toEqual(["active"]);
+    expect(state.lastValidProductIds).toEqual(["active"]);
+    expect(state.lastCatalogQuery?.referencedProductIds).toEqual(["active"]);
+  });
   it.each(["training_session", "whatsapp_conversation"] as ConversationSalesScopeType[])(
     "preserva seleção e restrições na sequência do escopo %s",
     () => {
@@ -127,6 +213,7 @@ describe("ConversationSalesState", () => {
 
   it("isola estado por empresa e escopo e conecta os dois canais", () => {
     expect(migrationSource).toContain("UNIQUE (company_id, scope_type, scope_id)");
+    expect(stateMigrationSource).toContain("last_catalog_query jsonb");
     expect(migrationSource).toContain("company_id = public.current_company_id()");
     expect(stateServerSource).toContain('.eq("company_id", scope.companyId)');
     expect(stateServerSource).toContain('onConflict: "company_id,scope_type,scope_id"');

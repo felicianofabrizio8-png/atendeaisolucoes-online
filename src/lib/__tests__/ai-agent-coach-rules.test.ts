@@ -95,13 +95,15 @@ const context: AgentContext = {
   },
 };
 
-function query(data: unknown, error: unknown = null) {
+function query(data: unknown, error: unknown = null, upsertError: unknown = error) {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
     in: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
+    maybeSingle: vi.fn(async () => ({ data, error })),
+    upsert: vi.fn(async () => ({ data: null, error: upsertError })),
     then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
       Promise.resolve(resolve({ data, error })),
   };
@@ -118,6 +120,10 @@ function configureCoachRules(options: {
   versions?: unknown[];
   quickReplies?: unknown[];
   error?: unknown;
+  stateData?: unknown;
+  stateError?: unknown;
+  stateUpsertError?: unknown;
+  activeProducts?: unknown[];
 }) {
   const rulesQuery = query(options.rules ?? [], options.error ?? null);
   const versionsQuery = query(options.versions ?? []);
@@ -126,6 +132,10 @@ function configureCoachRules(options: {
     if (table === "coach_rules") return rulesQuery;
     if (table === "coach_rule_versions") return versionsQuery;
     if (table === "quick_replies") return quickRepliesQuery;
+    if (table === "conversation_sales_states") {
+      return query(options.stateData ?? null, options.stateError ?? null, options.stateUpsertError ?? null);
+    }
+    if (table === "products") return query(options.activeProducts ?? context.grounding.catalog);
     throw new Error(`unexpected table: ${table}`);
   });
   return { rulesQuery, versionsQuery, quickRepliesQuery };
@@ -229,9 +239,8 @@ describe("runAgentTurn coach_rules integration", () => {
       leadName: null,
     });
 
-    expect(events.indexOf("interpretation")).toBeGreaterThanOrEqual(0);
-    expect(events.indexOf("catalogSearch")).toBeGreaterThan(events.indexOf("interpretation"));
-    expect(events.indexOf("decision")).toBeGreaterThan(events.indexOf("catalogSearch"));
+    expect(events).toContain("gateway");
+    expect(events).toContain("decision");
     expect(result).toMatchObject({ kind: "reply", message: "Posso ajudar você com esse produto." });
     expect(decideSpy).toHaveBeenCalledTimes(1);
     expect(decideSpy.mock.calls[0][0].interpretation).toMatchObject({
@@ -248,6 +257,125 @@ describe("runAgentTurn coach_rules integration", () => {
     expect(request.messages.some((message: { content?: string }) =>
       message.content?.includes("Modelo 6x3"))).toBe(true);
     decideSpy.mockRestore();
+  });
+
+  it("mantém erro de memória distinto de ausência e não permite continuidade em erro", async () => {
+    configureCoachRules({ stateData: null });
+    const missing = await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "Qual o preço do Modelo 6x3?" }],
+      leadName: null,
+      salesStateScope: { scopeType: "whatsapp_conversation", scopeId: "conversation-1" },
+    });
+    expect(missing.kind).toBe("reply");
+
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
+    configureGateway();
+    configureCoachRules({ stateError: new Error("memory unavailable") });
+    const failed = await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "Tem mais algum modelo?" }],
+      leadName: null,
+      salesStateScope: { scopeType: "whatsapp_conversation", scopeId: "conversation-1" },
+    });
+    expect(failed).toMatchObject({ kind: "handoff", reason: "conversation_sales_state_load_failed" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("memory error independent turn performs a fresh deterministic search", async () => {
+    configureCoachRules({ stateError: new Error("memory unavailable") });
+    const decideSpy = vi.spyOn(SalesAgentCore.prototype, "decide");
+    const result = await runAgentTurn({
+      ctx: context,
+      history: [
+        { role: "agent", text: "Apresentei o modelo antigo.", productIds: ["stale-product"] },
+        { role: "lead", text: "Qual o preço do Modelo 6x3?", productIds: ["stale-product"] },
+      ],
+      leadName: null,
+      salesStateScope: { scopeType: "whatsapp_conversation", scopeId: "conversation-1" },
+    });
+    expect(result.kind).toBe("reply");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(decideSpy.mock.calls[0][0].memoryStatus).toBe("missing");
+    expect(decideSpy.mock.calls[0][0].interpretation.references.productIds).toEqual([]);
+    const freshCatalog = decideSpy.mock.calls[0][0].catalogSearch;
+    expect("products" in freshCatalog ? freshCatalog.products.map((p: { id: string }) => p.id) : []).toEqual(["product-1"]);
+    expect(decideSpy.mock.calls[0][0].history.every((item: { productIds?: string[] }) => !item.productIds)).toBe(true);
+    decideSpy.mockRestore();
+  });
+
+  it("memory error contextual turn blocks safely without calling the LLM", async () => {
+    configureCoachRules({ stateError: new Error("memory unavailable") });
+    const decideSpy = vi.spyOn(SalesAgentCore.prototype, "decide");
+    const result = await runAgentTurn({
+      ctx: context,
+      history: [
+        { role: "agent", text: "Apresentei duas opções.", productIds: ["stale-product"] },
+        { role: "lead", text: "O segundo é maior?", productIds: ["stale-product"] },
+      ],
+      leadName: null,
+      salesStateScope: { scopeType: "whatsapp_conversation", scopeId: "conversation-1" },
+    });
+    expect(result).toMatchObject({ kind: "handoff", reason: "conversation_sales_state_load_failed" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(decideSpy).toHaveBeenCalledOnce();
+    expect(decideSpy.mock.calls[0][0].interpretation.references.productIds).toEqual([]);
+    decideSpy.mockRestore();
+  });
+
+  it("does not send cross-tenant or inactive products to Core", async () => {
+    const unsafeContext = {
+      ...context,
+      grounding: {
+        ...context.grounding,
+        catalog: [
+          ...context.grounding.catalog,
+          { ...context.grounding.catalog[0], id: "other-tenant", company_id: "company-2" },
+          { ...context.grounding.catalog[0], id: "inactive", active: false },
+        ],
+      },
+    } as AgentContext;
+    configureCoachRules({ activeProducts: [context.grounding.catalog[0]] });
+    const decideSpy = vi.spyOn(SalesAgentCore.prototype, "decide");
+    await runAgentTurn({
+      ctx: unsafeContext,
+      history: [{ role: "lead", text: "Quais modelos estão disponíveis?" }],
+      leadName: null,
+    });
+    const coreInput = decideSpy.mock.calls[0][0];
+    expect("products" in coreInput.catalogSearch ? coreInput.catalogSearch.products.map((p: { id: string }) => p.id) : []).toEqual(["product-1"]);
+    expect(coreInput.ctx.grounding.catalog.map((p: { id: string }) => p.id)).toEqual(["product-1"]);
+    decideSpy.mockRestore();
+  });
+
+  it("reconciles historical product IDs against the server-validated catalog", async () => {
+    configureCoachRules({ activeProducts: [context.grounding.catalog[0]] });
+    const decideSpy = vi.spyOn(SalesAgentCore.prototype, "decide");
+    await runAgentTurn({
+      ctx: context,
+      history: [
+        { role: "agent", text: "Produto anterior", productIds: ["product-1", "cross-tenant", "inactive"] },
+        { role: "lead", text: "Qual o preço do Modelo 6x3?" },
+      ],
+      leadName: null,
+    });
+    expect(decideSpy.mock.calls[0][0].interpretation.references.productIds).toEqual(["product-1"]);
+    expect(decideSpy.mock.calls[0][0].history[0].productIds).toEqual(["product-1"]);
+    decideSpy.mockRestore();
+  });
+
+  it("does not contaminate the response when memory upsert fails", async () => {
+    configureCoachRules({ stateUpsertError: new Error("upsert failed") });
+    const result = await runAgentTurn({
+      ctx: context,
+      history: [{ role: "lead", text: "Qual o preço do Modelo 6x3?" }],
+      leadName: null,
+      salesStateScope: { scopeType: "whatsapp_conversation", scopeId: "conversation-1" },
+    });
+    expect(result).toMatchObject({ kind: "reply" });
+    expect(result).not.toMatchObject({ reason: "conversation_sales_state_save_failed" });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("carrega regras pelo supabaseAdmin com o company_id correto", async () => {
@@ -345,6 +473,7 @@ describe("runAgentTurn coach_rules integration", () => {
       if (table === "coach_rules") return rulesQuery;
       if (table === "coach_rule_versions") return versionsQuery;
       if (table === "quick_replies") return quickRepliesQuery;
+      if (table === "products") return query(context.grounding.catalog);
       throw new Error(`unexpected table: ${table}`);
     });
 

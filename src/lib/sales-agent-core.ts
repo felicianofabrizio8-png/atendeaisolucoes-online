@@ -171,6 +171,7 @@ export interface SalesAgentCoreInput {
     attributes: object;
     references: { lastLeadText: string; productIds: string[] };
   };
+  memoryStatus?: "found" | "missing" | "error";
   sessionCorrections?: SalesAgentSessionCorrection[];
 }
 
@@ -1223,6 +1224,14 @@ export class SalesAgentCore {
       (learning) => learning.id,
     );
     const catalogSearch = params.catalogSearch;
+    if (params.memoryStatus === "error") {
+      return {
+        kind: "handoff",
+        reason: "conversation_sales_state_load_failed",
+        grounding_sources: [],
+        learning_ids_used: [],
+      };
+    }
     if (!catalogSearch) {
       return {
         kind: "handoff",

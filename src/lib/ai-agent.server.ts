@@ -41,9 +41,12 @@ import {
   type AgentHistory,
   type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
-import { mergeConversationSalesState } from "./conversation-sales-state";
+import {
+  mergeConversationSalesState,
+} from "./conversation-sales-state";
 import {
   loadConversationSalesState,
+  revalidateConversationSalesState,
   saveConversationSalesState,
   type ConversationSalesStateScope,
 } from "./conversation-sales-state.server";
@@ -83,6 +86,122 @@ export function interpretSalesAgentTurn(
     },
     history,
   };
+}
+
+function isContextualSalesAgentTurn(history: AgentHistory): boolean {
+  const text = [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const pronoun = /\b(?:essa|esse|esta|este|isso|isso|dessa|desse|desta|deste|ela|ele|dela|dele|nessa|nesse)\b/.test(normalized);
+  const ordinal = /\b(?:primeira?|segundo?|ultima?|ultimo|1a|1o|2a|2o)\b/.test(normalized);
+  const continuation = /^(?:(?:e|tem)\s+)?(?:mais(?:\s+(?:algum|alguma|um|uma|produto|modelo))?|outro\s+modelo|outras?\s+(?:opcoes?|alternativas?)|e\s+mais\s+algum)\b/.test(normalized);
+  return pronoun || ordinal || continuation;
+}
+
+function reconcileHistoricalProductIds(
+  history: AgentHistory,
+  allowedProductIds: ReadonlySet<string>,
+  clearAll = false,
+): AgentHistory {
+  return history.map(({ productIds, ...item }) => {
+    const validIds = clearAll
+      ? []
+      : (productIds ?? []).filter((id) => allowedProductIds.has(id));
+    return validIds.length > 0 ? { ...item, productIds: [...new Set(validIds)] } : item;
+  });
+}
+
+type CanonicalCatalogProduct = AgentContextBase["grounding"]["catalog"][number];
+
+function mapValidatedCatalogProduct(row: unknown, companyId: string): CanonicalCatalogProduct | null {
+  if (!row || typeof row !== "object") return null;
+  const source = row as Record<string, unknown>;
+  const rowCompanyId = source.company_id ?? source.companyId;
+  if (rowCompanyId !== undefined && rowCompanyId !== companyId) return null;
+  if (source.active !== undefined && source.active !== true) return null;
+  const id = typeof source.id === "string" ? source.id : "";
+  const name = typeof source.name === "string" ? source.name : "";
+  if (!id || !name) return null;
+  const stringOrNull = (snake: string, camel: string): string | null => {
+    const value = source[snake] ?? source[camel];
+    return typeof value === "string" ? value : null;
+  };
+  const numberOrNull = (snake: string, camel: string): number | null => {
+    const value = source[snake] ?? source[camel];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  };
+  const arrayOfStrings = (snake: string, camel: string): string[] => {
+    const value = source[snake] ?? source[camel];
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  };
+  return {
+    id,
+    name,
+    model: stringOrNull("model", "model"),
+    sku: stringOrNull("sku", "sku"),
+    category: stringOrNull("category", "category"),
+    description: stringOrNull("description", "description"),
+    lengthM: numberOrNull("length_m", "lengthM"),
+    widthM: numberOrNull("width_m", "widthM"),
+    depthM: numberOrNull("depth_m", "depthM"),
+    capacityL: numberOrNull("capacity_l", "capacityL"),
+    shape: stringOrNull("shape", "shape"),
+    specifications:
+      source.specifications && typeof source.specifications === "object" && !Array.isArray(source.specifications)
+        ? source.specifications
+        : {},
+    includedItems: arrayOfStrings("included_items", "includedItems"),
+    variants: Array.isArray(source.variants)
+      ? source.variants.filter((item) => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+      : [],
+    price: numberOrNull("price", "price"),
+    promoPrice: numberOrNull("promo_price", "promoPrice"),
+    images: arrayOfStrings("images", "images"),
+    notes: stringOrNull("notes", "notes"),
+  };
+}
+
+async function loadServerValidatedCatalog(companyId: string): Promise<CanonicalCatalogProduct[] | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("products")
+      .select("id, name, model, sku, category, description, length_m, width_m, depth_m, capacity_l, shape, specifications, included_items, variants, price, promo_price, images, notes")
+      .eq("company_id", companyId)
+      .eq("active", true)
+      .order("name", { ascending: true });
+    if (error || !Array.isArray(data)) return null;
+    return data
+      .map((row) => mapValidatedCatalogProduct(row, companyId))
+      .filter((product): product is CanonicalCatalogProduct => product !== null);
+  } catch {
+    return null;
+  }
+}
+
+function restrictContextToActiveTenantCatalog(
+  ctx: AgentContextBase,
+  catalog: CanonicalCatalogProduct[],
+): AgentContextBase {
+  return {
+    ...ctx,
+    catalogProductIds: catalog.map((product) => product.id),
+    products: catalog,
+    catalogForValidation: catalog,
+    grounding: { ...ctx.grounding, catalog },
+  };
+}
+
+async function saveSalesStateSafely(
+  scope: ConversationSalesStateScope,
+  state: ConversationSalesState,
+): Promise<void> {
+  try {
+    await saveConversationSalesState(scope, state);
+  } catch (error) {
+    console.warn("[SALES_AGENT_STATE_SAVE_FAILED]", {
+      source: "conversation_sales_state",
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 /** Stage 2: execute the canonical deterministic catalog tool for this turn. */
@@ -396,6 +515,9 @@ export async function runAgentTurn(params: {
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
   const { endpoint, model, apiKey } = resolved.config;
+  const validatedCatalog = await loadServerValidatedCatalog(params.ctx.settings.company_id);
+  if (!validatedCatalog) return { kind: "handoff", reason: "catalog_query_error" };
+  const safeContext = restrictContextToActiveTenantCatalog(params.ctx, validatedCatalog);
   const [approvedCoachLearnings, activeCoachRules] = await Promise.all([
     loadRelevantSalesAgentLearnings(params.ctx.settings.company_id, params.history),
     listActiveCoachRulesForGrounding(
@@ -435,23 +557,51 @@ export async function runAgentTurn(params: {
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
-  const previousSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
+  const loadedSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
+  let memoryStatus: "found" | "missing" | "error" = loadedSalesState?.status ?? "missing";
+  let previousSalesState: ConversationSalesState | null = null;
+  if (loadedSalesState?.status === "found" && stateScope) {
+    const validated = await revalidateConversationSalesState(stateScope, loadedSalesState.state);
+    if (validated.status === "validated") previousSalesState = validated.state;
+    else memoryStatus = "error";
+  }
+  if (memoryStatus === "error") {
+    console.warn("[SALES_AGENT_STATE_LOAD_FAILED]", { source: "conversation_sales_state" });
+  }
   // Explicit pipeline: interpretation -> catalogSearch -> decision -> redaÃ§Ã£o.
-  const interpretation = interpretSalesAgentTurn(params.history);
-  const catalogSearch = resolveSalesAgentCatalogSearch(interpretation, params.ctx, previousSalesState);
+  const contextualMemoryError = memoryStatus === "error" && isContextualSalesAgentTurn(params.history);
+  const effectiveHistory = reconcileHistoricalProductIds(
+    params.history,
+    new Set(validatedCatalog.map((product) => product.id)),
+    memoryStatus === "error",
+  );
+  const effectiveMemoryStatus = memoryStatus === "error"
+    ? (contextualMemoryError ? "error" : "missing")
+    : memoryStatus;
+  const interpretation = interpretSalesAgentTurn(effectiveHistory);
+  const catalogSearch = resolveSalesAgentCatalogSearch(
+    interpretation,
+    safeContext,
+    memoryStatus === "error" ? null : previousSalesState,
+  );
   const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
   const filteredSalesState = mergeConversationSalesState(previousSalesState, {
     attributes: interpretation.attributes,
     intent: interpretation.intent,
     candidateProductIds: relevantCatalog.map((product) => product.id),
+    lastCatalogQuery: {
+      status: catalogSearch.status,
+      criteria: interpretation.attributes,
+      referencedProductIds: interpretation.references.productIds,
+    },
   });
-  if (stateScope) await saveConversationSalesState(stateScope, filteredSalesState);
+  if (stateScope && memoryStatus !== "error") await saveSalesStateSafely(stateScope, filteredSalesState);
   const relevantQuickReplies = await loadRelevantSalesAgentQuickReplies(
-    params.ctx.settings.company_id,
-    params.history,
+    safeContext.settings.company_id,
+    effectiveHistory,
     qualificationContext,
     {
-      paymentMethods: params.ctx.grounding.commercialRules.paymentMethods,
+      paymentMethods: safeContext.grounding.commercialRules.paymentMethods,
       guarantees: null,
       coachRules: baseNormative.grounding.activeCoachRules,
       playbook: SALES_AGENT_PLAYBOOK,
@@ -473,6 +623,7 @@ export async function runAgentTurn(params: {
   });
   const contextualParams = {
     ...params,
+    history: effectiveHistory,
     sessionCorrections: normative.sessionCorrections,
     ctx: {
       ...params.ctx,
@@ -524,9 +675,10 @@ export async function runAgentTurn(params: {
     model,
     catalogSearch,
     interpretation,
+    memoryStatus: effectiveMemoryStatus,
   });
-  if (stateScope) {
-    await saveConversationSalesState(
+  if (stateScope && memoryStatus !== "error") {
+    await saveSalesStateSafely(
       stateScope,
       mergeConversationSalesState(filteredSalesState, {
         intent: decision.detected_intent ?? interpretation.intent,
