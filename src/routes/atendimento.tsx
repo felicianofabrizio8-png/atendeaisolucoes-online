@@ -130,72 +130,10 @@ function AtendimentoPage() {
     // h-full (e não 100dvh): o AppShell já limita a altura da viewport e
     // reserva o espaço da navegação inferior no mobile.
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-2.5 lg:px-6">
-        {selectedId && (
-          <button
-            type="button"
-            onClick={() => setSelectedId(null)}
-            className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary lg:hidden"
-            aria-label="Voltar para a lista"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        )}
-        <div className="min-w-0">
-          <h1 className="text-sm font-bold leading-none">Atendimento</h1>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {contacts.length} conversas · {stats.find((s) => s.key === "aguardando")?.count ?? 0} aguardando resposta
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {/* O botão só aparece quando existe base real para alternar; com a
-              empresa vazia o rótulo é informativo, não um interruptor. */}
-          <button
-            type="button"
-            disabled={isSimulated && !forceSimulated}
-            onClick={() => setForceSimulated((v) => !v)}
-            title={
-              isSimulated && !forceSimulated
-                ? "Nenhuma conversa real encontrada nesta empresa. A tela está usando clientes simulados só para visualização — nada é gravado no banco."
-                : forceSimulated
-                  ? "Voltar para as conversas reais da empresa"
-                  : "Ver a tela com clientes de exemplo, sem expor dados reais"
-            }
-            className={cn(
-              "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors",
-              isSimulated
-                ? "border-border text-muted-foreground"
-                : "border-border text-muted-foreground hover:text-foreground",
-              "disabled:cursor-default",
-            )}
-          >
-            <FlaskConical className="h-3 w-3" />
-            <span className="hidden sm:inline">
-              {isSimulated ? "Clientes simulados" : "Ver exemplos"}
-            </span>
-          </button>
-          {selected && (
-            <Sheet>
-              <SheetTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[11px] font-bold lg:hidden"
-                >
-                  <PanelRight className="h-3.5 w-3.5" />
-                  Info / IA
-                </button>
-              </SheetTrigger>
-              {/* pt-12: o botão de fechar da gaveta mora no canto superior
-                  direito e brigaria com o alternador Info/IA. */}
-              <SheetContent side="right" className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12">
-                <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
-                <InsightPanel contact={selected} onUseSuggestion={applySuggestion} />
-              </SheetContent>
-            </Sheet>
-          )}
-        </div>
-      </header>
-
+      {/* Sem faixa de cabeçalho: ela custava uma linha inteira da altura para
+          repetir a contagem que o cartão já mostra. O que ela carregava de
+          útil foi para onde pertence — voltar e Info/IA no topo da conversa,
+          o seletor de dados de exemplo junto da fila que ele afeta. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[clamp(280px,24vw,340px)_minmax(0,1fr)_clamp(300px,26vw,380px)]">
         {/* Coluna 1 — métrica giratória + fila */}
         <aside
@@ -214,6 +152,29 @@ function AtendimentoPage() {
               onQueryChange={setQuery}
               activeFilterLabel={activeStat ? `${activeStat.label}: ${activeStat.count}` : null}
               onClearFilter={() => setStatFilter(null)}
+              statusChip={
+                // Só é interruptor quando existe base real para alternar; com
+                // a empresa vazia o rótulo é apenas informativo.
+                <button
+                  type="button"
+                  disabled={isSimulated && !forceSimulated}
+                  onClick={() => setForceSimulated((v) => !v)}
+                  title={
+                    isSimulated && !forceSimulated
+                      ? "Nenhuma conversa real encontrada nesta empresa. A tela está usando clientes simulados só para visualização — nada é gravado no banco."
+                      : forceSimulated
+                        ? "Voltar para as conversas reais da empresa"
+                        : "Ver a tela com clientes de exemplo, sem expor dados reais"
+                  }
+                  className={cn(
+                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[10px] font-bold text-muted-foreground transition-colors disabled:cursor-default",
+                    !(isSimulated && !forceSimulated) && "hover:text-foreground",
+                  )}
+                >
+                  <FlaskConical className="h-3 w-3" />
+                  {isSimulated ? "Clientes simulados" : "Ver exemplos"}
+                </button>
+              }
             />
           </div>
         </aside>
@@ -226,6 +187,26 @@ function AtendimentoPage() {
               draft={draft}
               onDraftChange={setDraft}
               onSend={send}
+              onBack={() => setSelectedId(null)}
+              actions={
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary lg:hidden"
+                    >
+                      <PanelRight className="h-3.5 w-3.5" />
+                      Info / IA
+                    </button>
+                  </SheetTrigger>
+                  {/* pt-12: o botão de fechar da gaveta mora no canto superior
+                      direito e brigaria com o alternador Info/IA. */}
+                  <SheetContent side="right" className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12">
+                    <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
+                    <InsightPanel contact={selected} onUseSuggestion={applySuggestion} />
+                  </SheetContent>
+                </Sheet>
+              }
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

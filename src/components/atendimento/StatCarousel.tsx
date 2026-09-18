@@ -108,9 +108,8 @@ export function StatCarousel({
                 title={`${stat.caption} — clique para filtrar a fila`}
                 className={cn(
                   "group relative shrink-0 basis-full text-left",
-                  // pt maior que o resto: o topo agora é a faixa dos
-                  // indicadores, que passou para dentro do cartão.
-                  "aspect-[16/11] max-h-[230px] rounded-[28px] p-5 pt-14 flex flex-col justify-between",
+                  // pt maior que o resto: o topo é a faixa dos indicadores.
+                  "aspect-[16/11] max-h-[230px] rounded-[28px] px-6 pb-5 pt-12 flex flex-col justify-center",
                   "outline-none transition-[box-shadow,transform] duration-200",
                   "focus-visible:ring-2 focus-visible:ring-white/70",
                   selected && "ring-2 ring-white/80",
@@ -126,19 +125,19 @@ export function StatCarousel({
                       "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.28), transparent 60%)",
                   }}
                 />
-                <span className="relative text-[15px] font-bold text-white/95 drop-shadow-sm">
-                  {stat.label}:
-                </span>
+                {/* Rótulo e número colados, número dominando o cartão. A
+                    explicação da métrica vive no title do cartão — na face
+                    ela competia com o número pelo mesmo olhar. */}
                 <span className="relative">
-                  <span className="block text-[54px] leading-none font-extrabold text-white tabular-nums drop-shadow">
-                    {stat.count}
+                  <span className="block text-[22px] font-bold leading-none text-white drop-shadow-sm">
+                    {stat.label}:
                   </span>
-                  <span className="mt-1.5 block text-[11px] font-medium leading-snug text-white/85">
-                    {stat.caption}
+                  <span className="mt-1 block text-[80px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow">
+                    {stat.count}
                   </span>
                 </span>
                 {selected && (
-                  <span className="relative self-start rounded-full bg-black/25 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                  <span className="absolute bottom-4 left-6 rounded-full bg-black/25 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
                     filtrando
                   </span>
                 )}
@@ -164,11 +163,13 @@ export function StatCarousel({
               aria-label={`Ver métrica ${stat.label}`}
               aria-current={i === index}
               onClick={() => go(i)}
-              className="pointer-events-auto flex h-6 flex-1 items-center py-2"
+              className="pointer-events-auto flex h-6 items-center py-2"
             >
+              {/* Traço curto — menor que a faixa de antes, mas com proporção
+                  bem longe de um ponto (20x5). */}
               <span
                 className={cn(
-                  "block h-1.5 w-full overflow-hidden rounded-full shadow-sm transition-colors duration-300",
+                  "block h-[5px] w-5 overflow-hidden rounded-full shadow-sm transition-colors duration-300",
                   i === index ? "bg-black/25" : "bg-white/35 hover:bg-white/60",
                 )}
               >

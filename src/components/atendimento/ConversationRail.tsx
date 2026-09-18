@@ -13,6 +13,7 @@ export function ConversationRail({
   onQueryChange,
   activeFilterLabel,
   onClearFilter,
+  statusChip,
 }: {
   contacts: AtendimentoContact[];
   selectedId: string | null;
@@ -21,6 +22,8 @@ export function ConversationRail({
   onQueryChange: (q: string) => void;
   activeFilterLabel: string | null;
   onClearFilter: () => void;
+  /** Selo sobre a origem dos dados da fila (reais ou simulados). */
+  statusChip?: React.ReactNode;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -36,15 +39,20 @@ export function ConversationRail({
         />
       </div>
 
-      {activeFilterLabel && (
-        <button
-          type="button"
-          onClick={onClearFilter}
-          className="inline-flex items-center gap-1.5 self-start rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-secondary"
-        >
-          {activeFilterLabel}
-          <X className="h-3 w-3" />
-        </button>
+      {(activeFilterLabel || statusChip) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activeFilterLabel && (
+            <button
+              type="button"
+              onClick={onClearFilter}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-secondary"
+            >
+              {activeFilterLabel}
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          {statusChip}
+        </div>
       )}
 
       <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">

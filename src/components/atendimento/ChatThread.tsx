@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, FileUp, Images, Paperclip, Send, Smile } from "lucide-react";
+import { ArrowLeft, Camera, FileUp, Images, Paperclip, Send, Smile } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
@@ -108,11 +108,17 @@ export function ChatThread({
   draft,
   onDraftChange,
   onSend,
+  onBack,
+  actions,
 }: {
   contact: AtendimentoContact;
   draft: string;
   onDraftChange: (v: string) => void;
   onSend: () => void;
+  /** Volta para a lista no layout compacto, onde a conversa ocupa a tela. */
+  onBack?: () => void;
+  /** Controles do canto direito do cabeçalho (acesso ao painel Info/IA). */
+  actions?: React.ReactNode;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { lead, conversation, messages, history, hue } = contact;
@@ -126,8 +132,18 @@ export function ChatThread({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-3 px-5 py-4">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Voltar para a lista"
+            className="-ml-1 shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
         <ContactAvatar name={lead.name} hue={hue} size={52} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-[17px] font-bold leading-tight">{lead.name}</h2>
             <CustomerTierBadge history={history} size="sm" />
@@ -138,6 +154,7 @@ export function ChatThread({
             {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
           </p>
         </div>
+        {actions}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
