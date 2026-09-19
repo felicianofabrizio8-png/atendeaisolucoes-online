@@ -7,7 +7,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ---------- Mock supabaseAdmin (chainable fake) ----------
 type Row = Record<string, unknown> | null;
 
-function makeChain(row: Row, errorRow: unknown = null) {
+type PersistenceEvent = { table: string; operation: "insert" | "update" };
+const operationEvents: Array<"transport" | PersistenceEvent> = [];
+
+function makeChain(row: Row, errorRow: unknown = null, table = "unknown") {
   const chain: any = {
     _row: row,
     _err: errorRow,
@@ -16,10 +19,16 @@ function makeChain(row: Row, errorRow: unknown = null) {
     limit: () => chain,
     maybeSingle: async () => ({ data: chain._row, error: chain._err }),
     single: async () => ({ data: chain._row, error: chain._err }),
-    insert: (_x: unknown) => ({
-      select: () => ({ single: async () => ({ data: { id: "msg-1", conversation_id: "conv-1", at: "t" }, error: null }) }),
-    }),
-    update: (_x: unknown) => ({ eq: async () => ({ error: null }) }),
+    insert: (_x: unknown) => {
+      operationEvents.push({ table, operation: "insert" });
+      return {
+        select: () => ({ single: async () => ({ data: { id: "msg-1", conversation_id: "conv-1", at: "t" }, error: null }) }),
+      };
+    },
+    update: (_x: unknown) => {
+      operationEvents.push({ table, operation: "update" });
+      return { eq: async () => ({ error: null }) };
+    },
   };
   return chain;
 }
@@ -29,7 +38,7 @@ const supabaseAdmin: any = {
   auth: {
     getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })),
   },
-  from: vi.fn((t: string) => makeChain(tableRows[t] ?? null)),
+  from: vi.fn((t: string) => makeChain(tableRows[t] ?? null, null, t)),
 };
 
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin }));
@@ -43,7 +52,10 @@ vi.mock("@/lib/wa-templates.server", () => ({
 // ---------- Spy MetaOutbound ----------
 const postGraphSpy = vi.fn();
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
-  postGraph: (...args: unknown[]) => postGraphSpy(...args),
+  postGraph: (...args: unknown[]) => {
+    operationEvents.push("transport");
+    return postGraphSpy(...args);
+  },
 }));
 
 // ---------- Helpers ----------
@@ -66,6 +78,7 @@ async function invoke(routePath: string, request: Request) {
 
 beforeEach(() => {
   postGraphSpy.mockReset();
+  operationEvents.length = 0;
   supabaseAdmin.from.mockClear();
   Object.keys(tableRows).forEach((k) => delete tableRows[k]);
 });
@@ -340,6 +353,39 @@ describe("api.whatsapp.send — guards de envio manual", () => {
 
     expect(res.status).toBe(200);
     expect(postGraphSpy).toHaveBeenCalledOnce();
+    const transportIndex = operationEvents.findIndex((event) => event === "transport");
+    const messageInsertIndex = operationEvents.findIndex(
+      (event) => event !== "transport" && event.table === "messages" && event.operation === "insert",
+    );
+    expect(transportIndex).toBeGreaterThanOrEqual(0);
+    expect(messageInsertIndex).toBeGreaterThan(transportIndex);
+  });
+
+  it("falha/não entrega não persiste mensagem nem atualizações", async () => {
+    postGraphSpy.mockResolvedValueOnce({
+      success: false, simulated: false, environment: "legacy", externalRequestSent: false,
+      error: "ECONNRESET", retryable: true,
+    });
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
+
+    expect(res.status).toBe(502);
+    expect(postGraphSpy).toHaveBeenCalledOnce();
+    expect(operationEvents.filter((event) => event !== "transport")).toEqual([]);
+  });
+
+  it("staging simulado não persiste como entrega real", async () => {
+    postGraphSpy.mockResolvedValueOnce({
+      success: true, simulated: true, environment: "staging", externalRequestSent: false,
+      simulationId: "sim-text", would: { url: "x", method: "POST" },
+    });
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.simulated).toBe(true);
+    expect(operationEvents.filter((event) => event !== "transport")).toEqual([]);
   });
 
   it("bloqueia cross-tenant antes do transporte", async () => {
@@ -384,6 +430,23 @@ describe("api.whatsapp.send-reply — guards de tenant e fechamento", () => {
     postGraphSpy.mockResolvedValueOnce({ success: true, simulated: false, environment: "legacy", externalRequestSent: true, externalId: "wamid.REPLY", status: 200, raw: { messages: [{ id: "wamid.REPLY" }] } });
     const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({ conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-1" }));
     expect(res.status).toBe(200);
+    const transportIndex = operationEvents.findIndex((event) => event === "transport");
+    const messageInsertIndex = operationEvents.findIndex(
+      (event) => event !== "transport" && event.table === "messages" && event.operation === "insert",
+    );
+    expect(messageInsertIndex).toBeGreaterThan(transportIndex);
+  });
+
+  it("reply sem entrega não persiste", async () => {
+    postGraphSpy.mockResolvedValueOnce({
+      success: false, simulated: false, environment: "legacy", externalRequestSent: false,
+      error: "ETIMEDOUT", retryable: true,
+    });
+    const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({
+      conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-1",
+    }));
+    expect(res.status).toBe(502);
+    expect(operationEvents.filter((event) => event !== "transport")).toEqual([]);
   });
 
   it("rejeita reply de outra conversa/tenant", async () => {

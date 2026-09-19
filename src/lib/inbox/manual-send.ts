@@ -26,7 +26,7 @@ export type ManualSendResult =
     };
 
 function retryableStatus(status: number | null): boolean {
-  return status === 408 || status === 425 || status === 429 || status >= 500;
+  return status !== null && (status === 408 || status === 425 || status === 429 || status >= 500);
 }
 
 function retryableTransportException(error: unknown): boolean {

@@ -162,71 +162,6 @@ interface AISuggestion {
   fallbackMessage?: string;
 }
 
-type MetaSendPayload = {
-  ok?: boolean;
-  id?: string;
-  at?: string;
-  error?: string;
-  metaError?: {
-    message?: string;
-    type?: string;
-    code?: number;
-    error_subcode?: number;
-    fbtrace_id?: string;
-  } | null;
-  status?: number;
-  dbError?: unknown;
-};
-
-type SendTextResult = Pick<MetaSendPayload, "id" | "at"> & {
-  externalId?: string | null;
-  messageId?: string | null;
-};
-
-async function readFunctionError(
-  error: unknown,
-  data: unknown,
-): Promise<{ message: string; full: unknown }> {
-  const payload = data as MetaSendPayload | null;
-  if (payload?.metaError || payload?.error) {
-    const meta = payload.metaError;
-    const parts = [
-      meta?.message ?? payload.error,
-      meta?.code ? `code ${meta.code}` : null,
-      meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
-      meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
-    ].filter(Boolean);
-    return { message: parts.join(" • "), full: payload };
-  }
-
-  const context = error as { message?: string; context?: { response?: Response } } | null;
-  const response = context?.context?.response;
-  if (response) {
-    const raw = await response
-      .clone()
-      .text()
-      .catch(() => "");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as MetaSendPayload;
-        const meta = parsed.metaError;
-        const parts = [
-          meta?.message ?? parsed.error ?? raw,
-          meta?.code ? `code ${meta.code}` : null,
-          meta?.error_subcode ? `subcode ${meta.error_subcode}` : null,
-          meta?.fbtrace_id ? `fbtrace ${meta.fbtrace_id}` : null,
-        ].filter(Boolean);
-        return { message: parts.join(" • "), full: parsed };
-      } catch {
-        return { message: raw, full: raw };
-      }
-    }
-  }
-
-  const fallback = context?.message ?? "Falha ao enviar mensagem";
-  return { message: fallback, full: error };
-}
-
 // Considera "cliente quente parado" quando o lead é quente e há mensagem do cliente
 // aguardando resposta há pelo menos o tempo de SLA configurado em /configuracoes.
 
@@ -1325,177 +1260,45 @@ function ConversationPage() {
     setSendError(null);
     if (replySnapshot && !replyExternalId) setReplyingTo(null);
 
-    const manualResult = await sendManualText({
-      conversationId,
-      leadId: lead.id,
-      channel: lead.channel,
-      origin,
-      text: trimmed,
-      replyToMessageId: lead.channel === "whatsapp" && replySnapshot && replyExternalId ? replySnapshot.id : null,
-    });
-    if (manualResult.ok) {
-      if (manualResult.messageId) {
+    try {
+      const manualResult = await sendManualText({
+        conversationId,
+        leadId: lead.id,
+        channel: lead.channel,
+        origin,
+        text: trimmed,
+        replyToMessageId:
+          lead.channel === "whatsapp" && replySnapshot && replyExternalId
+            ? replySnapshot.id
+            : null,
+      });
+
+      if (!manualResult.ok) {
         setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+        setInput((current) => (current.trim() ? current : rawTrimmed));
+        setSendError(manualResult.error);
+        toast.error("Falha ao enviar mensagem", { description: manualResult.error });
+        return;
+      }
+
+      // O transporte foi concluído (ou simulado) e a bolha otimista não pode
+      // permanecer presa aguardando um messageId que pode ser nulo em staging.
+      setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+      if (manualResult.messageId) {
         await refetchConversationMessages(conversationId);
       }
       if (replySnapshot) setReplyingTo(null);
+    } catch (error) {
+      // Defesa da UI: mesmo que o adapter viole o contrato e lance, o envio
+      // deixa de ficar pendente e o texto do vendedor volta ao composer.
+      const message = error instanceof Error ? error.message : String(error);
+      setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
+      setInput((current) => (current.trim() ? current : rawTrimmed));
+      setSendError(message);
+      toast.error("Falha ao enviar mensagem", { description: message });
+    } finally {
       finishSend();
-      return;
     }
-    setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-    setSendError(manualResult.error);
-    toast.error("Falha ao enviar mensagem", { description: manualResult.error });
-    finishSend();
-    return;
-
-    /* Legacy transport path retained only as migration reference; the adapter above is the sole operational path.
-    const isWhatsApp = lead?.channel === "whatsapp";
-    if (profile?.company_id) {
-      try {
-        const { data: sess } = await supabase.auth.getSession();
-        const token = sess.session?.access_token;
-        if (token) {
-          if (isWhatsApp && replySnapshot && replyExternalId) {
-
-            // Feature 3 — Reply V1: endpoint dedicado, NÃO altera send-message.
-            const res = await fetch("/api/whatsapp/send-reply", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                conversationId,
-                text: trimmed,
-                replyToMessageId: replySnapshot!.id,
-              }),
-            });
-            if (res.ok) {
-              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
-              if (saved?.id) {
-                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-                await refetchConversationMessages(conversationId);
-              }
-              setReplyingTo(null);
-              finishSend();
-              return;
-            }
-            let errMsg = `HTTP ${res.status}`;
-            try {
-              const j = (await res.json()) as { error?: string };
-              if (j.error) errMsg = String(j.error);
-              console.error("[chat send-reply] falhou", j);
-            } catch { // ignore }
-            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-            setSendError(errMsg);
-            toast.error("Falha ao responder no WhatsApp", { description: errMsg });
-            finishSend();
-            return;
-          }
-          if (isWhatsApp) {
-            // WhatsApp Cloud API — mesma rota usada pelo "Enviar teste"
-            const res = await fetch("/api/whatsapp/send", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-                body: JSON.stringify({ conversationId, text: trimmed }),
-            });
-            if (res.ok) {
-              const saved = (await res.json().catch(() => null)) as SendTextResult | null;
-              if (saved?.id) {
-                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-                await refetchConversationMessages(conversationId);
-              }
-              finishSend();
-              return;
-            }
-            // Falhou: remove a bolha otimista e mostra o erro real da Meta
-            let errMsg = `HTTP ${res.status}`;
-            try {
-              const j = (await res.json()) as { error?: string; metaError?: unknown };
-              if (j.error) errMsg = String(j.error);
-              console.error("[chat send] WhatsApp falhou", j);
-            } catch {
-              // ignore
-            }
-            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-            setSendError(errMsg);
-            toast.error("Falha ao enviar WhatsApp", { description: errMsg });
-            finishSend();
-            return;
-          } else {
-            // Meta (Instagram / Facebook / Messenger / Comentário) → meta-send edge function
-            const providerType =
-              origin === "instagram_comment"
-                ? "instagram_comment"
-                : origin === "instagram_direct"
-                  ? "instagram_direct"
-                  : origin;
-            const subtype =
-              origin === "instagram_comment" ||
-              origin === "facebook_comment" ||
-              origin === "comment"
-                ? "comment"
-                : "dm";
-            const { data, error } = await supabase.functions.invoke("meta-send", {
-              body: {
-                conversationId,
-                leadId: lead!.id,
-                text: trimmed,
-                subtype,
-                origin,
-                provider_type: providerType,
-              },
-            });
-            const ok = !error && (data as { ok?: boolean } | null)?.ok === true;
-            if (ok) {
-              const saved = data as SendTextResult | null;
-              if (saved?.id) {
-                setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-                await refetchConversationMessages(conversationId);
-              }
-              finishSend();
-              return;
-            }
-            const details = await readFunctionError(error, data);
-            console.error("[chat send] Meta falhou", {
-              origin,
-              providerType,
-              subtype,
-              error,
-              data,
-              full: details.full,
-            });
-            setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-            setSendError(details.message);
-            const label =
-              origin === "instagram_direct" || origin === "instagram_comment"
-                ? "Instagram"
-                : origin === "messenger"
-                  ? "Messenger"
-                  : "Meta";
-            toast.error(`Falha ao enviar ${label}`, { description: details.message });
-            finishSend();
-            return;
-          }
-        }
-      } catch (e) {
-        console.error("[chat send] erro", e);
-        setLocalMessages((prev: Message[]) => prev.filter((m) => m.id !== msg.id));
-        setSendError(e instanceof Error ? e.message : String(e));
-        toast.error("Falha ao enviar mensagem", {
-          description: e instanceof Error ? e.message : String(e),
-        });
-        finishSend();
-        return;
-      }
-    }
-
-    void appendMessage(msg, profile?.company_id);
-    finishSend();
-    */
   };
 
   const markAiSent = async (logId: string, sentText: string, originalText: string) => {

@@ -24,7 +24,7 @@ vi.mock("../sales-agent-config.server", () => ({
   }),
 }));
 
-import { runAgentTurn } from "../ai-agent.server";
+import { runAgentTick, runAgentTurn } from "../ai-agent.server";
 import { SalesAgentCore, type AgentContext, type AgentDecision } from "../sales-agent-core";
 
 const companyId = "company-runtime-eval";
@@ -147,6 +147,8 @@ function query(data: unknown, error: unknown = null, upsertError: unknown = null
     order: vi.fn(),
     limit: vi.fn(),
     maybeSingle: vi.fn(async () => ({ data, error })),
+    update: vi.fn(),
+    insert: vi.fn(async (..._args: unknown[]) => ({ data: null, error: null })),
     upsert: vi.fn(async (..._args: unknown[]) => ({ data: null, error: upsertError })),
     then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
       Promise.resolve(resolve({ data, error })),
@@ -156,6 +158,7 @@ function query(data: unknown, error: unknown = null, upsertError: unknown = null
   builder.in.mockReturnValue(builder);
   builder.order.mockReturnValue(builder);
   builder.limit.mockReturnValue(builder);
+  builder.update.mockReturnValue(builder);
   return builder;
 }
 
@@ -511,6 +514,62 @@ describe("Sales Agent runtime eval determinístico", () => {
     expect(capture.llmCalls).toBe(1);
     expect(postGraph).not.toHaveBeenCalled();
     assertUniversalRuntimeInvariants(capture);
+  });
+
+
+  it("runAgentTick faz handoff produtivo sem transporte", async () => {
+    const conversationId = "conversation-tick-handoff";
+    const leadId = "lead-tick-handoff";
+    const conversation = {
+      id: conversationId, company_id: companyId, lead_id: leadId, channel: "whatsapp",
+      ai_handling: false, ai_status: null, auto_reply_count: 0, last_auto_reply_at: null,
+      human_takeover_at: null, detected_city: null, detected_state: null,
+      detected_pool_size: null, detected_intent: null, detected_interest: null,
+      detected_budget: null, purchase_timing: null, customer_stage: null,
+      lead_temperature: null, lead_score: 0, lead_ready_to_close: false,
+      detected_objections: [],
+    };
+    const settings = buildContext().settings;
+    const aiProfile = {
+      tone: "consultivo", description: "Venda de piscinas", products: null,
+      payment_methods: "Pix", avg_lead_time: null, region: "SP",
+      differentials: null, faq: [],
+    };
+    let conversationReads = 0;
+
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") {
+        const builder = query(null);
+        builder.maybeSingle.mockImplementation(async () => {
+          conversationReads += 1;
+          return conversationReads === 1
+            ? { data: conversation, error: null }
+            : { data: { id: conversationId }, error: null };
+        });
+        return builder;
+      }
+      if (table === "company_settings") return query(settings);
+      if (table === "companies") return query({ name: "Empresa Runtime" });
+      if (table === "ai_profiles") return query(aiProfile);
+      if (table === "integrations") return query({ id: "wa-int-1" });
+      if (table === "messages") return query([{
+        role: "lead", text: "Quero fechar agora",
+        at: "2026-09-19T12:00:00.000Z", source_metadata: {},
+      }]);
+      if (
+        table === "products" || table === "marketing_knowledge_base" || table === "ai_knowledge_proposals" ||
+        table === "coach_rules" || table === "coach_rule_versions" ||
+        table === "quick_replies" || table === "ai_flow_events" ||
+        table === "leads"
+      ) return query([]);
+      throw new Error(`unexpected table in runAgentTick handoff test: ${table}`);
+    });
+
+    const result = await runAgentTick(conversationId);
+
+    expect(result).toMatchObject({ ok: true, action: "handoff" });
+    expect(postGraph).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("upsert falho nao contamina o segundo turno", async () => {
