@@ -18,6 +18,8 @@ import {
   Crown,
   Rocket,
   Gauge,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState } from "react";
@@ -80,6 +82,20 @@ export function AppShell() {
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSidebarCollapsed(window.localStorage.getItem("atendeai.sidebar") === "collapsed");
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("atendeai.sidebar", next ? "collapsed" : "expanded");
+      return next;
+    });
+  };
 
   // Fase 5.2 — decisão de layout (opção A): dentro de uma conversa aberta o
   // rodapé pertence ao composer. Duas barras fixas competindo pelo mesmo
@@ -167,16 +183,23 @@ export function AppShell() {
             <Link
               key={item.to}
               to={item.to}
+              title={sidebarCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-sm transition-colors",
+                sidebarCollapsed && "md:justify-center md:px-2",
                 "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
               )}
             >
-              <Icon className="h-4 w-4" />
-              <span className="flex-1">{item.label}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className={cn("flex-1", sidebarCollapsed && "md:hidden")}>{item.label}</span>
               {dynamicBadge ? (
-                <span className="rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]">
+                <span
+                  className={cn(
+                    "rounded bg-[var(--status-urgent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--status-urgent-foreground)]",
+                    sidebarCollapsed && "md:hidden",
+                  )}
+                >
                   {dynamicBadge > 99 ? "99+" : dynamicBadge}
                 </span>
               ) : null}
@@ -242,38 +265,67 @@ export function AppShell() {
 
   // `withThemeToggle=false` no menu mobile em tela cheia — o botão de fechar
   // do Sheet ocupa o canto superior direito e colidiria com o toggle.
-  const renderBrand = (withThemeToggle = true) => (
-    <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
-      <img
-        src="/icon-192.png"
-        alt="Atende Ai!"
-        className="h-8 w-8 drop-shadow-[0_0_10px_rgba(34,211,238,0.35)]"
-      />
-      <div className="leading-tight flex-1 min-w-0">
-        <div className="text-sm font-semibold">Atende Ai!</div>
-        <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
-      </div>
-      {withThemeToggle ? <ThemeToggle /> : null}
+  const renderBrand = (withThemeToggle = true, collapsible = false) => (
+    <div
+      className={cn(
+        "flex h-14 items-center gap-2 border-b border-sidebar-border",
+        collapsible && sidebarCollapsed ? "justify-center px-2" : "px-4",
+      )}
+    >
+      {(!collapsible || !sidebarCollapsed) && (
+        <>
+          <img
+            src="/icon-192.png"
+            alt="Atende Ai!"
+            className="h-8 w-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.35)]"
+          />
+          <div className="leading-tight flex-1 min-w-0">
+            <div className="text-sm font-semibold">Atende Ai!</div>
+            <div className="text-[10px] text-muted-foreground">Vendas que não esperam</div>
+          </div>
+          {withThemeToggle ? <ThemeToggle /> : null}
+        </>
+      )}
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label={sidebarCollapsed ? "Expandir menu" : "Minimizar menu"}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? "Expandir menu" : "Minimizar menu"}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+        >
+          {sidebarCollapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
+        </button>
+      ) : null}
     </div>
   );
-  const Brand = renderBrand(true);
 
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
       <NotificationBridge />
 
       {/* Sidebar desktop */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        {Brand}
-        {demoMode && !user && (
+      <aside
+        className={cn(
+          "hidden md:flex shrink-0 flex-col overflow-x-hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200",
+          sidebarCollapsed ? "w-[72px]" : "w-60",
+        )}
+      >
+        {renderBrand(true, true)}
+        {demoMode && !user && !sidebarCollapsed && (
           <div className="mx-2 mt-2 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2 py-1.5 text-[10px] text-primary">
             <div className="font-semibold">Modo demo</div>
             <div className="text-primary/70">Dados de exemplo locais</div>
           </div>
         )}
         {NavList}
-        <NeuralIntelligencePanel />
-        {FooterPanel}
+        {!sidebarCollapsed && <NeuralIntelligencePanel />}
+        {!sidebarCollapsed && FooterPanel}
       </aside>
 
       <main className="flex-1 min-w-0 min-h-0 h-full flex flex-col">
