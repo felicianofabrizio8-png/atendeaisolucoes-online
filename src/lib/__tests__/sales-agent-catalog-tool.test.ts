@@ -156,6 +156,86 @@ describe("sales-agent catalog tool", () => {
       products: [{ id: "pool-501", price: 14900 }],
     });
   });
+  it("prefere o nome completo apresentado quando outro produto apenas estende esse nome", () => {
+    const presentedCatalog = [
+      {
+        ...catalog[0],
+        id: "pool-801",
+        name: "Sol 801",
+        model: "Sol 801",
+        price: 18_900,
+      },
+      {
+        ...catalog[0],
+        id: "pool-801-spa",
+        name: "Sol 801 SPA",
+        model: "Sol 801 SPA",
+        price: 21_900,
+      },
+      {
+        ...catalog[0],
+        id: "pool-802",
+        name: "Sol 802",
+        model: "Sol 802",
+        price: 19_900,
+      },
+    ];
+
+    const result = searchSalesAgentCatalog(
+      "company-1",
+      presentedCatalog,
+      [
+        {
+          role: "agent",
+          text: "Apresentei três opções.",
+          productIds: ["pool-801", "pool-801-spa", "pool-802"],
+        },
+        {
+          role: "lead",
+          text: "E essa Sol 801 qual o valor?",
+        },
+      ],
+      {
+        attributes: {},
+        productIds: [],
+        intent: "product_inquiry",
+        lastValidProductIds: ["pool-802"],
+      },
+      scope,
+    );
+
+    expect(result).toMatchObject({
+      status: "matches",
+      products: [{ id: "pool-801", price: 18_900 }],
+    });
+  });
+  it("prefere a variante completa mais específica quando ela é citada explicitamente", () => {
+    const presentedCatalog = [
+      { ...catalog[0], id: "pool-801", name: "Sol 801", model: "Sol 801", price: 18_900 },
+      { ...catalog[0], id: "pool-801-spa", name: "Sol 801 SPA", model: "Sol 801 SPA", price: 21_900 },
+    ];
+
+    const result = searchSalesAgentCatalog(
+      "company-1",
+      presentedCatalog,
+      [
+        { role: "agent", text: "Apresentei as duas opções.", productIds: ["pool-801", "pool-801-spa"] },
+        { role: "lead", text: "E essa Sol 801 SPA qual o valor?" },
+      ],
+      {
+        attributes: {},
+        productIds: [],
+        intent: "product_inquiry",
+        lastValidProductIds: ["pool-801"],
+      },
+      scope,
+    );
+
+    expect(result).toMatchObject({
+      status: "matches",
+      products: [{ id: "pool-801-spa", price: 21_900 }],
+    });
+  });
   it("não escolhe produto quando a referência abreviada apresentada é ambígua", () => {
     const ambiguousCatalog = [
       { ...catalog[0], id: "model-501-a", name: "Linha 501 A", model: "501 A", sku: "501-A" },
