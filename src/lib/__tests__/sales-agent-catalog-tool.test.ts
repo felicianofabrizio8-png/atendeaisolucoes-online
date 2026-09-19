@@ -128,6 +128,59 @@ describe("sales-agent catalog tool", () => {
     expect(result).toEqual({ status: "matches", products: [] });
   });
 
+  it("resolve referência abreviada ao modelo apresentado antes de consultar preço", () => {
+    const presentedCatalog = [
+      { ...catalog[0], id: "pool-500", name: "Sol 500", model: "Sol 500", sku: "SOL-500", price: 14000, promoPrice: null },
+      { ...catalog[0], id: "pool-500-praia", name: "Sol 500 Praia", model: "Sol 500 Praia", sku: "SOL-500-P", price: 14500, promoPrice: null },
+      { ...catalog[0], id: "pool-501", name: "Sol 501", model: "Sol 501", sku: "SOL-501", price: 14900, promoPrice: null },
+    ];
+
+    const result = searchSalesAgentCatalog(
+      "company-1",
+      presentedCatalog,
+      [
+        { role: "agent", text: "Apresentei três opções.", productIds: ["pool-500", "pool-500-praia", "pool-501"] },
+        { role: "lead", text: "Eu gostei da 501. qual o valor?" },
+      ],
+      {
+        attributes: {},
+        productIds: [],
+        intent: "product_inquiry",
+        lastValidProductIds: ["pool-500", "pool-500-praia", "pool-501"],
+      },
+      scope,
+    );
+
+    expect(result).toMatchObject({
+      status: "matches",
+      products: [{ id: "pool-501", price: 14900 }],
+    });
+  });
+  it("não escolhe produto quando a referência abreviada apresentada é ambígua", () => {
+    const ambiguousCatalog = [
+      { ...catalog[0], id: "model-501-a", name: "Linha 501 A", model: "501 A", sku: "501-A" },
+      { ...catalog[0], id: "model-501-b", name: "Linha 501 B", model: "501 B", sku: "501-B" },
+      { ...catalog[0], id: "model-600", name: "Linha 600", model: "600", sku: "600" },
+    ];
+
+    const result = searchSalesAgentCatalog(
+      "company-1",
+      ambiguousCatalog,
+      [
+        { role: "agent", text: "Apresentei três opções.", productIds: ["model-501-a", "model-501-b", "model-600"] },
+        { role: "lead", text: "Gostei da 501. Qual o valor?" },
+      ],
+      {
+        attributes: {},
+        productIds: [],
+        intent: "product_inquiry",
+        lastValidProductIds: ["model-501-a", "model-501-b", "model-600"],
+      },
+      scope,
+    );
+
+    expect(result.status).toBe("ambiguous");
+  });
   it("distingue produto inexistente, catálogo vazio e erro de consulta", () => {
     expect(searchSalesAgentCatalog("company-1", catalog, [{ role: "lead", text: "Tem o produto Atlantis?" }], null, scope)).toMatchObject({
       status: "no_match",
