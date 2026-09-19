@@ -125,6 +125,25 @@ export function resolvePresentedCatalogProductReference<T extends CatalogProduct
   }
 
   const messageTokens = normalizeTokens(text);
+
+  const exactMatches = presentedProducts
+    .map((product) => ({
+      product,
+      specificity: [product.name, product.model ?? null]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map((value) => normalizeTokens(value))
+        .filter((sequence) => containsExactSequence(messageTokens, sequence))
+        .reduce((max, sequence) => Math.max(max, sequence.length), 0),
+    }))
+    .filter(({ specificity }) => specificity > 0);
+
+  const maxSpecificity = Math.max(0, ...exactMatches.map(({ specificity }) => specificity));
+  const mostSpecificMatches = exactMatches.filter(({ specificity }) => specificity === maxSpecificity);
+  if (mostSpecificMatches.length === 1) {
+    return { product: mostSpecificMatches[0].product, ambiguous: false };
+  }
+  if (mostSpecificMatches.length > 1) return { product: null, ambiguous: true };
+
   const matches = presentedProducts.filter((product) =>
     productContextSequences(product).some((sequence) => containsExactSequence(messageTokens, sequence)),
   );

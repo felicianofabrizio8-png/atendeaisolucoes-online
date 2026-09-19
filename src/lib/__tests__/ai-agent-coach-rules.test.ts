@@ -365,6 +365,84 @@ describe("runAgentTurn coach_rules integration", () => {
     decideSpy.mockRestore();
   });
 
+  it("switches safely between previously presented products across persisted turns", async () => {
+    const products = [
+      { ...context.grounding.catalog[0], id: "pool-801", name: "Sol 801", model: "Sol 801", price: 18_900 },
+      { ...context.grounding.catalog[0], id: "pool-802", name: "Sol 802", model: "Sol 802", price: 19_900 },
+    ];
+    let persistedState: any = null;
+
+    configureCoachRules({ activeProducts: products });
+
+    from.mockImplementation((table: string) => {
+      if (table === "conversation_sales_states") {
+        const q = query(persistedState);
+        (q.upsert as any).mockImplementation(async (row: any) => {
+          persistedState = row;
+          return { data: null, error: null };
+        });
+        return q;
+      }
+      if (table === "products") return query(products);
+      if (table === "coach_rules" || table === "coach_rule_versions" || table === "quick_replies") {
+        return query([]);
+      }
+      throw new Error(`unexpected table: ${table}`);
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { tool_calls: [{ function: {
+          name: "respond_to_customer",
+          arguments: JSON.stringify({ message: "A Sol 802 custa R$ 19.900,00." }),
+        } }] } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { tool_calls: [{ function: {
+          name: "respond_to_customer",
+          arguments: JSON.stringify({ message: "A Sol 801 custa R$ 18.900,00." }),
+        } }] } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const scope = {
+      scopeType: "whatsapp_conversation" as const,
+      scopeId: "conversation-1",
+    };
+    const ctx = {
+      ...context,
+      products,
+      grounding: { ...context.grounding, catalog: products },
+    };
+
+    const first = await runAgentTurn({
+      ctx,
+      history: [
+        { role: "agent", text: "Apresentei a Sol 801 e a Sol 802.", productIds: ["pool-801", "pool-802"] },
+        { role: "lead", text: "Eu gostei da 802. Qual o valor dela?" },
+      ],
+      leadName: null,
+      salesStateScope: scope,
+    });
+
+    expect(first.kind).toBe("reply");
+
+    const second = await runAgentTurn({
+      ctx,
+      history: [
+        { role: "agent", text: "Apresentei a Sol 801 e a Sol 802.", productIds: ["pool-801", "pool-802"] },
+        { role: "lead", text: "Eu gostei da 802. Qual o valor dela?" },
+        { role: "agent", text: "A Sol 802 custa R$ 19.900,00.", productIds: ["pool-802"] },
+        { role: "lead", text: "E essa Sol 801 qual o valor?" },
+      ],
+      leadName: null,
+      salesStateScope: scope,
+    });
+
+    expect(second).toMatchObject({
+      kind: "reply",
+      message: "A Sol 801 custa R$ 18.900,00.",
+    });
+  });
   it("does not contaminate the response when memory upsert fails", async () => {
     configureCoachRules({ stateUpsertError: new Error("upsert failed") });
     const result = await runAgentTurn({
