@@ -13,6 +13,13 @@ vi.mock("@/lib/inbox/manual-send", () => ({
   sendManualText: manualSendMock.sendManualText,
 }));
 
+const aiSuggestMock = vi.hoisted(() => ({
+  suggestAiReply: vi.fn(),
+}));
+
+vi.mock("@/lib/atendimento/ai-suggest", () => ({
+  suggestAiReply: aiSuggestMock.suggestAiReply,
+}));
 const repoMock = vi.hoisted(() => {
   type RepoState = {
     mode: "remote" | "demo";
@@ -161,6 +168,12 @@ describe("Atendimento 2.0 runtime", () => {
   beforeEach(() => {
     repoMock.reset();
     manualSendMock.sendManualText.mockReset();
+    aiSuggestMock.suggestAiReply.mockReset();
+    aiSuggestMock.suggestAiReply.mockResolvedValue({
+      ok: true,
+      kind: "reply",
+      message: "Sugestão comercial segura",
+    });
     manualSendMock.sendManualText.mockResolvedValue({
       ok: true,
       kind: "success",
@@ -257,6 +270,25 @@ describe("Atendimento 2.0 runtime", () => {
     expect(repoMock.calls.forbiddenAi).toBe(0);
   });
 
+  it("gera sugestão com IA no composer sem enviar automaticamente", async () => {
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.click(screen.getByRole("button", { name: "Sugerir com IA" }));
+
+    await waitFor(() =>
+      expect(aiSuggestMock.suggestAiReply).toHaveBeenCalledWith(conversation.id),
+    );
+
+    await waitFor(() =>
+      expect((screen.getByLabelText("Mensagem") as HTMLInputElement).value)
+        .toBe("Sugestão comercial segura"),
+    );
+
+    expect(manualSendMock.sendManualText).not.toHaveBeenCalled();
+    expect(repoMock.calls.refetchConversationMessages).toBe(0);
+    expect(repoMock.state.messages).toHaveLength(0);
+  });
   it("bloqueia mensagem vazia e envio duplo enquanto há envio em andamento", async () => {
     let resolveSend: ((value: unknown) => void) | null = null;
     manualSendMock.sendManualText.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));

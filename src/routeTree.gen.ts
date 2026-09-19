@@ -85,6 +85,7 @@ import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
 import { Route as ApiBusinessLearningSnapshotRouteImport } from './routes/api.business-learning.snapshot'
 import { Route as ApiBusinessBrainSnapshotRouteImport } from './routes/api.business-brain.snapshot'
 import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
+import { Route as ApiAiSuggestReplyRouteImport } from './routes/api.ai.suggest-reply'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
 import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
@@ -528,6 +529,11 @@ const ApiAiTestNowRoute = ApiAiTestNowRouteImport.update({
   path: '/api/ai/test-now',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiSuggestReplyRoute = ApiAiSuggestReplyRouteImport.update({
+  id: '/api/ai/suggest-reply',
+  path: '/api/ai/suggest-reply',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
   id: '/api/ai/suggest-product',
   path: '/api/ai/suggest-product',
@@ -745,6 +751,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
@@ -853,6 +860,7 @@ export interface FileRoutesByTo {
   '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
@@ -963,6 +971,7 @@ export interface FileRoutesById {
   '/api/ai/readiness': typeof ApiAiReadinessRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
+  '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
@@ -1074,6 +1083,7 @@ export interface FileRouteTypes {
     | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
@@ -1182,6 +1192,7 @@ export interface FileRouteTypes {
     | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
@@ -1291,6 +1302,7 @@ export interface FileRouteTypes {
     | '/api/ai/readiness'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
+    | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
@@ -1396,6 +1408,7 @@ export interface RootRouteChildren {
   ApiAiReadinessRoute: typeof ApiAiReadinessRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
+  ApiAiSuggestReplyRoute: typeof ApiAiSuggestReplyRoute
   ApiAiTestNowRoute: typeof ApiAiTestNowRoute
   ApiBusinessBrainSnapshotRoute: typeof ApiBusinessBrainSnapshotRoute
   ApiBusinessLearningSnapshotRoute: typeof ApiBusinessLearningSnapshotRoute
@@ -1992,6 +2005,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiTestNowRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/suggest-reply': {
+      id: '/api/ai/suggest-reply'
+      path: '/api/ai/suggest-reply'
+      fullPath: '/api/ai/suggest-reply'
+      preLoaderRoute: typeof ApiAiSuggestReplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/suggest-product': {
       id: '/api/ai/suggest-product'
       path: '/api/ai/suggest-product'
@@ -2283,6 +2303,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiReadinessRoute: ApiAiReadinessRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
+  ApiAiSuggestReplyRoute: ApiAiSuggestReplyRoute,
   ApiAiTestNowRoute: ApiAiTestNowRoute,
   ApiBusinessBrainSnapshotRoute: ApiBusinessBrainSnapshotRoute,
   ApiBusinessLearningSnapshotRoute: ApiBusinessLearningSnapshotRoute,

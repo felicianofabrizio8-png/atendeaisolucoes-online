@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
 import { refetchConversationMessages } from "@/data/leadRepo";
 import { sendManualText } from "@/lib/inbox/manual-send";
+import { suggestAiReply } from "@/lib/atendimento/ai-suggest";
 import { getConversationOrigin } from "@/routes/inbox.index";
 import { ContactAvatar } from "./ContactAvatar";
 import { CustomerTierBadge } from "./CustomerTierBadge";
@@ -40,9 +41,12 @@ export function ChatThread({
   const bottom = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
   const sendAttemptRef = useRef(0);
+  const suggestAttemptRef = useRef(0);
   const activeConversationIdRef = useRef(contact.conversation.id);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
   activeConversationIdRef.current = contact.conversation.id;
@@ -53,16 +57,61 @@ export function ChatThread({
 
   useEffect(() => {
     sendAttemptRef.current += 1;
+    suggestAttemptRef.current += 1;
     setText("");
     setSendError(null);
+    setSuggestError(null);
     sendingRef.current = false;
     setSending(false);
+    setSuggesting(false);
   }, [contact.conversation.id]);
 
+  const handleSuggest = async () => {
+    if (sending || suggesting || contact.lead.channel !== "whatsapp") return;
+
+    const conversationId = contact.conversation.id;
+    const attemptId = ++suggestAttemptRef.current;
+    const isCurrentAttempt = () =>
+      activeConversationIdRef.current === conversationId &&
+      suggestAttemptRef.current === attemptId;
+
+    setSuggesting(true);
+    setSuggestError(null);
+
+    try {
+      const result = await suggestAiReply(conversationId);
+
+      if (!isCurrentAttempt()) return;
+
+      if (!result.ok) {
+        setSuggestError(result.error);
+        return;
+      }
+
+      if (result.kind === "reply") {
+        setText(result.message);
+        return;
+      }
+
+      if (result.kind === "handoff") {
+        setSuggestError("A IA indicou atendimento humano para esta conversa.");
+        return;
+      }
+
+      setSuggestError("A IA não gerou uma sugestão para esta mensagem.");
+    } catch (error) {
+      if (!isCurrentAttempt()) return;
+      setSuggestError(
+        error instanceof Error ? error.message : "Falha ao gerar sugestão",
+      );
+    } finally {
+      if (isCurrentAttempt()) setSuggesting(false);
+    }
+  };
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = text.trim();
-    if (!trimmed || sendingRef.current) return;
+    if (!trimmed || sendingRef.current || suggesting) return;
 
     const conversationId = contact.conversation.id;
     const attemptId = ++sendAttemptRef.current;
@@ -184,7 +233,29 @@ export function ChatThread({
       </div>
 
       <form onSubmit={handleSubmit} className="px-5 pb-5">
+        {suggestError ? (
+          <p role="alert" className="mx-auto mb-2 max-w-[680px] text-xs text-destructive">
+            {suggestError}
+          </p>
+        ) : null}
         <div className="mx-auto flex max-w-[680px] items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5">
+          <button
+            type="button"
+            onClick={handleSuggest}
+            disabled={sending || suggesting || contact.lead.channel !== "whatsapp"}
+            aria-label={suggesting ? "Gerando sugestão..." : "Sugerir com IA"}
+            title={
+              contact.lead.channel === "whatsapp"
+                ? "Sugerir resposta com IA"
+                : "Sugestão com IA disponível no WhatsApp"
+            }
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {suggesting ? "Gerando..." : "Sugerir com IA"}
+            </span>
+          </button>
           <input
             aria-label="Mensagem"
             value={text}
@@ -195,7 +266,7 @@ export function ChatThread({
           />
           <button
             type="submit"
-            disabled={sending || !text.trim()}
+            disabled={sending || suggesting || !text.trim()}
             aria-label={sending ? "Enviando..." : "Enviar"}
             className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
           >
