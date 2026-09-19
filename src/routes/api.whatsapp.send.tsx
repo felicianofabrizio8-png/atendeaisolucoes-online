@@ -80,7 +80,15 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           }
           leadId = conv.lead_id;
         } else if (body.leadId) {
-          leadId = body.leadId;
+          const { data: requestedLead } = await supabaseAdmin
+            .from("leads")
+            .select("id, company_id")
+            .eq("id", body.leadId)
+            .maybeSingle();
+          if (!requestedLead || requestedLead.company_id !== companyId) {
+            return Response.json({ error: "lead não encontrado" }, { status: 404 });
+          }
+          leadId = requestedLead.id;
         } else if (body.phone) {
           // Encontra ou cria lead pelo telefone (modo manual / Meta Cloud)
           const phoneDigits = String(body.phone).replace(/\D/g, "");
@@ -145,6 +153,18 @@ export const Route = createFileRoute("/api/whatsapp/send")({
             }
             conversationId = newConv.id;
           }
+        }
+
+        const { data: targetLead } = await supabaseAdmin
+          .from("leads")
+          .select("id, company_id, status, closed_at")
+          .eq("id", leadId!)
+          .maybeSingle();
+        if (!targetLead || targetLead.company_id !== companyId) {
+          return Response.json({ error: "lead não encontrado" }, { status: 404 });
+        }
+        if (targetLead.status === "fechado" || targetLead.status === "perdido" || targetLead.closed_at) {
+          return Response.json({ error: "conversa fechada não aceita novas mensagens" }, { status: 409 });
         }
 
         // 24h window guard — fora da janela só pode enviar template Utility.

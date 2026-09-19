@@ -6,6 +6,12 @@ import {
 import { SalesAgentCore, type AgentContext } from "../sales-agent-core";
 import { getTrainingMessageProductIds } from "../sales-training-domain";
 
+const testInterpretation = {
+  intent: null,
+  attributes: {},
+  references: { lastLeadText: "", productIds: [] },
+};
+
 const catalog = [
   { id: "a", name: "Linha Solaris 401 Praia", model: "401", description: "Piscina clara para área externa" },
   { id: "b", name: "Linha Solaris 402 Canyon", model: "402", description: "Piscina escura para área externa" },
@@ -41,6 +47,7 @@ function coreContext(products: typeof catalog): AgentContext {
     knowledge: [],
     grounding: {
       catalog: mapped,
+      catalogSearch: { status: "matches", products: mapped },
       faqKnowledge: [],
       commercialRules: {
         paymentMethods: null,
@@ -128,6 +135,8 @@ describe("resolução contextual de produtos", () => {
       ],
       leadName: null,
       model: "provider/sales-model",
+      interpretation: testInterpretation,
+      catalogSearch: coreContext(productCatalog).grounding.catalogSearch,
     });
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
@@ -154,6 +163,8 @@ describe("resolução contextual de produtos", () => {
       history: [{ role: "lead", text: "Qual o valor da 401?" }],
       leadName: null,
       model: "provider/sales-model",
+      interpretation: testInterpretation,
+      catalogSearch: coreContext(catalog.slice(0, 2)).grounding.catalogSearch,
       sessionCorrections: [{ question: "Qual o valor da 401?", correction }],
     });
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });

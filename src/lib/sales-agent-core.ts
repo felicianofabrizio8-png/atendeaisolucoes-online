@@ -83,7 +83,7 @@ export interface SalesAgentGrounding {
     conflictKey?: string | null;
     sourceTrainingMessageId?: string | null;
   }>;
-  catalogSearch?: SalesAgentCatalogSearch;
+  catalogSearch: SalesAgentCatalogSearch;
   catalogScope?: { companyId: string; activeOnly: true };
   activeCoachRules?: ActiveCoachRuleGrounding[];
   quickReplies?: QuickReplyGrounding[];
@@ -128,8 +128,12 @@ export interface AgentContext {
   catalogForValidation?: SalesAgentGrounding["catalog"];
   knowledge: Array<{ question: string; answer: string; type: string }>;
   grounding: SalesAgentGrounding;
-  catalogSearch?: SalesAgentCatalogSearch;
 }
+
+export type SalesAgentGroundingBase = Omit<SalesAgentGrounding, "catalogSearch">;
+export type AgentContextBase = Omit<AgentContext, "grounding"> & {
+  grounding: SalesAgentGroundingBase;
+};
 
 export interface AgentDecision {
   kind: "reply" | "handoff" | "skip";
@@ -162,6 +166,12 @@ export interface SalesAgentCoreInput {
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
+  interpretation: {
+    intent: "product_images" | "product_inquiry" | null;
+    attributes: object;
+    references: { lastLeadText: string; productIds: string[] };
+  };
+  memoryStatus?: "found" | "missing" | "error";
   sessionCorrections?: SalesAgentSessionCorrection[];
 }
 
@@ -911,8 +921,9 @@ export function buildSalesAgentSystemPrompt(
   sessionCorrections: SalesAgentSessionCorrection[] = [],
 ): string {
   const ai = ctx.aiProfile;
-  const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
-  const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
+  const catalogSearch = ctx.grounding.catalogSearch;
+  const usesGroundedCatalog = catalogSearch.status === "matches";
+  const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
   const relevantFaqs = selectRelevantFaqs(
     ctx.grounding.faqKnowledge,
     ai?.faq ?? [],
@@ -1076,10 +1087,11 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 }
 
 export function buildSalesAgentCompletionRequest(
-  params: Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: SalesAgentCatalogSearch },
+  params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
-  const catalogProducts =
-    params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
+  const catalogProducts = params.catalogSearch.status === "matches"
+    ? params.catalogSearch.products
+    : [];
   const transcriptEntries = params.history
     .slice(-20)
     .map(
@@ -1206,18 +1218,20 @@ export function buildSalesAgentCompletionRequest(
 export class SalesAgentCore {
   constructor(private readonly complete: SalesAgentCompletion) {}
 
-  async decide(
-    params: SalesAgentCoreInput | (Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: undefined }),
-  ): Promise<AgentDecision> {
+  async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
     const groundingSources = getSalesAgentGroundingSources(params.ctx);
     const availableLearningIds = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
-    const catalogSearch = params.catalogSearch ?? (
-      params.ctx.grounding.catalog.length > 0
-        ? { status: "matches" as const, products: params.ctx.grounding.catalog }
-        : { status: "empty_catalog" as const, products: [] as SalesAgentGrounding["catalog"] }
-    );
+    const catalogSearch = params.catalogSearch;
+    if (params.memoryStatus === "error") {
+      return {
+        kind: "handoff",
+        reason: "conversation_sales_state_load_failed",
+        grounding_sources: [],
+        learning_ids_used: [],
+      };
+    }
     if (!catalogSearch) {
       return {
         kind: "handoff",
@@ -1243,7 +1257,7 @@ export class SalesAgentCore {
     }
     const automaticProductImageIds = getAutomaticProductImageIds(
       params.history,
-      params.ctx.grounding.catalog,
+      catalogSearch.products,
     );
     const deterministicProducts = params.history.some(
       (message) => message.role === "lead" && message.text.trim().length > 0,
@@ -1297,11 +1311,10 @@ export class SalesAgentCore {
     }
     const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
     const catalogIds = new Set(
-      params.ctx.catalogProductIds ??
-        params.ctx.grounding.catalog.map((product) => product.id),
+      catalogSearch.products.map((product) => product.id),
     );
     const catalogById = new Map(
-      params.ctx.grounding.catalog.map((product) => [product.id, product]),
+      catalogSearch.products.map((product) => [product.id, product]),
     );
     const modelSuggestions = Array.isArray(reply.suggest_products)
       ? reply.suggest_products.filter((id): id is string => typeof id === "string")
@@ -1325,7 +1338,7 @@ export class SalesAgentCore {
     const learningIdsUsed = Array.isArray(reply.learning_ids_used)
       ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
       : [];
-    const catalogForValidation = params.ctx.catalogForValidation;
+    const catalogForValidation = catalogSearch.products;
     if (
       !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
     ) {
@@ -1340,7 +1353,7 @@ export class SalesAgentCore {
       !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
         reply.message,
         selectedProducts,
-        params.ctx.grounding.catalog,
+        catalogSearch.products,
       )
     ) {
       return deterministicFallback("catalog_invalid_product_fact");

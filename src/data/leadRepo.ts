@@ -42,6 +42,7 @@ let remoteLeads: Lead[] = [];
 let remoteConversations: Conversation[] = [];
 let remoteMessages: Message[] = [];
 let remoteLoaded = false;
+let remoteLoadError: string | null = null;
 let loadingPromise: Promise<void> | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
 let realtimeCompanyId: string | null = null;
@@ -164,6 +165,7 @@ export function setRepoMode(next: Mode) {
     remoteMessages = [];
     messagesIndex.clear();
     remoteLoaded = false;
+    remoteLoadError = null;
     olderHasMore.clear();
     olderLoading.clear();
     recentLoaded.clear();
@@ -523,12 +525,17 @@ function recoverConversationGraph(companyId: string, conversationId: string, gen
 export async function loadRemote(companyId: string, slaMinutes = 30) {
   if (loadingPromise) return loadingPromise;
   currentSlaMinutes = slaMinutes;
+  remoteLoadError = null;
   loadingPromise = (async () => {
     const generation = subscribeRealtime(companyId);
     await reconcileInbox(companyId, generation);
   })();
   try {
     await loadingPromise;
+  } catch (error) {
+    remoteLoadError = error instanceof Error ? error.message : String(error);
+    notify();
+    throw error;
   } finally {
     loadingPromise = null;
   }
@@ -536,6 +543,10 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
 
 export function isRemoteLoaded() {
   return remoteLoaded;
+}
+
+export function getRemoteLoadError(): string | null {
+  return remoteLoadError;
 }
 
 // ---------- realtime (mensagens chegando via webhook) ----------

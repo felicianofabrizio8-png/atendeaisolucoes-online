@@ -12,6 +12,7 @@ import {
 import { loadValidatedProductImages } from "./sales-agent-product-images.server";
 import type { AgentDecision } from "./sales-agent-core";
 import { loadConversationSalesState, saveConversationSalesState } from "./conversation-sales-state.server";
+import { EMPTY_CONVERSATION_SALES_STATE } from "./conversation-sales-state";
 
 const SessionInput = z.object({ sessionId: z.string().uuid() });
 const SendInput = SessionInput.extend({ message: z.string().trim().min(1).max(4000) });
@@ -141,11 +142,11 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
         .limit(200);
       if (historyError) throw new Error("training_history_load_failed");
 
-      const ctx = await loadAgentContext(companyId);
-      if (!ctx) throw new Error("training_context_not_found");
       const sessionMessages = ((rows ?? []) as unknown as SessionTrainingMessage[]).reverse();
       const history = buildTrainingHistory(sessionMessages).slice(-40);
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
+      const ctx = await loadAgentContext(companyId, history);
+      if (!ctx) throw new Error("training_context_not_found");
       const decision = runSafetyLayer(
         await runAgentTurn({
           ctx,
@@ -248,7 +249,11 @@ export const reviewTrainingResponse = createServerFn({ method: "POST" })
         scopeType: "training_session" as const,
         scopeId: sessionId,
       };
-      const currentState = await loadConversationSalesState(scope);
+      const loadedState = await loadConversationSalesState(scope);
+      if (loadedState.status === "error") throw new Error("conversation_sales_state_load_failed");
+      const currentState = loadedState.status === "found"
+        ? loadedState.state
+        : EMPTY_CONVERSATION_SALES_STATE;
       await saveConversationSalesState(
         scope,
         rebuildTrainingStateFromValidMessages(currentState, (sessionRows ?? []) as unknown as SessionTrainingMessage[]),

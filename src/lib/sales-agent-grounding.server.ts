@@ -1,7 +1,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
-import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
+import {
+  getRequestedProductLength,
+  type SalesAgentGrounding,
+  type SalesAgentGroundingBase,
+} from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import type {
   ConversationProductAttributes,
@@ -108,7 +112,7 @@ export function searchSalesAgentCatalog(
   products: CatalogProduct[],
   history: AgentHistory,
   salesState: ConversationSalesState | null = null,
-  scope: { companyId: string; activeOnly: true } | undefined = undefined,
+  scope: { companyId: string; activeOnly: true },
 ): CatalogSearchResult {
   if (!companyId.trim()) return { status: "query_error", error: new Error("company_id_required") };
   if (!scope || scope.companyId !== companyId || scope.activeOnly !== true) {
@@ -853,7 +857,24 @@ export async function loadRelevantSalesAgentLearnings(
   return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
 }
 
-export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory,
+  salesState: ConversationSalesState | null,
+  options: { deferCatalogSearch: true },
+): Promise<SalesAgentGroundingBase>;
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history?: AgentHistory,
+  salesState?: ConversationSalesState | null,
+  options?: { deferCatalogSearch?: false },
+): Promise<SalesAgentGrounding>;
+export async function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory = [],
+  salesState: ConversationSalesState | null = null,
+  options: { deferCatalogSearch?: boolean } = {},
+): Promise<SalesAgentGrounding | SalesAgentGroundingBase> {
   let catalogQueryError: unknown = null;
   const safeSource = async <T>(
     request: PromiseLike<{ data: T | null; error?: unknown }>,
@@ -925,8 +946,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     ),
   ]);
 
-  return {
-    catalog: (products ?? []).map((product) => ({
+  const catalog = (products ?? []).map((product) => ({
       id: product.id,
       name: product.name,
       model: product.model,
@@ -960,14 +980,21 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
           )
         : [],
       notes: product.notes,
-    })),
+    }));
+  const catalogScope = catalogQueryError ? undefined : { companyId, activeOnly: true as const };
+
+  return {
+    catalog,
     faqKnowledge: knowledge,
-    catalogScope: catalogQueryError ? undefined : { companyId, activeOnly: true as const },
-    catalogSearch: catalogQueryError
+    catalogScope,
+    ...(options.deferCatalogSearch
+      ? {}
+      : { catalogSearch: catalogQueryError
       ? { status: "query_error" as const, error: catalogQueryError }
-      : products?.length
-        ? { status: "matches" as const, products: [] }
-        : { status: "empty_catalog" as const, products: [] },
+      : searchSalesAgentCatalog(companyId, catalog, history, salesState, {
+          companyId,
+          activeOnly: true,
+        }) }),
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,
