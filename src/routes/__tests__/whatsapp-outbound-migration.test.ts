@@ -35,8 +35,9 @@ const supabaseAdmin: any = {
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin }));
 
 // ---------- Mock isWithin24hWindow ----------
+const windowSpy = vi.hoisted(() => vi.fn<() => Promise<{ inside: boolean; lastLeadAt: string | null }>>(async () => ({ inside: true, lastLeadAt: null })));
 vi.mock("@/lib/wa-templates.server", () => ({
-  isWithin24hWindow: vi.fn(async () => ({ inside: true, lastLeadAt: null })),
+  isWithin24hWindow: windowSpy,
 }));
 
 // ---------- Spy MetaOutbound ----------
@@ -168,7 +169,7 @@ describe("api.whatsapp.send-location — migração B.1", () => {
     tableRows.company_settings = {
       location: { name: "Loja", address: "Rua X", latitude: -23.5, longitude: -46.6 },
     };
-    tableRows.leads = { id: "lead-1", phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
     tableRows.integrations = {
       id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
@@ -249,7 +250,7 @@ describe("api.whatsapp.send-reply — migração B.1", () => {
       id: "orig-1", conversation_id: "conv-1", company_id: "company-1",
       external_id: "wamid.ORIG", text: "olá", role: "lead", source_subtype: null,
     };
-    tableRows.leads = { id: "lead-1", phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
     tableRows.integrations = {
       id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
@@ -310,5 +311,92 @@ describe("api.whatsapp.send-reply — migração B.1", () => {
     expect(res.status).toBe(502);
     const json = await res.json();
     expect(json.error).toContain("ETIMEDOUT");
+  });
+});
+
+describe("api.whatsapp.send — guards de envio manual", () => {
+  beforeEach(() => {
+    tableRows.profiles = { company_id: "company-1" };
+    tableRows.conversations = {
+      id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1",
+    };
+    tableRows.leads = {
+      id: "lead-1", company_id: "company-1", status: "novo", closed_at: null,
+      phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
+    };
+    tableRows.integrations = {
+      id: "int-1", company_id: "company-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+    };
+    windowSpy.mockResolvedValue({ inside: true, lastLeadAt: null });
+  });
+
+  it("envia texto normal somente após validações server-side", async () => {
+    postGraphSpy.mockResolvedValueOnce({
+      success: true, simulated: false, environment: "legacy", externalRequestSent: true,
+      externalId: "wamid.TEXT", status: 200, raw: { messages: [{ id: "wamid.TEXT" }] },
+    });
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
+
+    expect(res.status).toBe(200);
+    expect(postGraphSpy).toHaveBeenCalledOnce();
+  });
+
+  it("bloqueia cross-tenant antes do transporte", async () => {
+    tableRows.conversations = { id: "conv-other", company_id: "company-other", channel: "whatsapp", lead_id: "lead-1" };
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-other", text: "oi" }));
+
+    expect(res.status).toBe(404);
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+
+  it("bloqueia conversa fechada server-side", async () => {
+    tableRows.leads = { ...tableRows.leads, status: "fechado", closed_at: "2026-09-18T10:00:00.000Z" };
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
+
+    expect(res.status).toBe(409);
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+
+  it("bloqueia fora da janela de 24h", async () => {
+    windowSpy.mockResolvedValueOnce({ inside: false, lastLeadAt: "2026-09-15T10:00:00.000Z" });
+
+    const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
+
+    expect(res.status).toBe(409);
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("api.whatsapp.send-reply — guards de tenant e fechamento", () => {
+  beforeEach(() => {
+    tableRows.profiles = { company_id: "company-1" };
+    tableRows.conversations = { id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1" };
+    tableRows.messages = { id: "orig-1", conversation_id: "conv-1", company_id: "company-1", external_id: "wamid.ORIG", text: "oi", role: "lead", source_subtype: null };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.integrations = { id: "int-1", company_id: "company-1", access_token: "EAAG-token", external_account_id: "PHONE-ID" };
+    windowSpy.mockResolvedValue({ inside: true, lastLeadAt: null });
+  });
+
+  it("aceita reply válido da mesma conversa/tenant", async () => {
+    postGraphSpy.mockResolvedValueOnce({ success: true, simulated: false, environment: "legacy", externalRequestSent: true, externalId: "wamid.REPLY", status: 200, raw: { messages: [{ id: "wamid.REPLY" }] } });
+    const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({ conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-1" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("rejeita reply de outra conversa/tenant", async () => {
+    tableRows.messages = { id: "orig-other", conversation_id: "conv-other", company_id: "company-other", external_id: "wamid.OTHER", text: "oi", role: "lead", source_subtype: null };
+    const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({ conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-other" }));
+    expect(res.status).toBe(404);
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejeita reply em conversa fechada", async () => {
+    tableRows.leads = { ...tableRows.leads, status: "fechado", closed_at: "2026-09-18T10:00:00.000Z" };
+    const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({ conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-1" }));
+    expect(res.status).toBe(409);
+    expect(postGraphSpy).not.toHaveBeenCalled();
   });
 });
