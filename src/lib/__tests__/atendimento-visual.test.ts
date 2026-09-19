@@ -2,8 +2,16 @@
 
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Conversation, Lead, Message } from "@/data/mock";
+
+const manualSendMock = vi.hoisted(() => ({
+  sendManualText: vi.fn(),
+}));
+
+vi.mock("@/lib/inbox/manual-send", () => ({
+  sendManualText: manualSendMock.sendManualText,
+}));
 
 const repoMock = vi.hoisted(() => {
   type RepoState = {
@@ -30,6 +38,7 @@ const repoMock = vi.hoisted(() => {
     getConversations: 0,
     getLeadById: 0,
     getMessagesFor: 0,
+    refetchConversationMessages: 0,
     forbiddenSend: 0,
     forbiddenPersist: 0,
     forbiddenAi: 0,
@@ -82,6 +91,9 @@ const repoMock = vi.hoisted(() => {
       calls.getMessagesFor += 1;
       return state.messages.filter((message) => message.conversationId === id);
     },
+    refetchConversationMessages: async () => {
+      calls.refetchConversationMessages += 1;
+    },
     forbiddenSend: () => { calls.forbiddenSend += 1; },
     forbiddenPersist: () => { calls.forbiddenPersist += 1; },
     forbiddenAi: () => { calls.forbiddenAi += 1; },
@@ -98,6 +110,7 @@ vi.mock("@/data/leadRepo", () => ({
   getConversations: repoMock.getConversations,
   getLeadById: repoMock.getLeadById,
   getMessagesFor: repoMock.getMessagesFor,
+  refetchConversationMessages: repoMock.refetchConversationMessages,
 }));
 
 import { useAtendimentoData } from "@/hooks/useAtendimentoData";
@@ -147,6 +160,14 @@ function setRemoteSnapshot(overrides: Partial<typeof repoMock.state> = {}) {
 describe("Atendimento 2.0 runtime", () => {
   beforeEach(() => {
     repoMock.reset();
+    manualSendMock.sendManualText.mockReset();
+    manualSendMock.sendManualText.mockResolvedValue({
+      ok: true,
+      kind: "success",
+      delivery: "sent",
+      messageId: "message-sent",
+      conversationId: conversation.id,
+    });
     HTMLElement.prototype.scrollIntoView = vi.fn();
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, "matchMedia", {
@@ -215,13 +236,103 @@ describe("Atendimento 2.0 runtime", () => {
     expect(repoMock.calls.getConversations).toBeGreaterThan(0);
   });
 
-  it("não envia, persiste nem chama IA durante a etapa visual", () => {
+  it("envia pelo adapter compartilhado com conversa, lead, canal e origem corretos", async () => {
     setRemoteSnapshot();
     render(React.createElement(RouteView));
 
-    expect(repoMock.calls.forbiddenSend).toBe(0);
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "  Olá cliente  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(manualSendMock.sendManualText).toHaveBeenCalledTimes(1));
+    expect(manualSendMock.sendManualText).toHaveBeenCalledWith({
+      conversationId: conversation.id,
+      leadId: lead.id,
+      channel: "whatsapp",
+      origin: "whatsapp",
+      text: "Olá cliente",
+    });
+    await waitFor(() => expect(repoMock.calls.refetchConversationMessages).toBe(1));
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("");
     expect(repoMock.calls.forbiddenPersist).toBe(0);
     expect(repoMock.calls.forbiddenAi).toBe(0);
-    expect(screen.getByText("Visualização somente leitura nesta etapa.")).toBeTruthy();
+  });
+
+  it("bloqueia mensagem vazia e envio duplo enquanto há envio em andamento", async () => {
+    let resolveSend: ((value: unknown) => void) | null = null;
+    manualSendMock.sendManualText.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    const composer = screen.getByLabelText("Mensagem");
+    fireEvent.change(composer, { target: { value: "   " } });
+    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(composer, { target: { value: "Mensagem única" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    expect((screen.getByRole("button", { name: "Enviando..." }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.submit(screen.getByRole("button", { name: "Enviando..." }).closest("form")!);
+    expect(manualSendMock.sendManualText).toHaveBeenCalledTimes(1);
+
+    (resolveSend as ((value: unknown) => void) | null)?.({
+      ok: true,
+      kind: "success",
+      delivery: "sent",
+      messageId: "message-sent",
+      conversationId: conversation.id,
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeTruthy());
+  });
+
+  it("não cria mensagem nem refaz dados quando o transporte confirma simulação", async () => {
+    manualSendMock.sendManualText.mockResolvedValue({
+      ok: true,
+      kind: "success",
+      delivery: "simulated",
+      messageId: null,
+      conversationId: conversation.id,
+    });
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "Teste simulado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(manualSendMock.sendManualText).toHaveBeenCalledTimes(1));
+    expect(repoMock.calls.refetchConversationMessages).toBe(0);
+    expect(repoMock.state.messages).toHaveLength(0);
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("preserva o texto e libera o composer em erro retornado ou exceção", async () => {
+    manualSendMock.sendManualText.mockResolvedValueOnce({
+      ok: false,
+      kind: "error",
+      error: "Falha controlada",
+      retryable: false,
+      status: 400,
+    });
+    setRemoteSnapshot();
+    const { unmount } = render(React.createElement(RouteView));
+
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "Não perder este texto" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Falha controlada"));
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("Não perder este texto");
+    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(repoMock.calls.refetchConversationMessages).toBe(0);
+
+    unmount();
+    manualSendMock.sendManualText.mockRejectedValueOnce(new Error("Falha inesperada"));
+    render(React.createElement(RouteView));
+
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "Texto da exceção" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Falha inesperada"));
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("Texto da exceção");
+    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(repoMock.calls.refetchConversationMessages).toBe(0);
   });
 });
