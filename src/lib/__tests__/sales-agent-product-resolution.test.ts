@@ -76,6 +76,24 @@ describe("resolução contextual de produtos", () => {
     });
   });
 
+
+  it("prefere produto explícito mais específico do catálogo ao produto base em memória", () => {
+    const variants = [
+      { id: "801", name: "Sol 801", model: "Sol 801" },
+      { id: "801-spa", name: "Sol 801 SPA", model: "Sol 801 SPA" },
+    ];
+
+    expect(
+      resolveCatalogProductReferenceWithContext(
+        "E a Sol 801 SPA, qual o valor?",
+        variants,
+        [variants[0]],
+      ),
+    ).toMatchObject({
+      product: variants[1],
+      ambiguous: false,
+    });
+  });
   it("resolve primeira, segunda e última na ordem apresentada", () => {
     const presented = [catalog[0], catalog[1]];
     expect(resolveCatalogProductReferenceWithContext("a primeira", catalog, presented).product?.id).toBe("a");

@@ -369,6 +369,7 @@ describe("runAgentTurn coach_rules integration", () => {
     const products = [
       { ...context.grounding.catalog[0], id: "pool-801", name: "Sol 801", model: "Sol 801", price: 18_900 },
       { ...context.grounding.catalog[0], id: "pool-802", name: "Sol 802", model: "Sol 802", price: 19_900 },
+      { ...context.grounding.catalog[0], id: "pool-801-spa", name: "Sol 801 SPA", model: "Sol 801 SPA", price: 28_900 },
     ];
     let persistedState: any = null;
 
@@ -401,6 +402,12 @@ describe("runAgentTurn coach_rules integration", () => {
         choices: [{ message: { tool_calls: [{ function: {
           name: "respond_to_customer",
           arguments: JSON.stringify({ message: "A Sol 801 custa R$ 18.900,00." }),
+        } }] } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { tool_calls: [{ function: {
+          name: "respond_to_customer",
+          arguments: JSON.stringify({ message: "A Sol 801 SPA custa R$ 28.900,00." }),
         } }] } }],
       }), { status: 200, headers: { "content-type": "application/json" } }));
 
@@ -441,6 +448,25 @@ describe("runAgentTurn coach_rules integration", () => {
     expect(second).toMatchObject({
       kind: "reply",
       message: "A Sol 801 custa R$ 18.900,00.",
+    });
+
+    const third = await runAgentTurn({
+      ctx,
+      history: [
+        { role: "agent", text: "Apresentei a Sol 801 e a Sol 802.", productIds: ["pool-801", "pool-802"] },
+        { role: "lead", text: "Eu gostei da 802. Qual o valor dela?" },
+        { role: "agent", text: "A Sol 802 custa R$ 19.900,00.", productIds: ["pool-802"] },
+        { role: "lead", text: "E essa Sol 801 qual o valor?" },
+        { role: "agent", text: "A Sol 801 custa R$ 18.900,00.", productIds: ["pool-801"] },
+        { role: "lead", text: "E a Sol 801 SPA, qual o valor?" },
+      ],
+      leadName: null,
+      salesStateScope: scope,
+    });
+
+    expect(third).toMatchObject({
+      kind: "reply",
+      message: "A Sol 801 SPA custa R$ 28.900,00.",
     });
   });
   it("does not contaminate the response when memory upsert fails", async () => {
