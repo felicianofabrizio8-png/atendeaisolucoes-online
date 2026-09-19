@@ -469,6 +469,42 @@ describe("runAgentTurn coach_rules integration", () => {
       message: "A Sol 801 SPA custa R$ 28.900,00.",
     });
   });
+  it("continues the previous agent offer after a short affirmative reply", async () => {
+    const product = {
+      ...context.grounding.catalog[0],
+      id: "pool-802",
+      name: "Sol 802",
+      model: "Sol 802",
+      price: 19_900,
+      includedItems: ["piscina", "filtro", "motobomba"],
+    };
+
+    configureCoachRules({ activeProducts: [product] });
+
+    const result = await runAgentTurn({
+      ctx: {
+        ...context,
+        products: [product],
+        grounding: { ...context.grounding, catalog: [product] },
+      },
+      history: [
+        { role: "lead", text: "Gostei da 802. Qual o valor dela?" },
+        {
+          role: "agent",
+          text: "A Sol 802 custa R$ 19.900,00. Posso te explicar também o que está incluso no projeto?",
+          productIds: ["pool-802"],
+        },
+        { role: "lead", text: "pode sim" },
+      ],
+      leadName: null,
+    });
+
+    expect(result).toMatchObject({
+      kind: "reply",
+    });
+    expect(result.message).toMatch(/inclu/i);
+    expect(result.message).not.toMatch(/Sol 1000|Sol 400/);
+  });
   it("does not contaminate the response when memory upsert fails", async () => {
     configureCoachRules({ stateUpsertError: new Error("upsert failed") });
     const result = await runAgentTurn({
