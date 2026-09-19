@@ -301,6 +301,35 @@ function messagePromisesProductPresentation(message: string): boolean {
   );
 }
 
+function replyContinuesAffirmedOffer(
+  message: string,
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  const conversationalHistory = history.filter((item) => item.role !== "system");
+  const lastLeadIndex = conversationalHistory.map((item) => item.role).lastIndexOf("lead");
+  if (lastLeadIndex < 1) return true;
+
+  const lastLead = conversationalHistory[lastLeadIndex]?.text ?? "";
+  const previousAgent = [...conversationalHistory.slice(0, lastLeadIndex)]
+    .reverse()
+    .find((item) => item.role === "agent")?.text ?? "";
+
+  const normalize = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+  const normalizedLead = normalize(lastLead);
+  if (!/^(?:sim|pode|pode sim|claro|quero|quero sim|por favor|ok|okay|beleza)[!. ]*$/.test(normalizedLead)) {
+    return true;
+  }
+
+  const normalizedOffer = normalize(previousAgent);
+  const normalizedReply = normalize(message);
+  const offeredIncludedItems = /\b(?:inclu[si]|inclus[oa]s?|acompanha|vem com)\b/.test(normalizedOffer);
+
+  return !offeredIncludedItems ||
+    /\b(?:inclu[si]|inclus[oa]s?|acompanha|vem com)\b/.test(normalizedReply);
+}
+
 function customerAskedForPrice(history: SalesAgentCoreInput["history"]): boolean {
   const lastLead = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
   return /\b(?:quanto\s+(?:custa|é)|qual\s+(?:é\s+)?o\s+(?:preço|valor)|preço|valor)\b/i.test(lastLead);
@@ -1308,6 +1337,9 @@ export class SalesAgentCore {
     const reply = args as ToolReply;
     if (!reply.message) {
       return deterministicFallback("empty_message");
+    }
+    if (!replyContinuesAffirmedOffer(reply.message, params.history)) {
+      return deterministicFallback("affirmative_continuation_not_answered");
     }
     const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
     const catalogIds = new Set(
