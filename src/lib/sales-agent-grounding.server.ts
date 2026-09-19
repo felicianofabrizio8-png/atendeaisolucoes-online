@@ -169,6 +169,17 @@ export function searchSalesAgentCatalog(
 
   const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
   const selectedProducts = products.filter((product) => selectedIds.has(product.id));
+  const contextualReference = resolveCatalogProductReferenceWithContext(
+    lastLeadText,
+    products,
+    selectedProducts,
+  );
+  if (!comparison && contextualReference.ambiguous) {
+    return { status: "ambiguous", products: selectedProducts };
+  }
+  if (!comparison && contextualReference.product) {
+    return { status: "matches", products: [contextualReference.product] };
+  }
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))
