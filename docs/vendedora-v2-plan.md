@@ -114,6 +114,11 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
   - Aprendizados orientam comportamento e não substituem fatos validados de catálogo.
   - Testes relacionados: 8 arquivos e 136 testes aprovados. Build aprovado.
   - TypeScript: nenhum erro da Fase 4; permanecem quatro erros globais preexistentes em `router.tsx` e rotas de campanhas.
-- [ ] Fase 5: decisão sobre LangGraph.js.
+- [x] Fase 5: decisão sobre LangGraph.js.
+  - Decisão: manter o pipeline explícito atual e não adicionar LangGraph.js nesta etapa.
+  - Estado persistente, modos, aprovação, handoff e auditoria já atendem às necessidades atuais com menor complexidade.
+  - Retry automático de envio permanece desativado por segurança; uma futura política exigirá idempotência e confirmação do provedor.
+  - Critérios objetivos de reavaliação foram registrados em `docs/vendedora-v2-langgraph-decision.md`.
+  - Nenhuma dependência nova foi adicionada.
 
 Cada fase deve terminar com testes executados e commit separado.
