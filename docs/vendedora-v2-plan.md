@@ -78,7 +78,12 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
 
 - [x] Inventário inicial e confirmação das capacidades já existentes.
 - [x] Plano arquitetural e fases criado.
-- [ ] Fase 0: contrato de modos/flags e testes.
+- [x] Fase 0: contrato de modos/flags e testes.
+  - implementação e integração concluídas.
+  - Testes específicos e do `ai-agent`: aprovados (4 arquivos, 65 testes).
+  - Build: aprovado.
+  - TypeScript: nenhum erro relacionado à implementação; erros globais em `src/router.tsx` e rotas de campanhas são preexistentes.
+  - ESLint dos arquivos alterados: arquivos novos sem erros; falhas restantes são CRLF/formatação e um `no-useless-escape` preexistentes.
 - [ ] Fase 1: contexto compacto e continuidade.
 - [ ] Fase 2: ferramentas de preço e ações.
 - [ ] Fase 3: execução e auditoria por modo.

@@ -55,6 +55,11 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import {
+  canSalesAgentSend,
+  resolveSalesAgentMode,
+  salesAgentModeReason,
+} from "./sales-agent-mode";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 
@@ -1157,6 +1162,19 @@ export async function runAgentTick(conversationId: string): Promise<{
 
     if (decision.kind !== "reply" || !decision.message) {
       return { ok: true, action: "skipped", reason: "no_message" };
+    }
+
+    const v2Mode = resolveSalesAgentMode(ctx.settings);
+    if (v2Mode && !canSalesAgentSend(v2Mode)) {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_v2_gated", {
+        mode: v2Mode,
+        reason: salesAgentModeReason(v2Mode),
+        message: decision.message.slice(0, 240),
+        suggested_products: decision.suggested_products ?? [],
+        grounding_sources: decision.grounding_sources ?? [],
+        learning_ids_used: decision.learning_ids_used ?? [],
+      });
+      return { ok: true, action: "skipped", reason: salesAgentModeReason(v2Mode) };
     }
 
     const sent = await sendWhatsappText({

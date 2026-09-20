@@ -31,6 +31,8 @@ export interface AgentSettings {
   ai_agent_name: string;
   business_hours_start: string;
   business_hours_end: string;
+  sales_agent_v2_enabled?: boolean;
+  sales_agent_v2_mode?: string;
 }
 
 export interface SalesAgentGrounding {

@@ -2424,6 +2424,8 @@ export type Database = {
           ai_max_auto_replies: number
           ai_pilot_enabled_at: string | null
           ai_pilot_mode: boolean
+          sales_agent_v2_enabled: boolean
+          sales_agent_v2_mode: string
           business_hours_end: string
           business_hours_start: string
           coach_interpreter_enabled: boolean
@@ -2479,6 +2481,8 @@ export type Database = {
           ai_max_auto_replies?: number
           ai_pilot_enabled_at?: string | null
           ai_pilot_mode?: boolean
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           business_hours_end?: string
           business_hours_start?: string
           coach_interpreter_enabled?: boolean
@@ -2534,6 +2538,8 @@ export type Database = {
           ai_max_auto_replies?: number
           ai_pilot_enabled_at?: string | null
           ai_pilot_mode?: boolean
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           business_hours_end?: string
           business_hours_start?: string
           coach_interpreter_enabled?: boolean
