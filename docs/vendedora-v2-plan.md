@@ -99,7 +99,14 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
   - Testes: sucesso, falhas, produto inativo, cross-tenant, dados ausentes, catálogo inválido e ações sem envio real; bateria relacionada aprovada (8 arquivos, 179 testes).
   - TypeScript: nenhum erro nos arquivos da Fase 2; erros globais preexistentes em src/router.tsx e rotas de campanhas.
   - Build: aprovado. ESLint dos contratos novos: aprovado; falhas nos arquivos existentes são CRLF/prettier preexistentes.
-- [ ] Fase 3: execução e auditoria por modo.
+- [x] Fase 3: execução e auditoria por modo.
+  - Desligado devolve exclusivamente o caminho legado; silent executa interpretação e auditoria, mas nunca envia; assisted persiste sugestão pendente por company_id/conversation_id e aguarda aprovação; automatic só autoriza envio após contrato validado.
+  - Aprovação/rejeição assisted usa rota autenticada com escopo de company_id, transições pendentes seguras e sendAllowed=false; nenhum teste executa envio real.
+  - Auditoria persistente reutiliza ai_flow_events/ai_flow_step com modo, decisão, produto, ferramentas, resultado, bloqueio, latência e tokens disponíveis; conteúdo, telefone, credenciais e tokens de acesso são sanitizados.
+  - Falhas de catálogo, memória, gateway, ferramenta e envio geram resultados auditáveis; CLI somente leitura: npm run audit:vendedora -- --company-id <id> [--mode] [--conversation-id] [--errors] [--limit] [--follow].
+  - Testes comportamentais com mocks: 12 arquivos, 199 testes aprovados, cobrindo todos os modos, pending, aprovação/rejeição, cross-tenant, transição inválida e auditoria.
+  - TypeScript: nenhum erro nos arquivos da Fase 3; erros globais preexistentes em src/router.tsx e rotas de campanhas.
+  - Build: aprovado. ESLint dos arquivos novos: aprovado; falhas em ai-agent.server.ts são CRLF/prettier preexistentes e foram executadas sem --fix.
 - [ ] Fase 4: auditoria de aprendizado aprovado.
 - [ ] Fase 5: decisão sobre LangGraph.js.
 

@@ -56,12 +56,11 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import {
-  canSalesAgentSend,
-  resolveSalesAgentMode,
-  salesAgentModeReason,
-} from "./sales-agent-mode";
+import { resolveSalesAgentMode } from "./sales-agent-mode";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
+import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
+import { authorizeSalesAgentReply } from "./sales-agent-execution";
+import { buildPendingAssistedSuggestion } from "./sales-agent-assisted";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 import {
   prepareSalesAgentAction,
@@ -594,6 +593,19 @@ export async function runAgentTurn(params: {
   }
   if (memoryStatus === "error") {
     console.warn("[SALES_AGENT_STATE_LOAD_FAILED]", { source: "conversation_sales_state" });
+    await logEvent(params.ctx.settings.company_id, stateScope?.scopeId ?? null, null, "ai_flow_step", {
+      ...buildSalesAgentAuditPayload({
+        companyId: params.ctx.settings.company_id,
+        conversationId: stateScope?.scopeId ?? null,
+        mode: resolveSalesAgentMode(params.ctx.settings) ?? "off",
+        decision: "error",
+        result: "memory_error",
+        blocked: "memory_error",
+        tools: ["conversation_sales_state"],
+        latencyMs: 0,
+        tokensAvailable: null,
+      }),
+    });
   }
   // Explicit pipeline: interpretation -> catalogSearch -> decision -> redaÃ§Ã£o.
   const contextualMemoryError = memoryStatus === "error" && isContextualSalesAgentTurn(params.history);
@@ -615,6 +627,21 @@ export async function runAgentTurn(params: {
       structuredInterpretation: interpretation.structured,
     },
   );
+  if (catalogSearch.status === "query_error") {
+    await logEvent(params.ctx.settings.company_id, stateScope?.scopeId ?? null, null, "ai_flow_step", {
+      ...buildSalesAgentAuditPayload({
+        companyId: params.ctx.settings.company_id,
+        conversationId: stateScope?.scopeId ?? null,
+        mode: resolveSalesAgentMode(params.ctx.settings) ?? "off",
+        decision: "error",
+        result: "catalog_error",
+        blocked: "catalog_error",
+        tools: ["catalog_search"],
+        latencyMs: 0,
+        tokensAvailable: null,
+      }),
+    });
+  }
   const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
   const filteredSalesState = mergeConversationSalesState(previousSalesState, {
     attributes: interpretation.attributes,
@@ -1056,6 +1083,31 @@ export async function runAgentTick(conversationId: string): Promise<{
   const ctx = await loadAgentContext(conv.company_id);
   if (!ctx) return { ok: false, action: "error", reason: "no_settings" };
 
+  const auditStartedAt = Date.now();
+  const auditMode: SalesAgentAuditMode = resolveSalesAgentMode(ctx.settings) ?? "off";
+  const writeSalesAgentAudit = async (
+    decision: SalesAgentAuditDecision,
+    result: string,
+    productIds: readonly string[] = [],
+    tools: readonly string[] = [],
+    blocked: string | null = null,
+  ) => {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_flow_step", {
+      ...buildSalesAgentAuditPayload({
+        companyId: conv.company_id,
+        conversationId: conv.id,
+        mode: auditMode,
+        decision,
+        productIds,
+        tools,
+        result,
+        blocked,
+        latencyMs: Date.now() - auditStartedAt,
+        tokensAvailable: null,
+      }),
+    });
+  };
+
   // Pré-flight: bloqueios de segurança antes de qualquer envio.
   if (!ctx.aiProfile) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, "missing_ai_profile", {});
@@ -1147,6 +1199,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         source: "pre_check",
         pattern: triggerCheck.reason ?? (readyToClose ? "ready_to_close" : undefined),
       });
+      await writeSalesAgentAudit("handoff", "pre_check", [], ["handoff"], "pre_check");
       return {
         ok: true,
         action: "handoff",
@@ -1215,43 +1268,42 @@ export async function runAgentTick(conversationId: string): Promise<{
         grounding_sources: decision.grounding_sources ?? [],
         learning_ids_used: decision.learning_ids_used ?? [],
       });
+      await writeSalesAgentAudit("handoff", evType, decision.suggested_products ?? [], ["safety_layer", "handoff"], reason);
       return { ok: true, action: "handoff", reason };
     }
 
     if (decision.kind !== "reply" || !decision.message) {
+      await writeSalesAgentAudit("skipped", "no_message", decision.suggested_products ?? [], ["safety_layer"], "no_message");
       return { ok: true, action: "skipped", reason: "no_message" };
     }
 
 
-    if (v2Mode && !canSalesAgentSend(v2Mode)) {
-      await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_v2_gated", {
-        mode: v2Mode,
-        reason: salesAgentModeReason(v2Mode),
-        message: decision.message.slice(0, 240),
-        suggested_products: decision.suggested_products ?? [],
-        grounding_sources: decision.grounding_sources ?? [],
-        learning_ids_used: decision.learning_ids_used ?? [],
-      });
-      return { ok: true, action: "skipped", reason: salesAgentModeReason(v2Mode) };
-    }
-
-    if (v2Mode) {
-      const textContract = prepareSalesAgentAction({
-        v2Enabled: true,
+    if (v2Mode !== null) {
+      const authorization = await authorizeSalesAgentReply({
         mode: v2Mode,
         companyId: conv.company_id,
-        kind: "send_text",
         conversationId: conv.id,
         leadId: conv.lead_id,
         text: decision.message,
         productIds: decision.suggested_products,
+        persistSuggestion: async (pending) => {
+          const { error } = await supabaseAdmin.from("ai_suggestions_log").insert(pending);
+          return error ? { ok: false as const } : { ok: true as const };
+        },
+        audit: async (details) => {
+          await writeSalesAgentAudit(details.decision, details.result, details.productIds, details.tools, details.blocked);
+        },
       });
-      if (!textContract.ok) {
-        await logEvent(conv.company_id, conv.id, conv.lead_id, "sales_agent_action_contract_failed", {
-          action: "send_text",
-          code: textContract.code,
+      if (authorization.kind === "error") {
+        return { ok: false, action: "error", reason: authorization.reason };
+      }
+      if (authorization.kind === "blocked") {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_v2_gated", {
+          mode: v2Mode,
+          reason: authorization.reason,
+          suggested_products: decision.suggested_products ?? [],
         });
-        return { ok: false, action: "error", reason: textContract.code };
+        return { ok: true, action: "skipped", reason: authorization.reason };
       }
     }
 
@@ -1268,6 +1320,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         stage: "send",
         error: sent.error,
       });
+      await writeSalesAgentAudit("error", "send_error", decision.suggested_products ?? [], ["action_contract", "whatsapp_text"], "send_failed");
       return { ok: false, action: "error", reason: sent.error };
     }
 
@@ -1283,6 +1336,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         grounding_sources: decision.grounding_sources ?? [],
         learning_ids_used: decision.learning_ids_used ?? [],
       });
+      await writeSalesAgentAudit("simulated", "environment_guard", decision.suggested_products ?? [], ["action_contract", "whatsapp_text"], "simulated");
       return { ok: true, action: "simulated", reason: "environment_guard" };
     }
 
@@ -1309,6 +1363,7 @@ export async function runAgentTick(conversationId: string): Promise<{
           action: "send_product_images",
           code: imageContract.code,
         });
+        await writeSalesAgentAudit("error", "tool_error", requestedProductImageIds, ["action_contract", "product_images"], imageContract.code);
       }
       if (imageContract?.ok !== false) {
         try {
@@ -1349,6 +1404,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       grounding_sources: decision.grounding_sources ?? [],
       learning_ids_used: decision.learning_ids_used ?? [],
     });
+    await writeSalesAgentAudit("reply", "sent", decision.suggested_products ?? [], ["catalog_search", "action_contract", "whatsapp_text"]);
 
     return { ok: true, action: "replied" };
   } finally {
