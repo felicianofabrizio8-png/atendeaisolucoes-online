@@ -107,7 +107,13 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
   - Testes comportamentais com mocks: 12 arquivos, 199 testes aprovados, cobrindo todos os modos, pending, aprovação/rejeição, cross-tenant, transição inválida e auditoria.
   - TypeScript: nenhum erro nos arquivos da Fase 3; erros globais preexistentes em src/router.tsx e rotas de campanhas.
   - Build: aprovado. ESLint dos arquivos novos: aprovado; falhas em ai-agent.server.ts são CRLF/prettier preexistentes e foram executadas sem --fix.
-- [ ] Fase 4: auditoria de aprendizado aprovado.
+- [x] Fase 4: auditoria de aprendizado aprovado.
+  - Reutiliza `ai_training_messages`, `coach_learnings` e `coach_rules`; candidatos nascem pausados e somente aprovação administrativa do mesmo tenant promove para ativo.
+  - Produção carrega somente aprendizados ativos, com validação por `company_id`; registros de outro tenant são rejeitados.
+  - Correções aprovadas vencem aprendizados anteriores pelo `conflict_key`, preservando regras não conflitantes e a proveniência em `learning_ids_used`.
+  - Aprendizados orientam comportamento e não substituem fatos validados de catálogo.
+  - Testes relacionados: 8 arquivos e 136 testes aprovados. Build aprovado.
+  - TypeScript: nenhum erro da Fase 4; permanecem quatro erros globais preexistentes em `router.tsx` e rotas de campanhas.
 - [ ] Fase 5: decisão sobre LangGraph.js.
 
 Cada fase deve terminar com testes executados e commit separado.
