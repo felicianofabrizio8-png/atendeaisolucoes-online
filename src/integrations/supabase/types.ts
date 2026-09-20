@@ -2442,6 +2442,8 @@ export type Database = {
           runtime_system_health_enabled: boolean
           runtime_updated_at: string | null
           runtime_updated_by: string | null
+          sales_agent_v2_enabled: boolean
+          sales_agent_v2_mode: string
           signature: string | null
           sla_minutes: number
           updated_at: string
@@ -2497,6 +2499,8 @@ export type Database = {
           runtime_system_health_enabled?: boolean
           runtime_updated_at?: string | null
           runtime_updated_by?: string | null
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -2552,6 +2556,8 @@ export type Database = {
           runtime_system_health_enabled?: boolean
           runtime_updated_at?: string | null
           runtime_updated_by?: string | null
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
