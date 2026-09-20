@@ -39,6 +39,7 @@ import {
   searchSalesAgentCatalog,
   selectRelevantSalesAgentCoachRules,
   type AgentHistory,
+  type CatalogSearchOptions,
   type ProductSelectionContext,
 } from "./sales-agent-grounding.server";
 import {
@@ -62,6 +63,10 @@ import {
 } from "./sales-agent-mode";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
+import {
+  prepareSalesAgentAction,
+  validateSalesAgentCatalog,
+} from "./sales-agent-v2-tools";
 import {
   buildCompactSalesContextSummary,
   interpretStructuredSalesTurn,
@@ -223,15 +228,25 @@ export function resolveSalesAgentCatalogSearch(
     grounding: Pick<AgentContext["grounding"], "catalog" | "catalogScope">;
   },
   salesState: ConversationSalesState | null = null,
+  options: CatalogSearchOptions = {},
 ): SalesAgentCatalogSearch {
   const scope = context.grounding.catalogScope;
   if (!scope) return { status: "query_error", error: new Error("catalog_scope_missing") };
+  if (options.continuityEnabled) {
+    const catalogValidation = validateSalesAgentCatalog({
+      companyId: scope.companyId,
+      scope,
+      catalog: context.grounding.catalog,
+    });
+    if (!catalogValidation.ok) return { status: "query_error", error: new Error(catalogValidation.code) };
+  }
   return searchSalesAgentCatalog(
     scope.companyId,
     context.grounding.catalog,
     interpretation.history,
     salesState,
     scope,
+    options,
   );
 }
 
@@ -595,6 +610,10 @@ export async function runAgentTurn(params: {
     interpretation,
     safeContext,
     memoryStatus === "error" ? null : previousSalesState,
+    {
+      continuityEnabled: resolveSalesAgentMode(params.ctx.settings) !== null,
+      structuredInterpretation: interpretation.structured,
+    },
   );
   const relevantCatalog = catalogSearch.status === "matches" ? catalogSearch.products : [];
   const filteredSalesState = mergeConversationSalesState(previousSalesState, {
@@ -754,6 +773,7 @@ export async function sendWhatsappText(params: {
     .from("leads")
     .select("phone, external_id, integration_id, channel")
     .eq("id", params.leadId)
+    .eq("company_id", params.companyId)
     .maybeSingle();
   if (!lead) return { ok: false, simulated: false, error: "lead não encontrado" };
 
@@ -852,7 +872,8 @@ export async function sendWhatsappText(params: {
   await supabaseAdmin
     .from("conversations")
     .update({ last_message_at: new Date().toISOString(), awaiting_reply: false })
-    .eq("id", params.conversationId);
+    .eq("id", params.conversationId)
+    .eq("company_id", params.companyId);
 
   return { ok: true, simulated: false, externalId };
 }
@@ -1163,7 +1184,24 @@ export async function runAgentTick(conversationId: string): Promise<{
       decision,
     });
 
+    const v2Mode = resolveSalesAgentMode(ctx.settings);
+
     if (decision.kind === "handoff") {
+      if (v2Mode) {
+        const handoffContract = prepareSalesAgentAction({
+          v2Enabled: true,
+          mode: v2Mode,
+          companyId: conv.company_id,
+          kind: "request_human_handoff",
+          reason: decision.reason ?? "unknown",
+        });
+        if (!handoffContract.ok) {
+          await logEvent(conv.company_id, conv.id, conv.lead_id, "sales_agent_action_contract_failed", {
+            action: "request_human_handoff",
+            code: handoffContract.code,
+          });
+        }
+      }
       await supabaseAdmin
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
@@ -1184,7 +1222,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       return { ok: true, action: "skipped", reason: "no_message" };
     }
 
-    const v2Mode = resolveSalesAgentMode(ctx.settings);
+
     if (v2Mode && !canSalesAgentSend(v2Mode)) {
       await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_v2_gated", {
         mode: v2Mode,
@@ -1195,6 +1233,26 @@ export async function runAgentTick(conversationId: string): Promise<{
         learning_ids_used: decision.learning_ids_used ?? [],
       });
       return { ok: true, action: "skipped", reason: salesAgentModeReason(v2Mode) };
+    }
+
+    if (v2Mode) {
+      const textContract = prepareSalesAgentAction({
+        v2Enabled: true,
+        mode: v2Mode,
+        companyId: conv.company_id,
+        kind: "send_text",
+        conversationId: conv.id,
+        leadId: conv.lead_id,
+        text: decision.message,
+        productIds: decision.suggested_products,
+      });
+      if (!textContract.ok) {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "sales_agent_action_contract_failed", {
+          action: "send_text",
+          code: textContract.code,
+        });
+        return { ok: false, action: "error", reason: textContract.code };
+      }
     }
 
     const sent = await sendWhatsappText({
@@ -1235,7 +1293,25 @@ export async function runAgentTick(conversationId: string): Promise<{
     };
     const requestedProductImageIds = decision.product_image_ids ?? [];
     if (requestedProductImageIds.length > 0) {
-      try {
+      const imageContract = v2Mode
+        ? prepareSalesAgentAction({
+            v2Enabled: true,
+            mode: v2Mode,
+            companyId: conv.company_id,
+            kind: "send_product_images",
+            conversationId: conv.id,
+            leadId: conv.lead_id,
+            productIds: requestedProductImageIds,
+          })
+        : null;
+      if (imageContract?.ok === false) {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "sales_agent_action_contract_failed", {
+          action: "send_product_images",
+          code: imageContract.code,
+        });
+      }
+      if (imageContract?.ok !== false) {
+        try {
         const media = await sendWhatsappProductImages({
           companyId: conv.company_id,
           conversationId: conv.id,
@@ -1248,10 +1324,11 @@ export async function runAgentTick(conversationId: string): Promise<{
           sent: media.sent,
           failed: media.failed,
         });
-      } catch {
-        await logEvent(conv.company_id, conv.id, conv.lead_id, "product_images_failed", {
-          requested: requestedProductImageIds.length,
-        });
+        } catch {
+          await logEvent(conv.company_id, conv.id, conv.lead_id, "product_images_failed", {
+            requested: requestedProductImageIds.length,
+          });
+        }
       }
     }
 

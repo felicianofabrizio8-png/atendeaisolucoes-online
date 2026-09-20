@@ -91,7 +91,14 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
   - Testes relacionados: 4 arquivos, 145 testes aprovados, incluindo conversas naturais e respostas curtas.
   - TypeScript: nenhum erro nos arquivos da Fase 1; erros globais preexistentes em router.tsx e rotas de campanhas.
   - Build: aprovado. ESLint restrito: falhas de CRLF/prettier preexistentes nos arquivos existentes; arquivos novos validados.
-- [ ] Fase 2: ferramentas de preço e ações.
+- [x] Fase 2: ferramentas validadas de catálogo, preço e ações.
+  - Contratos tipados e discriminados para preço, itens inclusos, fotos, medidas e ações comerciais existentes (texto, imagens e handoff).
+  - Entradas validam company_id, escopo do tenant, produto ativo, IDs, texto e valores; saídas distinguem sucesso, produto inexistente, produto inativo, ambiguidade, preço/dado ausente, acesso negado, valor inválido e erro de consulta.
+  - Fatos são derivados exclusivamente do catálogo validado; a Luna recebe resultados das ferramentas e não fornece fatos diretamente.
+  - Ações V2 são preparadas sem efeitos colaterais em teste, exigem modo permitido e preservam o caminho legado quando a flag está desativada.
+  - Testes: sucesso, falhas, produto inativo, cross-tenant, dados ausentes, catálogo inválido e ações sem envio real; bateria relacionada aprovada (8 arquivos, 179 testes).
+  - TypeScript: nenhum erro nos arquivos da Fase 2; erros globais preexistentes em src/router.tsx e rotas de campanhas.
+  - Build: aprovado. ESLint dos contratos novos: aprovado; falhas nos arquivos existentes são CRLF/prettier preexistentes.
 - [ ] Fase 3: execução e auditoria por modo.
 - [ ] Fase 4: auditoria de aprendizado aprovado.
 - [ ] Fase 5: decisão sobre LangGraph.js.

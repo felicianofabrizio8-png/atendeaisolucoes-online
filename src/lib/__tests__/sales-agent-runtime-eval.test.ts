@@ -219,7 +219,7 @@ const MEMORY_ATTRIBUTE_KEYS = new Set([
   "shape",
   "variantTerms",
 ]);
-const MEMORY_QUERY_KEYS = new Set(["status", "criteria", "referencedProductIds"]);
+const MEMORY_QUERY_KEYS = new Set(["status", "criteria", "referencedProductIds", "subject", "productReferenceKind", "confirmation", "confidence"]);
 
 function assertWhitelistedMemoryState(row: PersistedRow) {
   expect(Object.keys(row).every((key) => MEMORY_STATE_KEYS.has(key))).toBe(true);
