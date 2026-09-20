@@ -675,7 +675,7 @@ const validationContext: AgentContext = {
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expected);
   });
 
-  it("preserva prompt, ferramentas e somente as 20 mensagens mais recentes", () => {
+  it("preserva prompt, ferramentas e somente as 8 mensagens mais recentes", () => {
     const history = Array.from({ length: 22 }, (_, index) => ({
       role: (index % 2 === 0 ? "lead" : "agent") as "lead" | "agent",
       text: index === 20 ? "Quero saber pagamento, garantia e prazo" : `mensagem-${index}`,
@@ -685,6 +685,7 @@ const validationContext: AgentContext = {
       ctx: context,
       history,
       leadName: "Maria",
+      compactContextEnabled: true,
       model: salesModel,
       interpretation: testInterpretation,
         catalogSearch: context.grounding.catalogSearch,
@@ -718,7 +719,7 @@ const validationContext: AgentContext = {
     expect(request.messages[0].content).toContain("Piscina 6x3");
     expect(request.messages[1].content).not.toContain("Cliente: mensagem-0\n");
     expect(request.messages[1].content).not.toContain("Atendente: mensagem-1\n");
-    expect(request.messages[1].content).toContain("Cliente: mensagem-2");
+    expect(request.messages[1].content).toContain("Cliente: mensagem-14");
     expect(request.messages[1].content).toContain("Atendente: mensagem-21");
   });
 

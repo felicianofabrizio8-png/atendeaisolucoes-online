@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { searchSalesAgentCatalog } from "../sales-agent-grounding.server";
+import {
+  searchSalesAgentCatalog,
+  type CatalogSearchOptions,
+} from "../sales-agent-grounding.server";
 
 const catalog = [
   {
@@ -261,6 +264,69 @@ describe("sales-agent catalog tool", () => {
 
     expect(result.status).toBe("ambiguous");
   });
+  it("mantem continuidade comercial V2 no estado e catalogo validados", () => {
+    const presentedCatalog = [
+      { ...catalog[0], id: "sol-700", name: "Sol 700", model: "Sol 700", price: 17_900 },
+      { ...catalog[0], id: "sol-801", name: "Sol 801", model: "Sol 801", price: 18_900 },
+      { ...catalog[0], id: "sol-801-spa", name: "Sol 801 SPA", model: "Sol 801 SPA", price: 21_900 },
+      { ...catalog[0], id: "sol-802", name: "Sol 802", model: "Sol 802", price: 19_900 },
+    ];
+    const v2 = { continuityEnabled: true, structuredInterpretation: { intent: "product_inquiry", confirmation: "none" } };
+    const confirmation = { continuityEnabled: true, structuredInterpretation: { intent: "confirmation", confirmation: "affirmative" } };
+    const state = { attributes: {}, productIds: [], intent: "product_inquiry", lastValidProductIds: ["sol-700"] };
+    const search = (history: { role: "lead" | "agent"; text: string; productIds?: string[] }[], options: CatalogSearchOptions = v2) =>
+      searchSalesAgentCatalog("company-1", presentedCatalog, history, state, scope, options);
+
+    expect(search([
+      { role: "agent", text: "Apresentei a Sol 700.", productIds: ["sol-700"] },
+      { role: "lead", text: "Ja e completa?" },
+    ])).toMatchObject({ status: "matches", products: [{ id: "sol-700", price: 17_900 }] });
+
+    expect(search([
+      { role: "agent", text: "Apresentei a Sol 700.", productIds: ["sol-700"] },
+      { role: "lead", text: "e a 801 quanto ta?" },
+    ])).toMatchObject({ status: "matches", products: [{ id: "sol-801", price: 18_900 }] });
+    for (const [text, subject] of [
+      ["e a 801 quanto ta?", "price"],
+      ["e a 801 o que vem incluso?", "product"],
+      ["e a 801 tem fotos?", "product"],
+      ["e a 801 quais medidas?", "dimensions"],
+    ] as const) {
+      expect(search([
+        { role: "agent", text: "Apresentei a Sol 700.", productIds: ["sol-700"] },
+        { role: "lead", text },
+      ], { continuityEnabled: true, structuredInterpretation: { intent: "product_inquiry", subject, confirmation: "none" } })).toMatchObject({
+        status: "matches",
+        products: [{ id: "sol-801" }],
+      });
+    }
+
+
+    expect(search([
+      { role: "agent", text: "A Sol 700 custa R$ 17.900,00. Posso explicar o que acompanha?", productIds: ["sol-700"] },
+      { role: "lead", text: "pode sim" },
+    ], confirmation)).toMatchObject({ status: "matches", products: [{ id: "sol-700" }] });
+
+    expect(search([
+      { role: "agent", text: "Apresentei Sol 700, Sol 801 e Sol 802.", productIds: ["sol-700", "sol-801", "sol-802"] },
+      { role: "lead", text: "gostei da segunda" },
+    ])).toMatchObject({ status: "matches", products: [{ id: "sol-801" }] });
+
+    expect(search([
+      { role: "agent", text: "Apresentei Sol 801 e Sol 801 SPA.", productIds: ["sol-801", "sol-801-spa"] },
+      { role: "lead", text: "gostei da 801" },
+    ])).toMatchObject({ status: "ambiguous" });
+
+    const dimensionResult = search([
+      { role: "agent", text: "Apresentei a Sol 700.", productIds: ["sol-700"] },
+      { role: "lead", text: "7 ou 8 metros" },
+    ]);
+    expect(dimensionResult.status).toBe("matches");
+    if (dimensionResult.status === "matches") {
+      expect(dimensionResult.products).not.toHaveLength(1);
+    }
+  });
+
   it("distingue produto inexistente, catálogo vazio e erro de consulta", () => {
     expect(searchSalesAgentCatalog("company-1", catalog, [{ role: "lead", text: "Tem o produto Atlantis?" }], null, scope)).toMatchObject({
       status: "no_match",

@@ -1,3 +1,9 @@
+import type {
+  SalesAgentConfirmation,
+  SalesAgentProductReferenceKind,
+  SalesAgentSubject,
+} from "./sales-agent-interpretation";
+
 export type ConversationSalesScopeType = "training_session" | "whatsapp_conversation";
 
 export interface ConversationProductAttributes {
@@ -23,6 +29,10 @@ export interface LastCatalogQuery {
   status: ConversationCatalogQueryStatus;
   criteria: ConversationProductAttributes;
   referencedProductIds: string[];
+  subject?: SalesAgentSubject;
+  productReferenceKind?: SalesAgentProductReferenceKind;
+  confirmation?: SalesAgentConfirmation;
+  confidence?: number;
 }
 
 export interface ConversationSalesState {
@@ -131,10 +141,27 @@ export function sanitizeLastCatalogQuery(value: unknown): LastCatalogQuery | nul
   const referencedProductIds = Array.isArray(input.referencedProductIds)
     ? [...new Set(input.referencedProductIds.filter((id): id is string => typeof id === "string" && id.length > 0))]
     : [];
+  const subjects = new Set<SalesAgentSubject>(["product", "price", "dimensions", "variant", "commercial", "installation", "unknown"]);
+  const referenceKinds = new Set<SalesAgentProductReferenceKind>(["explicit", "pronoun", "ordinal", "continuation", "none"]);
+  const confirmations = new Set<SalesAgentConfirmation>(["affirmative", "negative", "none"]);
+  const subject = subjects.has(input.subject as SalesAgentSubject) ? input.subject as SalesAgentSubject : undefined;
+  const productReferenceKind = referenceKinds.has(input.productReferenceKind as SalesAgentProductReferenceKind)
+    ? input.productReferenceKind as SalesAgentProductReferenceKind
+    : undefined;
+  const confirmation = confirmations.has(input.confirmation as SalesAgentConfirmation)
+    ? input.confirmation as SalesAgentConfirmation
+    : undefined;
+  const confidence = typeof input.confidence === "number" && Number.isFinite(input.confidence)
+    ? Math.max(0, Math.min(1, input.confidence))
+    : undefined;
   return {
     status: status as ConversationCatalogQueryStatus,
     criteria: sanitizeConversationProductAttributes(input.criteria),
     referencedProductIds,
+    ...(subject ? { subject } : {}),
+    ...(productReferenceKind ? { productReferenceKind } : {}),
+    ...(confirmation ? { confirmation } : {}),
+    ...(confidence !== undefined ? { confidence } : {}),
   };
 }
 

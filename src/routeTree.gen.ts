@@ -11,204 +11,120 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WhatsappRouteImport } from './routes/whatsapp'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as SaudeRouteImport } from './routes/saude'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as RelatoriosRouteImport } from './routes/relatorios'
-import { Route as ProdutosRouteImport } from './routes/produtos'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as PrivacidadeRouteImport } from './routes/privacidade'
-import { Route as OrcamentosRouteImport } from './routes/orcamentos'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as MarketingRouteImport } from './routes/marketing'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as IaRouteImport } from './routes/ia'
-import { Route as ExecutivoRouteImport } from './routes/executivo'
-import { Route as CriativosRouteImport } from './routes/criativos'
-import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
-import { Route as AtendimentoRouteImport } from './routes/atendimento'
-import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as InboxIndexRouteImport } from './routes/inbox.index'
-import { Route as RuntimeValidacaoRouteImport } from './routes/runtime.validacao'
-import { Route as RuntimeObservabilityRouteImport } from './routes/runtime.observability'
-import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
-import { Route as InboxRecoveryQueueRouteImport } from './routes/inbox.recovery-queue'
-import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
-import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
-import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
-import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
-import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configuracoes_.regras-coach'
-import { Route as ConfiguracoesRecoveryLearningRouteImport } from './routes/configuracoes_.recovery-learning'
-import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
-import { Route as ConfiguracoesCoachLearningsRouteImport } from './routes/configuracoes_.coach-learnings'
-import { Route as ConfiguracoesCoachInterpreterRouteImport } from './routes/configuracoes_.coach-interpreter'
-import { Route as ConfiguracoesCoachDesempenhoRouteImport } from './routes/configuracoes_.coach-desempenho'
+import { Route as AgendaRouteImport } from './routes/agenda'
+import { Route as AtendimentoRouteImport } from './routes/atendimento'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as CriativosRouteImport } from './routes/criativos'
+import { Route as ExecutivoRouteImport } from './routes/executivo'
+import { Route as IaRouteImport } from './routes/ia'
+import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MarketingRouteImport } from './routes/marketing'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as OrcamentosRouteImport } from './routes/orcamentos'
+import { Route as PrivacidadeRouteImport } from './routes/privacidade'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ProdutosRouteImport } from './routes/produtos'
+import { Route as RelatoriosRouteImport } from './routes/relatorios'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SaudeRouteImport } from './routes/saude'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as WhatsappRouteImport } from './routes/whatsapp'
 import { Route as ApiSystemHealthRouteImport } from './routes/api.system-health'
-import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
-import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
-import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
-import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
-import { Route as ApiWhatsappSendReplyRouteImport } from './routes/api.whatsapp.send-reply'
-import { Route as ApiWhatsappSendMediaRouteImport } from './routes/api.whatsapp.send-media'
-import { Route as ApiWhatsappSendLocationRouteImport } from './routes/api.whatsapp.send-location'
-import { Route as ApiWhatsappSendAudioRouteImport } from './routes/api.whatsapp.send-audio'
-import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
-import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
-import { Route as ApiWhatsappForwardMessageRouteImport } from './routes/api.whatsapp.forward-message'
-import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
-import { Route as ApiScientificMemoryTimelineRouteImport } from './routes/api.scientific-memory.timeline'
-import { Route as ApiScientificMemoryPersistRouteImport } from './routes/api.scientific-memory.persist'
-import { Route as ApiScientificMemoryLatestRouteImport } from './routes/api.scientific-memory.latest'
-import { Route as ApiScientificKnowledgeTimelineRouteImport } from './routes/api.scientific-knowledge.timeline'
-import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
-import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
-import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
-import { Route as ApiRuntimeExecuteRouteImport } from './routes/api.runtime.execute'
-import { Route as ApiRuntimeAutonomyRouteImport } from './routes/api.runtime.autonomy'
-import { Route as ApiRecoveryExecuteRouteImport } from './routes/api.recovery.execute'
-import { Route as ApiRecoveryAssistRouteImport } from './routes/api.recovery.assist'
-import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
-import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
-import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
-import { Route as ApiOnboardingHealthRouteImport } from './routes/api.onboarding.health'
-import { Route as ApiOnboardingChecklistRouteImport } from './routes/api.onboarding.checklist'
-import { Route as ApiMetaDisconnectRouteImport } from './routes/api.meta.disconnect'
-import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
-import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
-import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
-import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
-import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
-import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
-import { Route as ApiBusinessLearningSnapshotRouteImport } from './routes/api.business-learning.snapshot'
-import { Route as ApiBusinessBrainSnapshotRouteImport } from './routes/api.business-brain.snapshot'
-import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
-import { Route as ApiAiSuggestReplyRouteImport } from './routes/api.ai.suggest-reply'
-import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
-import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
-import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
-import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
-import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
-import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
-import { Route as ApiAiFollowupStatusRouteImport } from './routes/api.ai.followup-status'
-import { Route as ApiAiFollowupReactivateRouteImport } from './routes/api.ai.followup-reactivate'
-import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
-import { Route as ApiAiCreativeGeneratorRouteImport } from './routes/api.ai.creative-generator'
-import { Route as ApiAiCampaignCreativeRouteImport } from './routes/api.ai.campaign-creative'
-import { Route as ApiAiCampaignAdvisorRouteImport } from './routes/api.ai.campaign-advisor'
-import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
-import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
+import { Route as ConfiguracoesCoachDesempenhoRouteImport } from './routes/configuracoes_.coach-desempenho'
+import { Route as ConfiguracoesCoachInterpreterRouteImport } from './routes/configuracoes_.coach-interpreter'
+import { Route as ConfiguracoesCoachLearningsRouteImport } from './routes/configuracoes_.coach-learnings'
+import { Route as ConfiguracoesIdentidadeVisualRouteImport } from './routes/configuracoes_.identidade-visual'
+import { Route as ConfiguracoesRecoveryLearningRouteImport } from './routes/configuracoes_.recovery-learning'
+import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configuracoes_.regras-coach'
+import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
+import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
+import { Route as InboxIndexRouteImport } from './routes/inbox.index'
+import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
+import { Route as InboxRecoveryQueueRouteImport } from './routes/inbox.recovery-queue'
+import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.whatsapp'
+import { Route as RuntimeObservabilityRouteImport } from './routes/runtime.observability'
+import { Route as RuntimeValidacaoRouteImport } from './routes/runtime.validacao'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
-import { Route as ApiWhatsappTemplatesUpdateRouteImport } from './routes/api.whatsapp.templates.update'
-import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whatsapp.templates.sync'
-import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whatsapp.templates.send'
-import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
-import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
-import { Route as ApiPublicRenderProgressRouteImport } from './routes/api.public.render.progress'
-import { Route as ApiPublicRenderFailRouteImport } from './routes/api.public.render.fail'
-import { Route as ApiPublicRenderCompleteRouteImport } from './routes/api.public.render.complete'
-import { Route as ApiPublicRenderClaimRouteImport } from './routes/api.public.render.claim'
-import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
-import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
-import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
-import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
-import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
+import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
+import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
+import { Route as ApiAiCampaignAdvisorRouteImport } from './routes/api.ai.campaign-advisor'
+import { Route as ApiAiCampaignCreativeRouteImport } from './routes/api.ai.campaign-creative'
+import { Route as ApiAiCreativeGeneratorRouteImport } from './routes/api.ai.creative-generator'
+import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followup-config'
+import { Route as ApiAiFollowupReactivateRouteImport } from './routes/api.ai.followup-reactivate'
+import { Route as ApiAiFollowupStatusRouteImport } from './routes/api.ai.followup-status'
+import { Route as ApiAiMarkSentRouteImport } from './routes/api.ai.mark-sent'
+import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
+import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
+import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
+import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
+import { Route as ApiAiSuggestReplyRouteImport } from './routes/api.ai.suggest-reply'
+import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
+import { Route as ApiAiV2SuggestionRouteImport } from './routes/api.ai.v2-suggestion'
+import { Route as ApiBusinessBrainSnapshotRouteImport } from './routes/api.business-brain.snapshot'
+import { Route as ApiBusinessLearningSnapshotRouteImport } from './routes/api.business-learning.snapshot'
+import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
+import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
+import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
+import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
+import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
+import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
+import { Route as ApiMetaDisconnectRouteImport } from './routes/api.meta.disconnect'
+import { Route as ApiOnboardingChecklistRouteImport } from './routes/api.onboarding.checklist'
+import { Route as ApiOnboardingHealthRouteImport } from './routes/api.onboarding.health'
+import { Route as ApiOnboardingMetaSaveRouteImport } from './routes/api.onboarding.meta-save'
+import { Route as ApiOnboardingStatusRouteImport } from './routes/api.onboarding.status'
+import { Route as ApiOnboardingTestSendRouteImport } from './routes/api.onboarding.test-send'
+import { Route as ApiRecoveryAssistRouteImport } from './routes/api.recovery.assist'
+import { Route as ApiRecoveryExecuteRouteImport } from './routes/api.recovery.execute'
+import { Route as ApiRuntimeAutonomyRouteImport } from './routes/api.runtime.autonomy'
+import { Route as ApiRuntimeExecuteRouteImport } from './routes/api.runtime.execute'
+import { Route as ApiRuntimeStatusRouteImport } from './routes/api.runtime.status'
+import { Route as ApiScientificKnowledgePersistRouteImport } from './routes/api.scientific-knowledge.persist'
+import { Route as ApiScientificKnowledgeSnapshotRouteImport } from './routes/api.scientific-knowledge.snapshot'
+import { Route as ApiScientificKnowledgeTimelineRouteImport } from './routes/api.scientific-knowledge.timeline'
+import { Route as ApiScientificMemoryLatestRouteImport } from './routes/api.scientific-memory.latest'
+import { Route as ApiScientificMemoryPersistRouteImport } from './routes/api.scientific-memory.persist'
+import { Route as ApiScientificMemoryTimelineRouteImport } from './routes/api.scientific-memory.timeline'
+import { Route as ApiWhatsappDebugRouteImport } from './routes/api.whatsapp.debug'
+import { Route as ApiWhatsappForwardMessageRouteImport } from './routes/api.whatsapp.forward-message'
+import { Route as ApiWhatsappIntegrationRouteImport } from './routes/api.whatsapp.integration'
+import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
+import { Route as ApiWhatsappSendAudioRouteImport } from './routes/api.whatsapp.send-audio'
+import { Route as ApiWhatsappSendLocationRouteImport } from './routes/api.whatsapp.send-location'
+import { Route as ApiWhatsappSendMediaRouteImport } from './routes/api.whatsapp.send-media'
+import { Route as ApiWhatsappSendReplyRouteImport } from './routes/api.whatsapp.send-reply'
+import { Route as ApiWhatsappTestSendRouteImport } from './routes/api.whatsapp.test-send'
+import { Route as ApiWhatsappTokenRefreshRouteImport } from './routes/api.whatsapp.token-refresh'
+import { Route as ApiWhatsappUnmappedRouteImport } from './routes/api.whatsapp.unmapped'
+import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as ApiExecutiveConversationIntelligenceInspectRouteImport } from './routes/api.executive.conversation-intelligence.inspect'
+import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
+import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
+import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
+import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
+import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
+import { Route as ApiPublicRenderClaimRouteImport } from './routes/api.public.render.claim'
+import { Route as ApiPublicRenderCompleteRouteImport } from './routes/api.public.render.complete'
+import { Route as ApiPublicRenderFailRouteImport } from './routes/api.public.render.fail'
+import { Route as ApiPublicRenderProgressRouteImport } from './routes/api.public.render.progress'
+import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api.public.whatsapp.webhook'
+import { Route as ApiWhatsappTemplatesListRouteImport } from './routes/api.whatsapp.templates.list'
+import { Route as ApiWhatsappTemplatesSendRouteImport } from './routes/api.whatsapp.templates.send'
+import { Route as ApiWhatsappTemplatesSyncRouteImport } from './routes/api.whatsapp.templates.sync'
+import { Route as ApiWhatsappTemplatesUpdateRouteImport } from './routes/api.whatsapp.templates.update'
 
 const CampanhasIndexLazyRouteImport = createFileRoute('/campanhas/')()
-const CampanhasNovaLazyRouteImport = createFileRoute('/campanhas/nova')()
 const CampanhasIdLazyRouteImport = createFileRoute('/campanhas/$id')()
+const CampanhasNovaLazyRouteImport = createFileRoute('/campanhas/nova')()
 
-const WhatsappRoute = WhatsappRouteImport.update({
-  id: '/whatsapp',
-  path: '/whatsapp',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SaudeRoute = SaudeRouteImport.update({
-  id: '/saude',
-  path: '/saude',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RelatoriosRoute = RelatoriosRouteImport.update({
-  id: '/relatorios',
-  path: '/relatorios',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProdutosRoute = ProdutosRouteImport.update({
-  id: '/produtos',
-  path: '/produtos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacidadeRoute = PrivacidadeRouteImport.update({
-  id: '/privacidade',
-  path: '/privacidade',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OrcamentosRoute = OrcamentosRouteImport.update({
-  id: '/orcamentos',
-  path: '/orcamentos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MarketingRoute = MarketingRouteImport.update({
-  id: '/marketing',
-  path: '/marketing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InboxRoute = InboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IaRoute = IaRouteImport.update({
-  id: '/ia',
-  path: '/ia',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExecutivoRoute = ExecutivoRouteImport.update({
-  id: '/executivo',
-  path: '/executivo',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CriativosRoute = CriativosRouteImport.update({
-  id: '/criativos',
-  path: '/criativos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
-  id: '/configuracoes',
-  path: '/configuracoes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AtendimentoRoute = AtendimentoRouteImport.update({
-  id: '/atendimento',
-  path: '/atendimento',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgendaRoute = AgendaRouteImport.update({
@@ -216,9 +132,99 @@ const AgendaRoute = AgendaRouteImport.update({
   path: '/agenda',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AtendimentoRoute = AtendimentoRouteImport.update({
+  id: '/atendimento',
+  path: '/atendimento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CriativosRoute = CriativosRouteImport.update({
+  id: '/criativos',
+  path: '/criativos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExecutivoRoute = ExecutivoRouteImport.update({
+  id: '/executivo',
+  path: '/executivo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IaRoute = IaRouteImport.update({
+  id: '/ia',
+  path: '/ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrcamentosRoute = OrcamentosRouteImport.update({
+  id: '/orcamentos',
+  path: '/orcamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadeRoute = PrivacidadeRouteImport.update({
+  id: '/privacidade',
+  path: '/privacidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProdutosRoute = ProdutosRouteImport.update({
+  id: '/produtos',
+  path: '/produtos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RelatoriosRoute = RelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SaudeRoute = SaudeRouteImport.update({
+  id: '/saude',
+  path: '/saude',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsappRoute = WhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSystemHealthRoute = ApiSystemHealthRouteImport.update({
+  id: '/api/system-health',
+  path: '/api/system-health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CampanhasIndexLazyRoute = CampanhasIndexLazyRouteImport.update({
@@ -228,11 +234,11 @@ const CampanhasIndexLazyRoute = CampanhasIndexLazyRouteImport.update({
 } as any).lazy(() =>
   import('./routes/campanhas.index.lazy').then((d) => d.Route),
 )
-const InboxIndexRoute = InboxIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => InboxRoute,
-} as any)
+const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
+  id: '/campanhas/$id',
+  path: '/campanhas/$id',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/campanhas.$id.lazy').then((d) => d.Route))
 const CampanhasNovaLazyRoute = CampanhasNovaLazyRouteImport.update({
   id: '/campanhas/nova',
   path: '/campanhas/nova',
@@ -240,34 +246,56 @@ const CampanhasNovaLazyRoute = CampanhasNovaLazyRouteImport.update({
 } as any).lazy(() =>
   import('./routes/campanhas.nova.lazy').then((d) => d.Route),
 )
-const CampanhasIdLazyRoute = CampanhasIdLazyRouteImport.update({
-  id: '/campanhas/$id',
-  path: '/campanhas/$id',
+const ConfiguracoesCoachDesempenhoRoute =
+  ConfiguracoesCoachDesempenhoRouteImport.update({
+    id: '/configuracoes_/coach-desempenho',
+    path: '/configuracoes/coach-desempenho',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesCoachInterpreterRoute =
+  ConfiguracoesCoachInterpreterRouteImport.update({
+    id: '/configuracoes_/coach-interpreter',
+    path: '/configuracoes/coach-interpreter',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesCoachLearningsRoute =
+  ConfiguracoesCoachLearningsRouteImport.update({
+    id: '/configuracoes_/coach-learnings',
+    path: '/configuracoes/coach-learnings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesIdentidadeVisualRoute =
+  ConfiguracoesIdentidadeVisualRouteImport.update({
+    id: '/configuracoes_/identidade-visual',
+    path: '/configuracoes/identidade-visual',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesRecoveryLearningRoute =
+  ConfiguracoesRecoveryLearningRouteImport.update({
+    id: '/configuracoes_/recovery-learning',
+    path: '/configuracoes/recovery-learning',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesRegrasCoachRoute =
+  ConfiguracoesRegrasCoachRouteImport.update({
+    id: '/configuracoes_/regras-coach',
+    path: '/configuracoes/regras-coach',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesRespostasRapidasRoute =
+  ConfiguracoesRespostasRapidasRouteImport.update({
+    id: '/configuracoes_/respostas-rapidas',
+    path: '/configuracoes/respostas-rapidas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
+  id: '/configuracoes_/usuarios',
+  path: '/configuracoes/usuarios',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/campanhas.$id.lazy').then((d) => d.Route))
-const RuntimeValidacaoRoute = RuntimeValidacaoRouteImport.update({
-  id: '/runtime/validacao',
-  path: '/runtime/validacao',
-  getParentRoute: () => rootRouteImport,
 } as any)
-const RuntimeObservabilityRoute = RuntimeObservabilityRouteImport.update({
-  id: '/runtime/observability',
-  path: '/runtime/observability',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
-  id: '/whatsapp',
-  path: '/whatsapp',
-  getParentRoute: () => OnboardingRoute,
-} as any)
-const InboxRecoveryQueueRoute = InboxRecoveryQueueRouteImport.update({
-  id: '/recovery-queue',
-  path: '/recovery-queue',
-  getParentRoute: () => InboxRoute,
-} as any)
-const InboxRecoveryRoute = InboxRecoveryRouteImport.update({
-  id: '/recovery',
-  path: '/recovery',
+const InboxIndexRoute = InboxIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => InboxRoute,
 } as any)
 const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
@@ -277,218 +305,146 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
 } as any).lazy(() =>
   import('./routes/inbox.$conversationId.lazy').then((d) => d.Route),
 )
-const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
-  id: '/configuracoes_/usuarios',
-  path: '/configuracoes/usuarios',
+const InboxRecoveryRoute = InboxRecoveryRouteImport.update({
+  id: '/recovery',
+  path: '/recovery',
+  getParentRoute: () => InboxRoute,
+} as any)
+const InboxRecoveryQueueRoute = InboxRecoveryQueueRouteImport.update({
+  id: '/recovery-queue',
+  path: '/recovery-queue',
+  getParentRoute: () => InboxRoute,
+} as any)
+const OnboardingWhatsappRoute = OnboardingWhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const RuntimeObservabilityRoute = RuntimeObservabilityRouteImport.update({
+  id: '/runtime/observability',
+  path: '/runtime/observability',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfiguracoesRespostasRapidasRoute =
-  ConfiguracoesRespostasRapidasRouteImport.update({
-    id: '/configuracoes_/respostas-rapidas',
-    path: '/configuracoes/respostas-rapidas',
+const RuntimeValidacaoRoute = RuntimeValidacaoRouteImport.update({
+  id: '/runtime/validacao',
+  path: '/runtime/validacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiAgentTakeoverRoute = ApiAiAgentTakeoverRouteImport.update({
+  id: '/api/ai/agent-takeover',
+  path: '/api/ai/agent-takeover',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiAgentTickRoute = ApiAiAgentTickRouteImport.update({
+  id: '/api/ai/agent-tick',
+  path: '/api/ai/agent-tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
+  id: '/api/ai/analytics',
+  path: '/api/ai/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiCampaignAdvisorRoute = ApiAiCampaignAdvisorRouteImport.update({
+  id: '/api/ai/campaign-advisor',
+  path: '/api/ai/campaign-advisor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiCampaignCreativeRoute = ApiAiCampaignCreativeRouteImport.update({
+  id: '/api/ai/campaign-creative',
+  path: '/api/ai/campaign-creative',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiCreativeGeneratorRoute = ApiAiCreativeGeneratorRouteImport.update({
+  id: '/api/ai/creative-generator',
+  path: '/api/ai/creative-generator',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
+  id: '/api/ai/followup-config',
+  path: '/api/ai/followup-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiFollowupReactivateRoute = ApiAiFollowupReactivateRouteImport.update({
+  id: '/api/ai/followup-reactivate',
+  path: '/api/ai/followup-reactivate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiFollowupStatusRoute = ApiAiFollowupStatusRouteImport.update({
+  id: '/api/ai/followup-status',
+  path: '/api/ai/followup-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
+  id: '/api/ai/mark-sent',
+  path: '/api/ai/mark-sent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiPilotToggleRoute = ApiAiPilotToggleRouteImport.update({
+  id: '/api/ai/pilot-toggle',
+  path: '/api/ai/pilot-toggle',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiProposeKnowledgeRoute = ApiAiProposeKnowledgeRouteImport.update({
+  id: '/api/ai/propose-knowledge',
+  path: '/api/ai/propose-knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiReadinessRoute = ApiAiReadinessRouteImport.update({
+  id: '/api/ai/readiness',
+  path: '/api/ai/readiness',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
+  id: '/api/ai/suggest',
+  path: '/api/ai/suggest',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
+  id: '/api/ai/suggest-product',
+  path: '/api/ai/suggest-product',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiSuggestReplyRoute = ApiAiSuggestReplyRouteImport.update({
+  id: '/api/ai/suggest-reply',
+  path: '/api/ai/suggest-reply',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiTestNowRoute = ApiAiTestNowRouteImport.update({
+  id: '/api/ai/test-now',
+  path: '/api/ai/test-now',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiV2SuggestionRoute = ApiAiV2SuggestionRouteImport.update({
+  id: '/api/ai/v2-suggestion',
+  path: '/api/ai/v2-suggestion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBusinessBrainSnapshotRoute =
+  ApiBusinessBrainSnapshotRouteImport.update({
+    id: '/api/business-brain/snapshot',
+    path: '/api/business-brain/snapshot',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ConfiguracoesRegrasCoachRoute =
-  ConfiguracoesRegrasCoachRouteImport.update({
-    id: '/configuracoes_/regras-coach',
-    path: '/configuracoes/regras-coach',
+const ApiBusinessLearningSnapshotRoute =
+  ApiBusinessLearningSnapshotRouteImport.update({
+    id: '/api/business-learning/snapshot',
+    path: '/api/business-learning/snapshot',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ConfiguracoesRecoveryLearningRoute =
-  ConfiguracoesRecoveryLearningRouteImport.update({
-    id: '/configuracoes_/recovery-learning',
-    path: '/configuracoes/recovery-learning',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ConfiguracoesIdentidadeVisualRoute =
-  ConfiguracoesIdentidadeVisualRouteImport.update({
-    id: '/configuracoes_/identidade-visual',
-    path: '/configuracoes/identidade-visual',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ConfiguracoesCoachLearningsRoute =
-  ConfiguracoesCoachLearningsRouteImport.update({
-    id: '/configuracoes_/coach-learnings',
-    path: '/configuracoes/coach-learnings',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ConfiguracoesCoachInterpreterRoute =
-  ConfiguracoesCoachInterpreterRouteImport.update({
-    id: '/configuracoes_/coach-interpreter',
-    path: '/configuracoes/coach-interpreter',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ConfiguracoesCoachDesempenhoRoute =
-  ConfiguracoesCoachDesempenhoRouteImport.update({
-    id: '/configuracoes_/coach-desempenho',
-    path: '/configuracoes/coach-desempenho',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiSystemHealthRoute = ApiSystemHealthRouteImport.update({
-  id: '/api/system-health',
-  path: '/api/system-health',
+const ApiCoachAnalyzeRoute = ApiCoachAnalyzeRouteImport.update({
+  id: '/api/coach/analyze',
+  path: '/api/coach/analyze',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
-  id: '/auth/meta/callback',
-  path: '/auth/meta/callback',
+const ApiCoachSuggestRoute = ApiCoachSuggestRouteImport.update({
+  id: '/api/coach/suggest',
+  path: '/api/coach/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiWhatsappUnmappedRoute = ApiWhatsappUnmappedRouteImport.update({
-  id: '/api/whatsapp/unmapped',
-  path: '/api/whatsapp/unmapped',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappTokenRefreshRoute = ApiWhatsappTokenRefreshRouteImport.update({
-  id: '/api/whatsapp/token-refresh',
-  path: '/api/whatsapp/token-refresh',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappTestSendRoute = ApiWhatsappTestSendRouteImport.update({
-  id: '/api/whatsapp/test-send',
-  path: '/api/whatsapp/test-send',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappSendReplyRoute = ApiWhatsappSendReplyRouteImport.update({
-  id: '/api/whatsapp/send-reply',
-  path: '/api/whatsapp/send-reply',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappSendMediaRoute = ApiWhatsappSendMediaRouteImport.update({
-  id: '/api/whatsapp/send-media',
-  path: '/api/whatsapp/send-media',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappSendLocationRoute = ApiWhatsappSendLocationRouteImport.update({
-  id: '/api/whatsapp/send-location',
-  path: '/api/whatsapp/send-location',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappSendAudioRoute = ApiWhatsappSendAudioRouteImport.update({
-  id: '/api/whatsapp/send-audio',
-  path: '/api/whatsapp/send-audio',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
-  id: '/api/whatsapp/send',
-  path: '/api/whatsapp/send',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappIntegrationRoute = ApiWhatsappIntegrationRouteImport.update({
-  id: '/api/whatsapp/integration',
-  path: '/api/whatsapp/integration',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappForwardMessageRoute =
-  ApiWhatsappForwardMessageRouteImport.update({
-    id: '/api/whatsapp/forward-message',
-    path: '/api/whatsapp/forward-message',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
-  id: '/api/whatsapp/debug',
-  path: '/api/whatsapp/debug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiScientificMemoryTimelineRoute =
-  ApiScientificMemoryTimelineRouteImport.update({
-    id: '/api/scientific-memory/timeline',
-    path: '/api/scientific-memory/timeline',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiScientificMemoryPersistRoute =
-  ApiScientificMemoryPersistRouteImport.update({
-    id: '/api/scientific-memory/persist',
-    path: '/api/scientific-memory/persist',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiScientificMemoryLatestRoute =
-  ApiScientificMemoryLatestRouteImport.update({
-    id: '/api/scientific-memory/latest',
-    path: '/api/scientific-memory/latest',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiScientificKnowledgeTimelineRoute =
-  ApiScientificKnowledgeTimelineRouteImport.update({
-    id: '/api/scientific-knowledge/timeline',
-    path: '/api/scientific-knowledge/timeline',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiScientificKnowledgeSnapshotRoute =
-  ApiScientificKnowledgeSnapshotRouteImport.update({
-    id: '/api/scientific-knowledge/snapshot',
-    path: '/api/scientific-knowledge/snapshot',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiScientificKnowledgePersistRoute =
-  ApiScientificKnowledgePersistRouteImport.update({
-    id: '/api/scientific-knowledge/persist',
-    path: '/api/scientific-knowledge/persist',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiRuntimeStatusRoute = ApiRuntimeStatusRouteImport.update({
-  id: '/api/runtime/status',
-  path: '/api/runtime/status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiRuntimeExecuteRoute = ApiRuntimeExecuteRouteImport.update({
-  id: '/api/runtime/execute',
-  path: '/api/runtime/execute',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiRuntimeAutonomyRoute = ApiRuntimeAutonomyRouteImport.update({
-  id: '/api/runtime/autonomy',
-  path: '/api/runtime/autonomy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiRecoveryExecuteRoute = ApiRecoveryExecuteRouteImport.update({
-  id: '/api/recovery/execute',
-  path: '/api/recovery/execute',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiRecoveryAssistRoute = ApiRecoveryAssistRouteImport.update({
-  id: '/api/recovery/assist',
-  path: '/api/recovery/assist',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
-  id: '/api/onboarding/test-send',
-  path: '/api/onboarding/test-send',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOnboardingStatusRoute = ApiOnboardingStatusRouteImport.update({
-  id: '/api/onboarding/status',
-  path: '/api/onboarding/status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOnboardingMetaSaveRoute = ApiOnboardingMetaSaveRouteImport.update({
-  id: '/api/onboarding/meta-save',
-  path: '/api/onboarding/meta-save',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOnboardingHealthRoute = ApiOnboardingHealthRouteImport.update({
-  id: '/api/onboarding/health',
-  path: '/api/onboarding/health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiOnboardingChecklistRoute = ApiOnboardingChecklistRouteImport.update({
-  id: '/api/onboarding/checklist',
-  path: '/api/onboarding/checklist',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiMetaDisconnectRoute = ApiMetaDisconnectRouteImport.update({
-  id: '/api/meta/disconnect',
-  path: '/api/meta/disconnect',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
-  id: '/api/meta/config',
-  path: '/api/meta/config',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
-  id: '/api/executive/snapshot',
-  path: '/api/executive/snapshot',
+const ApiExecutiveNarrativeRoute = ApiExecutiveNarrativeRouteImport.update({
+  id: '/api/executive/narrative',
+  path: '/api/executive/narrative',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiExecutiveSalesIntelligenceRoute =
@@ -497,190 +453,172 @@ const ApiExecutiveSalesIntelligenceRoute =
     path: '/api/executive/sales-intelligence',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiExecutiveNarrativeRoute = ApiExecutiveNarrativeRouteImport.update({
-  id: '/api/executive/narrative',
-  path: '/api/executive/narrative',
+const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
+  id: '/api/executive/snapshot',
+  path: '/api/executive/snapshot',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiCoachSuggestRoute = ApiCoachSuggestRouteImport.update({
-  id: '/api/coach/suggest',
-  path: '/api/coach/suggest',
+const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
+  id: '/api/meta/config',
+  path: '/api/meta/config',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiCoachAnalyzeRoute = ApiCoachAnalyzeRouteImport.update({
-  id: '/api/coach/analyze',
-  path: '/api/coach/analyze',
+const ApiMetaDisconnectRoute = ApiMetaDisconnectRouteImport.update({
+  id: '/api/meta/disconnect',
+  path: '/api/meta/disconnect',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiBusinessLearningSnapshotRoute =
-  ApiBusinessLearningSnapshotRouteImport.update({
-    id: '/api/business-learning/snapshot',
-    path: '/api/business-learning/snapshot',
+const ApiOnboardingChecklistRoute = ApiOnboardingChecklistRouteImport.update({
+  id: '/api/onboarding/checklist',
+  path: '/api/onboarding/checklist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingHealthRoute = ApiOnboardingHealthRouteImport.update({
+  id: '/api/onboarding/health',
+  path: '/api/onboarding/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingMetaSaveRoute = ApiOnboardingMetaSaveRouteImport.update({
+  id: '/api/onboarding/meta-save',
+  path: '/api/onboarding/meta-save',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingStatusRoute = ApiOnboardingStatusRouteImport.update({
+  id: '/api/onboarding/status',
+  path: '/api/onboarding/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingTestSendRoute = ApiOnboardingTestSendRouteImport.update({
+  id: '/api/onboarding/test-send',
+  path: '/api/onboarding/test-send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRecoveryAssistRoute = ApiRecoveryAssistRouteImport.update({
+  id: '/api/recovery/assist',
+  path: '/api/recovery/assist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRecoveryExecuteRoute = ApiRecoveryExecuteRouteImport.update({
+  id: '/api/recovery/execute',
+  path: '/api/recovery/execute',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeAutonomyRoute = ApiRuntimeAutonomyRouteImport.update({
+  id: '/api/runtime/autonomy',
+  path: '/api/runtime/autonomy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeExecuteRoute = ApiRuntimeExecuteRouteImport.update({
+  id: '/api/runtime/execute',
+  path: '/api/runtime/execute',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeStatusRoute = ApiRuntimeStatusRouteImport.update({
+  id: '/api/runtime/status',
+  path: '/api/runtime/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScientificKnowledgePersistRoute =
+  ApiScientificKnowledgePersistRouteImport.update({
+    id: '/api/scientific-knowledge/persist',
+    path: '/api/scientific-knowledge/persist',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiBusinessBrainSnapshotRoute =
-  ApiBusinessBrainSnapshotRouteImport.update({
-    id: '/api/business-brain/snapshot',
-    path: '/api/business-brain/snapshot',
+const ApiScientificKnowledgeSnapshotRoute =
+  ApiScientificKnowledgeSnapshotRouteImport.update({
+    id: '/api/scientific-knowledge/snapshot',
+    path: '/api/scientific-knowledge/snapshot',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAiTestNowRoute = ApiAiTestNowRouteImport.update({
-  id: '/api/ai/test-now',
-  path: '/api/ai/test-now',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiSuggestReplyRoute = ApiAiSuggestReplyRouteImport.update({
-  id: '/api/ai/suggest-reply',
-  path: '/api/ai/suggest-reply',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiSuggestProductRoute = ApiAiSuggestProductRouteImport.update({
-  id: '/api/ai/suggest-product',
-  path: '/api/ai/suggest-product',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
-  id: '/api/ai/suggest',
-  path: '/api/ai/suggest',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiReadinessRoute = ApiAiReadinessRouteImport.update({
-  id: '/api/ai/readiness',
-  path: '/api/ai/readiness',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiProposeKnowledgeRoute = ApiAiProposeKnowledgeRouteImport.update({
-  id: '/api/ai/propose-knowledge',
-  path: '/api/ai/propose-knowledge',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiPilotToggleRoute = ApiAiPilotToggleRouteImport.update({
-  id: '/api/ai/pilot-toggle',
-  path: '/api/ai/pilot-toggle',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiMarkSentRoute = ApiAiMarkSentRouteImport.update({
-  id: '/api/ai/mark-sent',
-  path: '/api/ai/mark-sent',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiFollowupStatusRoute = ApiAiFollowupStatusRouteImport.update({
-  id: '/api/ai/followup-status',
-  path: '/api/ai/followup-status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiFollowupReactivateRoute = ApiAiFollowupReactivateRouteImport.update({
-  id: '/api/ai/followup-reactivate',
-  path: '/api/ai/followup-reactivate',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiFollowupConfigRoute = ApiAiFollowupConfigRouteImport.update({
-  id: '/api/ai/followup-config',
-  path: '/api/ai/followup-config',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiCreativeGeneratorRoute = ApiAiCreativeGeneratorRouteImport.update({
-  id: '/api/ai/creative-generator',
-  path: '/api/ai/creative-generator',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiCampaignCreativeRoute = ApiAiCampaignCreativeRouteImport.update({
-  id: '/api/ai/campaign-creative',
-  path: '/api/ai/campaign-creative',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiCampaignAdvisorRoute = ApiAiCampaignAdvisorRouteImport.update({
-  id: '/api/ai/campaign-advisor',
-  path: '/api/ai/campaign-advisor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
-  id: '/api/ai/analytics',
-  path: '/api/ai/analytics',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiAgentTickRoute = ApiAiAgentTickRouteImport.update({
-  id: '/api/ai/agent-tick',
-  path: '/api/ai/agent-tick',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAiAgentTakeoverRoute = ApiAiAgentTakeoverRouteImport.update({
-  id: '/api/ai/agent-takeover',
-  path: '/api/ai/agent-takeover',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWhatsappTemplatesUpdateRoute =
-  ApiWhatsappTemplatesUpdateRouteImport.update({
-    id: '/api/whatsapp/templates/update',
-    path: '/api/whatsapp/templates/update',
+const ApiScientificKnowledgeTimelineRoute =
+  ApiScientificKnowledgeTimelineRouteImport.update({
+    id: '/api/scientific-knowledge/timeline',
+    path: '/api/scientific-knowledge/timeline',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiWhatsappTemplatesSyncRoute =
-  ApiWhatsappTemplatesSyncRouteImport.update({
-    id: '/api/whatsapp/templates/sync',
-    path: '/api/whatsapp/templates/sync',
+const ApiScientificMemoryLatestRoute =
+  ApiScientificMemoryLatestRouteImport.update({
+    id: '/api/scientific-memory/latest',
+    path: '/api/scientific-memory/latest',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiWhatsappTemplatesSendRoute =
-  ApiWhatsappTemplatesSendRouteImport.update({
-    id: '/api/whatsapp/templates/send',
-    path: '/api/whatsapp/templates/send',
+const ApiScientificMemoryPersistRoute =
+  ApiScientificMemoryPersistRouteImport.update({
+    id: '/api/scientific-memory/persist',
+    path: '/api/scientific-memory/persist',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiWhatsappTemplatesListRoute =
-  ApiWhatsappTemplatesListRouteImport.update({
-    id: '/api/whatsapp/templates/list',
-    path: '/api/whatsapp/templates/list',
+const ApiScientificMemoryTimelineRoute =
+  ApiScientificMemoryTimelineRouteImport.update({
+    id: '/api/scientific-memory/timeline',
+    path: '/api/scientific-memory/timeline',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicWhatsappWebhookRoute =
-  ApiPublicWhatsappWebhookRouteImport.update({
-    id: '/api/public/whatsapp/webhook',
-    path: '/api/public/whatsapp/webhook',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicRenderProgressRoute = ApiPublicRenderProgressRouteImport.update({
-  id: '/api/public/render/progress',
-  path: '/api/public/render/progress',
+const ApiWhatsappDebugRoute = ApiWhatsappDebugRouteImport.update({
+  id: '/api/whatsapp/debug',
+  path: '/api/whatsapp/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicRenderFailRoute = ApiPublicRenderFailRouteImport.update({
-  id: '/api/public/render/fail',
-  path: '/api/public/render/fail',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicRenderCompleteRoute = ApiPublicRenderCompleteRouteImport.update({
-  id: '/api/public/render/complete',
-  path: '/api/public/render/complete',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicRenderClaimRoute = ApiPublicRenderClaimRouteImport.update({
-  id: '/api/public/render/claim',
-  path: '/api/public/render/claim',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicHooksRuntimeTickRoute =
-  ApiPublicHooksRuntimeTickRouteImport.update({
-    id: '/api/public/hooks/runtime-tick',
-    path: '/api/public/hooks/runtime-tick',
+const ApiWhatsappForwardMessageRoute =
+  ApiWhatsappForwardMessageRouteImport.update({
+    id: '/api/whatsapp/forward-message',
+    path: '/api/whatsapp/forward-message',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksPublisherTickRoute =
-  ApiPublicHooksPublisherTickRouteImport.update({
-    id: '/api/public/hooks/publisher-tick',
-    path: '/api/public/hooks/publisher-tick',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksFollowupTickRoute =
-  ApiPublicHooksFollowupTickRouteImport.update({
-    id: '/api/public/hooks/followup-tick',
-    path: '/api/public/hooks/followup-tick',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksAgentTriggerRoute =
-  ApiPublicHooksAgentTriggerRouteImport.update({
-    id: '/api/public/hooks/agent-trigger',
-    path: '/api/public/hooks/agent-trigger',
+const ApiWhatsappIntegrationRoute = ApiWhatsappIntegrationRouteImport.update({
+  id: '/api/whatsapp/integration',
+  path: '/api/whatsapp/integration',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
+  id: '/api/whatsapp/send',
+  path: '/api/whatsapp/send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendAudioRoute = ApiWhatsappSendAudioRouteImport.update({
+  id: '/api/whatsapp/send-audio',
+  path: '/api/whatsapp/send-audio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendLocationRoute = ApiWhatsappSendLocationRouteImport.update({
+  id: '/api/whatsapp/send-location',
+  path: '/api/whatsapp/send-location',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendMediaRoute = ApiWhatsappSendMediaRouteImport.update({
+  id: '/api/whatsapp/send-media',
+  path: '/api/whatsapp/send-media',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappSendReplyRoute = ApiWhatsappSendReplyRouteImport.update({
+  id: '/api/whatsapp/send-reply',
+  path: '/api/whatsapp/send-reply',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappTestSendRoute = ApiWhatsappTestSendRouteImport.update({
+  id: '/api/whatsapp/test-send',
+  path: '/api/whatsapp/test-send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappTokenRefreshRoute = ApiWhatsappTokenRefreshRouteImport.update({
+  id: '/api/whatsapp/token-refresh',
+  path: '/api/whatsapp/token-refresh',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappUnmappedRoute = ApiWhatsappUnmappedRouteImport.update({
+  id: '/api/whatsapp/unmapped',
+  path: '/api/whatsapp/unmapped',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
+  id: '/auth/meta/callback',
+  path: '/auth/meta/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExecutiveConversationIntelligenceInspectRoute =
+  ApiExecutiveConversationIntelligenceInspectRouteImport.update({
+    id: '/api/executive/conversation-intelligence/inspect',
+    path: '/api/executive/conversation-intelligence/inspect',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiExecutiveConversationIntelligenceJobRoute =
@@ -689,10 +627,78 @@ const ApiExecutiveConversationIntelligenceJobRoute =
     path: '/api/executive/conversation-intelligence/job',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiExecutiveConversationIntelligenceInspectRoute =
-  ApiExecutiveConversationIntelligenceInspectRouteImport.update({
-    id: '/api/executive/conversation-intelligence/inspect',
-    path: '/api/executive/conversation-intelligence/inspect',
+const ApiPublicHooksAgentTriggerRoute =
+  ApiPublicHooksAgentTriggerRouteImport.update({
+    id: '/api/public/hooks/agent-trigger',
+    path: '/api/public/hooks/agent-trigger',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksFollowupTickRoute =
+  ApiPublicHooksFollowupTickRouteImport.update({
+    id: '/api/public/hooks/followup-tick',
+    path: '/api/public/hooks/followup-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksPublisherTickRoute =
+  ApiPublicHooksPublisherTickRouteImport.update({
+    id: '/api/public/hooks/publisher-tick',
+    path: '/api/public/hooks/publisher-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksRuntimeTickRoute =
+  ApiPublicHooksRuntimeTickRouteImport.update({
+    id: '/api/public/hooks/runtime-tick',
+    path: '/api/public/hooks/runtime-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicRenderClaimRoute = ApiPublicRenderClaimRouteImport.update({
+  id: '/api/public/render/claim',
+  path: '/api/public/render/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderCompleteRoute = ApiPublicRenderCompleteRouteImport.update({
+  id: '/api/public/render/complete',
+  path: '/api/public/render/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderFailRoute = ApiPublicRenderFailRouteImport.update({
+  id: '/api/public/render/fail',
+  path: '/api/public/render/fail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderProgressRoute = ApiPublicRenderProgressRouteImport.update({
+  id: '/api/public/render/progress',
+  path: '/api/public/render/progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWhatsappWebhookRoute =
+  ApiPublicWhatsappWebhookRouteImport.update({
+    id: '/api/public/whatsapp/webhook',
+    path: '/api/public/whatsapp/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatesListRoute =
+  ApiWhatsappTemplatesListRouteImport.update({
+    id: '/api/whatsapp/templates/list',
+    path: '/api/whatsapp/templates/list',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatesSendRoute =
+  ApiWhatsappTemplatesSendRouteImport.update({
+    id: '/api/whatsapp/templates/send',
+    path: '/api/whatsapp/templates/send',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatesSyncRoute =
+  ApiWhatsappTemplatesSyncRouteImport.update({
+    id: '/api/whatsapp/templates/sync',
+    path: '/api/whatsapp/templates/sync',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatesUpdateRoute =
+  ApiWhatsappTemplatesUpdateRouteImport.update({
+    id: '/api/whatsapp/templates/update',
+    path: '/api/whatsapp/templates/update',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -753,6 +759,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
@@ -862,6 +869,7 @@ export interface FileRoutesByTo {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
@@ -973,6 +981,7 @@ export interface FileRoutesById {
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
+  '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
@@ -1085,6 +1094,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
+    | '/api/ai/v2-suggestion'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
@@ -1194,6 +1204,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
+    | '/api/ai/v2-suggestion'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
@@ -1304,6 +1315,7 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
+    | '/api/ai/v2-suggestion'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
@@ -1410,6 +1422,7 @@ export interface RootRouteChildren {
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiAiSuggestReplyRoute: typeof ApiAiSuggestReplyRoute
   ApiAiTestNowRoute: typeof ApiAiTestNowRoute
+  ApiAiV2SuggestionRoute: typeof ApiAiV2SuggestionRoute
   ApiBusinessBrainSnapshotRoute: typeof ApiBusinessBrainSnapshotRoute
   ApiBusinessLearningSnapshotRoute: typeof ApiBusinessLearningSnapshotRoute
   ApiCoachAnalyzeRoute: typeof ApiCoachAnalyzeRoute
@@ -1466,130 +1479,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/whatsapp': {
-      id: '/whatsapp'
-      path: '/whatsapp'
-      fullPath: '/whatsapp'
-      preLoaderRoute: typeof WhatsappRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/saude': {
-      id: '/saude'
-      path: '/saude'
-      fullPath: '/saude'
-      preLoaderRoute: typeof SaudeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/relatorios': {
-      id: '/relatorios'
-      path: '/relatorios'
-      fullPath: '/relatorios'
-      preLoaderRoute: typeof RelatoriosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/produtos': {
-      id: '/produtos'
-      path: '/produtos'
-      fullPath: '/produtos'
-      preLoaderRoute: typeof ProdutosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacidade': {
-      id: '/privacidade'
-      path: '/privacidade'
-      fullPath: '/privacidade'
-      preLoaderRoute: typeof PrivacidadeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/orcamentos': {
-      id: '/orcamentos'
-      path: '/orcamentos'
-      fullPath: '/orcamentos'
-      preLoaderRoute: typeof OrcamentosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/marketing': {
-      id: '/marketing'
-      path: '/marketing'
-      fullPath: '/marketing'
-      preLoaderRoute: typeof MarketingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inbox': {
-      id: '/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof InboxRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ia': {
-      id: '/ia'
-      path: '/ia'
-      fullPath: '/ia'
-      preLoaderRoute: typeof IaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/executivo': {
-      id: '/executivo'
-      path: '/executivo'
-      fullPath: '/executivo'
-      preLoaderRoute: typeof ExecutivoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/criativos': {
-      id: '/criativos'
-      path: '/criativos'
-      fullPath: '/criativos'
-      preLoaderRoute: typeof CriativosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes': {
-      id: '/configuracoes'
-      path: '/configuracoes'
-      fullPath: '/configuracoes'
-      preLoaderRoute: typeof ConfiguracoesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/atendimento': {
-      id: '/atendimento'
-      path: '/atendimento'
-      fullPath: '/atendimento'
-      preLoaderRoute: typeof AtendimentoRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agenda': {
@@ -1599,137 +1493,130 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgendaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/atendimento': {
+      id: '/atendimento'
+      path: '/atendimento'
+      fullPath: '/atendimento'
+      preLoaderRoute: typeof AtendimentoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/campanhas/': {
-      id: '/campanhas/'
-      path: '/campanhas'
-      fullPath: '/campanhas/'
-      preLoaderRoute: typeof CampanhasIndexLazyRouteImport
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/inbox/': {
-      id: '/inbox/'
-      path: '/'
-      fullPath: '/inbox/'
-      preLoaderRoute: typeof InboxIndexRouteImport
-      parentRoute: typeof InboxRoute
-    }
-    '/campanhas/nova': {
-      id: '/campanhas/nova'
-      path: '/campanhas/nova'
-      fullPath: '/campanhas/nova'
-      preLoaderRoute: typeof CampanhasNovaLazyRouteImport
+    '/criativos': {
+      id: '/criativos'
+      path: '/criativos'
+      fullPath: '/criativos'
+      preLoaderRoute: typeof CriativosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/campanhas/$id': {
-      id: '/campanhas/$id'
-      path: '/campanhas/$id'
-      fullPath: '/campanhas/$id'
-      preLoaderRoute: typeof CampanhasIdLazyRouteImport
+    '/executivo': {
+      id: '/executivo'
+      path: '/executivo'
+      fullPath: '/executivo'
+      preLoaderRoute: typeof ExecutivoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/runtime/validacao': {
-      id: '/runtime/validacao'
-      path: '/runtime/validacao'
-      fullPath: '/runtime/validacao'
-      preLoaderRoute: typeof RuntimeValidacaoRouteImport
+    '/ia': {
+      id: '/ia'
+      path: '/ia'
+      fullPath: '/ia'
+      preLoaderRoute: typeof IaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/runtime/observability': {
-      id: '/runtime/observability'
-      path: '/runtime/observability'
-      fullPath: '/runtime/observability'
-      preLoaderRoute: typeof RuntimeObservabilityRouteImport
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/onboarding/whatsapp': {
-      id: '/onboarding/whatsapp'
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orcamentos': {
+      id: '/orcamentos'
+      path: '/orcamentos'
+      fullPath: '/orcamentos'
+      preLoaderRoute: typeof OrcamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidade': {
+      id: '/privacidade'
+      path: '/privacidade'
+      fullPath: '/privacidade'
+      preLoaderRoute: typeof PrivacidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/produtos': {
+      id: '/produtos'
+      path: '/produtos'
+      fullPath: '/produtos'
+      preLoaderRoute: typeof ProdutosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/relatorios': {
+      id: '/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof RelatoriosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/saude': {
+      id: '/saude'
+      path: '/saude'
+      fullPath: '/saude'
+      preLoaderRoute: typeof SaudeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whatsapp': {
+      id: '/whatsapp'
       path: '/whatsapp'
-      fullPath: '/onboarding/whatsapp'
-      preLoaderRoute: typeof OnboardingWhatsappRouteImport
-      parentRoute: typeof OnboardingRoute
-    }
-    '/inbox/recovery-queue': {
-      id: '/inbox/recovery-queue'
-      path: '/recovery-queue'
-      fullPath: '/inbox/recovery-queue'
-      preLoaderRoute: typeof InboxRecoveryQueueRouteImport
-      parentRoute: typeof InboxRoute
-    }
-    '/inbox/recovery': {
-      id: '/inbox/recovery'
-      path: '/recovery'
-      fullPath: '/inbox/recovery'
-      preLoaderRoute: typeof InboxRecoveryRouteImport
-      parentRoute: typeof InboxRoute
-    }
-    '/inbox/$conversationId': {
-      id: '/inbox/$conversationId'
-      path: '/$conversationId'
-      fullPath: '/inbox/$conversationId'
-      preLoaderRoute: typeof InboxConversationIdRouteImport
-      parentRoute: typeof InboxRoute
-    }
-    '/configuracoes_/usuarios': {
-      id: '/configuracoes_/usuarios'
-      path: '/configuracoes/usuarios'
-      fullPath: '/configuracoes/usuarios'
-      preLoaderRoute: typeof ConfiguracoesUsuariosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/respostas-rapidas': {
-      id: '/configuracoes_/respostas-rapidas'
-      path: '/configuracoes/respostas-rapidas'
-      fullPath: '/configuracoes/respostas-rapidas'
-      preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/regras-coach': {
-      id: '/configuracoes_/regras-coach'
-      path: '/configuracoes/regras-coach'
-      fullPath: '/configuracoes/regras-coach'
-      preLoaderRoute: typeof ConfiguracoesRegrasCoachRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/recovery-learning': {
-      id: '/configuracoes_/recovery-learning'
-      path: '/configuracoes/recovery-learning'
-      fullPath: '/configuracoes/recovery-learning'
-      preLoaderRoute: typeof ConfiguracoesRecoveryLearningRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/identidade-visual': {
-      id: '/configuracoes_/identidade-visual'
-      path: '/configuracoes/identidade-visual'
-      fullPath: '/configuracoes/identidade-visual'
-      preLoaderRoute: typeof ConfiguracoesIdentidadeVisualRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/coach-learnings': {
-      id: '/configuracoes_/coach-learnings'
-      path: '/configuracoes/coach-learnings'
-      fullPath: '/configuracoes/coach-learnings'
-      preLoaderRoute: typeof ConfiguracoesCoachLearningsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/coach-interpreter': {
-      id: '/configuracoes_/coach-interpreter'
-      path: '/configuracoes/coach-interpreter'
-      fullPath: '/configuracoes/coach-interpreter'
-      preLoaderRoute: typeof ConfiguracoesCoachInterpreterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/configuracoes_/coach-desempenho': {
-      id: '/configuracoes_/coach-desempenho'
-      path: '/configuracoes/coach-desempenho'
-      fullPath: '/configuracoes/coach-desempenho'
-      preLoaderRoute: typeof ConfiguracoesCoachDesempenhoRouteImport
+      fullPath: '/whatsapp'
+      preLoaderRoute: typeof WhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/system-health': {
@@ -1739,375 +1626,130 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSystemHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/meta/callback': {
-      id: '/auth/meta/callback'
-      path: '/auth/meta/callback'
-      fullPath: '/auth/meta/callback'
-      preLoaderRoute: typeof AuthMetaCallbackRouteImport
+    '/campanhas/': {
+      id: '/campanhas/'
+      path: '/campanhas'
+      fullPath: '/campanhas/'
+      preLoaderRoute: typeof CampanhasIndexLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/unmapped': {
-      id: '/api/whatsapp/unmapped'
-      path: '/api/whatsapp/unmapped'
-      fullPath: '/api/whatsapp/unmapped'
-      preLoaderRoute: typeof ApiWhatsappUnmappedRouteImport
+    '/campanhas/$id': {
+      id: '/campanhas/$id'
+      path: '/campanhas/$id'
+      fullPath: '/campanhas/$id'
+      preLoaderRoute: typeof CampanhasIdLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/token-refresh': {
-      id: '/api/whatsapp/token-refresh'
-      path: '/api/whatsapp/token-refresh'
-      fullPath: '/api/whatsapp/token-refresh'
-      preLoaderRoute: typeof ApiWhatsappTokenRefreshRouteImport
+    '/campanhas/nova': {
+      id: '/campanhas/nova'
+      path: '/campanhas/nova'
+      fullPath: '/campanhas/nova'
+      preLoaderRoute: typeof CampanhasNovaLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/test-send': {
-      id: '/api/whatsapp/test-send'
-      path: '/api/whatsapp/test-send'
-      fullPath: '/api/whatsapp/test-send'
-      preLoaderRoute: typeof ApiWhatsappTestSendRouteImport
+    '/configuracoes_/coach-desempenho': {
+      id: '/configuracoes_/coach-desempenho'
+      path: '/configuracoes/coach-desempenho'
+      fullPath: '/configuracoes/coach-desempenho'
+      preLoaderRoute: typeof ConfiguracoesCoachDesempenhoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/send-reply': {
-      id: '/api/whatsapp/send-reply'
-      path: '/api/whatsapp/send-reply'
-      fullPath: '/api/whatsapp/send-reply'
-      preLoaderRoute: typeof ApiWhatsappSendReplyRouteImport
+    '/configuracoes_/coach-interpreter': {
+      id: '/configuracoes_/coach-interpreter'
+      path: '/configuracoes/coach-interpreter'
+      fullPath: '/configuracoes/coach-interpreter'
+      preLoaderRoute: typeof ConfiguracoesCoachInterpreterRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/send-media': {
-      id: '/api/whatsapp/send-media'
-      path: '/api/whatsapp/send-media'
-      fullPath: '/api/whatsapp/send-media'
-      preLoaderRoute: typeof ApiWhatsappSendMediaRouteImport
+    '/configuracoes_/coach-learnings': {
+      id: '/configuracoes_/coach-learnings'
+      path: '/configuracoes/coach-learnings'
+      fullPath: '/configuracoes/coach-learnings'
+      preLoaderRoute: typeof ConfiguracoesCoachLearningsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/send-location': {
-      id: '/api/whatsapp/send-location'
-      path: '/api/whatsapp/send-location'
-      fullPath: '/api/whatsapp/send-location'
-      preLoaderRoute: typeof ApiWhatsappSendLocationRouteImport
+    '/configuracoes_/identidade-visual': {
+      id: '/configuracoes_/identidade-visual'
+      path: '/configuracoes/identidade-visual'
+      fullPath: '/configuracoes/identidade-visual'
+      preLoaderRoute: typeof ConfiguracoesIdentidadeVisualRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/send-audio': {
-      id: '/api/whatsapp/send-audio'
-      path: '/api/whatsapp/send-audio'
-      fullPath: '/api/whatsapp/send-audio'
-      preLoaderRoute: typeof ApiWhatsappSendAudioRouteImport
+    '/configuracoes_/recovery-learning': {
+      id: '/configuracoes_/recovery-learning'
+      path: '/configuracoes/recovery-learning'
+      fullPath: '/configuracoes/recovery-learning'
+      preLoaderRoute: typeof ConfiguracoesRecoveryLearningRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/send': {
-      id: '/api/whatsapp/send'
-      path: '/api/whatsapp/send'
-      fullPath: '/api/whatsapp/send'
-      preLoaderRoute: typeof ApiWhatsappSendRouteImport
+    '/configuracoes_/regras-coach': {
+      id: '/configuracoes_/regras-coach'
+      path: '/configuracoes/regras-coach'
+      fullPath: '/configuracoes/regras-coach'
+      preLoaderRoute: typeof ConfiguracoesRegrasCoachRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/integration': {
-      id: '/api/whatsapp/integration'
-      path: '/api/whatsapp/integration'
-      fullPath: '/api/whatsapp/integration'
-      preLoaderRoute: typeof ApiWhatsappIntegrationRouteImport
+    '/configuracoes_/respostas-rapidas': {
+      id: '/configuracoes_/respostas-rapidas'
+      path: '/configuracoes/respostas-rapidas'
+      fullPath: '/configuracoes/respostas-rapidas'
+      preLoaderRoute: typeof ConfiguracoesRespostasRapidasRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/forward-message': {
-      id: '/api/whatsapp/forward-message'
-      path: '/api/whatsapp/forward-message'
-      fullPath: '/api/whatsapp/forward-message'
-      preLoaderRoute: typeof ApiWhatsappForwardMessageRouteImport
+    '/configuracoes_/usuarios': {
+      id: '/configuracoes_/usuarios'
+      path: '/configuracoes/usuarios'
+      fullPath: '/configuracoes/usuarios'
+      preLoaderRoute: typeof ConfiguracoesUsuariosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/debug': {
-      id: '/api/whatsapp/debug'
-      path: '/api/whatsapp/debug'
-      fullPath: '/api/whatsapp/debug'
-      preLoaderRoute: typeof ApiWhatsappDebugRouteImport
+    '/inbox/': {
+      id: '/inbox/'
+      path: '/'
+      fullPath: '/inbox/'
+      preLoaderRoute: typeof InboxIndexRouteImport
+      parentRoute: typeof InboxRoute
+    }
+    '/inbox/$conversationId': {
+      id: '/inbox/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/inbox/$conversationId'
+      preLoaderRoute: typeof InboxConversationIdRouteImport
+      parentRoute: typeof InboxRoute
+    }
+    '/inbox/recovery': {
+      id: '/inbox/recovery'
+      path: '/recovery'
+      fullPath: '/inbox/recovery'
+      preLoaderRoute: typeof InboxRecoveryRouteImport
+      parentRoute: typeof InboxRoute
+    }
+    '/inbox/recovery-queue': {
+      id: '/inbox/recovery-queue'
+      path: '/recovery-queue'
+      fullPath: '/inbox/recovery-queue'
+      preLoaderRoute: typeof InboxRecoveryQueueRouteImport
+      parentRoute: typeof InboxRoute
+    }
+    '/onboarding/whatsapp': {
+      id: '/onboarding/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/onboarding/whatsapp'
+      preLoaderRoute: typeof OnboardingWhatsappRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/runtime/observability': {
+      id: '/runtime/observability'
+      path: '/runtime/observability'
+      fullPath: '/runtime/observability'
+      preLoaderRoute: typeof RuntimeObservabilityRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/scientific-memory/timeline': {
-      id: '/api/scientific-memory/timeline'
-      path: '/api/scientific-memory/timeline'
-      fullPath: '/api/scientific-memory/timeline'
-      preLoaderRoute: typeof ApiScientificMemoryTimelineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scientific-memory/persist': {
-      id: '/api/scientific-memory/persist'
-      path: '/api/scientific-memory/persist'
-      fullPath: '/api/scientific-memory/persist'
-      preLoaderRoute: typeof ApiScientificMemoryPersistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scientific-memory/latest': {
-      id: '/api/scientific-memory/latest'
-      path: '/api/scientific-memory/latest'
-      fullPath: '/api/scientific-memory/latest'
-      preLoaderRoute: typeof ApiScientificMemoryLatestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scientific-knowledge/timeline': {
-      id: '/api/scientific-knowledge/timeline'
-      path: '/api/scientific-knowledge/timeline'
-      fullPath: '/api/scientific-knowledge/timeline'
-      preLoaderRoute: typeof ApiScientificKnowledgeTimelineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scientific-knowledge/snapshot': {
-      id: '/api/scientific-knowledge/snapshot'
-      path: '/api/scientific-knowledge/snapshot'
-      fullPath: '/api/scientific-knowledge/snapshot'
-      preLoaderRoute: typeof ApiScientificKnowledgeSnapshotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scientific-knowledge/persist': {
-      id: '/api/scientific-knowledge/persist'
-      path: '/api/scientific-knowledge/persist'
-      fullPath: '/api/scientific-knowledge/persist'
-      preLoaderRoute: typeof ApiScientificKnowledgePersistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/runtime/status': {
-      id: '/api/runtime/status'
-      path: '/api/runtime/status'
-      fullPath: '/api/runtime/status'
-      preLoaderRoute: typeof ApiRuntimeStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/runtime/execute': {
-      id: '/api/runtime/execute'
-      path: '/api/runtime/execute'
-      fullPath: '/api/runtime/execute'
-      preLoaderRoute: typeof ApiRuntimeExecuteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/runtime/autonomy': {
-      id: '/api/runtime/autonomy'
-      path: '/api/runtime/autonomy'
-      fullPath: '/api/runtime/autonomy'
-      preLoaderRoute: typeof ApiRuntimeAutonomyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/recovery/execute': {
-      id: '/api/recovery/execute'
-      path: '/api/recovery/execute'
-      fullPath: '/api/recovery/execute'
-      preLoaderRoute: typeof ApiRecoveryExecuteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/recovery/assist': {
-      id: '/api/recovery/assist'
-      path: '/api/recovery/assist'
-      fullPath: '/api/recovery/assist'
-      preLoaderRoute: typeof ApiRecoveryAssistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/onboarding/test-send': {
-      id: '/api/onboarding/test-send'
-      path: '/api/onboarding/test-send'
-      fullPath: '/api/onboarding/test-send'
-      preLoaderRoute: typeof ApiOnboardingTestSendRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/onboarding/status': {
-      id: '/api/onboarding/status'
-      path: '/api/onboarding/status'
-      fullPath: '/api/onboarding/status'
-      preLoaderRoute: typeof ApiOnboardingStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/onboarding/meta-save': {
-      id: '/api/onboarding/meta-save'
-      path: '/api/onboarding/meta-save'
-      fullPath: '/api/onboarding/meta-save'
-      preLoaderRoute: typeof ApiOnboardingMetaSaveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/onboarding/health': {
-      id: '/api/onboarding/health'
-      path: '/api/onboarding/health'
-      fullPath: '/api/onboarding/health'
-      preLoaderRoute: typeof ApiOnboardingHealthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/onboarding/checklist': {
-      id: '/api/onboarding/checklist'
-      path: '/api/onboarding/checklist'
-      fullPath: '/api/onboarding/checklist'
-      preLoaderRoute: typeof ApiOnboardingChecklistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/meta/disconnect': {
-      id: '/api/meta/disconnect'
-      path: '/api/meta/disconnect'
-      fullPath: '/api/meta/disconnect'
-      preLoaderRoute: typeof ApiMetaDisconnectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/meta/config': {
-      id: '/api/meta/config'
-      path: '/api/meta/config'
-      fullPath: '/api/meta/config'
-      preLoaderRoute: typeof ApiMetaConfigRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/executive/snapshot': {
-      id: '/api/executive/snapshot'
-      path: '/api/executive/snapshot'
-      fullPath: '/api/executive/snapshot'
-      preLoaderRoute: typeof ApiExecutiveSnapshotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/executive/sales-intelligence': {
-      id: '/api/executive/sales-intelligence'
-      path: '/api/executive/sales-intelligence'
-      fullPath: '/api/executive/sales-intelligence'
-      preLoaderRoute: typeof ApiExecutiveSalesIntelligenceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/executive/narrative': {
-      id: '/api/executive/narrative'
-      path: '/api/executive/narrative'
-      fullPath: '/api/executive/narrative'
-      preLoaderRoute: typeof ApiExecutiveNarrativeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/coach/suggest': {
-      id: '/api/coach/suggest'
-      path: '/api/coach/suggest'
-      fullPath: '/api/coach/suggest'
-      preLoaderRoute: typeof ApiCoachSuggestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/coach/analyze': {
-      id: '/api/coach/analyze'
-      path: '/api/coach/analyze'
-      fullPath: '/api/coach/analyze'
-      preLoaderRoute: typeof ApiCoachAnalyzeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/business-learning/snapshot': {
-      id: '/api/business-learning/snapshot'
-      path: '/api/business-learning/snapshot'
-      fullPath: '/api/business-learning/snapshot'
-      preLoaderRoute: typeof ApiBusinessLearningSnapshotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/business-brain/snapshot': {
-      id: '/api/business-brain/snapshot'
-      path: '/api/business-brain/snapshot'
-      fullPath: '/api/business-brain/snapshot'
-      preLoaderRoute: typeof ApiBusinessBrainSnapshotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/test-now': {
-      id: '/api/ai/test-now'
-      path: '/api/ai/test-now'
-      fullPath: '/api/ai/test-now'
-      preLoaderRoute: typeof ApiAiTestNowRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/suggest-reply': {
-      id: '/api/ai/suggest-reply'
-      path: '/api/ai/suggest-reply'
-      fullPath: '/api/ai/suggest-reply'
-      preLoaderRoute: typeof ApiAiSuggestReplyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/suggest-product': {
-      id: '/api/ai/suggest-product'
-      path: '/api/ai/suggest-product'
-      fullPath: '/api/ai/suggest-product'
-      preLoaderRoute: typeof ApiAiSuggestProductRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/suggest': {
-      id: '/api/ai/suggest'
-      path: '/api/ai/suggest'
-      fullPath: '/api/ai/suggest'
-      preLoaderRoute: typeof ApiAiSuggestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/readiness': {
-      id: '/api/ai/readiness'
-      path: '/api/ai/readiness'
-      fullPath: '/api/ai/readiness'
-      preLoaderRoute: typeof ApiAiReadinessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/propose-knowledge': {
-      id: '/api/ai/propose-knowledge'
-      path: '/api/ai/propose-knowledge'
-      fullPath: '/api/ai/propose-knowledge'
-      preLoaderRoute: typeof ApiAiProposeKnowledgeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/pilot-toggle': {
-      id: '/api/ai/pilot-toggle'
-      path: '/api/ai/pilot-toggle'
-      fullPath: '/api/ai/pilot-toggle'
-      preLoaderRoute: typeof ApiAiPilotToggleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/mark-sent': {
-      id: '/api/ai/mark-sent'
-      path: '/api/ai/mark-sent'
-      fullPath: '/api/ai/mark-sent'
-      preLoaderRoute: typeof ApiAiMarkSentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/followup-status': {
-      id: '/api/ai/followup-status'
-      path: '/api/ai/followup-status'
-      fullPath: '/api/ai/followup-status'
-      preLoaderRoute: typeof ApiAiFollowupStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/followup-reactivate': {
-      id: '/api/ai/followup-reactivate'
-      path: '/api/ai/followup-reactivate'
-      fullPath: '/api/ai/followup-reactivate'
-      preLoaderRoute: typeof ApiAiFollowupReactivateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/followup-config': {
-      id: '/api/ai/followup-config'
-      path: '/api/ai/followup-config'
-      fullPath: '/api/ai/followup-config'
-      preLoaderRoute: typeof ApiAiFollowupConfigRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/creative-generator': {
-      id: '/api/ai/creative-generator'
-      path: '/api/ai/creative-generator'
-      fullPath: '/api/ai/creative-generator'
-      preLoaderRoute: typeof ApiAiCreativeGeneratorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/campaign-creative': {
-      id: '/api/ai/campaign-creative'
-      path: '/api/ai/campaign-creative'
-      fullPath: '/api/ai/campaign-creative'
-      preLoaderRoute: typeof ApiAiCampaignCreativeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/campaign-advisor': {
-      id: '/api/ai/campaign-advisor'
-      path: '/api/ai/campaign-advisor'
-      fullPath: '/api/ai/campaign-advisor'
-      preLoaderRoute: typeof ApiAiCampaignAdvisorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/analytics': {
-      id: '/api/ai/analytics'
-      path: '/api/ai/analytics'
-      fullPath: '/api/ai/analytics'
-      preLoaderRoute: typeof ApiAiAnalyticsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/agent-tick': {
-      id: '/api/ai/agent-tick'
-      path: '/api/ai/agent-tick'
-      fullPath: '/api/ai/agent-tick'
-      preLoaderRoute: typeof ApiAiAgentTickRouteImport
+    '/runtime/validacao': {
+      id: '/runtime/validacao'
+      path: '/runtime/validacao'
+      fullPath: '/runtime/validacao'
+      preLoaderRoute: typeof RuntimeValidacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/agent-takeover': {
@@ -2117,95 +1759,389 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiAgentTakeoverRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/templates/update': {
-      id: '/api/whatsapp/templates/update'
-      path: '/api/whatsapp/templates/update'
-      fullPath: '/api/whatsapp/templates/update'
-      preLoaderRoute: typeof ApiWhatsappTemplatesUpdateRouteImport
+    '/api/ai/agent-tick': {
+      id: '/api/ai/agent-tick'
+      path: '/api/ai/agent-tick'
+      fullPath: '/api/ai/agent-tick'
+      preLoaderRoute: typeof ApiAiAgentTickRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/templates/sync': {
-      id: '/api/whatsapp/templates/sync'
-      path: '/api/whatsapp/templates/sync'
-      fullPath: '/api/whatsapp/templates/sync'
-      preLoaderRoute: typeof ApiWhatsappTemplatesSyncRouteImport
+    '/api/ai/analytics': {
+      id: '/api/ai/analytics'
+      path: '/api/ai/analytics'
+      fullPath: '/api/ai/analytics'
+      preLoaderRoute: typeof ApiAiAnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/templates/send': {
-      id: '/api/whatsapp/templates/send'
-      path: '/api/whatsapp/templates/send'
-      fullPath: '/api/whatsapp/templates/send'
-      preLoaderRoute: typeof ApiWhatsappTemplatesSendRouteImport
+    '/api/ai/campaign-advisor': {
+      id: '/api/ai/campaign-advisor'
+      path: '/api/ai/campaign-advisor'
+      fullPath: '/api/ai/campaign-advisor'
+      preLoaderRoute: typeof ApiAiCampaignAdvisorRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/whatsapp/templates/list': {
-      id: '/api/whatsapp/templates/list'
-      path: '/api/whatsapp/templates/list'
-      fullPath: '/api/whatsapp/templates/list'
-      preLoaderRoute: typeof ApiWhatsappTemplatesListRouteImport
+    '/api/ai/campaign-creative': {
+      id: '/api/ai/campaign-creative'
+      path: '/api/ai/campaign-creative'
+      fullPath: '/api/ai/campaign-creative'
+      preLoaderRoute: typeof ApiAiCampaignCreativeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/whatsapp/webhook': {
-      id: '/api/public/whatsapp/webhook'
-      path: '/api/public/whatsapp/webhook'
-      fullPath: '/api/public/whatsapp/webhook'
-      preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
+    '/api/ai/creative-generator': {
+      id: '/api/ai/creative-generator'
+      path: '/api/ai/creative-generator'
+      fullPath: '/api/ai/creative-generator'
+      preLoaderRoute: typeof ApiAiCreativeGeneratorRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/render/progress': {
-      id: '/api/public/render/progress'
-      path: '/api/public/render/progress'
-      fullPath: '/api/public/render/progress'
-      preLoaderRoute: typeof ApiPublicRenderProgressRouteImport
+    '/api/ai/followup-config': {
+      id: '/api/ai/followup-config'
+      path: '/api/ai/followup-config'
+      fullPath: '/api/ai/followup-config'
+      preLoaderRoute: typeof ApiAiFollowupConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/render/fail': {
-      id: '/api/public/render/fail'
-      path: '/api/public/render/fail'
-      fullPath: '/api/public/render/fail'
-      preLoaderRoute: typeof ApiPublicRenderFailRouteImport
+    '/api/ai/followup-reactivate': {
+      id: '/api/ai/followup-reactivate'
+      path: '/api/ai/followup-reactivate'
+      fullPath: '/api/ai/followup-reactivate'
+      preLoaderRoute: typeof ApiAiFollowupReactivateRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/render/complete': {
-      id: '/api/public/render/complete'
-      path: '/api/public/render/complete'
-      fullPath: '/api/public/render/complete'
-      preLoaderRoute: typeof ApiPublicRenderCompleteRouteImport
+    '/api/ai/followup-status': {
+      id: '/api/ai/followup-status'
+      path: '/api/ai/followup-status'
+      fullPath: '/api/ai/followup-status'
+      preLoaderRoute: typeof ApiAiFollowupStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/render/claim': {
-      id: '/api/public/render/claim'
-      path: '/api/public/render/claim'
-      fullPath: '/api/public/render/claim'
-      preLoaderRoute: typeof ApiPublicRenderClaimRouteImport
+    '/api/ai/mark-sent': {
+      id: '/api/ai/mark-sent'
+      path: '/api/ai/mark-sent'
+      fullPath: '/api/ai/mark-sent'
+      preLoaderRoute: typeof ApiAiMarkSentRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/runtime-tick': {
-      id: '/api/public/hooks/runtime-tick'
-      path: '/api/public/hooks/runtime-tick'
-      fullPath: '/api/public/hooks/runtime-tick'
-      preLoaderRoute: typeof ApiPublicHooksRuntimeTickRouteImport
+    '/api/ai/pilot-toggle': {
+      id: '/api/ai/pilot-toggle'
+      path: '/api/ai/pilot-toggle'
+      fullPath: '/api/ai/pilot-toggle'
+      preLoaderRoute: typeof ApiAiPilotToggleRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/publisher-tick': {
-      id: '/api/public/hooks/publisher-tick'
-      path: '/api/public/hooks/publisher-tick'
-      fullPath: '/api/public/hooks/publisher-tick'
-      preLoaderRoute: typeof ApiPublicHooksPublisherTickRouteImport
+    '/api/ai/propose-knowledge': {
+      id: '/api/ai/propose-knowledge'
+      path: '/api/ai/propose-knowledge'
+      fullPath: '/api/ai/propose-knowledge'
+      preLoaderRoute: typeof ApiAiProposeKnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/followup-tick': {
-      id: '/api/public/hooks/followup-tick'
-      path: '/api/public/hooks/followup-tick'
-      fullPath: '/api/public/hooks/followup-tick'
-      preLoaderRoute: typeof ApiPublicHooksFollowupTickRouteImport
+    '/api/ai/readiness': {
+      id: '/api/ai/readiness'
+      path: '/api/ai/readiness'
+      fullPath: '/api/ai/readiness'
+      preLoaderRoute: typeof ApiAiReadinessRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/agent-trigger': {
-      id: '/api/public/hooks/agent-trigger'
-      path: '/api/public/hooks/agent-trigger'
-      fullPath: '/api/public/hooks/agent-trigger'
-      preLoaderRoute: typeof ApiPublicHooksAgentTriggerRouteImport
+    '/api/ai/suggest': {
+      id: '/api/ai/suggest'
+      path: '/api/ai/suggest'
+      fullPath: '/api/ai/suggest'
+      preLoaderRoute: typeof ApiAiSuggestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/suggest-product': {
+      id: '/api/ai/suggest-product'
+      path: '/api/ai/suggest-product'
+      fullPath: '/api/ai/suggest-product'
+      preLoaderRoute: typeof ApiAiSuggestProductRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/suggest-reply': {
+      id: '/api/ai/suggest-reply'
+      path: '/api/ai/suggest-reply'
+      fullPath: '/api/ai/suggest-reply'
+      preLoaderRoute: typeof ApiAiSuggestReplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/test-now': {
+      id: '/api/ai/test-now'
+      path: '/api/ai/test-now'
+      fullPath: '/api/ai/test-now'
+      preLoaderRoute: typeof ApiAiTestNowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/v2-suggestion': {
+      id: '/api/ai/v2-suggestion'
+      path: '/api/ai/v2-suggestion'
+      fullPath: '/api/ai/v2-suggestion'
+      preLoaderRoute: typeof ApiAiV2SuggestionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/business-brain/snapshot': {
+      id: '/api/business-brain/snapshot'
+      path: '/api/business-brain/snapshot'
+      fullPath: '/api/business-brain/snapshot'
+      preLoaderRoute: typeof ApiBusinessBrainSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/business-learning/snapshot': {
+      id: '/api/business-learning/snapshot'
+      path: '/api/business-learning/snapshot'
+      fullPath: '/api/business-learning/snapshot'
+      preLoaderRoute: typeof ApiBusinessLearningSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/coach/analyze': {
+      id: '/api/coach/analyze'
+      path: '/api/coach/analyze'
+      fullPath: '/api/coach/analyze'
+      preLoaderRoute: typeof ApiCoachAnalyzeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/coach/suggest': {
+      id: '/api/coach/suggest'
+      path: '/api/coach/suggest'
+      fullPath: '/api/coach/suggest'
+      preLoaderRoute: typeof ApiCoachSuggestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive/narrative': {
+      id: '/api/executive/narrative'
+      path: '/api/executive/narrative'
+      fullPath: '/api/executive/narrative'
+      preLoaderRoute: typeof ApiExecutiveNarrativeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive/sales-intelligence': {
+      id: '/api/executive/sales-intelligence'
+      path: '/api/executive/sales-intelligence'
+      fullPath: '/api/executive/sales-intelligence'
+      preLoaderRoute: typeof ApiExecutiveSalesIntelligenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive/snapshot': {
+      id: '/api/executive/snapshot'
+      path: '/api/executive/snapshot'
+      fullPath: '/api/executive/snapshot'
+      preLoaderRoute: typeof ApiExecutiveSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/meta/config': {
+      id: '/api/meta/config'
+      path: '/api/meta/config'
+      fullPath: '/api/meta/config'
+      preLoaderRoute: typeof ApiMetaConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/meta/disconnect': {
+      id: '/api/meta/disconnect'
+      path: '/api/meta/disconnect'
+      fullPath: '/api/meta/disconnect'
+      preLoaderRoute: typeof ApiMetaDisconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/checklist': {
+      id: '/api/onboarding/checklist'
+      path: '/api/onboarding/checklist'
+      fullPath: '/api/onboarding/checklist'
+      preLoaderRoute: typeof ApiOnboardingChecklistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/health': {
+      id: '/api/onboarding/health'
+      path: '/api/onboarding/health'
+      fullPath: '/api/onboarding/health'
+      preLoaderRoute: typeof ApiOnboardingHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/meta-save': {
+      id: '/api/onboarding/meta-save'
+      path: '/api/onboarding/meta-save'
+      fullPath: '/api/onboarding/meta-save'
+      preLoaderRoute: typeof ApiOnboardingMetaSaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/status': {
+      id: '/api/onboarding/status'
+      path: '/api/onboarding/status'
+      fullPath: '/api/onboarding/status'
+      preLoaderRoute: typeof ApiOnboardingStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/test-send': {
+      id: '/api/onboarding/test-send'
+      path: '/api/onboarding/test-send'
+      fullPath: '/api/onboarding/test-send'
+      preLoaderRoute: typeof ApiOnboardingTestSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/recovery/assist': {
+      id: '/api/recovery/assist'
+      path: '/api/recovery/assist'
+      fullPath: '/api/recovery/assist'
+      preLoaderRoute: typeof ApiRecoveryAssistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/recovery/execute': {
+      id: '/api/recovery/execute'
+      path: '/api/recovery/execute'
+      fullPath: '/api/recovery/execute'
+      preLoaderRoute: typeof ApiRecoveryExecuteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/autonomy': {
+      id: '/api/runtime/autonomy'
+      path: '/api/runtime/autonomy'
+      fullPath: '/api/runtime/autonomy'
+      preLoaderRoute: typeof ApiRuntimeAutonomyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/execute': {
+      id: '/api/runtime/execute'
+      path: '/api/runtime/execute'
+      fullPath: '/api/runtime/execute'
+      preLoaderRoute: typeof ApiRuntimeExecuteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/status': {
+      id: '/api/runtime/status'
+      path: '/api/runtime/status'
+      fullPath: '/api/runtime/status'
+      preLoaderRoute: typeof ApiRuntimeStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-knowledge/persist': {
+      id: '/api/scientific-knowledge/persist'
+      path: '/api/scientific-knowledge/persist'
+      fullPath: '/api/scientific-knowledge/persist'
+      preLoaderRoute: typeof ApiScientificKnowledgePersistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-knowledge/snapshot': {
+      id: '/api/scientific-knowledge/snapshot'
+      path: '/api/scientific-knowledge/snapshot'
+      fullPath: '/api/scientific-knowledge/snapshot'
+      preLoaderRoute: typeof ApiScientificKnowledgeSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-knowledge/timeline': {
+      id: '/api/scientific-knowledge/timeline'
+      path: '/api/scientific-knowledge/timeline'
+      fullPath: '/api/scientific-knowledge/timeline'
+      preLoaderRoute: typeof ApiScientificKnowledgeTimelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-memory/latest': {
+      id: '/api/scientific-memory/latest'
+      path: '/api/scientific-memory/latest'
+      fullPath: '/api/scientific-memory/latest'
+      preLoaderRoute: typeof ApiScientificMemoryLatestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-memory/persist': {
+      id: '/api/scientific-memory/persist'
+      path: '/api/scientific-memory/persist'
+      fullPath: '/api/scientific-memory/persist'
+      preLoaderRoute: typeof ApiScientificMemoryPersistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scientific-memory/timeline': {
+      id: '/api/scientific-memory/timeline'
+      path: '/api/scientific-memory/timeline'
+      fullPath: '/api/scientific-memory/timeline'
+      preLoaderRoute: typeof ApiScientificMemoryTimelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/debug': {
+      id: '/api/whatsapp/debug'
+      path: '/api/whatsapp/debug'
+      fullPath: '/api/whatsapp/debug'
+      preLoaderRoute: typeof ApiWhatsappDebugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/forward-message': {
+      id: '/api/whatsapp/forward-message'
+      path: '/api/whatsapp/forward-message'
+      fullPath: '/api/whatsapp/forward-message'
+      preLoaderRoute: typeof ApiWhatsappForwardMessageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/integration': {
+      id: '/api/whatsapp/integration'
+      path: '/api/whatsapp/integration'
+      fullPath: '/api/whatsapp/integration'
+      preLoaderRoute: typeof ApiWhatsappIntegrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send': {
+      id: '/api/whatsapp/send'
+      path: '/api/whatsapp/send'
+      fullPath: '/api/whatsapp/send'
+      preLoaderRoute: typeof ApiWhatsappSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send-audio': {
+      id: '/api/whatsapp/send-audio'
+      path: '/api/whatsapp/send-audio'
+      fullPath: '/api/whatsapp/send-audio'
+      preLoaderRoute: typeof ApiWhatsappSendAudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send-location': {
+      id: '/api/whatsapp/send-location'
+      path: '/api/whatsapp/send-location'
+      fullPath: '/api/whatsapp/send-location'
+      preLoaderRoute: typeof ApiWhatsappSendLocationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send-media': {
+      id: '/api/whatsapp/send-media'
+      path: '/api/whatsapp/send-media'
+      fullPath: '/api/whatsapp/send-media'
+      preLoaderRoute: typeof ApiWhatsappSendMediaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/send-reply': {
+      id: '/api/whatsapp/send-reply'
+      path: '/api/whatsapp/send-reply'
+      fullPath: '/api/whatsapp/send-reply'
+      preLoaderRoute: typeof ApiWhatsappSendReplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/test-send': {
+      id: '/api/whatsapp/test-send'
+      path: '/api/whatsapp/test-send'
+      fullPath: '/api/whatsapp/test-send'
+      preLoaderRoute: typeof ApiWhatsappTestSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/token-refresh': {
+      id: '/api/whatsapp/token-refresh'
+      path: '/api/whatsapp/token-refresh'
+      fullPath: '/api/whatsapp/token-refresh'
+      preLoaderRoute: typeof ApiWhatsappTokenRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/unmapped': {
+      id: '/api/whatsapp/unmapped'
+      path: '/api/whatsapp/unmapped'
+      fullPath: '/api/whatsapp/unmapped'
+      preLoaderRoute: typeof ApiWhatsappUnmappedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/meta/callback': {
+      id: '/auth/meta/callback'
+      path: '/auth/meta/callback'
+      fullPath: '/auth/meta/callback'
+      preLoaderRoute: typeof AuthMetaCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive/conversation-intelligence/inspect': {
+      id: '/api/executive/conversation-intelligence/inspect'
+      path: '/api/executive/conversation-intelligence/inspect'
+      fullPath: '/api/executive/conversation-intelligence/inspect'
+      preLoaderRoute: typeof ApiExecutiveConversationIntelligenceInspectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/executive/conversation-intelligence/job': {
@@ -2215,11 +2151,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiExecutiveConversationIntelligenceJobRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/executive/conversation-intelligence/inspect': {
-      id: '/api/executive/conversation-intelligence/inspect'
-      path: '/api/executive/conversation-intelligence/inspect'
-      fullPath: '/api/executive/conversation-intelligence/inspect'
-      preLoaderRoute: typeof ApiExecutiveConversationIntelligenceInspectRouteImport
+    '/api/public/hooks/agent-trigger': {
+      id: '/api/public/hooks/agent-trigger'
+      path: '/api/public/hooks/agent-trigger'
+      fullPath: '/api/public/hooks/agent-trigger'
+      preLoaderRoute: typeof ApiPublicHooksAgentTriggerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/followup-tick': {
+      id: '/api/public/hooks/followup-tick'
+      path: '/api/public/hooks/followup-tick'
+      fullPath: '/api/public/hooks/followup-tick'
+      preLoaderRoute: typeof ApiPublicHooksFollowupTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/publisher-tick': {
+      id: '/api/public/hooks/publisher-tick'
+      path: '/api/public/hooks/publisher-tick'
+      fullPath: '/api/public/hooks/publisher-tick'
+      preLoaderRoute: typeof ApiPublicHooksPublisherTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/runtime-tick': {
+      id: '/api/public/hooks/runtime-tick'
+      path: '/api/public/hooks/runtime-tick'
+      fullPath: '/api/public/hooks/runtime-tick'
+      preLoaderRoute: typeof ApiPublicHooksRuntimeTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/claim': {
+      id: '/api/public/render/claim'
+      path: '/api/public/render/claim'
+      fullPath: '/api/public/render/claim'
+      preLoaderRoute: typeof ApiPublicRenderClaimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/complete': {
+      id: '/api/public/render/complete'
+      path: '/api/public/render/complete'
+      fullPath: '/api/public/render/complete'
+      preLoaderRoute: typeof ApiPublicRenderCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/fail': {
+      id: '/api/public/render/fail'
+      path: '/api/public/render/fail'
+      fullPath: '/api/public/render/fail'
+      preLoaderRoute: typeof ApiPublicRenderFailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render/progress': {
+      id: '/api/public/render/progress'
+      path: '/api/public/render/progress'
+      fullPath: '/api/public/render/progress'
+      preLoaderRoute: typeof ApiPublicRenderProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/whatsapp/webhook': {
+      id: '/api/public/whatsapp/webhook'
+      path: '/api/public/whatsapp/webhook'
+      fullPath: '/api/public/whatsapp/webhook'
+      preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/templates/list': {
+      id: '/api/whatsapp/templates/list'
+      path: '/api/whatsapp/templates/list'
+      fullPath: '/api/whatsapp/templates/list'
+      preLoaderRoute: typeof ApiWhatsappTemplatesListRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/templates/send': {
+      id: '/api/whatsapp/templates/send'
+      path: '/api/whatsapp/templates/send'
+      fullPath: '/api/whatsapp/templates/send'
+      preLoaderRoute: typeof ApiWhatsappTemplatesSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/templates/sync': {
+      id: '/api/whatsapp/templates/sync'
+      path: '/api/whatsapp/templates/sync'
+      fullPath: '/api/whatsapp/templates/sync'
+      preLoaderRoute: typeof ApiWhatsappTemplatesSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/templates/update': {
+      id: '/api/whatsapp/templates/update'
+      path: '/api/whatsapp/templates/update'
+      fullPath: '/api/whatsapp/templates/update'
+      preLoaderRoute: typeof ApiWhatsappTemplatesUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -2305,6 +2325,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiAiSuggestReplyRoute: ApiAiSuggestReplyRoute,
   ApiAiTestNowRoute: ApiAiTestNowRoute,
+  ApiAiV2SuggestionRoute: ApiAiV2SuggestionRoute,
   ApiBusinessBrainSnapshotRoute: ApiBusinessBrainSnapshotRoute,
   ApiBusinessLearningSnapshotRoute: ApiBusinessLearningSnapshotRoute,
   ApiCoachAnalyzeRoute: ApiCoachAnalyzeRoute,

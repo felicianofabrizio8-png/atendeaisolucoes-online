@@ -37,7 +37,7 @@ function makeChain(table: string, row: Row) {
     },
     update: (patch: unknown) => {
       updatedRows.push({ table, patch });
-      return { eq: async () => ({ error: null }) };
+      return { eq: () => ({ eq: async () => ({ error: null }) }) };
     },
   };
   return chain;
