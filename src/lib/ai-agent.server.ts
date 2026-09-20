@@ -62,6 +62,11 @@ import {
 } from "./sales-agent-mode";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
+import {
+  buildCompactSalesContextSummary,
+  interpretStructuredSalesTurn,
+  type StructuredSalesAgentInterpretation,
+} from "./sales-agent-interpretation";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 export type { AgentContextBase } from "./sales-agent-core";
@@ -70,6 +75,7 @@ export interface SalesAgentTurnInterpretation {
   intent: "product_images" | "product_inquiry" | null;
   attributes: ReturnType<typeof extractCurrentProductAttributes>;
   references: { lastLeadText: string; productIds: string[] };
+  structured: StructuredSalesAgentInterpretation;
   history: AgentHistory;
 }
 
@@ -84,6 +90,7 @@ export function interpretSalesAgentTurn(
       : customerAskedAboutProducts(history)
         ? "product_inquiry"
         : null,
+    structured: interpretStructuredSalesTurn(history),
     attributes: extractCurrentProductAttributes(history),
     references: {
       lastLeadText,
@@ -598,7 +605,17 @@ export async function runAgentTurn(params: {
       status: catalogSearch.status,
       criteria: interpretation.attributes,
       referencedProductIds: interpretation.references.productIds,
+      subject: interpretation.structured.subject,
+      productReferenceKind: interpretation.structured.productReference.kind,
+      confirmation: interpretation.structured.confirmation,
+      confidence: interpretation.structured.confidence,
     },
+  });
+  const conversationSummary = buildCompactSalesContextSummary({
+    interpretation: interpretation.structured,
+    productIds: filteredSalesState.productIds,
+    lastValidProductIds: filteredSalesState.lastValidProductIds,
+    lastCatalogQueryStatus: filteredSalesState.lastCatalogQuery?.status,
   });
   if (stateScope && memoryStatus !== "error") await saveSalesStateSafely(stateScope, filteredSalesState);
   const relevantQuickReplies = await loadRelevantSalesAgentQuickReplies(
@@ -629,6 +646,9 @@ export async function runAgentTurn(params: {
   const contextualParams = {
     ...params,
     history: effectiveHistory,
+    structuredInterpretation: interpretation.structured,
+    conversationSummary,
+    compactContextEnabled: resolveSalesAgentMode(params.ctx.settings) !== null,
     sessionCorrections: normative.sessionCorrections,
     ctx: {
       ...params.ctx,

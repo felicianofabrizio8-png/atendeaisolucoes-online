@@ -12,6 +12,7 @@ import {
   resolveCatalogProductReferenceWithContext,
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
+import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -175,6 +176,9 @@ export interface SalesAgentCoreInput {
   };
   memoryStatus?: "found" | "missing" | "error";
   sessionCorrections?: SalesAgentSessionCorrection[];
+  structuredInterpretation?: StructuredSalesAgentInterpretation;
+  conversationSummary?: string;
+  compactContextEnabled?: boolean;
 }
 
 export interface SalesAgentSessionCorrection {
@@ -1124,7 +1128,7 @@ export function buildSalesAgentCompletionRequest(
     ? params.catalogSearch.products
     : [];
   const transcriptEntries = params.history
-    .slice(-20)
+    .slice(params.compactContextEnabled ? -8 : -20)
     .map(
       (m) =>
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
@@ -1156,7 +1160,9 @@ export function buildSalesAgentCompletionRequest(
       },
       {
         role: "user",
-      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
+      content: params.compactContextEnabled
+        ? `Estado compacto: ${params.conversationSummary ?? "none"}\n\nUltimas mensagens:\n${transcript.join("\n")}\n\nResponda seguindo as regras da sessao.`
+        : `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
       },
     ],
     tools: [

@@ -84,7 +84,13 @@ Avaliar LangGraph.js apenas se o grafo trouxer checkpointing, retries ou observa
   - Build: aprovado.
   - TypeScript: nenhum erro relacionado à implementação; erros globais em `src/router.tsx` e rotas de campanhas são preexistentes.
   - ESLint dos arquivos alterados: arquivos novos sem erros; falhas restantes são CRLF/formatação e um `no-useless-escape` preexistentes.
-- [ ] Fase 1: contexto compacto e continuidade.
+- [x] Fase 1: contexto compacto e continuidade.
+  - Interpretacao estruturada de intencao, assunto, referencia de produto, confirmacao e confianca integrada ao pipeline atual.
+  - Estado persistente continua canonico, com company_id, catalogo validado e IDs de produtos relevantes.
+  - Contexto compacto, resumo seguro e janela de 8 mensagens sao usados somente com a flag V2; o caminho legado preserva prompt e janela de 20 mensagens.
+  - Testes relacionados: 4 arquivos, 145 testes aprovados, incluindo conversas naturais e respostas curtas.
+  - TypeScript: nenhum erro nos arquivos da Fase 1; erros globais preexistentes em router.tsx e rotas de campanhas.
+  - Build: aprovado. ESLint restrito: falhas de CRLF/prettier preexistentes nos arquivos existentes; arquivos novos validados.
 - [ ] Fase 2: ferramentas de preço e ações.
 - [ ] Fase 3: execução e auditoria por modo.
 - [ ] Fase 4: auditoria de aprendizado aprovado.
