@@ -2424,8 +2424,6 @@ export type Database = {
           ai_max_auto_replies: number
           ai_pilot_enabled_at: string | null
           ai_pilot_mode: boolean
-          sales_agent_v2_enabled: boolean
-          sales_agent_v2_mode: string
           business_hours_end: string
           business_hours_start: string
           coach_interpreter_enabled: boolean
@@ -2481,8 +2479,6 @@ export type Database = {
           ai_max_auto_replies?: number
           ai_pilot_enabled_at?: string | null
           ai_pilot_mode?: boolean
-          sales_agent_v2_enabled?: boolean
-          sales_agent_v2_mode?: string
           business_hours_end?: string
           business_hours_start?: string
           coach_interpreter_enabled?: boolean
@@ -2538,8 +2534,6 @@ export type Database = {
           ai_max_auto_replies?: number
           ai_pilot_enabled_at?: string | null
           ai_pilot_mode?: boolean
-          sales_agent_v2_enabled?: boolean
-          sales_agent_v2_mode?: string
           business_hours_end?: string
           business_hours_start?: string
           coach_interpreter_enabled?: boolean
@@ -2751,6 +2745,7 @@ export type Database = {
           created_at: string
           id: string
           intent: string | null
+          last_catalog_query: Json | null
           last_valid_product_ids: string[]
           product_ids: string[]
           scope_id: string
@@ -2763,6 +2758,7 @@ export type Database = {
           created_at?: string
           id?: string
           intent?: string | null
+          last_catalog_query?: Json | null
           last_valid_product_ids?: string[]
           product_ids?: string[]
           scope_id: string
@@ -2775,6 +2771,7 @@ export type Database = {
           created_at?: string
           id?: string
           intent?: string | null
+          last_catalog_query?: Json | null
           last_valid_product_ids?: string[]
           product_ids?: string[]
           scope_id?: string
