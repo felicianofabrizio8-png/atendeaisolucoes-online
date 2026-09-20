@@ -310,6 +310,7 @@ Deno.serve(async (req) => {
 
   let payload: {
     mode?: string;
+    intent?: string;
     shortLivedToken?: string;
     code?: string;
     redirectUri?: string;

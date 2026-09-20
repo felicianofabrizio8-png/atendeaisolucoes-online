@@ -9,7 +9,10 @@
 // POST: recebe eventos. Valida assinatura X-Hub-Signature-256 (HMAC SHA-256 com META_APP_SECRET).
 //       Para cada evento, faz upsert de lead + conversation + insere message.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { buildSecretCandidates, verifyMetaSignature } from "./signature.ts";
 
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
@@ -169,7 +172,8 @@ async function logInstagramAppDiagnostics(sb: Sb, entryIds: string[]) {
   }
 }
 
-type Sb = ReturnType<typeof createClient>;
+// deno-lint-ignore no-explicit-any
+type Sb = SupabaseClient<any, "public", any>;
 
 async function fetchPsidName(psid: string, pageToken: string): Promise<string | null> {
   try {
@@ -677,7 +681,11 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
                 if (orig) {
                   const om = (orig.source_metadata ?? {}) as Record<string, unknown>;
                   const kind = (orig.source_subtype as string | null) ?? "text";
-                  const preview = buildReplyPreview(kind, orig.text ?? "", om);
+                  const preview = buildReplyPreview(
+                    kind,
+                    typeof orig.text === "string" ? orig.text : "",
+                    om,
+                  );
                   replyTo = {
                     message_id: orig.id,
                     external_id: ctxId,
@@ -810,7 +818,9 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
         // ordem: sent < delivered < read < failed; nunca rebaixa
         const rank: Record<string, number> = { sent: 1, delivered: 2, read: 3, failed: 4 };
-        const currentRank = rank[msg.delivery_status ?? ""] ?? 0;
+        const currentStatus =
+          typeof msg.delivery_status === "string" ? msg.delivery_status : "";
+        const currentRank = rank[currentStatus] ?? 0;
         const incomingRank = rank[status] ?? 0;
         if (incomingRank === 0 || incomingRank < currentRank) continue;
 
