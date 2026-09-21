@@ -5,7 +5,7 @@ import type { StatSnapshot } from "@/lib/atendimento/stats";
 const ROTATION_MS = 7000;
 
 /**
- * Carrossel dos cartões coloridos de métrica.
+ * Carrossel dos cartões escuros de métrica.
  *
  * Troca de cartão a cada 7s deslizando para o lado. Decisões que valem
  * comentário:
@@ -110,19 +110,25 @@ export function StatCarousel({
                   "group relative shrink-0 basis-full text-left",
                   // pt maior que o resto: o topo é a faixa dos indicadores.
                   "aspect-[16/11] max-h-[230px] rounded-[28px] px-6 pb-5 pt-12 flex flex-col justify-center",
+                  // A borda é o que separa o cartão do fundo da página, que
+                  // também é quase preto. Sem ela o cartão perde o contorno
+                  // no lado que não tem brilho.
+                  "border border-white/10",
                   "outline-none transition-[box-shadow,transform] duration-200",
                   "focus-visible:ring-2 focus-visible:ring-white/70",
                   selected && "ring-2 ring-white/80",
                 )}
                 style={{ background: stat.gradient }}
               >
-                {/* Brilho sutil no topo: dá volume ao cartão chapado. */}
+                {/* Véu branco bem fraco no topo, só para o cartão não ficar
+                    chapado. Em 0,28 como antes ele acinzentava a base preta e
+                    matava o efeito de luz no escuro. */}
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-[28px] opacity-60"
+                  className="pointer-events-none absolute inset-0 rounded-[28px]"
                   style={{
                     background:
-                      "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.28), transparent 60%)",
+                      "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.07), transparent 58%)",
                   }}
                 />
                 {/* Rótulo e número colados, número dominando o cartão. A
@@ -137,7 +143,7 @@ export function StatCarousel({
                   </span>
                 </span>
                 {selected && (
-                  <span className="absolute bottom-4 left-6 rounded-full bg-black/25 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                  <span className="absolute bottom-4 left-6 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
                     filtrando
                   </span>
                 )}
@@ -170,7 +176,9 @@ export function StatCarousel({
               <span
                 className={cn(
                   "block h-[5px] w-5 overflow-hidden rounded-full shadow-sm transition-colors duration-300",
-                  i === index ? "bg-black/25" : "bg-white/35 hover:bg-white/60",
+                  // Trilho claro, não escuro: o cartão agora é preto e um
+                  // trilho preto sumiria dentro dele.
+                  i === index ? "bg-white/20" : "bg-white/35 hover:bg-white/60",
                 )}
               >
                 {i === index && (

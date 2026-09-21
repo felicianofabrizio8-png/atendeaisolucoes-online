@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, CornerDownLeft, Loader2, Send, Sparkles, Wand2 } from "lucide-react";
+import { ArrowUp, Check, Copy, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/data/mock";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
-import {
-  answerQuestion,
-  quickPrompts,
-  suggestNextMessage,
-  type CopilotContext,
-} from "@/lib/atendimento/copilot";
+import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
+import { AiOrb } from "./AiOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
@@ -199,9 +195,18 @@ interface ChatEntry {
   id: string;
   role: "user" | "ia";
   text: string;
-  followUps?: string[];
 }
 
+/**
+ * Aba IA — superfície de conversa, não painel de leitura.
+ *
+ * Em repouso mostra só a orbe, a saudação e o campo: quem abre a aba quer
+ * perguntar alguma coisa, e um card de sugestão sempre aberto roubava essa
+ * decisão. O que a IA tem a dizer aparece quando o atendente pede.
+ *
+ * As sugestões prontas continuam em `@/lib/atendimento/copilot`
+ * (`suggestNextMessage`, `quickPrompts`), sem superfície por enquanto.
+ */
 function AiTab({
   contact,
   onUseSuggestion,
@@ -220,11 +225,9 @@ function AiTab({
     [contact],
   );
 
-  const suggestion = useMemo(() => suggestNextMessage(ctx), [ctx]);
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [copied, setCopied] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   // Trocar de conversa zera o fio do copiloto: contexto antigo respondendo
@@ -248,169 +251,143 @@ function AiTab({
     // "pensando…" comunica que a IA leu a conversa antes de responder.
     window.setTimeout(() => {
       const answer = answerQuestion(q, ctx);
-      setChat((prev) => [
-        ...prev,
-        { id: `a-${Date.now()}`, role: "ia", text: answer.text, followUps: answer.followUps },
-      ]);
+      setChat((prev) => [...prev, { id: `a-${Date.now()}`, role: "ia", text: answer.text }]);
       setThinking(false);
     }, 420);
   };
 
+  const idle = chat.length === 0 && !thinking;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <PanelHeading title="Sugestões" subtitle="Dados gerados por IA" />
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-        <section>
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-[13px] font-bold">Próxima Mensagem</span>
-            <span className="rounded-full bg-secondary/70 px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
-              {suggestion.play} · {suggestion.confidence}%
-            </span>
-          </div>
-
-          <div className="rounded-2xl border border-border p-3.5 text-sm leading-relaxed">
-            {suggestion.text}
-          </div>
-
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => onUseSuggestion(suggestion.text)}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:opacity-90"
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-              Usar no chat
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(suggestion.text).then(() => {
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1200);
-                });
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-bold hover:bg-secondary"
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copiado" : "Copiar"}
-            </button>
-          </div>
-
-          <p className="mt-2.5 rounded-2xl border border-border bg-secondary p-3.5 text-xs leading-relaxed text-muted-foreground">
-            {suggestion.rationale}
-          </p>
-        </section>
-
-        {chat.length === 0 && !thinking && (
-          <section>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              Perguntas rápidas
+    <div className="flex min-h-0 flex-1 flex-col">
+      {idle ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center">
+          {/* Espaçadores 1 : 2,4 em vez de padding fixo — o conjunto fica no
+              terço superior tanto na coluna baixa do desktop quanto na gaveta
+              alta do celular. */}
+          <div className="min-h-4 flex-[1]" />
+          <div className="flex flex-col items-center gap-7">
+            <AiOrb size={196} />
+            <p className="max-w-[13ch] text-center text-[22px] font-bold leading-tight">
+              Como posso te ajudar hoje?
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {quickPrompts().map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => ask(p)}
-                  className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-transparent hover:bg-secondary hover:text-foreground"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {chat.map((entry) => (
-          <div key={entry.id} className="space-y-2">
-            <div
-              className={cn(
-                "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
-                // Minhas perguntas usam a cor de destaque do app; a resposta
-                // da IA fica na superfície neutra. Mesma lógica dos balões do
-                // chat com o cliente, para o olho não ter que reaprender.
-                entry.role === "user"
-                  ? "ml-6 border border-primary/30 bg-primary/20 text-foreground"
-                  : "border border-border bg-secondary",
-              )}
-            >
-              <p className="whitespace-pre-wrap">
-                <RichText text={entry.text} />
-              </p>
-            </div>
-            {entry.followUps && entry.followUps.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {entry.followUps.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => ask(f)}
-                    className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  >
-                    <CornerDownLeft className="h-3 w-3" />
-                    {f}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-        ))}
+          <div className="flex-[2.4]" />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          {chat.map((entry) => (
+            <div key={entry.id} className="space-y-1.5">
+              <div
+                className={cn(
+                  "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+                  // Minhas perguntas usam a cor de destaque do app; a resposta
+                  // da IA fica na superfície neutra. Mesma lógica dos balões do
+                  // chat com o cliente, para o olho não ter que reaprender.
+                  entry.role === "user"
+                    ? "ml-6 border border-primary/30 bg-primary/20 text-foreground"
+                    : "border border-border bg-secondary",
+                )}
+              >
+                <p className="whitespace-pre-wrap">
+                  <RichText text={entry.text} />
+                </p>
+              </div>
+              {entry.role === "ia" && (
+                <button
+                  type="button"
+                  onClick={() => onUseSuggestion(entry.text)}
+                  className="inline-flex items-center gap-1.5 rounded-full px-1 text-[11px] font-bold text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Usar no chat
+                </button>
+              )}
+            </div>
+          ))}
 
-        {thinking && (
-          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            lendo a conversa…
-          </p>
-        )}
+          {thinking && (
+            <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              lendo a conversa…
+            </p>
+          )}
 
-        <div ref={endRef} />
-      </div>
+          <div ref={endRef} />
+        </div>
+      )}
 
-      {/* Campo com borda em gradiente: é o convite visual para falar com a IA. */}
-      <div
-        className="rounded-full p-[2px]"
-        style={{
-          background:
-            "linear-gradient(90deg, oklch(0.55 0.24 285), oklch(0.62 0.20 320), oklch(0.75 0.16 200))",
+      <Composer value={input} onChange={setInput} onSubmit={ask} disabled={thinking} />
+    </div>
+  );
+}
+
+/** Gradiente da orbe, reaproveitado na borda e no rótulo do campo. */
+const ORB_GRADIENT = "linear-gradient(95deg, #ffc247, #ff6a3d, #ff2d78, #9b5cff)";
+
+function Composer({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    // Borda em gradiente: é o único elemento aceso da aba em repouso, então
+    // carrega sozinho o convite para falar com a IA.
+    <div className="shrink-0 rounded-full p-[2px]" style={{ background: ORB_GRADIENT }}>
+      {/* <form> em vez de onKeyDown: Enter enviar é comportamento nativo do
+          navegador aqui, inclusive em teclado virtual e leitor de tela. */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit(value);
         }}
+        className="relative flex items-center gap-2 rounded-full bg-background px-5 py-1"
       >
-        {/* <form> em vez de onKeyDown: Enter enviar é comportamento nativo do
-            navegador aqui, inclusive em teclado virtual e leitor de tela. */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            ask(input);
+        {/* O rótulo é uma camada própria porque ::placeholder não aceita
+            gradiente — e o gradiente é o que amarra o campo à orbe. */}
+        {!value && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-5 text-[15px] font-bold text-transparent"
+            style={{ backgroundImage: ORB_GRADIENT, backgroundClip: "text" }}
+          >
+            Perguntar
+          </span>
+        )}
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          // O <form> já cobre o Enter na maioria dos navegadores; o handler
+          // explícito garante o mesmo comportamento onde a submissão
+          // implícita não dispara (webviews e alguns teclados virtuais).
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSubmit(value);
+            }
           }}
-          className="flex items-center gap-2 rounded-full bg-background px-4 py-1"
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            // O <form> já cobre o Enter na maioria dos navegadores; o handler
-            // explícito garante o mesmo comportamento onde a submissão
-            // implícita não dispara (webviews e alguns teclados virtuais).
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                ask(input);
-              }
-            }}
-            placeholder="Pergunte para IA"
-            aria-label="Pergunte para a IA sobre esta conversa"
-            className="h-10 flex-1 bg-transparent text-sm font-bold outline-none placeholder:font-bold"
-            style={{ color: "inherit" }}
-          />
+          aria-label="Pergunte para a IA sobre esta conversa"
+          className="h-11 flex-1 bg-transparent text-[15px] font-bold outline-none"
+        />
+        {/* Só aparece com texto: em repouso o campo fica limpo como a referência. */}
+        {value.trim() && (
           <button
             type="submit"
-            disabled={!input.trim() || thinking}
+            disabled={disabled}
             aria-label="Enviar pergunta"
-            className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+            className="shrink-0 rounded-full p-1.5 text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{ background: ORB_GRADIENT }}
           >
-            <Send className="h-4 w-4" />
+            <ArrowUp className="h-4 w-4" />
           </button>
-        </form>
-      </div>
+        )}
+      </form>
     </div>
   );
 }
