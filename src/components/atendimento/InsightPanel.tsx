@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Check, Copy, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Check, Copy, Loader2, Paperclip, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/data/mock";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
 import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
-import { AiOrb } from "./AiOrb";
+import { AiComposer, type Attachment } from "./AiComposer";
+import { SiriOrb } from "./SiriOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
@@ -195,6 +196,8 @@ interface ChatEntry {
   id: string;
   role: "user" | "ia";
   text: string;
+  /** Nomes dos arquivos anexados à pergunta, só para exibição. */
+  attachmentNames?: string[];
 }
 
 /**
@@ -241,11 +244,19 @@ function AiTab({
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [chat.length, thinking]);
 
-  const ask = (question: string) => {
+  const ask = (question: string, attachments: Attachment[] = []) => {
     const q = question.trim();
-    if (!q || thinking) return;
+    if ((!q && attachments.length === 0) || thinking) return;
     setInput("");
-    setChat((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", text: q }]);
+    setChat((prev) => [
+      ...prev,
+      {
+        id: `u-${Date.now()}`,
+        role: "user",
+        text: q,
+        attachmentNames: attachments.map((a) => a.file.name),
+      },
+    ]);
     setThinking(true);
     // Pequeno atraso proposital: resposta instantânea parece bug, e o
     // "pensando…" comunica que a IA leu a conversa antes de responder.
@@ -267,7 +278,7 @@ function AiTab({
               alta do celular. */}
           <div className="min-h-4 flex-[1]" />
           <div className="flex flex-col items-center gap-7">
-            <AiOrb size={196} />
+            <SiriOrb size={176} />
             <p className="max-w-[13ch] text-center text-[22px] font-bold leading-tight">
               Como posso te ajudar hoje?
             </p>
@@ -289,9 +300,24 @@ function AiTab({
                     : "border border-border bg-secondary",
                 )}
               >
-                <p className="whitespace-pre-wrap">
-                  <RichText text={entry.text} />
-                </p>
+                {entry.text && (
+                  <p className="whitespace-pre-wrap">
+                    <RichText text={entry.text} />
+                  </p>
+                )}
+                {entry.attachmentNames && entry.attachmentNames.length > 0 && (
+                  <ul className="mt-1 space-y-0.5">
+                    {entry.attachmentNames.map((name) => (
+                      <li
+                        key={name}
+                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                      >
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               {entry.role === "ia" && (
                 <button
@@ -317,77 +343,7 @@ function AiTab({
         </div>
       )}
 
-      <Composer value={input} onChange={setInput} onSubmit={ask} disabled={thinking} />
-    </div>
-  );
-}
-
-/** Gradiente da orbe, reaproveitado na borda e no rótulo do campo. */
-const ORB_GRADIENT = "linear-gradient(95deg, #ffc247, #ff6a3d, #ff2d78, #9b5cff)";
-
-function Composer({
-  value,
-  onChange,
-  onSubmit,
-  disabled,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSubmit: (v: string) => void;
-  disabled: boolean;
-}) {
-  return (
-    // Borda em gradiente: é o único elemento aceso da aba em repouso, então
-    // carrega sozinho o convite para falar com a IA.
-    <div className="shrink-0 rounded-full p-[2px]" style={{ background: ORB_GRADIENT }}>
-      {/* <form> em vez de onKeyDown: Enter enviar é comportamento nativo do
-          navegador aqui, inclusive em teclado virtual e leitor de tela. */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit(value);
-        }}
-        className="relative flex items-center gap-2 rounded-full bg-background px-5 py-1"
-      >
-        {/* O rótulo é uma camada própria porque ::placeholder não aceita
-            gradiente — e o gradiente é o que amarra o campo à orbe. */}
-        {!value && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-5 text-[15px] font-bold text-transparent"
-            style={{ backgroundImage: ORB_GRADIENT, backgroundClip: "text" }}
-          >
-            Perguntar
-          </span>
-        )}
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          // O <form> já cobre o Enter na maioria dos navegadores; o handler
-          // explícito garante o mesmo comportamento onde a submissão
-          // implícita não dispara (webviews e alguns teclados virtuais).
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSubmit(value);
-            }
-          }}
-          aria-label="Pergunte para a IA sobre esta conversa"
-          className="h-11 flex-1 bg-transparent text-[15px] font-bold outline-none"
-        />
-        {/* Só aparece com texto: em repouso o campo fica limpo como a referência. */}
-        {value.trim() && (
-          <button
-            type="submit"
-            disabled={disabled}
-            aria-label="Enviar pergunta"
-            className="shrink-0 rounded-full p-1.5 text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: ORB_GRADIENT }}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-        )}
-      </form>
+      <AiComposer value={input} onChange={setInput} onSubmit={ask} disabled={thinking} />
     </div>
   );
 }

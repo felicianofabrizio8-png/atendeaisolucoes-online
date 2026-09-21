@@ -499,3 +499,97 @@ iframe[src*="lovable.dev/badge"] {
   from { width: 0%; }
   to { width: 100%; }
 }
+
+/* ---------------------------------------------------------------------------
+   Orbe da IA (SiriOrb)
+
+   O CSS mora aqui e não no componente porque `@property` só registra um tipo
+   customizado no nível do documento — dentro de um <style> injetado por
+   componente ele funciona por acidente e quebra quando o componente desmonta.
+   Sem `@property`, `--angle` é apenas um texto e a animação de rotação não
+   interpola: a orbe fica parada.
+
+   Neste projeto o tema escuro é o padrão (:root) e o claro é a exceção
+   (:root.light) — o inverso da convenção `.dark` do snippet original.
+--------------------------------------------------------------------------- */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.siri-orb {
+  display: grid;
+  grid-template-areas: "stack";
+  overflow: hidden;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.015) 30%,
+    transparent 70%
+  );
+}
+
+:root.light .siri-orb {
+  background: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.03) 30%,
+    transparent 70%
+  );
+}
+
+.siri-orb::before {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    conic-gradient(from calc(var(--angle) * 1.2) at 30% 65%,
+      var(--c3) 0deg, transparent 45deg 315deg, var(--c3) 360deg),
+    conic-gradient(from calc(var(--angle) * 0.8) at 70% 35%,
+      var(--c2) 0deg, transparent 60deg 300deg, var(--c2) 360deg),
+    conic-gradient(from calc(var(--angle) * -1.5) at 65% 75%,
+      var(--c1) 0deg, transparent 90deg 270deg, var(--c1) 360deg),
+    conic-gradient(from calc(var(--angle) * 2.1) at 25% 25%,
+      var(--c2) 0deg, transparent 30deg 330deg, var(--c2) 360deg),
+    conic-gradient(from calc(var(--angle) * -0.7) at 80% 80%,
+      var(--c1) 0deg, transparent 45deg 315deg, var(--c1) 360deg),
+    radial-gradient(ellipse 120% 80% at 40% 60%,
+      var(--c3) 0%, transparent 50%);
+  filter: blur(var(--blur-amount)) contrast(var(--contrast-amount)) saturate(1);
+  animation: siri-orb-rotate var(--animation-duration) linear infinite;
+  /* translateZ(0) promove a camada: a rotação roda no compositor e não
+     repinta o painel de atendimento a cada frame. */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.siri-orb::after {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 45% 55%,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    transparent 60%
+  );
+  mix-blend-mode: overlay;
+}
+
+@keyframes siri-orb-rotate {
+  from { --angle: 0deg; }
+  to { --angle: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siri-orb::before { animation: none; }
+}

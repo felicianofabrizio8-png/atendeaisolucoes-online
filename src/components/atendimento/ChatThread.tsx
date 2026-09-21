@@ -227,7 +227,12 @@ export function ChatThread({
               }
             }}
             placeholder="Mandar mensagem"
-            className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground"
+            // min-w-0 é obrigatório aqui: um item flex tem `min-width: auto`,
+            // então este campo se recusava a encolher abaixo da largura do
+            // próprio placeholder e empurrava os botões para FORA do form —
+            // o "Enviar" chegava a aparecer por cima do painel de IA em
+            // telas estreitas.
+            className="h-10 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground"
           />
           <button
             type="button"
