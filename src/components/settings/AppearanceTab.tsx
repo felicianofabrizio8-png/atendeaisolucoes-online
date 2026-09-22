@@ -2,14 +2,12 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  ACCENT_OPTIONS,
   FONT_OPTIONS,
   THEME_OPTIONS,
   fontFamilyValue,
   getAppearance,
   getServerAppearance,
   googleFontsHref,
-  setAccent,
   setFont,
   setTheme,
   subscribeAppearance,
@@ -62,7 +60,7 @@ function usePreviewFonts() {
 }
 
 export function AppearanceTab() {
-  const { theme, accent, font } = useSyncExternalStore(
+  const { theme, font } = useSyncExternalStore(
     subscribeAppearance,
     getAppearance,
     getServerAppearance,
@@ -120,7 +118,9 @@ export function AppearanceTab() {
                     <span
                       className={cn(
                         "h-4 w-4 rounded-full border grid place-items-center shrink-0",
-                        active ? "border-primary bg-primary text-primary-foreground" : "border-border",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border",
                       )}
                     >
                       {active && <Check className="h-2.5 w-2.5" />}
@@ -135,65 +135,8 @@ export function AppearanceTab() {
         </section>
 
         <section className="pt-6 border-t border-border">
-          <h3 className="text-sm font-semibold mb-1">Cor de destaque</h3>
-          <p className="text-xs text-muted-foreground mb-4">
-            Usada nos botões, links e detalhes do painel.
-          </p>
-
-          <div className="flex flex-wrap gap-4">
-            {ACCENT_OPTIONS.map((opt) => {
-              const active = accent === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setAccent(opt.value)}
-                  aria-pressed={active}
-                  aria-label={opt.label}
-                  title={opt.label}
-                  className="flex flex-col items-center gap-1.5 group"
-                >
-                  <span
-                    className={cn(
-                      "h-10 w-10 rounded-full grid place-items-center text-white transition-transform group-hover:scale-105",
-                      active && "ring-2 ring-offset-2 ring-offset-background ring-foreground/70",
-                    )}
-                    style={{ background: opt.swatch }}
-                  >
-                    {active && <Check className="h-4 w-4" />}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-[11px]",
-                      active ? "font-semibold text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {opt.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Prévia
-            </span>
-            <button
-              type="button"
-              className="text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5"
-            >
-              Botão principal
-            </button>
-            <span className="text-xs font-medium text-primary">Link de exemplo →</span>
-          </div>
-        </section>
-
-        <section className="pt-6 border-t border-border">
           <h3 className="text-sm font-semibold mb-1">Fonte</h3>
-          <p className="text-xs text-muted-foreground mb-4">
-            Tipografia usada em todo o painel.
-          </p>
+          <p className="text-xs text-muted-foreground mb-4">Tipografia usada em todo o painel.</p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {FONT_OPTIONS.map((opt) => {

@@ -143,19 +143,11 @@ function InfoTab({ contact }: { contact: AtendimentoContact }) {
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
       <PanelHeading title="Informações" subtitle="Dados gerados por IA" />
 
-      <Field
-        label="Nome"
-        value={lead.name}
-        badge={<CustomerTierBadge history={history} />}
-      />
+      <Field label="Nome" value={lead.name} badge={<CustomerTierBadge history={history} />} />
       <Field label="Telefone" value={lead.phone ?? lead.handle} />
       <Field label="Cidade" value={conversation.detectedCity} />
       <Field label="Estado" value={conversation.detectedState} />
-      <Field
-        label="Resumo"
-        multiline
-        value={summary ?? conversation.detectedIntent ?? null}
-      />
+      <Field label="Resumo" multiline value={summary ?? conversation.detectedIntent ?? null} />
 
       <div className="rounded-2xl border border-border p-3.5">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -186,7 +178,9 @@ function InfoTab({ contact }: { contact: AtendimentoContact }) {
 function MiniStat({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="rounded-xl border border-border bg-secondary px-3 py-2">
-      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
       <dd className="mt-0.5 text-xs font-medium leading-snug">{value ?? "—"}</dd>
     </div>
   );
@@ -292,11 +286,12 @@ function AiTab({
               <div
                 className={cn(
                   "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
-                  // Minhas perguntas usam a cor de destaque do app; a resposta
-                  // da IA fica na superfície neutra. Mesma lógica dos balões do
-                  // chat com o cliente, para o olho não ter que reaprender.
+                  // Mesma lógica dos balões do chat com o cliente, para o olho
+                  // não ter que reaprender: pergunta sólida em `primary`
+                  // (cinza no escuro, quase preto no claro), resposta da IA na
+                  // superfície neutra.
                   entry.role === "user"
-                    ? "ml-6 border border-primary/30 bg-primary/20 text-foreground"
+                    ? "ml-6 bg-primary text-primary-foreground"
                     : "border border-border bg-secondary",
                 )}
               >
@@ -343,7 +338,30 @@ function AiTab({
         </div>
       )}
 
+      {/* Duas ações, não cinco. O painel voltou a ser limpo justamente por
+          tirar a parede de sugestões; o que fica aqui é o atalho para as duas
+          coisas que o atendente pede em quase todo turno. */}
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {QUICK_ACTIONS.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            disabled={thinking}
+            onClick={() => ask(action.prompt)}
+            className="rounded-full border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+
       <AiComposer value={input} onChange={setInput} onSubmit={ask} disabled={thinking} />
     </div>
   );
 }
+
+/** Atalhos fixos acima do campo. `prompt` é o que vai de fato para a IA. */
+const QUICK_ACTIONS: Array<{ label: string; prompt: string }> = [
+  { label: "Próxima resposta", prompt: "Qual a melhor próxima mensagem?" },
+  { label: "Resumir conversa", prompt: "Resuma essa conversa" },
+];

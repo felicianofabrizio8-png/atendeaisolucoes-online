@@ -80,8 +80,16 @@
   --popover: oklch(0.24 0 0);
   --popover-foreground: oklch(0.96 0 0);
 
-  /* Primary — cor de destaque (padrão ciano; ver [data-accent] abaixo) */
-  --primary: oklch(0.78 0.16 195);
+  /* Primary — neutro.
+     A escolha de cor de destaque saiu do produto: `--primary` deixou de ser
+     "a cor da marca" e virou só ênfase.
+
+     A LUMINOSIDADE é a mesma do ciano que estava aqui (0.78); só o croma foi
+     a zero. Isso não é detalhe: `--primary` é usada como COR DE TEXTO em ~386
+     lugares, e escurecê-la deixaria tudo isso ilegível sobre as superfícies
+     escuras. Mantendo a luminosidade, toda relação de contraste que já
+     funcionava continua valendo. */
+  --primary: oklch(0.78 0 0);
   --primary-foreground: oklch(0.18 0 0);
 
   --secondary: oklch(0.28 0 0);
@@ -98,7 +106,7 @@
 
   --border: oklch(0.30 0 0);
   --input: oklch(0.28 0 0);
-  --ring: oklch(0.78 0.16 195);
+  --ring: oklch(0.55 0 0);
 
   /* Status palette */
   --status-urgent: oklch(0.65 0.24 28);          /* red — sem resposta / SLA estourado */
@@ -151,9 +159,10 @@
   --popover: oklch(0.995 0.002 250);
   --popover-foreground: oklch(0.20 0.014 250);
 
-  /* Primary — darken teal slightly for AA contrast on light */
-  --primary: oklch(0.58 0.13 195);
-  --primary-foreground: oklch(0.99 0.002 250);
+  /* Primary — quase preto no tema claro (ver nota em :root). Aqui escurecer
+     é seguro: o texto fica sobre superfícies claras. */
+  --primary: oklch(0.21 0 0);
+  --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.94 0.006 250);
   --secondary-foreground: oklch(0.20 0.014 250);
@@ -169,7 +178,7 @@
 
   --border: oklch(0.90 0.008 250);
   --input: oklch(0.93 0.008 250);
-  --ring: oklch(0.58 0.13 195);
+  --ring: oklch(0.45 0 0);
 
   /* Status — darken slightly for contrast on light backgrounds */
   --status-urgent: oklch(0.58 0.22 28);
@@ -216,6 +225,7 @@
   --popover: oklch(0.17 0 0);
   --popover-foreground: oklch(0.95 0 0);
 
+  --primary: oklch(0.74 0 0);
   --primary-foreground: oklch(0.12 0 0);
 
   --secondary: oklch(0.20 0 0);
@@ -235,50 +245,6 @@
   --sidebar-border: oklch(0.22 0 0);
   --sidebar-accent: oklch(0.18 0 0);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-}
-
-/* Cores de destaque (botões e detalhes). Ciano é o padrão definido acima;
-   as demais trocam primary/ring/chart-1. Temas escuros usam tons vivos com
-   texto escuro; o tema claro usa tons mais fechados com texto claro. */
-:root[data-accent="blue"] {
-  --primary: oklch(0.72 0.14 255);
-  --ring: oklch(0.72 0.14 255);
-  --chart-1: oklch(0.72 0.14 255);
-}
-:root[data-accent="violet"] {
-  --primary: oklch(0.72 0.15 300);
-  --ring: oklch(0.72 0.15 300);
-  --chart-1: oklch(0.72 0.15 300);
-}
-:root[data-accent="green"] {
-  --primary: oklch(0.76 0.17 150);
-  --ring: oklch(0.76 0.17 150);
-  --chart-1: oklch(0.76 0.17 150);
-}
-:root[data-accent="orange"] {
-  --primary: oklch(0.76 0.16 55);
-  --ring: oklch(0.76 0.16 55);
-  --chart-1: oklch(0.76 0.16 55);
-}
-:root.light[data-accent="blue"] {
-  --primary: oklch(0.55 0.16 255);
-  --ring: oklch(0.55 0.16 255);
-  --chart-1: oklch(0.55 0.16 255);
-}
-:root.light[data-accent="violet"] {
-  --primary: oklch(0.55 0.17 300);
-  --ring: oklch(0.55 0.17 300);
-  --chart-1: oklch(0.55 0.17 300);
-}
-:root.light[data-accent="green"] {
-  --primary: oklch(0.55 0.15 150);
-  --ring: oklch(0.55 0.15 150);
-  --chart-1: oklch(0.55 0.15 150);
-}
-:root.light[data-accent="orange"] {
-  --primary: oklch(0.60 0.17 50);
-  --ring: oklch(0.60 0.17 50);
-  --chart-1: oklch(0.60 0.17 50);
 }
 
 @layer base {

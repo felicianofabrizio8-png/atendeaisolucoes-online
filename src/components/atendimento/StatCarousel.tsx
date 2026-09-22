@@ -80,8 +80,14 @@ export function StatCarousel({
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
       onKeyDown={(e) => {
-        if (e.key === "ArrowRight") { e.preventDefault(); go(index + 1); }
-        if (e.key === "ArrowLeft") { e.preventDefault(); go(index - 1); }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          go(index + 1);
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          go(index - 1);
+        }
       }}
     >
       <div className="relative overflow-hidden rounded-[28px]">
@@ -89,9 +95,7 @@ export function StatCarousel({
           className="flex"
           style={{
             transform: `translateX(-${index * 100}%)`,
-            transition: reduceMotion
-              ? "none"
-              : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+            transition: reduceMotion ? "none" : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           {stats.map((stat) => {
@@ -110,10 +114,9 @@ export function StatCarousel({
                   "group relative shrink-0 basis-full text-left",
                   // pt maior que o resto: o topo é a faixa dos indicadores.
                   "aspect-[16/11] max-h-[230px] rounded-[28px] px-6 pb-5 pt-12 flex flex-col justify-center",
-                  // A borda é o que separa o cartão do fundo da página, que
-                  // também é quase preto. Sem ela o cartão perde o contorno
-                  // no lado que não tem brilho.
-                  "border border-white/10",
+                  // Sem borda: numa base quase preta a linha de 1px não lia
+                  // como contorno, lia como serrilhado no canto arredondado.
+                  // Quem separa o cartão do fundo é o próprio brilho.
                   "outline-none transition-[box-shadow,transform] duration-200",
                   "focus-visible:ring-2 focus-visible:ring-white/70",
                   selected && "ring-2 ring-white/80",

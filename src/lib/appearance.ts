@@ -6,7 +6,6 @@
 export type ThemeMode = "black" | "dark" | "light";
 /** Barra lateral do AppShell: largura cheia com textos, ou trilho só de ícones. */
 export type SidebarState = "expanded" | "collapsed";
-export type AccentColor = "cyan" | "blue" | "violet" | "green" | "orange";
 export type AppFont =
   | "system"
   | "Inter"
@@ -24,16 +23,6 @@ export const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description
   { value: "light", label: "Claro", description: "Fundo claro e suave" },
 ];
 
-// `swatch` é só a amostra exibida na tela de Aparência; as cores reais
-// aplicadas em cada tema ficam em styles.css ([data-accent]).
-export const ACCENT_OPTIONS: Array<{ value: AccentColor; label: string; swatch: string }> = [
-  { value: "cyan", label: "Ciano", swatch: "oklch(0.72 0.15 195)" },
-  { value: "blue", label: "Azul", swatch: "oklch(0.64 0.16 255)" },
-  { value: "violet", label: "Violeta", swatch: "oklch(0.64 0.17 300)" },
-  { value: "green", label: "Verde", swatch: "oklch(0.68 0.16 150)" },
-  { value: "orange", label: "Laranja", swatch: "oklch(0.72 0.16 55)" },
-];
-
 // Mesma allowlist de fontes do Brand Center, carregadas do Google Fonts sob demanda.
 export const FONT_OPTIONS: Array<{ value: AppFont; label: string }> = [
   { value: "system", label: "Padrão do sistema" },
@@ -47,7 +36,8 @@ export const FONT_OPTIONS: Array<{ value: AppFont; label: string }> = [
   { value: "Merriweather", label: "Merriweather" },
 ];
 
-const FALLBACK_STACK = 'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"';
+const FALLBACK_STACK =
+  'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"';
 
 // Lato e Merriweather não são fontes variáveis: pesos listados explicitamente.
 const FONT_WEIGHTS: Record<Exclude<AppFont, "system">, string> = {
@@ -74,31 +64,28 @@ export function googleFontsHref(fonts: AppFont[]): string | null {
 }
 
 const THEME_KEY = "atendeai.theme";
-const ACCENT_KEY = "atendeai.accent";
+// Mantida só para limpar a preferência de quem usou a versão com escolha de
+// cor de destaque. Sem isto, um navegador que gravou "orange" ficaria com
+// data-accent no <html> para sempre, e o CSS que o atendia já não existe.
+const LEGACY_ACCENT_KEY = "atendeai.accent";
 const FONT_KEY = "atendeai.font";
 const SIDEBAR_KEY = "atendeai.sidebar";
 const FONT_LINK_ID = "atendeai-font";
 
 export type Appearance = {
   theme: ThemeMode;
-  accent: AccentColor;
   font: AppFont;
   sidebar: SidebarState;
 };
 
 const DEFAULT: Appearance = {
   theme: "dark",
-  accent: "cyan",
   font: "system",
   sidebar: "expanded",
 };
 
 function isTheme(v: unknown): v is ThemeMode {
   return THEME_OPTIONS.some((o) => o.value === v);
-}
-
-function isAccent(v: unknown): v is AccentColor {
-  return ACCENT_OPTIONS.some((o) => o.value === v);
 }
 
 function isFont(v: unknown): v is AppFont {
@@ -113,7 +100,7 @@ function isSidebar(v: unknown): v is SidebarState {
 export const APPEARANCE_BOOT_SCRIPT = `(function(){try{
 var d=document.documentElement,s=localStorage;
 var t=s.getItem(${JSON.stringify(THEME_KEY)});if(t==='light'||t==='black'){d.classList.add(t);}
-var a=s.getItem(${JSON.stringify(ACCENT_KEY)});if(${JSON.stringify(ACCENT_OPTIONS.map((o) => o.value).filter((v) => v !== "cyan"))}.indexOf(a)>=0){d.setAttribute('data-accent',a);}
+s.removeItem(${JSON.stringify(LEGACY_ACCENT_KEY)});d.removeAttribute('data-accent');
 var f=s.getItem(${JSON.stringify(FONT_KEY)});var fonts=${JSON.stringify(
   Object.fromEntries(
     FONT_OPTIONS.filter((o) => o.value !== "system").map((o) => [
@@ -150,26 +137,21 @@ function ensureInit() {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
   const t = readStorage(THEME_KEY);
-  const a = readStorage(ACCENT_KEY);
   const f = readStorage(FONT_KEY);
   const sb = readStorage(SIDEBAR_KEY);
   current = {
     theme: isTheme(t) ? t : DEFAULT.theme,
-    accent: isAccent(a) ? a : DEFAULT.accent,
     font: isFont(f) ? f : DEFAULT.font,
     sidebar: isSidebar(sb) ? sb : DEFAULT.sidebar,
   };
   apply(current);
 }
 
-function apply({ theme, accent, font, sidebar }: Appearance) {
+function apply({ theme, font, sidebar }: Appearance) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.classList.toggle("light", theme === "light");
   root.classList.toggle("black", theme === "black");
-  if (accent === "cyan") root.removeAttribute("data-accent");
-  else root.setAttribute("data-accent", accent);
-
   // A largura da sidebar sai de uma custom property presa a este atributo
   // (ver styles.css). Mantendo a decisão no <html>, o mesmo estado já vale no
   // primeiro paint — via APPEARANCE_BOOT_SCRIPT — e o React não precisa
@@ -225,11 +207,6 @@ function update(patch: Partial<Appearance>) {
 export function setTheme(theme: ThemeMode) {
   writeStorage(THEME_KEY, theme);
   update({ theme });
-}
-
-export function setAccent(accent: AccentColor) {
-  writeStorage(ACCENT_KEY, accent);
-  update({ accent });
 }
 
 export function setFont(font: AppFont) {

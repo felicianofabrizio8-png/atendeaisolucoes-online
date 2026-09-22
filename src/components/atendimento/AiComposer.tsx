@@ -134,58 +134,72 @@ export function AiComposer({
   const canSend = !disabled && (value.trim().length > 0 || attachments.length > 0);
 
   return (
-    <div className="shrink-0">
+    <div
+      className="shrink-0"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+      }}
+    >
+      {/* Anexos ficam FORA da pílula. Dentro, eles esticariam a altura e a
+          borda arredondada viraria uma cápsula deformada. */}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((a) => (
+            <div
+              key={a.id}
+              className="group relative flex items-center gap-2 rounded-xl border border-border bg-secondary py-1.5 pl-1.5 pr-7"
+            >
+              {a.previewUrl ? (
+                <img
+                  src={a.previewUrl}
+                  alt={a.file.name}
+                  className="h-8 w-8 rounded-lg object-cover"
+                />
+              ) : (
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </span>
+              )}
+              <span className="max-w-[110px] truncate text-[11px] font-medium">{a.file.name}</span>
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                aria-label={`Remover ${a.file.name}`}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
-        }}
         className={cn(
-          // Fundo igual ao da página e borda fina: o campo se apresenta pela
-          // forma, não pela cor.
-          "rounded-2xl border bg-background transition-colors",
+          // Pílula: clipe, campo e enviar na mesma linha.
+          // `items-end` em vez de `items-center` para os botões ficarem
+          // ancorados na base quando o campo cresce em várias linhas — com
+          // center eles flutuariam no meio do bloco de texto.
+          "flex items-end gap-1.5 rounded-full border bg-background px-2 py-1.5 transition-colors",
           dragging ? "border-foreground/40 bg-accent/30" : "border-border",
         )}
       >
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-3 pt-3">
-            {attachments.map((a) => (
-              <div
-                key={a.id}
-                className="group relative flex items-center gap-2 rounded-lg border border-border bg-secondary py-1.5 pl-1.5 pr-7"
-              >
-                {a.previewUrl ? (
-                  <img
-                    src={a.previewUrl}
-                    alt={a.file.name}
-                    className="h-8 w-8 rounded object-cover"
-                  />
-                ) : (
-                  <span className="flex h-8 w-8 items-center justify-center rounded bg-accent">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                  </span>
-                )}
-                <span className="max-w-[110px] truncate text-[11px] font-medium">
-                  {a.file.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(a.id)}
-                  aria-label={`Remover ${a.file.name}`}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          aria-label="Anexar arquivo ou imagem"
+          title="Anexar arquivo, imagem ou print (também aceita colar e arrastar)"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
 
         <textarea
           ref={textareaRef}
@@ -204,39 +218,30 @@ export function AiComposer({
           rows={1}
           placeholder={placeholder}
           aria-label="Pergunte para a IA sobre esta conversa"
-          className="block max-h-40 w-full resize-none bg-transparent px-4 pb-2 pt-3 text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
+          // min-w-0: item flex tem `min-width: auto` e o campo se recusaria a
+          // encolher abaixo do próprio placeholder, empurrando os botões para
+          // fora da pílula.
+          className="block max-h-40 min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-1.5 text-[15px] leading-tight outline-none placeholder:text-muted-foreground"
         />
 
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            aria-label="Anexar arquivo ou imagem"
-            title="Anexar arquivo, imagem ou print (também aceita colar e arrastar)"
-            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSend}
-            aria-label="Enviar pergunta"
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-              canSend
-                ? "bg-foreground text-background hover:opacity-90"
-                : "bg-secondary text-muted-foreground",
-            )}
-          >
-            {disabled ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSend}
+          aria-label="Enviar pergunta"
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
+            canSend
+              ? "bg-foreground text-background hover:opacity-90"
+              : "bg-secondary text-muted-foreground",
+          )}
+        >
+          {disabled ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowUp className="h-4 w-4" />
+          )}
+        </button>
 
         <input
           ref={inputRef}

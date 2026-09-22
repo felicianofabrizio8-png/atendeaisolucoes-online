@@ -22,9 +22,28 @@ function AttachmentMenu() {
   });
 
   const options = [
-    { key: "arquivo", icon: FileUp, label: "Enviar arquivo", hint: "PDF, planilha, contrato", accept: "*/*" },
-    { key: "midia", icon: Images, label: "Fotos e vídeos", hint: "Da galeria do aparelho", accept: "image/*,video/*" },
-    { key: "camera", icon: Camera, label: "Tirar foto", hint: "Abre a câmera", accept: "image/*", capture: "environment" as const },
+    {
+      key: "arquivo",
+      icon: FileUp,
+      label: "Enviar arquivo",
+      hint: "PDF, planilha, contrato",
+      accept: "*/*",
+    },
+    {
+      key: "midia",
+      icon: Images,
+      label: "Fotos e vídeos",
+      hint: "Da galeria do aparelho",
+      accept: "image/*,video/*",
+    },
+    {
+      key: "camera",
+      icon: Camera,
+      label: "Tirar foto",
+      hint: "Abre a câmera",
+      accept: "image/*",
+      capture: "environment" as const,
+    },
   ];
 
   return (
@@ -149,8 +168,14 @@ export function ChatThread({
             <CustomerTierBadge history={history} size="sm" />
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {lead.channel === "whatsapp" ? "WhatsApp" : lead.channel === "instagram" ? "Instagram" : "Facebook"}
-            {conversation.detectedCity ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}` : ""}
+            {lead.channel === "whatsapp"
+              ? "WhatsApp"
+              : lead.channel === "instagram"
+                ? "Instagram"
+                : "Facebook"}
+            {conversation.detectedCity
+              ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
+              : ""}
             {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
           </p>
         </div>
@@ -167,7 +192,10 @@ export function ChatThread({
 
             if (m.role === "system") {
               return (
-                <div key={m.id} className="my-2 self-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] text-muted-foreground">
+                <div
+                  key={m.id}
+                  className="my-2 self-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] text-muted-foreground"
+                >
                   {m.text}
                 </div>
               );
@@ -183,17 +211,25 @@ export function ChatThread({
                 <div
                   className={cn(
                     "max-w-[78%] rounded-3xl px-4 py-2.5 text-sm leading-relaxed",
-                    // Minhas mensagens usam a cor de destaque do app: sobre o
-                    // fundo preto, um cinza um pouco mais claro que o outro
-                    // balão não era diferença suficiente para bater o olho e
-                    // saber quem falou.
+                    // O balão enviado é sólido em `primary`, que agora é
+                    // neutro: cinza no tema escuro, quase preto no claro. O
+                    // preenchimento cheio (em vez de 20% de opacidade) é o
+                    // que mantém a distinção de quem falou depois que a cor
+                    // de destaque saiu do produto.
                     mine
-                      ? "self-end rounded-br-lg border border-primary/30 bg-primary/20 text-foreground"
+                      ? "self-end rounded-br-lg bg-primary text-primary-foreground"
                       : "self-start rounded-bl-lg border border-border bg-secondary/50 text-foreground",
                   )}
                 >
                   <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                  <span className="mt-1 block text-right text-[10px] text-muted-foreground">
+                  {/* Sobre o balão sólido, `muted-foreground` sumia: ele é
+                      calibrado para o fundo da página, não para o do balão. */}
+                  <span
+                    className={cn(
+                      "mt-1 block text-right text-[10px]",
+                      mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                    )}
+                  >
                     {hhmm(m.at)}
                     {mine && m.deliveryStatus === "read" ? " · lida" : ""}
                   </span>
