@@ -716,6 +716,7 @@ function validateObjectiveProductClaims(
   message: string,
   products: SalesAgentGrounding["catalog"] | undefined,
   suggestedProductIds: string[],
+  commercialRules: SalesAgentGrounding["commercialRules"],
   history: SalesAgentCoreInput["history"],
 ): boolean {
   if (isNonFactualObjectiveMessage(message)) return true;
@@ -821,11 +822,19 @@ function validateObjectiveProductClaims(
         ? product.specifications
         : {},
     ).map(([key, value]) => ({ key: comparablePromptText(key), value: comparablePromptText(String(value)) })),
-    components: comparablePromptText((product.includedItems ?? []).join(" ")),
+    components: comparablePromptText(
+      `${product.notes ?? ""} ${(product.includedItems ?? []).join(" ")}`,
+    ),
   }));
   return objectiveSentences.every((sentence) => {
     const normalizedSentence = comparablePromptText(sentence);
-    const relevantFacts = /\bmodelo\b/.test(normalizedSentence)
+    const relevantFacts = /\binstalacao\b/.test(normalizedSentence)
+      ? [
+          comparablePromptText(commercialRules.installationPolicy ?? ""),
+          comparablePromptText(commercialRules.includedItemsPolicy ?? ""),
+          ...semanticFacts.map((facts) => facts.components),
+        ].join(" ")
+      : /\bmodelo\b/.test(normalizedSentence)
       ? semanticFacts.map((facts) => facts.model).join(" ")
       : /\bcor\b/.test(normalizedSentence)
         ? semanticFacts.map((facts) => facts.color).join(" ")
@@ -836,9 +845,12 @@ function validateObjectiveProductClaims(
               .filter((specification) => /material|composicao|revestimento|tipo/.test(specification.key))
               .map((specification) => `${specification.key} ${specification.value}`)).join(" ")
             : /\b(?:filtro|bomba|inclus[oa]s?)\b/.test(normalizedSentence)
-              ? semanticFacts.flatMap((facts) => [facts.components, ...facts.specifications
+              ? [
+                  comparablePromptText(commercialRules.includedItemsPolicy ?? ""),
+                  ...semanticFacts.flatMap((facts) => [facts.components, ...facts.specifications
                 .filter((specification) => /filtro|bomba|motobomba|inclus/.test(specification.key))
-                .map((specification) => `${specification.key} ${specification.value}`)]).join(" ")
+                .map((specification) => `${specification.key} ${specification.value}`)]),
+                ].join(" ")
               : /\b(?:comprimento|largura|profundidade|capacidade|litros?)\b/.test(normalizedSentence)
                 ? semanticFacts.map((facts) => `${facts.basic} ${facts.color}`).join(" ")
                 : semanticFacts.flatMap((facts) => facts.specifications
@@ -858,7 +870,13 @@ function validateObjectiveProductClaims(
     const technicalFieldClaim = Object.entries(TECHNICAL_FIELD_SYNONYMS).find(([, aliases]) =>
       aliases.some((alias) => normalizedSentence.includes(alias)),
     );
-    if (technicalFieldClaim) {
+    const commercialInclusionClaim =
+      /\b(?:instalacao|inclui|incluso|inclusa|inclusos|inclusas)\b/.test(normalizedSentence) &&
+      !/\b(?:potencia|voltagem|tensao|capacidade|litros?|comprimento|largura|profundidade)\b/.test(
+        normalizedSentence,
+      ) &&
+      !/\b\d+\s*(?:cv|hp|w|kw|v|volts?)\b/.test(normalizedSentence);
+    if (technicalFieldClaim && !commercialInclusionClaim) {
       const matchingSpecifications = semanticFacts.flatMap((facts) => facts.specifications.filter((specification) =>
         technicalFieldClaim[1].includes(specification.key),
       ));
@@ -1380,7 +1398,13 @@ export class SalesAgentCore {
       : [];
     const catalogForValidation = catalogSearch.products;
     if (
-      !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
+      !validateObjectiveProductClaims(
+        reply.message,
+        catalogForValidation,
+        requestedSuggestions,
+        params.ctx.grounding.commercialRules,
+        params.history,
+      )
     ) {
       return {
         kind: "handoff",
