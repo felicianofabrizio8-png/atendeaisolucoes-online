@@ -29,6 +29,7 @@ import { Route as ExecutivoRouteImport } from './routes/executivo'
 import { Route as CriativosRouteImport } from './routes/criativos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AtendimentoRouteImport } from './routes/atendimento'
+import { Route as Atendimento2RouteImport } from './routes/atendimento-2'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
@@ -210,6 +211,11 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
 const AtendimentoRoute = AtendimentoRouteImport.update({
   id: '/atendimento',
   path: '/atendimento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Atendimento2Route = Atendimento2RouteImport.update({
+  id: '/atendimento-2',
+  path: '/atendimento-2',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgendaRoute = AgendaRouteImport.update({
@@ -706,6 +712,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/atendimento': typeof AtendimentoRoute
+  '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -817,6 +824,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/atendimento': typeof AtendimentoRoute
+  '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -928,6 +936,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/atendimento': typeof AtendimentoRoute
+  '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
@@ -1041,6 +1050,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/atendimento'
+    | '/atendimento-2'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1152,6 +1162,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/atendimento'
+    | '/atendimento-2'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1262,6 +1273,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/atendimento'
+    | '/atendimento-2'
     | '/configuracoes'
     | '/criativos'
     | '/executivo'
@@ -1374,6 +1386,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
   AtendimentoRoute: typeof AtendimentoRoute
+  Atendimento2Route: typeof Atendimento2Route
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   CriativosRoute: typeof CriativosRoute
   ExecutivoRoute: typeof ExecutivoRoute
@@ -1603,6 +1616,13 @@ declare module '@tanstack/react-router' {
       path: '/atendimento'
       fullPath: '/atendimento'
       preLoaderRoute: typeof AtendimentoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atendimento-2': {
+      id: '/atendimento-2'
+      path: '/atendimento-2'
+      fullPath: '/atendimento-2'
+      preLoaderRoute: typeof Atendimento2RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agenda': {
@@ -2277,6 +2297,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
   AtendimentoRoute: AtendimentoRoute,
+  Atendimento2Route: Atendimento2Route,
   ConfiguracoesRoute: ConfiguracoesRoute,
   CriativosRoute: CriativosRoute,
   ExecutivoRoute: ExecutivoRoute,
