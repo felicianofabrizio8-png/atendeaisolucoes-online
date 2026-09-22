@@ -10,6 +10,8 @@ export type CoachErrorCode =
   | "rate_limited"
   | "provider_unauthorized"
   | "provider_invalid_response"
+  | "missing_tool_call"
+  | "invalid_tool_arguments"
   | "provider_unavailable"
   | "provider_timeout";
 
@@ -22,6 +24,139 @@ export interface CoachErrorContract {
   error: string;
   /** Se o frontend deve oferecer "tentar novamente". */
   retryable: boolean;
+}
+
+export interface CoachOutput {
+  situation: string;
+  next_action: string;
+  suggestion_text: string;
+  reasoning: string;
+  objection_type?: "price" | "timing" | "spouse" | "researching" | "discount" | "other" | "none" | null;
+  urgency: "low" | "medium" | "high" | "critical";
+  risk_score: number;
+}
+
+export interface CoachOutputMetadata {
+  has_choices: boolean;
+  choices_count: number;
+  has_message: boolean;
+  has_tool_calls: boolean;
+  tool_calls_count: number;
+  tool_call_type: string | null;
+  function_name: string | null;
+  has_function: boolean;
+  has_arguments: boolean;
+  arguments_type: string | null;
+  arguments_length: number | null;
+  reason?: "missing_tool_call" | "invalid_tool_arguments" | "invalid_contract";
+}
+
+export type CoachOutputParseResult =
+  | { ok: true; output: CoachOutput; metadata: CoachOutputMetadata }
+  | {
+      ok: false;
+      code: "missing_tool_call" | "invalid_tool_arguments";
+      metadata: CoachOutputMetadata;
+    };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCoachOutput(value: unknown): value is CoachOutput {
+  if (!isRecord(value)) return false;
+
+  const validUrgencies = new Set(["low", "medium", "high", "critical"]);
+  const validObjectionTypes = new Set([
+    "price",
+    "timing",
+    "spouse",
+    "researching",
+    "discount",
+    "other",
+    "none",
+  ]);
+
+  return (
+    typeof value.situation === "string" &&
+    typeof value.next_action === "string" &&
+    typeof value.suggestion_text === "string" &&
+    typeof value.reasoning === "string" &&
+    typeof value.urgency === "string" &&
+    validUrgencies.has(value.urgency) &&
+    typeof value.risk_score === "number" &&
+    Number.isInteger(value.risk_score) &&
+    value.risk_score >= 0 &&
+    value.risk_score <= 100 &&
+    (value.objection_type === undefined ||
+      value.objection_type === null ||
+      (typeof value.objection_type === "string" && validObjectionTypes.has(value.objection_type)))
+  );
+}
+
+/**
+ * Extrai e valida a tool call sem lançar exceção nem devolver conteúdo do
+ * modelo no diagnóstico. O resultado contém apenas metadados seguros.
+ */
+export function parseCoachProviderOutput(payload: unknown): CoachOutputParseResult {
+  const choices = isRecord(payload) && Array.isArray(payload.choices) ? payload.choices : [];
+  const message =
+    isRecord(choices[0]) && isRecord(choices[0].message) ? choices[0].message : null;
+  const toolCalls = message && Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const toolCall = isRecord(toolCalls[0]) ? toolCalls[0] : null;
+  const fn = toolCall && isRecord(toolCall.function) ? toolCall.function : null;
+  const argumentsValue = fn?.arguments;
+
+  const metadata: CoachOutputMetadata = {
+    has_choices: choices.length > 0,
+    choices_count: choices.length,
+    has_message: message !== null,
+    has_tool_calls: toolCalls.length > 0,
+    tool_calls_count: toolCalls.length,
+    tool_call_type: typeof toolCall?.type === "string" ? toolCall.type : null,
+    function_name: typeof fn?.name === "string" ? fn.name : null,
+    has_function: fn !== null,
+    has_arguments: typeof argumentsValue === "string" && argumentsValue.length > 0,
+    arguments_type: argumentsValue === undefined ? null : typeof argumentsValue,
+    arguments_length: typeof argumentsValue === "string" ? argumentsValue.length : null,
+  };
+
+  if (!toolCall) {
+    return {
+      ok: false,
+      code: "missing_tool_call",
+      metadata: { ...metadata, reason: "missing_tool_call" },
+    };
+  }
+
+  if (!fn || typeof argumentsValue !== "string" || argumentsValue.length === 0) {
+    return {
+      ok: false,
+      code: "invalid_tool_arguments",
+      metadata: { ...metadata, reason: "invalid_tool_arguments" },
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argumentsValue);
+  } catch {
+    return {
+      ok: false,
+      code: "invalid_tool_arguments",
+      metadata: { ...metadata, reason: "invalid_tool_arguments" },
+    };
+  }
+
+  if (!isCoachOutput(parsed)) {
+    return {
+      ok: false,
+      code: "invalid_tool_arguments",
+      metadata: { ...metadata, reason: "invalid_contract" },
+    };
+  }
+
+  return { ok: true, output: parsed, metadata };
 }
 
 /**
@@ -105,6 +240,12 @@ export const COACH_INVALID_OUTPUT_CONTRACT: CoachErrorContract = {
   error: "A IA devolveu uma resposta inválida. Tente novamente.",
   retryable: true,
 };
+
+export function createCoachInvalidOutputContract(
+  code: "missing_tool_call" | "invalid_tool_arguments",
+): CoachErrorContract {
+  return { ...COACH_INVALID_OUTPUT_CONTRACT, code };
+}
 
 /** Timeout aplicado à chamada do provedor, em ms. */
 export const COACH_PROVIDER_TIMEOUT_MS = 45_000;
