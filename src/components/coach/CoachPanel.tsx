@@ -19,11 +19,9 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
-import {
-  TeachModeDrawer,
-  type TeachSourceSuggestion,
-} from "@/components/coach/TeachModeDrawer";
+import { TeachModeDrawer, type TeachSourceSuggestion } from "@/components/coach/TeachModeDrawer";
 import { submitSuggestionFeedbackFn } from "@/lib/coach-learnings/coach-learnings.functions";
+import { SalesAgentAssistedCard } from "@/components/coach/SalesAgentAssistedCard";
 
 interface CoachAlert {
   id: string;
@@ -94,14 +92,7 @@ const DEBOUNCE_MS = 1500;
 // com o contexto disponível — a IA registra internamente a limitação.
 const MEDIA_WAIT_MS = 15_000;
 
-const MEDIA_SUBTYPES = new Set([
-  "image",
-  "audio",
-  "voice",
-  "video",
-  "document",
-  "sticker",
-]);
+const MEDIA_SUBTYPES = new Set(["image", "audio", "voice", "video", "document", "sticker"]);
 
 function isMediaSubtype(sub?: string): boolean {
   if (!sub) return false;
@@ -118,13 +109,7 @@ function isMessageReady(msg: CoachPanelMessage, nowMs: number): boolean {
   return ageMs >= MEDIA_WAIT_MS;
 }
 
-type AutoState =
-  | "idle"
-  | "waiting_media"
-  | "debouncing"
-  | "generating"
-  | "ready"
-  | "error";
+type AutoState = "idle" | "waiting_media" | "debouncing" | "generating" | "ready" | "error";
 
 export function CoachPanel({
   conversationId,
@@ -154,6 +139,7 @@ export function CoachPanel({
   const [teachSeed, setTeachSeed] = useState<string>("");
   const [teachSource, setTeachSource] = useState<TeachSourceSuggestion | null>(null);
   const [feedbackBusy, setFeedbackBusy] = useState<"positive" | "negative" | null>(null);
+  const [hasAssistedSuggestion, setHasAssistedSuggestion] = useState(false);
   const submitFeedback = useServerFn(submitSuggestionFeedbackFn);
 
   // Máquina de auto-geração —————————————————————————————————————
@@ -518,6 +504,13 @@ export function CoachPanel({
         </div>
       </div>
 
+      <SalesAgentAssistedCard
+        conversationId={conversationId}
+        onInsertSuggestion={onInsertSuggestion}
+        composerHasDraft={composerHasDraft}
+        onPendingChange={setHasAssistedSuggestion}
+      />
+
       {composerHasDraft && showAnalyzingState && (
         <div className="text-[10px] text-muted-foreground italic">
           Seu texto no compositor está preservado.
@@ -537,11 +530,15 @@ export function CoachPanel({
         </div>
       )}
 
-      {alerts.length === 0 && !suggestion && !loadingScan && !showAnalyzingState && (
-        <div className="text-xs text-muted-foreground">
-          Aguardando nova mensagem do cliente para gerar sugestão automaticamente.
-        </div>
-      )}
+      {alerts.length === 0 &&
+        !suggestion &&
+        !hasAssistedSuggestion &&
+        !loadingScan &&
+        !showAnalyzingState && (
+          <div className="text-xs text-muted-foreground">
+            Aguardando nova mensagem do cliente para gerar sugestão automaticamente.
+          </div>
+        )}
 
       {alerts.length > 0 && (
         <div className="space-y-1.5">
@@ -695,9 +692,7 @@ export function CoachPanel({
             </button>
           </div>
           <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
-            <span className="text-[10px] text-muted-foreground mr-auto">
-              A sugestão te ajudou?
-            </span>
+            <span className="text-[10px] text-muted-foreground mr-auto">A sugestão te ajudou?</span>
             <button
               type="button"
               onClick={handleThumbsUp}

@@ -41,6 +41,7 @@ export default defineConfig({
       "src/lib/shared/__tests__/**/*.test.ts",
       "src/components/orcamentos/__tests__/**/*.test.ts",
       "src/components/inbox/__tests__/**/*.test.ts",
+      "src/components/coach/__tests__/**/*.test.tsx",
     ],
 
     environment: "node",
