@@ -24,10 +24,15 @@ function MetaCallback() {
     url.searchParams.forEach((v, k) => {
       allParams[k] = v;
     });
+    const sensitiveParam = /token|secret|access[_-]?token/i;
+    const safeParams: Record<string, string> = Object.fromEntries(
+      Object.entries(allParams).map(([key, value]) => [key, sensitiveParam.test(key) ? "[redacted]" : value]),
+    );
+    const oauthIntent = window.sessionStorage.getItem("META_OAUTH_INTENT");
 
     const isPopup = !!window.opener && window.opener !== window;
 
-    const redactedParams: Record<string, string> = { ...allParams };
+    const redactedParams: Record<string, string> = { ...safeParams };
     if (redactedParams.code) redactedParams.code = "[redacted]";
     console.log("META_OAUTH_CALLBACK_RESPONSE", {
       status: 200,
@@ -59,6 +64,7 @@ function MetaCallback() {
       error_reason?: string;
       error_description?: string;
       error_code?: string;
+      intent?: string;
       raw?: Record<string, string>;
     } = {
       type: "META_OAUTH_RESULT",
@@ -68,13 +74,14 @@ function MetaCallback() {
       payload.error_reason = errorReason ?? undefined;
       payload.error_description = errorDesc ?? undefined;
       payload.error_code = errorCode ?? undefined;
-      payload.raw = allParams;
+      payload.raw = safeParams;
     } else if (!code) {
       payload.error = "Nenhum código de autorização recebido do Facebook.";
-      payload.raw = allParams;
+      payload.raw = safeParams;
     } else {
       payload.code = code;
       if (state) payload.state = state;
+      if (oauthIntent) payload.intent = oauthIntent;
     }
 
     if (isPopup) {

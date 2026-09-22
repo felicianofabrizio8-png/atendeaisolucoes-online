@@ -1,10 +1,19 @@
 // Fonte de dados da tela de atendimento.
 //
-// Regra: se a empresa logada já tem conversas, a tela mostra as conversas
-// REAIS do leadRepo. Só quando não há nenhuma (caso desta branch de design)
-// é que entram os contatos simulados de `demo-inbox`. Assim o mesmo componente
-// serve para desenhar hoje e para produção amanhã, sem `if (demo)` espalhado
-// pela UI — e sem nunca gravar dado falso no Supabase.
+// União das duas implementações que existiam em paralelo:
+//
+// - da `main` vêm os estados de carregamento (`loading`/`error`/`empty`/
+//   `ready`), que evitam a tela em branco silenciosa quando o Supabase falha;
+// - da `isaque` vem o modo demo com clientes simulados, usado para desenhar a
+//   interface sem depender de dado real, e o `summary` da conversa.
+//
+// A regra que concilia as duas: **o demo é opt-in, nunca fallback.** Só entra
+// quando alguém pede via `forceSimulated` (o botão "Ver exemplos" da tela).
+//
+// Cheguei a fazer o demo preencher automaticamente a fila vazia, e o teste
+// `atendimento-visual` derrubou — o nome dele é "sem inventar fila". É um
+// contrato deliberado: empresa sem conversas tem que ver o estado vazio de
+// verdade, não uma fila fabricada que parece real.
 
 import { useMemo, useSyncExternalStore } from "react";
 import {
@@ -12,7 +21,10 @@ import {
   getLeadById,
   getLeads,
   getMessagesFor,
+  getRemoteLoadError,
+  getRepoMode,
   getRepoVersion,
+  isRemoteLoaded,
   subscribeRepo,
 } from "@/data/leadRepo";
 import { buildDemoInbox, DEMO_SUMMARIES } from "@/data/demo-inbox";
@@ -25,115 +37,137 @@ export interface AtendimentoContact {
   messages: Message[];
   history: CustomerHistory;
   hue: number;
+  /** Resumo da conversa, quando houver. Hoje só o modo demo preenche. */
   summary?: string;
 }
 
+export type AtendimentoStatus = "loading" | "error" | "empty" | "ready";
+
 export interface AtendimentoData {
   contacts: AtendimentoContact[];
+  status: AtendimentoStatus;
+  error: string | null;
+  remote: boolean;
+  loading: boolean;
   /** true quando a fila veio dos clientes simulados. */
   isSimulated: boolean;
 }
 
-/** Matiz estável derivada do id — dois contatos diferentes nunca colidem feio. */
-function hueFromId(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
-  return h;
+export interface AtendimentoDataOptions {
+  /** Força os clientes de exemplo mesmo havendo conversas reais. */
+  forceSimulated?: boolean;
 }
 
-/**
- * Histórico de entrada a partir do que já existe no repo: quantas conversas
- * o mesmo lead abriu e quantas viraram venda. Telefone é a chave de
- * identidade quando existe, porque o mesmo cliente pode ter leads duplicados.
- */
+export function resolveAtendimentoStatus({
+  remote,
+  loaded,
+  error,
+  hasContacts,
+}: {
+  remote: boolean;
+  loaded: boolean;
+  error: string | null;
+  hasContacts: boolean;
+}): AtendimentoStatus {
+  if (error) return "error";
+  if (remote && !loaded) return "loading";
+  return hasContacts ? "ready" : "empty";
+}
+
+/** Matiz estável derivada do id — dois contatos diferentes nunca colidem feio. */
+function hueFromId(id: string): number {
+  return [...id].reduce((value, char) => (value * 31 + char.charCodeAt(0)) % 360, 0);
+}
+
 export function deriveHistory(
   lead: Lead,
-  allLeads: Lead[],
-  allConversations: Conversation[],
+  leads: Lead[],
+  conversations: Conversation[],
   messages: Message[],
 ): CustomerHistory {
-  const sameCustomer = allLeads.filter((l) =>
-    lead.phone ? l.phone === lead.phone : l.id === lead.id,
+  const sameCustomer = leads.filter((item) =>
+    lead.phone ? item.phone === lead.phone : item.id === lead.id,
   );
-  const ids = new Set(sameCustomer.map((l) => l.id));
-  const conversations = allConversations.filter((c) => ids.has(c.leadId));
-  const closed = sameCustomer.filter((l) => l.status === "fechado");
-
-  const firstMessageAt = messages[0]?.at;
-  const firstContactAt = [lead.createdAt, firstMessageAt]
-    .filter(Boolean)
-    .sort()[0] as string;
-
-  const lastPurchase = closed
-    .map((l) => l.closedAt)
-    .filter((v): v is string => !!v)
-    .sort()
-    .at(-1);
-
+  const ids = new Set(sameCustomer.map((item) => item.id));
+  const closed = sameCustomer.filter((item) => item.status === "fechado");
+  const firstContactAt =
+    [lead.createdAt, messages[0]?.at].filter(Boolean).sort()[0] ?? new Date().toISOString();
   return {
-    firstContactAt: firstContactAt ?? new Date().toISOString(),
-    totalConversations: Math.max(1, conversations.length),
+    firstContactAt,
+    totalConversations: Math.max(1, conversations.filter((item) => ids.has(item.leadId)).length),
     closedDeals: closed.length,
-    lastPurchaseAt: lastPurchase ?? null,
-    totalSpent: closed.reduce((s, l) => s + (l.closedValue ?? 0), 0),
+    lastPurchaseAt:
+      closed
+        .map((item) => item.closedAt)
+        .filter((value): value is string => !!value)
+        .sort()
+        .at(-1) ?? null,
+    totalSpent: closed.reduce((sum, item) => sum + (item.closedValue ?? 0), 0),
   };
 }
 
-function useRepoVersion(): number {
-  return useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
-}
-
-export interface AtendimentoDataOptions {
-  /**
-   * Força os clientes simulados mesmo quando a empresa tem conversas reais.
-   * Serve para trabalhar no visual sem abrir dados de cliente na tela — e
-   * para conferir estados que a base real não tem no momento (lead perdido,
-   * cliente fiel, conversa inativa há dias).
-   */
-  forceSimulated?: boolean;
+function demoContacts(): AtendimentoContact[] {
+  return buildDemoInbox().map((c) => ({
+    ...c,
+    summary: DEMO_SUMMARIES[c.conversation.id],
+  }));
 }
 
 export function useAtendimentoData({
   forceSimulated = false,
 }: AtendimentoDataOptions = {}): AtendimentoData {
-  const repoVersion = useRepoVersion();
+  const version = useSyncExternalStore(subscribeRepo, getRepoVersion, getRepoVersion);
 
   return useMemo(() => {
-    const conversations = getConversations();
-
-    if (forceSimulated || conversations.length === 0) {
+    if (forceSimulated) {
       return {
+        contacts: demoContacts(),
+        status: "ready" as const,
+        error: null,
+        remote: false,
+        loading: false,
         isSimulated: true,
-        contacts: buildDemoInbox().map((c) => ({
-          ...c,
-          summary: DEMO_SUMMARIES[c.conversation.id],
-        })),
       };
     }
 
+    const remote = getRepoMode() === "remote";
+    const error = getRemoteLoadError();
+    const conversations = getConversations();
     const leads = getLeads();
-    const contacts: AtendimentoContact[] = [];
 
-    for (const conversation of conversations) {
-      const lead = getLeadById(conversation.leadId);
-      if (!lead) continue;
-      const messages = getMessagesFor(conversation.id);
-      contacts.push({
-        lead,
-        conversation,
-        messages,
-        history: deriveHistory(lead, leads, conversations, messages),
-        hue: hueFromId(lead.id),
-      });
-    }
+    const contacts = conversations
+      .flatMap((conversation) => {
+        const lead = getLeadById(conversation.leadId);
+        if (!lead) return [];
+        const messages = getMessagesFor(conversation.id);
+        return [
+          {
+            lead,
+            conversation,
+            messages,
+            history: deriveHistory(lead, leads, conversations, messages),
+            hue: hueFromId(lead.id),
+          },
+        ];
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.conversation.lastMessageAt).getTime() -
+          new Date(a.conversation.lastMessageAt).getTime(),
+      );
 
-    contacts.sort(
-      (a, b) =>
-        new Date(b.conversation.lastMessageAt).getTime() -
-        new Date(a.conversation.lastMessageAt).getTime(),
-    );
+    const status = resolveAtendimentoStatus({
+      remote: remote || !!error,
+      loaded: isRemoteLoaded(),
+      error,
+      hasContacts: contacts.length > 0,
+    });
 
-    return { contacts, isSimulated: false };
+    return { contacts, status, error, remote, loading: status === "loading", isSimulated: false };
+    // `version` parece dependência inútil para o lint porque não aparece no
+    // corpo — mas é justamente o tique do store externo, e é ele que manda
+    // recalcular quando o leadRepo muda. Sem ele a tela congela no primeiro
+    // resultado.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoVersion, forceSimulated]);
+  }, [version, forceSimulated]);
 }

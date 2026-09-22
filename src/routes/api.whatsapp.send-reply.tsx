@@ -129,9 +129,15 @@ export const Route = createFileRoute("/api/whatsapp/send-reply")({
         // 6. Lead destinatário
         const { data: lead } = await supabaseAdmin
           .from("leads")
-          .select("id, phone, external_id, integration_id")
+          .select("id, company_id, phone, external_id, integration_id, status, closed_at")
           .eq("id", conv.lead_id)
           .maybeSingle();
+        if (!lead || lead.company_id !== companyId) {
+          return Response.json({ error: "lead não encontrado" }, { status: 404 });
+        }
+        if (lead.status === "fechado" || lead.status === "perdido" || lead.closed_at) {
+          return Response.json({ error: "conversa fechada não aceita novas mensagens" }, { status: 409 });
+        }
         const recipient = String(lead?.external_id ?? lead?.phone ?? "").replace(/\D/g, "");
         if (recipient.length < 8 || recipient.length > 15) {
           return Response.json({ error: "lead sem telefone válido" }, { status: 400 });

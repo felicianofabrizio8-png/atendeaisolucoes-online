@@ -1,8 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { detectHandoffNeeded, runSafetyLayer } from "@/lib/ai-agent.server";
+import {
+  detectHandoffNeeded,
+  interpretSalesAgentTurn,
+  redactSalesAgentDecision,
+  resolveSalesAgentCatalogSearch,
+  runSafetyLayer,
+} from "@/lib/ai-agent.server";
 import { detectReadyToClose } from "@/lib/ai-qualifier.server";
 
 describe("Sales Agent handoff boundaries", () => {
+  it("mantém as fronteiras interpretação -> catálogo -> redação sem criar fatos", () => {
+    const interpretation = interpretSalesAgentTurn([
+      { role: "lead", text: "Quero saber o preço, cor azul" },
+    ]);
+    const catalogSearch = {
+      status: "matches" as const,
+      products: [],
+    };
+    const decision = { kind: "handoff" as const, reason: "catalog_product_not_found" };
+
+    expect(interpretation).toMatchObject({
+      intent: "product_inquiry",
+      attributes: { variantTerms: ["azul"] },
+      references: { lastLeadText: "Quero saber o preço, cor azul", productIds: [] },
+    });
+    expect(interpretation.history).toHaveLength(1);
+    expect(interpretation).not.toHaveProperty("products");
+    expect(resolveSalesAgentCatalogSearch(interpretation, {
+      grounding: {
+        catalog: [],
+        catalogScope: { companyId: "company-1", activeOnly: true },
+      },
+    })).toMatchObject({ status: "empty_catalog", products: [] });
+    expect(redactSalesAgentDecision(decision)).toEqual(decision);
+    expect(redactSalesAgentDecision(decision)).not.toBe(decision);
+  });
+
   it("não faz handoff para pergunta condicional sobre instalação após fechar hoje", () => {
     expect(detectHandoffNeeded("Se eu fechar hoje, para quando fica a instalação?")).toEqual({
       needed: false,

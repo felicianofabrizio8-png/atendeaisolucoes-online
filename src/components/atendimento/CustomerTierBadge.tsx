@@ -25,7 +25,10 @@ export function CustomerTierBadge({
         size === "sm" ? "text-[10px] px-1.5 py-0.5" : "text-[13px] px-2 py-0.5",
         className,
       )}
-      style={{ color: info.color, background: `color-mix(in oklab, ${info.color} 14%, transparent)` }}
+      style={{
+        color: info.color,
+        background: `color-mix(in oklab, ${info.color} 14%, transparent)`,
+      }}
     >
       <span aria-hidden>{info.emoji}</span>
       {info.label}

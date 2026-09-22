@@ -64,10 +64,7 @@ export function relationshipAge(history: CustomerHistory, now = Date.now()): str
   return years === 1 ? "há 1 ano" : `há ${years} anos`;
 }
 
-export function classifyCustomer(
-  history: CustomerHistory,
-  now = Date.now(),
-): CustomerTierInfo {
+export function classifyCustomer(history: CustomerHistory, now = Date.now()): CustomerTierInfo {
   const conversations = Math.max(1, history.totalConversations);
   const deals = Math.max(0, history.closedDeals);
   const age = relationshipAge(history, now);
@@ -113,7 +110,9 @@ export function classifyCustomer(
 
 /** Linha de resumo do histórico, usada no painel de informações. */
 export function describeHistory(history: CustomerHistory, now = Date.now()): string {
-  const parts = [`${history.totalConversations} conversa${history.totalConversations === 1 ? "" : "s"}`];
+  const parts = [
+    `${history.totalConversations} conversa${history.totalConversations === 1 ? "" : "s"}`,
+  ];
   if (history.closedDeals > 0) {
     parts.push(`${history.closedDeals} venda${history.closedDeals === 1 ? "" : "s"}`);
   }

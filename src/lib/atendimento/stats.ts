@@ -67,9 +67,7 @@ export const STAT_DEFINITIONS: StatDefinition[] = [
       "radial-gradient(72% 92% at -10% 94%, rgba(150,88,255,0.26), transparent 62%)",
     ),
     match: ({ lead }) =>
-      !!lead.estimatedValue &&
-      lead.status !== "perdido" &&
-      lead.status !== "fechado",
+      !!lead.estimatedValue && lead.status !== "perdido" && lead.status !== "fechado",
   },
   {
     key: "quentes",
@@ -91,8 +89,7 @@ export const STAT_DEFINITIONS: StatDefinition[] = [
       "radial-gradient(115% 95% at 50% 122%, rgba(122,138,174,0.34), rgba(72,84,112,0.12) 42%, transparent 70%)",
     ),
     match: ({ conversation }, now) =>
-      hoursSince(conversation.lastMessageAt, now) >= 48 &&
-      conversation.awaitingReply,
+      hoursSince(conversation.lastMessageAt, now) >= 48 && conversation.awaitingReply,
   },
   {
     key: "online",

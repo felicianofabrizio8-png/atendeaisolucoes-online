@@ -7,9 +7,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+const META_INSTAGRAM_APP_ID = Deno.env.get("META_INSTAGRAM_APP_ID") ?? META_APP_ID;
+const META_INSTAGRAM_APP_SECRET = Deno.env.get("META_INSTAGRAM_APP_SECRET") ?? META_APP_SECRET;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
+const INSTAGRAM_GRAPH = "https://graph.instagram.com/v21.0";
 
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/([a-z0-9-]+\.)*lovable\.app$/i,
@@ -307,9 +310,12 @@ Deno.serve(async (req) => {
 
   let payload: {
     mode?: string;
+    intent?: string;
     shortLivedToken?: string;
     code?: string;
     redirectUri?: string;
+    pageId?: string;
+    instagramAccountId?: string;
     userID?: string;
     page?: {
       id: string;
@@ -324,6 +330,129 @@ Deno.serve(async (req) => {
     payload = await req.json();
   } catch {
     return json({ ok: false, error: "invalid json" }, 400);
+  }
+
+  // Modo save_instagram_login_code: troca o authorization code no servidor e
+  // persiste somente o token Instagram na linha meta_pages já vinculada à
+  // empresa. O token nunca é devolvido ao cliente nem escrito em logs.
+  if (payload.mode === "save_instagram_login_code") {
+    const code = String(payload.code ?? "").trim();
+    const redirectUri = String(payload.redirectUri ?? "").trim();
+    const requestedPageId = String(payload.pageId ?? "").trim();
+    const requestedInstagramAccountId = String(payload.instagramAccountId ?? "").trim();
+    if (!code || !redirectUri || (!requestedPageId && !requestedInstagramAccountId)) {
+      return json({ ok: false, error: "code, redirectUri e account target required" }, 400);
+    }
+    if (!META_INSTAGRAM_APP_ID || !META_INSTAGRAM_APP_SECRET) {
+      return json({ ok: false, error: "instagram app credentials unavailable" }, 503);
+    }
+
+    let shortInstagramToken: string | null = null;
+    try {
+      const exchange = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: META_INSTAGRAM_APP_ID,
+          client_secret: META_INSTAGRAM_APP_SECRET,
+          grant_type: "authorization_code",
+          redirect_uri: redirectUri,
+          code,
+        }),
+      });
+      const body = await exchange.json().catch(() => null) as { access_token?: string } | null;
+      if (exchange.ok && typeof body?.access_token === "string" && body.access_token.trim()) {
+        shortInstagramToken = body.access_token.trim();
+      }
+    } catch {
+      shortInstagramToken = null;
+    }
+    if (!shortInstagramToken) {
+      return json({ ok: false, error: "instagram_authorization_code_exchange_failed" }, 400);
+    }
+
+    let instagramToken: string | null = null;
+    let tokenExpiresAt: string | null = null;
+    try {
+      const longLived = await fetch(
+        `${INSTAGRAM_GRAPH}/access_token?grant_type=ig_exchange_token` +
+          `&client_secret=${encodeURIComponent(META_INSTAGRAM_APP_SECRET)}` +
+          `&access_token=${encodeURIComponent(shortInstagramToken)}`,
+      );
+      const body = await longLived.json().catch(() => null) as {
+        access_token?: string;
+        expires_in?: number;
+      } | null;
+      if (longLived.ok && typeof body?.access_token === "string" && body.access_token.trim()) {
+        instagramToken = body.access_token.trim();
+        tokenExpiresAt = typeof body.expires_in === "number" && body.expires_in > 0
+          ? new Date(Date.now() + body.expires_in * 1000).toISOString()
+          : null;
+      }
+    } catch {
+      instagramToken = null;
+    }
+    if (!instagramToken) {
+      return json({ ok: false, error: "instagram_long_lived_token_exchange_failed" }, 400);
+    }
+
+    let instagramAccountId: string | null = null;
+    let instagramUsername: string | null = null;
+    try {
+      const profile = await fetch(
+        `${INSTAGRAM_GRAPH}/me?fields=id,username&access_token=${encodeURIComponent(instagramToken)}`,
+      );
+      const body = await profile.json().catch(() => null) as {
+        id?: string;
+        username?: string;
+      } | null;
+      if (profile.ok && typeof body?.id === "string" && body.id.trim()) {
+        instagramAccountId = body.id.trim();
+        instagramUsername = typeof body.username === "string" ? body.username.trim() || null : null;
+      }
+    } catch {
+      instagramAccountId = null;
+    }
+    if (!instagramAccountId || (requestedInstagramAccountId && requestedInstagramAccountId !== instagramAccountId)) {
+      return json({ ok: false, error: "instagram_account_identity_mismatch" }, 400);
+    }
+
+    let pageQuery = sb
+      .from("meta_pages")
+      .select("id, page_id, ig_business_account_id")
+      .eq("company_id", companyId)
+      .eq("active", true);
+    if (requestedPageId) pageQuery = pageQuery.eq("page_id", requestedPageId);
+    if (requestedInstagramAccountId) pageQuery = pageQuery.eq("ig_business_account_id", requestedInstagramAccountId);
+    const { data: pages, error: pageLookupError } = await pageQuery.limit(2);
+    if (pageLookupError || !pages || pages.length !== 1) {
+      return json({ ok: false, error: pageLookupError ? "instagram_page_lookup_failed" : "instagram_page_not_uniquely_linked" }, 404);
+    }
+    const page = pages[0] as { id: string; page_id: string; ig_business_account_id: string | null };
+    if (page.ig_business_account_id && page.ig_business_account_id !== instagramAccountId) {
+      return json({ ok: false, error: "instagram_page_identity_mismatch" }, 400);
+    }
+
+    const { error: saveError } = await sb
+      .from("meta_pages")
+      .update({
+        ig_business_account_id: instagramAccountId,
+        ig_username: instagramUsername,
+        ig_user_access_token: instagramToken,
+        token_expires_at: tokenExpiresAt,
+        last_error: null,
+      })
+      .eq("id", page.id)
+      .eq("company_id", companyId)
+      .eq("active", true);
+    if (saveError) return json({ ok: false, error: "instagram_token_persist_failed" }, 500);
+
+    return json({
+      ok: true,
+      page_id: page.page_id,
+      instagram_account_id: instagramAccountId,
+      instagram_username: instagramUsername,
+    });
   }
 
   // Modo exchange_code: troca o ?code= do OAuth Web por user access_token.

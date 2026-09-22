@@ -254,9 +254,9 @@ export type Database = {
         Row: {
           company_id: string
           content: string
+          correction_conflict_key: string | null
           correction_domain: string | null
           correction_intent: string | null
-          correction_conflict_key: string | null
           correction_text: string | null
           created_at: string
           decision: Json | null
@@ -274,9 +274,9 @@ export type Database = {
         Insert: {
           company_id: string
           content: string
+          correction_conflict_key?: string | null
           correction_domain?: string | null
           correction_intent?: string | null
-          correction_conflict_key?: string | null
           correction_text?: string | null
           created_at?: string
           decision?: Json | null
@@ -294,9 +294,9 @@ export type Database = {
         Update: {
           company_id?: string
           content?: string
+          correction_conflict_key?: string | null
           correction_domain?: string | null
           correction_intent?: string | null
-          correction_conflict_key?: string | null
           correction_text?: string | null
           created_at?: string
           decision?: Json | null
@@ -1472,11 +1472,11 @@ export type Database = {
           category: string
           company_id: string
           confidence: number
+          conflict_key: string | null
           content_hash: string
           created_at: string
-          domain: string | null
-          conflict_key: string | null
           description: string
+          domain: string | null
           feedback_sample_count: number
           id: string
           intent: string | null
@@ -1511,11 +1511,11 @@ export type Database = {
           category: string
           company_id: string
           confidence?: number
+          conflict_key?: string | null
           content_hash: string
           created_at?: string
-          domain?: string | null
-          conflict_key?: string | null
           description: string
+          domain?: string | null
           feedback_sample_count?: number
           id?: string
           intent?: string | null
@@ -1550,11 +1550,11 @@ export type Database = {
           category?: string
           company_id?: string
           confidence?: number
+          conflict_key?: string | null
           content_hash?: string
           created_at?: string
-          domain?: string | null
-          conflict_key?: string | null
           description?: string
+          domain?: string | null
           feedback_sample_count?: number
           id?: string
           intent?: string | null
@@ -1598,6 +1598,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "coach_conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_learnings_source_training_company_fk"
+            columns: ["source_training_message_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "ai_training_messages"
+            referencedColumns: ["id", "company_id"]
           },
         ]
       }
@@ -2036,10 +2043,10 @@ export type Database = {
           archived_at: string | null
           category: Database["public"]["Enums"]["coach_rule_category"]
           company_id: string
+          conflict_key: string | null
           created_at: string
           created_by: string
           domain: string | null
-          conflict_key: string | null
           id: string
           intent: string | null
           paused_at: string | null
@@ -2060,12 +2067,12 @@ export type Database = {
           archived_at?: string | null
           category: Database["public"]["Enums"]["coach_rule_category"]
           company_id: string
+          conflict_key?: string | null
           created_at?: string
           created_by: string
           domain?: string | null
-          intent?: string | null
-          conflict_key?: string | null
           id?: string
+          intent?: string | null
           paused_at?: string | null
           priority?: number
           replaced_at?: string | null
@@ -2084,12 +2091,12 @@ export type Database = {
           archived_at?: string | null
           category?: Database["public"]["Enums"]["coach_rule_category"]
           company_id?: string
+          conflict_key?: string | null
           created_at?: string
           created_by?: string
           domain?: string | null
-          intent?: string | null
-          conflict_key?: string | null
           id?: string
+          intent?: string | null
           paused_at?: string | null
           priority?: number
           replaced_at?: string | null
@@ -2435,6 +2442,8 @@ export type Database = {
           runtime_system_health_enabled: boolean
           runtime_updated_at: string | null
           runtime_updated_by: string | null
+          sales_agent_v2_enabled: boolean
+          sales_agent_v2_mode: string
           signature: string | null
           sla_minutes: number
           updated_at: string
@@ -2490,6 +2499,8 @@ export type Database = {
           runtime_system_health_enabled?: boolean
           runtime_updated_at?: string | null
           runtime_updated_by?: string | null
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -2545,6 +2556,8 @@ export type Database = {
           runtime_system_health_enabled?: boolean
           runtime_updated_at?: string | null
           runtime_updated_by?: string | null
+          sales_agent_v2_enabled?: boolean
+          sales_agent_v2_mode?: string
           signature?: string | null
           sla_minutes?: number
           updated_at?: string
@@ -2738,6 +2751,7 @@ export type Database = {
           created_at: string
           id: string
           intent: string | null
+          last_catalog_query: Json | null
           last_valid_product_ids: string[]
           product_ids: string[]
           scope_id: string
@@ -2750,6 +2764,7 @@ export type Database = {
           created_at?: string
           id?: string
           intent?: string | null
+          last_catalog_query?: Json | null
           last_valid_product_ids?: string[]
           product_ids?: string[]
           scope_id: string
@@ -2762,6 +2777,7 @@ export type Database = {
           created_at?: string
           id?: string
           intent?: string | null
+          last_catalog_query?: Json | null
           last_valid_product_ids?: string[]
           product_ids?: string[]
           scope_id?: string
@@ -4344,8 +4360,8 @@ export type Database = {
           active: boolean
           category: string | null
           company_id: string
-          content: string
           conflict_key: string | null
+          content: string
           created_at: string
           icon: string | null
           id: string
@@ -4357,8 +4373,8 @@ export type Database = {
           active?: boolean
           category?: string | null
           company_id: string
-          content: string
           conflict_key?: string | null
+          content: string
           created_at?: string
           icon?: string | null
           id?: string
@@ -4370,8 +4386,8 @@ export type Database = {
           active?: boolean
           category?: string | null
           company_id?: string
-          content?: string
           conflict_key?: string | null
+          content?: string
           created_at?: string
           icon?: string | null
           id?: string
@@ -6638,12 +6654,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6667,11 +6683,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6692,11 +6708,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6717,11 +6733,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6734,11 +6750,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

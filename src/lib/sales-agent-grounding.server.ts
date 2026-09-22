@@ -1,7 +1,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { listLearningCandidates } from "./coach-learnings/coach-learnings.repository";
 import { retrieveLearnings } from "./coach-learnings/retriever";
-import { getRequestedProductLength, type SalesAgentGrounding } from "./sales-agent-core";
+import {
+  getRequestedProductLength,
+  type SalesAgentGrounding,
+  type SalesAgentGroundingBase,
+} from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import type {
   ConversationProductAttributes,
@@ -24,6 +28,26 @@ export type AgentHistory = Array<{
   productIds?: string[];
 }>;
 type CatalogProduct = SalesAgentGrounding["catalog"][number];
+function resolveV2NumericAlias(text: string, products: CatalogProduct[]): { product: CatalogProduct | null; ambiguous: boolean } {
+  const tokens = catalogSearchTerms(text);
+  const numericTokens = tokens.filter((token) => /^\d{3,}$/.test(token));
+  const blockedContext = /\b\d{1,3}\s*(?:metros?|m|litros?|l)\b/i.test(text) || /\b(?:orcamento|parcelas?|parcela|prestacoes?)\b/i.test(text) || /\b\d+(?:\s*[x×]\s*\d+)+\b/i.test(text) || /\b(?:largura|comprimento|profundidade|medidas?)\s*(?:de|:)?\s*\d/i.test(text);
+  const hasModelMarker = /\b(?:sol|modelo)\s+\d{3,}\b/i.test(text) || /\ba\s+\d{3,}\b/i.test(text);
+  if (blockedContext || numericTokens.length !== 1 || !hasModelMarker) return { product: null, ambiguous: false };
+  const numericToken = numericTokens[0];
+  const matches = products.filter((product) =>
+    [product.name, product.model, product.sku]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .some((value) => catalogSearchTerms(value).includes(numericToken)),
+  );
+  if (matches.length === 0) return { product: null, ambiguous: false };
+  const shortestLength = Math.min(...matches.map((product) => catalogSearchTerms(product.model ?? product.name).length));
+  const shortest = matches.filter((product) => catalogSearchTerms(product.model ?? product.name).length === shortestLength);
+  return shortest.length === 1
+    ? { product: shortest[0], ambiguous: false }
+    : { product: null, ambiguous: true };
+}
+
 export type CatalogSearchStatus =
   | "query_error"
   | "empty_catalog"
@@ -37,6 +61,15 @@ export type CatalogSearchResult =
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: CatalogProduct[] }
   | { status: "matches"; products: CatalogProduct[] };
+
+export type CatalogSearchOptions = {
+  continuityEnabled?: boolean;
+  structuredInterpretation?: {
+    intent?: string;
+    subject?: string;
+    confirmation?: string;
+  };
+};
 
 export type ProductSelectionContext = {
   detectedPoolSize?: string | null;
@@ -108,7 +141,8 @@ export function searchSalesAgentCatalog(
   products: CatalogProduct[],
   history: AgentHistory,
   salesState: ConversationSalesState | null = null,
-  scope: { companyId: string; activeOnly: true } | undefined = undefined,
+  scope: { companyId: string; activeOnly: true },
+  options: CatalogSearchOptions = {},
 ): CatalogSearchResult {
   if (!companyId.trim()) return { status: "query_error", error: new Error("company_id_required") };
   if (!scope || scope.companyId !== companyId || scope.activeOnly !== true) {
@@ -144,6 +178,7 @@ export function searchSalesAgentCatalog(
               history.slice(0, lastBaseLeadIndex + 1),
               null,
               scope,
+              options,
             );
             return previousSearch.status === "matches" ? previousSearch.products : [];
           })();
@@ -165,6 +200,22 @@ export function searchSalesAgentCatalog(
 
   const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
   const selectedProducts = products.filter((product) => selectedIds.has(product.id));
+  const contextualReference = resolveCatalogProductReferenceWithContext(
+    lastLeadText,
+    products,
+    selectedProducts,
+  );
+  if (!comparison && contextualReference.ambiguous) {
+    return { status: "ambiguous", products: selectedProducts };
+  }
+  if (!comparison && contextualReference.product) {
+    return { status: "matches", products: [contextualReference.product] };
+  }
+  const numericAlias = options.continuityEnabled
+    ? resolveV2NumericAlias(query, products)
+    : { product: null, ambiguous: false };
+  if (numericAlias.ambiguous) return { status: "ambiguous", products: selectedProducts };
+  if (numericAlias.product) return { status: "matches", products: [numericAlias.product] };
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))
@@ -179,6 +230,14 @@ export function searchSalesAgentCatalog(
         : { status: "matches", products: distinct };
   }
   if (explicitMatches.length === 1) return { status: "matches", products: explicitMatches };
+
+  const preservesCurrentProduct = options.continuityEnabled === true
+    && selectedProducts.length === 1
+    && (
+      options.structuredInterpretation?.confirmation === "affirmative" ||
+      /\b(?:completa|inclui|inclusa|acompanha|vem)\b/i.test(query)
+    );
+  if (preservesCurrentProduct) return { status: "matches", products: selectedProducts };
 
   if (comparison && selectedProducts.length > 0) {
     return { status: "matches", products: selectedProducts };
@@ -853,7 +912,24 @@ export async function loadRelevantSalesAgentLearnings(
   return selectDiverseLearnings(result.selected, SALES_AGENT_MAX_OPTIONS).map(mapLearning);
 }
 
-export async function loadSalesAgentGrounding(companyId: string): Promise<SalesAgentGrounding> {
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory,
+  salesState: ConversationSalesState | null,
+  options: { deferCatalogSearch: true },
+): Promise<SalesAgentGroundingBase>;
+export function loadSalesAgentGrounding(
+  companyId: string,
+  history?: AgentHistory,
+  salesState?: ConversationSalesState | null,
+  options?: { deferCatalogSearch?: false },
+): Promise<SalesAgentGrounding>;
+export async function loadSalesAgentGrounding(
+  companyId: string,
+  history: AgentHistory = [],
+  salesState: ConversationSalesState | null = null,
+  options: { deferCatalogSearch?: boolean } = {},
+): Promise<SalesAgentGrounding | SalesAgentGroundingBase> {
   let catalogQueryError: unknown = null;
   const safeSource = async <T>(
     request: PromiseLike<{ data: T | null; error?: unknown }>,
@@ -925,8 +1001,7 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
     ),
   ]);
 
-  return {
-    catalog: (products ?? []).map((product) => ({
+  const catalog = (products ?? []).map((product) => ({
       id: product.id,
       name: product.name,
       model: product.model,
@@ -960,14 +1035,21 @@ export async function loadSalesAgentGrounding(companyId: string): Promise<SalesA
           )
         : [],
       notes: product.notes,
-    })),
+    }));
+  const catalogScope = catalogQueryError ? undefined : { companyId, activeOnly: true as const };
+
+  return {
+    catalog,
     faqKnowledge: knowledge,
-    catalogScope: catalogQueryError ? undefined : { companyId, activeOnly: true as const },
-    catalogSearch: catalogQueryError
+    catalogScope,
+    ...(options.deferCatalogSearch
+      ? {}
+      : { catalogSearch: catalogQueryError
       ? { status: "query_error" as const, error: catalogQueryError }
-      : products?.length
-        ? { status: "matches" as const, products: [] }
-        : { status: "empty_catalog" as const, products: [] },
+      : searchSalesAgentCatalog(companyId, catalog, history, salesState, {
+          companyId,
+          activeOnly: true,
+        }) }),
     commercialRules: {
       paymentMethods: null,
       commercialTerms: commercial?.commercial_terms ?? null,

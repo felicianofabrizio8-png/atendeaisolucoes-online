@@ -30,12 +30,7 @@ import {
   subscribeAppearance,
   toggleSidebar,
 } from "@/lib/appearance";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { loadRemote, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
@@ -96,15 +91,10 @@ export function AppShell() {
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
-
   // Mesma preferência de tema/cor/fonte: guardada por navegador e já aplicada
   // ao <html> antes da hidratação. Aqui o estado serve só para o que o CSS não
   // resolve sozinho — rótulo do botão, aria e ligar os tooltips do trilho.
-  const appearance = useSyncExternalStore(
-    subscribeAppearance,
-    getAppearance,
-    getServerAppearance,
-  );
+  const appearance = useSyncExternalStore(subscribeAppearance, getAppearance, getServerAppearance);
   const sidebarCollapsed = appearance.sidebar === "collapsed";
 
   // Fase 5.2 — decisão de layout (opção A): dentro de uma conversa aberta o
@@ -114,7 +104,6 @@ export function AppShell() {
   // (/inbox) mantém a navegação inferior normalmente.
   const isConversationRoute = /^\/inbox\/[^/]+$/.test(location.pathname);
   const showBottomNav = !isConversationRoute;
-
 
   // Contador de não-lidas agregadas — usado no item "Caixa de atendimento".
   useEffect(() => {
@@ -496,7 +485,6 @@ export function AppShell() {
         {showBottomNav ? (
           <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
         ) : null}
-
       </main>
     </div>
   );

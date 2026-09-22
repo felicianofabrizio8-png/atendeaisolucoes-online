@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { ArrowLeft, FlaskConical, PanelRight } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/data/mock";
 import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendimentoData";
 import { computeStats, STAT_DEFINITIONS } from "@/lib/atendimento/stats";
 import { StatCarousel } from "@/components/atendimento/StatCarousel";
@@ -43,14 +42,14 @@ function useIsCompact(): boolean | null {
 
 function AtendimentoPage() {
   const [forceSimulated, setForceSimulated] = useState(false);
-  const { contacts, isSimulated } = useAtendimentoData({ forceSimulated });
+  const { contacts, isSimulated, status, error } = useAtendimentoData({ forceSimulated });
   const compact = useIsCompact();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statFilter, setStatFilter] = useState<string | null>(null);
+  // O texto do composer mora aqui, e não dentro do ChatThread, só para o
+  // painel de IA conseguir carregar uma sugestão nele ("Usar no chat").
   const [draft, setDraft] = useState("");
-  /** Mensagens digitadas nesta sessão, por conversa (eco local, não enviado). */
-  const [localEcho, setLocalEcho] = useState<Record<string, Message[]>>({});
 
   const stats = useMemo(() => computeStats(contacts), [contacts]);
 
@@ -91,33 +90,7 @@ function AtendimentoPage() {
   const base =
     contacts.find((c) => c.conversation.id === selectedId) ??
     (compact === false ? visible[0] : undefined);
-  const selected: AtendimentoContact | undefined = base
-    ? {
-        ...base,
-        messages: [...base.messages, ...(localEcho[base.conversation.id] ?? [])],
-      }
-    : undefined;
-
-  const send = () => {
-    const text = draft.trim();
-    if (!text || !selected) return;
-    const message: Message = {
-      id: `local-${Date.now()}`,
-      conversationId: selected.conversation.id,
-      role: "agent",
-      text,
-      at: new Date().toISOString(),
-      deliveryStatus: "sent",
-    };
-    setLocalEcho((prev) => ({
-      ...prev,
-      [message.conversationId]: [...(prev[message.conversationId] ?? []), message],
-    }));
-    setDraft("");
-    toast.info("Prévia da interface", {
-      description: "A mensagem aparece no histórico, mas não é enviada ao cliente nesta tela.",
-    });
-  };
+  const selected: AtendimentoContact | undefined = base;
 
   const activeStat = stats.find((s) => s.key === statFilter);
 
@@ -181,12 +154,31 @@ function AtendimentoPage() {
 
         {/* Coluna 2 — conversa */}
         <main className={cn("min-h-0", selectedId ? "block" : "hidden lg:block")}>
-          {selected ? (
+          {/* Os três estados vêm da `main` e existem para a tela nunca ficar
+              em branco sem explicação: carregando, falha e vazio de verdade.
+              Vazio é vazio — a fila simulada só aparece pelo botão "Ver
+              exemplos", nunca como preenchimento automático. */}
+          {status === "loading" ? (
+            <div className="p-6 text-sm text-muted-foreground">Carregando conversas...</div>
+          ) : status === "error" ? (
+            <div
+              className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center"
+              role="alert"
+            >
+              <p className="text-sm font-medium">Não foi possível carregar as conversas.</p>
+              <p className="text-xs text-muted-foreground">
+                {error ?? "Tente novamente mais tarde."}
+              </p>
+            </div>
+          ) : status === "empty" ? (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+              Nenhuma conversa disponível.
+            </div>
+          ) : selected ? (
             <ChatThread
               contact={selected}
               draft={draft}
               onDraftChange={setDraft}
-              onSend={send}
               onBack={() => setSelectedId(null)}
               actions={
                 <Sheet>
@@ -201,7 +193,10 @@ function AtendimentoPage() {
                   </SheetTrigger>
                   {/* pt-12: o botão de fechar da gaveta mora no canto superior
                       direito e brigaria com o alternador Info/IA. */}
-                  <SheetContent side="right" className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12">
+                  <SheetContent
+                    side="right"
+                    className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12"
+                  >
                     <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
                     <InsightPanel contact={selected} onUseSuggestion={applySuggestion} />
                   </SheetContent>

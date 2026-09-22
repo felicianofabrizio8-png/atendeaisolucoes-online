@@ -50,6 +50,7 @@ declare global {
 
 interface MetaBusinessConfig {
   appId: string;
+  instagramAppId: string;
   businessConfigId: string;
   pageLoginConfigId: string;
   hasAppId: boolean;
@@ -101,6 +102,7 @@ export function MetaIntegrationSection() {
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [savingPageId, setSavingPageId] = useState<string | null>(null);
+  const [instagramTargetPageId, setInstagramTargetPageId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [metaConfig, setMetaConfig] = useState<MetaBusinessConfig | null>(null);
@@ -349,6 +351,28 @@ export function MetaIntegrationSection() {
     [loadPagesFromToken],
   );
 
+  const saveInstagramLoginCode = useCallback(
+    async (code: string) => {
+      const targetPageId = instagramTargetPageId || (pages.length === 1 ? pages[0]?.page_id : "");
+      if (!targetPageId) throw new Error("Selecione uma pÃ¡gina Meta jÃ¡ conectada para vincular o Instagram.");
+      const { data, error } = await supabase.functions.invoke("meta-connect", {
+        body: { mode: "save_instagram_login_code", code, redirectUri: REDIRECT_URI, pageId: targetPageId },
+      });
+      if (error) throw error;
+      const result = data as { ok?: boolean; instagram_username?: string | null; error?: string };
+      if (!result?.ok) throw new Error(result?.error ?? "Falha ao salvar a conexÃ£o Instagram.");
+      setInfo(`Instagram conectado${result.instagram_username ? `: @${result.instagram_username}` : ""}. DMs prontas para envio.`);
+      await reload();
+    },
+    [instagramTargetPageId, pages, reload],
+  );
+
+  const processOAuthCode = useCallback(
+    (code: string, intent: string | null | undefined) =>
+      intent === "instagram_login" ? saveInstagramLoginCode(code) : exchangeCodeForToken(code),
+    [exchangeCodeForToken, saveInstagramLoginCode],
+  );
+
   // Retomar fluxo após callback OAuth: code vem via postMessage da popup,
   // ou via sessionStorage no fallback (popup bloqueado / mesma janela).
   useEffect(() => {
@@ -370,7 +394,9 @@ export function MetaIntegrationSection() {
         });
       } else {
         setConnecting(true);
-        void exchangeCodeForToken(pendingCode).finally(() => setConnecting(false));
+        const intent = window.sessionStorage.getItem("META_OAUTH_INTENT");
+        window.sessionStorage.removeItem("META_OAUTH_INTENT");
+        void processOAuthCode(pendingCode, intent).finally(() => setConnecting(false));
       }
     }
     // Legado: ainda suporta token salvo (caso alguma popup antiga responda assim).
@@ -388,6 +414,7 @@ export function MetaIntegrationSection() {
         type?: string;
         code?: string;
         state?: string;
+        intent?: string;
         access_token?: string;
         error?: string;
         error_reason?: string;
@@ -422,7 +449,7 @@ export function MetaIntegrationSection() {
           setError("Sessão OAuth inválida. Tente conectar novamente.");
           return;
         }
-        void exchangeCodeForToken(data.code).finally(() => setConnecting(false));
+        void processOAuthCode(data.code, data.intent).finally(() => setConnecting(false));
         return;
       }
       if (data.access_token) {
@@ -434,7 +461,7 @@ export function MetaIntegrationSection() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [loadPagesFromToken, exchangeCodeForToken]);
+  }, [loadPagesFromToken, processOAuthCode]);
 
   // intent="facebook_page" usa uma Login Configuration dedicada (com
   // pages_manage_posts + pages_read_engagement) exclusivamente para habilitar
@@ -523,6 +550,33 @@ export function MetaIntegrationSection() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao iniciar login Meta");
+      setConnecting(false);
+    }
+  };
+
+  const onConnectInstagram = async () => {
+    setError(null);
+    setInfo(null);
+    setConnecting(true);
+    try {
+      const targetPageId = instagramTargetPageId || (pages.length === 1 ? pages[0]?.page_id : "");
+      if (!targetPageId) throw new Error("Conecte uma pÃ¡gina Meta e selecione-a antes de vincular o Instagram.");
+      const config = await getMetaBusinessConfig();
+      if (!config.instagramAppId) throw new Error("Configure META_INSTAGRAM_APP_ID no projeto antes de conectar.");
+      const state = crypto.randomUUID();
+      window.sessionStorage.setItem("META_OAUTH_STATE", state);
+      window.sessionStorage.setItem("META_OAUTH_INTENT", "instagram_login");
+      const oauthUrl =
+        `https://www.instagram.com/oauth/authorize` +
+        `?client_id=${encodeURIComponent(config.instagramAppId)}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&scope=${encodeURIComponent("instagram_business_basic,instagram_business_manage_messages")}` +
+        `&state=${encodeURIComponent(state)}`;
+      const popup = window.open(oauthUrl, "instagram-oauth", "width=600,height=720,resizable=yes,scrollbars=yes");
+      if (!popup) window.open(oauthUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao iniciar login Instagram");
       setConnecting(false);
     }
   };
@@ -765,6 +819,26 @@ export function MetaIntegrationSection() {
       )}
 
       <div className="flex flex-wrap gap-2">
+        {pages.length > 0 && (
+          <select
+            value={instagramTargetPageId || (pages.length === 1 ? pages[0].page_id : "")}
+            onChange={(event) => setInstagramTargetPageId(event.target.value)}
+            className="text-xs rounded-md border border-border bg-background px-2 py-2"
+            aria-label="PÃ¡gina para vincular Instagram"
+          >
+            {pages.length !== 1 && <option value="">Selecione a pÃ¡gina do Instagram</option>}
+            {pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.page_name}</option>)}
+          </select>
+        )}
+        <button
+          onClick={onConnectInstagram}
+          disabled={connecting || pages.length === 0}
+          className="inline-flex items-center gap-2 text-xs font-semibold rounded-md bg-pink-600 text-white px-3 py-2 hover:opacity-90 disabled:opacity-60"
+          title={pages.length === 0 ? "Conecte uma pÃ¡gina Meta primeiro." : "Salva o token somente no servidor."}
+        >
+          {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+          Conectar Instagram Login
+        </button>
         <button
           onClick={() => onConnect("default")}
           disabled={connecting}

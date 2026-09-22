@@ -1,4 +1,4 @@
-import type { AgentContext, SalesAgentSessionCorrection } from "./sales-agent-core";
+import type { AgentContext, AgentContextBase, SalesAgentSessionCorrection } from "./sales-agent-core";
 import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.repository";
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 
@@ -54,9 +54,9 @@ export function resolvePersistedSalesAgentLearnings(
 /** Único filtro normativo compartilhado por treino e produção. */
 export function resolveSalesAgentNormativeContext(input: {
   companyId: string;
-  context: AgentContext;
+  context: AgentContextBase;
   sessionCorrections?: NormativeCorrection[];
-}): AgentContext & { sessionCorrections: NormativeCorrection[] } {
+}): AgentContextBase & { sessionCorrections: NormativeCorrection[] } {
   const companyId = requireCompanyId(input.companyId);
   if (input.context.settings.company_id !== companyId) {
     throw new Error("sales_agent_normative_company_scope_mismatch");
@@ -86,7 +86,6 @@ export function resolveSalesAgentNormativeContext(input: {
     ...input.context,
     grounding: {
       ...input.context.grounding,
-      catalog: input.context.grounding.catalog,
       commercialRules: input.context.grounding.commercialRules,
       approvedCoachLearnings: resolvePersistedSalesAgentLearnings(
         companyId,

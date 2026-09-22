@@ -125,6 +125,25 @@ export function resolvePresentedCatalogProductReference<T extends CatalogProduct
   }
 
   const messageTokens = normalizeTokens(text);
+
+  const exactMatches = presentedProducts
+    .map((product) => ({
+      product,
+      specificity: [product.name, product.model ?? null]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map((value) => normalizeTokens(value))
+        .filter((sequence) => containsExactSequence(messageTokens, sequence))
+        .reduce((max, sequence) => Math.max(max, sequence.length), 0),
+    }))
+    .filter(({ specificity }) => specificity > 0);
+
+  const maxSpecificity = Math.max(0, ...exactMatches.map(({ specificity }) => specificity));
+  const mostSpecificMatches = exactMatches.filter(({ specificity }) => specificity === maxSpecificity);
+  if (mostSpecificMatches.length === 1) {
+    return { product: mostSpecificMatches[0].product, ambiguous: false };
+  }
+  if (mostSpecificMatches.length > 1) return { product: null, ambiguous: true };
+
   const matches = presentedProducts.filter((product) =>
     productContextSequences(product).some((sequence) => containsExactSequence(messageTokens, sequence)),
   );
@@ -137,11 +156,25 @@ export function resolveCatalogProductReferenceWithContext<T extends CatalogProdu
   products: T[],
   presentedProducts: T[],
 ): CatalogProductResolution<T> {
+  const explicit = resolveCatalogProductReference(text, products);
   const contextual = resolvePresentedCatalogProductReference(text, presentedProducts);
-  if (contextual.product || contextual.ambiguous) return contextual;
-  return resolveCatalogProductReference(text, products);
-}
 
+  if (explicit.product && contextual.product) {
+    const messageTokens = normalizeTokens(text);
+    const explicitTokens = normalizeTokens(explicit.product.name);
+    const contextualTokens = normalizeTokens(contextual.product.name);
+
+    if (
+      explicitTokens.length > contextualTokens.length &&
+      containsExactSequence(messageTokens, explicitTokens)
+    ) {
+      return explicit;
+    }
+  }
+
+  if (contextual.product || contextual.ambiguous) return contextual;
+  return explicit;
+}
 export function resolveCatalogProductReference<T extends CatalogProductReference>(
   text: string,
   products: T[],
@@ -151,16 +184,26 @@ export function resolveCatalogProductReference<T extends CatalogProductReference
     return { product: null, ambiguous: false };
   }
 
-  const exactNameMatches = products.filter((product) =>
-    containsTokenSequence(messageTokens, normalizeTokens(product.name)),
-  );
-  if (exactNameMatches.length === 1) {
-    return { product: exactNameMatches[0], ambiguous: false };
-  }
-  if (exactNameMatches.length > 1) {
+  const exactNameMatches = products
+    .map((product) => ({
+      product,
+      specificity: normalizeTokens(product.name).length,
+    }))
+    .filter(({ product }) =>
+      containsTokenSequence(messageTokens, normalizeTokens(product.name)),
+    );
+
+  if (exactNameMatches.length > 0) {
+    const maxSpecificity = Math.max(...exactNameMatches.map(({ specificity }) => specificity));
+    const mostSpecificMatches = exactNameMatches.filter(
+      ({ specificity }) => specificity === maxSpecificity,
+    );
+
+    if (mostSpecificMatches.length === 1) {
+      return { product: mostSpecificMatches[0].product, ambiguous: false };
+    }
     return { product: null, ambiguous: true };
   }
-
   const aliasMatches = products.filter((product) =>
     nameSequences(product.name).some((sequence) => containsTokenSequence(messageTokens, sequence)),
   );

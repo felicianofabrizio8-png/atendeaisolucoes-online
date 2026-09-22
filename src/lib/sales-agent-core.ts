@@ -12,6 +12,7 @@ import {
   resolveCatalogProductReferenceWithContext,
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
+import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -31,6 +32,8 @@ export interface AgentSettings {
   ai_agent_name: string;
   business_hours_start: string;
   business_hours_end: string;
+  sales_agent_v2_enabled?: boolean;
+  sales_agent_v2_mode?: string;
 }
 
 export interface SalesAgentGrounding {
@@ -83,7 +86,7 @@ export interface SalesAgentGrounding {
     conflictKey?: string | null;
     sourceTrainingMessageId?: string | null;
   }>;
-  catalogSearch?: SalesAgentCatalogSearch;
+  catalogSearch: SalesAgentCatalogSearch;
   catalogScope?: { companyId: string; activeOnly: true };
   activeCoachRules?: ActiveCoachRuleGrounding[];
   quickReplies?: QuickReplyGrounding[];
@@ -128,8 +131,12 @@ export interface AgentContext {
   catalogForValidation?: SalesAgentGrounding["catalog"];
   knowledge: Array<{ question: string; answer: string; type: string }>;
   grounding: SalesAgentGrounding;
-  catalogSearch?: SalesAgentCatalogSearch;
 }
+
+export type SalesAgentGroundingBase = Omit<SalesAgentGrounding, "catalogSearch">;
+export type AgentContextBase = Omit<AgentContext, "grounding"> & {
+  grounding: SalesAgentGroundingBase;
+};
 
 export interface AgentDecision {
   kind: "reply" | "handoff" | "skip";
@@ -162,7 +169,16 @@ export interface SalesAgentCoreInput {
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
+  interpretation: {
+    intent: "product_images" | "product_inquiry" | null;
+    attributes: object;
+    references: { lastLeadText: string; productIds: string[] };
+  };
+  memoryStatus?: "found" | "missing" | "error";
   sessionCorrections?: SalesAgentSessionCorrection[];
+  structuredInterpretation?: StructuredSalesAgentInterpretation;
+  conversationSummary?: string;
+  compactContextEnabled?: boolean;
 }
 
 export interface SalesAgentSessionCorrection {
@@ -289,6 +305,35 @@ function messagePromisesProductPresentation(message: string): boolean {
   return /\b(?:(?:vou|vamos|posso|podemos)\s+(?:te\s+|lhe\s+)?(?:mostrar|enviar|apresentar)|(?:te|lhe)\s+(?:mostro|envio|apresento))\b/i.test(
     message,
   );
+}
+
+function replyContinuesAffirmedOffer(
+  message: string,
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  const conversationalHistory = history.filter((item) => item.role !== "system");
+  const lastLeadIndex = conversationalHistory.map((item) => item.role).lastIndexOf("lead");
+  if (lastLeadIndex < 1) return true;
+
+  const lastLead = conversationalHistory[lastLeadIndex]?.text ?? "";
+  const previousAgent = [...conversationalHistory.slice(0, lastLeadIndex)]
+    .reverse()
+    .find((item) => item.role === "agent")?.text ?? "";
+
+  const normalize = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+  const normalizedLead = normalize(lastLead);
+  if (!/^(?:sim|pode|pode sim|claro|quero|quero sim|por favor|ok|okay|beleza)[!. ]*$/.test(normalizedLead)) {
+    return true;
+  }
+
+  const normalizedOffer = normalize(previousAgent);
+  const normalizedReply = normalize(message);
+  const offeredIncludedItems = /\b(?:inclu[si]|inclus[oa]s?|acompanha|vem com)\b/.test(normalizedOffer);
+
+  return !offeredIncludedItems ||
+    /\b(?:inclu[si]|inclus[oa]s?|acompanha|vem com)\b/.test(normalizedReply);
 }
 
 function customerAskedForPrice(history: SalesAgentCoreInput["history"]): boolean {
@@ -911,8 +956,9 @@ export function buildSalesAgentSystemPrompt(
   sessionCorrections: SalesAgentSessionCorrection[] = [],
 ): string {
   const ai = ctx.aiProfile;
-  const usesGroundedCatalog = ctx.grounding.catalog.length > 0;
-  const groundedProducts = usesGroundedCatalog ? ctx.grounding.catalog : ctx.products;
+  const catalogSearch = ctx.grounding.catalogSearch;
+  const usesGroundedCatalog = catalogSearch.status === "matches";
+  const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
   const relevantFaqs = selectRelevantFaqs(
     ctx.grounding.faqKnowledge,
     ai?.faq ?? [],
@@ -1076,12 +1122,13 @@ Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Tex
 }
 
 export function buildSalesAgentCompletionRequest(
-  params: Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: SalesAgentCatalogSearch },
+  params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
-  const catalogProducts =
-    params.ctx.grounding.catalog.length > 0 ? params.ctx.grounding.catalog : params.ctx.products;
+  const catalogProducts = params.catalogSearch.status === "matches"
+    ? params.catalogSearch.products
+    : [];
   const transcriptEntries = params.history
-    .slice(-20)
+    .slice(params.compactContextEnabled ? -8 : -20)
     .map(
       (m) =>
         `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Atendente" : "Sistema"}: ${m.text}`,
@@ -1113,7 +1160,9 @@ export function buildSalesAgentCompletionRequest(
       },
       {
         role: "user",
-      content: `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
+      content: params.compactContextEnabled
+        ? `Estado compacto: ${params.conversationSummary ?? "none"}\n\nUltimas mensagens:\n${transcript.join("\n")}\n\nResponda seguindo as regras da sessao.`
+        : `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
       },
     ],
     tools: [
@@ -1206,18 +1255,20 @@ export function buildSalesAgentCompletionRequest(
 export class SalesAgentCore {
   constructor(private readonly complete: SalesAgentCompletion) {}
 
-  async decide(
-    params: SalesAgentCoreInput | (Omit<SalesAgentCoreInput, "catalogSearch"> & { catalogSearch?: undefined }),
-  ): Promise<AgentDecision> {
+  async decide(params: SalesAgentCoreInput): Promise<AgentDecision> {
     const groundingSources = getSalesAgentGroundingSources(params.ctx);
     const availableLearningIds = params.ctx.grounding.approvedCoachLearnings.map(
       (learning) => learning.id,
     );
-    const catalogSearch = params.catalogSearch ?? (
-      params.ctx.grounding.catalog.length > 0
-        ? { status: "matches" as const, products: params.ctx.grounding.catalog }
-        : { status: "empty_catalog" as const, products: [] as SalesAgentGrounding["catalog"] }
-    );
+    const catalogSearch = params.catalogSearch;
+    if (params.memoryStatus === "error") {
+      return {
+        kind: "handoff",
+        reason: "conversation_sales_state_load_failed",
+        grounding_sources: [],
+        learning_ids_used: [],
+      };
+    }
     if (!catalogSearch) {
       return {
         kind: "handoff",
@@ -1243,7 +1294,7 @@ export class SalesAgentCore {
     }
     const automaticProductImageIds = getAutomaticProductImageIds(
       params.history,
-      params.ctx.grounding.catalog,
+      catalogSearch.products,
     );
     const deterministicProducts = params.history.some(
       (message) => message.role === "lead" && message.text.trim().length > 0,
@@ -1295,13 +1346,15 @@ export class SalesAgentCore {
     if (!reply.message) {
       return deterministicFallback("empty_message");
     }
+    if (!replyContinuesAffirmedOffer(reply.message, params.history)) {
+      return deterministicFallback("affirmative_continuation_not_answered");
+    }
     const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
     const catalogIds = new Set(
-      params.ctx.catalogProductIds ??
-        params.ctx.grounding.catalog.map((product) => product.id),
+      catalogSearch.products.map((product) => product.id),
     );
     const catalogById = new Map(
-      params.ctx.grounding.catalog.map((product) => [product.id, product]),
+      catalogSearch.products.map((product) => [product.id, product]),
     );
     const modelSuggestions = Array.isArray(reply.suggest_products)
       ? reply.suggest_products.filter((id): id is string => typeof id === "string")
@@ -1325,7 +1378,7 @@ export class SalesAgentCore {
     const learningIdsUsed = Array.isArray(reply.learning_ids_used)
       ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
       : [];
-    const catalogForValidation = params.ctx.catalogForValidation;
+    const catalogForValidation = catalogSearch.products;
     if (
       !validateObjectiveProductClaims(reply.message, catalogForValidation, requestedSuggestions, params.history)
     ) {
@@ -1340,7 +1393,7 @@ export class SalesAgentCore {
       !isNonFactualReply && !messageHasOnlyValidatedProductFacts(
         reply.message,
         selectedProducts,
-        params.ctx.grounding.catalog,
+        catalogSearch.products,
       )
     ) {
       return deterministicFallback("catalog_invalid_product_fact");

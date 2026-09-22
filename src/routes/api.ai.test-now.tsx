@@ -53,11 +53,11 @@ export const Route = createFileRoute("/api/ai/test-now")({
           detail: readiness.canActivate ? "Todos OK" : `Faltando: ${readiness.missing.join("; ")}`,
         });
 
-        const ctx = await loadAgentContext(companyId);
+        const ctx = await loadAgentContext(companyId, [{ role: "lead", text: sample }]);
         steps.push({
           name: "Carregar contexto",
           ok: !!ctx,
-          detail: ctx ? `Tom: ${ctx.aiProfile?.tone ?? "—"}, produtos: ${ctx.products.length}` : "ctx vazio",
+          detail: ctx ? `Tom: ${ctx.aiProfile?.tone ?? "—"}, produtos: ${ctx.grounding.catalog.length}` : "ctx vazio",
         });
 
         if (!ctx) {
