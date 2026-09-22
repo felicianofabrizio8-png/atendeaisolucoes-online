@@ -4,11 +4,11 @@ import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server"
 import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
 import { resolveSalesAgentLlmConfig } from "@/lib/sales-agent-config.server";
 import {
-  COACH_INVALID_OUTPUT_CONTRACT,
   COACH_PROVIDER_TIMEOUT_MS,
   COACH_TIMEOUT_CONTRACT,
   classifyGatewayFailure,
-  sanitizeProviderBody,
+  createCoachInvalidOutputContract,
+  parseCoachProviderOutput,
 } from "@/lib/coach/gateway-errors";
 
 
@@ -17,15 +17,7 @@ interface SuggestBody {
   conversation_id: string;
 }
 
-interface CoachOutput {
-  situation: string;
-  next_action: string;
-  suggestion_text: string;
-  reasoning: string;
-  objection_type: "price" | "timing" | "spouse" | "researching" | "discount" | "other" | null;
-  urgency: "low" | "medium" | "high" | "critical";
-  risk_score: number;
-}
+
 
 export const Route = createFileRoute("/api/coach/suggest")({
   server: {
@@ -244,31 +236,62 @@ ${transcript || "(sem mensagens)"}`;
           return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
         }
 
+        const provider = (() => {
+          try {
+            return new URL(endpoint).hostname;
+          } catch {
+            return "configured_endpoint";
+          }
+        })();
+
         if (!aiRes.ok) {
-          const raw = await aiRes.text().catch(() => "");
-          const contract = classifyGatewayFailure(aiRes.status, raw);
-          // Corpo bruto só no log do servidor, sanitizado. Nunca na resposta.
+          await aiRes.text().catch(() => "");
+          const contract = classifyGatewayFailure(aiRes.status);
+          // Somente metadados seguros no log; nunca corpo, prompt ou conversa.
           console.error(
-            `[coach/suggest] provider ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`,
+            `[coach/suggest] invalid_provider_response ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: contract.code,
+            })}`,
           );
           return Response.json(contract, { status: contract.status });
         }
 
-        const payload = await aiRes.json();
-        const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall)
-          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
-            status: COACH_INVALID_OUTPUT_CONTRACT.status,
-          });
-        let parsed: CoachOutput;
+        let payload: unknown;
         try {
-          parsed = JSON.parse(toolCall.function.arguments) as CoachOutput;
+          payload = await aiRes.json();
         } catch {
-          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
-            status: COACH_INVALID_OUTPUT_CONTRACT.status,
-          });
+          const contract = createCoachInvalidOutputContract("invalid_tool_arguments");
+          console.error(
+            `[coach/suggest] invalid_output ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: contract.code,
+              reason: "invalid_provider_json",
+            })}`,
+          );
+          return Response.json(contract, { status: contract.status });
         }
 
+        const parsedOutput = parseCoachProviderOutput(payload);
+        if (!parsedOutput.ok) {
+          const contract = createCoachInvalidOutputContract(parsedOutput.code);
+          console.error(
+            `[coach/suggest] invalid_output ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: parsedOutput.code,
+              metadata: parsedOutput.metadata,
+            })}`,
+          );
+          return Response.json(contract, { status: contract.status });
+        }
+
+        const parsed = parsedOutput.output;
 
         const { data: ins, error: insErr } = await supabaseAdmin
           .from("coach_suggestions")

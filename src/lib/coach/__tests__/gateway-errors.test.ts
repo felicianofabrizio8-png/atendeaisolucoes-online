@@ -3,6 +3,7 @@ import {
   COACH_INVALID_OUTPUT_CONTRACT,
   COACH_TIMEOUT_CONTRACT,
   classifyGatewayFailure,
+  parseCoachProviderOutput,
   sanitizeProviderBody,
 } from "@/lib/coach/gateway-errors";
 
@@ -85,5 +86,60 @@ describe("contratos fixos", () => {
   });
   it("saída inválida do modelo é 502 retentável", () => {
     expect(COACH_INVALID_OUTPUT_CONTRACT).toMatchObject({ status: 502, retryable: true });
+  });
+});
+
+describe("parseCoachProviderOutput", () => {
+  const validArguments = JSON.stringify({
+    situation: "Cliente avaliando a proposta",
+    next_action: "Esclarecer a dúvida",
+    suggestion_text: "Posso esclarecer esse ponto para você?",
+    reasoning: "A dúvida indica necessidade de informação adicional.",
+    objection_type: null,
+    urgency: "medium",
+    risk_score: 20,
+  });
+
+  const providerPayload = (argumentsValue: unknown, withFunction = true) => ({
+    choices: [
+      {
+        message: {
+          tool_calls: [
+            {
+              type: "function",
+              ...(withFunction
+                ? { function: { name: "coach_output", arguments: argumentsValue } }
+                : {}),
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  it("classifica resposta sem tool call", () => {
+    const result = parseCoachProviderOutput({ choices: [{ message: { content: "texto" } }] });
+    expect(result).toMatchObject({ ok: false, code: "missing_tool_call" });
+  });
+
+  it("classifica arguments inválido", () => {
+    const result = parseCoachProviderOutput(providerPayload("não é json"));
+    expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
+  });
+
+  it("classifica tool call sem function", () => {
+    const result = parseCoachProviderOutput(providerPayload(null, false));
+    expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
+  });
+
+  it("classifica JSON válido com contrato incompleto", () => {
+    const result = parseCoachProviderOutput(providerPayload(JSON.stringify({ situation: "ok" })));
+    expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
+    if (!result.ok) expect(result.metadata.reason).toBe("invalid_contract");
+  });
+
+  it("aceita resposta válida", () => {
+    const result = parseCoachProviderOutput(providerPayload(validArguments));
+    expect(result).toMatchObject({ ok: true, output: { urgency: "medium", risk_score: 20 } });
   });
 });
