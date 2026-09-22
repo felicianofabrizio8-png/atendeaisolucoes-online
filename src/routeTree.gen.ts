@@ -28,8 +28,8 @@ import { Route as IaRouteImport } from './routes/ia'
 import { Route as ExecutivoRouteImport } from './routes/executivo'
 import { Route as CriativosRouteImport } from './routes/criativos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
-import { Route as AtendimentoRouteImport } from './routes/atendimento'
 import { Route as Atendimento2RouteImport } from './routes/atendimento-2'
+import { Route as AtendimentoRouteImport } from './routes/atendimento'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InboxIndexRouteImport } from './routes/inbox.index'
@@ -208,14 +208,14 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   path: '/configuracoes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AtendimentoRoute = AtendimentoRouteImport.update({
-  id: '/atendimento',
-  path: '/atendimento',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const Atendimento2Route = Atendimento2RouteImport.update({
   id: '/atendimento-2',
   path: '/atendimento-2',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtendimentoRoute = AtendimentoRouteImport.update({
+  id: '/atendimento',
+  path: '/atendimento',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgendaRoute = AgendaRouteImport.update({
@@ -1611,18 +1611,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfiguracoesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/atendimento': {
-      id: '/atendimento'
-      path: '/atendimento'
-      fullPath: '/atendimento'
-      preLoaderRoute: typeof AtendimentoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/atendimento-2': {
       id: '/atendimento-2'
       path: '/atendimento-2'
       fullPath: '/atendimento-2'
       preLoaderRoute: typeof Atendimento2RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atendimento': {
+      id: '/atendimento'
+      path: '/atendimento'
+      fullPath: '/atendimento'
+      preLoaderRoute: typeof AtendimentoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agenda': {
