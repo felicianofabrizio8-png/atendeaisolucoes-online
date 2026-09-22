@@ -5283,6 +5283,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_secret: {
+        Row: {
+          decrypted_secret: string | null
+        }
+        Insert: {
+          decrypted_secret?: string | null
+        }
+        Update: {
+          decrypted_secret?: string | null
+        }
+        Relationships: []
+      }
       video_library: {
         Row: {
           audio_codec: string | null
