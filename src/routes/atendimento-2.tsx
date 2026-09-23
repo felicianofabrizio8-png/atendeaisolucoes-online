@@ -145,7 +145,7 @@ function ConversationView({ contact }: { contact: AtendimentoContact }) {
         })}
       </div>
 
-      <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+      <div className="border-t border-border px-5 pb-[env(safe-area-inset-bottom)] py-3 text-xs text-muted-foreground">
         Atendimento 2.0 está em prévia somente leitura. Envio, anexos, IA e automações estarão disponíveis em etapas futuras.
       </div>
     </section>

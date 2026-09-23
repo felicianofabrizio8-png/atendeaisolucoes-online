@@ -168,7 +168,7 @@ export function ChatThread({
             type="button"
             onClick={onBack}
             aria-label="Voltar para a lista"
-            className="-ml-1 shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
+            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -249,7 +249,7 @@ export function ChatThread({
                 ? "Sugerir resposta com IA"
                 : "Sugestão com IA disponível no WhatsApp"
             }
-            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 min-h-[44px] text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
             <span className="hidden sm:inline">
@@ -262,13 +262,13 @@ export function ChatThread({
             onChange={(event) => setText(event.target.value)}
             disabled={sending}
             placeholder="Mandar mensagem"
-            className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
+            className="h-11 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={sending || suggesting || !text.trim()}
             aria-label={sending ? "Enviando..." : "Enviar"}
-            className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-full bg-primary p-3 min-h-[44px] min-w-[44px] text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Send className="h-4 w-4" />
           </button>

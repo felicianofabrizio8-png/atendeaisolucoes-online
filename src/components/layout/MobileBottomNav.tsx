@@ -37,7 +37,7 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
     <nav
       aria-label="Navegação principal"
       data-testid="mobile-bottom-nav"
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 safe-bottom border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
+      className="lg:hidden fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
     >
       <ul className="grid grid-cols-5">
         {ITEMS.map((item) => {
