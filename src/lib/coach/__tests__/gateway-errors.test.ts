@@ -46,32 +46,32 @@ describe("classifyGatewayFailure", () => {
     expect(classifyGatewayFailure(408, "").code).toBe("provider_timeout");
   });
 
-  it("400 devolve código provider_http_400 com status 502", () => {
+  it("400 devolve código provider_http_400 com status 502, não retentável", () => {
     const c = classifyGatewayFailure(400, '{"error":"bad request"}');
     expect(c.status).toBe(502);
     expect(c.code).toBe("provider_http_400");
-    expect(c.retryable).toBe(true);
+    expect(c.retryable).toBe(false);
   });
 
-  it("422 devolve código provider_http_422 com status 502", () => {
+  it("422 devolve código provider_http_422 com status 502, não retentável", () => {
     const c = classifyGatewayFailure(422, '{"error":"unprocessable entity"}');
     expect(c.status).toBe(502);
     expect(c.code).toBe("provider_http_422");
-    expect(c.retryable).toBe(true);
+    expect(c.retryable).toBe(false);
   });
 
-  it("415 devolve código provider_http_4xx com status 502", () => {
+  it("415 devolve código provider_http_4xx com status 502, não retentável", () => {
     const c = classifyGatewayFailure(415, '{"error":"unsupported media type"}');
     expect(c.status).toBe(502);
     expect(c.code).toBe("provider_http_4xx");
-    expect(c.retryable).toBe(true);
+    expect(c.retryable).toBe(false);
   });
 
-  it("419 devolve código provider_http_4xx com status 502", () => {
+  it("419 devolve código provider_http_4xx com status 502, não retentável", () => {
     const c = classifyGatewayFailure(419, '{"error":"csrf"}');
     expect(c.status).toBe(502);
     expect(c.code).toBe("provider_http_4xx");
-    expect(c.retryable).toBe(true);
+    expect(c.retryable).toBe(false);
   });
 
   it("mantém 502 apenas para respostas inválidas de fato", () => {

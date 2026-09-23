@@ -227,7 +227,7 @@ export function classifyGatewayFailure(status: number, _body = ""): CoachErrorCo
       status: 502,
       code: "provider_http_400",
       error: "A IA devolveu uma resposta inválida. Tente novamente.",
-      retryable: true,
+      retryable: false,
     };
   }
 
@@ -236,7 +236,7 @@ export function classifyGatewayFailure(status: number, _body = ""): CoachErrorCo
       status: 502,
       code: "provider_http_422",
       error: "A IA devolveu uma resposta inválida. Tente novamente.",
-      retryable: true,
+      retryable: false,
     };
   }
 
@@ -245,7 +245,7 @@ export function classifyGatewayFailure(status: number, _body = ""): CoachErrorCo
     status: 502,
     code: "provider_http_4xx",
     error: "A IA devolveu uma resposta inválida. Tente novamente.",
-    retryable: true,
+    retryable: false,
   };
 }
 
