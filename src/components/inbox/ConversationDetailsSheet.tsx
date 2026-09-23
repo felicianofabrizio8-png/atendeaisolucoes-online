@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ArrowLeft } from "lucide-react";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface Props {
   open: boolean;
@@ -36,8 +37,18 @@ export function ConversationDetailsSheet({ open, onOpenChange, title, onCloseFoc
         }}
         className="w-full p-0 flex flex-col gap-0 sm:max-w-md lg:hidden"
       >
-        <SheetHeader className="border-b border-border px-4 py-3 text-left shrink-0">
-          <SheetTitle className="text-sm font-semibold">{title}</SheetTitle>
+        <SheetHeader className="flex-row items-center gap-2 space-y-0 border-b border-border px-4 pb-3 pt-[max(4rem,env(safe-area-inset-top))] text-left shrink-0">
+          <SheetClose asChild>
+            <button
+              type="button"
+              aria-label="Voltar para mensagens"
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span>Voltar</span>
+            </button>
+          </SheetClose>
+          <SheetTitle className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</SheetTitle>
         </SheetHeader>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{children}</div>
       </SheetContent>

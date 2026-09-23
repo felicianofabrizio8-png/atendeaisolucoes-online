@@ -2173,7 +2173,7 @@ function ConversationPage() {
                 totalListHeightChanged={handleVirtuosoTotalListHeightChanged}
                 increaseViewportBy={{ top: 600, bottom: 200 }}
                 overscan={{ main: 600, reverse: 600 }}
-                className="h-full px-3 md:px-4"
+                className="h-full min-w-0 max-w-full touch-pan-y overscroll-x-none overflow-x-hidden px-3 md:px-4"
                 style={{ overflowAnchor: "none" }}
                 components={{
                   Scroller: TracedVirtuosoScroller,

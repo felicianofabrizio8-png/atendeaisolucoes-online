@@ -1054,10 +1054,9 @@ function MessageBubbleImpl({
     <div
       id={`msg-${m.id}`}
       className={cn(
-        // Mobile usa 92% da largura (Fase 5.2): em 320–390px os 85% antigos
-        // desperdiçavam uma coluna inteira e quebravam frases curtas em duas
-        // linhas. No desktop a leitura continua confortável em 70%.
-        "group flex flex-col w-fit max-w-[min(92%,calc(100%-0.75rem))] md:max-w-[min(70%,calc(100%-2rem))] min-w-0 relative",
+        // No celular, limita o balão à largura disponível e evita overflow horizontal.
+        // No desktop a leitura continua confortável em 70%.
+        "group flex min-w-0 max-w-[calc(100%_-_0.75rem)] flex-col w-fit relative md:max-w-[70%]",
 
         isAgent ? "ml-auto items-end" : "items-start",
       )}
@@ -1181,7 +1180,7 @@ function MessageBubbleImpl({
             }
           }}
           className={cn(
-            "rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:select-text transition-transform active:scale-[0.99]",
+            "rounded-lg px-3 py-2 text-base leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:text-sm md:select-text transition-transform active:scale-[0.99]",
             isAgent
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-card border border-border rounded-bl-sm",
