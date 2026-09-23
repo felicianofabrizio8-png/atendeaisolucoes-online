@@ -161,8 +161,8 @@ export function ChatThread({
   let lastDay = "";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 px-5 py-3">
+    <div className="flex h-full min-h-0 flex-col overflow-x-hidden">
+      <header className="flex items-center gap-3 px-4 py-3 sm:px-5">
         {onBack && (
           <button
             type="button"
@@ -188,7 +188,7 @@ export function ChatThread({
         {actions}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <div className="mx-auto flex max-w-[680px] flex-col gap-2">
           {messages.map((message: Message) => {
             const day = dayLabel(message.at);
@@ -232,7 +232,7 @@ export function ChatThread({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="px-5 pb-4" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}>
+      <form onSubmit={handleSubmit} className="px-4 sm:px-5" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}>
         {suggestError ? (
           <p role="alert" className="mx-auto mb-2 max-w-[680px] text-xs text-destructive">
             {suggestError}
@@ -262,7 +262,7 @@ export function ChatThread({
             onChange={(event) => setText(event.target.value)}
             disabled={sending}
             placeholder="Mandar mensagem"
-            className="h-11 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
+            className="h-11 flex-1 bg-transparent text-base outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
           />
           <button
             type="submit"

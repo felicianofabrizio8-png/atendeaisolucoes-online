@@ -179,7 +179,7 @@ function Atendimento2Page() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-background text-foreground lg:h-screen lg:min-h-0">
+    <main className="flex min-h-screen flex-col overflow-x-hidden bg-background text-foreground lg:h-screen lg:min-h-0">
       <div className="flex items-center gap-3 border-b border-border px-5 py-3">
         <a href="/" className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar
