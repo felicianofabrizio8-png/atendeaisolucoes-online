@@ -180,7 +180,58 @@ ${transcript || "(sem mensagens)"}`;
 
         // Timeout explícito: sem isto uma indisponibilidade do provedor
         // pendura a requisição do vendedor até o limite do runtime.
-        let aiRes: Response;
+        let aiRes: Response | null = null;
+        let retryAttempted = false;
+        const requestBodyWithToolChoice = {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "coach_output",
+                description: "Devolve a orientação do Coach ao vendedor",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    situation: { type: "string" },
+                    next_action: { type: "string" },
+                    suggestion_text: { type: "string" },
+                    reasoning: { type: "string" },
+                    objection_type: {
+                      type: "string",
+                      enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
+                    },
+                    urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                    risk_score: { type: "integer", minimum: 0, maximum: 100 },
+                  },
+                  required: [
+                    "situation",
+                    "next_action",
+                    "suggestion_text",
+                    "reasoning",
+                    "urgency",
+                    "risk_score",
+                  ],
+                },
+              },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "coach_output" } },
+        };
+        const requestBodyFallback = {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: requestBodyWithToolChoice.tools,
+          // tool_choice removido — alguns provedores rejeitam forced function calls
+        };
+
         try {
           aiRes = await fetch(endpoint, {
             method: "POST",
@@ -189,47 +240,26 @@ ${transcript || "(sem mensagens)"}`;
               "Content-Type": "application/json",
               Authorization: `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({
-              model,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt },
-              ],
-              tools: [
-                {
-                  type: "function",
-                  function: {
-                    name: "coach_output",
-                    description: "Devolve a orientação do Coach ao vendedor",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        situation: { type: "string" },
-                        next_action: { type: "string" },
-                        suggestion_text: { type: "string" },
-                        reasoning: { type: "string" },
-                        objection_type: {
-                          type: "string",
-                          enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
-                        },
-                        urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                        risk_score: { type: "integer", minimum: 0, maximum: 100 },
-                      },
-                      required: [
-                        "situation",
-                        "next_action",
-                        "suggestion_text",
-                        "reasoning",
-                        "urgency",
-                        "risk_score",
-                      ],
-                    },
-                  },
-                },
-              ],
-              tool_choice: { type: "function", function: { name: "coach_output" } },
-            }),
+            body: JSON.stringify(requestBodyWithToolChoice),
           });
+
+          // Fallback: se provedor rejeitou tool_choice com 400, tenta sem forçar.
+          // Apenas uma retry — nunca entra em loop.
+          if (!aiRes.ok && aiRes.status === 400 && !retryAttempted) {
+            retryAttempted = true;
+            console.warn(
+              `[coach/suggest] provider rejected tool_choice with 400, retrying without it`,
+            );
+            aiRes = await fetch(endpoint, {
+              method: "POST",
+              signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify(requestBodyFallback),
+            });
+          }
         } catch {
           // Aborto por timeout ou falha de rede — nunca 502 genérico.
           console.error("[coach/suggest] provider unreachable or timed out");
