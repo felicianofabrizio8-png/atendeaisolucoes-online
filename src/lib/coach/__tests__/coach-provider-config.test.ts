@@ -17,4 +17,8 @@ describe("Coach LLM provider configuration", () => {
   it("não depende do gateway, chave ou modelo Gemini/Lovable", () => {
     expect(routeSource).not.toMatch(/LOVABLE_API_KEY|ai\.gateway\.lovable\.dev|gemini/i);
   });
+
+  it("não envia reasoning_effort no payload do Coach", () => {
+    expect(routeSource).not.toContain("reasoning_effort");
+  });
 });
