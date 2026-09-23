@@ -147,7 +147,7 @@ export function SalesAgentAssistedCard({
     return (
       <div
         data-testid="v2-assisted-loading"
-        className="flex items-center gap-2 rounded-md border border-border bg-card/60 px-2 py-2 text-xs text-muted-foreground"
+        className="flex items-center gap-2 rounded-md border border-border bg-card/60 px-2 py-2 text-sm text-muted-foreground lg:text-xs"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Verificando sugestão da Vendedora 2.0…
@@ -161,7 +161,7 @@ export function SalesAgentAssistedCard({
     return (
       <div
         data-testid="v2-assisted-error"
-        className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-700 dark:text-red-300"
+        className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-700 dark:text-red-300 lg:text-xs"
       >
         <div className="flex items-start gap-1.5">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -184,28 +184,28 @@ export function SalesAgentAssistedCard({
       className="space-y-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 p-2.5"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">
+        <div className="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300 lg:text-[11px]">
           Vendedora 2.0 · aprovação necessária
         </div>
-        <span className="rounded border border-cyan-500/30 px-1.5 py-0.5 text-[10px] text-cyan-700 dark:text-cyan-300">
+        <span className="rounded border border-cyan-500/30 px-1.5 py-0.5 text-xs text-cyan-700 dark:text-cyan-300 lg:text-[10px]">
           Não enviada
         </span>
       </div>
 
-      <div className="whitespace-pre-wrap rounded bg-background/70 p-2 text-xs">
+      <div className="whitespace-pre-wrap rounded bg-background/70 p-2 text-base leading-relaxed lg:text-xs">
         {suggestion.generated_text}
       </div>
 
       {composerHasDraft && (
         <div
           data-testid="v2-assisted-draft-warning"
-          className="text-[10px] text-amber-700 dark:text-amber-300"
+          className="text-xs text-amber-700 dark:text-amber-300 lg:text-[10px]"
         >
           Envie ou apague o texto atual antes de usar esta sugestão.
         </div>
       )}
 
-      {error && <div className="text-[10px] text-red-700 dark:text-red-300">{error}</div>}
+      {error && <div className="text-xs text-red-700 dark:text-red-300 lg:text-[10px]">{error}</div>}
 
       <div className="flex gap-1.5">
         <button
@@ -213,7 +213,7 @@ export function SalesAgentAssistedCard({
           onClick={() => void transition("approve")}
           disabled={Boolean(busy) || composerHasDraft || !onInsertSuggestion}
           data-testid="v2-assisted-approve"
-          className="flex-1 inline-flex items-center justify-center gap-1 rounded bg-primary px-2 py-1.5 text-[11px] font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 inline-flex items-center justify-center gap-1 rounded bg-primary px-2 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 lg:py-1.5 lg:text-[11px]"
         >
           {busy === "approve" ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -228,7 +228,7 @@ export function SalesAgentAssistedCard({
           onClick={() => void transition("reject")}
           disabled={Boolean(busy)}
           data-testid="v2-assisted-reject"
-          className="inline-flex items-center justify-center gap-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] hover:bg-muted disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-1 rounded border border-border bg-background px-2 py-2 text-sm hover:bg-muted disabled:opacity-50 lg:py-1.5 lg:text-[11px]"
         >
           {busy === "reject" ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -239,7 +239,7 @@ export function SalesAgentAssistedCard({
         </button>
       </div>
 
-      <div className="text-[10px] text-muted-foreground">
+      <div className="text-xs text-muted-foreground lg:text-[10px]">
         Aprovar apenas coloca o texto no campo. O envio continua sendo manual.
       </div>
     </div>
