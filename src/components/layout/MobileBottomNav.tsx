@@ -50,7 +50,7 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
                 to={item.to}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-medium transition-colors",
+                  "relative flex min-h-[60px] flex-col items-center justify-center gap-1.5 px-1 py-1.5 text-[10px] font-medium transition-colors",
                   active
                     ? "text-primary"
                     : "text-sidebar-foreground/70 active:text-sidebar-accent-foreground",

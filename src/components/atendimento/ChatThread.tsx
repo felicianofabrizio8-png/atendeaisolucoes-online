@@ -162,13 +162,13 @@ export function ChatThread({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 px-5 py-4">
+      <header className="flex items-center gap-3 px-5 py-3">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
             aria-label="Voltar para a lista"
-            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
+            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -232,7 +232,7 @@ export function ChatThread({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="px-5 pb-5">
+      <form onSubmit={handleSubmit} className="px-5 pb-4" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}>
         {suggestError ? (
           <p role="alert" className="mx-auto mb-2 max-w-[680px] text-xs text-destructive">
             {suggestError}
