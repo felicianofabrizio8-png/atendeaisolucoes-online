@@ -10,6 +10,9 @@ export type CoachErrorCode =
   | "rate_limited"
   | "provider_unauthorized"
   | "provider_invalid_response"
+  | "provider_http_400"
+  | "provider_http_422"
+  | "provider_http_4xx"
   | "missing_tool_call"
   | "invalid_tool_arguments"
   | "provider_unavailable"
@@ -178,7 +181,9 @@ export function sanitizeProviderBody(body: string, max = 300): string {
  *  · 401/402/403                → 503 provider_unauthorized (configuração)
  *  · 408/504                    → 504 provider_timeout
  *  · 5xx                        → 503 provider_unavailable (retentável)
- *  · demais 4xx                 → 502 provider_invalid_response
+ *  · 400                        → 502 provider_http_400
+ *  · 422                        → 502 provider_http_422
+ *  · demais 4xx                 → 502 provider_http_4xx
  */
 export function classifyGatewayFailure(status: number, _body = ""): CoachErrorContract {
   if (status === 429) {
@@ -217,9 +222,28 @@ export function classifyGatewayFailure(status: number, _body = ""): CoachErrorCo
     };
   }
 
+  if (status === 400) {
+    return {
+      status: 502,
+      code: "provider_http_400",
+      error: "A IA devolveu uma resposta inválida. Tente novamente.",
+      retryable: true,
+    };
+  }
+
+  if (status === 422) {
+    return {
+      status: 502,
+      code: "provider_http_422",
+      error: "A IA devolveu uma resposta inválida. Tente novamente.",
+      retryable: true,
+    };
+  }
+
+  // Qualquer outro 4xx
   return {
     status: 502,
-    code: "provider_invalid_response",
+    code: "provider_http_4xx",
     error: "A IA devolveu uma resposta inválida. Tente novamente.",
     retryable: true,
   };

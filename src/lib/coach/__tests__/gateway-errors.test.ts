@@ -46,10 +46,38 @@ describe("classifyGatewayFailure", () => {
     expect(classifyGatewayFailure(408, "").code).toBe("provider_timeout");
   });
 
+  it("400 devolve código provider_http_400 com status 502", () => {
+    const c = classifyGatewayFailure(400, '{"error":"bad request"}');
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_400");
+    expect(c.retryable).toBe(true);
+  });
+
+  it("422 devolve código provider_http_422 com status 502", () => {
+    const c = classifyGatewayFailure(422, '{"error":"unprocessable entity"}');
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_422");
+    expect(c.retryable).toBe(true);
+  });
+
+  it("415 devolve código provider_http_4xx com status 502", () => {
+    const c = classifyGatewayFailure(415, '{"error":"unsupported media type"}');
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_4xx");
+    expect(c.retryable).toBe(true);
+  });
+
+  it("419 devolve código provider_http_4xx com status 502", () => {
+    const c = classifyGatewayFailure(419, '{"error":"csrf"}');
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_4xx");
+    expect(c.retryable).toBe(true);
+  });
+
   it("mantém 502 apenas para respostas inválidas de fato", () => {
     const c = classifyGatewayFailure(400, '{"type":"bad_request"}');
     expect(c.status).toBe(502);
-    expect(c.code).toBe("provider_invalid_response");
+    expect(c.code).toBe("provider_http_400");
   });
 
   it("nunca devolve o corpo bruto do provedor na mensagem ao usuário", () => {
@@ -59,7 +87,7 @@ describe("classifyGatewayFailure", () => {
   });
 
   it("todas as mensagens são amigáveis em pt-BR", () => {
-    for (const s of [400, 401, 402, 403, 408, 429, 500, 503, 504]) {
+    for (const s of [400, 401, 402, 403, 408, 415, 419, 422, 429, 500, 503, 504]) {
       const c = classifyGatewayFailure(s, "");
       expect(c.error.length).toBeGreaterThan(10);
       expect(c.error).not.toMatch(/undefined|\[object/);
@@ -117,22 +145,22 @@ describe("parseCoachProviderOutput", () => {
     ],
   });
 
-  it("classifica resposta sem tool call", () => {
+  it("classifica resposta sem tool call como missing_tool_call", () => {
     const result = parseCoachProviderOutput({ choices: [{ message: { content: "texto" } }] });
     expect(result).toMatchObject({ ok: false, code: "missing_tool_call" });
   });
 
-  it("classifica arguments inválido", () => {
+  it("classifica arguments inválido como invalid_tool_arguments", () => {
     const result = parseCoachProviderOutput(providerPayload("não é json"));
     expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
   });
 
-  it("classifica tool call sem function", () => {
+  it("classifica tool call sem function como invalid_tool_arguments", () => {
     const result = parseCoachProviderOutput(providerPayload(null, false));
     expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
   });
 
-  it("classifica JSON válido com contrato incompleto", () => {
+  it("classifica JSON válido com contrato incompleto como invalid_tool_arguments", () => {
     const result = parseCoachProviderOutput(providerPayload(JSON.stringify({ situation: "ok" })));
     expect(result).toMatchObject({ ok: false, code: "invalid_tool_arguments" });
     if (!result.ok) expect(result.metadata.reason).toBe("invalid_contract");
