@@ -245,18 +245,45 @@ ${transcript || "(sem mensagens)"}`;
         })();
 
         if (!aiRes.ok) {
-          await aiRes.text().catch(() => "");
-          const contract = classifyGatewayFailure(aiRes.status);
-          // Somente metadados seguros no log; nunca corpo, prompt ou conversa.
+          const rawBody = await aiRes.text().catch(() => "");
+
+          // Extrai apenas campos seguros do erro do provider (nunca mensagem, prompt, token).
+          let providerError: Record<string, unknown> = { format: "unstructured" };
+          try {
+            const parsed = JSON.parse(rawBody);
+            if (parsed && typeof parsed === "object") {
+              const err = (parsed as Record<string, unknown>).error;
+              if (err && typeof err === "object") {
+                const e = err as Record<string, unknown>;
+                providerError = {
+                  format: "structured",
+                  code: typeof e.code === "string" ? e.code : null,
+                  type: typeof e.type === "string" ? e.type : null,
+                  param: typeof e.param === "string" ? e.param : null,
+                };
+              }
+            }
+          } catch {
+            // Não era JSON — permanece unstructured.
+          }
+
+          const contract = classifyGatewayFailure(aiRes.status, rawBody);
+
+          // Log com metadados seguros; nunca corpo completo, prompt, conversa ou token.
           console.error(
             `[coach/suggest] invalid_provider_response ${JSON.stringify({
               provider,
               model,
               status: aiRes.status,
               code: contract.code,
+              provider_error: providerError,
             })}`,
           );
-          return Response.json(contract, { status: contract.status });
+
+          return Response.json(
+            { ...contract, provider_error: providerError },
+            { status: contract.status },
+          );
         }
 
         let payload: unknown;

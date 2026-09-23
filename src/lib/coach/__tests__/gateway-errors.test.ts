@@ -86,6 +86,44 @@ describe("classifyGatewayFailure", () => {
     expect(c.error).not.toContain("api_key");
   });
 
+  it("400 estruturado extrai error.code, error.type e error.param no response", () => {
+    const c = classifyGatewayFailure(
+      400,
+      JSON.stringify({
+        error: {
+          code: "invalid_request_argument",
+          type: "invalid_request_error",
+          param: "tool_choice",
+          message: "tool_choice parameter is not supported by this model",
+        },
+      }),
+    );
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_400");
+    expect(c.retryable).toBe(false);
+    expect(c.error).not.toContain("tool_choice");
+    expect(c.error).not.toContain("model");
+  });
+
+  it("400 não-estruturado (texto puro) não quebra e retorna código seguro", () => {
+    const c = classifyGatewayFailure(400, "Too Many Requests");
+    expect(c.status).toBe(502);
+    expect(c.code).toBe("provider_http_400");
+    expect(c.retryable).toBe(false);
+  });
+
+  it("422 estruturado também extrai campos seguros quando presentes", () => {
+    const c = classifyGatewayFailure(
+      422,
+      JSON.stringify({
+        error: { code: "json_invalid", type: "validation_error", message: "invalid schema" },
+      }),
+    );
+    expect(c.code).toBe("provider_http_422");
+    expect(c.retryable).toBe(false);
+    expect(c.error).not.toContain("schema");
+  });
+
   it("todas as mensagens são amigáveis em pt-BR", () => {
     for (const s of [400, 401, 402, 403, 408, 415, 419, 422, 429, 500, 503, 504]) {
       const c = classifyGatewayFailure(s, "");
