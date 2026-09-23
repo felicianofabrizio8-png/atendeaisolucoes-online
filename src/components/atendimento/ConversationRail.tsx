@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/data/mock";
 import { ContactAvatar } from "./ContactAvatar";
@@ -11,25 +11,49 @@ export function ConversationRail({
   onSelect,
   query,
   onQueryChange,
+  activeFilterLabel,
+  onClearFilter,
+  statusChip,
 }: {
   contacts: AtendimentoContact[];
   selectedId: string | null;
   onSelect: (conversationId: string) => void;
   query: string;
-  onQueryChange: (query: string) => void;
+  onQueryChange: (q: string) => void;
+  activeFilterLabel: string | null;
+  onClearFilter: () => void;
+  /** Selo sobre a origem dos dados da fila (reais ou simulados). */
+  statusChip?: React.ReactNode;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <label className="relative">
+      <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <span className="sr-only">Buscar conversas</span>
         <input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Buscar cliente, cidade ou produto…"
+          // Sem anel colorido no foco: o sinal de que o campo está ativo é o
+          // cursor piscando, apoiado por um leve clareamento do fundo.
           className="h-10 w-full rounded-full bg-secondary/60 pl-9 pr-3 text-sm outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:bg-secondary"
         />
-      </label>
+      </div>
+
+      {(activeFilterLabel || statusChip) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activeFilterLabel && (
+            <button
+              type="button"
+              onClick={onClearFilter}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-secondary"
+            >
+              {activeFilterLabel}
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          {statusChip}
+        </div>
+      )}
 
       <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
         {contacts.length === 0 ? (
@@ -41,7 +65,7 @@ export function ConversationRail({
             {contacts.map(({ lead, conversation, messages, history, hue }) => {
               const last = messages[messages.length - 1];
               const selected = conversation.id === selectedId;
-              const online =
+              const openWindow =
                 Date.now() - new Date(conversation.lastMessageAt).getTime() < 24 * 3_600_000;
 
               return (
@@ -51,29 +75,31 @@ export function ConversationRail({
                     onClick={() => onSelect(conversation.id)}
                     aria-current={selected}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
+                      "group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
                       selected ? "bg-secondary" : "hover:bg-secondary/50",
                     )}
                   >
-                    <ContactAvatar name={lead.name} hue={hue} online={online} />
+                    <ContactAvatar name={lead.name} hue={hue} online={openWindow} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-semibold">{lead.name}</span>
-                        <CustomerTierBadge history={history} size="sm" />
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                        <CustomerTierBadge history={history} size="sm" className="shrink-0" />
+                        <span className="ml-auto shrink-0 text-[10px] font-medium text-muted-foreground">
                           {timeAgo(conversation.lastMessageAt)}
                         </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {last?.role === "agent" ? "Você: " : ""}
-                        {last?.text ?? "—"}
+                      <span className="mt-0.5 flex items-center gap-1.5">
+                        <span className="truncate text-xs text-muted-foreground">
+                          {last?.role === "agent" ? "Você: " : ""}
+                          {last?.text ?? "—"}
+                        </span>
+                        {conversation.unread ? (
+                          <span className="ml-auto shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground tabular-nums">
+                            {conversation.unread}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
-                    {conversation.unread > 0 && (
-                      <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                        {conversation.unread}
-                      </span>
-                    )}
                   </button>
                 </li>
               );
