@@ -279,14 +279,14 @@ export function ChatThread({
   let lastDay = "";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 px-5 py-4">
+    <div className="flex h-full min-h-0 flex-col overflow-x-hidden">
+      <header className="flex items-center gap-3 px-4 py-3 sm:px-5">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
             aria-label="Voltar para a lista"
-            className="-ml-1 shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
+            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -312,7 +312,7 @@ export function ChatThread({
         {actions}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <div className="mx-auto flex max-w-[680px] flex-col gap-2">
           {messages.map((message: Message) => {
             const day = dayLabel(message.at);
@@ -371,7 +371,11 @@ export function ChatThread({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="px-5 pb-5">
+      <form
+        onSubmit={handleSubmit}
+        className="px-4 sm:px-5"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}
+      >
         {suggestError ? (
           <p role="alert" className="mx-auto mb-2 max-w-[680px] text-xs text-destructive">
             {suggestError}
@@ -389,7 +393,7 @@ export function ChatThread({
                 ? "Sugerir resposta com IA"
                 : "Sugestão com IA disponível no WhatsApp"
             }
-            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 min-h-[44px] text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
             <span className="hidden sm:inline">{suggesting ? "Gerando..." : "Sugerir com IA"}</span>
@@ -400,17 +404,20 @@ export function ChatThread({
             onChange={(event) => setText(event.target.value)}
             disabled={sending}
             placeholder="Mandar mensagem"
-            // min-w-0 é obrigatório: um item flex tem `min-width: auto`, então
-            // o campo se recusava a encolher abaixo da largura do próprio
-            // placeholder e empurrava os botões para FORA do form — o "Enviar"
-            // chegava a aparecer por cima do painel lateral em telas estreitas.
-            className="h-10 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
+            // Três coisas distintas nesta linha, todas necessárias:
+            //   h-11      alvo de toque de 44px (WCAG 2.5.5), veio da main;
+            //   text-base 16px impede o Safari do iPhone de dar zoom ao focar;
+            //   min-w-0   item flex tem `min-width: auto` e o campo se recusava
+            //             a encolher abaixo do próprio placeholder, empurrando
+            //             os botões para FORA do form — o "Enviar" chegava a
+            //             aparecer por cima do painel lateral em telas estreitas.
+            className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={sending || suggesting || !text.trim()}
             aria-label={sending ? "Enviando..." : "Enviar"}
-            className="rounded-full bg-primary p-2.5 text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-full bg-primary p-3 min-h-[44px] min-w-[44px] text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Send className="h-4 w-4" />
           </button>

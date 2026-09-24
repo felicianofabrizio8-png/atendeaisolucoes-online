@@ -4,11 +4,11 @@ import { buildCompanyGrounding } from "@/lib/coach-interpreter/grounding.server"
 import { recordSuggestionTelemetry } from "@/lib/coach-learnings/telemetry.server";
 import { resolveSalesAgentLlmConfig } from "@/lib/sales-agent-config.server";
 import {
-  COACH_INVALID_OUTPUT_CONTRACT,
   COACH_PROVIDER_TIMEOUT_MS,
   COACH_TIMEOUT_CONTRACT,
   classifyGatewayFailure,
-  sanitizeProviderBody,
+  createCoachInvalidOutputContract,
+  parseCoachProviderOutput,
 } from "@/lib/coach/gateway-errors";
 
 
@@ -17,15 +17,7 @@ interface SuggestBody {
   conversation_id: string;
 }
 
-interface CoachOutput {
-  situation: string;
-  next_action: string;
-  suggestion_text: string;
-  reasoning: string;
-  objection_type: "price" | "timing" | "spouse" | "researching" | "discount" | "other" | null;
-  urgency: "low" | "medium" | "high" | "critical";
-  risk_score: number;
-}
+
 
 export const Route = createFileRoute("/api/coach/suggest")({
   server: {
@@ -188,7 +180,58 @@ ${transcript || "(sem mensagens)"}`;
 
         // Timeout explícito: sem isto uma indisponibilidade do provedor
         // pendura a requisição do vendedor até o limite do runtime.
-        let aiRes: Response;
+        let aiRes: Response | null = null;
+        let retryAttempted = false;
+        const requestBodyWithToolChoice = {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "coach_output",
+                description: "Devolve a orientação do Coach ao vendedor",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    situation: { type: "string" },
+                    next_action: { type: "string" },
+                    suggestion_text: { type: "string" },
+                    reasoning: { type: "string" },
+                    objection_type: {
+                      type: "string",
+                      enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
+                    },
+                    urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                    risk_score: { type: "integer", minimum: 0, maximum: 100 },
+                  },
+                  required: [
+                    "situation",
+                    "next_action",
+                    "suggestion_text",
+                    "reasoning",
+                    "urgency",
+                    "risk_score",
+                  ],
+                },
+              },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "coach_output" } },
+        };
+        const requestBodyFallback = {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: requestBodyWithToolChoice.tools,
+          // tool_choice removido — alguns provedores rejeitam forced function calls
+        };
+
         try {
           aiRes = await fetch(endpoint, {
             method: "POST",
@@ -197,78 +240,115 @@ ${transcript || "(sem mensagens)"}`;
               "Content-Type": "application/json",
               Authorization: `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({
-              model,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt },
-              ],
-              tools: [
-                {
-                  type: "function",
-                  function: {
-                    name: "coach_output",
-                    description: "Devolve a orientação do Coach ao vendedor",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        situation: { type: "string" },
-                        next_action: { type: "string" },
-                        suggestion_text: { type: "string" },
-                        reasoning: { type: "string" },
-                        objection_type: {
-                          type: "string",
-                          enum: ["price", "timing", "spouse", "researching", "discount", "other", "none"],
-                        },
-                        urgency: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                        risk_score: { type: "integer", minimum: 0, maximum: 100 },
-                      },
-                      required: [
-                        "situation",
-                        "next_action",
-                        "suggestion_text",
-                        "reasoning",
-                        "urgency",
-                        "risk_score",
-                      ],
-                    },
-                  },
-                },
-              ],
-              tool_choice: { type: "function", function: { name: "coach_output" } },
-            }),
+            body: JSON.stringify(requestBodyWithToolChoice),
           });
+
+          // Fallback: se provedor rejeitou tool_choice com 400, tenta sem forçar.
+          // Apenas uma retry — nunca entra em loop.
+          if (!aiRes.ok && aiRes.status === 400 && !retryAttempted) {
+            retryAttempted = true;
+            console.warn(
+              `[coach/suggest] provider rejected tool_choice with 400, retrying without it`,
+            );
+            aiRes = await fetch(endpoint, {
+              method: "POST",
+              signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify(requestBodyFallback),
+            });
+          }
         } catch {
           // Aborto por timeout ou falha de rede — nunca 502 genérico.
           console.error("[coach/suggest] provider unreachable or timed out");
           return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
         }
 
+        const provider = (() => {
+          try {
+            return new URL(endpoint).hostname;
+          } catch {
+            return "configured_endpoint";
+          }
+        })();
+
         if (!aiRes.ok) {
-          const raw = await aiRes.text().catch(() => "");
-          const contract = classifyGatewayFailure(aiRes.status, raw);
-          // Corpo bruto só no log do servidor, sanitizado. Nunca na resposta.
+          const rawBody = await aiRes.text().catch(() => "");
+
+          // Extrai apenas campos seguros do erro do provider (nunca mensagem, prompt, token).
+          let providerError: Record<string, unknown> = { format: "unstructured" };
+          try {
+            const parsed = JSON.parse(rawBody);
+            if (parsed && typeof parsed === "object") {
+              const err = (parsed as Record<string, unknown>).error;
+              if (err && typeof err === "object") {
+                const e = err as Record<string, unknown>;
+                providerError = {
+                  format: "structured",
+                  code: typeof e.code === "string" ? e.code : null,
+                  type: typeof e.type === "string" ? e.type : null,
+                  param: typeof e.param === "string" ? e.param : null,
+                };
+              }
+            }
+          } catch {
+            // Não era JSON — permanece unstructured.
+          }
+
+          const contract = classifyGatewayFailure(aiRes.status, rawBody);
+
+          // Log com metadados seguros; nunca corpo completo, prompt, conversa ou token.
           console.error(
-            `[coach/suggest] provider ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`,
+            `[coach/suggest] invalid_provider_response ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: contract.code,
+              provider_error: providerError,
+            })}`,
+          );
+
+          return Response.json(
+            { ...contract, provider_error: providerError },
+            { status: contract.status },
+          );
+        }
+
+        let payload: unknown;
+        try {
+          payload = await aiRes.json();
+        } catch {
+          const contract = createCoachInvalidOutputContract("invalid_tool_arguments");
+          console.error(
+            `[coach/suggest] invalid_output ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: contract.code,
+              reason: "invalid_provider_json",
+            })}`,
           );
           return Response.json(contract, { status: contract.status });
         }
 
-        const payload = await aiRes.json();
-        const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall)
-          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
-            status: COACH_INVALID_OUTPUT_CONTRACT.status,
-          });
-        let parsed: CoachOutput;
-        try {
-          parsed = JSON.parse(toolCall.function.arguments) as CoachOutput;
-        } catch {
-          return Response.json(COACH_INVALID_OUTPUT_CONTRACT, {
-            status: COACH_INVALID_OUTPUT_CONTRACT.status,
-          });
+        const parsedOutput = parseCoachProviderOutput(payload);
+        if (!parsedOutput.ok) {
+          const contract = createCoachInvalidOutputContract(parsedOutput.code);
+          console.error(
+            `[coach/suggest] invalid_output ${JSON.stringify({
+              provider,
+              model,
+              status: aiRes.status,
+              code: parsedOutput.code,
+              metadata: parsedOutput.metadata,
+            })}`,
+          );
+          return Response.json(contract, { status: contract.status });
         }
 
+        const parsed = parsedOutput.output;
 
         const { data: ins, error: insErr } = await supabaseAdmin
           .from("coach_suggestions")

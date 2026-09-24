@@ -37,7 +37,7 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
     <nav
       aria-label="Navegação principal"
       data-testid="mobile-bottom-nav"
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 safe-bottom border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
+      className="lg:hidden fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
     >
       <ul className="grid grid-cols-5">
         {ITEMS.map((item) => {
@@ -50,7 +50,7 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
                 to={item.to}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-medium transition-colors",
+                  "relative flex min-h-[60px] flex-col items-center justify-center gap-1.5 px-1 py-1.5 text-[10px] font-medium transition-colors",
                   active
                     ? "text-primary"
                     : "text-sidebar-foreground/70 active:text-sidebar-accent-foreground",

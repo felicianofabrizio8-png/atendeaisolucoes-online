@@ -351,6 +351,41 @@ const validationContext: AgentContext = {
     expect(decision.kind === "handoff" ? decision.reason : decision.kind).toBe(expectedReason);
   });
 
+  it("aceita instalação e itens inclusos quando constam nas regras comerciais", async () => {
+    const message = "A Piscina 6x3 inclui instalação, filtro e bomba.";
+    const core = new SalesAgentCore(
+      vi.fn().mockResolvedValue(completionWithMessage(message)),
+    );
+
+    const decision = await core.decide({
+      ctx: {
+        ...validationContext,
+        grounding: {
+          ...validationContext.grounding,
+          commercialRules: {
+            ...validationContext.grounding.commercialRules,
+            installationPolicy: "A instalação está inclusa no projeto.",
+            includedItemsPolicy: "Inclui filtro e bomba.",
+          },
+        },
+      },
+      history: [{ role: "lead", text: "O que está incluso?" }],
+      leadName: null,
+      model: salesModel,
+      interpretation: testInterpretation,
+      catalogSearch: {
+        status: "matches",
+        products: [validatedProduct],
+      },
+    });
+
+    expect(decision).toMatchObject({
+      kind: "reply",
+      message,
+      suggested_products: ["product-1"],
+    });
+  });
+
   it("resolve Sol 600 seguido de E a 601 pelo catálogo e valida os fatos reais", async () => {
     const products = [
       { ...validatedProduct, id: "sol-600", name: "Sol 600", price: 20_000 },
