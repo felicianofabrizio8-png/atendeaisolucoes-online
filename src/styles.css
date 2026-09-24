@@ -674,48 +674,113 @@ iframe[src*="lovable.dev/badge"] {
 /* ---------------------------------------------------------------------------
    Tokens de visualização de dados
 
-   Separados de `--primary` de propósito. A interface é neutra (a escolha de
-   cor de destaque saiu do produto); o DADO é a única coisa que pode ser
-   colorida — é o que faz o gráfico ser lido antes do rótulo.
+   Três famílias, com papéis que NÃO se misturam:
 
-   Os três tons categóricos foram VALIDADOS, não escolhidos a olho: passam
-   banda de luminosidade, piso de croma, separação para daltonismo (todos os
-   pares) e contraste contra a superfície, nos dois temas. A paleta que já
-   existia (`--chart-1..5`) reprovava: verde e ciano a ΔE 14,8 (piso 15) e
-   azul/magenta a 4,1 em deuteranopia.
+   1. CATEGÓRICA (`--viz-1/2/3`) — identidade. Um tom por painel, nunca uma
+      escala dentro do mesmo gráfico.
+   2. FLUXO (`--viz-flow-0..3`) — ordem. Para faixas empilhadas e fitas do
+      alluvial, onde a posição na pilha É a informação; a luminosidade cai
+      monotonicamente do topo para a base, então a ordem se lê sem legenda.
+   3. CALOR (`--viz-heat-0..4`) — magnitude. Rampa multi-tom do tipo magma
+      (ameixa → magenta → laranja → ouro), monotônica em luminosidade. Rampa
+      multi-tom não é arco-íris: arco-íris quebra a ordem de luminosidade e
+      inventa fronteira; esta sobe sem degrau e ainda dá muito mais degraus
+      discrimináveis do que um tom só — é por isso que mapa de calor denso
+      usa magma e não "verde claro → verde escuro".
 
-   A rampa sequencial é de UM tom, claro→escuro, para magnitude (heatmap).
-   Nunca arco-íris.
+   A categórica foi VALIDADA, não escolhida a olho, nos dois temas e em todos
+   os pares: banda de luminosidade, piso de croma, separação para protanopia,
+   deuteranopia e tritanopia, e contraste contra a superfície.
+
+     escuro  #009da3 / #7563cf / #b38c15 — normal ΔE 19,9 · pior CVD 13,5
+     claro   #008caa / #624bbc / #a78000 — normal ΔE 18,8 · pior CVD 13,5
+
+   O verde esmeralda saiu: ele aparecia como padrão em quase todo gráfico e a
+   tela inteira ficava monocromática. Verde agora é só `--status-won`, que é
+   cor de ESTADO (fechado) e vem sempre com rótulo.
+
+   Quarta categoria nominal não existe de propósito: com quatro tons, algum
+   par cai abaixo do piso de 15 em visão normal ou de 8 em deuteranopia —
+   medido, não suposto. Onde havia quatro séries, o gráfico virou pequenos
+   múltiplos ou matriz.
 --------------------------------------------------------------------------- */
 :root {
-  --viz-1: #19a974; /* esmeralda — série principal */
-  --viz-2: #7c6ef0; /* violeta */
-  --viz-3: #c98500; /* âmbar */
+  --viz-1: #009da3; /* turquesa — dinheiro */
+  --viz-2: #7563cf; /* violeta — leads */
+  --viz-3: #b38c15; /* ouro — objeção */
 
   --viz-grid: oklch(0.3 0 0);
   --viz-track: oklch(0.26 0 0);
+  /* Fuga: o que saiu do fluxo. Cinza de propósito — perda não é categoria,
+     é ausência, e dar-lhe um tom próprio a coloca em pé de igualdade com o
+     que avançou. */
+  --viz-drop: oklch(0.38 0.01 20);
 
-  /* Rampa sequencial (magnitude). Monotônica em luminosidade. */
-  --viz-ramp-0: oklch(0.24 0.01 165);
-  --viz-ramp-1: oklch(0.34 0.05 165);
-  --viz-ramp-2: oklch(0.45 0.09 165);
-  --viz-ramp-3: oklch(0.56 0.13 165);
-  --viz-ramp-4: oklch(0.68 0.16 165);
+  --viz-flow-0: oklch(0.74 0.1 200);
+  --viz-flow-1: oklch(0.65 0.13 240);
+  --viz-flow-2: oklch(0.56 0.16 278);
+  --viz-flow-3: oklch(0.48 0.17 305);
+
+  --viz-heat-0: oklch(0.26 0.015 300);
+  --viz-heat-1: oklch(0.38 0.1 302);
+  --viz-heat-2: oklch(0.5 0.16 340);
+  --viz-heat-3: oklch(0.64 0.16 30);
+  --viz-heat-4: oklch(0.8 0.15 75);
+
+  /* Rampa FRIO → QUENTE, para taxa de avanço no funil.
+
+     Multi-tom (roxo → azul → ciano → verde → amarelo) e mesmo assim não é
+     arco-íris: a luminosidade sobe monotonicamente de 0,45 a 0,86, então a
+     ordem continua legível mesmo em preto e branco. O que torna arco-íris
+     ruim é a luminosidade subir e descer, criando fronteira onde o dado é
+     contínuo — aqui ela só sobe.
+
+     A semântica é do negócio e foi pedida assim: FRIO = o que escapa,
+     QUENTE = o que avança. Isso dá à rampa um significado direcional que
+     um tom só não carrega — azul não é apenas 'menos', é 'vaza aqui'.
+
+     O texto dentro da célula troca de cor no meio da rampa (níveis 0–2
+     claro, 3–5 escuro), porque nenhuma cor de texto única tem contraste
+     contra as duas pontas. */
+  --viz-cw-0: oklch(0.45 0.16 300);
+  --viz-cw-1: oklch(0.52 0.15 265);
+  --viz-cw-2: oklch(0.62 0.13 220);
+  --viz-cw-3: oklch(0.7 0.14 165);
+  --viz-cw-4: oklch(0.78 0.15 120);
+  --viz-cw-5: oklch(0.86 0.15 95);
 }
 
 :root.light {
-  --viz-1: #12855d;
-  --viz-2: #6d5ae0;
-  --viz-3: #a86f00;
+  --viz-1: #008caa;
+  --viz-2: #624bbc;
+  --viz-3: #a78000;
 
   --viz-grid: oklch(0.9 0.008 250);
   --viz-track: oklch(0.94 0.006 250);
+  --viz-drop: oklch(0.82 0.01 20);
 
-  --viz-ramp-0: oklch(0.96 0.01 165);
-  --viz-ramp-1: oklch(0.87 0.05 165);
-  --viz-ramp-2: oklch(0.76 0.09 165);
-  --viz-ramp-3: oklch(0.63 0.12 165);
-  --viz-ramp-4: oklch(0.5 0.13 165);
+  --viz-flow-0: oklch(0.72 0.11 200);
+  --viz-flow-1: oklch(0.62 0.14 240);
+  --viz-flow-2: oklch(0.53 0.17 278);
+  --viz-flow-3: oklch(0.45 0.18 305);
+
+  /* Tema claro inverte o sentido da rampa: em fundo branco o "muito" é o
+     tom ESCURO. Manter a ordem do tema escuro deixaria a célula cheia mais
+     clara que o papel — magnitude lida ao contrário. */
+  --viz-heat-0: oklch(0.95 0.012 75);
+  --viz-heat-1: oklch(0.85 0.09 70);
+  --viz-heat-2: oklch(0.72 0.15 45);
+  --viz-heat-3: oklch(0.56 0.17 355);
+  --viz-heat-4: oklch(0.4 0.16 305);
+
+  /* Mesma trilha de tons, um degrau mais escura: sobre papel branco a ponta
+     clara precisa ficar abaixo de 0,82 para o texto escuro ainda pegar. */
+  --viz-cw-0: oklch(0.42 0.17 300);
+  --viz-cw-1: oklch(0.5 0.16 265);
+  --viz-cw-2: oklch(0.58 0.14 220);
+  --viz-cw-3: oklch(0.66 0.14 165);
+  --viz-cw-4: oklch(0.74 0.16 120);
+  --viz-cw-5: oklch(0.82 0.16 95);
 }
 
 /* Entrada dos gráficos: as marcas crescem da linha de base.
@@ -749,6 +814,46 @@ iframe[src*="lovable.dev/badge"] {
   }
 }
 
+/* Fita do alluvial: a forma já existe, o que cresce é a espessura.
+   Animar `d` frame a frame seria recalcular Bézier a 60fps; escalar em Y a
+   partir do centro dá o mesmo "o fluxo abre" por uma propriedade que roda no
+   compositor. */
+@keyframes viz-ribbon {
+  from {
+    transform: scaleY(0.04);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* Revelação da esquerda para a direita, via clipPath. É assim que o fluxo
+   "corre": a forma inteira já existe, o recorte é que abre. Animar a largura
+   do rect (atributo) não roda no compositor; escalar em X roda. */
+@keyframes viz-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Ponto do mapa de calor: entra encolhido. Com o atraso em cascata pela
+   diagonal, a grade "acende" varrendo em vez de piscar inteira. */
+@keyframes viz-dot {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .viz-grow {
   transform-box: fill-box;
   transform-origin: bottom;
@@ -759,9 +864,42 @@ iframe[src*="lovable.dev/badge"] {
   animation: viz-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
+.viz-ribbon {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: viz-ribbon 760ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: viz-dot 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-wipe {
+  transform-box: fill-box;
+  transform-origin: left;
+  animation: viz-wipe 1000ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Traço que se desenha (arco radial, linha de área). O dasharray vem do
+   componente, que conhece o comprimento real do path. */
+.viz-stroke {
+  animation: viz-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .viz-grow,
-  .viz-fade-up {
+  .viz-fade-up,
+  .viz-ribbon,
+  .viz-dot,
+  .viz-wipe,
+  .viz-stroke {
     animation: none;
+  }
+
+  /* Sem animação o traço precisa nascer visível, senão o arco some. */
+  .viz-stroke {
+    stroke-dashoffset: 0 !important;
   }
 }

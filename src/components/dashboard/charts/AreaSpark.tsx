@@ -8,23 +8,38 @@ export interface SparkPoint {
 }
 
 /**
- * Área com linha, mira e tooltip.
+ * Área com linha, mira e comparação com o período anterior.
  *
  * A linha é 2px e a área é o mesmo tom a ~10% — um bloco saturado embaixo da
  * curva rouba a leitura da própria curva.
  *
+ * A LINHA TRACEJADA é o mesmo recorte um período inteiro atrás. Ela muda a
+ * pergunta que o painel responde: sem ela "38 leads" é um número solto; com
+ * ela, a distância entre as duas curvas é a resposta. Tracejada e sem área
+ * porque é referência, não protagonista — duas áreas preenchidas brigariam
+ * pela mesma região da tela.
+ *
+ * As duas séries dividem a MESMA escala, obrigatoriamente. Escalas separadas
+ * fariam curvas de tamanhos diferentes parecerem iguais; é a mesma falácia do
+ * eixo duplo, só que disfarçada.
+ *
  * O traço é desenhado com `stroke-dasharray` igual ao comprimento do path e
- * animado até zero: é o único jeito de "escrever" a linha da esquerda para a
- * direita sem recalcular pontos frame a frame.
+ * animado até zero: é o único jeito de escrever a linha da esquerda para a
+ * direita sem recalcular pontos quadro a quadro.
  */
 export function AreaSpark({
   data,
+  compare,
+  compareLabel = "Período anterior",
   color = "var(--viz-1)",
   height = 150,
   format,
   className,
 }: {
   data: SparkPoint[];
+  /** Mesma série, uma janela atrás. Vira a linha tracejada de referência. */
+  compare?: SparkPoint[];
+  compareLabel?: string;
   color?: string;
   height?: number;
   format: (value: number) => string;
@@ -42,13 +57,23 @@ export function AreaSpark({
   const padBottom = 20;
   const padTop = 8;
   const plotH = H - padBottom - padTop;
-  const max = niceMax(Math.max(...data.map((d) => d.value)));
+
+  const temComparacao = Boolean(
+    compare && compare.length === data.length && compare.some((c) => c.value > 0),
+  );
+  const max = niceMax(
+    Math.max(...data.map((d) => d.value), ...(temComparacao ? compare!.map((d) => d.value) : [0])),
+  );
   const step = data.length > 1 ? W / (data.length - 1) : W;
+  const yDe = (v: number) => padTop + plotH - (max > 0 ? (v / max) * plotH : 0);
 
   const points = data.map((d, i) => ({
     x: data.length > 1 ? i * step : W / 2,
-    y: padTop + plotH - (max > 0 ? (d.value / max) * plotH : 0),
+    y: yDe(d.value),
   }));
+  const pontosAnteriores = temComparacao
+    ? compare!.map((d, i) => ({ x: data.length > 1 ? i * step : W / 2, y: yDe(d.value) }))
+    : [];
 
   const line = linePath(points);
   const area = areaPath(points, padTop + plotH);
@@ -72,6 +97,17 @@ export function AreaSpark({
 
         {inView && (
           <>
+            {temComparacao && (
+              <path
+                d={linePath(pontosAnteriores)}
+                fill="none"
+                stroke="var(--muted-foreground)"
+                strokeWidth={1.5}
+                strokeDasharray="5 5"
+                strokeLinecap="round"
+                opacity={0.65}
+              />
+            )}
             <path d={area} fill={`url(#${gradientId})`} className="viz-fade-up" />
             <path
               d={line}
@@ -103,6 +139,16 @@ export function AreaSpark({
               stroke="var(--viz-grid)"
               strokeWidth={1}
             />
+            {temComparacao && (
+              <circle
+                cx={pontosAnteriores[hover].x}
+                cy={pontosAnteriores[hover].y}
+                r={3.5}
+                fill="var(--card)"
+                stroke="var(--muted-foreground)"
+                strokeWidth={1.5}
+              />
+            )}
             {/* Anel na cor da superfície: o ponto continua legível mesmo
                 cruzando a linha. */}
             <circle
@@ -130,8 +176,24 @@ export function AreaSpark({
         ))}
       </svg>
 
-      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
         <span>{data[0].label}</span>
+        {temComparacao && (
+          <span className="flex items-center gap-1.5">
+            <svg aria-hidden viewBox="0 0 16 2" className="h-[2px] w-4">
+              <line
+                x1="0"
+                y1="1"
+                x2="16"
+                y2="1"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray="4 3"
+              />
+            </svg>
+            {compareLabel}
+          </span>
+        )}
         <span>{data[data.length - 1].label}</span>
       </div>
 
@@ -143,6 +205,11 @@ export function AreaSpark({
         >
           <span className="block font-semibold tabular-nums">{format(data[hover].value)}</span>
           <span className="block text-[10px] text-muted-foreground">{data[hover].label}</span>
+          {temComparacao && (
+            <span className="block text-[10px] text-muted-foreground">
+              Antes: {format(compare![hover].value)}
+            </span>
+          )}
         </div>
       )}
     </div>

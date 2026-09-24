@@ -82,12 +82,27 @@ export function areaPath(points: Array<{ x: number; y: number }>, baseline: numb
 
 export function linePath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) return "";
-  if (points.length < 3) {
-    return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
-  }
+  return `M${points[0].x},${points[0].y}${curveCommands(points)}`;
+}
+
+/**
+ * Só os comandos de curva, SEM o `M` inicial.
+ *
+ * Existe separado para poder compor uma fita: a borda de cima vai da esquerda
+ * para a direita, a de baixo volta da direita para a esquerda, e as duas
+ * precisam virar um único `path` fechado. Com `linePath` nos dois trechos o
+ * `M` do segundo quebraria o preenchimento em duas sub-formas.
+ */
+export function curveCommands(points: Array<{ x: number; y: number }>): string {
+  if (points.length < 2) return "";
+  if (points.length < 3)
+    return points
+      .slice(1)
+      .map((p) => ` L${p.x},${p.y}`)
+      .join("");
   // Tensão 0.5: curva o bastante para não parecer serrilhada e pouco o
   // bastante para não inventar picos que o dado não tem.
-  let d = `M${points[0].x},${points[0].y}`;
+  let d = "";
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[Math.max(i - 1, 0)];
     const p1 = points[i];
@@ -100,6 +115,54 @@ export function linePath(points: Array<{ x: number; y: number }>): string {
     d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
   }
   return d;
+}
+
+/**
+ * Fita fechada entre uma borda superior e uma inferior, ambas suavizadas.
+ *
+ * É a forma do gráfico de fluxo: cada faixa é o espaço ENTRE duas curvas, não
+ * uma área até a linha de base. Por isso não dá para reaproveitar `areaPath`.
+ */
+export function ribbonPath(
+  top: Array<{ x: number; y: number }>,
+  bottom: Array<{ x: number; y: number }>,
+): string {
+  if (top.length === 0 || bottom.length === 0) return "";
+  const volta = [...bottom].reverse();
+  return (
+    `M${top[0].x},${top[0].y}` +
+    curveCommands(top) +
+    ` L${volta[0].x},${volta[0].y}` +
+    curveCommands(volta) +
+    " Z"
+  );
+}
+
+/** Ponto no círculo. Ângulo em graus, 0 = topo, sentido horário. */
+export function polar(cx: number, cy: number, r: number, deg: number): { x: number; y: number } {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+/**
+ * Arco aberto (sem preenchimento) — o traço de um anel.
+ *
+ * Desenhado como `path` e não como `circle` com `stroke-dasharray` calculado
+ * na mão porque aqui o começo e o fim do arco são conhecidos; dasharray fica
+ * reservado para a ANIMAÇÃO de desenho, sem disputar com a geometria.
+ */
+export function arcPath(cx: number, cy: number, r: number, from: number, to: number): string {
+  const varredura = Math.abs(to - from);
+  if (varredura <= 0) return "";
+  // 360° num único arco elíptico é degenerado (começo = fim): quebra em dois.
+  if (varredura >= 359.99) {
+    const meio = from + 180;
+    return `${arcPath(cx, cy, r, from, meio)} ${arcPath(cx, cy, r, meio, from + 359.99)}`;
+  }
+  const a = polar(cx, cy, r, from);
+  const b = polar(cx, cy, r, to);
+  const grande = varredura > 180 ? 1 : 0;
+  return `M${a.x},${a.y} A${r},${r} 0 ${grande} 1 ${b.x},${b.y}`;
 }
 
 /**
@@ -184,6 +247,15 @@ export function useCountUp(target: number, duration = 900): number {
  * Sem isto, um painel no fim da página termina a animação antes de alguém
  * olhar — e o usuário rola até um gráfico já parado, perdendo a leitura de
  * crescimento que a animação carrega.
+ *
+ * A REDE DE SEGURANÇA não é opcional. `inView === false` esconde as marcas, e
+ * aqui isso significa gráfico em branco. Observado na tela: recarregando a
+ * página com o navegador restaurando a rolagem, o observador não entregava a
+ * primeira leitura dos painéis que já estavam visíveis e eles ficavam vazios
+ * até alguém rolar. Por isso a medida direta com `getBoundingClientRect` no
+ * quadro seguinte à montagem: se o elemento já está na tela, liga sem esperar
+ * o observador. Animação que falha deve terminar mostrando o dado, nunca
+ * escondendo.
  */
 export function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T>(null);
@@ -195,6 +267,8 @@ export function useInView<T extends Element>(): [React.RefObject<T | null>, bool
       setInView(true);
       return;
     }
+
+    let raf = 0;
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -205,7 +279,22 @@ export function useInView<T extends Element>(): [React.RefObject<T | null>, bool
       { threshold: 0.2 },
     );
     io.observe(el);
-    return () => io.disconnect();
+
+    // Um quadro depois: o layout já assentou e a rolagem restaurada já foi
+    // aplicada, então o retângulo é confiável.
+    raf = requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect();
+      const altura = window.innerHeight || document.documentElement.clientHeight;
+      if (r.height > 0 && r.top < altura && r.bottom > 0) {
+        setInView(true);
+        io.disconnect();
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      io.disconnect();
+    };
   }, []);
 
   return [ref, inView];
