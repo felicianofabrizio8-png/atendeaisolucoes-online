@@ -285,6 +285,51 @@ function bucketsDe(
   return out;
 }
 
+/**
+ * Baldes FINOS, só para o campo de calor.
+ *
+ * Os baldes das séries são grossos de propósito: no mês são seis blocos de
+ * cinco dias, porque trinta colunas de barra viram palito ilegível. O campo
+ * de calor tem o problema oposto — com seis colunas e quinze linhas a grade
+ * nasce em pé e quase vazia. Aqui a granularidade é a mais fina que ainda
+ * cabe: dia na semana e no mês, semana no ano.
+ */
+function bucketsFinos(
+  periodo: Periodo,
+  agora: number,
+): Array<{ inicio: number; fim: number; label: string; fullLabel: string }> {
+  const out: Array<{ inicio: number; fim: number; label: string; fullLabel: string }> = [];
+
+  if (periodo === "ano") {
+    for (let i = 51; i >= 0; i--) {
+      const fim = agora - i * 7 * DIA;
+      const inicio = fim - 7 * DIA;
+      const d = new Date(inicio);
+      out.push({
+        inicio,
+        fim,
+        label: d.toLocaleDateString("pt-BR", { month: "short" }),
+        fullLabel: `semana de ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`,
+      });
+    }
+    return out;
+  }
+
+  const dias = periodo === "semana" ? 7 : 30;
+  for (let i = dias - 1; i >= 0; i--) {
+    const d = new Date(agora - i * DIA);
+    d.setHours(0, 0, 0, 0);
+    const inicio = d.getTime();
+    out.push({
+      inicio,
+      fim: inicio + DIA,
+      label: `${d.getDate()}`,
+      fullLabel: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
+    });
+  }
+  return out;
+}
+
 export function useDashboardMetrics(
   data: DashboardData,
   periodo: Periodo,
@@ -488,14 +533,15 @@ export function useDashboardMetrics(
     // As colunas seguem o MESMO recorte do resto da tela (7 dias, 30 dias ou
     // 12 meses). Usar um recorte próprio aqui faria este painel responder a
     // um período e os vizinhos a outro, na mesma tela.
-    const gradeValores: number[][] = horasExibidas.map(() => buckets.map(() => 0));
+    const colunasGrade = bucketsFinos(periodo, agora);
+    const gradeValores: number[][] = horasExibidas.map(() => colunasGrade.map(() => 0));
     let gradeTotal = 0;
     for (const lead of leads) {
       if (!lead.createdAt) continue;
       const t = new Date(lead.createdAt);
       const ms = t.getTime();
       if (!Number.isFinite(ms)) continue;
-      const coluna = buckets.findIndex((b) => ms >= b.inicio && ms < b.fim);
+      const coluna = colunasGrade.findIndex((b) => ms >= b.inicio && ms < b.fim);
       if (coluna < 0) continue;
       const linha = horasExibidas.indexOf(t.getHours());
       if (linha < 0) continue;
@@ -503,8 +549,8 @@ export function useDashboardMetrics(
       gradeTotal += 1;
     }
     const gradeLeads: GradeLeads = {
-      colunas: buckets.map((b) => b.label),
-      colunasCheias: buckets.map((b) => b.fullLabel),
+      colunas: colunasGrade.map((b) => b.label),
+      colunasCheias: colunasGrade.map((b) => b.fullLabel),
       linhas: horasExibidas,
       valores: gradeValores,
       total: gradeTotal,

@@ -8,17 +8,20 @@ import { brlCompact, num } from "./charts/primitives";
 import { CANAIS, type DashboardMetrics } from "./useDashboardMetrics";
 
 /**
- * Séries da receita, uma por canal.
+ * Séries da receita, uma por canal: WhatsApp vermelho, Instagram roxo,
+ * Facebook azul.
  *
- * A trinca categórica VALIDADA, não a cor de marca: verde do WhatsApp contra
- * rosa do Instagram fica a ΔE 4,3 em deuteranopia, e aqui as três curvas se
- * cruzam — é exatamente onde a separação de cor não pode falhar. Estes três
- * tons passam em todos os pares, nos dois temas.
+ * Tons próprios e validados, não as cores de marca: aqui as três curvas se
+ * cruzam, que é exatamente onde a separação não pode falhar, e o verde do
+ * WhatsApp contra o rosa do Instagram fica a ΔE 4,3 em deuteranopia. Estes
+ * passam em todos os pares nos dois temas — o par apertado é roxo/azul, no
+ * piso de 8, sustentado pela legenda com amostra e pelo tooltip que lista os
+ * três nomes com o valor de cada um.
  */
-const SERIES: SerieMulti[] = CANAIS.map((c, i) => ({
+const SERIES: SerieMulti[] = CANAIS.map((c) => ({
   key: c.key,
   label: c.label,
-  color: `var(--viz-${i + 1})`,
+  color: `var(--viz-canal-${c.key})`,
 }));
 
 /**

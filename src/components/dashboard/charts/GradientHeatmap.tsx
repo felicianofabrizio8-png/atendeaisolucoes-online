@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { num, useInView } from "./primitives";
 
-const PARADAS = 6;
+const PARADAS = 7;
 
 /**
  * Suaviza o campo com um núcleo 3×3 antes de colorir.
@@ -124,7 +124,7 @@ export function GradientHeatmap({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
-        style={{ maxHeight: 250 }}
+        style={{ maxHeight: 300 }}
         role="img"
         aria-label="Entrada de leads por hora ao longo do período"
         preserveAspectRatio="xMidYMid meet"
