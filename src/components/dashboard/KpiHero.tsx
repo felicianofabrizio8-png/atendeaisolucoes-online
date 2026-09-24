@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { brl, brlCompact, num, pct, useCountUp } from "./charts/primitives";
+import { MicroArc, MicroRidge } from "./charts/Micro";
+import { brl, brlCompact, num, pct, useCountUp, useInView } from "./charts/primitives";
 import type { Periodo, ValorComparado } from "./useDashboardMetrics";
 
 const PERIODOS: Array<{ value: Periodo; label: string }> = [
@@ -90,6 +91,7 @@ function Hero({
   delta,
   compare,
   moeda = true,
+  children,
 }: {
   label: string;
   value: number;
@@ -97,22 +99,56 @@ function Hero({
   delta?: number | null;
   compare?: string;
   moeda?: boolean;
+  /** A micro-visualização que dá forma ao número. */
+  children?: React.ReactNode;
 }) {
   const animated = useCountUp(value);
   const display = formatted ?? (moeda ? brl(Math.round(animated)) : num(Math.round(animated)));
 
   return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+    <div className="flex min-w-0 flex-col">
+      {/* Caixa alta com muito espaçamento: o rótulo precisa sumir como
+          textura e deixar o número ser a única coisa alta da linha. */}
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {/* tabular-nums é obrigatório em número que anima: sem ele os dígitos
             têm larguras diferentes e a linha inteira treme enquanto sobe. */}
-        <span className="text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[28px]">
+        <span className="text-[26px] font-bold leading-none tabular-nums tracking-tight text-foreground sm:text-[32px]">
           {display}
         </span>
         {delta !== undefined && <Delta value={delta} />}
       </div>
-      {compare && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{compare}</p>}
+      {compare && <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{compare}</p>}
+      {children && <div className="mt-auto pt-3">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * Barra de composição do pipeline.
+ *
+ * O pipeline aberto é um número sem tamanho próprio: R$ 400 mil é muito ou
+ * pouco? A parte que está QUENTE responde — é a fração que pode virar receita
+ * nas próximas semanas. Dois segmentos, não uma pizza: comparação de duas
+ * partes de um todo se lê melhor em comprimento.
+ */
+function PipelineSplit({ total, quentes }: { total: number; quentes: number }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const fracao = total > 0 ? Math.min(quentes / total, 1) : 0;
+  return (
+    <div ref={ref} aria-hidden>
+      <div className="flex h-2 w-full gap-[3px] overflow-hidden rounded-full">
+        <span
+          className="h-full rounded-full transition-[width] duration-700 ease-out"
+          style={{ width: inView ? `${fracao * 100}%` : "0%", background: "var(--viz-3)" }}
+        />
+        <span
+          className="h-full min-w-0 flex-1 rounded-full"
+          style={{ background: "var(--viz-track)" }}
+        />
+      </div>
     </div>
   );
 }
@@ -120,10 +156,13 @@ function Hero({
 /**
  * Faixa de KPIs do topo.
  *
- * Três números, não oito. A referência que o cliente mandou acerta nisso: um
- * painel com dezesseis indicadores não é lido, é ignorado. Aqui a ordem é a
- * da pergunta do dono do negócio — quanto entrou, quanto está em jogo, quanto
- * do que entra vira venda.
+ * Três números, não oito: um painel com dezesseis indicadores não é lido, é
+ * ignorado. A ordem é a da pergunta do dono do negócio — quanto entrou,
+ * quanto está em jogo, quanto do que entra vira venda.
+ *
+ * Cada número ganhou uma micro-visualização embaixo. Não é enfeite: um valor
+ * isolado não diz se está subindo, de que é feito nem quanto falta para o
+ * todo, e essas três perguntas cabem em trinta pixels de altura cada.
  */
 export function KpiHero({
   receita,
@@ -133,6 +172,7 @@ export function KpiHero({
   ticketMedio,
   vendas,
   periodoLabel,
+  serieReceita,
 }: {
   receita: ValorComparado;
   pipeline: number;
@@ -141,11 +181,13 @@ export function KpiHero({
   ticketMedio: number;
   vendas: ValorComparado;
   periodoLabel: string;
+  /** Série de receita por balde — a crista sob o número grande. */
+  serieReceita: number[];
 }) {
   const conversao = useCountUp(taxaConversao);
 
   return (
-    <section className="viz-fade-up grid gap-5 rounded-2xl border border-border bg-card/60 p-5 sm:grid-cols-3">
+    <section className="viz-fade-up grid gap-6 rounded-2xl border border-border bg-card/60 p-5 sm:grid-cols-3">
       <Hero
         label={`Receita · ${periodoLabel}`}
         value={receita.atual}
@@ -155,9 +197,11 @@ export function KpiHero({
             ? `Antes: ${brlCompact(receita.anterior)} · ${num(vendas.atual)} venda${vendas.atual === 1 ? "" : "s"}`
             : `${num(vendas.atual)} venda${vendas.atual === 1 ? "" : "s"} fechada${vendas.atual === 1 ? "" : "s"}`
         }
-      />
+      >
+        {serieReceita.some((v) => v > 0) && <MicroRidge data={serieReceita} color="var(--viz-1)" />}
+      </Hero>
 
-      <div className="min-w-0 sm:border-l sm:border-border sm:pl-5">
+      <div className="flex min-w-0 flex-col sm:border-l sm:border-border sm:pl-6">
         <Hero
           label="Pipeline aberto"
           value={pipeline}
@@ -166,20 +210,25 @@ export function KpiHero({
               ? `${brlCompact(pipelineQuentes)} em leads quentes`
               : "Nenhum lead quente no momento"
           }
-        />
+        >
+          {pipeline > 0 && <PipelineSplit total={pipeline} quentes={pipelineQuentes} />}
+        </Hero>
       </div>
 
-      <div className="min-w-0 sm:border-l sm:border-border sm:pl-5">
-        <Hero
-          label="Conversão"
-          value={taxaConversao}
-          formatted={pct(conversao, 1)}
-          compare={
-            ticketMedio > 0
-              ? `Ticket médio ${brlCompact(ticketMedio)}`
-              : "Sem venda fechada no período"
-          }
-        />
+      <div className="flex min-w-0 flex-col sm:border-l sm:border-border sm:pl-6">
+        <div className="flex items-start justify-between gap-3">
+          <Hero
+            label="Conversão"
+            value={taxaConversao}
+            formatted={pct(conversao, 1)}
+            compare={
+              ticketMedio > 0
+                ? `Ticket médio ${brlCompact(ticketMedio)}`
+                : "Sem venda fechada no período"
+            }
+          />
+          <MicroArc value={taxaConversao} color="var(--viz-2)" size={44} className="mt-1" />
+        </div>
       </div>
     </section>
   );

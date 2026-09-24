@@ -1,27 +1,26 @@
 import { Link } from "@tanstack/react-router";
-import {
-  AlertTriangle,
-  ArrowRight,
-  Clock,
-  Facebook,
-  Flame,
-  Instagram,
-  MessageCircle,
-  UserRoundCheck,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChannelMatrix } from "./charts/ChannelMatrix";
 import { ChartCard, ChartEmpty } from "./charts/ChartCard";
-import { HeatmapGrid } from "./charts/HeatmapGrid";
-import { RankedBars } from "./charts/RankedBars";
-import { brlCompact, num, pct } from "./charts/primitives";
-import type { DashboardMetrics } from "./useDashboardMetrics";
+import { DayBars, type FaixaDia } from "./charts/DayBars";
+import { RadialQueue, type QueueItem } from "./charts/RadialQueue";
+import { Treemap } from "./charts/Treemap";
+import { num } from "./charts/primitives";
+import { FAIXAS_DIA, type DashboardMetrics } from "./useDashboardMetrics";
 
 /**
  * Fila de atenção.
  *
- * O painel mais importante da tela e o que a versão anterior não tinha: ele
- * responde "o que eu faço AGORA". Cada linha é um número E um caminho — um
- * alerta que não leva a lugar nenhum é decoração.
+ * O painel mais importante da tela: responde "o que eu faço AGORA". Cada
+ * linha é um número E um caminho — um alerta que não leva a lugar nenhum é
+ * decoração.
+ *
+ * Deixou de ser lista e virou anéis concêntricos. A lista dava cinco números
+ * empilhados e obrigava o leitor a compará-los de cabeça; com os anéis, o
+ * arco mais cheio salta antes de qualquer número ser lido, que é exatamente
+ * a leitura que uma fila pede. Os números, os textos de apoio e os links
+ * continuam todos ali, na legenda ao lado.
  */
 export function AttentionQueue({
   m,
@@ -33,38 +32,34 @@ export function AttentionQueue({
   campanhasComProblema?: number;
   publicacoesComFalha?: number;
 }) {
-  const itens = [
+  const itens: QueueItem[] = [
     {
       key: "sem-resposta",
-      icon: MessageCircle,
       label: "Sem resposta",
       hint: "Cliente falou e ninguém respondeu",
       value: m.atencao.semResposta,
-      grave: m.atencao.semResposta > 0,
+      tone: "falha",
     },
     {
       key: "sla",
-      icon: Clock,
       label: "SLA estourado",
       hint: "Passou do tempo combinado",
       value: m.atencao.slaEstourado,
-      grave: m.atencao.slaEstourado > 0,
+      tone: "falha",
     },
     {
       key: "humano",
-      icon: UserRoundCheck,
       label: "Aguardando humano",
       hint: "A IA pediu para alguém assumir",
       value: m.atencao.aguardandoHumano,
-      grave: m.atencao.aguardandoHumano > 0,
+      tone: "oportunidade",
     },
     {
       key: "quentes",
-      icon: Flame,
       label: "Quentes parados",
       hint: "Pronto para fechar e esperando",
       value: m.atencao.quentesParados,
-      grave: m.atencao.quentesParados > 0,
+      tone: "oportunidade",
     },
     // Só aparecem quando existem: uma linha zerada de campanha todo dia
     // ensina o olho a ignorar a lista inteira.
@@ -72,11 +67,10 @@ export function AttentionQueue({
       ? [
           {
             key: "campanhas",
-            icon: AlertTriangle,
             label: "Campanhas com problema",
             hint: "Erro de entrega ou sincronização na Meta",
             value: campanhasComProblema,
-            grave: true,
+            tone: "sistema" as const,
           },
         ]
       : []),
@@ -84,11 +78,10 @@ export function AttentionQueue({
       ? [
           {
             key: "publicacoes",
-            icon: AlertTriangle,
             label: "Publicações com falha",
             hint: "Conteúdo agendado que não subiu",
             value: publicacoesComFalha,
-            grave: true,
+            tone: "sistema" as const,
           },
         ]
       : []),
@@ -112,58 +105,69 @@ export function AttentionQueue({
       }
     >
       {limpo ? (
-        <div className="flex h-full min-h-[150px] flex-col items-center justify-center gap-2 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-status-won/15">
-            <UserRoundCheck className="h-5 w-5 text-status-won" />
-          </span>
-          <p className="text-xs text-muted-foreground">
-            Fila limpa. Nenhum cliente esperando resposta.
-          </p>
-        </div>
+        <FilaLimpa />
       ) : (
-        <ul className="space-y-1.5">
-          {itens.map((item) => {
-            const Icon = item.icon;
-            return (
-              <li key={item.key}>
-                <Link
-                  to="/atendimento"
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
-                    item.grave
-                      ? "border-status-urgent/25 bg-status-urgent/5 hover:bg-status-urgent/10"
-                      : "border-border hover:bg-accent/40",
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 shrink-0",
-                      item.grave ? "text-status-urgent" : "text-muted-foreground",
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-foreground">
-                      {item.label}
-                    </span>
-                    <span className="block truncate text-[10px] text-muted-foreground">
-                      {item.hint}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-lg font-bold tabular-nums",
-                      item.grave ? "text-status-urgent" : "text-muted-foreground",
-                    )}
-                  >
-                    {num(item.value)}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <RadialQueue
+          items={itens}
+          renderItem={(item, marcador, ativo) => (
+            <Link
+              to="/atendimento"
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/50",
+                ativo ? "opacity-100" : "opacity-45",
+              )}
+            >
+              {marcador}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold text-foreground">
+                  {item.label}
+                </span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {item.hint}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 text-base font-bold tabular-nums",
+                  item.value === 0
+                    ? "text-muted-foreground"
+                    : item.tone === "falha"
+                      ? "text-status-urgent"
+                      : "text-foreground",
+                )}
+              >
+                {num(item.value)}
+              </span>
+            </Link>
+          )}
+        />
       )}
     </ChartCard>
+  );
+}
+
+/** Fila vazia: um anel inteiro fechado, sem ícone. A forma já é a mensagem. */
+function FilaLimpa() {
+  return (
+    <div className="flex h-full min-h-[150px] flex-col items-center justify-center gap-3 text-center">
+      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden>
+        <circle
+          cx="24"
+          cy="24"
+          r="18"
+          fill="none"
+          stroke="var(--status-won)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={2 * Math.PI * 18}
+          className="viz-stroke"
+          style={{ strokeDashoffset: 2 * Math.PI * 18 }}
+        />
+      </svg>
+      <p className="text-xs text-muted-foreground">
+        Fila limpa. Nenhum cliente esperando resposta.
+      </p>
+    </div>
   );
 }
 
@@ -173,6 +177,11 @@ export function AttentionQueue({
  * As objeções saem de `detectedObjections`, que a IA já extrai de toda
  * conversa. O dado existia e não aparecia em lugar nenhum do produto — é a
  * informação com maior retorno por linha de código nesta tela.
+ *
+ * Dois blocos, duas cores: objeção (ouro) é o que o cliente DIZ durante a
+ * conversa; motivo de perda (violeta) é o veredito registrado depois. São
+ * naturezas diferentes de dado e misturá-las num treemap só faria área de
+ * coisas incomparáveis.
  */
 export function LossInsights({ m }: { m: DashboardMetrics }) {
   const semNada = m.objecoes.length === 0 && m.motivosPerda.length === 0;
@@ -193,7 +202,7 @@ export function LossInsights({ m }: { m: DashboardMetrics }) {
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                 Objeções na conversa
               </p>
-              <RankedBars data={m.objecoes} color="var(--viz-3)" />
+              <Treemap data={m.objecoes} color="var(--viz-3)" />
             </div>
           )}
           {m.motivosPerda.length > 0 && (
@@ -201,7 +210,7 @@ export function LossInsights({ m }: { m: DashboardMetrics }) {
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                 Motivo da perda
               </p>
-              <RankedBars data={m.motivosPerda} color="var(--viz-2)" />
+              <Treemap data={m.motivosPerda} color="var(--viz-2)" />
             </div>
           )}
         </div>
@@ -210,20 +219,14 @@ export function LossInsights({ m }: { m: DashboardMetrics }) {
   );
 }
 
-const ICONES = {
-  whatsapp: MessageCircle,
-  instagram: Instagram,
-  facebook: Facebook,
-} as const;
-
 /**
- * Mix de canais.
+ * Canais: volume e conversão lado a lado.
  *
- * Small multiples, não uma barra empilhada colorida. Motivo medido, não
- * estético: verde do WhatsApp e rosa do Instagram ficam a ΔE 4,3 em
- * deuteranopia — indistinguíveis, e nenhum ajuste de tom resolve sem perder
- * a marca. Com uma linha por canal, ícone e nome carregam a identidade e a
- * cor vira só reforço.
+ * A barra de participação que estava aqui respondia só "de onde vem volume".
+ * A matriz responde também "de onde vem VENDA" — e é comum serem canais
+ * diferentes. Tudo o que a versão anterior mostrava (leads, participação,
+ * vendas, receita) continua presente; o que entrou foi a etapa intermediária
+ * e a taxa de conversão por canal.
  */
 export function ChannelMix({ m }: { m: DashboardMetrics }) {
   const total = m.canais.reduce((s, c) => s + c.leads, 0);
@@ -238,43 +241,7 @@ export function ChannelMix({ m }: { m: DashboardMetrics }) {
       {total === 0 ? (
         <ChartEmpty text="Nenhum contato novo no período." />
       ) : (
-        <ul className="space-y-3">
-          {m.canais.map((c) => {
-            const Icon = ICONES[c.key as keyof typeof ICONES];
-            const share = total > 0 ? (c.leads / total) * 100 : 0;
-            return (
-              <li key={c.key} className="rounded-xl border border-border p-3">
-                <div className="flex items-center gap-2">
-                  <Icon
-                    className="h-4 w-4 shrink-0"
-                    style={{ color: `var(--channel-${c.key})` }}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold">{c.label}</span>
-                  <span className="shrink-0 text-xs font-bold tabular-nums">
-                    {num(c.leads)}
-                    <span className="ml-1.5 font-normal text-muted-foreground">
-                      {pct(share, 0)}
-                    </span>
-                  </span>
-                </div>
-
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--viz-track)]">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-700 ease-out"
-                    style={{ width: `${share}%`, background: `var(--channel-${c.key})` }}
-                  />
-                </div>
-
-                <p className="mt-1.5 text-[10px] text-muted-foreground">
-                  {c.vendas > 0
-                    ? `${num(c.vendas)} venda${c.vendas === 1 ? "" : "s"} · ${brlCompact(c.receita)}`
-                    : "Nenhuma venda fechada por este canal"}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+        <ChannelMatrix linhas={m.matrizCanais} />
       )}
     </ChartCard>
   );
@@ -285,31 +252,45 @@ export function ChannelMix({ m }: { m: DashboardMetrics }) {
  *
  * Serve para decidir escala de equipe e horário de disparo de campanha.
  *
+ * A matriz de pontos hora a hora mostrava a textura da semana e exigia que o
+ * leitor tirasse a conclusão sozinho. Agrupado em três faixas, o painel
+ * responde direto: qual dia carrega mais e em que parte do dia. A hora exata
+ * de pico não se perdeu — está no cabeçalho, para o dia mais movimentado, e
+ * o tooltip de cada barra traz o número da faixa.
+ *
  * Honestidade sobre a fonte: sai do último contato de cada conversa mais a
  * criação do lead, porque o repositório carrega só a última mensagem por
  * conversa. Lê-se como "quando há movimento", não como volume total de
- * mensagens — e o subtítulo diz isso.
+ * mensagens — e o canto do painel diz isso.
  */
 export function ActivityPanel({ m }: { m: DashboardMetrics }) {
-  const temMovimento = m.horarios.some((c) => c.value > 0);
+  const temMovimento = m.movimentoPorDia.some((d) => d.total > 0);
   return (
     <ChartCard
       title="Movimento por horário"
       subtitle="Quando seus clientes procuram você"
-      className="col-span-12"
+      className="col-span-12 lg:col-span-8"
       delay="240ms"
       action={
-        <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
-          <AlertTriangle className="h-3 w-3" />
+        <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
           Baseado no último contato de cada conversa
         </span>
       }
     >
       {temMovimento ? (
-        <HeatmapGrid cells={m.horarios} hours={m.horasExibidas} />
+        <DayBars data={m.movimentoPorDia} bands={FAIXAS} />
       ) : (
         <ChartEmpty text="Ainda não há movimento registrado." />
       )}
     </ChartCard>
   );
 }
+
+/** Faixas do dia com a janela de horas escrita — o leitor não adivinha
+ *  onde "tarde" começa, e essa fronteira muda de negócio para negócio. */
+const FAIXAS: FaixaDia[] = FAIXAS_DIA.map((f, i) => ({
+  key: f.key,
+  label: f.label,
+  hint: `${f.de}h–${f.ate}h`,
+  color: `var(--viz-flow-${i})`,
+}));

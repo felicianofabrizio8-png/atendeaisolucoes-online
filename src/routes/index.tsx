@@ -107,6 +107,7 @@ function Index() {
             ticketMedio={m.ticketMedio}
             vendas={m.vendas}
             periodoLabel={ROTULO[periodo]}
+            serieReceita={m.serieReceita.map((s) => s.value)}
           />
 
           <div className="grid grid-cols-12 gap-4">
@@ -131,11 +132,11 @@ function Index() {
 
           <div className="grid grid-cols-12 gap-4">
             <ActivityPanel m={m} />
+            <MarketingPanel data={data} />
           </div>
 
           <div className="grid grid-cols-12 gap-4">
             <AICommand data={data} />
-            <MarketingPanel data={data} />
           </div>
         </div>
       </div>

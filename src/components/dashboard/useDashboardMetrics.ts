@@ -51,6 +51,68 @@ export interface CelulaHorario {
   value: number;
 }
 
+/** Faixas do dia. Três blocos, não vinte e quatro horas: a decisão que este
+ *  dado alimenta é de ESCALA DE EQUIPE e horário de disparo, e ninguém monta
+ *  turno de uma hora. O pico de hora continua disponível por dia. */
+export const FAIXAS_DIA = [
+  { key: "manha", label: "Manhã", de: 7, ate: 11 },
+  { key: "tarde", label: "Tarde", de: 12, ate: 17 },
+  { key: "noite", label: "Noite", de: 18, ate: 21 },
+] as const;
+
+export interface DiaMovimento {
+  day: number;
+  label: string;
+  /** Contagem por faixa, na ordem de FAIXAS_DIA. */
+  faixas: number[];
+  total: number;
+  /** Hora de maior movimento no dia — o detalhe que a faixa agrega. */
+  picoHora: number | null;
+  picoValor: number;
+}
+
+/** Uma célula do mapa de calor do funil: uma transição, num canal. */
+export interface CelulaFunil {
+  linha: string;
+  coluna: string;
+  /** Quantos entraram nesta etapa. */
+  entrou: number;
+  /** Quantos avançaram para a seguinte. */
+  avancou: number;
+  /** avancou / entrou, em %. null quando não entrou ninguém. */
+  taxa: number | null;
+}
+
+/** Um item do treemap de objeções: rótulo, contagem e participação. */
+export interface ItemArea {
+  label: string;
+  value: number;
+  share: number;
+}
+
+/** Um balde da série, quebrado por canal — as faixas do gráfico de fluxo. */
+export interface FaixaTemporal {
+  label: string;
+  fullLabel: string;
+  total: number;
+  /** Chave do canal → valor no balde. Ordem fixa, definida em `CANAIS`. */
+  porCanal: Record<string, number>;
+}
+
+/** Linha da matriz canal × etapa. Responde "qual canal CONVERTE", não só
+ *  "qual traz volume" — são perguntas diferentes e a segunda sozinha engana. */
+export interface LinhaCanal {
+  key: string;
+  label: string;
+  leads: number;
+  conversas: number;
+  orcamentos: number;
+  vendas: number;
+  receita: number;
+  /** vendas / leads, em %. */
+  conversao: number;
+}
+
 export interface DashboardMetrics {
   receita: ValorComparado;
   vendas: ValorComparado;
@@ -61,6 +123,12 @@ export interface DashboardMetrics {
   funil: Array<{ label: string; value: number; hint?: string }>;
   serieReceita: SerieItem[];
   serieLeads: SerieItem[];
+  /** Receita por balde quebrada por canal — faixas do gráfico de fluxo. */
+  serieReceitaCanal: FaixaTemporal[];
+  /** Mesma série de leads, um período inteiro atrás. É a linha tracejada de
+   *  comparação: sem ela "40 leads" não diz se foi bom ou ruim. */
+  serieLeadsAnterior: SerieItem[];
+  matrizCanais: LinhaCanal[];
 
   atencao: {
     semResposta: number;
@@ -75,12 +143,29 @@ export interface DashboardMetrics {
   canais: Array<{ key: string; label: string; leads: number; vendas: number; receita: number }>;
   horarios: CelulaHorario[];
   horasExibidas: number[];
+  /** Movimento agregado por dia e faixa — o gráfico de barras por dia. */
+  movimentoPorDia: DiaMovimento[];
+  /** Mapa de calor do funil: linhas = canal (+ todos), colunas = transição. */
+  matrizFunil: {
+    linhas: string[];
+    colunas: string[];
+    celulas: CelulaFunil[];
+  };
 
   taxaConversao: number;
   temDados: boolean;
 }
 
 const DIA = 86_400_000;
+
+/** Ordem fixa dos canais. Vale para a lista, para a matriz e para a ordem
+ *  das faixas do fluxo — se cada gráfico ordenasse do seu jeito, a mesma cor
+ *  significaria canais diferentes de um painel para o outro. */
+export const CANAIS = [
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "instagram", label: "Instagram" },
+  { key: "facebook", label: "Facebook" },
+] as const;
 
 function janelaDe(periodo: Periodo, agora: number): Janela {
   const dias = periodo === "semana" ? 7 : periodo === "mes" ? 30 : 365;
@@ -238,6 +323,36 @@ export function useDashboardMetrics(
       value: leads.filter((l) => dentro(l.createdAt, b.inicio, b.fim)).length,
     }));
 
+    // Mesmos baldes, deslocados uma janela inteira para trás. Vira a linha
+    // tracejada de comparação: o número sozinho não diz se o mês foi bom.
+    const duracao = j.fim - j.inicio;
+    const serieLeadsAnterior = bucketsDe(periodo, agora - duracao).map((b) => ({
+      label: b.label,
+      fullLabel: b.fullLabel,
+      value: leads.filter((l) => dentro(l.createdAt, b.inicio, b.fim)).length,
+    }));
+
+    // Receita por balde QUEBRADA POR CANAL: as faixas do gráfico de fluxo.
+    // O total continua sendo o mesmo de `serieReceita` — a quebra é adição de
+    // informação, não troca.
+    const serieReceitaCanal: FaixaTemporal[] = buckets.map((b) => {
+      const doBalde = leads.filter(
+        (l) => l.status === "fechado" && dentro(l.closedAt ?? l.createdAt, b.inicio, b.fim),
+      );
+      const porCanal: Record<string, number> = {};
+      for (const c of CANAIS) {
+        porCanal[c.key] = doBalde
+          .filter((l) => l.channel === c.key)
+          .reduce((sum, l) => sum + valorDaVenda(l), 0);
+      }
+      return {
+        label: b.label,
+        fullLabel: b.fullLabel,
+        total: doBalde.reduce((sum, l) => sum + valorDaVenda(l), 0),
+        porCanal,
+      };
+    });
+
     // ---- atenção agora (estado, não período) ----------------------------
     const semResposta = conversations.filter((c) => c.awaitingReply).length;
     const slaEstourado = conversations.filter((c) => c.slaBreached).length;
@@ -267,12 +382,7 @@ export function useDashboardMetrics(
     }
 
     // ---- canais ---------------------------------------------------------
-    const canaisDef = [
-      { key: "whatsapp", label: "WhatsApp" },
-      { key: "instagram", label: "Instagram" },
-      { key: "facebook", label: "Facebook" },
-    ];
-    const canais = canaisDef.map((c) => {
+    const canais = CANAIS.map((c) => {
       const doCanal = leadsNoPeriodo.filter((l) => l.channel === c.key);
       const vendidos = fechadosNoPeriodo.filter((l) => l.channel === c.key);
       return {
@@ -280,6 +390,26 @@ export function useDashboardMetrics(
         leads: doCanal.length,
         vendas: vendidos.length,
         receita: vendidos.reduce((s, l) => s + valorDaVenda(l), 0),
+      };
+    });
+
+    // Matriz canal × etapa. O mesmo funil, uma linha por canal — é o que
+    // separa "de onde vem volume" de "de onde vem VENDA". Um canal pode
+    // dominar a entrada de leads e não fechar nada, e a lista de barras por
+    // volume esconde exatamente isso.
+    const canalDoLead = new Map(leads.map((l) => [l.id, l.channel]));
+    const matrizCanais: LinhaCanal[] = CANAIS.map((c) => {
+      const leadsCanal = leadsNoPeriodo.filter((l) => l.channel === c.key).length;
+      const vendasCanal = fechadosNoPeriodo.filter((l) => l.channel === c.key);
+      return {
+        key: c.key,
+        label: c.label,
+        leads: leadsCanal,
+        conversas: conversasNoPeriodo.filter((conv) => conv.channel === c.key).length,
+        orcamentos: orcamentosNoPeriodo.filter((q) => canalDoLead.get(q.leadId) === c.key).length,
+        vendas: vendasCanal.length,
+        receita: vendasCanal.reduce((sum, l) => sum + valorDaVenda(l), 0),
+        conversao: leadsCanal > 0 ? (vendasCanal.length / leadsCanal) * 100 : 0,
       };
     });
 
@@ -306,6 +436,85 @@ export function useDashboardMetrics(
       }
     }
 
+    // Agregação por dia e faixa, mais a hora de pico de cada dia.
+    const NOMES_DIA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const movimentoPorDia: DiaMovimento[] = NOMES_DIA.map((label, day) => {
+      const faixas = FAIXAS_DIA.map((faixa) => {
+        let soma = 0;
+        for (let h = faixa.de; h <= faixa.ate; h++) soma += mapaHorario.get(`${day}-${h}`) ?? 0;
+        return soma;
+      });
+      let picoHora: number | null = null;
+      let picoValor = 0;
+      for (const hour of horasExibidas) {
+        const v = mapaHorario.get(`${day}-${hour}`) ?? 0;
+        if (v > picoValor) {
+          picoValor = v;
+          picoHora = hour;
+        }
+      }
+      return {
+        day,
+        label,
+        faixas,
+        total: faixas.reduce((a, b) => a + b, 0),
+        picoHora,
+        picoValor,
+      };
+    });
+
+    // Mapa de calor do funil.
+    //
+    // Cada célula é uma TAXA DE AVANÇO, não um volume: é a pergunta do painel
+    // ("onde eu perco") e é o que permite comparar um canal de 200 leads com
+    // um de 20 na mesma escala — volume faria o canal grande parecer melhor
+    // em toda etapa só por ser grande.
+    const TRANSICOES = [
+      { coluna: "Lead → Conversa", de: "leads", para: "conversas" },
+      { coluna: "Conversa → Orçam.", de: "conversas", para: "orcamentos" },
+      { coluna: "Orçam. → Venda", de: "orcamentos", para: "vendas" },
+      { coluna: "Lead → Venda", de: "leads", para: "vendas" },
+    ] as const;
+
+    const totaisFunil = {
+      leads: funil[0].value,
+      conversas: funil[1].value,
+      orcamentos: funil[2].value,
+      vendas: funil[3].value,
+    };
+    const fontesFunil: Array<{ linha: string; dados: Record<string, number> }> = [
+      { linha: "Todos", dados: totaisFunil },
+      ...matrizCanais.map((c) => ({
+        linha: c.label,
+        dados: {
+          leads: c.leads,
+          conversas: c.conversas,
+          orcamentos: c.orcamentos,
+          vendas: c.vendas,
+        },
+      })),
+    ];
+
+    const matrizFunil = {
+      linhas: fontesFunil.map((f) => f.linha),
+      colunas: TRANSICOES.map((t) => t.coluna),
+      celulas: fontesFunil.flatMap((fonte) =>
+        TRANSICOES.map((t) => {
+          const entrou = fonte.dados[t.de] ?? 0;
+          const avancou = fonte.dados[t.para] ?? 0;
+          return {
+            linha: fonte.linha,
+            coluna: t.coluna,
+            entrou,
+            avancou,
+            // Sem base não se inventa taxa: zero entrando não é 0% de avanço,
+            // é ausência de medida. A célula fica neutra.
+            taxa: entrou > 0 ? Math.min((avancou / entrou) * 100, 100) : null,
+          };
+        }),
+      ),
+    };
+
     const taxaConversao =
       leadsNoPeriodo.length > 0 ? (fechadosNoPeriodo.length / leadsNoPeriodo.length) * 100 : 0;
 
@@ -318,6 +527,9 @@ export function useDashboardMetrics(
       funil,
       serieReceita,
       serieLeads,
+      serieReceitaCanal,
+      serieLeadsAnterior,
+      matrizCanais,
       atencao: {
         semResposta,
         slaEstourado,
@@ -330,6 +542,8 @@ export function useDashboardMetrics(
       canais,
       horarios,
       horasExibidas,
+      movimentoPorDia,
+      matrizFunil,
       taxaConversao,
       temDados: leads.length > 0 || conversations.length > 0,
     };
