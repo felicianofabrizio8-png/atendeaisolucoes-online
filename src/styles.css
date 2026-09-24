@@ -339,3 +339,98 @@ iframe[src*="lovable.dev/badge"] {
   height: 0 !important;
 }
 /* NEXUS-PRO:WATERMARK-HIDE:END */
+
+/* ---------------------------------------------------------------------------
+   Tokens de visualização de dados
+
+   Separados de `--primary` de propósito. A interface é neutra (a escolha de
+   cor de destaque saiu do produto); o DADO é a única coisa que pode ser
+   colorida — é o que faz o gráfico ser lido antes do rótulo.
+
+   Os três tons categóricos foram VALIDADOS, não escolhidos a olho: passam
+   banda de luminosidade, piso de croma, separação para daltonismo (todos os
+   pares) e contraste contra a superfície, nos dois temas. A paleta que já
+   existia (`--chart-1..5`) reprovava: verde e ciano a ΔE 14,8 (piso 15) e
+   azul/magenta a 4,1 em deuteranopia.
+
+   A rampa sequencial é de UM tom, claro→escuro, para magnitude (heatmap).
+   Nunca arco-íris.
+--------------------------------------------------------------------------- */
+:root {
+  --viz-1: #19a974; /* esmeralda — série principal */
+  --viz-2: #7c6ef0; /* violeta */
+  --viz-3: #c98500; /* âmbar */
+
+  --viz-grid: oklch(0.3 0 0);
+  --viz-track: oklch(0.26 0 0);
+
+  /* Rampa sequencial (magnitude). Monotônica em luminosidade. */
+  --viz-ramp-0: oklch(0.24 0.01 165);
+  --viz-ramp-1: oklch(0.34 0.05 165);
+  --viz-ramp-2: oklch(0.45 0.09 165);
+  --viz-ramp-3: oklch(0.56 0.13 165);
+  --viz-ramp-4: oklch(0.68 0.16 165);
+}
+
+:root.light {
+  --viz-1: #12855d;
+  --viz-2: #6d5ae0;
+  --viz-3: #a86f00;
+
+  --viz-grid: oklch(0.9 0.008 250);
+  --viz-track: oklch(0.94 0.006 250);
+
+  --viz-ramp-0: oklch(0.96 0.01 165);
+  --viz-ramp-1: oklch(0.87 0.05 165);
+  --viz-ramp-2: oklch(0.76 0.09 165);
+  --viz-ramp-3: oklch(0.63 0.12 165);
+  --viz-ramp-4: oklch(0.5 0.13 165);
+}
+
+/* Entrada dos gráficos: as marcas crescem da linha de base.
+   `transform-box: fill-box` faz o transform do SVG respeitar a caixa da
+   própria marca, e não o sistema de coordenadas do <svg> inteiro. */
+@keyframes viz-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Desenha a linha da esquerda para a direita. O dasharray é maior que
+   qualquer path que produzimos, então o offset sempre começa "vazio". */
+@keyframes viz-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes viz-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.viz-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: viz-grow 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-fade-up {
+  animation: viz-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viz-grow,
+  .viz-fade-up {
+    animation: none;
+  }
+}
