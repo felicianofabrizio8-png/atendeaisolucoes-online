@@ -770,13 +770,35 @@ iframe[src*="lovable.dev/badge"] {
      precisa ser lida com precisão), a interpolação entre os degraus é
      contínua — o que apaga a maior parte das fronteiras falsas — e o valor
      exato aparece no hover, com as pontas da legenda trazendo mínimo e
-     máximo reais. */
+     máximo reais.
+
+     São SETE paradas com DUAS verdes (0,78 e 0,82 de luminosidade, matiz 168
+     e 140). Com uma única parada verde ela ocupava um sexto da escala e só
+     as poucas células de pico chegavam lá — na prática o verde não aparecia.
+     Alargando a faixa, a transição ciano → verde → vermelho fica visível no
+     miolo do campo, que é onde estão quase todas as células. */
   --viz-rb-0: oklch(0.7 0.2 340);
   --viz-rb-1: oklch(0.62 0.2 300);
   --viz-rb-2: oklch(0.62 0.19 265);
-  --viz-rb-3: oklch(0.75 0.14 210);
-  --viz-rb-4: oklch(0.8 0.18 150);
-  --viz-rb-5: oklch(0.66 0.23 27);
+  --viz-rb-3: oklch(0.75 0.14 205);
+  --viz-rb-4: oklch(0.78 0.16 168);
+  --viz-rb-5: oklch(0.82 0.19 140);
+  --viz-rb-6: oklch(0.66 0.23 27);
+
+  /* Séries de canal no gráfico de receita: WhatsApp vermelho, Instagram
+     roxo, Facebook azul — definidos pelo produto.
+
+     Validados nos dois temas e em todos os pares: visão normal ΔE 23,1 /
+     23,7 · pior CVD 8,1 / 9,6 (deuteranopia) · contraste >= 3:1.
+
+     O par roxo/azul é o apertado, e é inerente: em deuteranopia o roxo
+     colapsa na direção do azul, e não há ajuste que separe os dois sem
+     deixar de ser roxo e azul. Fica no piso de 8, que é legal justamente
+     porque há codificação secundária — legenda com amostra, rótulo por
+     série e o tooltip listando os três nomes com o valor de cada um. */
+  --viz-canal-whatsapp: oklch(0.63 0.21 27);
+  --viz-canal-instagram: oklch(0.58 0.2 312);
+  --viz-canal-facebook: oklch(0.66 0.14 235);
 }
 
 :root.light {
@@ -820,9 +842,14 @@ iframe[src*="lovable.dev/badge"] {
   --viz-rb-0: oklch(0.62 0.21 340);
   --viz-rb-1: oklch(0.54 0.21 300);
   --viz-rb-2: oklch(0.54 0.2 265);
-  --viz-rb-3: oklch(0.66 0.15 210);
-  --viz-rb-4: oklch(0.7 0.19 150);
-  --viz-rb-5: oklch(0.58 0.23 27);
+  --viz-rb-3: oklch(0.66 0.15 205);
+  --viz-rb-4: oklch(0.68 0.17 168);
+  --viz-rb-5: oklch(0.72 0.2 140);
+  --viz-rb-6: oklch(0.58 0.23 27);
+
+  --viz-canal-whatsapp: oklch(0.56 0.21 27);
+  --viz-canal-instagram: oklch(0.5 0.22 312);
+  --viz-canal-facebook: oklch(0.58 0.15 235);
 }
 
 /* Entrada dos gráficos: as marcas crescem da linha de base.

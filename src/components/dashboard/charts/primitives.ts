@@ -70,7 +70,7 @@ export function niceMax(max: number): number {
   return step * magnitude;
 }
 
-/** Caminho de uma área suavizada (Catmull-Rom convertido para Bézier). */
+/** Caminho de uma área suavizada, fechada até a linha de base. */
 export function areaPath(points: Array<{ x: number; y: number }>, baseline: number): string {
   if (points.length === 0) return "";
   if (points.length === 1) {
@@ -100,19 +100,59 @@ export function curveCommands(points: Array<{ x: number; y: number }>): string {
       .slice(1)
       .map((p) => ` L${p.x},${p.y}`)
       .join("");
-  // Tensão 0.5: curva o bastante para não parecer serrilhada e pouco o
-  // bastante para não inventar picos que o dado não tem.
+  // Interpolação MONÓTONA (Fritsch–Carlson), não Catmull-Rom.
+  //
+  // Catmull-Rom ultrapassa: numa subida a partir do zero ele mergulha abaixo
+  // do ponto inicial antes de subir. Visto na tela — a curva de receita
+  // descia abaixo do eixo, desenhando faturamento negativo onde o dado era
+  // zero. Não é detalhe estético: o gráfico afirmava uma coisa que não
+  // existe.
+  //
+  // A regra é simples: a tangente em cada ponto é limitada pela inclinação
+  // dos segmentos vizinhos, e zerada quando eles mudam de sinal (ou seja,
+  // num pico ou num vale a curva chega plana). Assim a curva nunca sai do
+  // intervalo entre dois pontos consecutivos.
+  const n = points.length;
+  const dx: number[] = [];
+  const inclinacao: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const h = points[i + 1].x - points[i].x;
+    dx.push(h);
+    inclinacao.push(h === 0 ? 0 : (points[i + 1].y - points[i].y) / h);
+  }
+
+  const m: number[] = new Array(n).fill(0);
+  m[0] = inclinacao[0];
+  m[n - 1] = inclinacao[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    const a = inclinacao[i - 1];
+    const b = inclinacao[i];
+    // Sinais opostos (ou um deles nulo) = extremo local: tangente zero.
+    m[i] = a * b <= 0 ? 0 : (a + b) / 2;
+  }
+  // Limita a tangente a três vezes a inclinação vizinha — é a condição que
+  // garante a monotonicidade em cada trecho.
+  for (let i = 0; i < n - 1; i++) {
+    if (inclinacao[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / inclinacao[i];
+    const b = m[i + 1] / inclinacao[i];
+    const t = Math.hypot(a, b);
+    if (t > 3) {
+      m[i] = (3 / t) * a * inclinacao[i];
+      m[i + 1] = (3 / t) * b * inclinacao[i];
+    }
+  }
+
   let d = "";
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(i - 1, 0)];
+  for (let i = 0; i < n - 1; i++) {
     const p1 = points[i];
     const p2 = points[i + 1];
-    const p3 = points[Math.min(i + 2, points.length - 1)];
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+    const h = dx[i];
+    d += ` C${p1.x + h / 3},${p1.y + (m[i] * h) / 3} ${p2.x - h / 3},${p2.y - (m[i + 1] * h) / 3} ${p2.x},${p2.y}`;
   }
   return d;
 }
