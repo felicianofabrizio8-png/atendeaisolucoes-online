@@ -71,6 +71,24 @@ export interface DiaMovimento {
   picoValor: number;
 }
 
+/** Campo denso de entrada de leads: hora (linha) × balde do filtro (coluna).
+ *
+ *  Duas dimensões e não uma: com um bloco por dia sobram trinta quadradinhos
+ *  e o painel vira um calendário esparso. Cruzando com a hora, o mesmo
+ *  período vira um campo com centenas de células — e a pergunta fica melhor,
+ *  porque "entra lead de manhã ou de noite, e isso mudou ao longo do mês?"
+ *  não se responde só com o total do dia. */
+export interface GradeLeads {
+  /** Rótulos das colunas, na ordem do tempo (esquerda → direita). */
+  colunas: string[];
+  colunasCheias: string[];
+  /** Horas exibidas, de cima para baixo. */
+  linhas: number[];
+  /** valores[linha][coluna] */
+  valores: number[][];
+  total: number;
+}
+
 /** Uma célula do mapa de calor do funil: uma transição, num canal. */
 export interface CelulaFunil {
   linha: string;
@@ -145,6 +163,8 @@ export interface DashboardMetrics {
   horasExibidas: number[];
   /** Movimento agregado por dia e faixa — o gráfico de barras por dia. */
   movimentoPorDia: DiaMovimento[];
+  /** Campo de entrada de leads por hora × tempo. */
+  gradeLeads: GradeLeads;
   /** Mapa de calor do funil: linhas = canal (+ todos), colunas = transição. */
   matrizFunil: {
     linhas: string[];
@@ -463,6 +483,33 @@ export function useDashboardMetrics(
       };
     });
 
+    // Campo denso da entrada de leads: hora × balde do filtro.
+    //
+    // As colunas seguem o MESMO recorte do resto da tela (7 dias, 30 dias ou
+    // 12 meses). Usar um recorte próprio aqui faria este painel responder a
+    // um período e os vizinhos a outro, na mesma tela.
+    const gradeValores: number[][] = horasExibidas.map(() => buckets.map(() => 0));
+    let gradeTotal = 0;
+    for (const lead of leads) {
+      if (!lead.createdAt) continue;
+      const t = new Date(lead.createdAt);
+      const ms = t.getTime();
+      if (!Number.isFinite(ms)) continue;
+      const coluna = buckets.findIndex((b) => ms >= b.inicio && ms < b.fim);
+      if (coluna < 0) continue;
+      const linha = horasExibidas.indexOf(t.getHours());
+      if (linha < 0) continue;
+      gradeValores[linha][coluna] += 1;
+      gradeTotal += 1;
+    }
+    const gradeLeads: GradeLeads = {
+      colunas: buckets.map((b) => b.label),
+      colunasCheias: buckets.map((b) => b.fullLabel),
+      linhas: horasExibidas,
+      valores: gradeValores,
+      total: gradeTotal,
+    };
+
     // Mapa de calor do funil.
     //
     // Cada célula é uma TAXA DE AVANÇO, não um volume: é a pergunta do painel
@@ -543,6 +590,7 @@ export function useDashboardMetrics(
       horarios,
       horasExibidas,
       movimentoPorDia,
+      gradeLeads,
       matrizFunil,
       taxaConversao,
       temDados: leads.length > 0 || conversations.length > 0,

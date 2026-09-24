@@ -1,46 +1,46 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
-import { AreaSpark } from "./charts/AreaSpark";
 import { ChartCard, ChartEmpty } from "./charts/ChartCard";
 import { FunnelHeatmap } from "./charts/FunnelHeatmap";
-import { StreamChart, type StreamBand } from "./charts/StreamChart";
+import { GradientHeatmap } from "./charts/GradientHeatmap";
+import { MultiArea, type SerieMulti } from "./charts/MultiArea";
 import { brlCompact, num } from "./charts/primitives";
 import { CANAIS, type DashboardMetrics } from "./useDashboardMetrics";
 
 /**
- * Faixas do fluxo de receita.
+ * Séries da receita, uma por canal.
  *
- * Rampa ORDINAL e não a cor de marca de cada canal: a pilha tem ordem fixa e
- * conhecida, e a luminosidade caindo do topo para a base entrega essa ordem
- * sem legenda. Usar verde do WhatsApp contra rosa do Instagram colocaria duas
- * faixas encostadas a ΔE 4,3 em deuteranopia — indistinguíveis exatamente na
- * fronteira que o gráfico existe para mostrar.
+ * A trinca categórica VALIDADA, não a cor de marca: verde do WhatsApp contra
+ * rosa do Instagram fica a ΔE 4,3 em deuteranopia, e aqui as três curvas se
+ * cruzam — é exatamente onde a separação de cor não pode falhar. Estes três
+ * tons passam em todos os pares, nos dois temas.
  */
-const FAIXAS: StreamBand[] = CANAIS.map((c, i) => ({
+const SERIES: SerieMulti[] = CANAIS.map((c, i) => ({
   key: c.key,
   label: c.label,
-  color: `var(--viz-flow-${i})`,
+  color: `var(--viz-${i + 1})`,
 }));
 
 /**
- * Receita ao longo do tempo, quebrada por canal.
+ * Receita ao longo do tempo, uma curva por canal.
  *
- * O total continua sendo a espessura da pilha — o mesmo número que a faixa de
- * KPIs mostra. O que mudou é que agora dá para ver a COMPOSIÇÃO mudar: um mês
- * que cresce porque o WhatsApp dobrou e um mês que cresce porque o Instagram
- * apareceu pedem decisões opostas, e a coluna única tratava os dois igual.
+ * Três curvas contra o mesmo eixo, não uma pilha: a pergunta é "qual canal
+ * está subindo?", e numa pilha só a faixa de baixo tem a linha de base no
+ * zero — as de cima herdam o contorno das outras e param de ser legíveis
+ * sozinhas. Sobrepostas, cada canal se lê direto e os cruzamentos (o momento
+ * em que um passa o outro) ficam visíveis, que é o evento que interessa.
  */
 export function RevenueTrend({ m, periodoLabel }: { m: DashboardMetrics; periodoLabel: string }) {
   const temValor = m.serieReceitaCanal.some((s) => s.total > 0);
   return (
     <ChartCard
       title="Receita fechada"
-      subtitle={`Composição por canal · ${periodoLabel}`}
+      subtitle={`Por canal · ${periodoLabel}`}
       className="col-span-12 lg:col-span-7"
       delay="60ms"
     >
       {temValor ? (
-        <StreamChart data={m.serieReceitaCanal} bands={FAIXAS} format={brlCompact} height={210} />
+        <MultiArea data={m.serieReceitaCanal} series={SERIES} format={brlCompact} height={210} />
       ) : (
         <ChartEmpty text="Nenhuma venda fechada no período. Assim que um lead virar cliente, o valor aparece aqui." />
       )}
@@ -49,11 +49,16 @@ export function RevenueTrend({ m, periodoLabel }: { m: DashboardMetrics; periodo
 }
 
 /**
- * Entrada de leads, contra o período anterior.
+ * Entrada de leads como campo de calor.
  *
- * Aqui a área faz sentido: contato chegando é fluxo contínuo, e o que
- * interessa é a forma da curva. A tracejada é a mesma janela um período
- * atrás — é ela que transforma "38 leads" em "38 leads, e antes eram 52".
+ * A curva respondia "quantos entraram" e nada mais. O campo responde também
+ * QUANDO: a linha é a hora do dia, a coluna é o tempo correndo da esquerda
+ * para a direita no mesmo recorte do resto da tela. As manchas mostram de
+ * uma vez a janela em que o cliente procura e se essa janela se deslocou ao
+ * longo do período — duas decisões operacionais que o total diário esconde.
+ *
+ * A comparação com o período anterior não se perdeu: continua no subtítulo,
+ * que é onde ela sempre foi lida de fato.
  */
 export function LeadsTrend({ m, periodoLabel }: { m: DashboardMetrics; periodoLabel: string }) {
   const total = m.serieLeads.reduce((s, x) => s + x.value, 0);
@@ -69,13 +74,12 @@ export function LeadsTrend({ m, periodoLabel }: { m: DashboardMetrics; periodoLa
       className="col-span-12 lg:col-span-5"
       delay="120ms"
     >
-      {total > 0 ? (
-        <AreaSpark
-          data={m.serieLeads}
-          compare={m.serieLeadsAnterior}
-          color="var(--viz-2)"
-          format={(v) => `${num(v)} leads`}
-          height={210}
+      {m.gradeLeads.total > 0 ? (
+        <GradientHeatmap
+          valores={m.gradeLeads.valores}
+          colunas={m.gradeLeads.colunas}
+          colunasCheias={m.gradeLeads.colunasCheias}
+          linhas={m.gradeLeads.linhas}
         />
       ) : (
         <ChartEmpty text="Nenhum contato novo no período." />
