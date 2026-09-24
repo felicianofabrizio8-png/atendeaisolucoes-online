@@ -748,6 +748,35 @@ iframe[src*="lovable.dev/badge"] {
   --viz-cw-3: oklch(0.7 0.14 165);
   --viz-cw-4: oklch(0.78 0.15 120);
   --viz-cw-5: oklch(0.86 0.15 95);
+
+  /* Turnos do dia. Pedidos assim pelo produto: manhã laranja, tarde azul,
+     noite roxo escuro. É uma associação natural (amanhecer, céu, anoitecer)
+     e por isso funciona sem legenda — mas a legenda continua lá, porque
+     'natural' não é 'universal'. */
+  --viz-turno-manha: oklch(0.72 0.16 55);
+  --viz-turno-tarde: oklch(0.65 0.16 250);
+  --viz-turno-noite: oklch(0.54 0.16 295);
+
+  /* Campo de calor da entrada de leads: rosa → roxo → azul → ciano →
+     verde → vermelho.
+
+     Isto É um arco-íris, e vale registrar o que se perde: a luminosidade
+     não sobe monotonicamente (0,70 · 0,62 · 0,62 · 0,75 · 0,80 · 0,66),
+     então a ordem não se lê em preto e branco nem sobrevive bem a
+     daltonismo, e o olho vê fronteira onde o dado é contínuo. Foi uma
+     escolha explícita de produto pelo visual.
+
+     O que compensa: nenhum número é escrito dentro das células (a cor não
+     precisa ser lida com precisão), a interpolação entre os degraus é
+     contínua — o que apaga a maior parte das fronteiras falsas — e o valor
+     exato aparece no hover, com as pontas da legenda trazendo mínimo e
+     máximo reais. */
+  --viz-rb-0: oklch(0.7 0.2 340);
+  --viz-rb-1: oklch(0.62 0.2 300);
+  --viz-rb-2: oklch(0.62 0.19 265);
+  --viz-rb-3: oklch(0.75 0.14 210);
+  --viz-rb-4: oklch(0.8 0.18 150);
+  --viz-rb-5: oklch(0.66 0.23 27);
 }
 
 :root.light {
@@ -781,6 +810,19 @@ iframe[src*="lovable.dev/badge"] {
   --viz-cw-3: oklch(0.66 0.14 165);
   --viz-cw-4: oklch(0.74 0.16 120);
   --viz-cw-5: oklch(0.82 0.16 95);
+
+  --viz-turno-manha: oklch(0.64 0.17 50);
+  --viz-turno-tarde: oklch(0.55 0.17 250);
+  --viz-turno-noite: oklch(0.45 0.17 295);
+
+  /* Um degrau mais escuros: os mesmos tons sobre papel branco perdem
+     separação da superfície. */
+  --viz-rb-0: oklch(0.62 0.21 340);
+  --viz-rb-1: oklch(0.54 0.21 300);
+  --viz-rb-2: oklch(0.54 0.2 265);
+  --viz-rb-3: oklch(0.66 0.15 210);
+  --viz-rb-4: oklch(0.7 0.19 150);
+  --viz-rb-5: oklch(0.58 0.23 27);
 }
 
 /* Entrada dos gráficos: as marcas crescem da linha de base.

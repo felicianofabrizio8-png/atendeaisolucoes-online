@@ -287,10 +287,14 @@ export function ActivityPanel({ m }: { m: DashboardMetrics }) {
 }
 
 /** Faixas do dia com a janela de horas escrita — o leitor não adivinha
- *  onde "tarde" começa, e essa fronteira muda de negócio para negócio. */
-const FAIXAS: FaixaDia[] = FAIXAS_DIA.map((f, i) => ({
+ *  onde "tarde" começa, e essa fronteira muda de negócio para negócio.
+ *
+ *  Laranja, azul e roxo escuro: a progressão acompanha a luz do dia, então a
+ *  associação vem antes da legenda. Os três também se separam bem em
+ *  deuteranopia, que a rampa fria anterior não garantia entre tarde e noite. */
+const FAIXAS: FaixaDia[] = FAIXAS_DIA.map((f) => ({
   key: f.key,
   label: f.label,
   hint: `${f.de}h–${f.ate}h`,
-  color: `var(--viz-flow-${i})`,
+  color: `var(--viz-turno-${f.key})`,
 }));
