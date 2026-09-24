@@ -96,35 +96,35 @@
   --secondary-foreground: oklch(0.96 0 0);
 
   --muted: oklch(0.26 0 0);
-  --muted-foreground: oklch(0.70 0 0);
+  --muted-foreground: oklch(0.7 0 0);
 
-  --accent: oklch(0.30 0 0);
+  --accent: oklch(0.3 0 0);
   --accent-foreground: oklch(0.96 0 0);
 
   --destructive: oklch(0.65 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --border: oklch(0.30 0 0);
+  --border: oklch(0.3 0 0);
   --input: oklch(0.28 0 0);
   --ring: oklch(0.55 0 0);
 
   /* Status palette */
-  --status-urgent: oklch(0.65 0.24 28);          /* red — sem resposta / SLA estourado */
+  --status-urgent: oklch(0.65 0.24 28); /* red — sem resposta / SLA estourado */
   --status-urgent-foreground: oklch(0.98 0 0);
-  --status-hot: oklch(0.72 0.20 50);             /* orange — lead quente */
+  --status-hot: oklch(0.72 0.2 50); /* orange — lead quente */
   --status-hot-foreground: oklch(0.18 0.012 250);
-  --status-warm: oklch(0.80 0.16 90);            /* amber — morno */
+  --status-warm: oklch(0.8 0.16 90); /* amber — morno */
   --status-warm-foreground: oklch(0.18 0.012 250);
-  --status-cold: oklch(0.70 0.10 230);           /* blue — frio */
+  --status-cold: oklch(0.7 0.1 230); /* blue — frio */
   --status-cold-foreground: oklch(0.18 0.012 250);
-  --status-won: oklch(0.75 0.18 150);            /* green — fechado */
+  --status-won: oklch(0.75 0.18 150); /* green — fechado */
   --status-won-foreground: oklch(0.18 0.012 250);
-  --status-lost: oklch(0.55 0.02 250);           /* gray — perdido */
+  --status-lost: oklch(0.55 0.02 250); /* gray — perdido */
   --status-lost-foreground: oklch(0.96 0 0);
 
   /* Channel palette */
   --channel-whatsapp: oklch(0.72 0.18 150);
-  --channel-instagram: oklch(0.68 0.20 0);
+  --channel-instagram: oklch(0.68 0.2 0);
   --channel-facebook: oklch(0.68 0.18 250);
 
   /* Sidebar */
@@ -137,9 +137,9 @@
   /* Chart fallbacks */
   --chart-1: oklch(0.78 0.16 195);
   --chart-2: oklch(0.72 0.18 150);
-  --chart-3: oklch(0.72 0.20 50);
-  --chart-4: oklch(0.68 0.20 320);
-  --chart-5: oklch(0.70 0.10 230);
+  --chart-3: oklch(0.72 0.2 50);
+  --chart-4: oklch(0.68 0.2 320);
+  --chart-5: oklch(0.7 0.1 230);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -150,14 +150,14 @@
 /* Light theme — applied when .light is on <html>. Premium SaaS look, no pure white. */
 :root.light {
   /* Surfaces — soft, slightly cool gray (never pure white) */
-  --background: oklch(0.985 0.003 250);          /* app background */
-  --foreground: oklch(0.20 0.014 250);           /* main text */
+  --background: oklch(0.985 0.003 250); /* app background */
+  --foreground: oklch(0.2 0.014 250); /* main text */
 
-  --card: oklch(0.995 0.002 250);                /* card surface — softer than #fff */
-  --card-foreground: oklch(0.20 0.014 250);
+  --card: oklch(0.995 0.002 250); /* card surface — softer than #fff */
+  --card-foreground: oklch(0.2 0.014 250);
 
   --popover: oklch(0.995 0.002 250);
-  --popover-foreground: oklch(0.20 0.014 250);
+  --popover-foreground: oklch(0.2 0.014 250);
 
   /* Primary — quase preto no tema claro (ver nota em :root). Aqui escurecer
      é seguro: o texto fica sobre superfícies claras. */
@@ -165,18 +165,18 @@
   --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.94 0.006 250);
-  --secondary-foreground: oklch(0.20 0.014 250);
+  --secondary-foreground: oklch(0.2 0.014 250);
 
   --muted: oklch(0.95 0.005 250);
   --muted-foreground: oklch(0.48 0.014 250);
 
   --accent: oklch(0.93 0.008 250);
-  --accent-foreground: oklch(0.20 0.014 250);
+  --accent-foreground: oklch(0.2 0.014 250);
 
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.90 0.008 250);
+  --border: oklch(0.9 0.008 250);
   --input: oklch(0.93 0.008 250);
   --ring: oklch(0.45 0 0);
 
@@ -186,28 +186,28 @@
   --status-hot: oklch(0.64 0.18 50);
   --status-hot-foreground: oklch(0.99 0 0);
   --status-warm: oklch(0.72 0.15 90);
-  --status-warm-foreground: oklch(0.20 0.014 250);
+  --status-warm-foreground: oklch(0.2 0.014 250);
   --status-cold: oklch(0.62 0.12 230);
   --status-cold-foreground: oklch(0.99 0 0);
-  --status-won: oklch(0.60 0.17 150);
+  --status-won: oklch(0.6 0.17 150);
   --status-won-foreground: oklch(0.99 0 0);
   --status-lost: oklch(0.62 0.02 250);
   --status-lost-foreground: oklch(0.99 0 0);
 
   /* Channels — keep brand hues, adjusted for light */
-  --channel-whatsapp: oklch(0.60 0.17 150);
-  --channel-instagram: oklch(0.60 0.20 0);
+  --channel-whatsapp: oklch(0.6 0.17 150);
+  --channel-instagram: oklch(0.6 0.2 0);
   --channel-facebook: oklch(0.58 0.18 250);
 
   /* Sidebar — subtle off-white, distinct from main bg */
   --sidebar: oklch(0.97 0.005 250);
   --sidebar-foreground: oklch(0.25 0.014 250);
-  --sidebar-border: oklch(0.90 0.008 250);
+  --sidebar-border: oklch(0.9 0.008 250);
   --sidebar-accent: oklch(0.93 0.008 250);
-  --sidebar-accent-foreground: oklch(0.20 0.014 250);
+  --sidebar-accent-foreground: oklch(0.2 0.014 250);
 
   --chart-1: oklch(0.58 0.13 195);
-  --chart-2: oklch(0.60 0.17 150);
+  --chart-2: oklch(0.6 0.17 150);
   --chart-3: oklch(0.64 0.18 50);
   --chart-4: oklch(0.58 0.18 320);
   --chart-5: oklch(0.55 0.12 230);
@@ -228,7 +228,7 @@
   --primary: oklch(0.74 0 0);
   --primary-foreground: oklch(0.12 0 0);
 
-  --secondary: oklch(0.20 0 0);
+  --secondary: oklch(0.2 0 0);
   --secondary-foreground: oklch(0.95 0 0);
 
   --muted: oklch(0.18 0 0);
@@ -252,7 +252,8 @@
     border-color: var(--color-border);
   }
 
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -261,49 +262,91 @@
   }
 
   /* Prevent any direct child from forcing horizontal scroll */
-  body { position: relative; }
+  body {
+    position: relative;
+  }
 
   /* Images and media never overflow */
-  img, video, canvas, svg { max-width: 100%; height: auto; }
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
 
   /* Mobile: prevent iOS auto-zoom on focus and ensure comfortable touch targets */
   @media (max-width: 640px) {
-    input, select, textarea {
+    input,
+    select,
+    textarea {
       font-size: 16px !important;
     }
     /* Comfortable minimum tap target for primary controls (WCAG 2.5.5) */
-    button, [role="button"], a.btn, .tap-44 {
+    button,
+    [role="button"],
+    a.btn,
+    .tap-44 {
       min-height: 44px;
     }
     /* Escala tipográfica mobile-first: leitura confortável a ~40cm, sem
        aumentar densidade a ponto de exigir zoom. */
-    html { -webkit-text-size-adjust: 100%; }
-    body { font-size: 15px; line-height: 1.5; }
-    h1 { font-size: 1.375rem; line-height: 1.25; }
-    h2 { font-size: 1.125rem; line-height: 1.3; }
-    h3 { font-size: 1rem; line-height: 1.35; }
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+    body {
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 1.375rem;
+      line-height: 1.25;
+    }
+    h2 {
+      font-size: 1.125rem;
+      line-height: 1.3;
+    }
+    h3 {
+      font-size: 1rem;
+      line-height: 1.35;
+    }
     /* Allow wide tables to scroll inside their own container without breaking layout */
-    table { display: block; max-width: 100%; overflow-x: auto; }
+    table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+    }
   }
-
 
   /* Pulse for urgent items */
   @keyframes urgent-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-urgent) 50%, transparent); }
-    50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--status-urgent) 0%, transparent); }
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-urgent) 50%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px color-mix(in oklab, var(--status-urgent) 0%, transparent);
+    }
   }
   .animate-urgent {
     animation: urgent-pulse 2s ease-in-out infinite;
   }
 
   /* Scrollbar — subtle in dark */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
   ::-webkit-scrollbar-thumb {
     background: var(--color-border);
     border-radius: 8px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted-foreground);
+  }
 }
 
 /* ===== Campaigns module — shared animations & input ===== */
@@ -317,42 +360,81 @@
     font-size: 0.875rem;
     width: 100%;
     outline: none;
-    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
   }
-  textarea.input { height: auto; padding: 0.45rem 0.7rem; line-height: 1.45; }
-  .input:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
-  .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent); }
+  textarea.input {
+    height: auto;
+    padding: 0.45rem 0.7rem;
+    line-height: 1.45;
+  }
+  .input:hover {
+    border-color: color-mix(in oklab, var(--foreground) 22%, transparent);
+  }
+  .input:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+  }
 
   @keyframes ai-glow {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
-    50% { box-shadow: 0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    50% {
+      box-shadow:
+        0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.05);
+    }
   }
-  .ai-glow { animation: ai-glow 2.6s ease-in-out infinite; }
+  .ai-glow {
+    animation: ai-glow 2.6s ease-in-out infinite;
+  }
 
   @keyframes publish-pulse {
-    0%, 100% { box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent); }
-    50% { box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent); }
+    0%,
+    100% {
+      box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent);
+    }
   }
-  .publish-cta:not(:disabled) { animation: publish-pulse 3.2s ease-in-out infinite; }
+  .publish-cta:not(:disabled) {
+    animation: publish-pulse 3.2s ease-in-out infinite;
+  }
 
   @keyframes preview-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(400%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
+    }
   }
 
   @keyframes smart-img-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 }
-
 
 /* Mobile utility: hide scrollbar but keep scroll */
 @utility scrollbar-none {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
 /* iOS safe area helpers */
 @utility safe-top {
@@ -462,8 +544,12 @@ iframe[src*="lovable.dev/badge"] {
 /* Tela de atendimento — barrinha de 7s do carrossel de métricas.
    Anima só a largura de um span já posicionado; sem reflow do resto. */
 @keyframes atendimento-tick {
-  from { width: 0%; }
-  to { width: 100%; }
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -515,18 +601,37 @@ iframe[src*="lovable.dev/badge"] {
   height: 100%;
   border-radius: 50%;
   background:
-    conic-gradient(from calc(var(--angle) * 1.2) at 30% 65%,
-      var(--c3) 0deg, transparent 45deg 315deg, var(--c3) 360deg),
-    conic-gradient(from calc(var(--angle) * 0.8) at 70% 35%,
-      var(--c2) 0deg, transparent 60deg 300deg, var(--c2) 360deg),
-    conic-gradient(from calc(var(--angle) * -1.5) at 65% 75%,
-      var(--c1) 0deg, transparent 90deg 270deg, var(--c1) 360deg),
-    conic-gradient(from calc(var(--angle) * 2.1) at 25% 25%,
-      var(--c2) 0deg, transparent 30deg 330deg, var(--c2) 360deg),
-    conic-gradient(from calc(var(--angle) * -0.7) at 80% 80%,
-      var(--c1) 0deg, transparent 45deg 315deg, var(--c1) 360deg),
-    radial-gradient(ellipse 120% 80% at 40% 60%,
-      var(--c3) 0%, transparent 50%);
+    conic-gradient(
+      from calc(var(--angle) * 1.2) at 30% 65%,
+      var(--c3) 0deg,
+      transparent 45deg 315deg,
+      var(--c3) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * 0.8) at 70% 35%,
+      var(--c2) 0deg,
+      transparent 60deg 300deg,
+      var(--c2) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * -1.5) at 65% 75%,
+      var(--c1) 0deg,
+      transparent 90deg 270deg,
+      var(--c1) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * 2.1) at 25% 25%,
+      var(--c2) 0deg,
+      transparent 30deg 330deg,
+      var(--c2) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * -0.7) at 80% 80%,
+      var(--c1) 0deg,
+      transparent 45deg 315deg,
+      var(--c1) 360deg
+    ),
+    radial-gradient(ellipse 120% 80% at 40% 60%, var(--c3) 0%, transparent 50%);
   filter: blur(var(--blur-amount)) contrast(var(--contrast-amount)) saturate(1);
   animation: siri-orb-rotate var(--animation-duration) linear infinite;
   /* translateZ(0) promove a camada: a rotação roda no compositor e não
@@ -552,10 +657,111 @@ iframe[src*="lovable.dev/badge"] {
 }
 
 @keyframes siri-orb-rotate {
-  from { --angle: 0deg; }
-  to { --angle: 360deg; }
+  from {
+    --angle: 0deg;
+  }
+  to {
+    --angle: 360deg;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .siri-orb::before { animation: none; }
+  .siri-orb::before {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Tokens de visualização de dados
+
+   Separados de `--primary` de propósito. A interface é neutra (a escolha de
+   cor de destaque saiu do produto); o DADO é a única coisa que pode ser
+   colorida — é o que faz o gráfico ser lido antes do rótulo.
+
+   Os três tons categóricos foram VALIDADOS, não escolhidos a olho: passam
+   banda de luminosidade, piso de croma, separação para daltonismo (todos os
+   pares) e contraste contra a superfície, nos dois temas. A paleta que já
+   existia (`--chart-1..5`) reprovava: verde e ciano a ΔE 14,8 (piso 15) e
+   azul/magenta a 4,1 em deuteranopia.
+
+   A rampa sequencial é de UM tom, claro→escuro, para magnitude (heatmap).
+   Nunca arco-íris.
+--------------------------------------------------------------------------- */
+:root {
+  --viz-1: #19a974; /* esmeralda — série principal */
+  --viz-2: #7c6ef0; /* violeta */
+  --viz-3: #c98500; /* âmbar */
+
+  --viz-grid: oklch(0.3 0 0);
+  --viz-track: oklch(0.26 0 0);
+
+  /* Rampa sequencial (magnitude). Monotônica em luminosidade. */
+  --viz-ramp-0: oklch(0.24 0.01 165);
+  --viz-ramp-1: oklch(0.34 0.05 165);
+  --viz-ramp-2: oklch(0.45 0.09 165);
+  --viz-ramp-3: oklch(0.56 0.13 165);
+  --viz-ramp-4: oklch(0.68 0.16 165);
+}
+
+:root.light {
+  --viz-1: #12855d;
+  --viz-2: #6d5ae0;
+  --viz-3: #a86f00;
+
+  --viz-grid: oklch(0.9 0.008 250);
+  --viz-track: oklch(0.94 0.006 250);
+
+  --viz-ramp-0: oklch(0.96 0.01 165);
+  --viz-ramp-1: oklch(0.87 0.05 165);
+  --viz-ramp-2: oklch(0.76 0.09 165);
+  --viz-ramp-3: oklch(0.63 0.12 165);
+  --viz-ramp-4: oklch(0.5 0.13 165);
+}
+
+/* Entrada dos gráficos: as marcas crescem da linha de base.
+   `transform-box: fill-box` faz o transform do SVG respeitar a caixa da
+   própria marca, e não o sistema de coordenadas do <svg> inteiro. */
+@keyframes viz-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Desenha a linha da esquerda para a direita. O dasharray é maior que
+   qualquer path que produzimos, então o offset sempre começa "vazio". */
+@keyframes viz-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes viz-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.viz-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: viz-grow 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-fade-up {
+  animation: viz-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viz-grow,
+  .viz-fade-up {
+    animation: none;
+  }
 }

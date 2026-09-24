@@ -52,12 +52,26 @@ export function useDashboardData(): DashboardData {
   const leads = getLeads();
   const conversations = getConversations();
   const attentionCount = useMemo(() => {
-    const waitingHuman = conversations.filter((item) => item.aiStatus === "aguardando_humano").length;
+    const waitingHuman = conversations.filter(
+      (item) => item.aiStatus === "aguardando_humano",
+    ).length;
     const unanswered = conversations.filter((item) => item.awaitingReply).length;
-    const campaignIssues = campaigns.filter((item) => item.meta_delivery_status === "issues_on_meta" || item.meta_sync_status === "failed").length;
+    const campaignIssues = campaigns.filter(
+      (item) =>
+        item.meta_delivery_status === "issues_on_meta" || item.meta_sync_status === "failed",
+    ).length;
     const failedPosts = schedule.filter((item) => item.status === "failed").length;
     return waitingHuman + unanswered + coachAttention + campaignIssues + failedPosts;
   }, [campaigns, coachAttention, conversations, schedule]);
 
-  return { leads, conversations, quotes, campaigns, contents, schedule, attentionCount, loadingGrowth };
+  return {
+    leads,
+    conversations,
+    quotes,
+    campaigns,
+    contents,
+    schedule,
+    attentionCount,
+    loadingGrowth,
+  };
 }
