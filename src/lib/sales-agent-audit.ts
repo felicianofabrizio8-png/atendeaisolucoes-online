@@ -15,6 +15,7 @@ export type SalesAgentAuditInput = {
   blocked?: string | null;
   latencyMs: number;
   tokensAvailable?: number | null;
+  fallbackReason?: string | null;
 };
 
 export type SalesAgentAuditPayload = {
@@ -27,6 +28,7 @@ export type SalesAgentAuditPayload = {
   blocked: string | null;
   latency_ms: number;
   tokens_available: number | null;
+  fallback_reason?: string;
 };
 
 const SAFE_RESULT = /^[a-zA-Z0-9_.:-]{1,120}$/;
@@ -74,6 +76,9 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
       input.tokensAvailable === null || input.tokensAvailable === undefined
         ? null
         : safePositiveInteger(input.tokensAvailable),
+    ...(input.fallbackReason
+      ? { fallback_reason: safeCode(input.fallbackReason, "redacted_fallback") }
+      : {}),
   };
 }
 

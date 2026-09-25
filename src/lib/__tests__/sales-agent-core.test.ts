@@ -1514,7 +1514,7 @@ const validationContext: AgentContext = {
     expect(request.messages[0].content).toContain("somente orientação de comportamento comercial");
   });
 
-  it("usa fallback factual para produto inexistente", async () => {
+  it("faz handoff seguro para produto inexistente", async () => {
     const complete = vi.fn().mockResolvedValue({
       ok: true,
       data: {
@@ -1548,15 +1548,16 @@ const validationContext: AgentContext = {
     });
 
     expect(decision).toMatchObject({
-      kind: "reply",
-      suggested_products: ["product-1"],
+      kind: "handoff",
+      reason: "catalog_invalid_product_reference",
+      fallback_reason: "catalog_invalid_product_reference",
       learning_ids_used: [],
     });
-    expect(decision.message).toContain("Encontrei no catálogo");
-    expect(decision.message).not.toContain("Atlântida");
+    expect(decision.message).toBeUndefined();
+    expect(decision.suggested_products).toBeUndefined();
   });
 
-  it("responde com todos os comprimentos compatíveis mesmo se o modelo pedir handoff", async () => {
+  it("faz handoff seguro quando o modelo pede handoff, mesmo com produtos compatíveis", async () => {
     const products = [
       { ...context.grounding.catalog[0], id: "sol-600", name: "Sol 600", lengthM: 6, images: [] },
       { ...context.grounding.catalog[0], id: "sol-601", name: "Sol 601 Canyon", lengthM: 6, images: [] },
@@ -1597,12 +1598,11 @@ const validationContext: AgentContext = {
     });
 
     expect(decision).toMatchObject({
-      kind: "reply",
-      suggested_products: ["sol-600", "sol-601"],
-      product_image_ids: [],
+      kind: "handoff",
+      reason: "sem fotos ou disponibilidade",
+      fallback_reason: "model_requested_handoff",
     });
-    expect(decision.message).toContain("Encontrei no catálogo");
-    expect(decision.message).not.toMatch(/dispon[ií]vel|estoque/i);
+    expect(decision.message).toBeUndefined();
   });
 
   it("produto válido retorna somente dados reais do registro", async () => {
@@ -1998,10 +1998,10 @@ const validationContext: AgentContext = {
       catalogSearch: context.grounding.catalogSearch,
     });
 
-    expect(decision.kind).toBe("reply");
-    expect(decision.message).toContain("Encontrei no catálogo");
-    expect(decision.message).not.toContain("product-missing");
-    expect(decision.suggested_products).not.toContain("product-missing");
+    expect(decision.kind).toBe("handoff");
+    expect(decision.fallback_reason).toBe("catalog_invalid_product_reference");
+    expect(decision.message).toBeUndefined();
+    expect(decision.suggested_products).toBeUndefined();
   });
 
   it("usa somente os produtos de catalogSearch no prompt e nas referências", () => {
@@ -2040,5 +2040,91 @@ const validationContext: AgentContext = {
     });
 
     expect(decision).toMatchObject({ kind: "handoff", reason: "catalog_query_error" });
+  });
+
+  it("não envia enum vazio quando não há aprendizados nem produtos relevantes", () => {
+    const request = buildSalesAgentCompletionRequest({
+      ctx: { ...context, grounding: { ...context.grounding, approvedCoachLearnings: [] } },
+      history: [{ role: "lead", text: "Oi, boa tarde" }],
+      leadName: null,
+      model: salesModel,
+      interpretation: testInterpretation,
+      catalogSearch: { status: "matches", products: [] },
+    });
+    const properties = (request.tools[0] as {
+      function: { parameters: { properties: Record<string, { items?: Record<string, unknown> }> } };
+    }).function.parameters.properties;
+
+    expect(properties.learning_ids_used.items).not.toHaveProperty("enum");
+    expect(properties.suggest_products.items).not.toHaveProperty("enum");
+    expect(JSON.stringify(request.tools)).not.toContain('"enum":[]');
+  });
+
+  it.each([
+    ["falha do gateway", { ok: false, reason: "gateway_http_400" }, "gateway_http_400"],
+    ["resposta sem tool call", { ok: true, data: { choices: [{ message: {} }] } }, "no_tool_call"],
+    [
+      "mensagem vazia",
+      {
+        ok: true,
+        data: {
+          choices: [{ message: { tool_calls: [{ function: { name: "respond_to_customer", arguments: JSON.stringify({ message: "" }) } }] } }],
+        },
+      },
+      "empty_message",
+    ],
+  ])("faz handoff seguro sem dump de catálogo em %s", async (_label, completion, reason) => {
+    const products = [context.grounding.catalog[0]];
+    const decision = await new SalesAgentCore(vi.fn().mockResolvedValue(completion)).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Oi, quero uma piscina" }],
+      leadName: null,
+      model: salesModel,
+      interpretation: testInterpretation,
+      catalogSearch: { status: "matches", products },
+    });
+
+    expect(decision).toMatchObject({ kind: "handoff", reason, fallback_reason: reason });
+    expect(decision.message).toBeUndefined();
+    expect(decision.suggested_products).toBeUndefined();
+  });
+
+  it("limita a SALES_AGENT_MAX_OPTIONS os produtos do fallback que ainda responde", async () => {
+    const products = ["Alfa", "Bravo", "Charlie", "Delta", "Echo"].map((name, index) => ({
+      ...context.grounding.catalog[0],
+      id: `p${index + 1}`,
+      name,
+    }));
+    const complete = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        choices: [{
+          message: {
+            tool_calls: [{
+              function: {
+                name: "respond_to_customer",
+                arguments: JSON.stringify({ message: "Veja a Echo.", suggest_products: ["p1"] }),
+              },
+            }],
+          },
+        }],
+      },
+    });
+
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: { ...context, products, grounding: { ...context.grounding, catalog: products } },
+      history: [{ role: "lead", text: "Quero conhecer as opções" }],
+      leadName: null,
+      model: salesModel,
+      interpretation: testInterpretation,
+      catalogSearch: { status: "matches", products },
+    });
+
+    expect(decision.kind).toBe("reply");
+    expect(decision.fallback_reason).toBe("catalog_invalid_product_fact");
+    expect(decision.suggested_products).toEqual(["p1", "p2", "p3"]);
+    expect(decision.message).toContain("Charlie");
+    expect(decision.message).not.toContain("Delta");
+    expect(decision.message).not.toContain("Echo");
   });
 });

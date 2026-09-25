@@ -57,6 +57,27 @@ describe("auditoria da Vendedora V2", () => {
     expect(payload.tokens_available).toBe(0);
   });
 
+  it("registra fallback_reason sanitizado somente quando houver fallback", () => {
+    const base = {
+      companyId: "company-1",
+      conversationId: "conversation-1",
+      mode: "assisted" as const,
+      decision: "handoff" as const,
+      result: "gateway_timeout",
+      latencyMs: 1,
+    };
+
+    expect(
+      buildSalesAgentAuditPayload({ ...base, fallbackReason: "gateway_http_400" }).fallback_reason,
+    ).toBe("gateway_http_400");
+    expect(
+      buildSalesAgentAuditPayload({ ...base, fallbackReason: "api_key sk-123" }).fallback_reason,
+    ).toBe("redacted_fallback");
+    expect(buildSalesAgentAuditPayload({ ...base, fallbackReason: null })).not.toHaveProperty(
+      "fallback_reason",
+    );
+  });
+
   it("mascara identificador na saída", () => {
     expect(maskAuditIdentifier("conversation-1234")).toBe("conv…1234");
     expect(maskAuditIdentifier(null)).toBe("-");
