@@ -1,0 +1,224 @@
+// Preferências de aparência (tema, cor de destaque, fonte e estado da barra
+// lateral), salvas por navegador. APPEARANCE_BOOT_SCRIPT roda inline em
+// __root.tsx antes da hidratação para evitar flash; este módulo mantém o
+// estado em sincronia depois.
+
+export type ThemeMode = "black" | "dark" | "light";
+/** Barra lateral do AppShell: largura cheia com textos, ou trilho só de ícones. */
+export type SidebarState = "expanded" | "collapsed";
+export type AppFont =
+  | "system"
+  | "Inter"
+  | "Poppins"
+  | "Montserrat"
+  | "Roboto"
+  | "Open Sans"
+  | "Lato"
+  | "Playfair Display"
+  | "Merriweather";
+
+export const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description: string }> = [
+  { value: "black", label: "Preto", description: "Preto absoluto com superfícies sutis" },
+  { value: "dark", label: "Escuro", description: "Cinza escuro neutro" },
+  { value: "light", label: "Claro", description: "Fundo claro e suave" },
+];
+
+// Mesma allowlist de fontes do Brand Center, carregadas do Google Fonts sob demanda.
+export const FONT_OPTIONS: Array<{ value: AppFont; label: string }> = [
+  { value: "system", label: "Padrão do sistema" },
+  { value: "Inter", label: "Inter" },
+  { value: "Poppins", label: "Poppins" },
+  { value: "Montserrat", label: "Montserrat" },
+  { value: "Roboto", label: "Roboto" },
+  { value: "Open Sans", label: "Open Sans" },
+  { value: "Lato", label: "Lato" },
+  { value: "Playfair Display", label: "Playfair Display" },
+  { value: "Merriweather", label: "Merriweather" },
+];
+
+const FALLBACK_STACK =
+  'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"';
+
+// Lato e Merriweather não são fontes variáveis: pesos listados explicitamente.
+const FONT_WEIGHTS: Record<Exclude<AppFont, "system">, string> = {
+  Inter: "400;500;600;700",
+  Poppins: "400;500;600;700",
+  Montserrat: "400;500;600;700",
+  Roboto: "400;500;700",
+  "Open Sans": "400;500;600;700",
+  Lato: "400;700",
+  "Playfair Display": "400;500;600;700",
+  Merriweather: "400;700",
+};
+
+export function fontFamilyValue(font: AppFont): string {
+  return font === "system" ? FALLBACK_STACK : `"${font}", ${FALLBACK_STACK}`;
+}
+
+export function googleFontsHref(fonts: AppFont[]): string | null {
+  const families = fonts
+    .filter((f): f is Exclude<AppFont, "system"> => f !== "system")
+    .map((f) => `family=${f.replace(/ /g, "+")}:wght@${FONT_WEIGHTS[f]}`);
+  if (families.length === 0) return null;
+  return `https://fonts.googleapis.com/css2?${families.join("&")}&display=swap`;
+}
+
+const THEME_KEY = "atendeai.theme";
+// Mantida só para limpar a preferência de quem usou a versão com escolha de
+// cor de destaque. Sem isto, um navegador que gravou "orange" ficaria com
+// data-accent no <html> para sempre, e o CSS que o atendia já não existe.
+const LEGACY_ACCENT_KEY = "atendeai.accent";
+const FONT_KEY = "atendeai.font";
+const SIDEBAR_KEY = "atendeai.sidebar";
+const FONT_LINK_ID = "atendeai-font";
+
+export type Appearance = {
+  theme: ThemeMode;
+  font: AppFont;
+  sidebar: SidebarState;
+};
+
+const DEFAULT: Appearance = {
+  theme: "dark",
+  font: "system",
+  sidebar: "expanded",
+};
+
+function isTheme(v: unknown): v is ThemeMode {
+  return THEME_OPTIONS.some((o) => o.value === v);
+}
+
+function isFont(v: unknown): v is AppFont {
+  return FONT_OPTIONS.some((o) => o.value === v);
+}
+
+function isSidebar(v: unknown): v is SidebarState {
+  return v === "expanded" || v === "collapsed";
+}
+
+/** Script inline (sem dependências) que aplica as preferências antes do primeiro paint. */
+export const APPEARANCE_BOOT_SCRIPT = `(function(){try{
+var d=document.documentElement,s=localStorage;
+var t=s.getItem(${JSON.stringify(THEME_KEY)});if(t==='light'||t==='black'){d.classList.add(t);}
+s.removeItem(${JSON.stringify(LEGACY_ACCENT_KEY)});d.removeAttribute('data-accent');
+var f=s.getItem(${JSON.stringify(FONT_KEY)});var fonts=${JSON.stringify(
+  Object.fromEntries(
+    FONT_OPTIONS.filter((o) => o.value !== "system").map((o) => [
+      o.value,
+      { family: fontFamilyValue(o.value), href: googleFontsHref([o.value]) },
+    ]),
+  ),
+)};
+if(f&&fonts[f]){d.style.setProperty('--app-font-family',fonts[f].family);var l=document.createElement('link');l.id=${JSON.stringify(FONT_LINK_ID)};l.rel='stylesheet';l.href=fonts[f].href;document.head.appendChild(l);}
+var sb=s.getItem(${JSON.stringify(SIDEBAR_KEY)});if(sb==='collapsed'){d.setAttribute('data-sidebar','collapsed');}
+}catch(e){}})();`;
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* ignore */
+  }
+}
+
+let current: Appearance = DEFAULT;
+let initialized = false;
+const listeners = new Set<() => void>();
+
+function ensureInit() {
+  if (initialized || typeof window === "undefined") return;
+  initialized = true;
+  const t = readStorage(THEME_KEY);
+  const f = readStorage(FONT_KEY);
+  const sb = readStorage(SIDEBAR_KEY);
+  current = {
+    theme: isTheme(t) ? t : DEFAULT.theme,
+    font: isFont(f) ? f : DEFAULT.font,
+    sidebar: isSidebar(sb) ? sb : DEFAULT.sidebar,
+  };
+  apply(current);
+}
+
+function apply({ theme, font, sidebar }: Appearance) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.classList.toggle("light", theme === "light");
+  root.classList.toggle("black", theme === "black");
+  // A largura da sidebar sai de uma custom property presa a este atributo
+  // (ver styles.css). Mantendo a decisão no <html>, o mesmo estado já vale no
+  // primeiro paint — via APPEARANCE_BOOT_SCRIPT — e o React não precisa
+  // renderizar uma marcação diferente no servidor e no cliente.
+  if (sidebar === "collapsed") root.setAttribute("data-sidebar", "collapsed");
+  else root.removeAttribute("data-sidebar");
+
+  const href = googleFontsHref([font]);
+  let link = document.getElementById(FONT_LINK_ID) as HTMLLinkElement | null;
+  if (href) {
+    if (!link) {
+      link = document.createElement("link");
+      link.id = FONT_LINK_ID;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    if (link.href !== href) link.href = href;
+    root.style.setProperty("--app-font-family", fontFamilyValue(font));
+  } else {
+    link?.remove();
+    root.style.removeProperty("--app-font-family");
+  }
+}
+
+function emit() {
+  for (const l of listeners) l();
+}
+
+export function getAppearance(): Appearance {
+  ensureInit();
+  return current;
+}
+
+export function getServerAppearance(): Appearance {
+  return DEFAULT;
+}
+
+export function subscribeAppearance(listener: () => void) {
+  ensureInit();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function update(patch: Partial<Appearance>) {
+  ensureInit();
+  current = { ...current, ...patch };
+  apply(current);
+  emit();
+}
+
+export function setTheme(theme: ThemeMode) {
+  writeStorage(THEME_KEY, theme);
+  update({ theme });
+}
+
+export function setFont(font: AppFont) {
+  writeStorage(FONT_KEY, font);
+  update({ font });
+}
+
+export function setSidebar(sidebar: SidebarState) {
+  writeStorage(SIDEBAR_KEY, sidebar);
+  update({ sidebar });
+}
+
+export function toggleSidebar() {
+  setSidebar(getAppearance().sidebar === "collapsed" ? "expanded" : "collapsed");
+}

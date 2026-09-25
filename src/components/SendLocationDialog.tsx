@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MapPin, Loader2, Send, X, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { openSettings } from "@/lib/settings-dialog";
 
 export interface CompanyLocation {
   name: string | null;
@@ -140,14 +141,17 @@ export function SendLocationDialog({
                 Cadastre a localização da empresa uma única vez em Configurações.
                 Depois você poderá enviar pelo chat sempre que precisar.
               </p>
-              <a
-                href="/configuracoes#company-location"
-                onClick={() => onOpenChange(false)}
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenChange(false);
+                  openSettings("atendimento");
+                }}
                 className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-medium"
               >
                 <MapPin className="h-3.5 w-3.5" />
                 Configurar localização
-              </a>
+              </button>
             </div>
           ) : (
             <>

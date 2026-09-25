@@ -10,6 +10,9 @@
  */
 
 @theme inline {
+  /* Fonte escolhida em Configurações › Aparência (ver src/lib/appearance.ts) */
+  --font-sans: var(--app-font-family);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -65,69 +68,78 @@
 /* Dark is the default theme — applied on :root */
 :root {
   --radius: 0.5rem;
+  --app-font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 
-  /* Surfaces — deep, neutral, slightly cool */
-  --background: oklch(0.18 0.012 250);
-  --foreground: oklch(0.96 0.005 250);
+  /* Surfaces — deep neutral gray (sem matiz) */
+  --background: oklch(0.18 0 0);
+  --foreground: oklch(0.96 0 0);
 
-  --card: oklch(0.22 0.014 250);
-  --card-foreground: oklch(0.96 0.005 250);
+  --card: oklch(0.22 0 0);
+  --card-foreground: oklch(0.96 0 0);
 
-  --popover: oklch(0.24 0.014 250);
-  --popover-foreground: oklch(0.96 0.005 250);
+  --popover: oklch(0.24 0 0);
+  --popover-foreground: oklch(0.96 0 0);
 
-  /* Primary — vivid teal/cyan, action-forward */
-  --primary: oklch(0.78 0.16 195);
-  --primary-foreground: oklch(0.18 0.012 250);
+  /* Primary — neutro.
+     A escolha de cor de destaque saiu do produto: `--primary` deixou de ser
+     "a cor da marca" e virou só ênfase.
 
-  --secondary: oklch(0.28 0.018 250);
-  --secondary-foreground: oklch(0.96 0.005 250);
+     A LUMINOSIDADE é a mesma do ciano que estava aqui (0.78); só o croma foi
+     a zero. Isso não é detalhe: `--primary` é usada como COR DE TEXTO em ~386
+     lugares, e escurecê-la deixaria tudo isso ilegível sobre as superfícies
+     escuras. Mantendo a luminosidade, toda relação de contraste que já
+     funcionava continua valendo. */
+  --primary: oklch(0.78 0 0);
+  --primary-foreground: oklch(0.18 0 0);
 
-  --muted: oklch(0.26 0.014 250);
-  --muted-foreground: oklch(0.70 0.018 250);
+  --secondary: oklch(0.28 0 0);
+  --secondary-foreground: oklch(0.96 0 0);
 
-  --accent: oklch(0.30 0.02 250);
-  --accent-foreground: oklch(0.96 0.005 250);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+
+  --accent: oklch(0.3 0 0);
+  --accent-foreground: oklch(0.96 0 0);
 
   --destructive: oklch(0.65 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --border: oklch(0.30 0.014 250);
-  --input: oklch(0.28 0.014 250);
-  --ring: oklch(0.78 0.16 195);
+  --border: oklch(0.3 0 0);
+  --input: oklch(0.28 0 0);
+  --ring: oklch(0.55 0 0);
 
   /* Status palette */
-  --status-urgent: oklch(0.65 0.24 28);          /* red — sem resposta / SLA estourado */
+  --status-urgent: oklch(0.65 0.24 28); /* red — sem resposta / SLA estourado */
   --status-urgent-foreground: oklch(0.98 0 0);
-  --status-hot: oklch(0.72 0.20 50);             /* orange — lead quente */
+  --status-hot: oklch(0.72 0.2 50); /* orange — lead quente */
   --status-hot-foreground: oklch(0.18 0.012 250);
-  --status-warm: oklch(0.80 0.16 90);            /* amber — morno */
+  --status-warm: oklch(0.8 0.16 90); /* amber — morno */
   --status-warm-foreground: oklch(0.18 0.012 250);
-  --status-cold: oklch(0.70 0.10 230);           /* blue — frio */
+  --status-cold: oklch(0.7 0.1 230); /* blue — frio */
   --status-cold-foreground: oklch(0.18 0.012 250);
-  --status-won: oklch(0.75 0.18 150);            /* green — fechado */
+  --status-won: oklch(0.75 0.18 150); /* green — fechado */
   --status-won-foreground: oklch(0.18 0.012 250);
-  --status-lost: oklch(0.55 0.02 250);           /* gray — perdido */
+  --status-lost: oklch(0.55 0.02 250); /* gray — perdido */
   --status-lost-foreground: oklch(0.96 0 0);
 
   /* Channel palette */
   --channel-whatsapp: oklch(0.72 0.18 150);
-  --channel-instagram: oklch(0.68 0.20 0);
+  --channel-instagram: oklch(0.68 0.2 0);
   --channel-facebook: oklch(0.68 0.18 250);
 
   /* Sidebar */
-  --sidebar: oklch(0.16 0.012 250);
-  --sidebar-foreground: oklch(0.92 0.005 250);
-  --sidebar-border: oklch(0.26 0.014 250);
-  --sidebar-accent: oklch(0.24 0.018 250);
+  --sidebar: oklch(0.16 0 0);
+  --sidebar-foreground: oklch(0.92 0 0);
+  --sidebar-border: oklch(0.26 0 0);
+  --sidebar-accent: oklch(0.24 0 0);
   --sidebar-accent-foreground: oklch(0.98 0 0);
 
   /* Chart fallbacks */
   --chart-1: oklch(0.78 0.16 195);
   --chart-2: oklch(0.72 0.18 150);
-  --chart-3: oklch(0.72 0.20 50);
-  --chart-4: oklch(0.68 0.20 320);
-  --chart-5: oklch(0.70 0.10 230);
+  --chart-3: oklch(0.72 0.2 50);
+  --chart-4: oklch(0.68 0.2 320);
+  --chart-5: oklch(0.7 0.1 230);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -138,34 +150,35 @@
 /* Light theme — applied when .light is on <html>. Premium SaaS look, no pure white. */
 :root.light {
   /* Surfaces — soft, slightly cool gray (never pure white) */
-  --background: oklch(0.985 0.003 250);          /* app background */
-  --foreground: oklch(0.20 0.014 250);           /* main text */
+  --background: oklch(0.985 0.003 250); /* app background */
+  --foreground: oklch(0.2 0.014 250); /* main text */
 
-  --card: oklch(0.995 0.002 250);                /* card surface — softer than #fff */
-  --card-foreground: oklch(0.20 0.014 250);
+  --card: oklch(0.995 0.002 250); /* card surface — softer than #fff */
+  --card-foreground: oklch(0.2 0.014 250);
 
   --popover: oklch(0.995 0.002 250);
-  --popover-foreground: oklch(0.20 0.014 250);
+  --popover-foreground: oklch(0.2 0.014 250);
 
-  /* Primary — darken teal slightly for AA contrast on light */
-  --primary: oklch(0.58 0.13 195);
-  --primary-foreground: oklch(0.99 0.002 250);
+  /* Primary — quase preto no tema claro (ver nota em :root). Aqui escurecer
+     é seguro: o texto fica sobre superfícies claras. */
+  --primary: oklch(0.21 0 0);
+  --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.94 0.006 250);
-  --secondary-foreground: oklch(0.20 0.014 250);
+  --secondary-foreground: oklch(0.2 0.014 250);
 
   --muted: oklch(0.95 0.005 250);
   --muted-foreground: oklch(0.48 0.014 250);
 
   --accent: oklch(0.93 0.008 250);
-  --accent-foreground: oklch(0.20 0.014 250);
+  --accent-foreground: oklch(0.2 0.014 250);
 
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.90 0.008 250);
+  --border: oklch(0.9 0.008 250);
   --input: oklch(0.93 0.008 250);
-  --ring: oklch(0.58 0.13 195);
+  --ring: oklch(0.45 0 0);
 
   /* Status — darken slightly for contrast on light backgrounds */
   --status-urgent: oklch(0.58 0.22 28);
@@ -173,31 +186,65 @@
   --status-hot: oklch(0.64 0.18 50);
   --status-hot-foreground: oklch(0.99 0 0);
   --status-warm: oklch(0.72 0.15 90);
-  --status-warm-foreground: oklch(0.20 0.014 250);
+  --status-warm-foreground: oklch(0.2 0.014 250);
   --status-cold: oklch(0.62 0.12 230);
   --status-cold-foreground: oklch(0.99 0 0);
-  --status-won: oklch(0.60 0.17 150);
+  --status-won: oklch(0.6 0.17 150);
   --status-won-foreground: oklch(0.99 0 0);
   --status-lost: oklch(0.62 0.02 250);
   --status-lost-foreground: oklch(0.99 0 0);
 
   /* Channels — keep brand hues, adjusted for light */
-  --channel-whatsapp: oklch(0.60 0.17 150);
-  --channel-instagram: oklch(0.60 0.20 0);
+  --channel-whatsapp: oklch(0.6 0.17 150);
+  --channel-instagram: oklch(0.6 0.2 0);
   --channel-facebook: oklch(0.58 0.18 250);
 
   /* Sidebar — subtle off-white, distinct from main bg */
   --sidebar: oklch(0.97 0.005 250);
   --sidebar-foreground: oklch(0.25 0.014 250);
-  --sidebar-border: oklch(0.90 0.008 250);
+  --sidebar-border: oklch(0.9 0.008 250);
   --sidebar-accent: oklch(0.93 0.008 250);
-  --sidebar-accent-foreground: oklch(0.20 0.014 250);
+  --sidebar-accent-foreground: oklch(0.2 0.014 250);
 
   --chart-1: oklch(0.58 0.13 195);
-  --chart-2: oklch(0.60 0.17 150);
+  --chart-2: oklch(0.6 0.17 150);
   --chart-3: oklch(0.64 0.18 50);
   --chart-4: oklch(0.58 0.18 320);
   --chart-5: oklch(0.55 0.12 230);
+}
+
+/* Black theme — applied when .black is on <html>. Fundo #000 com superfícies
+   levemente mais claras e bordas visíveis para separar as informações. */
+:root.black {
+  --background: oklch(0 0 0);
+  --foreground: oklch(0.95 0 0);
+
+  --card: oklch(0.14 0 0);
+  --card-foreground: oklch(0.95 0 0);
+
+  --popover: oklch(0.17 0 0);
+  --popover-foreground: oklch(0.95 0 0);
+
+  --primary: oklch(0.74 0 0);
+  --primary-foreground: oklch(0.12 0 0);
+
+  --secondary: oklch(0.2 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+
+  --accent: oklch(0.23 0 0);
+  --accent-foreground: oklch(0.95 0 0);
+
+  --border: oklch(0.26 0 0);
+  --input: oklch(0.22 0 0);
+
+  --sidebar: oklch(0.07 0 0);
+  --sidebar-foreground: oklch(0.92 0 0);
+  --sidebar-border: oklch(0.22 0 0);
+  --sidebar-accent: oklch(0.18 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
 }
 
 @layer base {
@@ -205,7 +252,8 @@
     border-color: var(--color-border);
   }
 
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -214,49 +262,91 @@
   }
 
   /* Prevent any direct child from forcing horizontal scroll */
-  body { position: relative; }
+  body {
+    position: relative;
+  }
 
   /* Images and media never overflow */
-  img, video, canvas, svg { max-width: 100%; height: auto; }
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
 
   /* Mobile: prevent iOS auto-zoom on focus and ensure comfortable touch targets */
   @media (max-width: 640px) {
-    input, select, textarea {
+    input,
+    select,
+    textarea {
       font-size: 16px !important;
     }
     /* Comfortable minimum tap target for primary controls (WCAG 2.5.5) */
-    button, [role="button"], a.btn, .tap-44 {
+    button,
+    [role="button"],
+    a.btn,
+    .tap-44 {
       min-height: 44px;
     }
     /* Escala tipográfica mobile-first: leitura confortável a ~40cm, sem
        aumentar densidade a ponto de exigir zoom. */
-    html { -webkit-text-size-adjust: 100%; }
-    body { font-size: 15px; line-height: 1.5; }
-    h1 { font-size: 1.375rem; line-height: 1.25; }
-    h2 { font-size: 1.125rem; line-height: 1.3; }
-    h3 { font-size: 1rem; line-height: 1.35; }
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+    body {
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 1.375rem;
+      line-height: 1.25;
+    }
+    h2 {
+      font-size: 1.125rem;
+      line-height: 1.3;
+    }
+    h3 {
+      font-size: 1rem;
+      line-height: 1.35;
+    }
     /* Allow wide tables to scroll inside their own container without breaking layout */
-    table { display: block; max-width: 100%; overflow-x: auto; }
+    table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+    }
   }
-
 
   /* Pulse for urgent items */
   @keyframes urgent-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-urgent) 50%, transparent); }
-    50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--status-urgent) 0%, transparent); }
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-urgent) 50%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px color-mix(in oklab, var(--status-urgent) 0%, transparent);
+    }
   }
   .animate-urgent {
     animation: urgent-pulse 2s ease-in-out infinite;
   }
 
   /* Scrollbar — subtle in dark */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
   ::-webkit-scrollbar-thumb {
     background: var(--color-border);
     border-radius: 8px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted-foreground);
+  }
 }
 
 /* ===== Campaigns module — shared animations & input ===== */
@@ -270,42 +360,81 @@
     font-size: 0.875rem;
     width: 100%;
     outline: none;
-    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
   }
-  textarea.input { height: auto; padding: 0.45rem 0.7rem; line-height: 1.45; }
-  .input:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
-  .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent); }
+  textarea.input {
+    height: auto;
+    padding: 0.45rem 0.7rem;
+    line-height: 1.45;
+  }
+  .input:hover {
+    border-color: color-mix(in oklab, var(--foreground) 22%, transparent);
+  }
+  .input:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+  }
 
   @keyframes ai-glow {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
-    50% { box-shadow: 0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent), 0 1px 2px rgba(0,0,0,.05); }
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 color-mix(in oklab, var(--primary) 35%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    50% {
+      box-shadow:
+        0 0 18px 2px color-mix(in oklab, var(--primary) 35%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.05);
+    }
   }
-  .ai-glow { animation: ai-glow 2.6s ease-in-out infinite; }
+  .ai-glow {
+    animation: ai-glow 2.6s ease-in-out infinite;
+  }
 
   @keyframes publish-pulse {
-    0%, 100% { box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent); }
-    50% { box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent); }
+    0%,
+    100% {
+      box-shadow: 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 6px 22px -2px color-mix(in oklab, var(--primary) 60%, transparent);
+    }
   }
-  .publish-cta:not(:disabled) { animation: publish-pulse 3.2s ease-in-out infinite; }
+  .publish-cta:not(:disabled) {
+    animation: publish-pulse 3.2s ease-in-out infinite;
+  }
 
   @keyframes preview-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(400%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
+    }
   }
 
   @keyframes smart-img-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 }
-
 
 /* Mobile utility: hide scrollbar but keep scroll */
 @utility scrollbar-none {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
 /* iOS safe area helpers */
 @utility safe-top {
@@ -317,6 +446,78 @@
 @utility safe-x {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* ==========================================================================
+   Barra lateral minimizável (AppShell)
+
+   A largura mora numa custom property no <html>, alternada pelo atributo
+   data-sidebar. Isso resolve três coisas de uma vez:
+
+   1. Sem flash: APPEARANCE_BOOT_SCRIPT grava o atributo antes do primeiro
+      paint, então a sidebar já nasce na largura certa. O React renderiza a
+      mesma marcação nos dois lados — nada de divergência de hidratação.
+   2. O conteúdo acompanha sozinho: <main> é flex-1, então animar só a
+      largura do <aside> faz a área principal ceder e ocupar o espaço no
+      mesmo frame. É a interface inteira se reorganizando, não um painel
+      passando por cima do conteúdo.
+   3. Só uma propriedade animada, na mesma curva para todo mundo.
+
+   As regras de estado ficam presas a `.app-sidebar` de propósito: a mesma
+   lista de navegação é reaproveitada na gaveta mobile, que nunca deve
+   aparecer recolhida.
+   ========================================================================== */
+:root {
+  --app-sidebar-width: 15rem; /* 240px — a mesma largura de antes (w-60) */
+  --app-sidebar-width-collapsed: 4.5rem; /* 72px — trilho só de ícones */
+  --app-sidebar-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root[data-sidebar="collapsed"] {
+  --app-sidebar-width: var(--app-sidebar-width-collapsed);
+}
+
+.app-sidebar {
+  width: var(--app-sidebar-width);
+  transition: width var(--app-sidebar-transition);
+}
+
+/* Trechos que só existem no estado expandido (rótulos, tagline, contadores). */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-when-expanded {
+  display: none;
+}
+
+/* Contrapartes de ícone, escondidas por padrão inclusive na gaveta mobile. */
+.sidebar-when-collapsed {
+  display: none;
+}
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-when-collapsed {
+  display: flex;
+}
+
+/* Linhas de navegação viram alvos quadrados e centralizados no trilho. */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-row {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Ícones um pouco maiores quando são a única pista visual disponível. */
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-row svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+:root[data-sidebar="collapsed"] .app-sidebar .sidebar-header {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar {
+    transition: none;
+  }
 }
 
 /* NEXUS-PRO:WATERMARK-HIDE:START */
@@ -339,3 +540,435 @@ iframe[src*="lovable.dev/badge"] {
   height: 0 !important;
 }
 /* NEXUS-PRO:WATERMARK-HIDE:END */
+
+/* Tela de atendimento — barrinha de 7s do carrossel de métricas.
+   Anima só a largura de um span já posicionado; sem reflow do resto. */
+@keyframes atendimento-tick {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Orbe da IA (SiriOrb)
+
+   O CSS mora aqui e não no componente porque `@property` só registra um tipo
+   customizado no nível do documento — dentro de um <style> injetado por
+   componente ele funciona por acidente e quebra quando o componente desmonta.
+   Sem `@property`, `--angle` é apenas um texto e a animação de rotação não
+   interpola: a orbe fica parada.
+
+   Neste projeto o tema escuro é o padrão (:root) e o claro é a exceção
+   (:root.light) — o inverso da convenção `.dark` do snippet original.
+--------------------------------------------------------------------------- */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.siri-orb {
+  display: grid;
+  grid-template-areas: "stack";
+  overflow: hidden;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.015) 30%,
+    transparent 70%
+  );
+}
+
+:root.light .siri-orb {
+  background: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.03) 30%,
+    transparent 70%
+  );
+}
+
+.siri-orb::before {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from calc(var(--angle) * 1.2) at 30% 65%,
+      var(--c3) 0deg,
+      transparent 45deg 315deg,
+      var(--c3) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * 0.8) at 70% 35%,
+      var(--c2) 0deg,
+      transparent 60deg 300deg,
+      var(--c2) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * -1.5) at 65% 75%,
+      var(--c1) 0deg,
+      transparent 90deg 270deg,
+      var(--c1) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * 2.1) at 25% 25%,
+      var(--c2) 0deg,
+      transparent 30deg 330deg,
+      var(--c2) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--angle) * -0.7) at 80% 80%,
+      var(--c1) 0deg,
+      transparent 45deg 315deg,
+      var(--c1) 360deg
+    ),
+    radial-gradient(ellipse 120% 80% at 40% 60%, var(--c3) 0%, transparent 50%);
+  filter: blur(var(--blur-amount)) contrast(var(--contrast-amount)) saturate(1);
+  animation: siri-orb-rotate var(--animation-duration) linear infinite;
+  /* translateZ(0) promove a camada: a rotação roda no compositor e não
+     repinta o painel de atendimento a cada frame. */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.siri-orb::after {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 45% 55%,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    transparent 60%
+  );
+  mix-blend-mode: overlay;
+}
+
+@keyframes siri-orb-rotate {
+  from {
+    --angle: 0deg;
+  }
+  to {
+    --angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siri-orb::before {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Tokens de visualização de dados
+
+   Três famílias, com papéis que NÃO se misturam:
+
+   1. CATEGÓRICA (`--viz-1/2/3`) — identidade. Um tom por painel, nunca uma
+      escala dentro do mesmo gráfico.
+   2. FLUXO (`--viz-flow-0..3`) — ordem. Para faixas empilhadas e fitas do
+      alluvial, onde a posição na pilha É a informação; a luminosidade cai
+      monotonicamente do topo para a base, então a ordem se lê sem legenda.
+   3. CALOR (`--viz-heat-0..4`) — magnitude. Rampa multi-tom do tipo magma
+      (ameixa → magenta → laranja → ouro), monotônica em luminosidade. Rampa
+      multi-tom não é arco-íris: arco-íris quebra a ordem de luminosidade e
+      inventa fronteira; esta sobe sem degrau e ainda dá muito mais degraus
+      discrimináveis do que um tom só — é por isso que mapa de calor denso
+      usa magma e não "verde claro → verde escuro".
+
+   A categórica foi VALIDADA, não escolhida a olho, nos dois temas e em todos
+   os pares: banda de luminosidade, piso de croma, separação para protanopia,
+   deuteranopia e tritanopia, e contraste contra a superfície.
+
+     escuro  #009da3 / #7563cf / #b38c15 — normal ΔE 19,9 · pior CVD 13,5
+     claro   #008caa / #624bbc / #a78000 — normal ΔE 18,8 · pior CVD 13,5
+
+   O verde esmeralda saiu: ele aparecia como padrão em quase todo gráfico e a
+   tela inteira ficava monocromática. Verde agora é só `--status-won`, que é
+   cor de ESTADO (fechado) e vem sempre com rótulo.
+
+   Quarta categoria nominal não existe de propósito: com quatro tons, algum
+   par cai abaixo do piso de 15 em visão normal ou de 8 em deuteranopia —
+   medido, não suposto. Onde havia quatro séries, o gráfico virou pequenos
+   múltiplos ou matriz.
+--------------------------------------------------------------------------- */
+:root {
+  --viz-1: #009da3; /* turquesa — dinheiro */
+  --viz-2: #7563cf; /* violeta — leads */
+  --viz-3: #b38c15; /* ouro — objeção */
+
+  --viz-grid: oklch(0.3 0 0);
+  --viz-track: oklch(0.26 0 0);
+  /* Fuga: o que saiu do fluxo. Cinza de propósito — perda não é categoria,
+     é ausência, e dar-lhe um tom próprio a coloca em pé de igualdade com o
+     que avançou. */
+  --viz-drop: oklch(0.38 0.01 20);
+
+  --viz-flow-0: oklch(0.74 0.1 200);
+  --viz-flow-1: oklch(0.65 0.13 240);
+  --viz-flow-2: oklch(0.56 0.16 278);
+  --viz-flow-3: oklch(0.48 0.17 305);
+
+  --viz-heat-0: oklch(0.26 0.015 300);
+  --viz-heat-1: oklch(0.38 0.1 302);
+  --viz-heat-2: oklch(0.5 0.16 340);
+  --viz-heat-3: oklch(0.64 0.16 30);
+  --viz-heat-4: oklch(0.8 0.15 75);
+
+  /* Rampa FRIO → QUENTE, para taxa de avanço no funil.
+
+     Multi-tom (roxo → azul → ciano → verde → amarelo) e mesmo assim não é
+     arco-íris: a luminosidade sobe monotonicamente de 0,45 a 0,86, então a
+     ordem continua legível mesmo em preto e branco. O que torna arco-íris
+     ruim é a luminosidade subir e descer, criando fronteira onde o dado é
+     contínuo — aqui ela só sobe.
+
+     A semântica é do negócio e foi pedida assim: FRIO = o que escapa,
+     QUENTE = o que avança. Isso dá à rampa um significado direcional que
+     um tom só não carrega — azul não é apenas 'menos', é 'vaza aqui'.
+
+     O texto dentro da célula troca de cor no meio da rampa (níveis 0–2
+     claro, 3–5 escuro), porque nenhuma cor de texto única tem contraste
+     contra as duas pontas. */
+  --viz-cw-0: oklch(0.45 0.16 300);
+  --viz-cw-1: oklch(0.52 0.15 265);
+  --viz-cw-2: oklch(0.62 0.13 220);
+  --viz-cw-3: oklch(0.7 0.14 165);
+  --viz-cw-4: oklch(0.78 0.15 120);
+  --viz-cw-5: oklch(0.86 0.15 95);
+
+  /* Turnos do dia. Pedidos assim pelo produto: manhã laranja, tarde azul,
+     noite roxo escuro. É uma associação natural (amanhecer, céu, anoitecer)
+     e por isso funciona sem legenda — mas a legenda continua lá, porque
+     'natural' não é 'universal'. */
+  --viz-turno-manha: oklch(0.72 0.16 55);
+  --viz-turno-tarde: oklch(0.65 0.16 250);
+  --viz-turno-noite: oklch(0.54 0.16 295);
+
+  /* Campo de calor da entrada de leads: rosa → roxo → azul → ciano →
+     verde → vermelho.
+
+     Isto É um arco-íris, e vale registrar o que se perde: a luminosidade
+     não sobe monotonicamente (0,70 · 0,62 · 0,62 · 0,75 · 0,80 · 0,66),
+     então a ordem não se lê em preto e branco nem sobrevive bem a
+     daltonismo, e o olho vê fronteira onde o dado é contínuo. Foi uma
+     escolha explícita de produto pelo visual.
+
+     O que compensa: nenhum número é escrito dentro das células (a cor não
+     precisa ser lida com precisão), a interpolação entre os degraus é
+     contínua — o que apaga a maior parte das fronteiras falsas — e o valor
+     exato aparece no hover, com as pontas da legenda trazendo mínimo e
+     máximo reais.
+
+     São SETE paradas com DUAS verdes (0,78 e 0,82 de luminosidade, matiz 168
+     e 140). Com uma única parada verde ela ocupava um sexto da escala e só
+     as poucas células de pico chegavam lá — na prática o verde não aparecia.
+     Alargando a faixa, a transição ciano → verde → vermelho fica visível no
+     miolo do campo, que é onde estão quase todas as células. */
+  --viz-rb-0: oklch(0.7 0.2 340);
+  --viz-rb-1: oklch(0.62 0.2 300);
+  --viz-rb-2: oklch(0.62 0.19 265);
+  --viz-rb-3: oklch(0.75 0.14 205);
+  --viz-rb-4: oklch(0.78 0.16 168);
+  --viz-rb-5: oklch(0.82 0.19 140);
+  --viz-rb-6: oklch(0.66 0.23 27);
+
+  /* Séries de canal no gráfico de receita: WhatsApp vermelho, Instagram
+     roxo, Facebook azul — definidos pelo produto.
+
+     Validados nos dois temas e em todos os pares: visão normal ΔE 23,1 /
+     23,7 · pior CVD 8,1 / 9,6 (deuteranopia) · contraste >= 3:1.
+
+     O par roxo/azul é o apertado, e é inerente: em deuteranopia o roxo
+     colapsa na direção do azul, e não há ajuste que separe os dois sem
+     deixar de ser roxo e azul. Fica no piso de 8, que é legal justamente
+     porque há codificação secundária — legenda com amostra, rótulo por
+     série e o tooltip listando os três nomes com o valor de cada um. */
+  --viz-canal-whatsapp: oklch(0.63 0.21 27);
+  --viz-canal-instagram: oklch(0.58 0.2 312);
+  --viz-canal-facebook: oklch(0.66 0.14 235);
+}
+
+:root.light {
+  --viz-1: #008caa;
+  --viz-2: #624bbc;
+  --viz-3: #a78000;
+
+  --viz-grid: oklch(0.9 0.008 250);
+  --viz-track: oklch(0.94 0.006 250);
+  --viz-drop: oklch(0.82 0.01 20);
+
+  --viz-flow-0: oklch(0.72 0.11 200);
+  --viz-flow-1: oklch(0.62 0.14 240);
+  --viz-flow-2: oklch(0.53 0.17 278);
+  --viz-flow-3: oklch(0.45 0.18 305);
+
+  /* Tema claro inverte o sentido da rampa: em fundo branco o "muito" é o
+     tom ESCURO. Manter a ordem do tema escuro deixaria a célula cheia mais
+     clara que o papel — magnitude lida ao contrário. */
+  --viz-heat-0: oklch(0.95 0.012 75);
+  --viz-heat-1: oklch(0.85 0.09 70);
+  --viz-heat-2: oklch(0.72 0.15 45);
+  --viz-heat-3: oklch(0.56 0.17 355);
+  --viz-heat-4: oklch(0.4 0.16 305);
+
+  /* Mesma trilha de tons, um degrau mais escura: sobre papel branco a ponta
+     clara precisa ficar abaixo de 0,82 para o texto escuro ainda pegar. */
+  --viz-cw-0: oklch(0.42 0.17 300);
+  --viz-cw-1: oklch(0.5 0.16 265);
+  --viz-cw-2: oklch(0.58 0.14 220);
+  --viz-cw-3: oklch(0.66 0.14 165);
+  --viz-cw-4: oklch(0.74 0.16 120);
+  --viz-cw-5: oklch(0.82 0.16 95);
+
+  --viz-turno-manha: oklch(0.64 0.17 50);
+  --viz-turno-tarde: oklch(0.55 0.17 250);
+  --viz-turno-noite: oklch(0.45 0.17 295);
+
+  /* Um degrau mais escuros: os mesmos tons sobre papel branco perdem
+     separação da superfície. */
+  --viz-rb-0: oklch(0.62 0.21 340);
+  --viz-rb-1: oklch(0.54 0.21 300);
+  --viz-rb-2: oklch(0.54 0.2 265);
+  --viz-rb-3: oklch(0.66 0.15 205);
+  --viz-rb-4: oklch(0.68 0.17 168);
+  --viz-rb-5: oklch(0.72 0.2 140);
+  --viz-rb-6: oklch(0.58 0.23 27);
+
+  --viz-canal-whatsapp: oklch(0.56 0.21 27);
+  --viz-canal-instagram: oklch(0.5 0.22 312);
+  --viz-canal-facebook: oklch(0.58 0.15 235);
+}
+
+/* Entrada dos gráficos: as marcas crescem da linha de base.
+   `transform-box: fill-box` faz o transform do SVG respeitar a caixa da
+   própria marca, e não o sistema de coordenadas do <svg> inteiro. */
+@keyframes viz-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Desenha a linha da esquerda para a direita. O dasharray é maior que
+   qualquer path que produzimos, então o offset sempre começa "vazio". */
+@keyframes viz-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes viz-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Fita do alluvial: a forma já existe, o que cresce é a espessura.
+   Animar `d` frame a frame seria recalcular Bézier a 60fps; escalar em Y a
+   partir do centro dá o mesmo "o fluxo abre" por uma propriedade que roda no
+   compositor. */
+@keyframes viz-ribbon {
+  from {
+    transform: scaleY(0.04);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* Revelação da esquerda para a direita, via clipPath. É assim que o fluxo
+   "corre": a forma inteira já existe, o recorte é que abre. Animar a largura
+   do rect (atributo) não roda no compositor; escalar em X roda. */
+@keyframes viz-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Ponto do mapa de calor: entra encolhido. Com o atraso em cascata pela
+   diagonal, a grade "acende" varrendo em vez de piscar inteira. */
+@keyframes viz-dot {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.viz-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: viz-grow 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-fade-up {
+  animation: viz-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-ribbon {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: viz-ribbon 760ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: viz-dot 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.viz-wipe {
+  transform-box: fill-box;
+  transform-origin: left;
+  animation: viz-wipe 1000ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Traço que se desenha (arco radial, linha de área). O dasharray vem do
+   componente, que conhece o comprimento real do path. */
+.viz-stroke {
+  animation: viz-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viz-grow,
+  .viz-fade-up,
+  .viz-ribbon,
+  .viz-dot,
+  .viz-wipe,
+  .viz-stroke {
+    animation: none;
+  }
+
+  /* Sem animação o traço precisa nascer visível, senão o arco some. */
+  .viz-stroke {
+    stroke-dashoffset: 0 !important;
+  }
+}
