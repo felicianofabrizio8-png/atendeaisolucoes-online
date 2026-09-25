@@ -154,6 +154,8 @@ export interface AgentDecision {
   product_image_ids?: string[];
   grounding_sources?: SalesAgentGroundingSource[];
   learning_ids_used?: string[];
+  /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
+  fallback_reason?: string;
 }
 
 export type SalesAgentCatalogSearch =
@@ -1139,6 +1141,12 @@ SUA MISSÃO:
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
 
+// Provedores OpenAI-compatible rejeitam `enum: []` (HTTP 400); sem valores, omite a restrição.
+// A validação server-side em `decide` continua rejeitando IDs fora do catálogo/aprendizados.
+function nonEmptyEnum(values: string[]): { enum?: string[] } {
+  return values.length > 0 ? { enum: values } : {};
+}
+
 export function buildSalesAgentCompletionRequest(
   params: SalesAgentCoreInput,
 ): SalesAgentCompletionRequest {
@@ -1226,7 +1234,7 @@ export function buildSalesAgentCompletionRequest(
                 type: "array",
                   items: {
                     type: "string",
-                    enum: catalogProducts.map((product) => product.id),
+                    ...nonEmptyEnum(catalogProducts.map((product) => product.id)),
                   },
                   description: "IDs exatos de produtos existentes no catálogo fornecido.",
               },
@@ -1241,7 +1249,9 @@ export function buildSalesAgentCompletionRequest(
                 type: "array",
                 items: {
                   type: "string",
-                  enum: params.ctx.grounding.approvedCoachLearnings.map((learning) => learning.id),
+                  ...nonEmptyEnum(
+                    params.ctx.grounding.approvedCoachLearnings.map((learning) => learning.id),
+                  ),
                 },
                 description:
                   "IDs dos aprendizados do Coach que influenciaram materialmente esta resposta. Não inclua aprendizados apenas por estarem no contexto.",
@@ -1319,30 +1329,39 @@ export class SalesAgentCore {
     )
       ? catalogSearch.products
       : [];
+    const fallbackProducts = deterministicProducts.slice(0, SALES_AGENT_MAX_OPTIONS);
     const deterministicFallback = (reason: string): AgentDecision => ({
-      ...(deterministicProducts.length > 0
+      ...(fallbackProducts.length > 0
         ? {
             kind: "reply" as const,
-            message: buildValidatedCatalogReply(deterministicProducts, {
+            message: buildValidatedCatalogReply(fallbackProducts, {
               includePrice: customerAskedForPrice(params.history),
             }),
-            suggested_products: deterministicProducts
-              .slice(0, SALES_AGENT_MAX_OPTIONS)
-              .map((product) => product.id),
+            suggested_products: fallbackProducts.map((product) => product.id),
             product_image_ids: automaticProductImageIds,
           }
         : { kind: "handoff" as const, reason }),
       grounding_sources: groundingSources,
       learning_ids_used: [],
+      fallback_reason: reason,
+    });
+    // Falha do provedor, resposta inválida/sem tool call ou pedido explícito de
+    // humano nunca viram resposta automática: handoff seguro, sem listar catálogo.
+    const safeHandoff = (reason: string, fallbackReason: string = reason): AgentDecision => ({
+      kind: "handoff",
+      reason,
+      grounding_sources: groundingSources,
+      learning_ids_used: [],
+      fallback_reason: fallbackReason,
     });
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
     if (!completion.ok) {
-      return deterministicFallback(completion.reason);
+      return safeHandoff(completion.reason);
     }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
     if (!call?.name || !call.arguments) {
-      return deterministicFallback("no_tool_call");
+      return safeHandoff("no_tool_call");
     }
 
     let args: ToolReply | ToolHandoff;
@@ -1358,11 +1377,11 @@ export class SalesAgentCore {
     }
 
     if (call.name === "request_human_handoff") {
-      return deterministicFallback((args as ToolHandoff).reason || "model_requested");
+      return safeHandoff((args as ToolHandoff).reason || "model_requested", "model_requested_handoff");
     }
     const reply = args as ToolReply;
     if (!reply.message) {
-      return deterministicFallback("empty_message");
+      return safeHandoff("empty_message");
     }
     if (!replyContinuesAffirmedOffer(reply.message, params.history)) {
       return deterministicFallback("affirmative_continuation_not_answered");
@@ -1384,7 +1403,7 @@ export class SalesAgentCore {
       modelSuggestions.some((id) => !catalogIds.has(id)) ||
       modelImageIds.some((id) => !catalogIds.has(id))
     ) {
-      return deterministicFallback("catalog_invalid_product_reference");
+      return safeHandoff("catalog_invalid_product_reference");
     }
     const requestedSuggestions = modelSuggestions.length > 0
       ? modelSuggestions.slice(0, SALES_AGENT_MAX_OPTIONS)

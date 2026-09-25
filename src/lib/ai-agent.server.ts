@@ -1085,6 +1085,7 @@ export async function runAgentTick(conversationId: string): Promise<{
 
   const auditStartedAt = Date.now();
   const auditMode: SalesAgentAuditMode = resolveSalesAgentMode(ctx.settings) ?? "off";
+  let auditFallbackReason: string | null = null;
   const writeSalesAgentAudit = async (
     decision: SalesAgentAuditDecision,
     result: string,
@@ -1104,6 +1105,7 @@ export async function runAgentTick(conversationId: string): Promise<{
         blocked,
         latencyMs: Date.now() - auditStartedAt,
         tokensAvailable: null,
+        fallbackReason: auditFallbackReason,
       }),
     });
   };
@@ -1226,6 +1228,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       }),
       ctx.grounding.commercialRules.commercialTerms,
     );
+    auditFallbackReason = decision.fallback_reason ?? null;
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
     await qualifyAndPersist({
