@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { installGlobalErrorHandlers } from "@/lib/audit";
 import { Toaster } from "@/components/ui/sonner";
 import { CampaignRenderTrackerProvider } from "@/lib/marketing/useCampaignRenderTracker";
+import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
 
 import appCss from "../styles.css?url";
 
@@ -95,14 +96,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    // suppressHydrationWarning: APPEARANCE_BOOT_SCRIPT altera class/data-accent/style
+    // do <html> antes da hidratação (tema, cor e fonte salvos no navegador).
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('atendeai.theme');if(t==='light'){document.documentElement.classList.add('light');}}catch(e){}})();`,
+            __html: APPEARANCE_BOOT_SCRIPT,
           }}
         />
         {children}

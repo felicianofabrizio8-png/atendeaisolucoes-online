@@ -37,16 +37,6 @@ export const Route = createFileRoute("/configuracoes_/identidade-visual")({
   component: BrandCenterPage,
 });
 
-const COLOR_FIELDS: Array<{ key: keyof BrandColors; label: string }> = [
-  { key: "primary", label: "Primária" },
-  { key: "secondary", label: "Secundária" },
-  { key: "accent", label: "Destaque (CTA)" },
-  { key: "background", label: "Fundo" },
-  { key: "surface", label: "Superfície" },
-  { key: "text", label: "Texto" },
-  { key: "textInverse", label: "Texto inverso" },
-];
-
 const LOGO_POSITIONS: BrandTokens["logoPosition"][] = [
   "top-left","top-center","top-right",
   "bottom-left","bottom-center","bottom-right","center",
@@ -355,24 +345,6 @@ function BrandCenterPage() {
             </div>
           </Section>
 
-          <Section title="Cores">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {COLOR_FIELDS.map(({ key, label }) => (
-                <div key={key} className="flex items-center gap-3">
-                  <input type="color" value={colors[key]}
-                    onChange={(e) => setColors({ ...colors, [key]: e.target.value.toUpperCase() })}
-                    className="h-9 w-12 rounded border border-input bg-background" />
-                  <div className="flex-1">
-                    <div className="text-xs font-medium">{label}</div>
-                    <input value={colors[key]}
-                      onChange={(e) => setColors({ ...colors, [key]: e.target.value })}
-                      className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs font-mono" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Section>
-
           <Section title="Tipografia">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {(["heading", "body", "display"] as const).map((role) => (
@@ -455,11 +427,6 @@ function BrandCenterPage() {
                 style={{ background: colors.accent, color: colors.textInverse, borderRadius: tokens.radius }}>
                 Chamada para ação
               </button>
-              <div className="mt-2 grid grid-cols-7 gap-1">
-                {COLOR_FIELDS.map(({ key }) => (
-                  <div key={key} className="h-6 rounded" style={{ background: colors[key] }} title={key} />
-                ))}
-              </div>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground">

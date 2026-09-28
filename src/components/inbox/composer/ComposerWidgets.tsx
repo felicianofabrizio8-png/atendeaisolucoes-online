@@ -1,5 +1,5 @@
 import type { LibraryPick } from "@/lib/inbox/types";
-import { Link } from "@tanstack/react-router";
+import { openSettings } from "@/lib/settings-dialog";
 import { Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -301,13 +301,16 @@ export function QuickRepliesButton({
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Respostas Rápidas
           </div>
-          <Link
-            to="/configuracoes/respostas-rapidas"
+          <button
+            type="button"
             className="text-[10px] text-primary hover:underline"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              openSettings("atendimento");
+            }}
           >
             Gerenciar
-          </Link>
+          </button>
         </div>
         <input
           autoFocus
