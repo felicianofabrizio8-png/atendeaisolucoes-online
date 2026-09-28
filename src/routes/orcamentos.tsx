@@ -15,6 +15,7 @@ export const Route = createFileRoute("/orcamentos")({
     if (typeof search.suggestedProductId === "string")
       out.suggestedProductId = search.suggestedProductId;
     if (typeof search.suggestionReason === "string") out.suggestionReason = search.suggestionReason;
+    if (search.returnTo === "atendimento") out.returnTo = "atendimento";
     return out;
   },
 });
@@ -25,6 +26,8 @@ interface QuotesSearch {
   conversationId?: string;
   suggestedProductId?: string;
   suggestionReason?: string;
+  /** Tela da conversa para onde voltar após criar (padrão: Caixa de atendimento). */
+  returnTo?: "atendimento";
 }
 
 function useQuotes() {
@@ -44,6 +47,7 @@ function QuotesPage() {
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
   const [suggestionReason, setSuggestionReason] = useState<string | undefined>();
+  const [returnTo, setReturnTo] = useState<"atendimento" | undefined>();
   const PAGE_SIZE = 20;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const visibleQuotes = quotes.slice(0, visibleCount);
@@ -55,6 +59,7 @@ function QuotesPage() {
       setPrefillConvId(search.conversationId);
       setPrefillProductId(search.suggestedProductId);
       setSuggestionReason(search.suggestionReason);
+      setReturnTo(search.returnTo);
       setOpen(true);
       navigate({ to: "/orcamentos", search: {}, replace: true });
     }
@@ -64,6 +69,7 @@ function QuotesPage() {
     search.conversationId,
     search.suggestedProductId,
     search.suggestionReason,
+    search.returnTo,
     navigate,
   ]);
 
@@ -126,7 +132,10 @@ function QuotesPage() {
           onCreated={(q) => {
             setOpen(false);
             // Se criado a partir de uma conversa, voltar para ela com a mensagem pronta
-            if (q.conversationId) {
+            if (q.conversationId && returnTo === "atendimento") {
+              // O Atendimento 2.0 encontra o orçamento pendente do lead sozinho.
+              navigate({ to: "/atendimento", search: { conversation: q.conversationId } });
+            } else if (q.conversationId) {
               navigate({
                 to: "/inbox/$conversationId",
                 params: { conversationId: q.conversationId },

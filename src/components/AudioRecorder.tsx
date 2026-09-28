@@ -24,6 +24,8 @@ interface Props {
   disabled?: boolean;
   onSent?: () => void;
   onStateChange?: (state: "idle" | "recording" | "locked" | "processing" | "sending") => void;
+  /** Estilo do microfone em repouso; o Atendimento 2.0 usa ícone solto na pílula. */
+  idleClassName?: string;
 }
 
 type RecorderLike = {
@@ -93,7 +95,13 @@ function hasOggOpusBytes(bytes: Uint8Array): boolean {
 
 type UIState = "idle" | "recording" | "locked" | "processing" | "sending";
 
-export function AudioRecorder({ conversationId, disabled, onSent, onStateChange }: Props) {
+export function AudioRecorder({
+  conversationId,
+  disabled,
+  onSent,
+  onStateChange,
+  idleClassName,
+}: Props) {
   const [state, setState] = useState<UIState>("idle");
   useEffect(() => { onStateChange?.(state); }, [state, onStateChange]);
   const [seconds, setSeconds] = useState(0);
@@ -753,7 +761,7 @@ export function AudioRecorder({ conversationId, disabled, onSent, onStateChange 
           className={`h-11 w-11 md:h-9 md:w-9 inline-flex items-center justify-center rounded-full md:rounded-md select-none transition-colors ${
             showRecordingOverlay
               ? "bg-destructive text-destructive-foreground scale-110"
-              : "bg-muted hover:bg-muted/80 text-foreground"
+              : (idleClassName ?? "bg-muted hover:bg-muted/80 text-foreground")
           } disabled:opacity-40`}
         >
           <Mic className="h-5 w-5 md:h-4 md:w-4" />

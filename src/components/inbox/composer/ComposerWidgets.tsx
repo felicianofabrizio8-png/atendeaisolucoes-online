@@ -174,14 +174,21 @@ export function PlusMenuPortal({
 // Carrega itens cadastrados em Configurações > Respostas Rápidas.
 // Ao clicar em uma resposta, PREENCHE a caixa de mensagem (não envia).
 // ============================================================================
+/** Botão quadrado dos gatilhos do composer da Caixa de atendimento. */
+const COMPOSER_TRIGGER_CLASS =
+  "h-9 w-9 inline-flex items-center justify-center rounded-md bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 shrink-0";
+
 export function QuickRepliesButton({
   companyId,
   disabled,
   onPick,
+  triggerClassName,
 }: {
   companyId: string | null;
   disabled: boolean;
   onPick: (text: string) => void;
+  /** Substitui o estilo do botão (o Atendimento 2.0 usa ícone solto na pílula). */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<QuickReply[]>([]);
@@ -361,7 +368,7 @@ export function QuickRepliesButton({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        className="h-9 w-9 inline-flex items-center justify-center rounded-md bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 shrink-0"
+        className={triggerClassName ?? COMPOSER_TRIGGER_CLASS}
         title="Respostas Rápidas — mensagens internas cadastradas pela sua empresa. Ao clicar, o texto é preenchido na caixa de mensagem (não envia automaticamente)."
         aria-label="Respostas Rápidas"
       >
@@ -398,6 +405,7 @@ export function MediaSendPanel({
   onSent,
   onSendText,
   onInsertText,
+  triggerClassName,
 }: {
   conversationId: string;
   channel: string | undefined;
@@ -407,6 +415,8 @@ export function MediaSendPanel({
   onSent: () => void;
   onSendText: (text: string) => void;
   onInsertText: (text: string) => void;
+  /** Substitui o estilo do botão "+" (o Atendimento 2.0 usa ícone solto na pílula). */
+  triggerClassName?: string;
 }) {
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -647,7 +657,7 @@ export function MediaSendPanel({
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           disabled={disabled}
-          className="h-9 w-9 inline-flex items-center justify-center rounded-md bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 shrink-0"
+          className={triggerClassName ?? COMPOSER_TRIGGER_CLASS}
           title="Anexar mídia"
           aria-label="Anexar mídia"
         >

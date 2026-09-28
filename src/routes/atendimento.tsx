@@ -13,7 +13,16 @@ import { InsightPanel } from "@/components/atendimento/InsightPanel";
 
 export const Route = createFileRoute("/atendimento")({
   component: AtendimentoPage,
+  // `?conversation=<id>` abre direto uma conversa (ex.: volta de /orcamentos).
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } =>
+    typeof search.conversation === "string" ? { conversation: search.conversation } : {},
 });
+
+/** Conversa pedida pela URL. Lido do `location` para funcionar fora do router (testes). */
+function requestedConversationId(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("conversation");
+}
 
 /**
  * Abaixo de `lg` as três colunas não cabem lado a lado, então a tela vira
@@ -44,7 +53,7 @@ function AtendimentoPage() {
   const [forceSimulated, setForceSimulated] = useState(false);
   const { contacts, isSimulated, status, error } = useAtendimentoData({ forceSimulated });
   const compact = useIsCompact();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(requestedConversationId);
   const [query, setQuery] = useState("");
   const [statFilter, setStatFilter] = useState<string | null>(null);
   // O texto do composer mora aqui, e não dentro do ChatThread, só para o
@@ -179,28 +188,38 @@ function AtendimentoPage() {
               contact={selected}
               draft={draft}
               onDraftChange={setDraft}
+              simulated={isSimulated}
               onBack={() => setSelectedId(null)}
               actions={
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary lg:hidden"
-                    >
-                      <PanelRight className="h-3.5 w-3.5" />
-                      Info / IA
-                    </button>
-                  </SheetTrigger>
-                  {/* pt-12: o botão de fechar da gaveta mora no canto superior
+                // Só no modo compacto: no desktop o painel já está na coluna 3
+                // e uma segunda instância duplicaria as assinaturas do Coach.
+                compact !== false && (
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary lg:hidden"
+                      >
+                        <PanelRight className="h-3.5 w-3.5" />
+                        Info / IA
+                      </button>
+                    </SheetTrigger>
+                    {/* pt-12: o botão de fechar da gaveta mora no canto superior
                       direito e brigaria com o alternador Info/IA. */}
-                  <SheetContent
-                    side="right"
-                    className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12"
-                  >
-                    <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
-                    <InsightPanel contact={selected} onUseSuggestion={applySuggestion} />
-                  </SheetContent>
-                </Sheet>
+                    <SheetContent
+                      side="right"
+                      className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12"
+                    >
+                      <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
+                      <InsightPanel
+                        contact={selected}
+                        onUseSuggestion={applySuggestion}
+                        simulated={isSimulated}
+                        composerHasDraft={draft.trim().length > 0}
+                      />
+                    </SheetContent>
+                  </Sheet>
+                )
               }
             />
           ) : (
@@ -212,7 +231,14 @@ function AtendimentoPage() {
 
         {/* Coluna 3 — Info / IA */}
         <aside className="hidden min-h-0 border-l border-border p-4 lg:block">
-          {selected && <InsightPanel contact={selected} onUseSuggestion={applySuggestion} />}
+          {selected && compact === false && (
+            <InsightPanel
+              contact={selected}
+              onUseSuggestion={applySuggestion}
+              simulated={isSimulated}
+              composerHasDraft={draft.trim().length > 0}
+            />
+          )}
         </aside>
       </div>
     </div>

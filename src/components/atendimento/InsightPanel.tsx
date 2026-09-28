@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { formatBRL } from "@/data/mock";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
 import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
+import { CoachPanel } from "@/components/coach/CoachPanel";
+import { AITimeline } from "@/components/AITimeline";
 import { AiComposer, type Attachment } from "./AiComposer";
 import { SiriOrb } from "./SiriOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
@@ -12,12 +14,27 @@ import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
 
 type Tab = "info" | "ia";
 
+/**
+ * Painel Info / IA.
+ *
+ * Em conversa real a aba IA é o Coach de produção (sugestões, alertas e a
+ * aprovação da Vendedora no modo assistido) — a mesma IA da Caixa de
+ * atendimento. O copiloto local só responde para os clientes de exemplo, onde
+ * não existe conversa no banco para a IA ler.
+ *
+ * Monte uma instância por vez: o Coach assina canais Realtime por conversa e
+ * duas cópias simultâneas derrubam a assinatura.
+ */
 export function InsightPanel({
   contact,
   onUseSuggestion,
+  simulated = false,
+  composerHasDraft = false,
 }: {
   contact: AtendimentoContact;
   onUseSuggestion: (text: string) => void;
+  simulated?: boolean;
+  composerHasDraft?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("info");
 
@@ -26,9 +43,49 @@ export function InsightPanel({
       <SegmentedToggle tab={tab} onChange={setTab} />
       {tab === "info" ? (
         <InfoTab contact={contact} />
-      ) : (
+      ) : simulated ? (
         <AiTab contact={contact} onUseSuggestion={onUseSuggestion} />
+      ) : (
+        <CoachTab
+          contact={contact}
+          onUseSuggestion={onUseSuggestion}
+          composerHasDraft={composerHasDraft}
+        />
       )}
+    </div>
+  );
+}
+
+function CoachTab({
+  contact,
+  onUseSuggestion,
+  composerHasDraft,
+}: {
+  contact: AtendimentoContact;
+  onUseSuggestion: (text: string) => void;
+  composerHasDraft: boolean;
+}) {
+  const coachMessages = useMemo(
+    () =>
+      contact.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.text,
+        at: m.at,
+        sourceSubtype: m.sourceSubtype,
+      })),
+    [contact.messages],
+  );
+
+  return (
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden rounded-2xl border border-border">
+      <CoachPanel
+        conversationId={contact.conversation.id}
+        messages={coachMessages}
+        onInsertSuggestion={onUseSuggestion}
+        composerHasDraft={composerHasDraft}
+      />
+      <AITimeline conversationId={contact.conversation.id} />
     </div>
   );
 }
@@ -148,6 +205,14 @@ function InfoTab({ contact }: { contact: AtendimentoContact }) {
       <Field label="Cidade" value={conversation.detectedCity} />
       <Field label="Estado" value={conversation.detectedState} />
       <Field label="Resumo" multiline value={summary ?? conversation.detectedIntent ?? null} />
+      <Field
+        label="Próxima ação"
+        value={
+          lead.nextAction
+            ? `${lead.nextAction.label} · ${new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}`
+            : null
+        }
+      />
 
       <div className="rounded-2xl border border-border p-3.5">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -195,7 +260,7 @@ interface ChatEntry {
 }
 
 /**
- * Aba IA — superfície de conversa, não painel de leitura.
+ * Aba IA dos clientes de exemplo — superfície de conversa, não painel de leitura.
  *
  * Em repouso mostra só a orbe, a saudação e o campo: quem abre a aba quer
  * perguntar alguma coisa, e um card de sugestão sempre aberto roubava essa

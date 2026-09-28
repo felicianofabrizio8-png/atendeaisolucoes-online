@@ -1,6 +1,6 @@
 import { Link, useNavigate, createLazyFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { runFollowupNowForConversation, type ManualFollowupResult } from "@/lib/manual-followup.functions";
+import { useManualFollowup } from "@/hooks/useManualFollowup";
+import { ManualFollowupResultDialog } from "@/components/inbox/modals/ManualFollowupResultDialog";
 import { Zap } from "lucide-react";
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
 import {
@@ -30,9 +30,6 @@ import {
   getConversationById,
   getLeadById,
   getMessagesFor,
-  markLeadLost,
-  markLeadWon,
-  updateLeadNextAction,
   refetchConversationMessages,
   subscribeRepo,
   editMessage,
@@ -44,8 +41,19 @@ import {
   getRepoVersion,
   resetConversationRecentLoaded,
 } from "@/data/leadRepo";
-import { recordAudit } from "@/lib/audit";
 import { sendManualText } from "@/lib/inbox/manual-send";
+import {
+  closeSale,
+  markLost,
+  quotedPreview,
+  replyExternalId as replyExternalIdOf,
+  saveNextAction,
+  scheduleVisit,
+  suggestQuoteProduct,
+  takeOverConversation,
+  withInlineQuote,
+  type VisitPayload,
+} from "@/lib/inbox/conversation-actions";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
@@ -702,30 +710,9 @@ function ConversationPage() {
       cancelled = true;
     };
   }, [authProfile?.id, authProfile?.company_id]);
-  const [manualRunning, setManualRunning] = useState(false);
-  const [manualResult, setManualResult] = useState<ManualFollowupResult | null>(null);
-  const [manualError, setManualError] = useState<string | null>(null);
-  const runManualFollowup = useServerFn(runFollowupNowForConversation);
-  const handleManualFollowup = useCallback(async () => {
-    if (manualRunning) return;
-    setManualRunning(true);
-    setManualError(null);
-    setManualResult(null);
-    try {
-      const res = await runManualFollowup({ data: { conversationId } });
-      setManualResult(res);
-      if (res.sendStatus === "sent") toast.success("Follow-up enviado");
-      else if (res.sendStatus === "failed") toast.error("Falha ao enviar follow-up");
-      else if (!res.eligible) toast.message("Follow-up bloqueado", { description: res.blockedReason });
-    } catch (e) {
-      setManualError(e instanceof Error ? e.message : String(e));
-      toast.error("Erro ao executar follow-up");
-    } finally {
-      setManualRunning(false);
-    }
-  }, [conversationId, manualRunning, runManualFollowup]);
-
-
+  const manualFollowup = useManualFollowup(conversationId);
+  const manualRunning = manualFollowup.running;
+  const handleManualFollowup = manualFollowup.run;
 
   // P3 — `aiState` deriva do objeto `conversation` do leadRepo, que já
   // assina `conversations *` via Realtime global. A subscription duplicada
@@ -775,18 +762,7 @@ function ConversationPage() {
     if (takingOver) return;
     setTakingOver(true);
     try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
-      const res = await fetch("/api/ai/agent-takeover", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ conversation_id: conversationId }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao assumir");
+      await takeOverConversation(conversationId);
       const nextAi: AiStateShape = { ai_status: "assumido_humano", ai_handling: false };
       logAiStateAttempt(renderIdRef.current, "handleTakeover", aiStatePrevDiagRef.current, nextAi, "handleTakeover");
       aiStatePrevDiagRef.current = nextAi;
@@ -1215,31 +1191,13 @@ function ConversationPage() {
     // Snapshot do "respondendo a" no momento do envio para evitar race condition
     // caso o usuário troque a citação enquanto a requisição está em voo.
     const replySnapshot = replyingTo;
-    const replyExternalId = replySnapshot
-      ? (((replySnapshot as unknown as { externalId?: string | null }).externalId ?? null) ||
-          ((replySnapshot.sourceMetadata as { external_id?: string } | undefined)?.external_id ?? null))
-      : null;
+    const replyExternalId = replySnapshot ? replyExternalIdOf(replySnapshot) : null;
 
     // Fallback: se a mensagem citada não tiver external_id (não existe no WhatsApp
     // como mensagem citável), enviamos pelo fluxo normal prefixando o texto com
     // uma citação simples. Não chamamos send-reply nesse caso.
-    const buildQuotedPreview = (m: Message): string => {
-      const t = (m.text ?? "").trim();
-      if (t) return t.length > 160 ? `${t.slice(0, 160)}…` : t;
-      const sub = (m.sourceSubtype ?? "").toLowerCase();
-      if (sub === "image") return "📷 Foto";
-      if (sub === "video") return "🎥 Vídeo";
-      if (sub === "audio") return "🎤 Áudio";
-      if (sub === "document") return "📎 Documento";
-      if (sub === "sticker") return "🌟 Sticker";
-      if (sub === "location") return "📍 Localização";
-      return "[mensagem]";
-    };
-
     const trimmed =
-      replySnapshot && !replyExternalId
-        ? `Respondendo:\n\n"${buildQuotedPreview(replySnapshot)}"\n\n${rawTrimmed}`
-        : rawTrimmed;
+      replySnapshot && !replyExternalId ? withInlineQuote(rawTrimmed, replySnapshot) : rawTrimmed;
 
     const sendKey = `${conversationId}\n${trimmed}`;
     if (pendingTextSendsRef.current.has(sendKey)) return;
@@ -1369,22 +1327,14 @@ function ConversationPage() {
   const handleConfirmClose = (value: number) => {
     setClosedInfo({ value, at: new Date().toISOString() });
     setCloseOpen(false);
-    if (lead) {
-      void markLeadWon(lead.id, value);
-      recordAudit({
-        action: "mark_lead_won",
-        entity: "lead",
-        entityId: lead.id,
-        after: { value },
-      });
-    }
+    const text = lead ? closeSale(lead.id, value) : `✅ Venda fechada — ${formatBRL(value)}`;
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
         conversationId,
         role: "system",
-        text: `✅ Venda fechada — ${formatBRL(value)}`,
+        text,
         at: new Date().toISOString(),
       },
     ]);
@@ -1392,23 +1342,16 @@ function ConversationPage() {
 
   const confirmLost = (reason: string, notes?: string) => {
     if (!lead) return;
-    void markLeadLost(lead.id, reason);
-    recordAudit({
-      action: "mark_lead_lost",
-      entity: "lead",
-      entityId: lead.id,
-      after: { reason, notes: notes ?? null },
-    });
+    const text = markLost(lead.id, reason, notes);
     setLostOpen(false);
     setClosedInfo({ value: 0, at: new Date().toISOString() });
-    const detail = notes ? ` — ${reason} (${notes})` : ` — ${reason}`;
     setLocalMessages((prev: Message[]) => [
       ...prev,
       {
         id: `sys-${Date.now()}`,
         conversationId,
         role: "system",
-        text: `❌ Lead marcado como perdido${detail}`,
+        text,
         at: new Date().toISOString(),
       },
     ]);
@@ -1422,20 +1365,14 @@ function ConversationPage() {
   }) => {
     if (!lead) return;
     try {
-      await updateLeadNextAction(lead.id, { label: payload.label, dueAt: payload.dueAt });
-      recordAudit({
-        action: "create_next_action",
-        entity: "lead",
-        entityId: lead.id,
-        after: payload,
-      });
+      const text = await saveNextAction(lead.id, payload);
       setLocalMessages((prev: Message[]) => [
         ...prev,
         {
           id: `sys-${Date.now()}`,
           conversationId,
           role: "system",
-          text: `🎯 Próxima ação: ${payload.label} — ${new Date(payload.dueAt).toLocaleString("pt-BR")}`,
+          text,
           at: new Date().toISOString(),
         },
       ]);
@@ -1447,59 +1384,17 @@ function ConversationPage() {
     }
   };
 
-  const confirmVisit = async (payload: {
-    date: string;
-    time: string;
-    address: string;
-    appointmentType: "visita_tecnica" | "loja" | "retorno_comercial" | "instalacao";
-    confirmed: boolean;
-    notes: string;
-  }) => {
+  const confirmVisit = async (payload: VisitPayload) => {
     if (!lead || !authProfile?.company_id) return;
-    const scheduledAt = new Date(`${payload.date}T${payload.time}:00`).toISOString();
-    const typeLabel: Record<string, string> = {
-      visita_tecnica: "Visita técnica",
-      loja: "Cliente na loja",
-      retorno_comercial: "Retorno comercial",
-      instalacao: "Instalação",
-    };
     try {
-      const { data, error } = await supabase
-        .from("visits")
-        .insert({
-          company_id: authProfile.company_id,
-          title: `${typeLabel[payload.appointmentType]} — ${lead.name}`,
-          appointment_type: payload.appointmentType,
-          address: payload.appointmentType === "loja" ? null : payload.address || null,
-          scheduled_at: scheduledAt,
-          status: payload.confirmed ? "confirmada" : "agendada",
-          notes: payload.notes || null,
-          customer_name: lead.name,
-          customer_phone: lead.phone ?? null,
-          product: lead.product ?? null,
-          lead_id: lead.id,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      recordAudit({
-        action: "schedule_visit",
-        entity: "visit",
-        entityId: data?.id ?? null,
-        after: { leadId: lead.id, scheduledAt, type: payload.appointmentType },
-      });
-      // Sincroniza também como próxima ação do lead
-      await updateLeadNextAction(lead.id, {
-        label: typeLabel[payload.appointmentType],
-        dueAt: scheduledAt,
-      });
+      const text = await scheduleVisit({ companyId: authProfile.company_id, lead, payload });
       setLocalMessages((prev: Message[]) => [
         ...prev,
         {
           id: `sys-${Date.now()}`,
           conversationId,
           role: "system",
-          text: `📅 ${typeLabel[payload.appointmentType]} agendada — ${new Date(scheduledAt).toLocaleString("pt-BR")}`,
+          text,
           at: new Date().toISOString(),
         },
       ]);
@@ -1532,34 +1427,11 @@ function ConversationPage() {
   const openNewQuote = async () => {
     if (!lead) return;
     setQuoteSuggesting(true);
-    let suggestedProductId: string | undefined;
-    let suggestionReason: string | undefined;
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
-      if (!token) throw new Error("Sessão expirada");
-      const res = await fetch("/api/ai/suggest-product", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          leadName: lead.name,
-          product: lead.product,
-          messages: messages.map((m) => messageForAi(m)),
-        }),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { productId: string; reason: string };
-        suggestedProductId = data.productId;
-        suggestionReason = data.reason;
-      }
-    } catch {
-      // segue sem sugestão — usuário escolhe manualmente
-    } finally {
-      setQuoteSuggesting(false);
-    }
+    // Sem sugestão o usuário escolhe o produto manualmente.
+    const suggestion = await suggestQuoteProduct({ lead, messages });
+    setQuoteSuggesting(false);
+    const suggestedProductId = suggestion?.productId;
+    const suggestionReason = suggestion?.reason;
     navigate({
       to: "/orcamentos",
       search: {
@@ -1906,97 +1778,11 @@ function ConversationPage() {
 
 
         {/* Manual follow-up result modal */}
-        {(manualResult || manualError) && (
-          <div
-            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-            onClick={() => {
-              setManualResult(null);
-              setManualError(null);
-            }}
-          >
-            <div
-              className="bg-background border border-border rounded-lg shadow-xl max-w-md w-full p-5 space-y-3"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Execução manual de Follow-up</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManualResult(null);
-                    setManualError(null);
-                  }}
-                  className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent"
-                  aria-label="Fechar"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              {manualError ? (
-                <div className="text-sm text-destructive">{manualError}</div>
-              ) : manualResult ? (
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Elegibilidade:</span>
-                    {manualResult.eligible ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Elegível
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
-                        <XCircle className="h-3.5 w-3.5" /> Não elegível
-                      </span>
-                    )}
-                  </div>
-                  {manualResult.blockedReason && (
-                    <div>
-                      <span className="text-muted-foreground">Motivo do bloqueio: </span>
-                      <span className="font-medium">{manualResult.blockedReason}</span>
-                    </div>
-                  )}
-                  {manualResult.rule && (
-                    <div>
-                      <span className="text-muted-foreground">Regra: </span>
-                      <span className="font-mono text-xs">{manualResult.rule}</span>
-                    </div>
-                  )}
-                  {manualResult.generatedMessage && (
-                    <div>
-                      <div className="text-muted-foreground mb-1">Mensagem gerada:</div>
-                      <div className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap">
-                        {manualResult.generatedMessage}
-                      </div>
-                    </div>
-                  )}
-                  {manualResult.sendStatus && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Status WhatsApp:</span>
-                      {manualResult.sendStatus === "sent" && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Enviado
-                          {manualResult.via ? ` (${manualResult.via})` : ""}
-                        </span>
-                      )}
-                      {manualResult.sendStatus === "failed" && (
-                        <span className="inline-flex items-center gap-1 text-destructive font-semibold">
-                          <XCircle className="h-3.5 w-3.5" /> Falhou
-                        </span>
-                      )}
-                      {manualResult.sendStatus === "blocked" && (
-                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
-                          <XCircle className="h-3.5 w-3.5" /> Bloqueado
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {manualResult.sendError && (
-                    <div className="text-xs text-destructive">{manualResult.sendError}</div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
+        <ManualFollowupResultDialog
+          result={manualFollowup.result}
+          error={manualFollowup.error}
+          onClose={manualFollowup.clear}
+        />
 
 
 
@@ -2409,18 +2195,7 @@ function ConversationPage() {
                   Respondendo a {replyingTo.role === "agent" ? "Você" : (lead?.name ?? "Cliente")}
                 </div>
                 <div className="text-xs text-foreground/90 truncate mt-0.5">
-                  {(() => {
-                    const t = (replyingTo.text ?? "").trim();
-                    if (t) return t.slice(0, 120);
-                    const sub = (replyingTo.sourceSubtype ?? "").toLowerCase();
-                    if (sub === "image") return "📷 Foto";
-                    if (sub === "video") return "🎥 Vídeo";
-                    if (sub === "audio") return "🎤 Áudio";
-                    if (sub === "document") return "📎 Documento";
-                    if (sub === "sticker") return "🌟 Sticker";
-                    if (sub === "location") return "📍 Localização";
-                    return "[mensagem]";
-                  })()}
+                  {quotedPreview(replyingTo, 120)}
                 </div>
               </div>
               <button

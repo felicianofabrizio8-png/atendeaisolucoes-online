@@ -1,119 +1,35 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Camera, FileUp, Images, Paperclip, Send, Sparkles } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { ArrowLeft, Hand, Loader2, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
 import { refetchConversationMessages } from "@/data/leadRepo";
 import { sendManualText } from "@/lib/inbox/manual-send";
 import { suggestAiReply } from "@/lib/atendimento/ai-suggest";
+import { replyExternalId, withInlineQuote } from "@/lib/inbox/conversation-actions";
+import { clearDraft, readDraft, saveDraft } from "@/lib/inbox/mobile-session";
+import { MessagesContext, ReplyComposeContext } from "@/lib/inbox/contexts";
 import { getConversationOrigin } from "@/routes/inbox.index";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/auth/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useConversationThread } from "@/hooks/useConversationThread";
+import { MessageBubble } from "@/components/inbox/message/MessageBubble";
+import { WhatsappWindowAlert } from "@/components/WhatsappWindowAlert";
+import { MetaTemplatesModal } from "@/components/MetaTemplatesModal";
 import { ContactAvatar } from "./ContactAvatar";
 import { CustomerTierBadge } from "./CustomerTierBadge";
-import { RichText } from "./RichText";
+import { ConversationActions } from "./ConversationActions";
+import { useTakeOver } from "@/hooks/useTakeOver";
+import { ThreadComposer } from "./ThreadComposer";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
-
-/**
- * Menu do clipe. Abre o seletor nativo com o filtro certo — arquivo livre,
- * galeria, ou câmera.
- *
- * O envio de TEXTO já é real (ver `sendManualText`); o de anexo ainda não, e o
- * aviso depois da escolha diz isso em vez de fingir que mandou. Mantido aqui
- * porque a escolha de arquivo já funciona e é onde o upload vai entrar.
- */
-function AttachmentMenu() {
-  const [open, setOpen] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [picker, setPicker] = useState<{ accept: string; capture?: "environment" }>({
-    accept: "*/*",
-  });
-
-  const options = [
-    {
-      key: "arquivo",
-      icon: FileUp,
-      label: "Enviar arquivo",
-      hint: "PDF, planilha, contrato",
-      accept: "*/*",
-    },
-    {
-      key: "midia",
-      icon: Images,
-      label: "Fotos e vídeos",
-      hint: "Da galeria do aparelho",
-      accept: "image/*,video/*",
-    },
-    {
-      key: "camera",
-      icon: Camera,
-      label: "Tirar foto",
-      hint: "Abre a câmera",
-      accept: "image/*",
-      capture: "environment" as const,
-    },
-  ];
-
-  return (
-    <>
-      <input
-        ref={fileRef}
-        type="file"
-        className="hidden"
-        accept={picker.accept}
-        {...(picker.capture ? { capture: picker.capture } : {})}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            toast.info(`“${file.name}” selecionado`, {
-              description: "O envio de anexo ainda não está ligado nesta tela.",
-            });
-          }
-          e.target.value = "";
-        }}
-      />
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label="Anexar"
-            className={cn(
-              "shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-              open && "bg-secondary text-foreground",
-            )}
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" side="top" sideOffset={12} className="w-60 p-1.5">
-          {options.map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => {
-                  setPicker({ accept: opt.accept, capture: opt.capture });
-                  setOpen(false);
-                  // Deixa o estado do input aplicar antes de abrir o seletor.
-                  window.setTimeout(() => fileRef.current?.click(), 0);
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground">
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium leading-tight">{opt.label}</span>
-                  <span className="block text-[11px] text-muted-foreground">{opt.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </PopoverContent>
-      </Popover>
-    </>
-  );
-}
 
 function dayLabel(iso: string): string {
   const date = new Date(iso);
@@ -129,9 +45,12 @@ function dayLabel(iso: string): string {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
-function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+/** Chave que casa a bolha otimista com a mensagem confirmada pelo banco. */
+function confirmedKey(m: Message): string {
+  return `${m.conversationId}\n${m.text.trim()}\n${m.at.slice(0, 19)}`;
 }
+
+type SendFailure = { message: string; requiresTemplate: boolean };
 
 export function ChatThread({
   contact,
@@ -139,6 +58,7 @@ export function ChatThread({
   actions,
   draft,
   onDraftChange,
+  simulated = false,
 }: {
   contact: AtendimentoContact;
   onBack?: () => void;
@@ -151,12 +71,21 @@ export function ChatThread({
    */
   draft?: string;
   onDraftChange?: (value: string) => void;
+  /** Clientes de exemplo: mostra a conversa, mas nada é enviado nem gravado. */
+  simulated?: boolean;
 }) {
-  const bottom = useRef<HTMLDivElement>(null);
+  const { lead, conversation, history, hue } = contact;
+  const conversationId = conversation.id;
+  const { profile } = useAuth();
+  const companyId = profile?.company_id ?? null;
+  const { isAdmin } = useIsAdmin();
+
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sendingRef = useRef(false);
   const sendAttemptRef = useRef(0);
   const suggestAttemptRef = useRef(0);
-  const activeConversationIdRef = useRef(contact.conversation.id);
+  const activeConversationIdRef = useRef(conversationId);
   const [internalText, setInternalText] = useState("");
   const controlled = draft !== undefined && onDraftChange !== undefined;
   const text = controlled ? draft : internalText;
@@ -164,20 +93,48 @@ export function ChatThread({
   const [sending, setSending] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendFailure, setSendFailure] = useState<SendFailure | null>(null);
+  const [simulatedNotice, setSimulatedNotice] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const { takeOver, takingOver } = useTakeOver(conversationId);
+  // Bolhas otimistas e mensagens de sistema locais ("Venda fechada"). O
+  // realtime do leadRepo entrega as definitivas em `contact.messages`.
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  // Encerrada nesta sessão, antes do realtime refletir o novo status do lead.
+  const [closedHere, setClosedHere] = useState(false);
 
-  activeConversationIdRef.current = contact.conversation.id;
+  activeConversationIdRef.current = conversationId;
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
-  }, [contact.conversation.id, contact.messages.length]);
+  const messages = useMemo(() => {
+    const repo = contact.messages;
+    const ids = new Set(repo.map((m) => m.id));
+    const confirmed = new Set(repo.filter((m) => m.role === "agent").map(confirmedKey));
+    const extras = localMessages.filter(
+      (m) => !ids.has(m.id) && !(m.role === "agent" && confirmed.has(confirmedKey(m))),
+    );
+    return [...repo, ...extras]
+      .filter((m) => !(m.deletedAt && m.deletedFor === "me"))
+      .sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  }, [contact.messages, localMessages]);
 
+  const thread = useConversationThread(conversationId, messages, { enabled: !simulated });
+
+  const closed =
+    closedHere || lead.status === "fechado" || lead.status === "perdido" || !!lead.closedAt;
+  const locked = closed || simulated;
+
+  // Troca de conversa: zera o estado efêmero e recupera o rascunho dela.
   useEffect(() => {
     sendAttemptRef.current += 1;
     suggestAttemptRef.current += 1;
-    setText("");
-    setSendError(null);
+    setText(simulated ? "" : readDraft(conversationId));
+    setSendFailure(null);
     setSuggestError(null);
+    setSimulatedNotice(false);
+    setReplyingTo(null);
+    setLocalMessages([]);
+    setClosedHere(false);
     sendingRef.current = false;
     setSending(false);
     setSuggesting(false);
@@ -186,12 +143,174 @@ export function ChatThread({
     // Incluí-lo faria este reset disparar a cada render do pai e apagar o que
     // o atendente está digitando. O efeito existe só para a troca de conversa.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contact.conversation.id]);
+  }, [conversationId]);
+
+  // Rascunho por conversa: voltar para a lista ou abrir o painel não perde texto.
+  useEffect(() => {
+    if (simulated) return;
+    const t = setTimeout(() => saveDraft(conversationId, text), 250);
+    return () => clearTimeout(t);
+  }, [conversationId, text, simulated]);
+
+  // Rola para o fim ao abrir e quando chega mensagem nova — não quando o
+  // histórico antigo é inserido no topo.
+  const lastMessageId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [conversationId, lastMessageId]);
+
+  // "Carregar anteriores" mantém a leitura no mesmo ponto após inserir no topo.
+  const olderAnchorRef = useRef<number | null>(null);
+  const firstMessageId = messages[0]?.id;
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || olderAnchorRef.current === null) return;
+    el.scrollTop = el.scrollHeight - olderAnchorRef.current;
+    olderAnchorRef.current = null;
+  }, [firstMessageId]);
+
+  const loadOlder = () => {
+    const el = scrollerRef.current;
+    if (el) olderAnchorRef.current = el.scrollHeight - el.scrollTop;
+    void thread.loadOlder();
+  };
+
+  const replyCompose = useMemo(
+    () => ({
+      start: (m: Message) => {
+        setReplyingTo(m);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      },
+    }),
+    [],
+  );
+
+  const pushSystemMessage = useCallback(
+    (body: string) => {
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          conversationId,
+          role: "system",
+          text: body,
+          at: new Date().toISOString(),
+        },
+      ]);
+    },
+    [conversationId],
+  );
+
+  /**
+   * Envia texto pelo adapter compartilhado com a Caixa de atendimento.
+   * Devolve `true` quando o transporte aceitou (real ou simulado).
+   */
+  const sendText = useCallback(
+    async (raw: string): Promise<boolean> => {
+      const typed = raw.trim();
+      if (!typed || sendingRef.current || locked) return false;
+
+      const attemptId = ++sendAttemptRef.current;
+      const isCurrentAttempt = () =>
+        activeConversationIdRef.current === conversationId && sendAttemptRef.current === attemptId;
+
+      // Citação: reply nativo quando a mensagem tem id externo; senão, a
+      // citação vai prefixada no texto (mesma regra da Caixa de atendimento).
+      const quoted = replyingTo;
+      const quotedExternalId = quoted ? replyExternalId(quoted) : null;
+      const body = quoted && !quotedExternalId ? withInlineQuote(typed, quoted) : typed;
+
+      sendingRef.current = true;
+      setSending(true);
+      setSendFailure(null);
+      setSimulatedNotice(false);
+
+      const optimistic: Message = {
+        id: `local-${Date.now()}`,
+        conversationId,
+        role: "agent",
+        text: body,
+        at: new Date().toISOString(),
+      };
+      setLocalMessages((prev) => [...prev, optimistic]);
+      const dropOptimistic = () =>
+        setLocalMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+
+      const lastIncoming = [...messages].reverse().find((m) => m.role === "lead");
+      const origin = getConversationOrigin(
+        lead,
+        lastIncoming ?? messages[messages.length - 1],
+        conversation,
+      );
+
+      try {
+        const result = await sendManualText({
+          conversationId,
+          leadId: lead.id,
+          channel: lead.channel,
+          origin,
+          text: body,
+          ...(lead.channel === "whatsapp" && quoted && quotedExternalId
+            ? { replyToMessageId: quoted.id }
+            : {}),
+        });
+        dropOptimistic();
+
+        if (!result.ok) {
+          if (isCurrentAttempt()) {
+            setSendFailure({ message: result.error, requiresTemplate: !!result.requiresTemplate });
+          }
+          toast.error(
+            result.requiresTemplate ? "Fora da janela de 24h" : "Falha ao enviar mensagem",
+            { description: result.error },
+          );
+          return false;
+        }
+
+        if (result.delivery === "sent") {
+          await refetchConversationMessages(conversationId);
+        } else {
+          // Ambiente em simulação: o servidor confirmou, mas nada saiu para a Meta.
+          if (isCurrentAttempt()) setSimulatedNotice(true);
+          toast.info("Envio simulado", {
+            description:
+              "Este ambiente está em modo de simulação — a mensagem não chegou ao cliente.",
+          });
+        }
+
+        if (isCurrentAttempt()) setReplyingTo(null);
+        clearDraft(conversationId);
+        return true;
+      } catch (error) {
+        dropOptimistic();
+        const message = error instanceof Error ? error.message : "Falha ao enviar mensagem";
+        if (isCurrentAttempt()) setSendFailure({ message, requiresTemplate: false });
+        toast.error("Falha ao enviar mensagem", { description: message });
+        return false;
+      } finally {
+        if (isCurrentAttempt()) {
+          sendingRef.current = false;
+          setSending(false);
+        }
+      }
+    },
+    [conversation, conversationId, lead, locked, messages, replyingTo],
+  );
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (suggesting) return;
+    const typed = text;
+    if (await sendText(typed)) {
+      // Só limpa se o atendente não começou outra mensagem enquanto enviava.
+      if (activeConversationIdRef.current === conversationId) setText("");
+    }
+  };
 
   const handleSuggest = async () => {
-    if (sending || suggesting || contact.lead.channel !== "whatsapp") return;
+    if (sending || suggesting || lead.channel !== "whatsapp" || locked) return;
 
-    const conversationId = contact.conversation.id;
     const attemptId = ++suggestAttemptRef.current;
     const isCurrentAttempt = () =>
       activeConversationIdRef.current === conversationId && suggestAttemptRef.current === attemptId;
@@ -201,24 +320,19 @@ export function ChatThread({
 
     try {
       const result = await suggestAiReply(conversationId);
-
       if (!isCurrentAttempt()) return;
-
       if (!result.ok) {
         setSuggestError(result.error);
         return;
       }
-
       if (result.kind === "reply") {
         setText(result.message);
         return;
       }
-
       if (result.kind === "handoff") {
         setSuggestError("A IA indicou atendimento humano para esta conversa.");
         return;
       }
-
       setSuggestError("A IA não gerou uma sugestão para esta mensagem.");
     } catch (error) {
       if (!isCurrentAttempt()) return;
@@ -227,56 +341,21 @@ export function ChatThread({
       if (isCurrentAttempt()) setSuggesting(false);
     }
   };
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = text.trim();
-    if (!trimmed || sendingRef.current || suggesting) return;
 
-    const conversationId = contact.conversation.id;
-    const attemptId = ++sendAttemptRef.current;
-    const isCurrentAttempt = () =>
-      activeConversationIdRef.current === conversationId && sendAttemptRef.current === attemptId;
-
-    sendingRef.current = true;
-    setSending(true);
-    setSendError(null);
-
-    const lastMessage = contact.messages[contact.messages.length - 1];
-    const origin = getConversationOrigin(contact.lead, lastMessage, contact.conversation);
-
-    try {
-      const result = await sendManualText({
-        conversationId,
-        leadId: contact.lead.id,
-        channel: contact.lead.channel,
-        origin,
-        text: trimmed,
-      });
-
-      if (!result.ok) {
-        if (isCurrentAttempt()) setSendError(result.error);
-        return;
-      }
-
-      if (result.delivery === "sent") {
-        await refetchConversationMessages(conversationId);
-      }
-
-      if (isCurrentAttempt()) setText("");
-    } catch (error) {
-      if (isCurrentAttempt()) {
-        setSendError(error instanceof Error ? error.message : "Falha ao enviar mensagem");
-      }
-    } finally {
-      if (isCurrentAttempt()) {
-        sendingRef.current = false;
-        setSending(false);
-      }
-    }
-  };
-
-  const { lead, conversation, messages, history, hue } = contact;
   let lastDay = "";
+  const channelLabel =
+    lead.channel === "whatsapp"
+      ? "WhatsApp"
+      : lead.channel === "instagram"
+        ? "Instagram"
+        : "Facebook";
+  const placeholder = simulated
+    ? "Clientes de exemplo — envio desativado"
+    : closed
+      ? "Conversa encerrada."
+      : conversation.interactionType === "comment"
+        ? "Resposta ao comentário…"
+        : "Mandar mensagem";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden">
@@ -298,139 +377,190 @@ export function ChatThread({
             <CustomerTierBadge history={history} size="sm" />
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {lead.channel === "whatsapp"
-              ? "WhatsApp"
-              : lead.channel === "instagram"
-                ? "Instagram"
-                : "Facebook"}
+            {channelLabel}
             {conversation.detectedCity
               ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
               : ""}
             {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
+            {closed ? " · encerrada" : ""}
           </p>
         </div>
+        {!simulated && (
+          <ConversationActions
+            lead={lead}
+            conversation={conversation}
+            messages={messages}
+            companyId={companyId}
+            isAdmin={isAdmin}
+            closed={closed}
+            disabled={simulated}
+            onSystemMessage={pushSystemMessage}
+            onClosed={() => setClosedHere(true)}
+            onSendText={sendText}
+          />
+        )}
         {actions}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
-        <div className="mx-auto flex max-w-[680px] flex-col gap-2">
-          {messages.map((message: Message) => {
-            const day = dayLabel(message.at);
-            const showDay = day !== lastDay;
-            lastDay = day;
-
-            if (message.role === "system") {
-              return (
-                <div
-                  key={message.id}
-                  className="my-2 self-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] text-muted-foreground"
-                >
-                  <RichText text={message.text} />
-                </div>
-              );
-            }
-
-            const mine = message.role === "agent";
-            return (
-              <div key={message.id} className="contents">
-                {showDay && (
-                  <div className="my-3 self-center rounded-full bg-secondary/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {day}
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    "max-w-[78%] rounded-3xl px-4 py-2.5 text-sm leading-relaxed",
-                    // Balão enviado sólido em `primary`, que agora é neutro:
-                    // cinza no tema escuro, quase preto no claro. Preenchimento
-                    // cheio (em vez de 20% de opacidade) é o que mantém a
-                    // distinção de quem falou depois que a cor de destaque saiu
-                    // do produto.
-                    mine
-                      ? "self-end rounded-br-lg bg-primary text-primary-foreground"
-                      : "self-start rounded-bl-lg border border-border bg-secondary/50 text-foreground",
-                  )}
-                >
-                  <RichText text={message.text} />
-                  {/* Sobre o balão sólido, `muted-foreground` some: ele é
-                      calibrado para o fundo da página, não para o do balão. */}
-                  <span
-                    className={cn(
-                      "mt-1 block text-right text-[10px]",
-                      mine ? "text-primary-foreground/70" : "text-muted-foreground",
-                    )}
-                  >
-                    {hhmm(message.at)}
-                    {mine && message.deliveryStatus === "read" ? " · lida" : ""}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-          <div ref={bottom} />
-        </div>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="px-4 sm:px-5"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}
-      >
-        {suggestError ? (
-          <p role="alert" className="mx-auto mb-2 max-w-[680px] text-xs text-destructive">
-            {suggestError}
+      {/* IA pediu humano: é a única faixa que merece interromper a leitura. */}
+      {!simulated && conversation.aiStatus === "aguardando_humano" && (
+        <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 sm:mx-5">
+          <Hand className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="min-w-0 flex-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            A IA pediu atendimento humano nesta conversa.
           </p>
-        ) : null}
-        <div className="mx-auto flex max-w-[680px] items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5">
-          <AttachmentMenu />
           <button
             type="button"
-            onClick={handleSuggest}
-            disabled={sending || suggesting || contact.lead.channel !== "whatsapp"}
-            aria-label={suggesting ? "Gerando sugestão..." : "Sugerir com IA"}
-            title={
-              contact.lead.channel === "whatsapp"
-                ? "Sugerir resposta com IA"
-                : "Sugestão com IA disponível no WhatsApp"
-            }
-            className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 min-h-[44px] text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void takeOver()}
+            disabled={takingOver}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-600 px-3 py-1 text-[11px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
           >
-            <Sparkles className="h-4 w-4" />
-            <span className="hidden sm:inline">{suggesting ? "Gerando..." : "Sugerir com IA"}</span>
-          </button>
-          <input
-            aria-label="Mensagem"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            disabled={sending}
-            placeholder="Mandar mensagem"
-            // Três coisas distintas nesta linha, todas necessárias:
-            //   h-11      alvo de toque de 44px (WCAG 2.5.5), veio da main;
-            //   text-base 16px impede o Safari do iPhone de dar zoom ao focar;
-            //   min-w-0   item flex tem `min-width: auto` e o campo se recusava
-            //             a encolher abaixo do próprio placeholder, empurrando
-            //             os botões para FORA do form — o "Enviar" chegava a
-            //             aparecer por cima do painel lateral em telas estreitas.
-            className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={sending || suggesting || !text.trim()}
-            aria-label={sending ? "Enviando..." : "Enviar"}
-            className="rounded-full bg-primary p-3 min-h-[44px] min-w-[44px] text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <Send className="h-4 w-4" />
+            {takingOver && <Loader2 className="h-3 w-3 animate-spin" />}
+            Assumir
           </button>
         </div>
-        {sending && (
-          <p className="mx-auto mt-2 max-w-[680px] text-xs text-muted-foreground">Enviando...</p>
-        )}
-        {sendError && (
-          <p role="alert" className="mx-auto mt-2 max-w-[680px] text-xs text-destructive">
-            {sendError}
+      )}
+
+      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+        <MessagesContext.Provider value={messages}>
+          <ReplyComposeContext.Provider value={replyCompose}>
+            <div className="mx-auto flex max-w-[680px] flex-col gap-2">
+              {thread.status === "error" ? (
+                <div
+                  role="alert"
+                  className="my-2 flex items-center justify-between gap-3 self-center rounded-2xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                >
+                  <span>Não foi possível carregar o histórico. {thread.error}</span>
+                  <button
+                    type="button"
+                    onClick={thread.retry}
+                    className="inline-flex shrink-0 items-center gap-1 font-semibold underline-offset-2 hover:underline"
+                  >
+                    <RotateCw className="h-3 w-3" /> Tentar de novo
+                  </button>
+                </div>
+              ) : thread.status === "loading" ? (
+                <div className="my-2 flex items-center gap-2 self-center text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Carregando histórico…
+                </div>
+              ) : thread.hasMoreOlder && messages.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={loadOlder}
+                  disabled={thread.loadingOlder}
+                  className="my-2 inline-flex items-center gap-1.5 self-center rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-60"
+                >
+                  {thread.loadingOlder && <Loader2 className="h-3 w-3 animate-spin" />}
+                  Carregar mensagens anteriores
+                </button>
+              ) : messages.length > 0 ? (
+                <span className="my-2 self-center text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                  Início da conversa
+                </span>
+              ) : null}
+
+              {messages.map((message) => {
+                const day = dayLabel(message.at);
+                const showDay = day !== lastDay;
+                lastDay = day;
+                return (
+                  <div key={message.id} className="contents">
+                    {showDay && (
+                      <div className="my-3 self-center rounded-full bg-secondary/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {day}
+                      </div>
+                    )}
+                    {message.role === "system" ? (
+                      <div className="my-2 self-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] text-muted-foreground">
+                        {message.text}
+                      </div>
+                    ) : (
+                      <MessageBubble m={message} canManage={!locked} appearance="atendimento" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ReplyComposeContext.Provider>
+        </MessagesContext.Provider>
+      </div>
+
+      {lead.channel === "whatsapp" && !locked && (
+        <div className="mx-auto w-full max-w-[704px]">
+          <WhatsappWindowAlert
+            conversation={conversation}
+            lead={lead}
+            messages={messages}
+            onSendNow={() => textareaRef.current?.focus()}
+            onOpenTemplates={() => setTemplatesOpen(true)}
+          />
+        </div>
+      )}
+
+      <div className="mx-auto w-full max-w-[680px] px-4 sm:px-0">
+        {suggestError && (
+          <p role="alert" className="mb-2 text-xs text-destructive">
+            {suggestError}
           </p>
         )}
-      </form>
+        {sendFailure && (
+          <div
+            role="alert"
+            className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          >
+            {sendFailure.requiresTemplate && <Lock className="h-3.5 w-3.5 shrink-0" />}
+            <span className="min-w-0 flex-1">{sendFailure.message}</span>
+            {sendFailure.requiresTemplate && (
+              <button
+                type="button"
+                onClick={() => setTemplatesOpen(true)}
+                className="shrink-0 rounded-full bg-destructive px-2.5 py-1 text-[11px] font-bold text-destructive-foreground hover:opacity-90"
+              >
+                Enviar template aprovado
+              </button>
+            )}
+          </div>
+        )}
+        {simulatedNotice && (
+          <p role="status" className="mb-2 text-xs text-muted-foreground">
+            Envio simulado neste ambiente — a mensagem não chegou ao cliente.
+          </p>
+        )}
+        {sending && <p className="mb-2 text-xs text-muted-foreground">Enviando...</p>}
+      </div>
+
+      <ThreadComposer
+        conversationId={conversationId}
+        channel={lead.channel}
+        leadId={lead.id}
+        companyId={companyId}
+        text={text}
+        onTextChange={setText}
+        onSubmit={handleSubmit}
+        onSendText={(t) => void sendText(t)}
+        locked={locked}
+        placeholder={placeholder}
+        sending={sending}
+        suggesting={suggesting}
+        canSuggest={lead.channel === "whatsapp"}
+        onSuggest={() => void handleSuggest()}
+        replyingTo={replyingTo}
+        replyAuthor={replyingTo?.role === "agent" ? "Você" : lead.name}
+        onCancelReply={() => setReplyingTo(null)}
+        textareaRef={textareaRef}
+      />
+
+      {!simulated && (
+        <MetaTemplatesModal
+          open={templatesOpen}
+          conversationId={conversationId}
+          onClose={() => setTemplatesOpen(false)}
+          onSent={() => {
+            setSendFailure(null);
+            void refetchConversationMessages(conversationId);
+          }}
+        />
+      )}
     </div>
   );
 }

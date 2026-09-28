@@ -23,6 +23,8 @@ export type ManualSendResult =
       error: string;
       retryable: boolean;
       status: number | null;
+      /** WhatsApp fora da janela de 24h: só um template aprovado pode sair. */
+      requiresTemplate?: true;
     };
 
 function retryableStatus(status: number | null): boolean {
@@ -37,7 +39,11 @@ function retryableTransportException(error: unknown): boolean {
   return false;
 }
 
-function errorResult(error: string, status: number | null, retryable = retryableStatus(status)): ManualSendResult {
+function errorResult(
+  error: string,
+  status: number | null,
+  retryable = retryableStatus(status),
+): Extract<ManualSendResult, { ok: false }> {
   return { ok: false, kind: "error", error, retryable, status };
 }
 
@@ -100,7 +106,13 @@ export async function sendManualText(input: ManualSendInput): Promise<ManualSend
       });
       const payload = await readJson(response);
       if (!response.ok) {
-        return errorResult(String(payload.error ?? `HTTP ${response.status}`), response.status);
+        const failure = errorResult(
+          String(payload.error ?? `HTTP ${response.status}`),
+          response.status,
+        );
+        return payload.requires_template === true
+          ? { ...failure, requiresTemplate: true }
+          : failure;
       }
       if (payload.simulated === true) {
         if (typeof payload.simulationId !== "string" || payload.externalRequestSent !== false) {

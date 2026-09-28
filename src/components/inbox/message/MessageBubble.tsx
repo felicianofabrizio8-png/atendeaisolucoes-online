@@ -941,12 +941,21 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
   );
 }
 
+/**
+ * `inbox`: balão da Caixa de atendimento. `atendimento`: forma do Atendimento
+ * 2.0 (cantos largos, cliente sobre `secondary`). Muda só a forma — mídia,
+ * citação, menu e status de entrega são os mesmos nas duas telas.
+ */
+export type MessageBubbleAppearance = "inbox" | "atendimento";
+
 function MessageBubbleImpl({
   m,
   canManage,
+  appearance = "inbox",
 }: {
   m: Message;
   canManage: boolean;
+  appearance?: MessageBubbleAppearance;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1180,10 +1189,16 @@ function MessageBubbleImpl({
             }
           }}
           className={cn(
-            "rounded-lg px-3 py-2 text-base leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:text-sm md:select-text transition-transform active:scale-[0.99]",
+            "text-base leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:text-sm md:select-text transition-transform active:scale-[0.99]",
+            appearance === "atendimento" ? "rounded-3xl px-4 py-2.5" : "rounded-lg px-3 py-2",
             isAgent
-              ? "bg-primary text-primary-foreground rounded-br-sm"
-              : "bg-card border border-border rounded-bl-sm",
+              ? cn(
+                  "bg-primary text-primary-foreground",
+                  appearance === "atendimento" ? "rounded-br-lg" : "rounded-br-sm",
+                )
+              : appearance === "atendimento"
+                ? "border border-border bg-secondary/50 rounded-bl-lg"
+                : "bg-card border border-border rounded-bl-sm",
             isDeleted && "italic opacity-70",
           )}
         >
@@ -1356,10 +1371,11 @@ function MessageBubbleImpl({
 }
 
 function messageBubbleEqual(
-  prev: { m: Message; canManage: boolean },
-  next: { m: Message; canManage: boolean },
+  prev: { m: Message; canManage: boolean; appearance?: MessageBubbleAppearance },
+  next: { m: Message; canManage: boolean; appearance?: MessageBubbleAppearance },
 ): boolean {
   if (prev.canManage !== next.canManage) return false;
+  if (prev.appearance !== next.appearance) return false;
   const a = prev.m;
   const b = next.m;
   if (a === b) return true;
