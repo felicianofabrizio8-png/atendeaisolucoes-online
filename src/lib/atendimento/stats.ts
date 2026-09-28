@@ -7,11 +7,13 @@
 
 import type { Conversation, Lead } from "@/data/mock";
 import { classifyCustomer, type CustomerHistory } from "@/lib/customer-loyalty";
+import type { FollowupCycleView } from "./followup-view";
 
 export interface StatSubject {
   lead: Lead;
   conversation: Conversation;
   history: CustomerHistory;
+  followup?: FollowupCycleView;
 }
 
 export interface StatDefinition {
@@ -48,6 +50,20 @@ function night(...glows: string[]): string {
 }
 
 export const STAT_DEFINITIONS: StatDefinition[] = [
+  {
+    key: "followup_overdue",
+    label: "Follow-ups vencidos",
+    caption: "Precisam de atenção agora",
+    gradient: night("radial-gradient(115% 95% at 50% 122%, rgba(255,94,94,0.48), rgba(174,38,38,0.16) 42%, transparent 70%)"),
+    match: ({ followup }) => followup?.bucket === "overdue",
+  },
+  {
+    key: "followup_upcoming",
+    label: "Próximos",
+    caption: "Contato futuro programado",
+    gradient: night("radial-gradient(110% 100% at 50% 122%, rgba(76,166,255,0.42), rgba(35,92,168,0.16) 42%, transparent 70%)"),
+    match: ({ followup }) => followup?.bucket === "upcoming",
+  },
   {
     key: "aguardando",
     label: "Aguardando",
@@ -130,9 +146,18 @@ export interface StatSnapshot extends StatDefinition {
   count: number;
 }
 
-export function computeStats(subjects: StatSubject[], now = Date.now()): StatSnapshot[] {
+export function computeStats(
+  subjects: StatSubject[], 
+  now = Date.now(),
+  followupByConversation?: ReadonlyMap<string, FollowupCycleView>,
+): StatSnapshot[] {
   return STAT_DEFINITIONS.map((def) => ({
     ...def,
-    count: subjects.reduce((n, s) => (def.match(s, now) ? n + 1 : n), 0),
+    count: subjects.reduce((n, subject) => {
+      const s = followupByConversation
+        ? { ...subject, followup: followupByConversation.get(subject.conversation.id) }
+        : subject;
+      return def.match(s, now) ? n + 1 : n;
+    }, 0),
   }));
 }

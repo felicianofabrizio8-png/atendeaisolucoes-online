@@ -85,6 +85,7 @@ export function ConversationActions({
   onSystemMessage,
   onClosed,
   onSendText,
+  onFollowupUpdated,
 }: {
   lead: Lead;
   conversation: Conversation;
@@ -98,12 +99,13 @@ export function ConversationActions({
   onClosed: () => void;
   /** Envia pelo mesmo fluxo do composer; `true` quando o envio foi aceito. */
   onSendText: (text: string) => Promise<boolean>;
+  onFollowupUpdated?: () => void | Promise<void>;
 }) {
   const navigate = useNavigate();
   const [modal, setModal] = useState<Modal>(null);
   const { takeOver, takingOver } = useTakeOver(conversation.id);
   const [quoteBusy, setQuoteBusy] = useState(false);
-  const followup = useManualFollowup(conversation.id);
+  const followup = useManualFollowup(conversation.id, onFollowupUpdated);
   const pendingQuote = usePendingQuote(lead.id);
   const locked = closed || disabled;
 

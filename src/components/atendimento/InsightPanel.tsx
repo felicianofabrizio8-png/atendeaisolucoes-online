@@ -11,6 +11,7 @@ import { SiriOrb } from "./SiriOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
+import { followupReasonLabel, type FollowupCycleView } from "@/lib/atendimento/followup-view";
 
 type Tab = "info" | "ia";
 
@@ -30,11 +31,13 @@ export function InsightPanel({
   onUseSuggestion,
   simulated = false,
   composerHasDraft = false,
+  followup,
 }: {
   contact: AtendimentoContact;
   onUseSuggestion: (text: string) => void;
   simulated?: boolean;
   composerHasDraft?: boolean;
+  followup?: FollowupCycleView;
 }) {
   const [tab, setTab] = useState<Tab>("info");
 
@@ -42,7 +45,7 @@ export function InsightPanel({
     <div className="flex h-full min-h-0 flex-col gap-5 pl-1">
       <SegmentedToggle tab={tab} onChange={setTab} />
       {tab === "info" ? (
-        <InfoTab contact={contact} />
+        <InfoTab contact={contact} followup={followup} />
       ) : simulated ? (
         <AiTab contact={contact} onUseSuggestion={onUseSuggestion} />
       ) : (
@@ -192,7 +195,7 @@ function Field({
   );
 }
 
-function InfoTab({ contact }: { contact: AtendimentoContact }) {
+function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?: FollowupCycleView }) {
   const { lead, conversation, history, summary } = contact;
   const tier = classifyCustomer(history);
 
@@ -213,6 +216,35 @@ function InfoTab({ contact }: { contact: AtendimentoContact }) {
             : null
         }
       />
+      {followup && (
+        <div className="rounded-2xl border border-border bg-secondary/30 p-3.5">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Follow-up</p>
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-bold",
+              followup.bucket === "overdue" ? "bg-destructive/10 text-destructive" : "bg-secondary text-muted-foreground",
+            )}>
+              {followup.bucket === "overdue" ? "Vencido" : "Próximo"}
+            </span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <div>
+              <dt className="text-muted-foreground">Motivo</dt>
+              <dd className="mt-0.5 font-semibold">{followupReasonLabel(followup.reason)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Tentativa</dt>
+              <dd className="mt-0.5 font-semibold">{followup.attempts} / {followup.maxAttempts}</dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-muted-foreground">Próximo contato</dt>
+              <dd className="mt-0.5 font-semibold">
+                {followup.nextFollowupAt ? new Date(followup.nextFollowupAt).toLocaleString("pt-BR") : "Sem data programada"}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-border p-3.5">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">

@@ -59,6 +59,7 @@ export function ChatThread({
   draft,
   onDraftChange,
   simulated = false,
+  onFollowupUpdated,
 }: {
   contact: AtendimentoContact;
   onBack?: () => void;
@@ -73,6 +74,7 @@ export function ChatThread({
   onDraftChange?: (value: string) => void;
   /** Clientes de exemplo: mostra a conversa, mas nada é enviado nem gravado. */
   simulated?: boolean;
+  onFollowupUpdated?: () => void | Promise<void>;
 }) {
   const { lead, conversation, history, hue } = contact;
   const conversationId = conversation.id;
@@ -405,6 +407,7 @@ export function ChatThread({
             onSystemMessage={pushSystemMessage}
             onClosed={() => setClosedHere(true)}
             onSendText={sendText}
+            onFollowupUpdated={onFollowupUpdated}
           />
         )}
         {actions}

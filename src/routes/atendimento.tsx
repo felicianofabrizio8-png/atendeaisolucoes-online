@@ -5,6 +5,7 @@ import { ArrowLeft, FlaskConical, PanelRight } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendimentoData";
+import { useAtendimentoFollowup } from "@/hooks/useAtendimentoFollowup";
 import { computeStats, STAT_DEFINITIONS } from "@/lib/atendimento/stats";
 import { StatCarousel } from "@/components/atendimento/StatCarousel";
 import { ConversationRail } from "@/components/atendimento/ConversationRail";
@@ -52,6 +53,7 @@ function useIsCompact(): boolean | null {
 function AtendimentoPage() {
   const [forceSimulated, setForceSimulated] = useState(false);
   const { contacts, isSimulated, status, error } = useAtendimentoData({ forceSimulated });
+  const atendimentoFollowup = useAtendimentoFollowup({ enabled: !isSimulated });
   const compact = useIsCompact();
   const [selectedId, setSelectedId] = useState<string | null>(requestedConversationId);
   const [query, setQuery] = useState("");
@@ -60,7 +62,10 @@ function AtendimentoPage() {
   // painel de IA conseguir carregar uma sugestão nele ("Usar no chat").
   const [draft, setDraft] = useState("");
 
-  const stats = useMemo(() => computeStats(contacts), [contacts]);
+  const stats = useMemo(
+    () => computeStats(contacts, Date.now(), atendimentoFollowup.byConversation),
+    [atendimentoFollowup.byConversation, contacts],
+  );
 
   const visible = useMemo(() => {
     const def = STAT_DEFINITIONS.find((d) => d.key === statFilter);
@@ -68,7 +73,7 @@ function AtendimentoPage() {
     const q = query.trim().toLowerCase();
 
     return contacts.filter((c) => {
-      if (def && !def.match(c, now)) return false;
+      if (def && !def.match({ ...c, followup: atendimentoFollowup.byConversation.get(c.conversation.id) }, now)) return false;
       if (!q) return true;
       const haystack = [
         c.lead.name,
@@ -84,7 +89,7 @@ function AtendimentoPage() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [contacts, statFilter, query]);
+  }, [atendimentoFollowup.byConversation, contacts, statFilter, query]);
 
   // No desktop mantemos sempre uma conversa aberta — painel de atendimento
   // vazio não serve para nada. No compacto a lista é a primeira tela, então
@@ -134,6 +139,7 @@ function AtendimentoPage() {
               onQueryChange={setQuery}
               activeFilterLabel={activeStat ? `${activeStat.label}: ${activeStat.count}` : null}
               onClearFilter={() => setStatFilter(null)}
+              followupByConversation={atendimentoFollowup.byConversation}
               statusChip={
                 // Só é interruptor quando existe base real para alternar; com
                 // a empresa vazia o rótulo é apenas informativo.
@@ -189,6 +195,7 @@ function AtendimentoPage() {
               draft={draft}
               onDraftChange={setDraft}
               simulated={isSimulated}
+              onFollowupUpdated={atendimentoFollowup.refresh}
               onBack={() => setSelectedId(null)}
               actions={
                 // Só no modo compacto: no desktop o painel já está na coluna 3
@@ -215,6 +222,7 @@ function AtendimentoPage() {
                         contact={selected}
                         onUseSuggestion={applySuggestion}
                         simulated={isSimulated}
+                        followup={atendimentoFollowup.byConversation.get(selected.conversation.id)}
                         composerHasDraft={draft.trim().length > 0}
                       />
                     </SheetContent>
@@ -236,6 +244,7 @@ function AtendimentoPage() {
               contact={selected}
               onUseSuggestion={applySuggestion}
               simulated={isSimulated}
+              followup={atendimentoFollowup.byConversation.get(selected.conversation.id)}
               composerHasDraft={draft.trim().length > 0}
             />
           )}

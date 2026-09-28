@@ -4,6 +4,7 @@ import { timeAgo } from "@/data/mock";
 import { ContactAvatar } from "./ContactAvatar";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
+import type { FollowupCycleView } from "@/lib/atendimento/followup-view";
 
 export function ConversationRail({
   contacts,
@@ -14,6 +15,7 @@ export function ConversationRail({
   activeFilterLabel,
   onClearFilter,
   statusChip,
+  followupByConversation,
 }: {
   contacts: AtendimentoContact[];
   selectedId: string | null;
@@ -24,6 +26,7 @@ export function ConversationRail({
   onClearFilter: () => void;
   /** Selo sobre a origem dos dados da fila (reais ou simulados). */
   statusChip?: React.ReactNode;
+  followupByConversation?: ReadonlyMap<string, FollowupCycleView>;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -67,6 +70,7 @@ export function ConversationRail({
               const selected = conversation.id === selectedId;
               const openWindow =
                 Date.now() - new Date(conversation.lastMessageAt).getTime() < 24 * 3_600_000;
+              const followup = followupByConversation?.get(conversation.id);
 
               return (
                 <li key={conversation.id}>
@@ -84,6 +88,23 @@ export function ConversationRail({
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-semibold">{lead.name}</span>
                         <CustomerTierBadge history={history} size="sm" className="shrink-0" />
+                        {followup?.bucket === "overdue" ? (
+                          <span
+                            className="shrink-0 rounded-full border border-destructive/30 px-1.5 py-0.5 text-[9px] font-bold text-destructive"
+                            aria-label={"Follow-up vencido, tentativa " + followup.attempts + " de " + followup.maxAttempts}
+                            title={"Follow-up vencido · tentativa " + followup.attempts + " de " + followup.maxAttempts}
+                          >
+                            FUP
+                          </span>
+                        ) : followup?.bucket === "upcoming" ? (
+                          <span
+                            className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-bold text-muted-foreground"
+                            aria-label="Próximo follow-up"
+                            title="Próximo follow-up programado"
+                          >
+                            FUP
+                          </span>
+                        ) : null}
                         <span className="ml-auto shrink-0 text-[10px] font-medium text-muted-foreground">
                           {timeAgo(conversation.lastMessageAt)}
                         </span>

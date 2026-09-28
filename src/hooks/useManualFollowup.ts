@@ -7,7 +7,10 @@ import {
 } from "@/lib/manual-followup.functions";
 
 /** "Executar Follow-up Agora": roda o motor ignorando os tempos configurados. */
-export function useManualFollowup(conversationId: string) {
+export function useManualFollowup(
+  conversationId: string,
+  onUpdated?: () => void | Promise<void>,
+) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ManualFollowupResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +24,7 @@ export function useManualFollowup(conversationId: string) {
     try {
       const res = await runManualFollowup({ data: { conversationId } });
       setResult(res);
+      await onUpdated?.();
       if (res.sendStatus === "sent") toast.success("Follow-up enviado");
       else if (res.sendStatus === "failed") toast.error("Falha ao enviar follow-up");
       else if (!res.eligible)
@@ -31,7 +35,7 @@ export function useManualFollowup(conversationId: string) {
     } finally {
       setRunning(false);
     }
-  }, [conversationId, running, runManualFollowup]);
+  }, [conversationId, onUpdated, running, runManualFollowup]);
 
   const clear = useCallback(() => {
     setResult(null);
