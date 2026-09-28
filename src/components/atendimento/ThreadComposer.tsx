@@ -1,14 +1,13 @@
-import { useEffect, useState, type FormEvent, type RefObject } from "react";
-import { Send, Smile, Sparkles, X } from "lucide-react";
+import { useEffect, type FormEvent, type RefObject } from "react";
+import { Mic, Send, Smile, Sparkles, X } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MediaSendPanel, QuickRepliesButton } from "@/components/inbox/composer/ComposerWidgets";
-import { AudioRecorder } from "@/components/AudioRecorder";
+import { useVoiceNote } from "@/hooks/useVoiceNote";
 import { quotedPreview } from "@/lib/inbox/conversation-actions";
 import type { Message } from "@/data/mock";
 import { cn } from "@/lib/utils";
-
-type AudioState = "idle" | "recording" | "locked" | "processing" | "sending";
+import { VoiceNoteBar } from "./VoiceNoteBar";
 
 /** Ícone solto dentro da pílula — mesmo peso visual do clipe original. */
 const ICON_BUTTON =
@@ -21,6 +20,11 @@ const ICON_BUTTON =
  * localização, respostas rápidas, emoji, áudio e IA — reaproveitando os mesmos
  * componentes; só a moldura é a pílula do design novo. O envio em si fica no
  * `ChatThread`, que é quem sabe o estado da conversa.
+ *
+ * Áudio: com o campo vazio o botão da direita é o microfone (com texto, é o
+ * enviar). Tocar nele transforma a pílula no gravador até enviar ou
+ * descartar. Monte com `key={conversationId}`: trocar de conversa descarta a
+ * gravação em curso em vez de mandá-la para o cliente errado.
  */
 export function ThreadComposer({
   conversationId,
@@ -63,11 +67,10 @@ export function ThreadComposer({
   onCancelReply: () => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const [audioState, setAudioState] = useState<AudioState>("idle");
-  // Gravação travada/enviando ocupa a pílula inteira, como no WhatsApp.
-  const audioActive =
-    audioState === "locked" || audioState === "processing" || audioState === "sending";
+  const voice = useVoiceNote({ conversationId });
+  const recordingVoice = voice.state !== "idle";
   const busy = locked || sending;
+  const showMic = channel === "whatsapp" && !text.trim();
 
   // Altura acompanha o conteúdo, com teto; reseta antes de medir para encolher.
   useEffect(() => {
@@ -125,7 +128,17 @@ export function ThreadComposer({
       )}
 
       <div className="mx-auto flex max-w-[680px] items-end gap-1 rounded-3xl border border-border bg-background px-2 py-1.5">
-        {!audioActive && (
+        {recordingVoice ? (
+          <VoiceNoteBar
+            state={voice.state}
+            seconds={voice.seconds}
+            levels={voice.levels}
+            onDiscard={voice.discard}
+            onPause={voice.pause}
+            onResume={voice.resume}
+            onSend={() => void voice.send()}
+          />
+        ) : (
           <>
             <MediaSendPanel
               conversationId={conversationId}
@@ -215,32 +228,38 @@ export function ThreadComposer({
                 {suggesting ? "Gerando..." : "Sugerir com IA"}
               </span>
             </button>
+
+            {showMic ? (
+              <button
+                type="button"
+                onClick={() => void voice.start()}
+                disabled={busy}
+                aria-label="Gravar áudio"
+                title="Gravar áudio"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <Mic className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={busy || suggesting || !text.trim()}
+                aria-label={sending ? "Enviando..." : "Enviar"}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
           </>
         )}
-
-        {channel === "whatsapp" && !text.trim() && (
-          <AudioRecorder
-            conversationId={conversationId}
-            disabled={busy}
-            onSent={() => {
-              /* o realtime entrega o áudio enviado */
-            }}
-            onStateChange={setAudioState}
-            idleClassName="text-muted-foreground hover:bg-secondary hover:text-foreground"
-          />
-        )}
-
-        {!audioActive && (
-          <button
-            type="submit"
-            disabled={busy || suggesting || !text.trim()}
-            aria-label={sending ? "Enviando..." : "Enviar"}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        )}
       </div>
+
+      {voice.error && (
+        <p role="alert" className="mx-auto mt-2 max-w-[680px] text-xs text-destructive">
+          {voice.error}
+          {voice.state === "failed" ? " A gravação foi mantida — toque para tentar de novo." : ""}
+        </p>
+      )}
     </form>
   );
 }

@@ -255,9 +255,9 @@ export function ChatThread({
             ? { replyToMessageId: quoted.id }
             : {}),
         });
-        dropOptimistic();
 
         if (!result.ok) {
+          dropOptimistic();
           if (isCurrentAttempt()) {
             setSendFailure({ message: result.error, requiresTemplate: !!result.requiresTemplate });
           }
@@ -268,9 +268,17 @@ export function ChatThread({
           return false;
         }
 
-        if (result.delivery === "sent") {
+        if (result.delivery === "sent" && result.messageId) {
+          // A bolha passa a carregar o id gravado no banco e só sai quando o
+          // leadRepo tiver a mesma mensagem. Sem isso, num navegador em que o
+          // realtime não entrega, a mensagem enviada sumia da tela.
+          const confirmedId = result.messageId;
+          setLocalMessages((prev) =>
+            prev.map((m) => (m.id === optimistic.id ? { ...m, id: confirmedId } : m)),
+          );
           await refetchConversationMessages(conversationId);
         } else {
+          dropOptimistic();
           // Ambiente em simulação: o servidor confirmou, mas nada saiu para a Meta.
           if (isCurrentAttempt()) setSimulatedNotice(true);
           toast.info("Envio simulado", {
@@ -530,6 +538,7 @@ export function ChatThread({
       </div>
 
       <ThreadComposer
+        key={conversationId}
         conversationId={conversationId}
         channel={lead.channel}
         leadId={lead.id}

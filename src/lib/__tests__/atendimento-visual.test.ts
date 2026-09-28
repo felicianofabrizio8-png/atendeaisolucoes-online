@@ -163,12 +163,43 @@ vi.mock("@/components/inbox/composer/ComposerWidgets", async () => {
       createElement("button", { type: "button", "aria-label": "Respostas Rápidas" }),
   };
 });
-vi.mock("@/components/AudioRecorder", async () => {
-  const { createElement } = await import("react");
+// Pipeline de áudio (microfone, encoder, upload) — o gravador da tela é real.
+const voiceMock = vi.hoisted(() => {
+  const capture = {
+    kind: "native" as const,
+    mime: "audio/webm;codecs=opus",
+    source: "android_native" as const,
+    bitrate: 96000,
+    platform: "android_or_desktop" as const,
+    pause: vi.fn(),
+    resume: vi.fn(),
+    stop: vi.fn(async () => new Blob(["raw"], { type: "audio/webm" })),
+    abort: vi.fn(),
+  };
+  class VoiceNoteError extends Error {}
   return {
-    AudioRecorder: () => createElement("button", { type: "button", "aria-label": "Gravar áudio" }),
+    capture,
+    VoiceNoteError,
+    stopLevels: vi.fn(),
+    openMicrophone: vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] })),
+    startVoiceCapture: vi.fn(async () => capture),
+    prepareVoiceNote: vi.fn(async () => ({
+      blob: new Blob(["ogg"], { type: "audio/ogg" }),
+      transcodeMs: 1,
+      bitrate: 96000,
+    })),
+    uploadVoiceNote: vi.fn(async () => undefined),
   };
 });
+vi.mock("@/lib/audio/voice-note", () => ({
+  openMicrophone: voiceMock.openMicrophone,
+  startVoiceCapture: voiceMock.startVoiceCapture,
+  prepareVoiceNote: voiceMock.prepareVoiceNote,
+  uploadVoiceNote: voiceMock.uploadVoiceNote,
+  watchInputLevel: () => voiceMock.stopLevels,
+  microphoneErrorMessage: () => "Permissão de microfone negada.",
+  VoiceNoteError: voiceMock.VoiceNoteError,
+}));
 vi.mock("@/components/MetaTemplatesModal", async () => {
   const { createElement } = await import("react");
   return {
@@ -245,6 +276,12 @@ describe("Atendimento 2.0 runtime", () => {
     });
     HTMLElement.prototype.scrollIntoView = vi.fn();
     window.sessionStorage.clear();
+    vi.clearAllMocks();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn() },
+    });
+    Object.defineProperty(window, "isSecureContext", { configurable: true, value: true });
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -360,7 +397,9 @@ describe("Atendimento 2.0 runtime", () => {
 
     const composer = screen.getByLabelText("Mensagem");
     fireEvent.change(composer, { target: { value: "   " } });
-    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(true);
+    // Campo vazio: no lugar de "Enviar" fica o microfone, como no WhatsApp.
+    expect(screen.queryByRole("button", { name: "Enviar" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Gravar áudio" })).toBeTruthy();
 
     fireEvent.change(composer, { target: { value: "Mensagem única" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
@@ -376,7 +415,8 @@ describe("Atendimento 2.0 runtime", () => {
       messageId: "message-sent",
       conversationId: conversation.id,
     });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeTruthy());
+    // Envio concluído: o campo esvazia e o botão volta a ser o microfone.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Gravar áudio" })).toBeTruthy());
   });
 
   it("não cria mensagem nem refaz dados quando o transporte confirma simulação", async () => {
@@ -536,5 +576,74 @@ describe("Atendimento 2.0 runtime", () => {
     expect(repoMock.calls.loadConversationRecent.every(([id]) => id === conversation.id)).toBe(
       true,
     );
+  });
+  it("mantém a mensagem enviada na tela mesmo sem o realtime entregar", async () => {
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "Olá, tudo bem?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(repoMock.calls.refetchConversationMessages).toBe(1));
+    // O repo (realtime/refetch) não trouxe nada, e a bolha confirmada continua.
+    expect(repoMock.state.messages).toHaveLength(0);
+    expect(screen.getByText("Olá, tudo bem?")).toBeTruthy();
+  });
+
+  it("grava áudio por toque: pausa, continua, descarta e volta ao composer", async () => {
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.click(screen.getByRole("button", { name: "Gravar áudio" }));
+    await screen.findByRole("button", { name: "Pausar gravação" });
+    expect(screen.queryByLabelText("Mensagem")).toBeNull();
+    expect(screen.getByLabelText(/^Duração /)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pausar gravação" }));
+    expect(voiceMock.capture.pause).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Continuar gravação" }));
+    expect(voiceMock.capture.resume).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Descartar áudio" }));
+    expect(voiceMock.capture.abort).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Mensagem")).toBeTruthy();
+    expect(voiceMock.uploadVoiceNote).not.toHaveBeenCalled();
+  });
+
+  it("envia o áudio pela seta e volta ao composer", async () => {
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.click(screen.getByRole("button", { name: "Gravar áudio" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar áudio" }));
+
+    await waitFor(() => expect(voiceMock.uploadVoiceNote).toHaveBeenCalledTimes(1));
+    expect(voiceMock.uploadVoiceNote).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: conversation.id }),
+    );
+    await waitFor(() => expect(screen.getByLabelText("Mensagem")).toBeTruthy());
+  });
+
+  it("preserva a gravação quando o envio do áudio falha e reenvia sem regravar", async () => {
+    voiceMock.uploadVoiceNote.mockRejectedValueOnce(new Error("HTTP 502 · stage=meta"));
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+
+    fireEvent.click(screen.getByRole("button", { name: "Gravar áudio" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar áudio" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("HTTP 502");
+    expect(alert.textContent).toContain("gravação foi mantida");
+
+    fireEvent.click(screen.getByRole("button", { name: "Tentar enviar o áudio de novo" }));
+    await waitFor(() => expect(voiceMock.uploadVoiceNote).toHaveBeenCalledTimes(2));
+    const [first, second] = voiceMock.uploadVoiceNote.mock.calls.map(
+      (call) => (call as unknown as [{ blob: Blob }])[0].blob,
+    );
+    expect(second).toBe(first);
+    expect(voiceMock.capture.stop).toHaveBeenCalledTimes(1);
+    expect(voiceMock.prepareVoiceNote).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByLabelText("Mensagem")).toBeTruthy());
   });
 });

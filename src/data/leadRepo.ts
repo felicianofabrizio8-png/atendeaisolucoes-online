@@ -781,7 +781,10 @@ export async function refetchConversationMessages(conversationId: string) {
     .from("messages")
     .select("id,conversation_id,role,text,at,source_subtype,source_metadata,edited_at,deleted_at,deleted_for,delivery_status,delivery_error_code,delivery_error_message,delivery_error_details,status_updated_at")
     .eq("conversation_id", conversationId)
-    .order("at", { ascending: true })
+    // As MAIS RECENTES: é o que um fallback do realtime precisa trazer. Em
+    // ordem crescente o limite cortava justamente a mensagem nova de qualquer
+    // conversa com mais de 200 mensagens. O índice ordena por `at`.
+    .order("at", { ascending: false })
     .limit(200);
   if (error || !data) return;
   const existing = new Set(remoteMessages.map((m) => m.id));
