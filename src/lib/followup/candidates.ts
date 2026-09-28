@@ -1,201 +1,308 @@
 // ============================================================================
 // followup/candidates.ts
-// Responsabilidade: detectar conversas elegíveis para follow-up, classificar
-// por regra e deduplicar por conversa priorizando a regra mais "quente".
-// Lê apenas — não envia mensagens nem escreve em follow_ups.
+// Responsabilidade: detectar negociações em que NÓS falamos por último e o
+// cliente não respondeu — candidatas a abrir um ciclo de follow-up.
+// Lê apenas; não envia nem escreve.
+//
+// Regras (Follow-up V2):
+//  - follow-up = mensagem nossa, orçamento ou visita sem resposta;
+//  - cliente esperando resposta NÃO é follow-up: é pendência de atendimento
+//    (contada à parte, para visibilidade);
+//  - referência vale por no máximo REFERENCE_MAX_AGE_DAYS (sem elegibilidade
+//    eterna de orçamento/visita antigos);
+//  - venda fechada/perdida, humano assumiu ou desinteresse: fora;
+//  - uma nova negociação (referência posterior ao fim do último ciclo) pode
+//    abrir outro ciclo para o mesmo lead.
+// Prioridade do motivo: orçamento > visita > lead quente > silêncio.
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { Candidate, FollowupRule, FollowupSettings } from "./types";
+import { MESSAGE_REFERENCE_MAX_AGE_DAYS, REFERENCE_MAX_AGE_DAYS } from "./next-contact";
+import type { Candidate, FollowupSettings } from "./types";
 
+/** Não abre ciclo em cima de uma mensagem nossa de minutos atrás. */
+export const OPEN_GRACE_MINUTES = 60;
+
+const OPEN_QUOTE_STATUSES = ["enviado", "visualizado"];
+const BLOCKING_AI_STATUS = ["assumido_humano", "desinteresse", "perdido"];
+
+export type OpportunityCandidate = Candidate & { supersedesCycleId?: string };
+
+export interface ConversationRow {
+  id: string;
+  lead_id: string | null;
+  ai_status: string | null;
+  human_takeover_at: string | null;
+  lead_temperature: string | null;
+  last_message_at?: string | null;
+}
+
+interface CycleSnapshot {
+  id: string;
+  conversation_id: string;
+  state: string;
+  reference_at: string;
+  closed_at: string | null;
+}
+
+interface Context {
+  closedLeads: Set<string>;
+  latestCycle: Map<string, CycleSnapshot>;
+  quoteByConv: Map<string, { id: string; sent_at: string }>;
+  visitByLead: Map<string, { id: string; scheduled_at: string }>;
+}
+
+export type Classification =
+  | { kind: "candidate"; candidate: OpportunityCandidate }
+  | { kind: "active"; cycleId: string }
+  | { kind: "pending_attendance" }
+  | { kind: "none"; reason: string };
+
+/** Contexto em lote (leads, ciclos, orçamentos e visitas) das conversas. */
+async function loadContext(
+  companyId: string,
+  convs: ConversationRow[],
+  window: { from: string; to: string },
+): Promise<Context> {
+  const convIds = convs.map((c) => c.id);
+  const leadIds = [...new Set(convs.map((c) => c.lead_id).filter(Boolean) as string[])];
+  const [{ data: leads }, { data: cycles }, { data: quotes }, { data: visits }] = await Promise.all(
+    [
+      supabaseAdmin
+        .from("leads")
+        .select("id, status, closed_at, lost_at")
+        .eq("company_id", companyId)
+        .in("id", leadIds),
+      supabaseAdmin
+        .from("followup_cycles")
+        .select("id, conversation_id, state, reference_at, closed_at, created_at")
+        .eq("company_id", companyId)
+        .in("conversation_id", convIds)
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("quotes")
+        .select("id, conversation_id, sent_at, status")
+        .eq("company_id", companyId)
+        .eq("sent", true)
+        .in("conversation_id", convIds)
+        .gte("sent_at", window.from)
+        .lte("sent_at", window.to)
+        .order("sent_at", { ascending: false }),
+      supabaseAdmin
+        .from("visits")
+        .select("id, lead_id, scheduled_at")
+        .eq("company_id", companyId)
+        .eq("status", "concluida")
+        .in("lead_id", leadIds)
+        .gte("scheduled_at", window.from)
+        .lte("scheduled_at", window.to)
+        .order("scheduled_at", { ascending: false }),
+    ],
+  );
+
+  const ctx: Context = {
+    closedLeads: new Set(
+      (leads ?? [])
+        .filter((l) => l.status === "fechado" || l.status === "perdido" || l.closed_at || l.lost_at)
+        .map((l) => l.id),
+    ),
+    latestCycle: new Map(),
+    quoteByConv: new Map(),
+    visitByLead: new Map(),
+  };
+  for (const c of cycles ?? [])
+    if (!ctx.latestCycle.has(c.conversation_id)) ctx.latestCycle.set(c.conversation_id, c);
+  for (const q of quotes ?? []) {
+    if (
+      q.conversation_id &&
+      q.sent_at &&
+      OPEN_QUOTE_STATUSES.includes(q.status) &&
+      !ctx.quoteByConv.has(q.conversation_id)
+    )
+      ctx.quoteByConv.set(q.conversation_id, { id: q.id, sent_at: q.sent_at });
+  }
+  for (const v of visits ?? []) {
+    if (v.lead_id && v.scheduled_at && !ctx.visitByLead.has(v.lead_id))
+      ctx.visitByLead.set(v.lead_id, { id: v.id, scheduled_at: v.scheduled_at });
+  }
+  return ctx;
+}
+
+/** Classifica UMA conversa: abre ciclo, já tem ciclo, pendência ou nada. */
+async function classify(
+  companyId: string,
+  c: ConversationRow,
+  ctx: Context,
+  opts: { now: Date; messageMaxAgeDays?: number },
+): Promise<Classification> {
+  const leadId = c.lead_id;
+  if (!leadId) return { kind: "none", reason: "conversa sem lead" };
+  if (c.human_takeover_at || c.ai_status === "assumido_humano")
+    return { kind: "none", reason: "atendimento assumido por humano" };
+  if (c.ai_status === "desinteresse") return { kind: "none", reason: "cliente sem interesse" };
+  if (c.ai_status === "perdido" || ctx.closedLeads.has(leadId))
+    return { kind: "none", reason: "venda fechada ou perdida" };
+
+  // Atalhos sem consulta (o tick passa por centenas de conversas):
+  // ciclo ativo sem orçamento/visita mais novo segue como está; ciclo
+  // encerrado sem nada novo na conversa desde então não reabre.
+  const prior = ctx.latestCycle.get(c.id);
+  const quote = ctx.quoteByConv.get(c.id);
+  const visit = ctx.visitByLead.get(leadId);
+  const newestObjectMs = Math.max(
+    quote ? Date.parse(quote.sent_at) : 0,
+    visit ? Date.parse(visit.scheduled_at) : 0,
+  );
+  if (prior?.state === "active" && newestObjectMs <= Date.parse(prior.reference_at))
+    return { kind: "active", cycleId: prior.id };
+  if (
+    prior?.closed_at &&
+    c.last_message_at &&
+    Date.parse(c.last_message_at) <= Date.parse(prior.closed_at) &&
+    newestObjectMs <= Date.parse(prior.closed_at)
+  )
+    return { kind: "none", reason: "negociação já acompanhada, sem novidade desde o fim do ciclo" };
+
+  const { data: lastMsg } = await supabaseAdmin
+    .from("messages")
+    .select("id, role, at")
+    .eq("company_id", companyId)
+    .eq("conversation_id", c.id)
+    .in("role", ["lead", "agent"])
+    .order("at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!lastMsg) return { kind: "none", reason: "conversa sem mensagens" };
+  if (lastMsg.role === "lead") return { kind: "pending_attendance" };
+
+  const { data: lastLead } = await supabaseAdmin
+    .from("messages")
+    .select("at")
+    .eq("company_id", companyId)
+    .eq("conversation_id", c.id)
+    .eq("role", "lead")
+    .order("at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastLeadMs = lastLead?.at ? Date.parse(lastLead.at) : 0;
+
+  let candidate: Candidate;
+  if (quote && Date.parse(quote.sent_at) > lastLeadMs) {
+    candidate = {
+      conversationId: c.id,
+      leadId,
+      rule: "quote_no_reply",
+      referenceKey: `quote:${quote.id}`,
+      referenceAt: quote.sent_at,
+      signal: "orçamento enviado sem resposta",
+    };
+  } else if (visit && Date.parse(visit.scheduled_at) > lastLeadMs) {
+    candidate = {
+      conversationId: c.id,
+      leadId,
+      rule: "visit_no_return",
+      referenceKey: `visit:${visit.id}`,
+      referenceAt: visit.scheduled_at,
+      signal: "visita realizada sem retorno",
+    };
+  } else {
+    if (
+      opts.messageMaxAgeDays !== undefined &&
+      opts.now.getTime() - Date.parse(lastMsg.at) > opts.messageMaxAgeDays * 24 * 3600_000
+    )
+      return { kind: "none", reason: "conversa parada há muito tempo — caso de reativação" };
+    const hot = (c.lead_temperature ?? "").toLowerCase() === "quente";
+    candidate = {
+      conversationId: c.id,
+      leadId,
+      rule: hot ? "hot_lead_idle" : "lead_silent",
+      referenceKey: `msg:${lastMsg.id}`,
+      referenceAt: lastMsg.at,
+      signal: hot ? "lead quente sem resposta à nossa mensagem" : "nossa mensagem sem resposta",
+    };
+  }
+
+  if (prior?.state === "active") {
+    // Orçamento/visita novos numa negociação em curso: o ciclo passa a
+    // acompanhar a nova referência (o antigo encerra como "superseded").
+    const newerObject =
+      (candidate.rule === "quote_no_reply" || candidate.rule === "visit_no_return") &&
+      Date.parse(candidate.referenceAt) > Date.parse(prior.reference_at);
+    return newerObject
+      ? { kind: "candidate", candidate: { ...candidate, supersedesCycleId: prior.id } }
+      : { kind: "active", cycleId: prior.id };
+  }
+  // Novo ciclo só para referência posterior ao fim do anterior — nossos
+  // próprios follow-ups nunca reabrem a mesma negociação.
+  if (prior?.closed_at && Date.parse(candidate.referenceAt) <= Date.parse(prior.closed_at))
+    return { kind: "none", reason: "negociação já acompanhada, sem novidade desde o fim do ciclo" };
+  return { kind: "candidate", candidate };
+}
+
+export interface ScanResult {
+  candidates: OpportunityCandidate[];
+  pendingAttendance: number;
+}
+
+/** Varredura do tick: conversas paradas entre o prazo de carência e o limite de idade. */
+export async function scanFollowupOpportunities(
+  companyId: string,
+  _settings: FollowupSettings,
+  { limit = 50, now = new Date() }: { limit?: number; now?: Date } = {},
+): Promise<ScanResult> {
+  const window = {
+    from: new Date(now.getTime() - REFERENCE_MAX_AGE_DAYS * 24 * 3600_000).toISOString(),
+    to: new Date(now.getTime() - OPEN_GRACE_MINUTES * 60_000).toISOString(),
+  };
+  const { data: convs } = await supabaseAdmin
+    .from("conversations")
+    .select("id, lead_id, ai_status, human_takeover_at, lead_temperature, last_message_at")
+    .eq("company_id", companyId)
+    .gte("last_message_at", window.from)
+    .lte("last_message_at", window.to)
+    .order("last_message_at", { ascending: false })
+    .limit(300);
+  const live = ((convs ?? []) as ConversationRow[]).filter(
+    (c) => c.lead_id && !c.human_takeover_at && !BLOCKING_AI_STATUS.includes(c.ai_status ?? ""),
+  );
+  const out: ScanResult = { candidates: [], pendingAttendance: 0 };
+  if (live.length === 0) return out;
+
+  const ctx = await loadContext(companyId, live, window);
+  for (const c of live) {
+    if (out.candidates.length >= limit) break;
+    const r = await classify(companyId, c, ctx, {
+      now,
+      messageMaxAgeDays: MESSAGE_REFERENCE_MAX_AGE_DAYS,
+    });
+    if (r.kind === "candidate") out.candidates.push(r.candidate);
+    else if (r.kind === "pending_attendance") out.pendingAttendance++;
+  }
+  return out;
+}
+
+/**
+ * Classificação de uma conversa específica ("Follow-up agora"). Sem prazo de
+ * carência: o admin está antecipando o contato de propósito.
+ */
+export async function classifyConversation(
+  companyId: string,
+  conv: ConversationRow,
+  now = new Date(),
+): Promise<Classification> {
+  const window = {
+    from: new Date(now.getTime() - REFERENCE_MAX_AGE_DAYS * 24 * 3600_000).toISOString(),
+    to: now.toISOString(),
+  };
+  // Sem limite de idade da mensagem: o admin pediu o contato explicitamente.
+  return classify(companyId, conv, await loadContext(companyId, [conv], window), { now });
+}
+
+/** Compatibilidade do barrel: só as candidatas. */
 export async function findCandidates(
   companyId: string,
   settings: FollowupSettings,
-  limit = 25,
+  limit = 50,
 ): Promise<Candidate[]> {
-  const now = Date.now();
-  const cutoffs = {
-    quote: new Date(now - settings.quoteDelayHours * 3600_000).toISOString(),
-    silence: new Date(now - settings.silenceDelayHours * 3600_000).toISOString(),
-    visit: new Date(now - settings.visitDelayHours * 3600_000).toISOString(),
-    hot: new Date(now - settings.hotDelayHours * 3600_000).toISOString(),
-  };
-
-  // Conversas "vivas" (não assumidas por humano com handoff explícito recente,
-  // não fechadas como desinteresse)
-  const { data: convs } = await supabaseAdmin
-    .from("conversations")
-    .select(
-      "id, lead_id, ai_status, lead_temperature, lead_ready_to_close, last_message_at, updated_at",
-    )
-    .eq("company_id", companyId)
-    .lte("last_message_at", cutoffs.hot)
-    .order("last_message_at", { ascending: false })
-    .limit(200);
-
-  // Helper: confere se a última mensagem foi do cliente (lead). Evita disparar
-  // logo após o agente ter respondido.
-  async function lastMessageWasFromLead(convId: string): Promise<boolean> {
-    const { data } = await supabaseAdmin
-      .from("messages")
-      .select("role")
-      .eq("conversation_id", convId)
-      .order("at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return data?.role === "lead";
-  }
-
-  const candidates: Candidate[] = [];
-  for (const c of convs ?? []) {
-    if (!c.lead_id) continue;
-    if (c.ai_status === "desinteresse" || c.ai_status === "perdido") continue;
-    const lastAt = c.last_message_at;
-
-    // hot_lead_idle: lead quente parado > hot delay, mas só se o cliente foi
-    // o último a falar (não disparar logo após resposta do agente).
-    if (
-      (c.lead_temperature ?? "").toLowerCase() === "quente" &&
-      lastAt &&
-      lastAt < cutoffs.hot
-    ) {
-      if (await lastMessageWasFromLead(c.id)) {
-        candidates.push({
-          conversationId: c.id,
-          leadId: c.lead_id,
-          rule: "hot_lead_idle",
-          lastClientMessageAt: lastAt,
-          signal: "lead quente sem interação",
-        });
-      }
-      continue;
-    }
-
-    // lead_silent: sem mensagem por mais que silenceDelayHours, e cliente foi
-    // o último a falar (senão estamos esperando resposta dele do nosso lado).
-    if (lastAt && lastAt < cutoffs.silence) {
-      if (await lastMessageWasFromLead(c.id)) {
-        candidates.push({
-          conversationId: c.id,
-          leadId: c.lead_id,
-          rule: "lead_silent",
-          lastClientMessageAt: lastAt,
-          signal: "cliente sumiu",
-        });
-      }
-    }
-  }
-
-  // quote_no_reply: orçamento enviado há mais de quoteDelayHours sem resposta
-  const { data: quotes } = await supabaseAdmin
-    .from("quotes")
-    .select("id, conversation_id, lead_id, sent_at")
-    .eq("company_id", companyId)
-    .eq("sent", true)
-    .not("conversation_id", "is", null)
-    .lte("sent_at", cutoffs.quote)
-    .order("sent_at", { ascending: false })
-    .limit(100);
-  for (const q of quotes ?? []) {
-    if (!q.conversation_id || !q.lead_id) continue;
-    candidates.push({
-      conversationId: q.conversation_id,
-      leadId: q.lead_id,
-      rule: "quote_no_reply",
-      lastClientMessageAt: q.sent_at,
-      signal: "orçamento enviado sem resposta",
-    });
-  }
-
-  // visit_no_return: visita realizada há mais de visitDelayHours
-  const { data: visits } = await supabaseAdmin
-    .from("visits")
-    .select("id, lead_id, scheduled_at, status")
-    .eq("company_id", companyId)
-    .eq("status", "concluida")
-    .lte("scheduled_at", cutoffs.visit)
-    .limit(100);
-  const visitLeadIds = (visits ?? []).map((v) => v.lead_id).filter(Boolean) as string[];
-  if (visitLeadIds.length) {
-    const { data: leadConvs } = await supabaseAdmin
-      .from("conversations")
-      .select("id, lead_id")
-      .eq("company_id", companyId)
-      .in("lead_id", visitLeadIds)
-      .order("last_message_at", { ascending: false });
-    const convByLead = new Map<string, string>();
-    for (const lc of leadConvs ?? []) {
-      if (lc.lead_id && !convByLead.has(lc.lead_id)) convByLead.set(lc.lead_id, lc.id);
-    }
-    for (const v of visits ?? []) {
-      if (!v.lead_id) continue;
-      const convId = convByLead.get(v.lead_id);
-      if (!convId) continue;
-      candidates.push({
-        conversationId: convId,
-        leadId: v.lead_id,
-        rule: "visit_no_return",
-        lastClientMessageAt: v.scheduled_at,
-        signal: "visita realizada sem retorno",
-      });
-    }
-  }
-
-  // returning_customer: lead já fechado/perdido há ≥ 7 dias que voltou a
-  // mandar mensagem nas últimas 24h (reativação). Sinal forte de oportunidade.
-  const reactivationCutoff = new Date(now - 7 * 24 * 3600_000).toISOString();
-  const recentLeadMsgCutoff = new Date(now - 24 * 3600_000).toISOString();
-  const { data: returnedLeads } = await supabaseAdmin
-    .from("leads")
-    .select("id, status, closed_at, lost_at")
-    .eq("company_id", companyId)
-    .in("status", ["fechado", "perdido"])
-    .limit(200);
-  const returnedIds = (returnedLeads ?? [])
-    .filter((l) => {
-      const ref = l.closed_at ?? l.lost_at;
-      return ref && ref < reactivationCutoff;
-    })
-    .map((l) => l.id);
-  if (returnedIds.length) {
-    const { data: rConvs } = await supabaseAdmin
-      .from("conversations")
-      .select("id, lead_id, last_message_at")
-      .eq("company_id", companyId)
-      .in("lead_id", returnedIds)
-      .gte("last_message_at", recentLeadMsgCutoff);
-    for (const rc of rConvs ?? []) {
-      if (!rc.lead_id) continue;
-      const { data: lastMsg } = await supabaseAdmin
-        .from("messages")
-        .select("role, at")
-        .eq("conversation_id", rc.id)
-        .order("at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (lastMsg?.role !== "lead") continue;
-      candidates.push({
-        conversationId: rc.id,
-        leadId: rc.lead_id,
-        rule: "returning_customer",
-        lastClientMessageAt: lastMsg.at,
-        signal: "cliente antigo voltou a interagir",
-      });
-    }
-  }
-
-  // Deduplica por conversa, priorizando regras mais "quentes"
-  const priority: Record<FollowupRule, number> = {
-    hot_lead_idle: 5,
-    quote_no_reply: 4,
-    visit_no_return: 3,
-    returning_customer: 2,
-    lead_silent: 1,
-  };
-  const best = new Map<string, Candidate>();
-  for (const c of candidates) {
-    const cur = best.get(c.conversationId);
-    if (!cur || priority[c.rule] > priority[cur.rule]) best.set(c.conversationId, c);
-  }
-  return Array.from(best.values()).slice(0, limit);
+  return (await scanFollowupOpportunities(companyId, settings, { limit })).candidates;
 }

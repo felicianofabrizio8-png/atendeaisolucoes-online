@@ -542,11 +542,11 @@ export function AIFollowupPanel() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Máximo de follow-ups por lead</Label>
+                <Label className="text-xs">Máximo de tentativas por negociação</Label>
                 <Input
                   type="number"
                   min={1}
-                  max={10}
+                  max={5}
                   value={settings.maxPerLead}
                   onChange={(e) =>
                     setS({ maxPerLead: Number(e.target.value) })
@@ -555,7 +555,7 @@ export function AIFollowupPanel() {
               </div>
               <div>
                 <Label className="text-xs">
-                  Intervalo mínimo entre envios (horas)
+                  Intervalo mínimo entre tentativas (horas)
                 </Label>
                 <Input
                   type="number"

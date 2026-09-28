@@ -5,20 +5,15 @@
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { safeTimeZone } from "./calendar";
 import { DEFAULT_TEMPLATES } from "./defaults";
-import type {
-  FollowupRule,
-  FollowupSettings,
-  FollowupV2Settings,
-} from "./types";
+import type { FollowupRule, FollowupSettings, FollowupV2Settings } from "./types";
 
-export async function getFollowupSettings(
-  companyId: string,
-): Promise<FollowupSettings | null> {
+export async function getFollowupSettings(companyId: string): Promise<FollowupSettings | null> {
   const { data } = await supabaseAdmin
     .from("company_settings")
     .select(
-      "ai_followup_enabled, ai_followup_max_per_lead, ai_followup_min_hours_between, ai_followup_quote_delay_hours, ai_followup_silence_delay_hours, ai_followup_visit_delay_hours, ai_followup_hot_delay_hours, ai_followup_business_hours_only, ai_followup_tone, ai_followup_templates, ai_initial_message, ai_agent_name, business_hours_start, business_hours_end",
+      "ai_followup_enabled, ai_followup_max_per_lead, ai_followup_min_hours_between, ai_followup_quote_delay_hours, ai_followup_silence_delay_hours, ai_followup_visit_delay_hours, ai_followup_hot_delay_hours, ai_followup_business_hours_only, ai_followup_tone, ai_followup_templates, ai_initial_message, ai_agent_name, business_hours_start, business_hours_end, ai_followup_timezone, ai_followup_business_days",
     )
     .eq("company_id", companyId)
     .maybeSingle();
@@ -39,12 +34,17 @@ export async function getFollowupSettings(
     templates: { ...DEFAULT_TEMPLATES, ...tpl },
     initialMessage: data.ai_initial_message,
     agentName: data.ai_agent_name ?? "Fabrizio",
+    timeZone: safeTimeZone(data.ai_followup_timezone),
+    businessDays: normalizeDays(data.ai_followup_business_days),
   };
 }
 
-export async function getFollowupV2Settings(
-  companyId: string,
-): Promise<FollowupV2Settings | null> {
+function normalizeDays(days: number[] | null | undefined): number[] {
+  const valid = (days ?? []).filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+  return valid.length ? valid : [1, 2, 3, 4, 5];
+}
+
+export async function getFollowupV2Settings(companyId: string): Promise<FollowupV2Settings | null> {
   try {
     const { data } = await supabaseAdmin
       .from("company_settings")

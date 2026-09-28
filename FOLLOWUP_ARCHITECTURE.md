@@ -1,315 +1,217 @@
-# Follow-up — Arquitetura Oficial (v1.0)
+# Follow-up — Arquitetura Oficial (v2.0)
 
 > Documento canônico do módulo `src/lib/followup/`.
-> Consolidado na Fase A do Plano Diretor Arquitetura 2.0.
-> Última revisão: Julho/2026.
+> v2.0 (setembro/2026): follow-up por **ciclo de negociação**.
 
 ---
 
 ## 1. Visão Geral
 
-O módulo Follow-up é responsável por **manter o relacionamento vivo com leads**
-sem intervenção humana, garantindo três coisas simultaneamente:
+Follow-up é **retomar uma mensagem nossa que ficou sem resposta** — texto,
+orçamento enviado ou visita realizada. Cliente esperando resposta NÃO é
+follow-up: é **pendência de atendimento** (contada à parte no tick).
 
-1. **Continuidade comercial** — reengajar leads silenciosos, orçamentos sem
-   resposta, visitas sem retorno, clientes antigos que voltaram a falar.
-2. **Segurança de conta WhatsApp** — respeitar janela de 24h, warmup diário,
-   limites, taxa de resposta mínima, horário comercial e handoff humano.
-3. **Auditabilidade** — cada envio gera linhas em `follow_ups`,
-   `ai_flow_events` e, no caso do disparo manual, `audit_log`.
+Cada negociação sem resposta vira um **ciclo** (`followup_cycles`) com
+motivo, referência, tentativas, próxima data e estado. O ciclo encerra quando
+o cliente responde, a venda é fechada/perdida, um humano assume, o cliente
+perde o interesse, as tentativas acabam ou os envios falham repetidamente.
+Uma nova negociação abre outro ciclo para o mesmo lead — não existe limite
+vitalício por lead.
 
-O módulo NÃO altera Runtime, Event Bus, `ai-agent`, `meta-webhook` nem
-`Evolution`. Ele apenas **lê** o estado atual e **envia** mensagens
-reutilizando `sendWhatsappText` / `sendWhatsappTemplate`.
+`dispatch.ts` é o **único motor de envio** (tick, "Follow-up agora" e
+reativação).
 
 ---
 
 ## 2. Responsabilidades por Camada
 
-| Sub-módulo             | Responsabilidade                                                        |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `types.ts`             | Tipos e contratos públicos.                                             |
-| `defaults.ts`          | Templates padrão, helpers puros (nome, horário comercial, render).      |
-| `settings.ts`          | Leitura de configuração (v1 e v2) em `company_settings`.                |
-| `humanizer.ts`         | Variação linguística determinística das mensagens (v2 opt-in).          |
-| `candidates.ts`        | Descoberta de conversas elegíveis por regra.                            |
-| `safety.ts`            | Regras de bloqueio: handoff, spam, limite, intervalo, janela 24h.       |
-| `message.ts`           | Renderização final da mensagem (com/sem humanização).                   |
-| `tick.ts`              | Loop principal e agregador multi-empresa (cron).                        |
-| `reconcile.ts`         | Marca respostas / recuperações em `follow_ups`.                         |
-| `integration.ts`       | Status WhatsApp / eventos não mapeados.                                 |
-| `scoring.ts`           | Cálculo de score de lead e resumo de temperatura.                       |
-| `gates.ts`             | Limite diário + warmup + taxa mínima de resposta (v2).                  |
-| `analytics.ts`         | Analytics avançado do painel `/ia`.                                     |
-| `reactivation.ts`      | Reativação opt-in de leads antigos.                                     |
-| `manual.ts`            | Núcleo do disparo manual (chamado pela server function).                |
-| `dispatch.ts`          | **Motor único de envio** (tick + manual): revalidação, canal, persistência. |
-| `resume.ts`            | Contexto da conversa + frase de retomada via LLMGateway.                |
-| `resume-phrase.ts`     | Funções puras da retomada: prompt, validação, fallback contextual.      |
-| `index.ts`             | Barrel oficial. Único ponto público novo.                               |
+| Sub-módulo            | Responsabilidade                                                          |
+| --------------------- | ------------------------------------------------------------------------- |
+| `types.ts`            | Tipos e contratos públicos.                                               |
+| `defaults.ts`         | Templates padrão, render, primeiro nome, horário comercial.               |
+| `settings.ts`         | Configuração (v1/v2) em `company_settings`, incluindo fuso e dias úteis.  |
+| `calendar.ts`         | Puro: fuso, dias úteis, feriados nacionais, próximo horário útil.         |
+| `next-contact.ts`     | Puro: prazo do cliente, validação de sugestão, política de intervalos.    |
+| `next-contact-ai.ts`  | IA sugere data de retorno (só quando o cliente fala de tempo).            |
+| `candidates.ts`       | Detecta negociações sem resposta (e pendências de atendimento).           |
+| `cycles.ts`           | Ciclo: abrir, agendar, reancorar, aplicar resultado, encerrar.            |
+| `dispatch.ts`         | Motor único: revalida, escolhe canal, envia, persiste a tentativa.        |
+| `resume.ts`           | Contexto da conversa + frase de retomada (`{{1}}`) via LLMGateway.        |
+| `resume-phrase.ts`    | Puro: prompt, validação e fallback da frase de retomada.                  |
+| `safety.ts`           | Janela de 24h do WhatsApp.                                                |
+| `gates.ts`            | Gate global: limite diário, warmup, taxa de resposta. Falha fechada.      |
+| `message.ts`          | Texto para dentro da janela (humanização opcional).                       |
+| `tick.ts`             | Loop do cron: abre ciclos, processa os vencidos.                          |
+| `manual.ts`           | "Follow-up agora": antecipa a próxima tentativa do ciclo.                 |
+| `reactivation.ts`     | Reativação opt-in de leads antigos (separada dos ciclos).                 |
+| `reconcile.ts`        | Marca envios como `responded` / `recovered`.                              |
+| `scoring.ts`, `analytics.ts`, `integration.ts`, `humanizer.ts` | Score, painel, status da integração, variação de texto. |
+| `index.ts`            | Barrel oficial.                                                           |
 
 ---
 
-## 3. Fluxo Completo
+## 3. Ciclo de negociação
+
+### Abertura (`candidates.ts` → `cycles.openCycle`)
+
+A cada tick, conversas paradas há ≥ 1h e ≤ 30 dias são classificadas:
+
+| Situação                                                           | Resultado                              |
+| ------------------------------------------------------------------ | -------------------------------------- |
+| Última mensagem é do cliente                                       | pendência de atendimento               |
+| Venda fechada/perdida, humano assumiu, desinteresse                | nada                                   |
+| Orçamento `enviado`/`visualizado` depois da última fala do cliente | ciclo `quote_no_reply` (`quote:<id>`)  |
+| Visita `concluida` depois da última fala do cliente                | ciclo `visit_no_return` (`visit:<id>`) |
+| Nossa mensagem sem resposta, lead quente                           | ciclo `hot_lead_idle` (`msg:<id>`)     |
+| Nossa mensagem sem resposta                                        | ciclo `lead_silent` (`msg:<id>`)       |
+
+- Orçamento/visita têm prioridade e só valem por 30 dias (sem elegibilidade eterna).
+- Nossa mensagem sem resposta só abre ciclo automático até 7 dias; conversa
+  parada há mais tempo é caso de reativação (o "Follow-up agora" não tem esse
+  limite).
+- Um ciclo ativo por conversa; a mesma referência nunca reabre (índices únicos).
+- Novo ciclo só para referência **posterior ao fim do anterior** — os nossos
+  próprios follow-ups nunca reabrem a negociação; uma nova conversa, orçamento
+  ou visita, sim.
+- Orçamento/visita novos numa negociação em curso encerram o ciclo antigo
+  como `superseded` e abrem outro.
+
+### Quando é a próxima tentativa (`next-contact.ts`)
+
+Precedência, só para a 1ª tentativa do ciclo:
+
+1. **Prazo explícito do cliente** (parser determinístico): "amanhã", "depois
+   de amanhã", "semana que vem", "mês que vem", "fim do mês", "na sexta",
+   "a partir de segunda", "daqui a 3 dias", "em duas semanas", "no dia 15",
+   "depois do dia 20". Prazo que já passou = próximo horário útil.
+2. **Sugestão da IA** — só se o cliente falou de tempo e o parser não
+   resolveu ("depois que o salário cair"). Vale apenas se a evidência aparece
+   literalmente numa mensagem do cliente e a data está entre hoje e 60 dias.
+3. **Política** por motivo e tentativa (horas; a 1ª usa o atraso configurado
+   da empresa, as seguintes respeitam o intervalo mínimo como piso):
+
+| Motivo            | 1ª (config.) | 2ª  | 3ª  | 4ª  | 5ª  |
+| ----------------- | ------------ | --- | --- | --- | --- |
+| `hot_lead_idle`   | 4            | 24  | 72  | 168 | 240 |
+| `quote_no_reply`  | 24           | 72  | 168 | 240 | 336 |
+| `visit_no_return` | 24           | 72  | 168 | 240 | 336 |
+| `lead_silent`     | 48           | 120 | 240 | 336 | 480 |
+
+Tentativas por ciclo = `ai_followup_max_per_lead` (1–5). Toda data cai num
+horário útil da empresa — fuso (`ai_followup_timezone`, padrão
+`America/Sao_Paulo`), dias úteis (`ai_followup_business_days`, padrão seg–sex),
+feriados nacionais e expediente — com espalhamento determinístico de até
+`ai_followup_delay_jitter_minutes`.
+
+### Processamento (`tick.ts`)
 
 ```text
-                          ┌────────────────────────────────┐
-   cron pg_cron  ────────▶│ /api/public/hooks/followup-tick│
-                          └─────────────┬──────────────────┘
-                                        ▼
-                                runFollowupTickAll()
-                                        │
-                            ┌───────────┴────────────┐
-                            ▼                        ▼
-                 runFollowupTickForCompany     reconcileResponses
-                            │
-              ┌─────────────┼───────────────┐
-              ▼             ▼               ▼
-         readiness      businessHours    canSendFollowupNow  ← gates v2
-              │             │               │
-              └────────┬────┴───────────────┘
-                       ▼
-                 findCandidates()
-                       │
-                       ▼   (por candidato)
-                 canSend() ──── skip → follow_ups(blocked)
-                       │
-                       ▼
-                 buildMessage()  (humanize?)
-                       │
-                       ▼
-              dispatchFollowup()  ← motor único (tick e manual)
-                       │
-                 revalidateFollowup ── inválido → skipped (nada gravado)
-                       │
-        ┌──────────────┴──────────────┐
-        ▼ dentro da janela 24h        ▼ fora da janela 24h
-   sendWhatsappText            chamar_novamente aprovado?
-        │                        │ sim                 │ não
-        │                        ▼                     ▼
-        │              loadResumeContext      template legado por
-        │              generateResumePhrase   propósito ({{1}} = nome)
-        │              ({{1}} = retomada)            │
-        │                        │                     │
-        │                        └── revalida de novo ─┘
-        │                                  ▼
-        │                          sendWhatsappTemplate
-        └──────────────┬──────────────────┘
-                       ▼
-              INSERT follow_ups
-              INSERT ai_flow_events
+runFollowupTickForCompany
+  ├─ follow-up ligado? prontidão da IA ativa/piloto?
+  ├─ scanFollowupOpportunities → openCycle   (a qualquer hora; não envia)
+  ├─ horário útil da empresa? gate global (fail-closed)?
+  └─ dueCycles (next_followup_at ≤ agora, até 25 e até o limite do dia)
+       ├─ equipe falou de novo depois do último contato → reagenda (sem zerar tentativas)
+       ├─ buildMessage
+       ├─ dispatchFollowup (revalida → texto na janela / template fora dela)
+       └─ applyDispatchOutcome
 ```
 
-### Retomada contextual (`chamar_novamente`)
+### Resultado do envio (`cycles.applyDispatchOutcome`)
 
-Fora da janela, o follow-up usa o template aprovado `chamar_novamente`
-(propósito `followup_resume`, aceito como Marketing ou Utility). O `{{1}}`
-recebe **uma frase curta gerada pela IA a partir da conversa real** — produto
-ou modelo, orçamento enviado, objeção, decisão pendente ou próximo passo.
+| Resultado do dispatch                                                                      | Ciclo                                                       |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `sent` / `simulated`                                                                       | tentativa +1; agenda a próxima ou encerra `max_attempts`    |
+| `skipped` (cliente respondeu, venda fechada/perdida, humano, desinteresse, conversa sumiu) | encerra com o motivo                                        |
+| `skipped` (IA processando)                                                                 | adia 15 min                                                 |
+| `failed`                                                                                   | +1 falha, tenta em 1h útil; 3 falhas → `send_failed`        |
+| `blocked` (sem template aprovado)                                                          | +1 falha, tenta no dia útil seguinte; 3 → `template_missing` |
 
-- Nunca contém o nome do cliente, valores em dinheiro, quebra de linha ou
-  placeholders; frase reprovada na validação é descartada.
-- Sem IA disponível (ou frase reprovada), usa a retomada **contextual
-  determinística** (orçamento → objeção → produto). A frase genérica só entra
-  quando não há contexto nenhum.
-- Empresa sem `chamar_novamente` aprovado continua no template legado do
-  propósito da regra (com o nome em `{{1}}`, como aprovado).
-
-### Revalidação
-
-`revalidateFollowup` roda antes do trabalho caro e de novo imediatamente
-antes do envio. Não envia se: o cliente mandou mensagem depois da referência
-do candidato (ou depois da última mensagem dele, no manual); a venda foi
-fechada ou perdida (exceto `returning_customer`); humano assumiu; cliente sem
-interesse; IA processando. Um envio cancelado não grava `follow_ups` — senão
-contaria como tentativa no limite por lead.
-
-### Resposta do cliente
-
-O trigger `cancel_pending_followups_on_reply` (em `messages`) marca como
-`responded`/`auto_cancelled` os follow-ups `sent` quando o cliente responde;
-a conversa segue com o fluxo normal da IA. Não há fila de follow-ups
-agendados: cada envio é decidido no tick, e a revalidação garante que nada
-sai depois de uma resposta.
-
-Fluxo do **disparo manual** (painel Inbox):
-
-```text
-UI (inbox / Atendimento 2.0) → runFollowupNowForConversation (server fn, admin only)
-           → runManualFollowup()        [src/lib/followup/manual.ts]
-             ├─ guards mínimos (handoff, desinteresse, spam 30s)
-             ├─ buildMessage (mesma do tick, humanize opt-in)
-             ├─ dispatchFollowup (mesmo motor: revalida, chamar_novamente…)
-             └─ audit_log
-```
-
-Fluxo de **reativação** (opt-in, chamado sob demanda):
-
-```text
-runReactivation(companyId)
-  ├─ canSendFollowupNow (gate v2)
-  ├─ withinTimeWindow (horário v2)
-  ├─ leads inativos ≥ N dias
-  └─ humanize + sendWhatsappText + INSERT follow_ups
-```
+Resposta do cliente também encerra o ciclo direto no banco: o trigger
+`cancel_pending_followups_on_reply` (em `messages`) fecha o ciclo ativo como
+`client_replied` e marca os envios como `responded`. A conversa segue com o
+fluxo normal da IA.
 
 ---
 
-## 4. Funções Públicas (`import { … } from "@/lib/followup"`)
+## 4. Motor de envio (`dispatch.ts`)
 
-### Configuração
-- `getFollowupSettings(companyId)`
-- `getFollowupV2Settings(companyId)`
-
-### Execução (cron / painel)
-- `runFollowupTickForCompany(companyId): Promise<TickResult>`
-- `runFollowupTickAll(): Promise<TickResult[]>`
-- `reconcileResponses(companyId): Promise<number>`
-- `runReactivation(companyId): Promise<ReactivationResult>`
-- `runManualFollowup(params): Promise<ManualFollowupResult>` (usado pela server fn)
-
-### Detecção
-- `findCandidates(companyId, settings, limit?): Promise<Candidate[]>`
-
-### Segurança e limites
-- `canSendFollowupNow(companyId): Promise<SendGateResult>`
-
-### Métricas e leitura
-- `getWhatsappIntegrationStatus(companyId): Promise<WhatsappIntegrationStatus>`
-- `getLeadTemperatureSummary(companyId): Promise<{hot,warm,cold}>`
-- `computeLeadScore(leadId): Promise<LeadScoreResult>`
-- `getAdvancedAnalytics(companyId): Promise<AdvancedAnalytics>`
-
-### Utilidades puras
-- `humanizeTemplate(rawTemplate, attempt, seed, vars)`
-- `jitterDelayMs(baseMs, jitterMinutes)`
+1. `revalidateFollowup` antes do trabalho caro e de novo imediatamente antes
+   do envio — devolve um código (`client_replied`, `sale_closed`,
+   `sale_lost`, `human_takeover`, `disinterest`, `conversation_missing`,
+   `ai_busy`) que o ciclo usa para encerrar ou adiar.
+2. Dentro da janela 24h: texto (`sendWhatsappText`).
+3. Fora da janela: `chamar_novamente` (propósito `followup_resume`, Marketing
+   ou Utility) com `{{1}}` = retomada contextual gerada pela IA a partir da
+   conversa real — nunca o nome do cliente, valores, quebra de linha ou
+   placeholder; IA indisponível ou frase reprovada → fallback contextual
+   determinístico (orçamento → objeção → produto). Empresa sem
+   `chamar_novamente` aprovado usa o template legado do propósito.
+4. Persiste a tentativa em `follow_ups` (com `cycle_id`) e o evento em
+   `ai_flow_events`.
 
 ---
 
-## 5. Funções Internas (não exportadas pelo barrel)
+## 5. "Follow-up agora" (`manual.ts`)
 
-- `defaults.ts` → `renderTemplate`, `firstName`, `isWithinBusinessHours`, `DEFAULT_TEMPLATES`.
-- `safety.ts` → `canSend` (checagem por candidato).
-- `message.ts` → `buildMessage`.
-- `gates.ts` → `warmupCapacity`.
-- `reactivation.ts` → `withinTimeWindow`.
-- `humanizer.ts` → `pickSeeded`, listas `GREETINGS/EMOJIS/CTAS`.
-
----
-
-## 6. Dependências
-
-Externas:
-- `@/integrations/supabase/client.server` → `supabaseAdmin` (leitura/escrita).
-- `@/lib/ai-agent.server` → `sendWhatsappText`.
-- `@/lib/ai-readiness.server` → `getReadiness` (guard do piloto).
-- `@/lib/wa-templates.server` → `sendWhatsappTemplate`, `findApprovedTemplateForPurpose`, `TemplatePurpose`.
-
-Internas (grafo, sem ciclos):
-
-```text
-types.ts        ← (nenhuma)
-defaults.ts     ← types
-humanizer.ts    ← (nenhuma)
-settings.ts     ← types, defaults
-integration.ts  ← (nenhuma)
-scoring.ts     ← types
-gates.ts        ← settings, integration
-analytics.ts    ← settings, gates (warmupCapacity via re-import interno)
-candidates.ts   ← types, settings, defaults
-safety.ts       ← types, settings
-message.ts      ← types, settings, defaults, humanizer
-resume-phrase.ts← (nenhuma — puro)
-resume.ts       ← resume-phrase, llm-gateway (dyn)
-dispatch.ts     ← types, resume, ai-agent, wa-templates
-tick.ts         ← types, settings, defaults, candidates, safety, message,
-                  gates, dispatch, ai-readiness
-reconcile.ts    ← (supabaseAdmin apenas)
-reactivation.ts ← settings, gates, humanizer, ai-agent (dyn)
-manual.ts       ← settings, safety, message, dispatch
-index.ts        ← re-export de todos os acima
-```
+Admin antecipa a próxima tentativa: usa o ciclo ativo da conversa ou abre um
+pelas mesmas regras de detecção (sem a carência de 1h), envia **já** pelo
+`dispatch` e o resultado reagenda/encerra o ciclo normalmente. Cliente
+esperando resposta → bloqueado (é atendimento pendente). Mantém o anti-spam
+de 30s e a auditoria (`audit_log`). Não espera horário comercial nem gate
+diário: é ação explícita do admin.
 
 ---
 
-## 7. Exports Oficiais (barrel `@/lib/followup`)
+## 6. Reativação (`reactivation.ts`)
 
-Definidos em `src/lib/followup/index.ts`. Toda nova consumidora **deve**
-importar do barrel. Arquivos legados (`ai-followup.server.ts`,
-`ai-followup-v2.server.ts`) permanecem como **façanas de retrocompatibilidade**
-até auditoria posterior — não devem receber novo código.
-
----
-
-## 8. Pontos de Integração
-
-| Contexto             | Arquivo                                             | Uso                                                              |
-| -------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
-| Cron externo         | `src/routes/api.public.hooks.followup-tick.tsx`     | `runFollowupTickAll`, `reconcileResponses`                       |
-| Painel `/ia`         | `src/routes/api.ai.followup-config.tsx`             | settings + tick + analytics                                      |
-| Painel `/ia` status  | `src/routes/api.ai.followup-status.tsx`             | integração + gates + analytics                                   |
-| Painel `/ia`         | `src/routes/api.ai.followup-reactivate.tsx`         | `runReactivation`                                                |
-| Inbox                | `src/routes/inbox.$conversationId.lazy.tsx`         | `runFollowupNowForConversation`                                  |
-| Server fn manual     | `src/lib/manual-followup.functions.ts`              | delega para `runManualFollowup` (novo core)                      |
+Opt-in, acionada pelo painel `/ia`, separada dos ciclos. Leads não
+fechados/perdidos, sem `reactivated_at`, parados há `reactivation_days`,
+sem ciclo ativo. Envia pelo `dispatch` (fora da janela → template aprovado,
+nunca texto livre). "Máximo por dia" é contado no dia (fuso da empresa), não
+por clique. Horário próprio no fuso e dias úteis da empresa. Grava
+`trigger_reason = 'reactivation'`; `reactivated_at` só em envio real.
 
 ---
 
-## 9. Cron
+## 7. Gates globais (`gates.ts`)
 
-- **Job**: `ai-followup-tick` (pg_cron)
-- **Endpoint**: `POST /api/public/hooks/followup-tick`
-- **Header**: `x-cron-secret: $CRON_SECRET`
-- **Ciclo**: dispara `runFollowupTickAll()` e, na sequência,
-  `reconcileResponses()` para cada empresa habilitada.
+Falha **fechada**: erro de consulta, integração indisponível ou configuração
+ilegível bloqueiam o envio.
 
----
-
-## 10. Banco de Dados
-
-Tabelas lidas/escritas:
-
-- `company_settings` — colunas `ai_followup_*`, `business_hours_*`, `ai_agent_name`, `ai_initial_message`.
-- `conversations` — leitura de estado (ai_status, ai_handling, human_takeover_at, last_message_at, lead_temperature, lead_ready_to_close).
-- `messages` — leitura por role e janela temporal.
-- `leads` — leitura (name, product, status, closed/lost/reactivated), atualização (`lead_score`, `lead_temperature_cached`, `last_score_at`, `reactivated_at`).
-- `quotes` — leitura de orçamentos enviados.
-- `visits` — leitura de visitas concluídas.
-- `follow_ups` — **escrita canônica** de tentativas (status: sent, failed, blocked, responded, recovered).
-- `ai_flow_events` — trilha operacional (followup_sent, followup_failed, followup_responded, lead_recovered, template_missing).
-- `audit_log` — trilha admin apenas no fluxo manual.
-- `integrations` / `whatsapp_unmapped_events` — status da conexão.
-
-Nenhuma migration nova é introduzida na Fase A.
+- Integração WhatsApp conectada.
+- Limite diário contado da meia-noite no fuso da empresa, só com envios
+  entregues (`sent`/`responded`/`recovered`).
+- Warmup progressivo (10% → 25% → 50% → 100% em 7 dias); começa a contar no
+  primeiro uso (`ai_followup_warmup_started_at` é gravado automaticamente).
+- Pausa automática se a taxa de resposta dos últimos 7 dias (≥ 20 envios
+  entregues) ficar abaixo de `ai_followup_min_response_rate`.
 
 ---
 
-## 11. Sequência de Execução (Tick)
+## 8. Banco de Dados
 
-1. `runFollowupTickAll` seleciona `company_settings.ai_followup_enabled = true`.
-2. Para cada empresa, `runFollowupTickForCompany`:
-   1. Lê settings v1. Se `!enabled`, retorna vazio.
-   2. `getReadiness` — status precisa ser `ativa` ou `piloto`.
-   3. `isWithinBusinessHours` — respeita janela configurada.
-   4. `canSendFollowupNow` (v2) — limite diário + warmup + taxa mínima.
-   5. `findCandidates` — coleta e prioriza regras (hot > quote > visit > returning > silent).
-   6. Loop: para cada candidato:
-      - `canSend` (handoff/spam/intervalo/max) → skip com motivo.
-      - `buildMessage` (humanize se v2.humanize).
-      - `dispatchFollowup`: revalida, envia texto (janela aberta) **ou**
-        `chamar_novamente` com a retomada contextual (janela fechada),
-        revalida de novo antes do envio e insere `follow_ups` + `ai_flow_events`.
-3. Ao final, `reconcileResponses` marca respostas do lead posteriores ao envio,
-   promovendo para `responded` ou `recovered` (se lead virou venda).
+- `followup_cycles` — ciclos (RLS: leitura pela empresa; escrita só servidor).
+- `follow_ups` — tentativas (`cycle_id`; status `sent`, `responded`,
+  `recovered`, `ignored`, `failed`, `blocked`, `simulated`, `cancelled`).
+- `company_settings` — `ai_followup_*`, incluindo `ai_followup_timezone` e
+  `ai_followup_business_days`.
+- `ai_flow_events` — `followup_sent`, `followup_simulated`, `followup_failed`,
+  `template_missing`, `followup_responded`, `lead_recovered`,
+  `followup_auto_cancelled`.
+- `audit_log` — "Follow-up agora".
+
+Migrations: `20260928120000_allow_followup_flow_events.sql`,
+`20260928130000_followup_cycles.sql`.
 
 ---
 
-## 12. Regras de Extensão
+## 9. Pontos de Integração
 
-Toda nova regra de follow-up deve:
-1. Ser adicionada como caso em `FollowupRule` (`types.ts`).
-2. Ganhar template padrão em `DEFAULT_TEMPLATES` (`defaults.ts`).
-3. Ganhar detector em `findCandidates` (`candidates.ts`).
-4. Manter prioridade explícita no `priority` map de `candidates.ts`.
-5. Ter cobertura na tabela `follow_ups.rule_type` (já livre-texto).
+| Contexto            | Arquivo                                         | Uso                                        |
+| ------------------- | ----------------------------------------------- | ------------------------------------------ |
+| Cron externo        | `src/routes/api.public.hooks.followup-tick.tsx` | `runFollowupTickAll`, `reconcileResponses` |
+| Painel `/ia`        | `src/routes/api.ai.followup-*.tsx`              | settings, status, analytics, reativação    |
+| Inbox / Atendimento | `src/lib/manual-followup.functions.ts`          | `runManualFollowup`                        |
 
-Nenhuma dessas alterações deve mexer em endpoints existentes.
+Toda consulta é escopada por `company_id`.

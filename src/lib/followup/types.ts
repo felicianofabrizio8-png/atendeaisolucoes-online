@@ -27,31 +27,42 @@ export interface FollowupSettings {
   templates: Record<FollowupRule, string>;
   initialMessage: string | null;
   agentName: string;
+  /** Fuso IANA da empresa (o servidor roda em UTC). */
+  timeZone: string;
+  /** Dias úteis ISO: 1 = segunda … 7 = domingo. */
+  businessDays: number[];
 }
 
+/**
+ * Conversa em que uma mensagem NOSSA (ou orçamento/visita) ficou sem
+ * resposta — candidata a abrir um ciclo de follow-up.
+ */
 export interface Candidate {
   conversationId: string;
   leadId: string;
   rule: FollowupRule;
-  lastClientMessageAt: string | null;
+  /** quote:<id> | visit:<id> | msg:<id> — a mesma referência nunca reabre. */
+  referenceKey: string;
+  /** Instante da referência; mensagem do cliente depois disso = respondeu. */
+  referenceAt: string;
   signal: string;
 }
 
 export interface TickResult {
   companyId: string;
+  /** Ciclos vencidos avaliados. */
   scanned: number;
+  /** Ciclos abertos neste tick. */
+  opened?: number;
+  /** Ciclos encerrados neste tick (resposta, venda, fim das tentativas…). */
+  closed?: number;
+  /** Conversas com o cliente esperando resposta — pendência de atendimento, não follow-up. */
+  pendingAttendance?: number;
   sent: number;
   /** Envios bloqueados por EnvironmentGuard (staging/unknown). Não são falhas. */
   simulated?: number;
   skipped: Array<{ conversationId: string; rule: FollowupRule; reason: string }>;
   errors: string[];
-}
-
-export interface SafetyCheck {
-  ok: boolean;
-  reason?: string;
-  attempt?: number;
-  outsideWindow?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,4 +144,10 @@ export interface ManualFollowupResult {
   simulated?: boolean;
   simulationId?: string | null;
   via?: "text" | "template";
+  /** Tentativa do ciclo que este envio representou. */
+  attempt?: number;
+  /** Próxima tentativa agendada no ciclo (null se o ciclo encerrou). */
+  nextFollowupAt?: string | null;
+  /** Por que o ciclo encerrou com este envio, se encerrou. */
+  cycleClosedReason?: string | null;
 }

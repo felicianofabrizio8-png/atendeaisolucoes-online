@@ -43,8 +43,18 @@ function reconcileEvents(): string[] {
   return [...line.matchAll(/[?:]\s*"([a-z_]+)"/g)].map((m) => m[1]);
 }
 
+/** Definição vigente (a última migration que recria) da função do trigger. */
 function triggerEvents(): string[] {
-  const sql = read("supabase/migrations/20260601061610_ead422e3-5256-4732-a6e0-b1dcaa4b76af.sql");
+  const latest = readdirSync(resolve(ROOT, "supabase/migrations"))
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .filter((f) =>
+      /CREATE OR REPLACE FUNCTION public\.cancel_pending_followups_on_reply/.test(
+        read(`supabase/migrations/${f}`),
+      ),
+    )
+    .at(-1)!;
+  const sql = read(`supabase/migrations/${latest}`);
   const fn = sql.slice(sql.indexOf("cancel_pending_followups_on_reply()"));
   return [...fn.matchAll(/INSERT INTO public\.ai_flow_events[\s\S]*?'([a-z_]+)'/g)].map(
     (m) => m[1],

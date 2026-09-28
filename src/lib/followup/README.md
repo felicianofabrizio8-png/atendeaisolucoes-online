@@ -6,6 +6,8 @@ Consolidado na **Fase A** do Plano Diretor da Arquitetura 2.0.
 > Consumidores novos devem importar **exclusivamente** de:
 > ```ts
 > import { runFollowupTickForCompany, canSendFollowupNow } from "@/lib/followup";
+>
+> Visão completa (ciclos de negociação): `FOLLOWUP_ARCHITECTURE.md`.
 > ```
 > Os arquivos `src/lib/ai-followup.server.ts`, `src/lib/ai-followup-v2.server.ts`
 > e `src/lib/manual-followup.functions.ts` permanecem apenas como **fachadas
@@ -26,9 +28,13 @@ de spam.
 | `types.ts`          | Tipos compartilhados (Candidate, TickResult, Settings, etc.).           |
 | `defaults.ts`       | Templates padrão + helpers puros (`firstName`, `renderTemplate`, `isWithinBusinessHours`). |
 | `settings.ts`       | Leitura de `getFollowupSettings` / `getFollowupV2Settings`.             |
-| `candidates.ts`     | `findCandidates` — detecção de leads elegíveis.                         |
-| `safety.ts`         | `canSend` — bloqueios por conversa/handoff/spam/janela 24h.             |
-| `gates.ts`          | `canSendFollowupNow` + `warmupCapacity` (limite diário + response rate).|
+| `candidates.ts`     | Negociações sem resposta (abrem ciclo) e pendências de atendimento.     |
+| `cycles.ts`         | Ciclo de negociação: abrir, agendar, aplicar resultado, encerrar.       |
+| `next-contact.ts`   | Quando retornar: prazo do cliente, sugestão validada, política.         |
+| `calendar.ts`       | Fuso, dias úteis, feriados e próximo horário útil da empresa.           |
+| `dispatch.ts`       | Motor único de envio (revalida, texto/template, persiste).              |
+| `safety.ts`         | Janela de 24h do WhatsApp.                                              |
+| `gates.ts`          | `canSendFollowupNow` + `warmupCapacity` (fail-closed).                  |
 | `humanizer.ts`      | `humanizeTemplate` (determinístico) e `jitterDelayMs`.                  |
 | `message.ts`        | `buildMessage` — monta texto final (com humanização opcional).          |
 | `tick.ts`           | `runFollowupTickForCompany` / `runFollowupTickAll` — loop principal.    |

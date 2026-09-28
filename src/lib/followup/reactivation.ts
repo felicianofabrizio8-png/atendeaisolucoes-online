@@ -1,40 +1,70 @@
 // ============================================================================
 // followup/reactivation.ts
 // Responsabilidade: reativação opt-in de leads antigos que não estão fechados
-// nem perdidos. Respeita horário próprio (v2), gate global e limite diário
-// da reativação. Reutiliza `humanizeTemplate` e `sendWhatsappText`.
+// nem perdidos. Separada dos ciclos de negociação (acionada pelo painel), mas
+// envia pelo motor único (`dispatch.ts`): lead parado há semanas está sempre
+// fora da janela de 24h, então sai por template aprovado — `chamar_novamente`
+// com retomada contextual ou o legado `reativacao_cliente`. Texto livre fora
+// da janela é recusado pela Meta.
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { humanizeTemplate } from "./humanizer";
+import { calendarFor, isBusinessTime, startOfZonedDay } from "./calendar";
+import { dispatchFollowup } from "./dispatch";
 import { canSendFollowupNow } from "./gates";
-import { getFollowupV2Settings } from "./settings";
+import { humanizeTemplate } from "./humanizer";
+import { isOutsideWhatsappWindow } from "./safety";
+import { getFollowupSettings, getFollowupV2Settings } from "./settings";
 import type { ReactivationResult } from "./types";
 
-function withinTimeWindow(start: string, end: string, now = new Date()): boolean {
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  const mins = now.getHours() * 60 + now.getMinutes();
-  return mins >= sh * 60 + (sm || 0) && mins <= eh * 60 + (em || 0);
-}
+const REACTIVATION_TRIGGER = "reactivation";
 
-export async function runReactivation(companyId: string): Promise<ReactivationResult> {
+export async function runReactivation(
+  companyId: string,
+  now = new Date(),
+): Promise<ReactivationResult> {
   const out: ReactivationResult = { scanned: 0, sent: 0, simulated: 0, skipped: [] };
   try {
-    const v2 = await getFollowupV2Settings(companyId);
-    if (!v2 || !v2.reactivationEnabled) return out;
-    if (!withinTimeWindow(v2.reactivationHoursStart, v2.reactivationHoursEnd)) {
+    const [v1, v2] = await Promise.all([
+      getFollowupSettings(companyId),
+      getFollowupV2Settings(companyId),
+    ]);
+    if (!v1 || !v2 || !v2.reactivationEnabled) return out;
+    // Janela própria da reativação, no fuso e nos dias úteis da empresa.
+    const cal = {
+      ...calendarFor(v1),
+      start: v2.reactivationHoursStart,
+      end: v2.reactivationHoursEnd,
+      businessHoursOnly: true,
+    };
+    if (!isBusinessTime(now, cal)) {
       out.skipped.push({ leadId: "-", reason: "fora do horário de reativação" });
       return out;
     }
-    const gate = await canSendFollowupNow(companyId);
+    const gate = await canSendFollowupNow(companyId, now);
     if (!gate.ok) {
       out.skipped.push({ leadId: "-", reason: gate.reason ?? "gate" });
       return out;
     }
-    const cutoff = new Date(
-      Date.now() - v2.reactivationDays * 24 * 3600 * 1000,
-    ).toISOString();
+
+    // "Máximo por dia" de verdade: conta as reativações de hoje, não o lote.
+    const { count: doneToday } = await supabaseAdmin
+      .from("follow_ups")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", companyId)
+      .eq("trigger_reason", REACTIVATION_TRIGGER)
+      .in("status", ["sent", "simulated", "responded", "recovered"])
+      .gte("sent_at", startOfZonedDay(now, v1.timeZone).toISOString());
+    const room = Math.min(
+      v2.reactivationDailyMax - (doneToday ?? 0),
+      gate.remainingToday ?? Infinity,
+    );
+    if (room <= 0) {
+      out.skipped.push({ leadId: "-", reason: "limite diário de reativação atingido" });
+      return out;
+    }
+
+    const cutoff = new Date(now.getTime() - v2.reactivationDays * 24 * 3600 * 1000).toISOString();
     const { data: leads } = await supabaseAdmin
       .from("leads")
       .select("id, name, phone, updated_at")
@@ -42,17 +72,15 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
       .lt("updated_at", cutoff)
       .is("reactivated_at" as never, null)
       .not("status", "in", "(fechado,perdido)")
-      .limit(v2.reactivationDailyMax);
+      .limit(room);
     out.scanned = leads?.length ?? 0;
-
-    // Import on-demand para evitar ciclo com ai-agent.server
-    const { sendWhatsappText } = await import("@/lib/ai-agent.server");
 
     for (const lead of leads ?? []) {
       try {
         const { data: conv } = await supabaseAdmin
           .from("conversations")
           .select("id")
+          .eq("company_id", companyId)
           .eq("lead_id", lead.id)
           .order("last_message_at", { ascending: false })
           .limit(1)
@@ -62,13 +90,21 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           continue;
         }
 
-        // Dedupe de simulações: se já houve uma tentativa simulada de
-        // reativação para este lead dentro da janela reactivationDays, não
-        // reeleger (evita disparos duplicados em staging enquanto o guard
-        // estiver ON — em production/legacy nunca haverá registro simulated).
-        const simCutoff = new Date(
-          Date.now() - v2.reactivationDays * 24 * 3600 * 1000,
-        ).toISOString();
+        // Negociação em curso tem ciclo próprio: reativação não se mete.
+        const { data: activeCycle } = await supabaseAdmin
+          .from("followup_cycles")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("conversation_id", conv.id)
+          .eq("state", "active")
+          .limit(1);
+        if (activeCycle && activeCycle.length > 0) {
+          out.skipped.push({ leadId: lead.id, reason: "negociação com ciclo ativo" });
+          continue;
+        }
+
+        // Dedupe de simulações: em staging (guard ON) não reeleger o mesmo
+        // lead a cada clique — em produção nunca há registro simulated.
         const { data: prevSim } = await supabaseAdmin
           .from("follow_ups")
           .select("id")
@@ -76,89 +112,64 @@ export async function runReactivation(companyId: string): Promise<ReactivationRe
           .eq("lead_id", lead.id)
           .eq("rule_type", "returning_customer")
           .eq("status", "simulated")
-          .gte("created_at", simCutoff)
+          .gte("created_at", cutoff)
           .limit(1);
         if (prevSim && prevSim.length > 0) {
           out.skipped.push({ leadId: lead.id, reason: "reativação já simulada" });
           continue;
         }
 
+        const { data: lastLead } = await supabaseAdmin
+          .from("messages")
+          .select("at")
+          .eq("company_id", companyId)
+          .eq("conversation_id", conv.id)
+          .eq("role", "lead")
+          .order("at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
         const nome = (lead.name || "").trim().split(/\s+/)[0] || "tudo bem";
-        const seed = Math.floor(Date.now() / 1000) + lead.id.charCodeAt(0);
+        const seed = Math.floor(now.getTime() / 1000) + lead.id.charCodeAt(0);
         const { text, variant } = humanizeTemplate(
           v2.reactivationTemplate.replace(/\{\{nome\}\}/g, nome),
           1,
           seed,
           { nome },
         );
-        const send = await sendWhatsappText({
+
+        const r = await dispatchFollowup({
           companyId,
           conversationId: conv.id,
           leadId: lead.id,
+          rule: "returning_customer",
+          attempt: 1,
           text,
+          outsideWindow: await isOutsideWhatsappWindow(conv.id),
+          signal: "reactivation",
+          referenceAt: (lastLead as { at?: string } | null)?.at ?? null,
+          trigger: { kind: "reactivation", reason: REACTIVATION_TRIGGER, variantSeed: variant },
         });
-        if (!send.ok) {
-          out.skipped.push({ leadId: lead.id, reason: send.error ?? "envio falhou" });
-          continue;
-        }
-        if (send.simulated) {
-          // Registra tentativa simulada com status distinto — NÃO marca
-          // leads.reactivated_at (não conta como reativação real).
-          await supabaseAdmin.from("follow_ups").insert({
-            company_id: companyId,
-            conversation_id: conv.id,
-            lead_id: lead.id,
-            rule_type: "returning_customer",
-            attempt_number: 1,
-            message_text: text,
-            status: "simulated",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            variant_seed: variant,
-            trigger_reason: `Reativação (simulada): lead parado há mais de ${v2.reactivationDays} dias`,
-            metadata: {
-              signal: "reactivation",
-              via: "text",
-              simulated: true,
-              simulation_id: send.simulationId,
-              external_request_sent: false,
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any);
+
+        if (r.status === "sent") {
+          await supabaseAdmin
+            .from("leads")
+            .update({ reactivated_at: now.toISOString() } as never)
+            .eq("company_id", companyId)
+            .eq("id", lead.id);
+          out.sent++;
+        } else if (r.status === "simulated") {
+          // Não conta como reativação real: reactivated_at fica intacto.
           out.simulated = (out.simulated ?? 0) + 1;
-          continue;
+        } else {
+          out.skipped.push({ leadId: lead.id, reason: r.reason ?? r.error ?? r.status });
         }
-        await supabaseAdmin.from("follow_ups").insert({
-          company_id: companyId,
-          conversation_id: conv.id,
-          lead_id: lead.id,
-          rule_type: "returning_customer",
-          attempt_number: 1,
-          message_text: text,
-          status: "sent",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          variant_seed: variant,
-          trigger_reason: `Reativação: lead parado há mais de ${v2.reactivationDays} dias`,
-          metadata: { signal: "reactivation", via: "text", external_id: send.externalId },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-        await supabaseAdmin
-          .from("leads")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .update({ reactivated_at: new Date().toISOString() } as any)
-          .eq("id", lead.id);
-        out.sent++;
       } catch (e) {
-        out.skipped.push({
-          leadId: lead.id,
-          reason: e instanceof Error ? e.message : "erro",
-        });
+        out.skipped.push({ leadId: lead.id, reason: e instanceof Error ? e.message : "erro" });
       }
     }
   } catch (e) {
-    out.skipped.push({
-      leadId: "-",
-      reason: e instanceof Error ? e.message : "erro",
-    });
+    out.skipped.push({ leadId: "-", reason: e instanceof Error ? e.message : "erro" });
   }
   return out;
 }

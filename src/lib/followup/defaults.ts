@@ -5,6 +5,7 @@
 // Sem I/O, sem dependências de outros arquivos do módulo além de types.
 // ============================================================================
 
+import { calendarFor, isBusinessTime } from "./calendar";
 import type { FollowupRule, FollowupSettings } from "./types";
 
 // Mensagens padrão de continuidade de atendimento.
@@ -35,14 +36,16 @@ export function renderTemplate(tpl: string, vars: Record<string, string>): strin
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? "");
 }
 
-/** Verifica se o momento atual está dentro da janela comercial da empresa. */
+/**
+ * O momento está no horário comercial da empresa? Usa o fuso e os dias úteis
+ * dela (e feriados nacionais) — o servidor roda em UTC.
+ */
 export function isWithinBusinessHours(
-  s: FollowupSettings,
+  s: Pick<
+    FollowupSettings,
+    "timeZone" | "businessDays" | "businessHoursStart" | "businessHoursEnd" | "businessHoursOnly"
+  >,
   now = new Date(),
 ): boolean {
-  if (!s.businessHoursOnly) return true;
-  const [sh, sm] = s.businessHoursStart.split(":").map(Number);
-  const [eh, em] = s.businessHoursEnd.split(":").map(Number);
-  const mins = now.getHours() * 60 + now.getMinutes();
-  return mins >= sh * 60 + sm && mins <= eh * 60 + em;
+  return isBusinessTime(now, calendarFor(s));
 }

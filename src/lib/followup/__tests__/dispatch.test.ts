@@ -86,7 +86,6 @@ vi.mock("@/lib/llm-gateway/providers/LovableChatProvider", () => ({
 }));
 
 import { dispatchFollowup, type DispatchInput } from "../dispatch";
-import { runManualFollowup } from "../manual";
 
 const CHAMAR_NOVAMENTE = {
   name: "chamar_novamente",
@@ -330,10 +329,23 @@ describe("dispatchFollowup — revalidação antes de enviar", () => {
     expect(r).toMatchObject({ status: "skipped", reason });
   });
 
-  it("cliente antigo que voltou (returning_customer) não é barrado por venda fechada", async () => {
+  it("venda fechada barra qualquer motivo, inclusive reativação (returning_customer)", async () => {
     Object.assign(db.tables.leads[0], { status: "fechado" });
     const r = await dispatchFollowup(input({ rule: "returning_customer" }));
-    expect(r.status).toBe("sent");
+    expect(r).toMatchObject({ status: "skipped", skipCode: "sale_closed" });
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("devolve o código do motivo para o ciclo decidir (encerrar ou adiar)", async () => {
+    Object.assign(db.tables.conversations[0], { ai_handling: true });
+    expect(await dispatchFollowup(input())).toMatchObject({ skipCode: "ai_busy" });
+    Object.assign(db.tables.conversations[0], { ai_handling: false, ai_status: "desinteresse" });
+    expect(await dispatchFollowup(input())).toMatchObject({ skipCode: "disinterest" });
+  });
+
+  it("grava o vínculo com o ciclo na tentativa", async () => {
+    await dispatchFollowup(input({ cycleId: "cycle-9" }));
+    expect(followUps()[0].cycle_id).toBe("cycle-9");
   });
 
   it("não vaza entre empresas: conversa de outra empresa não existe para o motor", async () => {
@@ -351,46 +363,5 @@ describe("dispatchFollowup — dentro da janela", () => {
     );
     expect(tpl.send).not.toHaveBeenCalled();
     expect(llm.run).not.toHaveBeenCalled();
-  });
-});
-
-describe("Follow-up agora usa o mesmo motor", () => {
-  beforeEach(() => {
-    db.tables.company_settings = [{ company_id: "company-a", ai_followup_enabled: true }];
-    db.tables.follow_ups = [];
-    db.tables.conversations[0].lead_id = "lead-1";
-    db.tables.conversations[0].lead_temperature = "morno";
-  });
-
-  it("fora da janela envia chamar_novamente contextual e registra como manual", async () => {
-    const out = await runManualFollowup({
-      companyId: "company-a",
-      userId: "admin-1",
-      conversationId: "conv-1",
-    });
-
-    expect(out).toMatchObject({ eligible: true, sendStatus: "sent", via: "template" });
-    expect(out.generatedMessage).toContain("Conseguiu avaliar o orçamento");
-    expect(tpl.send.mock.calls[0][0]).toMatchObject({
-      purpose: "followup_resume",
-      variables: { var1: "Conseguiu avaliar o orçamento do ar split inverter?" },
-    });
-    const fup = followUps()[0];
-    expect(fup).toMatchObject({ status: "sent", trigger_reason: "manual_admin" });
-    expect(fup.metadata).toMatchObject({ manual: true, by: "admin-1" });
-    const audit = db.inserted.find((i) => i.table === "audit_log")!.row;
-    expect(audit.action).toBe("manual_followup_sent");
-  });
-
-  it("venda fechada: o manual também é barrado pela revalidação", async () => {
-    Object.assign(db.tables.leads[0], { status: "fechado" });
-    const out = await runManualFollowup({
-      companyId: "company-a",
-      userId: "admin-1",
-      conversationId: "conv-1",
-    });
-    expect(out).toEqual({ eligible: false, blockedReason: "venda fechada" });
-    expect(tpl.send).not.toHaveBeenCalled();
-    expect(sendText).not.toHaveBeenCalled();
   });
 });

@@ -66,8 +66,11 @@ describe("defaults", () => {
       templates: DEFAULT_TEMPLATES,
       initialMessage: null,
       agentName: "Fabrizio",
+      timeZone: "America/Sao_Paulo",
+      businessDays: [1, 2, 3, 4, 5],
     };
-    const at = (h: number, m = 0) => new Date(2026, 6, 15, h, m, 0);
+    // Quarta, 15/07/2026, hora de Brasília (UTC-3) — independe do fuso da máquina.
+    const at = (h: number, m = 0) => new Date(Date.UTC(2026, 6, 15, h + 3, m));
     expect(isWithinBusinessHours(base, at(10))).toBe(true);
     expect(isWithinBusinessHours(base, at(8, 59))).toBe(false);
     expect(isWithinBusinessHours(base, at(18, 1))).toBe(false);

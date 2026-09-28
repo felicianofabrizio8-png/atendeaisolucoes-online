@@ -1,23 +1,31 @@
 // ============================================================================
 // followup/manual.ts
-// Responsabilidade: núcleo do disparo manual de follow-up executado por um
-// administrador via inbox. É chamado pela server function
-// `runFollowupNowForConversation` (mantida por compatibilidade em
-// src/lib/manual-followup.functions.ts). Ignora janelas de tempo, mas
-// mantém proteções essenciais (handoff humano, desinteresse, spam 30s).
+// Responsabilidade: "Follow-up agora" — um admin antecipa a próxima tentativa
+// do ciclo de negociação da conversa. Chamado pela server function
+// `runFollowupNowForConversation` (src/lib/manual-followup.functions.ts).
 //
-// Mensagem, janela 24h, revalidação, envio e persistência são o mesmo motor
-// do tick (`message.ts` + `dispatch.ts`) — fora da janela sai o
-// `chamar_novamente` com a retomada contextual.
+// Mesmo motor do tick: o ciclo ativo (ou um aberto agora pelas mesmas regras
+// de detecção) recebe a próxima tentativa já, via `dispatch.ts`, e o
+// resultado reagenda/encerra o ciclo normalmente. Só não espera o relógio.
+// Cliente esperando resposta não é follow-up: é pendência de atendimento.
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+import { calendarFor } from "./calendar";
+import { classifyConversation } from "./candidates";
+import {
+  activeCycleFor,
+  applyDispatchOutcome,
+  openCycle,
+  type CycleContext,
+  type CycleRow,
+} from "./cycles";
 import { dispatchFollowup } from "./dispatch";
 import { buildMessage } from "./message";
 import { isOutsideWhatsappWindow } from "./safety";
 import { getFollowupSettings, getFollowupV2Settings } from "./settings";
-import type { Candidate, ManualFollowupResult } from "./types";
+import type { ManualFollowupResult } from "./types";
 
 export interface ManualFollowupInput {
   companyId: string;
@@ -27,17 +35,20 @@ export interface ManualFollowupInput {
 
 export async function runManualFollowup(input: ManualFollowupInput): Promise<ManualFollowupResult> {
   const { companyId, userId, conversationId } = input;
+  const now = new Date();
 
-  const settings = await getFollowupSettings(companyId);
-  if (!settings) {
+  const [settings, v2] = await Promise.all([
+    getFollowupSettings(companyId),
+    getFollowupV2Settings(companyId),
+  ]);
+  if (!settings || !v2) {
     return { eligible: false, blockedReason: "configuração de follow-up não encontrada" };
   }
 
   const { data: conv } = await supabaseAdmin
     .from("conversations")
-    .select(
-      "id, company_id, lead_id, ai_status, ai_handling, human_takeover_at, lead_temperature, last_message_at",
-    )
+    .select("id, company_id, lead_id, ai_status, ai_handling, human_takeover_at, lead_temperature")
+    .eq("company_id", companyId)
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -47,23 +58,16 @@ export async function runManualFollowup(input: ManualFollowupInput): Promise<Man
   if (!conv.lead_id) {
     return { eligible: false, blockedReason: "conversa sem lead associado" };
   }
-
-  // Bloqueios mínimos (segurança, mesmo no modo manual)
-  if (conv.ai_status === "assumido_humano" || conv.human_takeover_at) {
-    return { eligible: false, blockedReason: "atendimento assumido por humano" };
-  }
-  if (conv.ai_status === "desinteresse") {
-    return { eligible: false, blockedReason: "cliente marcado como sem interesse" };
-  }
   if (conv.ai_handling) {
     return { eligible: false, blockedReason: "IA está processando uma resposta agora" };
   }
 
   // Anti spam mínimo: mensagem do agente nos últimos 30 segundos
-  const recentCutoff = new Date(Date.now() - 30 * 1000).toISOString();
+  const recentCutoff = new Date(now.getTime() - 30 * 1000).toISOString();
   const { data: veryRecent } = await supabaseAdmin
     .from("messages")
     .select("id")
+    .eq("company_id", companyId)
     .eq("conversation_id", conv.id)
     .eq("role", "agent")
     .gte("at", recentCutoff)
@@ -72,50 +76,62 @@ export async function runManualFollowup(input: ManualFollowupInput): Promise<Man
     return { eligible: false, blockedReason: "mensagem do agente enviada há menos de 30s" };
   }
 
-  // Regra: temperatura quente > silent (manual sempre permite)
-  const rule: "hot_lead_idle" | "lead_silent" =
-    (conv.lead_temperature ?? "").toLowerCase() === "quente" ? "hot_lead_idle" : "lead_silent";
-
-  const { data: prior } = await supabaseAdmin
-    .from("follow_ups")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("lead_id", conv.lead_id);
-  const attempt = (prior?.length ?? 0) + 1;
-
-  // Referência para "o cliente respondeu": a última mensagem dele agora.
-  const { data: lastLead } = await supabaseAdmin
-    .from("messages")
-    .select("at")
-    .eq("company_id", companyId)
-    .eq("conversation_id", conv.id)
-    .eq("role", "lead")
-    .order("at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const candidate: Candidate = {
-    conversationId: conv.id,
-    leadId: conv.lead_id,
-    rule,
-    lastClientMessageAt: (lastLead as { at?: string } | null)?.at ?? null,
-    signal: "manual",
+  const ctx: CycleContext = {
+    settings,
+    calendar: calendarFor(settings),
+    jitterMinutes: v2.delayJitterMinutes,
+    now,
   };
-  const v2 = await getFollowupV2Settings(companyId).catch(() => null);
-  const built = await buildMessage(candidate, settings, attempt, v2?.humanize ?? false);
+
+  const cls = await classifyConversation(companyId, conv, now);
+  let cycle: CycleRow | null = null;
+  if (cls.kind === "pending_attendance") {
+    return {
+      eligible: false,
+      blockedReason:
+        "o cliente está esperando resposta — isso é atendimento pendente, não follow-up",
+    };
+  }
+  if (cls.kind === "none") return { eligible: false, blockedReason: cls.reason };
+  if (cls.kind === "active") cycle = await activeCycleFor(companyId, conv.id);
+  if (cls.kind === "candidate") {
+    cycle =
+      (await openCycle(companyId, cls.candidate, ctx)) ??
+      (await activeCycleFor(companyId, conv.id));
+  }
+  if (!cycle)
+    return { eligible: false, blockedReason: "não foi possível abrir o ciclo de follow-up" };
+
+  const attempt = cycle.attempts + 1;
+  const signal = String(cycle.metadata?.signal ?? cycle.reason);
+  const built = await buildMessage(
+    {
+      conversationId: cycle.conversation_id,
+      leadId: cycle.lead_id,
+      rule: cycle.reason,
+      referenceKey: cycle.reference_key,
+      referenceAt: cycle.reference_at,
+      signal,
+    },
+    settings,
+    attempt,
+    v2.humanize,
+  );
 
   const r = await dispatchFollowup({
     companyId,
     conversationId: conv.id,
     leadId: conv.lead_id,
-    rule,
+    rule: cycle.reason,
     attempt,
     text: built.text,
     outsideWindow: await isOutsideWhatsappWindow(conv.id),
-    signal: candidate.signal,
-    referenceAt: candidate.lastClientMessageAt,
+    signal,
+    referenceAt: cycle.reference_at,
     trigger: { kind: "manual", userId },
+    cycleId: cycle.id,
   });
+  const applied = await applyDispatchOutcome(cycle, r, ctx);
 
   if (r.status === "skipped") {
     return { eligible: false, blockedReason: r.reason };
@@ -129,10 +145,14 @@ export async function runManualFollowup(input: ManualFollowupInput): Promise<Man
       entity: "follow_up_manual",
       entity_id: conv.id,
       after: {
-        rule,
+        rule: cycle.reason,
+        cycle_id: cycle.id,
+        attempt,
         via: r.via,
         template_name: r.templateName ?? null,
         resume_phrase: r.resumePhrase ?? null,
+        next_followup_at: applied.nextFollowupAt ?? null,
+        cycle_closed: applied.closeReason ?? null,
         error: r.error ?? r.reason ?? null,
         simulated: r.status === "simulated",
       } as never,
@@ -143,7 +163,7 @@ export async function runManualFollowup(input: ManualFollowupInput): Promise<Man
 
   return {
     eligible: true,
-    rule,
+    rule: cycle.reason,
     generatedMessage: r.message,
     sendStatus: r.status,
     sendError: r.status === "blocked" ? r.reason : r.error,
@@ -151,5 +171,8 @@ export async function runManualFollowup(input: ManualFollowupInput): Promise<Man
     simulated: r.status === "simulated",
     simulationId: r.status === "simulated" ? (r.simulationId ?? null) : null,
     via: r.via,
+    attempt,
+    nextFollowupAt: applied.nextFollowupAt ?? null,
+    cycleClosedReason: applied.closeReason ?? null,
   };
 }

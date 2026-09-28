@@ -2417,6 +2417,8 @@ export type Database = {
           ai_followup_visit_delay_hours: number
           ai_followup_warmup_enabled: boolean
           ai_followup_warmup_started_at: string | null
+          ai_followup_timezone: string
+          ai_followup_business_days: number[]
           ai_handoff_timeout_minutes: number
           ai_initial_message: string | null
           ai_last_test_at: string | null
@@ -2474,6 +2476,8 @@ export type Database = {
           ai_followup_visit_delay_hours?: number
           ai_followup_warmup_enabled?: boolean
           ai_followup_warmup_started_at?: string | null
+          ai_followup_timezone?: string
+          ai_followup_business_days?: number[]
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -2531,6 +2535,8 @@ export type Database = {
           ai_followup_visit_delay_hours?: number
           ai_followup_warmup_enabled?: boolean
           ai_followup_warmup_started_at?: string | null
+          ai_followup_timezone?: string
+          ai_followup_business_days?: number[]
           ai_handoff_timeout_minutes?: number
           ai_initial_message?: string | null
           ai_last_test_at?: string | null
@@ -3026,11 +3032,78 @@ export type Database = {
           },
         ]
       }
+      followup_cycles: {
+        Row: {
+          attempts: number
+          close_reason: string | null
+          closed_at: string | null
+          company_id: string
+          conversation_id: string
+          created_at: string
+          failures: number
+          id: string
+          last_contact_at: string | null
+          lead_id: string
+          max_attempts: number
+          metadata: Json
+          next_followup_at: string | null
+          reason: string
+          reference_at: string
+          reference_key: string
+          schedule_source: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          close_reason?: string | null
+          closed_at?: string | null
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          failures?: number
+          id?: string
+          last_contact_at?: string | null
+          lead_id: string
+          max_attempts: number
+          metadata?: Json
+          next_followup_at?: string | null
+          reason: string
+          reference_at: string
+          reference_key: string
+          schedule_source?: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          close_reason?: string | null
+          closed_at?: string | null
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          failures?: number
+          id?: string
+          last_contact_at?: string | null
+          lead_id?: string
+          max_attempts?: number
+          metadata?: Json
+          next_followup_at?: string | null
+          reason?: string
+          reference_at?: string
+          reference_key?: string
+          schedule_source?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       follow_ups: {
         Row: {
           attempt_number: number
           cancel_reason: string | null
           cancelled_at: string | null
+          cycle_id: string | null
           company_id: string
           conversation_id: string
           created_at: string
@@ -3052,6 +3125,7 @@ export type Database = {
           attempt_number?: number
           cancel_reason?: string | null
           cancelled_at?: string | null
+          cycle_id?: string | null
           company_id: string
           conversation_id: string
           created_at?: string
@@ -3073,6 +3147,7 @@ export type Database = {
           attempt_number?: number
           cancel_reason?: string | null
           cancelled_at?: string | null
+          cycle_id?: string | null
           company_id?: string
           conversation_id?: string
           created_at?: string

@@ -1,154 +1,197 @@
-// Fase B.4.1 — Contrato explícito de simulação nos fluxos automáticos.
+// Contrato explícito de simulação nos fluxos automáticos do follow-up.
 //
-// Verifica que cada consumidor de sendWhatsappText:
-//   • em envio real → mantém persistência e side-effects legados;
-//   • em simulação → não fabrica externalId, não infla contagem real,
-//     não infla auto_reply_count, não seta reactivated_at e registra
-//     evento/status distintos que impedem reenvio imediato.
+// Com o EnvironmentGuard ativo (staging), o transporte devolve
+// `simulated: true`. Tick, "Follow-up agora" e reativação — todos via
+// `dispatch.ts` — precisam:
+//   • em envio real → manter persistência e side-effects;
+//   • em simulação → não fabricar externalId, não contar como envio real,
+//     não setar reactivated_at e registrar status distinto ('simulated').
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------- Fake supabaseAdmin (chainable) ----------
-type Row = Record<string, unknown> | Row[] | null;
 const inserted: Array<{ table: string; row: any }> = [];
 const updated: Array<{ table: string; patch: any }> = [];
-const tableRows: Record<string, Row> = {};
+const tableRows: Record<string, Array<Record<string, unknown>>> = {};
 
-function makeChain(table: string, row: Row) {
+function makeChain(table: string) {
   const filters: Array<[string, unknown]> = [];
+  const list = () => (tableRows[table] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
   const chain: any = {
-    _row: row,
     select: () => chain,
-    eq: (col: string, val: unknown) => {
-      filters.push([col, val]);
-      return chain;
-    },
+    eq: (col: string, val: unknown) => (filters.push([col, val]), chain),
     order: () => chain,
     gte: () => chain,
     lte: () => chain,
+    gt: () => chain,
     lt: () => chain,
     is: () => chain,
     in: () => chain,
     not: () => chain,
-    or: () => chain,
     limit: () => chain,
-  };
-  const applyFilters = (arr: Row[]) =>
-    arr.filter((r) =>
-      filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v),
-    );
-  chain.maybeSingle = async () => {
-    const list = Array.isArray(chain._row)
-      ? applyFilters(chain._row as Row[])
-      : chain._row
-        ? applyFilters([chain._row])
-        : [];
-    return { data: list[0] ?? null, error: null };
-  };
-  chain.single = chain.maybeSingle;
-  chain.then = (cb: (r: { data: Row[]; error: null }) => void) =>
-    cb({
-      data: Array.isArray(chain._row)
-        ? applyFilters(chain._row as Row[])
-        : chain._row
-          ? applyFilters([chain._row])
-          : [],
-      error: null,
-    });
-  chain.insert = (r: any) => {
-    inserted.push({ table, row: r });
-    return {
-      select: () => ({ single: async () => ({ data: { id: "x" }, error: null }) }),
-      then: (cb: any) => cb({ data: null, error: null }),
-    };
-  };
-  chain.update = (patch: any) => {
-    updated.push({ table, patch });
-    return { eq: async () => ({ error: null }) };
+    maybeSingle: async () => ({ data: list()[0] ?? null, error: null }),
+    then: (cb: any) => cb({ data: list(), count: list().length, error: null }),
+    insert: (r: any) => {
+      inserted.push({ table, row: r });
+      const res = { data: { id: "x", ...r }, error: null };
+      return { select: () => ({ single: async () => res }), then: (cb: any) => cb(res) };
+    },
+    update: (patch: any) => {
+      const upd: any = {
+        eq: () => upd,
+        is: () => upd,
+        then: (cb: any) => {
+          updated.push({ table, patch });
+          return cb({ error: null });
+        },
+      };
+      return upd;
+    },
   };
   return chain;
 }
-const supabaseAdmin: any = {
-  from: vi.fn((t: string) => makeChain(t, tableRows[t] ?? null)),
-};
-vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin }));
+vi.mock("@/integrations/supabase/client.server", () => ({
+  supabaseAdmin: { from: vi.fn((t: string) => makeChain(t)) },
+}));
 
-// ---------- Spy sendWhatsappText ----------
+// ---------- Transporte ----------
 const sendSpy = vi.fn();
 vi.mock("@/lib/ai-agent.server", () => ({
   sendWhatsappText: (...args: unknown[]) => sendSpy(...args),
 }));
+const templateSpy = vi.fn();
+vi.mock("@/lib/wa-templates.server", () => ({
+  // Só o legado por propósito existe: sem chamar_novamente não há IA no caminho.
+  findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
+    purpose === "followup_resume"
+      ? null
+      : {
+          name: "reativacao_cliente",
+          category: "marketing",
+          variables: ["var1"],
+          components: [{ type: "BODY", text: "Olá {{1}}" }],
+        },
+  renderTemplateBody: (_t: unknown, vars: Record<string, string>) => ({
+    body: `Olá ${vars.var1}`,
+    parameters: [],
+  }),
+  sendWhatsappTemplate: (...args: unknown[]) => templateSpy(...args),
+}));
 
-beforeEach(() => {
-  sendSpy.mockReset();
-  inserted.length = 0;
-  updated.length = 0;
-  Object.keys(tableRows).forEach((k) => delete tableRows[k]);
-});
+vi.mock("@/lib/ai-readiness.server", () => ({ getReadiness: async () => ({ status: "ativa" }) }));
+vi.mock("@/lib/followup/gates", () => ({
+  canSendFollowupNow: async () => ({ ok: true, remainingToday: 50 }),
+}));
 
-// =====================================================
-// followup/tick.ts
-// =====================================================
-describe("followup/tick — simulated não é contado como envio real", () => {
-  // O motor revalida a conversa antes de enviar: ela precisa existir, seguir
-  // ativa e o cliente não pode ter respondido depois do candidato.
-  beforeEach(() => {
-    tableRows.conversations = {
-      id: "conv-1",
+const SETTINGS = {
+  enabled: true,
+  maxPerLead: 3,
+  minHoursBetween: 24,
+  quoteDelayHours: 24,
+  silenceDelayHours: 48,
+  visitDelayHours: 24,
+  hotDelayHours: 4,
+  businessHoursOnly: false,
+  businessHoursStart: "00:00",
+  businessHoursEnd: "23:59",
+  tone: "amigavel",
+  templates: { lead_silent: "Oi {{nome}}" },
+  initialMessage: null,
+  agentName: "Fabri",
+  timeZone: "America/Sao_Paulo",
+  businessDays: [1, 2, 3, 4, 5, 6, 7],
+};
+const V2 = {
+  humanize: false,
+  delayJitterMinutes: 0,
+  dailyLimit: 100,
+  minResponseRate: 0,
+  warmupEnabled: false,
+  warmupStartedAt: null,
+  reactivationEnabled: true,
+  reactivationDays: 30,
+  reactivationDailyMax: 5,
+  reactivationHoursStart: "00:00",
+  reactivationHoursEnd: "23:59",
+  reactivationTemplate: "Olá {{nome}}",
+};
+vi.mock("@/lib/followup/settings", () => ({
+  getFollowupSettings: async () => SETTINGS,
+  getFollowupV2Settings: async () => V2,
+}));
+
+// ---------- Ciclo: um ciclo vencido, resultado aplicado de verdade é outro teste ----------
+const CYCLE = {
+  id: "cycle-1",
+  company_id: "company-1",
+  conversation_id: "conv-1",
+  lead_id: "lead-1",
+  reason: "lead_silent",
+  reference_key: "msg:m1",
+  reference_at: "2026-01-01T00:00:00Z",
+  state: "active",
+  attempts: 0,
+  max_attempts: 3,
+  failures: 0,
+  next_followup_at: "2026-01-02T00:00:00Z",
+  metadata: { signal: "nossa mensagem sem resposta" },
+};
+const applySpy = vi.fn(async () => ({ state: "active", nextFollowupAt: "2026-01-05T00:00:00Z" }));
+vi.mock("@/lib/followup/candidates", () => ({
+  scanFollowupOpportunities: async () => ({ candidates: [], pendingAttendance: 0 }),
+  classifyConversation: async () => ({ kind: "active", cycleId: "cycle-1" }),
+}));
+vi.mock("@/lib/followup/cycles", () => ({
+  openCycle: async () => null,
+  dueCycles: async () => [CYCLE],
+  activeCycleFor: async () => CYCLE,
+  reanchorIfWeSpokeAgain: async () => null,
+  applyDispatchOutcome: (...args: unknown[]) => applySpy(...(args as [])),
+}));
+const window24h = vi.hoisted(() => ({ outside: false }));
+vi.mock("@/lib/followup/safety", () => ({
+  isOutsideWhatsappWindow: async () => window24h.outside,
+}));
+
+import { runFollowupTickForCompany } from "@/lib/followup/tick";
+import { runManualFollowup } from "@/lib/followup/manual";
+import { runReactivation } from "@/lib/followup/reactivation";
+
+function liveConversation(id: string, leadId: string) {
+  tableRows.conversations = [
+    {
+      id,
       company_id: "company-1",
-      lead_id: "lead-1",
+      lead_id: leadId,
       ai_status: null,
       ai_handling: false,
       human_takeover_at: null,
-    };
-    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo" };
-    tableRows.messages = [];
-  });
+    },
+  ];
+  tableRows.leads = [{ id: leadId, company_id: "company-1", name: "Ana", status: "novo" }];
+  tableRows.messages = [];
+}
 
-  it("simulated: insere follow_up status='simulated' + evento followup_simulated + result.simulated++", async () => {
-    // Bypass dependências indiretas
-    vi.doMock("@/lib/ai-readiness.server", () => ({
-      getReadiness: async () => ({ status: "ativa" }),
-    }));
-    vi.doMock("@/lib/wa-templates.server", () => ({
-      findApprovedTemplateForPurpose: async () => null,
-      sendWhatsappTemplate: async () => ({ ok: true, externalId: null }),
-    }));
-    vi.doMock("../followup/candidates", () => ({
-      findCandidates: async () => [
-        {
-          conversationId: "conv-1",
-          leadId: "lead-1",
-          rule: "lead_silent",
-          lastClientMessageAt: "2026-01-01T00:00:00Z",
-          signal: "cliente sumiu",
-        },
-      ],
-    }));
-    vi.doMock("../followup/safety", () => ({
-      canSend: async () => ({ ok: true, attempt: 1, outsideWindow: false }),
-    }));
-    vi.doMock("../followup/defaults", () => ({
-      firstName: (n: string) => n,
-      isWithinBusinessHours: () => true,
-    }));
-    vi.doMock("../followup/gates", () => ({
-      canSendFollowupNow: async () => ({ ok: true }),
-    }));
-    vi.doMock("../followup/message", () => ({
-      buildMessage: async () => ({ text: "olá" }),
-    }));
-    vi.doMock("../followup/settings", () => ({
-      getFollowupSettings: async () => ({
-        enabled: true,
-        businessHoursOnly: false,
-        businessHoursStart: "00:00",
-        businessHoursEnd: "23:59",
-      }),
-      getFollowupV2Settings: async () => null,
-    }));
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-07-15T15:00:00Z"));
+  sendSpy.mockReset();
+  templateSpy.mockReset();
+  applySpy.mockClear();
+  inserted.length = 0;
+  updated.length = 0;
+  Object.keys(tableRows).forEach((k) => delete tableRows[k]);
+  window24h.outside = false;
+  liveConversation("conv-1", "lead-1");
+});
+afterEach(() => vi.useRealTimers());
 
+const fup = () => inserted.find((r) => r.table === "follow_ups")!.row;
+const event = () => inserted.find((r) => r.table === "ai_flow_events")!.row;
+
+describe("tick — simulated não é contado como envio real", () => {
+  it("simulated: follow_up 'simulated' + followup_simulated + result.simulated++", async () => {
     sendSpy.mockResolvedValueOnce({
       ok: true,
       simulated: true,
@@ -156,105 +199,49 @@ describe("followup/tick — simulated não é contado como envio real", () => {
       simulationId: "sim-tick",
       externalRequestSent: false,
     });
-
-    const { runFollowupTickForCompany } = await import("@/lib/followup/tick");
     const result = await runFollowupTickForCompany("company-1");
-
     expect(result.sent).toBe(0);
     expect(result.simulated).toBe(1);
     expect(result.errors).toEqual([]);
-
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("simulated");
-    expect(fup.metadata.simulated).toBe(true);
-    expect(fup.metadata.simulation_id).toBe("sim-tick");
-    expect(fup.metadata.external_request_sent).toBe(false);
-    // Não fabrica external_id
-    expect(fup.metadata.external_id).toBeUndefined();
-
-    const event = inserted.find((r) => r.table === "ai_flow_events")!.row;
-    expect(event.event_type).toBe("followup_simulated");
-    expect(event.payload.simulation_id).toBe("sim-tick");
-  });
-
-  it("real: mantém status='sent', event followup_sent e external_id preservado", async () => {
-    sendSpy.mockResolvedValueOnce({
-      ok: true,
-      simulated: false,
-      externalId: "wamid.REAL",
+    expect(fup()).toMatchObject({ status: "simulated", cycle_id: "cycle-1" });
+    expect(fup().metadata).toMatchObject({
+      simulated: true,
+      simulation_id: "sim-tick",
+      external_request_sent: false,
     });
-    const { runFollowupTickForCompany } = await import("@/lib/followup/tick");
-    const result = await runFollowupTickForCompany("company-1");
-    expect(result.sent).toBe(1);
-    expect(result.simulated).toBe(0);
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("sent");
-    expect(fup.metadata.external_id).toBe("wamid.REAL");
-    const event = inserted.find((r) => r.table === "ai_flow_events")!.row;
-    expect(event.event_type).toBe("followup_sent");
-  });
-
-  it("falha real: preserva status='failed' + followup_failed + result.errors", async () => {
-    sendSpy.mockResolvedValueOnce({
-      ok: false,
-      simulated: false,
-      error: "Invalid phone",
+    expect(fup().metadata.external_id).toBeUndefined();
+    expect(event()).toMatchObject({
+      event_type: "followup_simulated",
+      payload: { simulation_id: "sim-tick" },
     });
-    const { runFollowupTickForCompany } = await import("@/lib/followup/tick");
-    const result = await runFollowupTickForCompany("company-1");
-    expect(result.sent).toBe(0);
-    expect(result.simulated).toBe(0);
-    expect(result.errors.length).toBe(1);
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("failed");
-    expect(fup.metadata.error).toBe("Invalid phone");
+    // simulado avança o ciclo (senão reenviaria a cada tick em staging)
+    expect(applySpy).toHaveBeenCalledWith(
+      CYCLE,
+      expect.objectContaining({ status: "simulated" }),
+      expect.anything(),
+    );
   });
 
-  // Limpa os doMocks locais para não vazarem para os describes seguintes
-  // (manual/reactivation) — sem isso, o mock parcial de `../followup/settings`
-  // sobrescreveria os dados reais que manual/reactivation esperam.
-  afterAll(() => {
-    vi.doUnmock("@/lib/ai-readiness.server");
-    vi.doUnmock("@/lib/wa-templates.server");
-    vi.doUnmock("../followup/candidates");
-    vi.doUnmock("../followup/safety");
-    vi.doUnmock("../followup/defaults");
-    vi.doUnmock("../followup/gates");
-    vi.doUnmock("../followup/message");
-    vi.doUnmock("../followup/settings");
-    vi.resetModules();
+  it("real: status 'sent', followup_sent e external_id preservado", async () => {
+    sendSpy.mockResolvedValueOnce({ ok: true, simulated: false, externalId: "wamid.REAL" });
+    const result = await runFollowupTickForCompany("company-1");
+    expect(result).toMatchObject({ sent: 1, simulated: 0 });
+    expect(fup()).toMatchObject({ status: "sent" });
+    expect(fup().metadata.external_id).toBe("wamid.REAL");
+    expect(event().event_type).toBe("followup_sent");
+  });
+
+  it("falha real: status 'failed' + followup_failed + result.errors", async () => {
+    sendSpy.mockResolvedValueOnce({ ok: false, simulated: false, error: "Invalid phone" });
+    const result = await runFollowupTickForCompany("company-1");
+    expect(result).toMatchObject({ sent: 0, simulated: 0 });
+    expect(result.errors).toHaveLength(1);
+    expect(fup()).toMatchObject({ status: "failed" });
+    expect(fup().metadata.error).toBe("Invalid phone");
   });
 });
 
-// =====================================================
-// followup/manual.ts
-// =====================================================
-describe("followup/manual — resposta ao admin discrimina simulação", () => {
-  beforeEach(() => {
-    tableRows.company_settings = {
-      company_id: "company-1",
-      ai_followup_enabled: true,
-      ai_followup_business_hours_only: false,
-      ai_agent_name: "Fabri",
-      ai_followup_templates: null,
-    };
-    tableRows.conversations = {
-      id: "conv-m",
-      company_id: "company-1",
-      lead_id: "lead-m",
-      ai_status: null,
-      ai_handling: false,
-      human_takeover_at: null,
-      last_message_at: new Date().toISOString(),
-      lead_temperature: "morno",
-    };
-    tableRows.leads = { id: "lead-m", name: "Ana", product: null };
-    tableRows.messages = [
-      { role: "lead", at: new Date().toISOString(), conversation_id: "conv-m" },
-    ];
-    tableRows.follow_ups = null;
-  });
-
+describe("Follow-up agora — resposta ao admin discrimina simulação", () => {
   it("simulated: sendStatus='simulated', externalId=null, simulated=true", async () => {
     sendSpy.mockResolvedValueOnce({
       ok: true,
@@ -263,132 +250,79 @@ describe("followup/manual — resposta ao admin discrimina simulação", () => {
       simulationId: "sim-manual",
       externalRequestSent: false,
     });
-    const { runManualFollowup } = await import("@/lib/followup/manual");
     const out = await runManualFollowup({
       companyId: "company-1",
       userId: "user-1",
-      conversationId: "conv-m",
+      conversationId: "conv-1",
     });
-    expect(out.eligible).toBe(true);
-    expect(out.sendStatus).toBe("simulated");
-    expect(out.simulated).toBe(true);
-    expect(out.simulationId).toBe("sim-manual");
-    expect(out.externalId).toBeNull();
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("simulated");
-    expect(fup.metadata.simulated).toBe(true);
-    expect(fup.metadata.external_id).toBeUndefined();
+    expect(out).toMatchObject({
+      eligible: true,
+      sendStatus: "simulated",
+      simulated: true,
+      simulationId: "sim-manual",
+      externalId: null,
+    });
+    expect(fup()).toMatchObject({ status: "simulated", trigger_reason: "manual_admin" });
+    expect(fup().metadata.external_id).toBeUndefined();
   });
 
   it("real: sendStatus='sent', simulated=false, externalId preservado", async () => {
-    sendSpy.mockResolvedValueOnce({
-      ok: true,
-      simulated: false,
-      externalId: "wamid.MAN",
-    });
-    const { runManualFollowup } = await import("@/lib/followup/manual");
+    sendSpy.mockResolvedValueOnce({ ok: true, simulated: false, externalId: "wamid.MAN" });
     const out = await runManualFollowup({
       companyId: "company-1",
       userId: "user-1",
-      conversationId: "conv-m",
+      conversationId: "conv-1",
     });
-    expect(out.sendStatus).toBe("sent");
-    expect(out.simulated).toBe(false);
-    expect(out.externalId).toBe("wamid.MAN");
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("sent");
-    expect(fup.metadata.external_id).toBe("wamid.MAN");
+    expect(out).toMatchObject({ sendStatus: "sent", simulated: false, externalId: "wamid.MAN" });
+    expect(fup().metadata.external_id).toBe("wamid.MAN");
   });
 });
 
-// =====================================================
-// followup/reactivation.ts
-// =====================================================
-describe("followup/reactivation — simulação não marca reactivated_at", () => {
+describe("reativação — via template, simulação não marca reactivated_at", () => {
   beforeEach(() => {
-    // Isola dependências externas do reactivation
-    vi.doMock("../followup/settings", () => ({
-      getFollowupV2Settings: async () => ({
-        humanize: false,
-        delayJitterMinutes: 0,
-        dailyLimit: 100,
-        minResponseRate: 0,
-        warmupEnabled: false,
-        warmupStartedAt: null,
-        reactivationEnabled: true,
-        reactivationDays: 30,
-        reactivationDailyMax: 5,
-        reactivationHoursStart: "00:00",
-        reactivationHoursEnd: "23:59",
-        reactivationTemplate: "Olá {{nome}}",
-      }),
-      getFollowupSettings: async () => null,
-    }));
-    vi.doMock("../followup/gates", () => ({
-      canSendFollowupNow: async () => ({ ok: true }),
-    }));
-    vi.resetModules();
-
+    liveConversation("conv-r", "lead-r");
     tableRows.leads = [
       {
         id: "lead-r",
         company_id: "company-1",
         name: "Bruno",
-        phone: "11999",
+        status: "novo",
         updated_at: "2020-01-01",
       },
     ];
-    tableRows.conversations = { id: "conv-r", lead_id: "lead-r", company_id: "company-1" };
-    tableRows.follow_ups = []; // nenhum simulated prévio
+    tableRows.follow_ups = [];
+    // Lead parado há semanas: sempre fora da janela de 24h.
+    window24h.outside = true;
   });
 
-  afterAll(() => {
-    vi.doUnmock("../followup/settings");
-    vi.doUnmock("../followup/gates");
-    vi.resetModules();
-  });
-
-
-
-
-  it("simulated: insere follow_up status='simulated', NÃO atualiza leads.reactivated_at, incrementa out.simulated", async () => {
-    sendSpy.mockResolvedValueOnce({
+  it("simulated: follow_up 'simulated', leads intocado, out.simulated++", async () => {
+    templateSpy.mockResolvedValueOnce({
       ok: true,
       simulated: true,
       externalId: null,
       simulationId: "sim-react",
-      externalRequestSent: false,
     });
-    const { runReactivation } = await import("@/lib/followup/reactivation");
     const out = await runReactivation("company-1");
-    expect(out.sent).toBe(0);
-    expect(out.simulated).toBe(1);
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("simulated");
-    expect(fup.metadata.simulated).toBe(true);
-    expect(fup.metadata.simulation_id).toBe("sim-react");
-    // Não deve tocar em leads (que marcaria reactivated_at)
+    expect(out).toMatchObject({ sent: 0, simulated: 1 });
+    expect(sendSpy).not.toHaveBeenCalled(); // nada de texto livre fora da janela
+    expect(fup()).toMatchObject({
+      status: "simulated",
+      trigger_reason: "reactivation",
+      rule_type: "returning_customer",
+    });
+    expect(fup().metadata.simulation_id).toBe("sim-react");
     expect(updated.some((u) => u.table === "leads")).toBe(false);
   });
 
-  it("real: insere status='sent' + atualiza leads.reactivated_at + out.sent++", async () => {
-    sendSpy.mockResolvedValueOnce({
-      ok: true,
-      simulated: false,
-      externalId: "wamid.REACT",
-    });
-    const { runReactivation } = await import("@/lib/followup/reactivation");
+  it("real: status 'sent' + reactivated_at + out.sent++", async () => {
+    templateSpy.mockResolvedValueOnce({ ok: true, simulated: false, externalId: "wamid.REACT" });
     const out = await runReactivation("company-1");
-    expect(out.sent).toBe(1);
-    expect(out.simulated).toBe(0);
-    const fup = inserted.find((r) => r.table === "follow_ups")!.row;
-    expect(fup.status).toBe("sent");
-    expect(fup.metadata.external_id).toBe("wamid.REACT");
-    const leadPatch = updated.find((u) => u.table === "leads")?.patch as any;
-    expect(leadPatch.reactivated_at).toBeDefined();
+    expect(out).toMatchObject({ sent: 1, simulated: 0 });
+    expect(fup().metadata.external_id).toBe("wamid.REACT");
+    expect((updated.find((u) => u.table === "leads")?.patch as any).reactivated_at).toBeDefined();
   });
 
-  it("dedupe: se já existe follow_up simulado recente, o lead é pulado sem chamar sendWhatsappText", async () => {
+  it("dedupe: simulação recente do mesmo lead → pulado sem enviar", async () => {
     tableRows.follow_ups = [
       {
         id: "prev-sim",
@@ -398,11 +332,9 @@ describe("followup/reactivation — simulação não marca reactivated_at", () =
         status: "simulated",
       },
     ];
-    const { runReactivation } = await import("@/lib/followup/reactivation");
     const out = await runReactivation("company-1");
-    expect(out.sent).toBe(0);
-    expect(out.simulated).toBe(0);
+    expect(out).toMatchObject({ sent: 0, simulated: 0 });
     expect(out.skipped[0]?.reason).toBe("reativação já simulada");
-    expect(sendSpy).not.toHaveBeenCalled();
+    expect(templateSpy).not.toHaveBeenCalled();
   });
 });

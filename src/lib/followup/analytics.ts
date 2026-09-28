@@ -6,8 +6,9 @@
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { warmupCapacity } from "./gates";
-import { getFollowupV2Settings } from "./settings";
+import { startOfZonedDay, zonedParts } from "./calendar";
+import { DELIVERED_STATUSES, warmupCapacity } from "./gates";
+import { getFollowupSettings, getFollowupV2Settings } from "./settings";
 import type { AdvancedAnalytics } from "./types";
 
 export async function getAdvancedAnalytics(
@@ -24,18 +25,23 @@ export async function getAdvancedAnalytics(
     todayLimit: 0,
   };
   try {
+    const v1 = await getFollowupSettings(companyId);
+    const timeZone = v1?.timeZone ?? "America/Sao_Paulo";
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    // Só o que chegou ao cliente: bloqueios, falhas e simulações não são "envios".
     const { data: fups } = await supabaseAdmin
       .from("follow_ups")
       .select("rule_type, status, sent_at, responded_at, lead_id")
       .eq("company_id", companyId)
+      .in("status", DELIVERED_STATUSES)
       .gte("sent_at", since);
     const list = fups ?? [];
 
     // por dia
     const dayMap = new Map<string, { sent: number; responded: number; recovered: number }>();
     for (const f of list) {
-      const day = new Date(f.sent_at).toISOString().slice(0, 10);
+      const p = zonedParts(new Date(f.sent_at), timeZone);
+      const day = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
       const cur = dayMap.get(day) ?? { sent: 0, responded: 0, recovered: 0 };
       cur.sent++;
       if (f.responded_at) cur.responded++;
@@ -74,7 +80,7 @@ export async function getAdvancedAnalytics(
     const hourMap = new Map<number, number>();
     for (const f of list) {
       if (!f.responded_at) continue;
-      const h = new Date(f.sent_at).getHours();
+      const h = zonedParts(new Date(f.sent_at), timeZone).hour;
       hourMap.set(h, (hourMap.get(h) ?? 0) + 1);
     }
     let bestH = -1,
@@ -95,6 +101,7 @@ export async function getAdvancedAnalytics(
       const { data: leads } = await supabaseAdmin
         .from("leads")
         .select("id, closed_value, estimated_value")
+        .eq("company_id", companyId)
         .in("id", recoveredLeadIds);
       for (const l of leads ?? []) {
         out.recoveredValue += Number(l.closed_value ?? l.estimated_value ?? 0);
@@ -104,13 +111,12 @@ export async function getAdvancedAnalytics(
     // limite/sent hoje
     const v2 = await getFollowupV2Settings(companyId);
     if (v2) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      const startOfDay = startOfZonedDay(new Date(), timeZone);
       const { count } = await supabaseAdmin
         .from("follow_ups")
         .select("id", { count: "exact", head: true })
         .eq("company_id", companyId)
-        .eq("status", "sent")
+        .in("status", DELIVERED_STATUSES)
         .gte("sent_at", startOfDay.toISOString());
       out.todaySent = count ?? 0;
       out.todayLimit = v2.warmupEnabled

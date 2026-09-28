@@ -27,7 +27,10 @@ import {
 import { generateResumePhrase, loadResumeContext } from "./resume";
 import type { FollowupRule } from "./types";
 
-export type FollowupTrigger = { kind: "auto" } | { kind: "manual"; userId: string };
+export type FollowupTrigger =
+  | { kind: "auto" }
+  | { kind: "manual"; userId: string }
+  | { kind: "reactivation"; reason: string; variantSeed?: number };
 
 export interface DispatchInput {
   companyId: string;
@@ -45,14 +48,30 @@ export interface DispatchInput {
    */
   referenceAt: string | null;
   trigger: FollowupTrigger;
+  /** Ciclo de negociação a que a tentativa pertence (reativação não tem). */
+  cycleId?: string | null;
 }
 
 export type DispatchStatus = "sent" | "simulated" | "failed" | "blocked" | "skipped";
+
+/**
+ * Por que a revalidação barrou o envio. Os definitivos encerram o ciclo;
+ * `ai_busy` só adia.
+ */
+export type SkipCode =
+  | "client_replied"
+  | "sale_closed"
+  | "sale_lost"
+  | "human_takeover"
+  | "disinterest"
+  | "conversation_missing"
+  | "ai_busy";
 
 export interface DispatchResult {
   status: DispatchStatus;
   /** skipped/blocked: por que não saiu. */
   reason?: string;
+  skipCode?: SkipCode;
   error?: string;
   via: "text" | "template";
   templateName?: string;
@@ -75,9 +94,9 @@ function legacyFirstName(name: string | null | undefined): string {
  * cliente pode ter respondido nesse meio-tempo.
  */
 export async function revalidateFollowup(
-  input: Pick<DispatchInput, "companyId" | "conversationId" | "leadId" | "rule" | "referenceAt">,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const { companyId, conversationId, leadId, rule, referenceAt } = input;
+  input: Pick<DispatchInput, "companyId" | "conversationId" | "leadId" | "referenceAt">,
+): Promise<{ ok: true } | { ok: false; code: SkipCode; reason: string }> {
+  const { companyId, conversationId, leadId, referenceAt } = input;
 
   const { data: conv } = await supabaseAdmin
     .from("conversations")
@@ -85,25 +104,25 @@ export async function revalidateFollowup(
     .eq("company_id", companyId)
     .eq("id", conversationId)
     .maybeSingle();
-  if (!conv) return { ok: false, reason: "conversa não encontrada" };
+  if (!conv) return { ok: false, code: "conversation_missing", reason: "conversa não encontrada" };
   if (conv.ai_status === "assumido_humano" || conv.human_takeover_at)
-    return { ok: false, reason: "humano assumiu" };
-  if (conv.ai_status === "desinteresse") return { ok: false, reason: "cliente sem interesse" };
-  if (conv.ai_status === "perdido") return { ok: false, reason: "venda perdida" };
-  if (conv.ai_handling) return { ok: false, reason: "IA em processamento" };
+    return { ok: false, code: "human_takeover", reason: "humano assumiu" };
+  if (conv.ai_status === "desinteresse")
+    return { ok: false, code: "disinterest", reason: "cliente sem interesse" };
+  if (conv.ai_status === "perdido")
+    return { ok: false, code: "sale_lost", reason: "venda perdida" };
+  if (conv.ai_handling) return { ok: false, code: "ai_busy", reason: "IA em processamento" };
 
-  // `returning_customer` existe justamente para lead fechado/perdido que voltou.
-  if (rule !== "returning_customer") {
-    const { data: lead } = await supabaseAdmin
-      .from("leads")
-      .select("status, closed_at, lost_at")
-      .eq("company_id", companyId)
-      .eq("id", leadId)
-      .maybeSingle();
-    if (lead?.status === "fechado" || lead?.closed_at)
-      return { ok: false, reason: "venda fechada" };
-    if (lead?.status === "perdido" || lead?.lost_at) return { ok: false, reason: "venda perdida" };
-  }
+  const { data: lead } = await supabaseAdmin
+    .from("leads")
+    .select("status, closed_at, lost_at")
+    .eq("company_id", companyId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (lead?.status === "fechado" || lead?.closed_at)
+    return { ok: false, code: "sale_closed", reason: "venda fechada" };
+  if (lead?.status === "perdido" || lead?.lost_at)
+    return { ok: false, code: "sale_lost", reason: "venda perdida" };
 
   const { data: lastLead } = await supabaseAdmin
     .from("messages")
@@ -118,7 +137,7 @@ export async function revalidateFollowup(
   // Compara por instante, não por texto: o mesmo horário pode vir como "Z" ou
   // "+00:00" e com casas de fração diferentes. 1s absorve arredondamento.
   if (lastLeadAt && (!referenceAt || Date.parse(lastLeadAt) > Date.parse(referenceAt) + 1000))
-    return { ok: false, reason: "cliente respondeu" };
+    return { ok: false, code: "client_replied", reason: "cliente respondeu" };
 
   return { ok: true };
 }
@@ -134,6 +153,7 @@ async function persist(
 ) {
   if (result.status === "skipped") return;
   const manual = input.trigger.kind === "manual";
+  const reactivation = input.trigger.kind === "reactivation";
   const metadata: Record<string, unknown> = {
     signal: input.signal,
     via: result.via,
@@ -142,6 +162,7 @@ async function persist(
       ? { resume_phrase: result.resumePhrase, resume_phrase_source: result.resumePhraseSource }
       : {}),
     ...(manual ? { manual: true, by: (input.trigger as { userId: string }).userId } : {}),
+    ...(reactivation ? { reactivation: true } : {}),
     ...extra,
   };
   if (result.status === "simulated") {
@@ -164,7 +185,11 @@ async function persist(
     attempt_number: input.attempt,
     message_text: result.message,
     status: result.status,
+    cycle_id: input.cycleId ?? null,
     ...(manual ? { trigger_reason: "manual_admin" } : {}),
+    ...(input.trigger.kind === "reactivation"
+      ? { trigger_reason: input.trigger.reason, variant_seed: input.trigger.variantSeed ?? null }
+      : {}),
     metadata: metadata as never,
   });
 
@@ -223,6 +248,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     return {
       status: "skipped",
       reason: early.reason,
+      skipCode: early.code,
       via: input.outsideWindow ? "template" : "text",
       message: input.text,
     };
@@ -232,7 +258,13 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     // …e de novo imediatamente antes de enviar.
     const late = await revalidateFollowup(input);
     if (!late.ok)
-      return { status: "skipped", reason: late.reason, via: "text", message: input.text };
+      return {
+        status: "skipped",
+        reason: late.reason,
+        skipCode: late.code,
+        via: "text",
+        message: input.text,
+      };
     const send = await sendWhatsappText({
       companyId: input.companyId,
       conversationId: input.conversationId,
@@ -299,6 +331,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     return {
       status: "skipped",
       reason: late.reason,
+      skipCode: late.code,
       via: "template",
       templateName: template.name,
       message,

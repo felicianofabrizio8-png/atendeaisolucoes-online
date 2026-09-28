@@ -90,6 +90,24 @@ export function ManualFollowupResultDialog({
               </div>
             )}
             {result.sendError && <div className="text-xs text-destructive">{result.sendError}</div>}
+            {result.attempt ? (
+              <div>
+                <span className="text-muted-foreground">Tentativa da negociação: </span>
+                <span className="font-medium">{result.attempt}</span>
+              </div>
+            ) : null}
+            {result.nextFollowupAt ? (
+              <div>
+                <span className="text-muted-foreground">Próxima tentativa: </span>
+                <span className="font-medium">
+                  {new Date(result.nextFollowupAt).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            ) : result.cycleClosedReason ? (
+              <div className="text-muted-foreground">
+                Negociação encerrada no follow-up ({result.cycleClosedReason}).
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

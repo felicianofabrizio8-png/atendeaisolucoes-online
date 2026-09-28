@@ -20,6 +20,7 @@ export async function reconcileResponses(companyId: string): Promise<number> {
     const { data: reply } = await supabaseAdmin
       .from("messages")
       .select("id, at")
+      .eq("company_id", companyId)
       .eq("conversation_id", f.conversation_id)
       .eq("role", "lead")
       .gt("at", f.sent_at)
@@ -34,6 +35,7 @@ export async function reconcileResponses(companyId: string): Promise<number> {
       const { data: lead } = await supabaseAdmin
         .from("leads")
         .select("status, closed_at")
+        .eq("company_id", companyId)
         .eq("id", f.lead_id)
         .maybeSingle();
       if (lead?.status === "fechado" && lead.closed_at && lead.closed_at > f.sent_at) {
