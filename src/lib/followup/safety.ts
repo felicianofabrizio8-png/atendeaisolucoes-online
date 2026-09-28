@@ -56,16 +56,24 @@ export async function canSend(
   }
 
   // Verifica janela 24h do WhatsApp Cloud API. Fora dela ainda permitimos
-  // o envio, mas via template Utility aprovado (decisão no loop principal).
+  // o envio, mas via template aprovado (decisão no motor de envio).
+  const outsideWindow = await isOutsideWhatsappWindow(c.conversationId);
+
+  return { ok: true, attempt: attempts + 1, outsideWindow };
+}
+
+/**
+ * Fora da janela de 24h da Meta = nenhuma mensagem do cliente nas últimas
+ * 23h (buffer contra borda de fuso/atraso). Compartilhado com o manual.
+ */
+export async function isOutsideWhatsappWindow(conversationId: string): Promise<boolean> {
   const cutoff24 = new Date(Date.now() - 23 * 3600 * 1000).toISOString();
   const { data: clientMsg } = await supabaseAdmin
     .from("messages")
     .select("id")
-    .eq("conversation_id", c.conversationId)
+    .eq("conversation_id", conversationId)
     .eq("role", "lead")
     .gte("at", cutoff24)
     .limit(1);
-  const outsideWindow = !clientMsg || clientMsg.length === 0;
-
-  return { ok: true, attempt: attempts + 1, outsideWindow };
+  return !clientMsg || clientMsg.length === 0;
 }

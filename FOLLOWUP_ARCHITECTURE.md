@@ -43,6 +43,9 @@ reutilizando `sendWhatsappText` / `sendWhatsappTemplate`.
 | `analytics.ts`         | Analytics avançado do painel `/ia`.                                     |
 | `reactivation.ts`      | Reativação opt-in de leads antigos.                                     |
 | `manual.ts`            | Núcleo do disparo manual (chamado pela server function).                |
+| `dispatch.ts`          | **Motor único de envio** (tick + manual): revalidação, canal, persistência. |
+| `resume.ts`            | Contexto da conversa + frase de retomada via LLMGateway.                |
+| `resume-phrase.ts`     | Funções puras da retomada: prompt, validação, fallback contextual.      |
 | `index.ts`             | Barrel oficial. Único ponto público novo.                               |
 
 ---
@@ -74,27 +77,70 @@ reutilizando `sendWhatsappText` / `sendWhatsappTemplate`.
                        ▼
                  buildMessage()  (humanize?)
                        │
+                       ▼
+              dispatchFollowup()  ← motor único (tick e manual)
+                       │
+                 revalidateFollowup ── inválido → skipped (nada gravado)
+                       │
         ┌──────────────┴──────────────┐
         ▼ dentro da janela 24h        ▼ fora da janela 24h
-   sendWhatsappText            findApprovedTemplateForPurpose
-        │                              │
-        │                              ▼
-        │                       sendWhatsappTemplate
-        └──────────────┬──────────────┘
+   sendWhatsappText            chamar_novamente aprovado?
+        │                        │ sim                 │ não
+        │                        ▼                     ▼
+        │              loadResumeContext      template legado por
+        │              generateResumePhrase   propósito ({{1}} = nome)
+        │              ({{1}} = retomada)            │
+        │                        │                     │
+        │                        └── revalida de novo ─┘
+        │                                  ▼
+        │                          sendWhatsappTemplate
+        └──────────────┬──────────────────┘
                        ▼
               INSERT follow_ups
               INSERT ai_flow_events
 ```
 
+### Retomada contextual (`chamar_novamente`)
+
+Fora da janela, o follow-up usa o template aprovado `chamar_novamente`
+(propósito `followup_resume`, aceito como Marketing ou Utility). O `{{1}}`
+recebe **uma frase curta gerada pela IA a partir da conversa real** — produto
+ou modelo, orçamento enviado, objeção, decisão pendente ou próximo passo.
+
+- Nunca contém o nome do cliente, valores em dinheiro, quebra de linha ou
+  placeholders; frase reprovada na validação é descartada.
+- Sem IA disponível (ou frase reprovada), usa a retomada **contextual
+  determinística** (orçamento → objeção → produto). A frase genérica só entra
+  quando não há contexto nenhum.
+- Empresa sem `chamar_novamente` aprovado continua no template legado do
+  propósito da regra (com o nome em `{{1}}`, como aprovado).
+
+### Revalidação
+
+`revalidateFollowup` roda antes do trabalho caro e de novo imediatamente
+antes do envio. Não envia se: o cliente mandou mensagem depois da referência
+do candidato (ou depois da última mensagem dele, no manual); a venda foi
+fechada ou perdida (exceto `returning_customer`); humano assumiu; cliente sem
+interesse; IA processando. Um envio cancelado não grava `follow_ups` — senão
+contaria como tentativa no limite por lead.
+
+### Resposta do cliente
+
+O trigger `cancel_pending_followups_on_reply` (em `messages`) marca como
+`responded`/`auto_cancelled` os follow-ups `sent` quando o cliente responde;
+a conversa segue com o fluxo normal da IA. Não há fila de follow-ups
+agendados: cada envio é decidido no tick, e a revalidação garante que nada
+sai depois de uma resposta.
+
 Fluxo do **disparo manual** (painel Inbox):
 
 ```text
-UI (inbox) → runFollowupNowForConversation (server fn, admin only)
+UI (inbox / Atendimento 2.0) → runFollowupNowForConversation (server fn, admin only)
            → runManualFollowup()        [src/lib/followup/manual.ts]
              ├─ guards mínimos (handoff, desinteresse, spam 30s)
-             ├─ humanize opt-in
-             ├─ envio (texto ou template)
-             └─ INSERT follow_ups + audit_log
+             ├─ buildMessage (mesma do tick, humanize opt-in)
+             ├─ dispatchFollowup (mesmo motor: revalida, chamar_novamente…)
+             └─ audit_log
 ```
 
 Fluxo de **reativação** (opt-in, chamado sob demanda):
@@ -173,11 +219,14 @@ analytics.ts    ← settings, gates (warmupCapacity via re-import interno)
 candidates.ts   ← types, settings, defaults
 safety.ts       ← types, settings
 message.ts      ← types, settings, defaults, humanizer
+resume-phrase.ts← (nenhuma — puro)
+resume.ts       ← resume-phrase, llm-gateway (dyn)
+dispatch.ts     ← types, resume, ai-agent, wa-templates
 tick.ts         ← types, settings, defaults, candidates, safety, message,
-                  gates, ai-readiness, ai-agent, wa-templates
+                  gates, dispatch, ai-readiness
 reconcile.ts    ← (supabaseAdmin apenas)
 reactivation.ts ← settings, gates, humanizer, ai-agent (dyn)
-manual.ts       ← settings, defaults, humanizer, ai-agent, wa-templates
+manual.ts       ← settings, safety, message, dispatch
 index.ts        ← re-export de todos os acima
 ```
 
@@ -246,9 +295,9 @@ Nenhuma migration nova é introduzida na Fase A.
    6. Loop: para cada candidato:
       - `canSend` (handoff/spam/intervalo/max) → skip com motivo.
       - `buildMessage` (humanize se v2.humanize).
-      - Detecta janela 24h.
-      - Envia (texto direto **ou** template Utility aprovado).
-      - Insere `follow_ups` + `ai_flow_events`.
+      - `dispatchFollowup`: revalida, envia texto (janela aberta) **ou**
+        `chamar_novamente` com a retomada contextual (janela fechada),
+        revalida de novo antes do envio e insere `follow_ups` + `ai_flow_events`.
 3. Ao final, `reconcileResponses` marca respostas do lead posteriores ao envio,
    promovendo para `responded` ou `recovered` (se lead virou venda).
 

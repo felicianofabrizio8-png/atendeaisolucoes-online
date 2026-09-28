@@ -5,19 +5,19 @@
 // `runFollowupNowForConversation` (mantida por compatibilidade em
 // src/lib/manual-followup.functions.ts). Ignora janelas de tempo, mas
 // mantém proteções essenciais (handoff humano, desinteresse, spam 30s).
+//
+// Mensagem, janela 24h, revalidação, envio e persistência são o mesmo motor
+// do tick (`message.ts` + `dispatch.ts`) — fora da janela sai o
+// `chamar_novamente` com a retomada contextual.
 // ============================================================================
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { sendWhatsappText } from "@/lib/ai-agent.server";
-import {
-  findApprovedTemplateForPurpose,
-  sendWhatsappTemplate,
-} from "@/lib/wa-templates.server";
 
-import { firstName } from "./defaults";
-import { humanizeTemplate } from "./humanizer";
+import { dispatchFollowup } from "./dispatch";
+import { buildMessage } from "./message";
+import { isOutsideWhatsappWindow } from "./safety";
 import { getFollowupSettings, getFollowupV2Settings } from "./settings";
-import type { ManualFollowupResult } from "./types";
+import type { Candidate, ManualFollowupResult } from "./types";
 
 export interface ManualFollowupInput {
   companyId: string;
@@ -25,9 +25,7 @@ export interface ManualFollowupInput {
   conversationId: string;
 }
 
-export async function runManualFollowup(
-  input: ManualFollowupInput,
-): Promise<ManualFollowupResult> {
+export async function runManualFollowup(input: ManualFollowupInput): Promise<ManualFollowupResult> {
   const { companyId, userId, conversationId } = input;
 
   const settings = await getFollowupSettings(companyId);
@@ -76,9 +74,7 @@ export async function runManualFollowup(
 
   // Regra: temperatura quente > silent (manual sempre permite)
   const rule: "hot_lead_idle" | "lead_silent" =
-    (conv.lead_temperature ?? "").toLowerCase() === "quente"
-      ? "hot_lead_idle"
-      : "lead_silent";
+    (conv.lead_temperature ?? "").toLowerCase() === "quente" ? "hot_lead_idle" : "lead_silent";
 
   const { data: prior } = await supabaseAdmin
     .from("follow_ups")
@@ -87,209 +83,73 @@ export async function runManualFollowup(
     .eq("lead_id", conv.lead_id);
   const attempt = (prior?.length ?? 0) + 1;
 
-  // Mensagem
-  const v2 = await getFollowupV2Settings(companyId).catch(() => null);
-  const humanize = v2?.humanize ?? false;
-  const { data: lead } = await supabaseAdmin
-    .from("leads")
-    .select("name, product, phone, external_id")
-    .eq("id", conv.lead_id)
-    .maybeSingle();
-  const firstNameStr = firstName(lead?.name);
-  const tpl = settings.templates[rule];
-  const vars: Record<string, string> = {
-    nome: firstNameStr,
-    produto: lead?.product ?? "",
-    agente: settings.agentName,
-  };
-  const baseText = tpl.replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? "");
-  const text = humanize
-    ? humanizeTemplate(baseText, attempt, Math.floor(Date.now() / 60000), vars).text
-    : baseText;
-
-  // Janela 24h
-  const cutoff24 = new Date(Date.now() - 23 * 3600 * 1000).toISOString();
-  const { data: clientMsg } = await supabaseAdmin
+  // Referência para "o cliente respondeu": a última mensagem dele agora.
+  const { data: lastLead } = await supabaseAdmin
     .from("messages")
-    .select("id")
+    .select("at")
+    .eq("company_id", companyId)
     .eq("conversation_id", conv.id)
     .eq("role", "lead")
-    .gte("at", cutoff24)
-    .limit(1);
-  const outsideWindow = !clientMsg || clientMsg.length === 0;
+    .order("at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const writeAudit = async (action: string, after: Record<string, unknown>) => {
-    try {
-      await supabaseAdmin.from("audit_log").insert({
-        company_id: companyId,
-        user_id: userId,
-        action,
-        entity: "follow_up_manual",
-        entity_id: conv.id,
-        after: after as never,
-      });
-    } catch {
-      /* noop */
-    }
+  const candidate: Candidate = {
+    conversationId: conv.id,
+    leadId: conv.lead_id,
+    rule,
+    lastClientMessageAt: (lastLead as { at?: string } | null)?.at ?? null,
+    signal: "manual",
   };
+  const v2 = await getFollowupV2Settings(companyId).catch(() => null);
+  const built = await buildMessage(candidate, settings, attempt, v2?.humanize ?? false);
 
-  // Envio fora da janela: template Utility aprovado
-  if (outsideWindow) {
-    const template = await findApprovedTemplateForPurpose(companyId, rule);
-    if (!template) {
-      await supabaseAdmin.from("follow_ups").insert({
-        company_id: companyId,
-        conversation_id: conv.id,
-        lead_id: conv.lead_id,
-        rule_type: rule,
-        attempt_number: attempt,
-        message_text: text,
-        status: "blocked",
-        trigger_reason: "manual_admin",
-        metadata: { manual: true, reason: "template_missing", by: userId },
-      });
-      await writeAudit("manual_followup_blocked", {
-        rule,
-        reason: "fora da janela 24h e sem template aprovado",
-      });
-      return {
-        eligible: true,
-        rule,
-        generatedMessage: text,
-        sendStatus: "blocked",
-        sendError: "fora da janela 24h e sem template aprovado",
-        via: "template",
-      };
-    }
-    const tvars: Record<string, string> = {};
-    (template.variables ?? []).forEach((v, i) => {
-      tvars[v] = i === 0 ? firstNameStr : "";
-    });
-    const tplSend = await sendWhatsappTemplate({
-      companyId,
-      conversationId: conv.id,
-      leadId: conv.lead_id,
-      purpose: rule,
-      variables: tvars,
-      source: "followup_template",
-    });
-    const isSimulated = tplSend.ok && tplSend.simulated === true;
-    const status: "sent" | "failed" | "simulated" = !tplSend.ok
-      ? "failed"
-      : isSimulated
-        ? "simulated"
-        : "sent";
-    await supabaseAdmin.from("follow_ups").insert({
-      company_id: companyId,
-      conversation_id: conv.id,
-      lead_id: conv.lead_id,
-      rule_type: rule,
-      attempt_number: attempt,
-      message_text: text,
-      status,
-      trigger_reason: "manual_admin",
-      metadata: {
-        manual: true,
-        by: userId,
-        via: "template",
-        template_name: template.name,
-        ...(tplSend.ok
-          ? isSimulated
-            ? {
-                simulated: true,
-                simulation_id: tplSend.simulationId,
-                external_request_sent: false,
-              }
-            : { external_id: tplSend.externalId }
-          : { error: tplSend.error }),
-      },
-    });
-    await writeAudit(
-      !tplSend.ok
-        ? "manual_followup_failed"
-        : isSimulated
-          ? "manual_followup_simulated"
-          : "manual_followup_sent",
-      {
-        rule,
-        via: "template",
-        template_name: template.name,
-        error: tplSend.ok ? null : tplSend.error,
-        simulated: isSimulated,
-      },
-    );
-    return {
-      eligible: true,
-      rule,
-      generatedMessage: text,
-      sendStatus: status,
-      sendError: tplSend.ok ? undefined : tplSend.error,
-      externalId: tplSend.ok && !isSimulated ? tplSend.externalId : null,
-      simulated: isSimulated,
-      simulationId: isSimulated ? tplSend.simulationId : null,
-      via: "template",
-    };
-  }
-
-  // Dentro da janela: texto livre
-  const send = await sendWhatsappText({
+  const r = await dispatchFollowup({
     companyId,
     conversationId: conv.id,
     leadId: conv.lead_id,
-    text,
+    rule,
+    attempt,
+    text: built.text,
+    outsideWindow: await isOutsideWhatsappWindow(conv.id),
+    signal: candidate.signal,
+    referenceAt: candidate.lastClientMessageAt,
+    trigger: { kind: "manual", userId },
   });
-  const isSimulated = send.ok && send.simulated === true;
-  const status: "sent" | "failed" | "simulated" = !send.ok
-    ? "failed"
-    : isSimulated
-      ? "simulated"
-      : "sent";
-  await supabaseAdmin.from("follow_ups").insert({
-    company_id: companyId,
-    conversation_id: conv.id,
-    lead_id: conv.lead_id,
-    rule_type: rule,
-    attempt_number: attempt,
-    message_text: text,
-    status,
-    trigger_reason: "manual_admin",
-    metadata: {
-      manual: true,
-      by: userId,
-      via: "text",
-      ...(send.ok
-        ? isSimulated
-          ? {
-              simulated: true,
-              simulation_id: send.simulationId,
-              external_request_sent: false,
-            }
-          : { external_id: send.externalId }
-        : { error: send.error }),
-    },
-  });
-  await writeAudit(
-    !send.ok
-      ? "manual_followup_failed"
-      : isSimulated
-        ? "manual_followup_simulated"
-        : "manual_followup_sent",
-    {
-      rule,
-      via: "text",
-      error: send.ok ? null : send.error,
-      simulated: isSimulated,
-    },
-  );
+
+  if (r.status === "skipped") {
+    return { eligible: false, blockedReason: r.reason };
+  }
+
+  try {
+    await supabaseAdmin.from("audit_log").insert({
+      company_id: companyId,
+      user_id: userId,
+      action: `manual_followup_${r.status}`,
+      entity: "follow_up_manual",
+      entity_id: conv.id,
+      after: {
+        rule,
+        via: r.via,
+        template_name: r.templateName ?? null,
+        resume_phrase: r.resumePhrase ?? null,
+        error: r.error ?? r.reason ?? null,
+        simulated: r.status === "simulated",
+      } as never,
+    });
+  } catch {
+    /* auditoria é best-effort */
+  }
+
   return {
     eligible: true,
     rule,
-    generatedMessage: text,
-    sendStatus: status,
-    sendError: send.ok ? undefined : send.error,
-    externalId: send.ok && !isSimulated ? send.externalId : null,
-    simulated: isSimulated,
-    simulationId: isSimulated ? send.simulationId : null,
-    via: "text",
+    generatedMessage: r.message,
+    sendStatus: r.status,
+    sendError: r.status === "blocked" ? r.reason : r.error,
+    externalId: r.status === "sent" ? (r.externalId ?? null) : null,
+    simulated: r.status === "simulated",
+    simulationId: r.status === "simulated" ? (r.simulationId ?? null) : null,
+    via: r.via,
   };
 }

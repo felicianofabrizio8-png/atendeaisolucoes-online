@@ -31,7 +31,8 @@ export type TemplatePurpose =
   | "reactivation"            // Marketing: reativacao_cliente
   | "visit_confirmed"         // Utility:   visita_confirmada
   | "visit_rescheduled"       // Utility:   visita_reagendada
-  | "installation_confirmed"; // Utility:   instalacao_confirmada
+  | "installation_confirmed" // Utility:   instalacao_confirmada
+  | "followup_resume"; // chamar_novamente — retomada contextual ({{1}} = frase da IA)
 
 /**
  * Mapeamento oficial de propósito → template aprovado na Cloud API.
@@ -40,7 +41,16 @@ export type TemplatePurpose =
  */
 export const PURPOSE_TEMPLATE_MAP: Record<
   TemplatePurpose,
-  { templateName: string; category: TemplateCategory }
+  {
+    templateName: string;
+    category: TemplateCategory;
+    /**
+     * Categorias adicionais aceitas. A Meta pode aprovar (ou reclassificar) o
+     * mesmo template em outra categoria; quando o nome é o contrato, as duas
+     * servem. Nunca inclui "authentication".
+     */
+    alsoAccept?: TemplateCategory[];
+  }
 > = {
   // Canônicos
   quote_followup:           { templateName: "followup_orcamento",   category: "marketing" },
@@ -48,6 +58,11 @@ export const PURPOSE_TEMPLATE_MAP: Record<
   visit_confirmed:          { templateName: "visita_confirmada",    category: "utility" },
   visit_rescheduled:        { templateName: "visita_reagendada",    category: "utility" },
   installation_confirmed:   { templateName: "instalacao_confirmada", category: "utility" },
+  followup_resume: {
+    templateName: "chamar_novamente",
+    category: "marketing",
+    alsoAccept: ["utility"],
+  },
   // Legacy → caem nos canônicos
   quote_no_reply:           { templateName: "followup_orcamento",   category: "marketing" },
   lead_silent:              { templateName: "followup_orcamento",   category: "marketing" },
@@ -128,6 +143,12 @@ export async function isWithin24hWindow(
  *
  * Nunca devolve template em status diferente de "approved".
  */
+/** Categorias aceitas para o propósito (a esperada + `alsoAccept`). */
+export function acceptedCategoriesFor(purpose: TemplatePurpose): TemplateCategory[] {
+  const mapped = PURPOSE_TEMPLATE_MAP[purpose];
+  return [mapped?.category ?? "utility", ...(mapped?.alsoAccept ?? [])];
+}
+
 export async function findApprovedTemplateForPurpose(
   companyId: string,
   purpose: TemplatePurpose,
@@ -136,16 +157,20 @@ export async function findApprovedTemplateForPurpose(
   const mapped = PURPOSE_TEMPLATE_MAP[purpose];
   const expectedCategory = mapped?.category ?? "utility";
   const expectedName = mapped?.templateName ?? null;
+  const accepted = acceptedCategoriesFor(purpose);
 
   // 1) Busca pelo nome canônico
   if (expectedName) {
-    const { data } = await supabaseAdmin
+    const byName = supabaseAdmin
       .from("whatsapp_templates")
       .select("*")
       .eq("company_id", companyId)
       .eq("name", expectedName)
-      .eq("status", "approved")
-      .eq("category", expectedCategory);
+      .eq("status", "approved");
+    const { data } =
+      accepted.length > 1
+        ? await byName.in("category", accepted)
+        : await byName.eq("category", expectedCategory);
     const rows = (data ?? []) as unknown as TemplateRow[];
     if (rows.length > 0) {
       const lang = rows.find((r) => r.language === preferredLanguage);
@@ -302,7 +327,7 @@ export async function sendWhatsappTemplate(params: {
     return { ok: false, simulated: false, error: reason };
   }
   // Garantia: a categoria do template precisa bater com a esperada para o propósito.
-  if (template.category !== expectedCategory) {
+  if (!acceptedCategoriesFor(purpose).includes(template.category)) {
     await logTemplateEvent(companyId, conversationId, leadId, "template_blocked", {
       purpose,
       template_name: template.name,

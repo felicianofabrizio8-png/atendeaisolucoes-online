@@ -91,6 +91,21 @@ beforeEach(() => {
 // followup/tick.ts
 // =====================================================
 describe("followup/tick — simulated não é contado como envio real", () => {
+  // O motor revalida a conversa antes de enviar: ela precisa existir, seguir
+  // ativa e o cliente não pode ter respondido depois do candidato.
+  beforeEach(() => {
+    tableRows.conversations = {
+      id: "conv-1",
+      company_id: "company-1",
+      lead_id: "lead-1",
+      ai_status: null,
+      ai_handling: false,
+      human_takeover_at: null,
+    };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo" };
+    tableRows.messages = [];
+  });
+
   it("simulated: insere follow_up status='simulated' + evento followup_simulated + result.simulated++", async () => {
     // Bypass dependências indiretas
     vi.doMock("@/lib/ai-readiness.server", () => ({
