@@ -62,7 +62,7 @@ CREATE TABLE public.relationship_campaign_recipients (
   CONSTRAINT relationship_recipients_conversation_fk
     FOREIGN KEY (company_id, conversation_id)
     REFERENCES public.conversations(company_id, id)
-    ON DELETE SET NULL
+    ON DELETE SET NULL (conversation_id)
 );
 
 
