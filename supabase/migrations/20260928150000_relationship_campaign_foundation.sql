@@ -27,6 +27,12 @@ CREATE TABLE public.relationship_campaigns (
     REFERENCES public.relationship_segments(company_id, id)
 );
 
+-- Existing primary keys are not enough to enforce tenant-consistent
+-- composite foreign keys used by the recipient read model.
+ALTER TABLE public.leads
+  ADD CONSTRAINT leads_company_id_id_key UNIQUE (company_id, id);
+ALTER TABLE public.conversations
+  ADD CONSTRAINT conversations_company_id_id_key UNIQUE (company_id, id);
 CREATE TABLE public.relationship_campaign_recipients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -59,12 +65,6 @@ CREATE TABLE public.relationship_campaign_recipients (
     ON DELETE SET NULL
 );
 
--- Existing primary keys are not enough to enforce tenant-consistent composite
--- foreign keys used by the recipient read model.
-ALTER TABLE public.leads
-  ADD CONSTRAINT leads_company_id_id_key UNIQUE (company_id, id);
-ALTER TABLE public.conversations
-  ADD CONSTRAINT conversations_company_id_id_key UNIQUE (company_id, id);
 
 CREATE INDEX relationship_segments_company_updated_idx
   ON public.relationship_segments(company_id, updated_at DESC);
