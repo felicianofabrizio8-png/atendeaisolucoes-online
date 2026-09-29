@@ -3,6 +3,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Conversation, Lead, Message } from "@/data/mock";
 
 const manualSendMock = vi.hoisted(() => ({
@@ -368,6 +369,35 @@ describe("Atendimento 2.0 runtime", () => {
     const bubble = document.getElementById("msg-instagram-photo")!;
     expect(within(bubble).queryByText("[mídia]", { exact: true })).toBeNull();
     expect(manualSendMock.sendManualText).not.toHaveBeenCalled();
+  });
+
+  it.each(["X", "fora", "Escape"])("fecha a imagem por %s sem reabrir o modal", async (method) => {
+    const user = userEvent.setup();
+    setRemoteSnapshot({ messages: [{
+      id: "lightbox-photo", conversationId: conversation.id, role: "lead",
+      text: "[imagem]", at: new Date().toISOString(), sourceSubtype: "image",
+      sourceMetadata: { media_url: "https://example.com/photo.jpg", media_kind: "image" },
+    }] });
+    render(React.createElement(RouteView));
+    const trigger = await screen.findByRole("button", { name: "Ampliar imagem" });
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Imagem ampliada" });
+    // O modal não pode ficar dentro do balão que escala/recebe long press.
+    expect(document.getElementById("msg-lightbox-photo")!.contains(dialog)).toBe(false);
+    await user.click(within(dialog).getByRole("img"));
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    if (method === "X") await user.click(within(dialog).getByRole("button", { name: "Fechar" }));
+    else if (method === "fora") await user.click(dialog.previousElementSibling!);
+    else await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    // Uma atualização da conversa não deve reabrir a imagem; só um novo clique.
+    act(() => repoMock.setState({ messages: [...repoMock.state.messages] }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(trigger);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("envia pelo adapter compartilhado com conversa, lead, canal e origem corretos", async () => {
