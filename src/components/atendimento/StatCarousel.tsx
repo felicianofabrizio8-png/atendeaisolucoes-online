@@ -74,7 +74,7 @@ export function StatCarousel({
   return (
     <div
       ref={containerRef}
-      className={cn("select-none", className)}
+      className={cn("@container/stat-card min-w-0 shrink-0 select-none", className)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -113,7 +113,7 @@ export function StatCarousel({
                 className={cn(
                   "group relative shrink-0 basis-full text-left",
                   // pt maior que o resto: o topo é a faixa dos indicadores.
-                  "aspect-[16/11] max-h-[230px] rounded-[28px] px-6 pb-5 pt-12 flex flex-col justify-center",
+                  "h-[clamp(112px,20dvh,168px)] min-w-0 rounded-[28px] px-4 pb-3 pt-10 flex flex-col justify-center xl:h-[clamp(132px,24dvh,200px)] xl:px-5 xl:pb-4",
                   // Sem borda: numa base quase preta a linha de 1px não lia
                   // como contorno, lia como serrilhado no canto arredondado.
                   // Quem separa o cartão do fundo é o próprio brilho.
@@ -138,10 +138,10 @@ export function StatCarousel({
                     explicação da métrica vive no title do cartão — na face
                     ela competia com o número pelo mesmo olhar. */}
                 <span className="relative">
-                  <span className="block text-[22px] font-bold leading-none text-white drop-shadow-sm">
+                  <span className="block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
                     {stat.label}:
                   </span>
-                  <span className="mt-1 block text-[80px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow">
+                  <span className="mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
                     {stat.count}
                   </span>
                 </span>

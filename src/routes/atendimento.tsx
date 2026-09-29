@@ -26,7 +26,7 @@ function requestedConversationId(): string | null {
 }
 
 /**
- * Abaixo de `lg` as três colunas não cabem lado a lado, então a tela vira
+ * Abaixo de `xl` as três colunas não cabem lado a lado com a sidebar, então a tela vira
  * navegação em dois níveis (lista → conversa) e o painel Info/IA passa a ser
  * uma gaveta. O breakpoint precisa ser o mesmo do grid para os dois não
  * discordarem sobre em qual modo a tela está.
@@ -40,7 +40,7 @@ function useIsCompact(): boolean | null {
   const [compact, setCompact] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
+    const mq = window.matchMedia("(max-width: 1279px)");
     const apply = () => setCompact(mq.matches);
     apply();
     mq.addEventListener("change", apply);
@@ -121,11 +121,11 @@ function AtendimentoPage() {
           repetir a contagem que o cartão já mostra. O que ela carregava de
           útil foi para onde pertence — voltar e Info/IA no topo da conversa,
           o seletor de dados de exemplo junto da fila que ele afeta. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[clamp(280px,24vw,340px)_minmax(0,1fr)_clamp(300px,26vw,380px)]">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 xl:grid-cols-[clamp(240px,20vw,300px)_minmax(0,1fr)_clamp(260px,22vw,340px)]">
         {/* Coluna 1 — métrica giratória + fila */}
         <aside
           className={cn(
-            "min-h-0 flex-col gap-4 border-border p-4 lg:flex lg:border-r",
+            "min-h-0 min-w-0 flex-col gap-3 border-border p-3 xl:flex xl:border-r xl:gap-4 xl:p-4",
             selectedId ? "hidden" : "flex",
           )}
         >
@@ -168,7 +168,7 @@ function AtendimentoPage() {
         </aside>
 
         {/* Coluna 2 — conversa */}
-        <main className={cn("min-h-0", selectedId ? "block" : "hidden lg:block")}>
+        <main className={cn("min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
           {/* Os três estados vêm da `main` e existem para a tela nunca ficar
               em branco sem explicação: carregando, falha e vazio de verdade.
               Vazio é vazio — a fila simulada só aparece pelo botão "Ver
@@ -205,7 +205,7 @@ function AtendimentoPage() {
                     <SheetTrigger asChild>
                       <button
                         type="button"
-                        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary lg:hidden"
+                        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary xl:hidden"
                       >
                         <PanelRight className="h-3.5 w-3.5" />
                         Info / IA
@@ -238,7 +238,7 @@ function AtendimentoPage() {
         </main>
 
         {/* Coluna 3 — Info / IA */}
-        <aside className="hidden min-h-0 border-l border-border p-4 lg:block">
+        <aside className="hidden min-h-0 min-w-0 border-l border-border p-4 xl:block">
           {selected && compact === false && (
             <InsightPanel
               contact={selected}
