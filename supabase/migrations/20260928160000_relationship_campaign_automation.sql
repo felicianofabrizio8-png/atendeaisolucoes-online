@@ -107,6 +107,7 @@ BEGIN
   END IF;
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'relationship recipient reply hook skipped (SQLSTATE %): %', SQLSTATE, SQLERRM;
   RETURN NEW;
 END;
 $$;
@@ -137,6 +138,7 @@ BEGIN
   END IF;
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'relationship recipient conversion hook skipped (SQLSTATE %): %', SQLSTATE, SQLERRM;
   RETURN NEW;
 END;
 $$;
@@ -175,6 +177,7 @@ BEGIN
   END IF;
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'relationship follow-up annotation hook skipped (SQLSTATE %): %', SQLSTATE, SQLERRM;
   RETURN NEW;
 END;
 $$;
@@ -184,7 +187,7 @@ CREATE TRIGGER relationship_followup_cycle_annotation_trigger
   AFTER INSERT ON public.followup_cycles
   FOR EACH ROW EXECUTE FUNCTION public.annotate_relationship_followup_cycle();
 
-COMMIT;
+
 
 
 ALTER TABLE public.relationship_campaign_suppressions
@@ -193,3 +196,5 @@ ALTER TABLE public.relationship_campaign_suppressions
   ) STORED;
 CREATE UNIQUE INDEX IF NOT EXISTS relationship_suppressions_target_key_idx
   ON public.relationship_campaign_suppressions(company_id, target_key);
+
+COMMIT;
