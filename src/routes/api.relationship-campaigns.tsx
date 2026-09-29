@@ -35,7 +35,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
     handlers: {
       GET: async ({ request }: { request: Request }) => {
         const companyId = await authenticatedCompanyId(request);
-        if (!companyId) return Response.json({ ok: false, error: "n„o autenticado" }, { status: 401 });
+        if (!companyId) return Response.json({ ok: false, error: "n√£o autenticado" }, { status: 401 });
         try {
           const url = new URL(request.url);
           const campaignId = url.searchParams.get("campaign_id");
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
       },
       POST: async ({ request }: { request: Request }) => {
         const companyId = await authenticatedCompanyId(request);
-        if (!companyId) return Response.json({ ok: false, error: "n„o autenticado" }, { status: 401 });
+        if (!companyId) return Response.json({ ok: false, error: "n√£o autenticado" }, { status: 401 });
 
         try {
           const body = (await request.json()) as Record<string, unknown>;
@@ -68,7 +68,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
                 .eq("id", body.segment_id)
                 .maybeSingle();
               if (error) throw error;
-              if (!segment) return Response.json({ ok: false, error: "segmento n„o encontrado" }, { status: 404 });
+              if (!segment) return Response.json({ ok: false, error: "segmento n√£o encontrado" }, { status: 404 });
               definition = segment.definition;
             }
             return Response.json({ ok: true, ...(await previewRelationshipSegment(companyId, definition, 25)) });
@@ -76,7 +76,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
 
           if (action === "create_segment") {
             if (typeof body.name !== "string" || !body.name.trim()) {
-              return Response.json({ ok: false, error: "name È obrigatÛrio" }, { status: 400 });
+              return Response.json({ ok: false, error: "name √© obrigat√≥rio" }, { status: 400 });
             }
             return Response.json({
               ok: true,
@@ -86,7 +86,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
 
           if (action === "create_campaign") {
             if (typeof body.name !== "string" || typeof body.segment_id !== "string") {
-              return Response.json({ ok: false, error: "name e segment_id s„o obrigatÛrios" }, { status: 400 });
+              return Response.json({ ok: false, error: "name e segment_id s√£o obrigat√≥rios" }, { status: 400 });
             }
             const campaign = await createRelationshipCampaign(companyId, body.name, body.segment_id);
             if (typeof body.template_purpose === "string") {
@@ -99,7 +99,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
 
           if (action === "materialize_recipients") {
             if (typeof body.relationship_campaign_id !== "string") {
-              return Response.json({ ok: false, error: "relationship_campaign_id È obrigatÛrio" }, { status: 400 });
+              return Response.json({ ok: false, error: "relationship_campaign_id √© obrigat√≥rio" }, { status: 400 });
             }
             return Response.json({
               ok: true,
@@ -127,7 +127,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
 
           if (action === "schedule") {
             if (typeof body.relationship_campaign_id !== "string") {
-              return Response.json({ ok: false, error: "relationship_campaign_id È obrigatÛrio" }, { status: 400 });
+              return Response.json({ ok: false, error: "relationship_campaign_id √© obrigat√≥rio" }, { status: 400 });
             }
             return Response.json({
               ok: true,
@@ -142,7 +142,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
 
           if (action === "dispatch_preview") {
             if (typeof body.relationship_campaign_id !== "string" || typeof body.recipient_id !== "string") {
-              return Response.json({ ok: false, error: "campaign_id e recipient_id s„o obrigatÛrios" }, { status: 400 });
+              return Response.json({ ok: false, error: "campaign_id e recipient_id s√£o obrigat√≥rios" }, { status: 400 });
             }
             return Response.json({
               ok: true,
@@ -168,10 +168,10 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             });
           }
 
-          return Response.json({ ok: false, error: "action inv·lida" }, { status: 400 });
+          return Response.json({ ok: false, error: "action inv√°lida" }, { status: 400 });
         } catch (error) {
           return Response.json(
-            { ok: false, error: error instanceof Error ? error.message : "falha na operaÁ„o" },
+            { ok: false, error: error instanceof Error ? error.message : "falha na opera√ß√£o" },
             { status: 500 },
           );
         }

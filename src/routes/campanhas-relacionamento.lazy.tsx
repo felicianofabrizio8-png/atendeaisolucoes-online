@@ -51,7 +51,7 @@ function RelationshipCampaignsPage() {
       body: body ? JSON.stringify(body) : undefined,
     });
     const json = await response.json();
-    if (!response.ok || json.ok === false) throw new Error(json.error ?? "Falha na operação");
+    if (!response.ok || json.ok === false) throw new Error(json.error ?? "Falha na operaÃ§Ã£o");
     return json;
   }
 
@@ -80,12 +80,12 @@ function RelationshipCampaignsPage() {
     setMessage("");
     try {
       const result = await callApi(action);
-      if (result.count !== undefined) setMessage("Prévia: " + result.count + " destinatários elegíveis.");
-      else if (result.status) setMessage("Resultado: " + result.status + (result.reason ? " — " + result.reason : ""));
-      else setMessage("Operação concluída.");
+      if (result.count !== undefined) setMessage("PrÃ©via: " + result.count + " destinatÃ¡rios elegÃ­veis.");
+      else if (result.status) setMessage("Resultado: " + result.status + (result.reason ? " Â· " + result.reason : ""));
+      else setMessage("OperaÃ§Ã£o concluÃ­da.");
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha na operação");
+      setMessage(error instanceof Error ? error.message : "Falha na operaÃ§Ã£o");
     } finally {
       setLoading(false);
     }
@@ -98,7 +98,7 @@ function RelationshipCampaignsPage() {
       setSegmentId(result.segment.id);
       setMessage("Segmento salvo. ID: " + result.segment.id);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "JSON inválido");
+      setMessage(error instanceof Error ? error.message : "JSON invÃ¡lido");
     }
   }
 
@@ -114,16 +114,16 @@ function RelationshipCampaignsPage() {
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <Link to="/campanhas" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-            <ArrowLeft className="h-3.5 w-3.5" /> Campanhas de mídia
+            <ArrowLeft className="h-3.5 w-3.5" /> Campanhas de mÃ­dia
           </Link>
           <h1 className="text-2xl font-semibold mt-2">Campanhas de relacionamento</h1>
           <p className="text-sm text-muted-foreground">
-            Segmentos e destinatários WhatsApp. O envio real está bloqueado nesta versão.
+            Segmentos e destinatÃ¡rios WhatsApp. O envio real estÃ¡ bloqueado nesta versÃ£o.
           </p>
         </div>
         <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-emerald-600" />
-          {automationOn ? "Automação configurada" : "Automação desligada"}
+          {automationOn ? "AutomaÃ§Ã£o configurada" : "AutomaÃ§Ã£o desligada"}
         </div>
       </header>
 
@@ -145,8 +145,8 @@ function RelationshipCampaignsPage() {
             <h3 className="text-sm font-medium">Criar campanha operacional</h3>
             <input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="Nome da campanha" className="w-full h-9 rounded-md border bg-background px-3 text-sm" />
             <select value={templatePurpose} onChange={(e) => setTemplatePurpose(e.target.value)} className="w-full h-9 rounded-md border bg-background px-3 text-sm">
-              <option value="reactivation">Reativação</option>
-              <option value="quote_followup">Follow-up de orçamento</option>
+              <option value="reactivation">ReativaÃ§Ã£o</option>
+              <option value="quote_followup">Follow-up de orÃ§amento</option>
               <option value="followup_resume">Retomada</option>
             </select>
             <button onClick={() => void createCampaign()} className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm">Criar campanha</button>
@@ -154,23 +154,23 @@ function RelationshipCampaignsPage() {
         </div>
 
         <div className="rounded-xl border bg-card p-4 space-y-3">
-          <h2 className="font-medium">Automação segura</h2>
+          <h2 className="font-medium">AutomaÃ§Ã£o segura</h2>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-muted-foreground">Limite diário<input type="number" value={Number(settings.daily_limit ?? 50)} onChange={(e) => setSettings((s) => ({ ...s, daily_limit: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm" /></label>
+            <label className="text-xs text-muted-foreground">Limite diÃ¡rio<input type="number" value={Number(settings.daily_limit ?? 50)} onChange={(e) => setSettings((s) => ({ ...s, daily_limit: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm" /></label>
             <label className="text-xs text-muted-foreground">Limite por hora<input type="number" value={Number(settings.hourly_limit ?? 10)} onChange={(e) => setSettings((s) => ({ ...s, hourly_limit: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm" /></label>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input value={String(settings.business_hours_start ?? "09:00")} onChange={(e) => setSettings((s) => ({ ...s, business_hours_start: e.target.value }))} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Início" />
+            <input value={String(settings.business_hours_start ?? "09:00")} onChange={(e) => setSettings((s) => ({ ...s, business_hours_start: e.target.value }))} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="InÃ­cio" />
             <input value={String(settings.business_hours_end ?? "18:00")} onChange={(e) => setSettings((s) => ({ ...s, business_hours_end: e.target.value }))} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Fim" />
             <input value={String(settings.timezone ?? "America/Sao_Paulo")} onChange={(e) => setSettings((s) => ({ ...s, timezone: e.target.value }))} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Timezone" />
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => run({ action: "save_settings", settings })} className="h-9 px-3 rounded-md border text-sm">Salvar limites/horário</button>
+            <button onClick={() => run({ action: "save_settings", settings })} className="h-9 px-3 rounded-md border text-sm">Salvar limites/horÃ¡rio</button>
             <button onClick={() => run({ action: "activate_automation", enabled: !automationOn })} className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm">
-              {automationOn ? "Desativar automação" : "Ativar automação"}
+              {automationOn ? "Desativar automaÃ§Ã£o" : "Ativar automaÃ§Ã£o"}
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">Ativar apenas agenda planejamento; o gate server-side mantém o disparo real bloqueado.</p>
+          <p className="text-xs text-muted-foreground">Ativar apenas agenda planejamento; o gate server-side mantÃ©m o disparo real bloqueado.</p>
         </div>
       </section>
 
@@ -180,15 +180,15 @@ function RelationshipCampaignsPage() {
           <button onClick={() => void refresh()} className="h-8 px-2 rounded-md border text-xs inline-flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" /> Atualizar</button>
         </div>
         <div className="divide-y">
-          {campaigns.length === 0 && <div className="p-8 text-sm text-muted-foreground text-center">Crie um segmento e uma campanha pela API operacional para começar.</div>}
+          {campaigns.length === 0 && <div className="p-8 text-sm text-muted-foreground text-center">Crie um segmento e uma campanha pela API operacional para comeÃ§ar.</div>}
           {campaigns.map((campaign) => (
             <div key={campaign.id} className="p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <button onClick={() => setSelected(campaign.id)} className="text-left flex-1">
                   <div className="font-medium text-sm">{campaign.name}</div>
-                  <div className="text-xs text-muted-foreground">{campaign.status} · template: {campaign.template_purpose}</div>
+                  <div className="text-xs text-muted-foreground">{campaign.status} Â· template: {campaign.template_purpose}</div>
                 </button>
-                <span className="text-xs text-muted-foreground">{campaign.recipients.total} destinatários · {campaign.recipients.sent} enviados · {campaign.recipients.replied} respostas</span>
+                <span className="text-xs text-muted-foreground">{campaign.recipients.total} destinatÃ¡rios Â· {campaign.recipients.sent} enviados Â· {campaign.recipients.replied} respostas</span>
                 <button onClick={() => run({ action: "materialize_recipients", relationship_campaign_id: campaign.id })} className="h-8 px-2 rounded-md border text-xs">Materializar</button>
                 <button onClick={() => run({ action: "schedule", relationship_campaign_id: campaign.id, mode: "assisted" })} className="h-8 px-2 rounded-md border text-xs inline-flex items-center gap-1"><Play className="h-3.5 w-3.5" /> Planejar</button>
               </div>
@@ -198,7 +198,7 @@ function RelationshipCampaignsPage() {
         </div>
       </section>
 
-      {loading && <div className="text-xs text-muted-foreground">Atualizando…</div>}
+      {loading && <div className="text-xs text-muted-foreground">Atualizandoâ€¦</div>}
     </div>
   );
 }

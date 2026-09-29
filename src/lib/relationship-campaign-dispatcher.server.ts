@@ -216,10 +216,10 @@ export async function dispatchRelationshipRecipient(input: {
   const now = input.now ?? new Date();
   const settings = await getRelationshipSettings(input.companyId);
   if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic")) {
-    return { status: "blocked" as const, reason: "automaÁ„o desativada" };
+    return { status: "blocked" as const, reason: "automa√ß√£o desativada" };
   }
   if (!isWithinRelationshipWindow(now, settings)) {
-    return { status: "blocked" as const, reason: "fora do hor·rio comercial configurado" };
+    return { status: "blocked" as const, reason: "fora do hor√°rio comercial configurado" };
   }
 
   const { data: recipient, error: recipientError } = await db
@@ -230,7 +230,7 @@ export async function dispatchRelationshipRecipient(input: {
     .eq("id", input.recipientId)
     .maybeSingle();
   if (recipientError) throw recipientError;
-  if (!recipient) return { status: "blocked" as const, reason: "destinat·rio n„o encontrado" };
+  if (!recipient) return { status: "blocked" as const, reason: "destinat√°rio n√£o encontrado" };
   if (finalStatus(recipient.status)) return { status: "idempotent" as const, recipient };
   if (recipient.attempts >= settings.retry_max + 1) {
     return { status: "blocked" as const, reason: "limite de tentativas atingido" };
@@ -243,7 +243,7 @@ export async function dispatchRelationshipRecipient(input: {
     .eq("id", recipient.lead_id)
     .maybeSingle();
   if (leadError) throw leadError;
-  if (!lead) return { status: "blocked" as const, reason: "lead n„o encontrado" };
+  if (!lead) return { status: "blocked" as const, reason: "lead n√£o encontrado" };
 
   const { data: segment, error: segmentError } = await db
     .from("relationship_segments")
@@ -254,7 +254,7 @@ export async function dispatchRelationshipRecipient(input: {
   if (segmentError) throw segmentError;
   if (!segment?.active || !isLeadInSegment(lead, parseSegmentDefinition(segment.definition))) {
     await db.from("relationship_campaign_recipients").update({ status: "ineligible", last_error: "segmento mudou antes do envio", updated_at: now.toISOString() }).eq("company_id", input.companyId).eq("id", recipient.id);
-    return { status: "blocked" as const, reason: "lead n„o È mais elegÌvel para o segmento" };
+    return { status: "blocked" as const, reason: "lead n√£o √© mais eleg√≠vel para o segmento" };
   }
 
   const suppression = await hasSuppression(input.companyId, lead.id, lead.external_id ?? lead.phone);
@@ -271,7 +271,7 @@ export async function dispatchRelationshipRecipient(input: {
   if (dryRun) {
     return {
       status: "dry_run" as const,
-      reason: realSendIsEnabled() ? "simulaÁ„o solicitada" : "envio real desabilitado no servidor",
+      reason: realSendIsEnabled() ? "simula√ß√£o solicitada" : "envio real desabilitado no servidor",
       lead_id: lead.id,
       conversation_id: conversation.id,
     };
@@ -294,7 +294,7 @@ export async function dispatchRelationshipRecipient(input: {
     .select("id")
     .maybeSingle();
   if (claimError) throw claimError;
-  if (!claimed) return { status: "idempotent" as const, reason: "destinat·rio j· reservado" };
+  if (!claimed) return { status: "idempotent" as const, reason: "destinat√°rio j√° reservado" };
 
   const purpose = (recipient.relationship_campaigns?.template_purpose ?? "reactivation") as TemplatePurpose;
   const send = await sendWhatsappTemplate({
@@ -346,10 +346,10 @@ export async function scheduleRelationshipCampaign(input: {
   const now = input.now ?? new Date();
   const settings = await getRelationshipSettings(input.companyId);
   if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic")) {
-    return { status: "disabled" as const, reason: "automaÁ„o desativada", candidates: [] };
+    return { status: "disabled" as const, reason: "automa√ß√£o desativada", candidates: [] };
   }
   if (!isWithinRelationshipWindow(now, settings)) {
-    return { status: "outside_window" as const, reason: "fora do hor·rio comercial", candidates: [] };
+    return { status: "outside_window" as const, reason: "fora do hor√°rio comercial", candidates: [] };
   }
 
   const max = Math.max(0, Math.min(input.limit ?? settings.hourly_limit, settings.hourly_limit));
@@ -361,7 +361,7 @@ export async function scheduleRelationshipCampaign(input: {
     .gte("sent_at", new Date(now.getTime() - 24 * 3600_000).toISOString());
   if (sentError) throw sentError;
   if ((sentRecent ?? []).length >= settings.daily_limit) {
-    return { status: "daily_limit" as const, reason: "limite di·rio atingido", candidates: [] };
+    return { status: "daily_limit" as const, reason: "limite di√°rio atingido", candidates: [] };
   }
 
   const remaining = Math.max(0, Math.min(max, settings.daily_limit - (sentRecent ?? []).length));
@@ -391,7 +391,7 @@ export async function upsertRelationshipSuppression(
   input: { leadId?: string; phone?: string; reason?: string; source?: string; active?: boolean },
 ) {
   const phone = input.phone ? normalizeRelationshipPhone(input.phone) : null;
-  if (!input.leadId && !phone) throw new Error("leadId ou phone È obrigatÛrio");
+  if (!input.leadId && !phone) throw new Error("leadId ou phone √© obrigat√≥rio");
   const { data, error } = await db
     .from("relationship_campaign_suppressions")
     .upsert({
