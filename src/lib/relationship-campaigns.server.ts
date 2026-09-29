@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-export type SegmentField = "status" | "channel" | "product" | "assigned_to" | "tag";
+export type SegmentField = "id" | "phone" | "status" | "channel" | "product" | "assigned_to" | "tag";
 export type SegmentOperator = "eq" | "neq" | "contains";
 
 export type SegmentPredicate = {
@@ -31,8 +31,9 @@ type RelationshipDb = {
 
 const db = supabaseAdmin as unknown as RelationshipDb;
 const MAX_PREDICATES = 20;
-const SUPPORTED_FIELDS: SegmentField[] = ["status", "channel", "product", "assigned_to", "tag"];
+const SUPPORTED_FIELDS: SegmentField[] = ["id", "phone", "status", "channel", "product", "assigned_to", "tag"];
 const SUPPORTED_OPERATORS: SegmentOperator[] = ["eq", "neq", "contains"];
+const EXACT_MATCH_FIELDS = new Set<SegmentField>(["id", "phone"]);
 
 export function parseSegmentDefinition(input: unknown): SegmentDefinition {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -62,6 +63,9 @@ function parsePredicates(input: unknown, key: string): SegmentPredicate[] {
     }
     if (!SUPPORTED_OPERATORS.includes(predicate.op as SegmentOperator)) {
       throw new Error(`${key}[${index}].op is not supported`);
+    }
+    if (EXACT_MATCH_FIELDS.has(predicate.field as SegmentField) && predicate.op !== "eq" && predicate.op !== "neq") {
+      throw new Error(`${key}[${index}].op must be eq or neq for ${String(predicate.field)}`);
     }
     if (typeof predicate.value !== "string" || predicate.value.length > 200) {
       throw new Error(`${key}[${index}].value must be a short string`);

@@ -46,6 +46,24 @@ describe("relationship campaign segments", () => {
     })).toThrow("field is not supported");
   });
 
+  it("supports exact id and phone matching and rejects contains for them", () => {
+    expect(isLeadInSegment(lead, parseSegmentDefinition({
+      all: [{ field: "id", op: "eq", value: "lead-1" }],
+    }))).toBe(true);
+    expect(isLeadInSegment(lead, parseSegmentDefinition({
+      all: [{ field: "phone", op: "neq", value: "5511888888888" }],
+    }))).toBe(true);
+    expect(isLeadInSegment(lead, parseSegmentDefinition({
+      all: [{ field: "phone", op: "eq", value: "5511888888888" }],
+    }))).toBe(false);
+
+    expect(() => parseSegmentDefinition({
+      all: [{ field: "id", op: "contains", value: "lead" }],
+    })).toThrow("op must be eq or neq");
+    expect(() => parseSegmentDefinition({
+      all: [{ field: "phone", op: "contains", value: "5511" }],
+    })).toThrow("op must be eq or neq");
+  });
   it("limits predicate complexity", () => {
     expect(() => parseSegmentDefinition({
       all: Array.from({ length: 21 }, () => ({ field: "status", op: "eq", value: "novo" })),
