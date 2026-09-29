@@ -1,4 +1,5 @@
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
+import { extractLegacyMetaMedia } from "../../../../supabase/functions/meta-webhook/media";
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { timeAgo, type Message } from "@/data/mock";
@@ -276,6 +277,7 @@ const SPEEDS = [1, 1.5, 2] as const;
 
 function WhatsAppAudio({
   path,
+  url,
   mime,
   filename,
   bucket,
@@ -283,13 +285,14 @@ function WhatsAppAudio({
   messageId,
 }: {
   path?: string | null;
+  url?: string | null;
   mime?: string | null;
   filename?: string | null;
   bucket?: string | null;
   isAgent: boolean;
   messageId: string;
 }) {
-  const display = useResolvedMediaSrc({ path, bucket });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -483,18 +486,20 @@ function WhatsAppAudio({
 
 function DocumentPreview({
   path,
+  url,
   filename,
   mime,
   size,
   bucket,
 }: {
   path?: string | null;
+  url?: string | null;
   filename?: string | null;
   mime?: string | null;
   size?: number | null;
   bucket?: string | null;
 }) {
-  const display = useResolvedMediaSrc({ path, bucket });
+  const display = useResolvedMediaSrc({ path, url, bucket });
   const sizeLabel =
     typeof size === "number" && size > 0
       ? size > 1024 * 1024
@@ -550,11 +555,13 @@ type MediaInfo = {
 
 function getMediaInfo(m: Message): MediaInfo | null {
   const meta = m.sourceMetadata as Record<string, unknown> | undefined;
+  const legacy = extractLegacyMetaMedia(meta);
   const path = (meta?.media_path as string | undefined) ?? null;
   const url =
     (meta?.media_url as string | undefined) ??
     (meta?.mediaUrl as string | undefined) ??
     (meta?.image_url as string | undefined) ??
+    legacy?.media_url ??
     null;
   const mime = (meta?.media_mime as string | undefined) ?? null;
   const filename = (meta?.media_filename as string | undefined) ?? null;
@@ -563,6 +570,7 @@ function getMediaInfo(m: Message): MediaInfo | null {
   const t =
     (meta?.media_kind as string | undefined) ??
     (meta?.type as string | undefined) ??
+    legacy?.media_kind ??
     m.sourceSubtype ??
     "";
 
@@ -853,6 +861,7 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
             {replyNode}
             <WhatsAppAudio
               path={info.path}
+              url={info.url}
               mime={info.mime}
               filename={info.filename}
               bucket={info.bucket}
@@ -870,6 +879,7 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
             {replyNode}
             <DocumentPreview
               path={info.path}
+              url={info.url}
               filename={info.filename}
               mime={info.mime}
               size={info.size}

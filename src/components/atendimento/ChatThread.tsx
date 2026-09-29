@@ -375,7 +375,7 @@ export function ChatThread({
             type="button"
             onClick={onBack}
             aria-label="Voltar para a lista"
-            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-ml-1 shrink-0 rounded-full p-2 min-h-[44px] min-w-[44px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground xl:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -435,7 +435,7 @@ export function ChatThread({
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <MessagesContext.Provider value={messages}>
           <ReplyComposeContext.Provider value={replyCompose}>
-            <div className="mx-auto flex max-w-[680px] flex-col gap-2">
+            <div className="flex w-full min-w-0 flex-col gap-2">
               {thread.status === "error" ? (
                 <div
                   role="alert"
@@ -497,7 +497,7 @@ export function ChatThread({
       </div>
 
       {lead.channel === "whatsapp" && !locked && (
-        <div className="mx-auto w-full max-w-[704px]">
+        <div className="w-full min-w-0 px-1 sm:px-2">
           <WhatsappWindowAlert
             conversation={conversation}
             lead={lead}
@@ -508,7 +508,7 @@ export function ChatThread({
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-[680px] px-4 sm:px-0">
+      <div className="w-full min-w-0 px-3 sm:px-5">
         {suggestError && (
           <p role="alert" className="mb-2 text-xs text-destructive">
             {suggestError}

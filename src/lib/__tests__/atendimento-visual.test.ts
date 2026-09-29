@@ -349,6 +349,27 @@ describe("Atendimento 2.0 runtime", () => {
     expect(repoMock.calls.getConversations).toBeGreaterThan(0);
   });
 
+  it.each(["legacy", "normalized"])("exibe imagem recebida do Instagram (%s) em vez de [mídia]", async (format) => {
+    const url = "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=sample";
+    setRemoteSnapshot({
+      leads: [{ ...lead, channel: "instagram" }],
+      conversations: [{ ...conversation, channel: "instagram" }],
+      messages: [{
+        id: "instagram-photo", conversationId: conversation.id, role: "lead",
+        text: "[mídia]", at: new Date().toISOString(), sourceSubtype: "dm",
+        sourceMetadata: format === "legacy"
+          ? { raw: { message: { attachments: [{ type: "image", payload: { url } }] } } }
+          : { media_kind: "image", media_url: url },
+      }],
+    });
+    render(React.createElement(RouteView));
+    const image = await screen.findByRole("img", { name: "Imagem", exact: true });
+    await waitFor(() => expect(image.getAttribute("src")).toBe(url));
+    const bubble = document.getElementById("msg-instagram-photo")!;
+    expect(within(bubble).queryByText("[mídia]", { exact: true })).toBeNull();
+    expect(manualSendMock.sendManualText).not.toHaveBeenCalled();
+  });
+
   it("envia pelo adapter compartilhado com conversa, lead, canal e origem corretos", async () => {
     setRemoteSnapshot();
     render(React.createElement(RouteView));

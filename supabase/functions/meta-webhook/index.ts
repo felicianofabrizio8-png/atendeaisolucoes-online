@@ -14,6 +14,7 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { buildSecretCandidates, verifyMetaSignature } from "./signature.ts";
+import { extractMetaMedia } from "./media.ts";
 
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
@@ -1019,6 +1020,7 @@ Deno.serve(async (req) => {
 
         const hasText = typeof m?.message?.text === "string" && m.message.text.trim().length > 0;
         const hasAttachment = Array.isArray(m?.message?.attachments) && m.message.attachments.length > 0;
+        const media = extractMetaMedia(m?.message);
         const text = hasText
           ? m.message.text
           : hasAttachment
@@ -1075,7 +1077,7 @@ Deno.serve(async (req) => {
             externalId: mid ? String(mid) : null,
             source,
             subtype: "dm",
-            metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m },
+            metadata: { recipient_id: recipientId, username: name, ts: tsMs, raw: m, ...media },
             at: atIso,
           });
 

@@ -62,9 +62,9 @@ function corDe(fracao: number): string {
 /**
  * Campo de calor em blocos pequenos, com gradiente entre eles.
  *
- * As colunas correm da ESQUERDA PARA A DIREITA no tempo, seguindo o mesmo
- * filtro do resto da tela (dias ou meses). As linhas são as horas do dia, de
- * cima para baixo. É esse cruzamento que dá densidade: um bloco por dia
+ * No mês e no ano, as colunas seguem os dias ou meses e as linhas são horas.
+ * Na semana, os eixos são transpostos: horas nas colunas e dias nas linhas,
+ * mantendo o desenho horizontal. É esse cruzamento que dá densidade: um bloco por dia
  * renderia trinta quadradinhos soltos; hora × dia rende centenas, e a forma
  * das manchas passa a dizer alguma coisa.
  *
@@ -83,7 +83,7 @@ export function GradientHeatmap({
   valores: number[][];
   colunas: string[];
   colunasCheias: string[];
-  /** Horas exibidas, de cima para baixo. */
+  /** Horas da matriz de entrada; na semana aparecem no eixo horizontal. */
   linhas: number[];
   className?: string;
 }) {
@@ -99,6 +99,9 @@ export function GradientHeatmap({
 
   const nLinhas = valores.length;
   const nColunas = valores[0].length;
+  // Na semana, horas no eixo horizontal e dias nas linhas mantêm a grade
+  // deitada sem esticar as células nem mudar a contagem de cada dia/hora.
+  const semana = nColunas === 7;
 
   // Célula quadrada sempre. A grade é desenhada num viewBox de célula
   // unitária e o SVG escala proporcionalmente, então a proporção do quadrado
@@ -106,8 +109,8 @@ export function GradientHeatmap({
   const LADO = 10;
   const VAO = 1.4;
   const FAIXA_ROTULO = 9;
-  const W = nColunas * LADO;
-  const grade = nLinhas * LADO;
+  const W = (semana ? nLinhas : nColunas) * LADO;
+  const grade = (semana ? nColunas : nLinhas) * LADO;
   const H = grade + FAIXA_ROTULO;
 
   const atual = hover
@@ -135,8 +138,8 @@ export function GradientHeatmap({
             return (
               <rect
                 key={`${l}-${c}`}
-                x={c * LADO + VAO / 2}
-                y={l * LADO + VAO / 2}
+                x={(semana ? l : c) * LADO + VAO / 2}
+                y={(semana ? c : l) * LADO + VAO / 2}
                 width={LADO - VAO}
                 height={LADO - VAO}
                 rx={1.2}
@@ -166,7 +169,7 @@ export function GradientHeatmap({
           className="fill-muted-foreground"
           style={{ fontSize: 5 }}
         >
-          {colunas[0]}
+          {semana ? `${linhas[0]}h` : colunas[0]}
         </text>
         <text
           x={W - VAO / 2}
@@ -175,7 +178,7 @@ export function GradientHeatmap({
           className="fill-muted-foreground"
           style={{ fontSize: 5 }}
         >
-          {colunas[colunas.length - 1]}
+          {semana ? `${linhas[linhas.length - 1]}h` : colunas[colunas.length - 1]}
         </text>
       </svg>
 
@@ -183,7 +186,9 @@ export function GradientHeatmap({
         <span className="min-w-0 truncate text-[10px] text-muted-foreground" role="status">
           {atual
             ? `${atual.coluna}, ${atual.hora}h — ${num(atual.valor)} lead${atual.valor === 1 ? "" : "s"}`
-            : `Linhas: ${linhas[0]}h às ${linhas[linhas.length - 1]}h · passe o mouse para ver o número`}
+            : semana
+              ? `Dias: ${colunas[0]} a ${colunas[colunas.length - 1]} · horários de ${linhas[0]}h às ${linhas[linhas.length - 1]}h`
+              : `Linhas: ${linhas[0]}h às ${linhas[linhas.length - 1]}h · passe o mouse para ver o número`}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
           0

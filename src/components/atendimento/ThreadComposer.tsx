@@ -105,11 +105,11 @@ export function ThreadComposer({
   return (
     <form
       onSubmit={onSubmit}
-      className="px-4 sm:px-5"
+      className="w-full min-w-0 shrink-0 px-3 sm:px-5"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}
     >
       {replyingTo && (
-        <div className="mx-auto mb-2 flex max-w-[680px] items-start gap-2 rounded-2xl border border-border bg-secondary/40 px-3 py-2">
+        <div className="mb-2 flex w-full min-w-0 items-start gap-2 rounded-2xl border border-border bg-secondary/40 px-3 py-2">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
               Respondendo a {replyAuthor}
@@ -127,7 +127,7 @@ export function ThreadComposer({
         </div>
       )}
 
-      <div className="mx-auto flex max-w-[680px] items-end gap-1 rounded-3xl border border-border bg-background px-2 py-1.5">
+      <div className="flex w-full min-w-0 items-end gap-1 rounded-3xl border border-border bg-background px-2 py-1.5">
         {recordingVoice ? (
           <VoiceNoteBar
             state={voice.state}
@@ -255,7 +255,7 @@ export function ThreadComposer({
       </div>
 
       {voice.error && (
-        <p role="alert" className="mx-auto mt-2 max-w-[680px] text-xs text-destructive">
+        <p role="alert" className="mt-2 w-full text-xs text-destructive">
           {voice.error}
           {voice.state === "failed" ? " A gravação foi mantida — toque para tentar de novo." : ""}
         </p>
