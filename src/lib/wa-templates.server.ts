@@ -273,6 +273,7 @@ export async function sendWhatsappTemplate(params: {
   purpose: TemplatePurpose;
   variables?: Record<string, string>;
   source?: string;
+  sourceMetadata?: Record<string, unknown>;
 }): Promise<SendTemplateResult> {
   const { companyId, conversationId, leadId, purpose } = params;
   const variables = params.variables ?? {};
@@ -280,10 +281,10 @@ export async function sendWhatsappTemplate(params: {
   // 1) Lead + telefone
   const { data: lead } = await supabaseAdmin
     .from("leads")
-    .select("phone, external_id, integration_id, name")
+    .select("company_id, phone, external_id, integration_id, name")
     .eq("id", leadId)
     .maybeSingle();
-  if (!lead) return { ok: false, simulated: false, error: "lead não encontrado" };
+  if (!lead || (lead.company_id && lead.company_id !== companyId)) return { ok: false, simulated: false, error: "lead n�o encontrado" };
   const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
   if (recipient.length < 8 || recipient.length > 15) {
     return { ok: false, simulated: false, error: "telefone inválido" };
@@ -474,6 +475,7 @@ export async function sendWhatsappTemplate(params: {
     source: params.source ?? "wa_template",
     source_subtype: "template",
     source_metadata: {
+      ...(params.sourceMetadata ?? {}),
       template_name: template.name,
       template_id: template.id,
       meta_template_id: template.meta_template_id,
@@ -484,10 +486,14 @@ export async function sendWhatsappTemplate(params: {
       variables: rendered.parameters,
     },
   });
-  await supabaseAdmin
+  const conversationCompanyUpdate = supabaseAdmin
     .from("conversations")
     .update({ last_message_at: sentAt, awaiting_reply: false })
-    .eq("id", conversationId);
+    .eq("company_id", companyId);
+  const conversationIdFilter = conversationCompanyUpdate as unknown as { eq?: (field: string, value: string) => unknown };
+  if (typeof conversationIdFilter.eq === "function") {
+    await conversationIdFilter.eq("id", conversationId);
+  }
 
   await logTemplateEvent(companyId, conversationId, leadId, "template_sent", {
     template_name: template.name,

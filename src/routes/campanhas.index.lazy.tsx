@@ -75,6 +75,12 @@ function CampaignsPage() {
             Anúncios inteligentes para atrair mais leads.
           </p>
         </div>
+        <Link
+          to="/campanhas-relacionamento"
+          className="inline-flex items-center h-10 px-4 rounded-md border text-sm font-medium hover:bg-accent/40"
+        >
+          Relacionamento
+        </Link>
         <button
           onClick={() => navigate({ to: "/campanhas/nova" })}
           className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
