@@ -121,10 +121,98 @@ export async function saveRelationshipSettings(
   return data as RelationshipSettings;
 }
 
-function realSendIsEnabled(): boolean {
+/** Kill switch global (variável de servidor): sem ele, nada é enviado. */
+export function realSendIsEnabled(): boolean {
   // Deliberately fail-closed: this implementation cannot send real messages
   // until an explicit later rollout enables the server-only flag.
   return process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND === "true";
+}
+
+export const RELATIONSHIP_DISPATCH_MODES = ["manual", "assisted", "automatic"] as const;
+
+export function isRelationshipMode(value: unknown): value is RelationshipMode {
+  return typeof value === "string" && (RELATIONSHIP_DISPATCH_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * Automação é por campanha: só `dispatch_mode = automatic` +
+ * `automatic_enabled = true` + campanha pronta. Colunas ausentes (migration
+ * não aplicada) contam como desligado.
+ */
+export function campaignAutomationProblem(campaign: any): string | null {
+  if (campaign?.dispatch_mode !== "automatic" || campaign?.automatic_enabled !== true)
+    return "automação desativada";
+  if (campaign?.status !== "ready") return `campanha não está pronta (status ${campaign?.status ?? "?"})`;
+  return null;
+}
+
+async function loadCampaign(companyId: string, campaignId: string) {
+  const { data, error } = await db
+    .from("relationship_campaigns")
+    .select("*")
+    .eq("company_id", companyId)
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as any;
+}
+
+/** Troca o modo da campanha. Sair do automático desliga a automação. */
+export async function setRelationshipCampaignMode(
+  companyId: string,
+  campaignId: string,
+  mode: RelationshipMode,
+  actorId: string | null,
+) {
+  if (!isRelationshipMode(mode)) throw new Error("modo inválido");
+  const campaign = await loadCampaign(companyId, campaignId);
+  if (!campaign) throw new Error("campanha não encontrada");
+  const patch: Record<string, unknown> = { dispatch_mode: mode };
+  if (mode !== "automatic" && campaign.automatic_enabled) {
+    patch.automatic_enabled = false;
+    patch.automation_changed_at = new Date().toISOString();
+    patch.automation_changed_by = actorId;
+  }
+  const { data, error } = await db
+    .from("relationship_campaigns")
+    .update(patch)
+    .eq("company_id", companyId)
+    .eq("id", campaignId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * "Ativar automação" / "Pausar automação" — sempre explícito, por campanha.
+ * Ativar exige modo automático e campanha pronta.
+ */
+export async function setRelationshipCampaignAutomation(
+  companyId: string,
+  campaignId: string,
+  enabled: boolean,
+  actorId: string | null,
+) {
+  const campaign = await loadCampaign(companyId, campaignId);
+  if (!campaign) throw new Error("campanha não encontrada");
+  if (enabled && campaign.dispatch_mode !== "automatic")
+    throw new Error("só campanhas no modo automático podem ter a automação ativada");
+  if (enabled && campaign.status !== "ready")
+    throw new Error("materialize os destinatários antes de ativar a automação");
+  const { data, error } = await db
+    .from("relationship_campaigns")
+    .update({
+      automatic_enabled: enabled,
+      automation_changed_at: new Date().toISOString(),
+      automation_changed_by: actorId,
+    })
+    .eq("company_id", companyId)
+    .eq("id", campaignId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 function finalStatus(status: RelationshipRecipientStatus): boolean {
@@ -134,8 +222,9 @@ function finalStatus(status: RelationshipRecipientStatus): boolean {
 export async function listRelationshipCampaigns(companyId: string) {
   const [{ data: campaigns, error: campaignError }, { data: recipients, error: recipientError }, settings] =
     await Promise.all([
+      // `*`: sem a migration de modo por campanha, as colunas novas só faltam.
       db.from("relationship_campaigns")
-        .select("id,name,status,segment_id,segment_version,template_purpose,created_at,updated_at")
+        .select("*")
         .eq("company_id", companyId)
         .order("updated_at", { ascending: false }),
       db.from("relationship_campaign_recipients")
@@ -149,8 +238,11 @@ export async function listRelationshipCampaigns(companyId: string) {
   const all = recipients ?? [];
   return {
     settings,
+    real_send_enabled: realSendIsEnabled(),
     campaigns: (campaigns ?? []).map((campaign: any) => ({
       ...campaign,
+      dispatch_mode: isRelationshipMode(campaign.dispatch_mode) ? campaign.dispatch_mode : "manual",
+      automatic_enabled: campaign.automatic_enabled === true,
       recipients: {
         total: all.filter((row: any) => row.relationship_campaign_id === campaign.id).length,
         pending: all.filter((row: any) => row.relationship_campaign_id === campaign.id && row.status === "pending").length,
@@ -361,19 +453,21 @@ export async function prepareRelationshipDispatch(input: {
   const { companyId, now } = input;
   const settings = await getRelationshipSettings(companyId);
   const blockers: string[] = [];
-  if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic"))
-    blockers.push("automação desativada");
   if (!isWithinRelationshipWindow(now, settings)) blockers.push("fora do horário comercial configurado");
 
   const { data: recipient, error: recipientError } = await db
     .from("relationship_campaign_recipients")
-    .select("*, relationship_campaigns!inner(id,company_id,template_purpose,segment_id)")
+    .select("*, relationship_campaigns!inner(*)")
     .eq("company_id", companyId)
     .eq("relationship_campaign_id", input.relationshipCampaignId)
     .eq("id", input.recipientId)
     .maybeSingle();
   if (recipientError) throw recipientError;
   if (!recipient) return { status: "blocked", reason: "destinatário não encontrado" };
+  if (input.mode === "automatic") {
+    const automation = campaignAutomationProblem(recipient.relationship_campaigns);
+    if (automation) blockers.unshift(automation);
+  }
   if (finalStatus(recipient.status)) blockers.push(`destinatário já está como ${recipient.status}`);
   if (recipient.attempts >= settings.retry_max + 1) blockers.push("limite de tentativas atingido");
 
@@ -788,26 +882,42 @@ export async function scheduleRelationshipCampaign(input: {
 }) {
   const now = input.now ?? new Date();
   const settings = await getRelationshipSettings(input.companyId);
-  if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic")) {
-    return { status: "disabled" as const, reason: "automação desativada", candidates: [] };
+  if (input.mode === "automatic") {
+    const problem = campaignAutomationProblem(await loadCampaign(input.companyId, input.relationshipCampaignId));
+    if (problem) return { status: "disabled" as const, reason: problem, candidates: [] };
   }
   if (!isWithinRelationshipWindow(now, settings)) {
     return { status: "outside_window" as const, reason: "fora do horário comercial", candidates: [] };
   }
 
-  const max = Math.max(0, Math.min(input.limit ?? settings.hourly_limit, settings.hourly_limit));
+  // Limites da empresa (todas as campanhas): janela móvel de 24 h e de 1 h.
   const { data: sentRecent, error: sentError } = await db
     .from("relationship_campaign_recipients")
-    .select("id")
+    .select("id,sent_at")
     .eq("company_id", input.companyId)
     .in("status", ["sent", "delivered", "replied", "converted"])
     .gte("sent_at", new Date(now.getTime() - 24 * 3600_000).toISOString());
   if (sentError) throw sentError;
-  if ((sentRecent ?? []).length >= settings.daily_limit) {
+  const sentDay = (sentRecent ?? []).length;
+  const hourAgo = now.getTime() - 3600_000;
+  const sentHour = (sentRecent ?? []).filter(
+    (row: { sent_at: string | null }) => row.sent_at && new Date(row.sent_at).getTime() >= hourAgo,
+  ).length;
+  if (sentDay >= settings.daily_limit) {
     return { status: "daily_limit" as const, reason: "limite diário atingido", candidates: [] };
   }
+  if (sentHour >= settings.hourly_limit) {
+    return { status: "hourly_limit" as const, reason: "limite por hora atingido", candidates: [] };
+  }
 
-  const remaining = Math.max(0, Math.min(max, settings.daily_limit - (sentRecent ?? []).length));
+  const remaining = Math.max(
+    0,
+    Math.min(
+      input.limit ?? settings.hourly_limit,
+      settings.hourly_limit - sentHour,
+      settings.daily_limit - sentDay,
+    ),
+  );
   const { data, error } = await db
     .from("relationship_campaign_recipients")
     .select("id,relationship_campaign_id,lead_id,status,attempts,next_attempt_at")
@@ -834,13 +944,15 @@ export async function scheduleRelationshipCampaign(input: {
  * automação ligada, horário e limites; cada candidato passa por
  * `dispatchRelationshipRecipient` (modo automático), que prepara o var1 se
  * preciso e envia só o salvo. Com o envio real desligado no servidor, cada
- * disparo vira prévia. Nenhuma rota/cron chama isto ainda.
+ * disparo vira prévia. Chamado pelo runtime-tick (relationship-campaign-tick).
  */
 export async function runAutomaticRelationshipBatch(input: {
   companyId: string;
   relationshipCampaignId: string;
   now?: Date;
   limit?: number;
+  /** Epoch ms: candidatos restantes ficam para o próximo tick. */
+  deadlineAt?: number;
 }) {
   const now = input.now ?? new Date();
   const plan = await scheduleRelationshipCampaign({ ...input, now, mode: "automatic" });
@@ -849,6 +961,10 @@ export async function runAutomaticRelationshipBatch(input: {
 
   const results: Array<Record<string, unknown>> = [];
   for (const candidate of plan.candidates as Array<{ id: string }>) {
+    if (input.deadlineAt !== undefined && Date.now() > input.deadlineAt) {
+      results.push({ recipient_id: candidate.id, status: "deferred", reason: "prazo do tick" });
+      continue;
+    }
     try {
       const result = await dispatchRelationshipRecipient({
         companyId: input.companyId,
@@ -864,6 +980,64 @@ export async function runAutomaticRelationshipBatch(input: {
     }
   }
   return { status: "ran" as const, real_send_enabled: realSendIsEnabled(), results };
+}
+
+/**
+ * Assistido: "Preparar com IA" — roda a prévia (mesmo pipeline do "Testar")
+ * para os próximos destinatários pendentes e salva o var1 de cada um. Nada é
+ * enviado; o operador aprova o envio depois, destinatário a destinatário.
+ */
+export async function prepareRelationshipCampaignBatch(input: {
+  companyId: string;
+  relationshipCampaignId: string;
+  limit?: number;
+  now?: Date;
+}) {
+  const limit = Math.max(1, Math.min(input.limit ?? 25, 50));
+  const { data, error } = await db
+    .from("relationship_campaign_recipients")
+    .select("id")
+    .eq("company_id", input.companyId)
+    .eq("relationship_campaign_id", input.relationshipCampaignId)
+    .in("status", ["pending", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  const summary = { prepared: 0, reused: 0, blocked: 0 };
+  const results: Array<Record<string, unknown>> = [];
+  for (const row of (data ?? []) as Array<{ id: string }>) {
+    const preview = await previewRelationshipDispatch({
+      companyId: input.companyId,
+      relationshipCampaignId: input.relationshipCampaignId,
+      recipientId: row.id,
+      mode: "assisted",
+      now: input.now,
+    });
+    const prepared = "prepared" in preview ? preview.prepared : undefined;
+    if (prepared?.saved) summary[prepared.reused ? "reused" : "prepared"] += 1;
+    else summary.blocked += 1;
+    results.push({ recipient_id: row.id, saved: prepared?.saved === true, blockers: preview.blockers });
+  }
+  return { status: "prepared" as const, ...summary, results };
+}
+
+/**
+ * Envio pelo operador (manual: "Enviar"; assistido: "Aprovar e enviar").
+ * Usa só o var1 salvo; sem ele, bloqueia. O kill switch continua valendo.
+ */
+export async function sendRelationshipRecipientByOperator(input: {
+  companyId: string;
+  relationshipCampaignId: string;
+  recipientId: string;
+  now?: Date;
+}) {
+  const campaign = await loadCampaign(input.companyId, input.relationshipCampaignId);
+  if (!campaign) throw new Error("campanha não encontrada");
+  return dispatchRelationshipRecipient({
+    ...input,
+    mode: campaign.dispatch_mode === "assisted" ? "assisted" : "manual",
+    dryRun: false,
+  });
 }
 
 export async function upsertRelationshipSuppression(

@@ -7,6 +7,9 @@
 //   apenas para tenants com a flag correspondente ativa.
 // - Dedupe distribuído por bucket do agente + lock por tenant/bucket.
 // - Processa síncronamente pelo Worker do Runtime (sem loops).
+// - Campanhas de relacionamento: um passo próprio (runRelationshipCampaignTick),
+//   só para campanhas automáticas ativadas e com o kill switch de envio real
+//   ligado no servidor; dedupe/lock por empresa.
 // ============================================================================
 
 import { createFileRoute } from "@tanstack/react-router";
@@ -194,9 +197,24 @@ export const Route = createFileRoute("/api/public/hooks/runtime-tick")({
           });
         }
 
+        // Campanhas de relacionamento automáticas (tenant vem do banco, nunca do body).
+        let relationshipCampaigns: Record<string, unknown>;
+        try {
+          const { runRelationshipCampaignTick } = await import(
+            "@/lib/relationship-campaign-tick.server"
+          );
+          relationshipCampaigns = await runRelationshipCampaignTick();
+        } catch (e) {
+          relationshipCampaigns = {
+            status: "error",
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+
         return Response.json({
           ok: true,
           agents: perAgentResults,
+          relationship_campaigns: relationshipCampaigns,
         });
       },
     },

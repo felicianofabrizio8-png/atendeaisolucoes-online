@@ -29,7 +29,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
       select: () => chain,
       eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), chain),
       in: (c: string, vs: unknown[]) => (preds.push((r) => vs.includes(r[c])), chain),
-      gte: () => chain,
+      gte: (c: string, v: string) => (preds.push((r) => r[c] != null && String(r[c]) >= v), chain),
       or: () => chain,
       order: () => chain,
       limit: (n: number) => ((limit = n), chain),
@@ -99,8 +99,13 @@ vi.mock("@/lib/llm-gateway/providers/LovableChatProvider", () => ({
 
 import {
   dispatchRelationshipRecipient,
+  prepareRelationshipCampaignBatch,
   previewRelationshipDispatch,
   runAutomaticRelationshipBatch,
+  scheduleRelationshipCampaign,
+  sendRelationshipRecipientByOperator,
+  setRelationshipCampaignAutomation,
+  setRelationshipCampaignMode,
 } from "../relationship-campaign-dispatcher.server";
 import { RELATIONSHIP_PURPOSES } from "../relationship-campaign-purposes";
 import { PURPOSE_TEMPLATE_MAP } from "../wa-templates.server";
@@ -131,7 +136,18 @@ const REATIVACAO = template(
 function seed(purpose = "followup_resume") {
   db.seq = 0;
   db.writes = [];
+  // Mesmo objeto na tabela e no join do destinatário (o fake clona na leitura).
+  const campaign = {
+    id: "camp-1",
+    company_id: "c1",
+    status: "ready",
+    template_purpose: purpose,
+    segment_id: "seg-1",
+    dispatch_mode: "manual",
+    automatic_enabled: false,
+  };
   db.tables = {
+    relationship_campaigns: [campaign],
     relationship_campaign_settings: [
       {
         company_id: "c1",
@@ -156,12 +172,7 @@ function seed(purpose = "followup_resume") {
         attempts: 0,
         metadata: { source: "relationship_segment" },
         updated_at: "ts-0",
-        relationship_campaigns: {
-          id: "camp-1",
-          company_id: "c1",
-          template_purpose: purpose,
-          segment_id: "seg-1",
-        },
+        relationship_campaigns: campaign,
       },
     ],
     relationship_segments: [
@@ -218,6 +229,10 @@ const input = {
   now: NOW,
 };
 const recipient = () => db.tables.relationship_campaign_recipients[0];
+const campaignRow = () => db.tables.relationship_campaigns[0];
+/** Automação ligada por campanha — só no banco falso destes testes. */
+const enableCampaignAutomation = () =>
+  Object.assign(campaignRow(), { dispatch_mode: "automatic", automatic_enabled: true });
 const stored = () => recipient().metadata.prepared_dispatch;
 /** A única escrita permitida à prévia: metadata.prepared_dispatch do destinatário. */
 const onlyPreparedWrites = () =>
@@ -580,12 +595,7 @@ describe("envio real (gate ligado só nestes testes) reutiliza o var1 da prévia
 });
 
 describe("modo automático: prepara pelo pipeline do Testar e envia só o salvo", () => {
-  // automação ligada só no banco falso destes testes
-  const enableAutomation = () =>
-    Object.assign(db.tables.relationship_campaign_settings[0], {
-      mode: "automatic",
-      automatic_enabled: true,
-    });
+  const enableAutomation = enableCampaignAutomation;
   const autoSend = () => {
     process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
     return dispatchRelationshipRecipient({
@@ -733,10 +743,7 @@ describe("runAutomaticRelationshipBatch", () => {
   });
 
   it("envio real desligado: o ciclo só prepara (prévia salva), sem enviar", async () => {
-    Object.assign(db.tables.relationship_campaign_settings[0], {
-      mode: "automatic",
-      automatic_enabled: true,
-    });
+    enableCampaignAutomation();
     const r = await runAutomaticRelationshipBatch({
       companyId: "c1",
       relationshipCampaignId: "camp-1",
@@ -750,10 +757,7 @@ describe("runAutomaticRelationshipBatch", () => {
   });
 
   it("com o gate ligado (só no teste): prepara e envia cada candidato", async () => {
-    Object.assign(db.tables.relationship_campaign_settings[0], {
-      mode: "automatic",
-      automatic_enabled: true,
-    });
+    enableCampaignAutomation();
     process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
     const r = await runAutomaticRelationshipBatch({
       companyId: "c1",
@@ -762,5 +766,229 @@ describe("runAutomaticRelationshipBatch", () => {
     });
     expect(r.results[0]).toMatchObject({ recipient_id: "rec-1", status: "sent" });
     expect(tpl.send.mock.calls[0][0].variables).toEqual(stored().variables);
+  });
+});
+
+describe("automação por campanha (dispatch_mode + automatic_enabled)", () => {
+  const autoSend = () => {
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    return dispatchRelationshipRecipient({
+      ...input,
+      mode: "automatic",
+      dryRun: false,
+    }) as Promise<any>;
+  };
+
+  it("campanha nasce/fica manual e desligada: automático bloqueia", async () => {
+    // mesmo com o antigo flag da empresa ligado
+    Object.assign(db.tables.relationship_campaign_settings[0], {
+      mode: "automatic",
+      automatic_enabled: true,
+    });
+    const r = await autoSend();
+    expect(r).toMatchObject({ status: "blocked", reason: "automação desativada" });
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("modo automático sem ativação explícita: bloqueia", async () => {
+    campaignRow().dispatch_mode = "automatic";
+    expect((await autoSend()).reason).toBe("automação desativada");
+  });
+
+  it("ativada mas modo assistido (inconsistente): bloqueia", async () => {
+    Object.assign(campaignRow(), { dispatch_mode: "assisted", automatic_enabled: true });
+    expect((await autoSend()).reason).toBe("automação desativada");
+  });
+
+  it("colunas ausentes (migration não aplicada): bloqueia", async () => {
+    delete (campaignRow() as any).dispatch_mode;
+    delete (campaignRow() as any).automatic_enabled;
+    expect((await autoSend()).reason).toBe("automação desativada");
+  });
+
+  it("campanha pausada/encerrada: bloqueia mesmo com automação ligada", async () => {
+    enableCampaignAutomation();
+    campaignRow().status = "paused";
+    expect((await autoSend()).reason).toMatch(/campanha não está pronta/);
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Ativar/Pausar automação e modo da campanha", () => {
+  it("ativar exige modo automático", async () => {
+    await expect(setRelationshipCampaignAutomation("c1", "camp-1", true, "u1")).rejects.toThrow(
+      /modo automático/,
+    );
+    expect(campaignRow().automatic_enabled).toBe(false);
+  });
+
+  it("ativar exige campanha pronta (materializada)", async () => {
+    Object.assign(campaignRow(), { dispatch_mode: "automatic", status: "draft" });
+    await expect(setRelationshipCampaignAutomation("c1", "camp-1", true, "u1")).rejects.toThrow(
+      /materialize/,
+    );
+  });
+
+  it("ativa e pausa, registrando quem e quando", async () => {
+    campaignRow().dispatch_mode = "automatic";
+    await setRelationshipCampaignAutomation("c1", "camp-1", true, "admin-1");
+    expect(campaignRow()).toMatchObject({
+      automatic_enabled: true,
+      automation_changed_by: "admin-1",
+    });
+    expect(campaignRow().automation_changed_at).toEqual(expect.any(String));
+    await setRelationshipCampaignAutomation("c1", "camp-1", false, "admin-2");
+    expect(campaignRow()).toMatchObject({
+      automatic_enabled: false,
+      automation_changed_by: "admin-2",
+    });
+  });
+
+  it("isolamento por empresa: campanha de outra empresa não é encontrada", async () => {
+    campaignRow().dispatch_mode = "automatic";
+    await expect(setRelationshipCampaignAutomation("c2", "camp-1", true, "u")).rejects.toThrow(
+      /não encontrada/,
+    );
+    await expect(setRelationshipCampaignMode("c2", "camp-1", "manual", "u")).rejects.toThrow(
+      /não encontrada/,
+    );
+    expect(campaignRow().automatic_enabled).toBe(false);
+  });
+
+  it("trocar para manual/assistido desliga a automação; para automático não liga", async () => {
+    enableCampaignAutomation();
+    await setRelationshipCampaignMode("c1", "camp-1", "assisted", "u1");
+    expect(campaignRow()).toMatchObject({ dispatch_mode: "assisted", automatic_enabled: false });
+    await setRelationshipCampaignMode("c1", "camp-1", "automatic", "u1");
+    expect(campaignRow()).toMatchObject({ dispatch_mode: "automatic", automatic_enabled: false });
+  });
+
+  it("modo inválido é recusado", async () => {
+    await expect(setRelationshipCampaignMode("c1", "camp-1", "turbo" as any, "u")).rejects.toThrow(
+      /inválido/,
+    );
+  });
+});
+
+describe("assistido e manual: operador prepara/aprova", () => {
+  it('"Preparar com IA" salva o var1 dos pendentes, sem enviar', async () => {
+    campaignRow().dispatch_mode = "assisted";
+    const r: any = await prepareRelationshipCampaignBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+    });
+    expect(r).toMatchObject({ status: "prepared", prepared: 1, reused: 0, blocked: 0 });
+    expect(stored().variables).toEqual({ var1: PHRASE });
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(recipient().status).toBe("pending");
+  });
+
+  it('"Aprovar e enviar" (gate só no teste) envia o var1 salvo, sem IA', async () => {
+    campaignRow().dispatch_mode = "assisted";
+    await prepareRelationshipCampaignBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+    });
+    llm.run.mockClear();
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r: any = await sendRelationshipRecipientByOperator({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      recipientId: "rec-1",
+      now: NOW,
+    });
+    expect(r.status).toBe("sent");
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({ var1: PHRASE });
+  });
+
+  it("enviar sem preparar: bloqueia (não gera às escondidas)", async () => {
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r: any = await sendRelationshipRecipientByOperator({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      recipientId: "rec-1",
+      now: NOW,
+    });
+    expect(r.reason).toMatch(/nenhum var1 preparado/);
+    expect(llm.run).not.toHaveBeenCalled();
+  });
+
+  it("kill switch desligado: enviar vira só prévia", async () => {
+    await previewRelationshipDispatch(input);
+    const r: any = await sendRelationshipRecipientByOperator({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      recipientId: "rec-1",
+      now: NOW,
+    });
+    expect(r.status).toBe("preview");
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("scheduler automático: limites por empresa em janela móvel", () => {
+  const sentRow = (i: number, sentAt: string) => ({
+    id: `sent-${i}`,
+    company_id: "c1",
+    relationship_campaign_id: "camp-0",
+    lead_id: `lead-s${i}`,
+    status: "sent",
+    sent_at: sentAt,
+  });
+  const plan = () =>
+    scheduleRelationshipCampaign({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      mode: "automatic",
+      now: NOW,
+    }) as Promise<any>;
+
+  beforeEach(() => enableCampaignAutomation());
+
+  it("limite por hora conta os envios da última hora (não só o lote)", async () => {
+    for (let i = 0; i < 10; i++)
+      db.tables.relationship_campaign_recipients.push(sentRow(i, "2026-09-28T15:30:00.000Z"));
+    expect(await plan()).toMatchObject({ status: "hourly_limit", candidates: [] });
+  });
+
+  it("envios de horas atrás não bloqueiam a hora atual; sobra = limite - enviados", async () => {
+    for (let i = 0; i < 10; i++)
+      db.tables.relationship_campaign_recipients.push(sentRow(i, "2026-09-28T12:00:00.000Z"));
+    for (let i = 10; i < 17; i++)
+      db.tables.relationship_campaign_recipients.push(sentRow(i, "2026-09-28T15:50:00.000Z"));
+    const r = await plan();
+    expect(r.status).toBe("planned");
+    expect(r.candidates.map((c: any) => c.id)).toEqual(["rec-1"]);
+  });
+
+  it("limite diário atingido: nada é planejado", async () => {
+    db.tables.relationship_campaign_settings[0].daily_limit = 5;
+    for (let i = 0; i < 5; i++)
+      db.tables.relationship_campaign_recipients.push(sentRow(i, "2026-09-28T05:00:00.000Z"));
+    expect((await plan()).status).toBe("daily_limit");
+  });
+
+  it("automação pausada: disabled, nada é lido para envio", async () => {
+    campaignRow().automatic_enabled = false;
+    expect(await plan()).toMatchObject({ status: "disabled", reason: "automação desativada" });
+  });
+
+  it("prazo do tick esgotado: candidatos ficam para o próximo", async () => {
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r = await runAutomaticRelationshipBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+      deadlineAt: Date.now() - 1,
+    });
+    expect(r.results).toEqual([
+      { recipient_id: "rec-1", status: "deferred", reason: "prazo do tick" },
+    ]);
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send).not.toHaveBeenCalled();
   });
 });

@@ -8,16 +8,23 @@ import {
 } from "@/lib/relationship-campaigns.server";
 import {
   getRelationshipSettings,
+  isRelationshipMode,
+  prepareRelationshipCampaignBatch,
   previewRelationshipDispatch,
   listRelationshipCampaigns,
   listRelationshipRecipients,
   saveRelationshipSettings,
   scheduleRelationshipCampaign,
+  sendRelationshipRecipientByOperator,
+  setRelationshipCampaignAutomation,
+  setRelationshipCampaignMode,
   upsertRelationshipSuppression,
 } from "@/lib/relationship-campaign-dispatcher.server";
 import { isRelationshipPurpose } from "@/lib/relationship-campaign-purposes";
 
-async function authenticatedCompanyId(request: Request): Promise<string | null> {
+async function authenticatedUser(
+  request: Request,
+): Promise<{ companyId: string; userId: string } | null> {
   const authorization = request.headers.get("authorization") ?? "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (!token) return null;
@@ -28,7 +35,21 @@ async function authenticatedCompanyId(request: Request): Promise<string | null> 
     .select("company_id")
     .eq("id", userData.user.id)
     .maybeSingle();
-  return profile?.company_id ?? null;
+  return profile?.company_id ? { companyId: profile.company_id, userId: userData.user.id } : null;
+}
+
+async function authenticatedCompanyId(request: Request): Promise<string | null> {
+  return (await authenticatedUser(request))?.companyId ?? null;
+}
+
+/** Modo e automação da campanha: só admin da própria empresa (has_role). */
+async function isCompanyAdmin(userId: string, companyId: string): Promise<boolean> {
+  const { data, error } = await (supabaseAdmin as any).rpc("has_role", {
+    _user_id: userId,
+    _company_id: companyId,
+    _role: "admin",
+  });
+  return !error && data === true;
 }
 
 export const Route = createFileRoute("/api/relationship-campaigns")({
@@ -52,8 +73,9 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
         }
       },
       POST: async ({ request }: { request: Request }) => {
-        const companyId = await authenticatedCompanyId(request);
-        if (!companyId) return Response.json({ ok: false, error: "não autenticado" }, { status: 401 });
+        const user = await authenticatedUser(request);
+        if (!user) return Response.json({ ok: false, error: "não autenticado" }, { status: 401 });
+        const { companyId, userId } = user;
 
         try {
           const body = (await request.json()) as Record<string, unknown>;
@@ -92,11 +114,21 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             if (body.template_purpose !== undefined && !isRelationshipPurpose(body.template_purpose)) {
               return Response.json({ ok: false, error: "template_purpose inválido" }, { status: 400 });
             }
+            if (body.dispatch_mode !== undefined && !isRelationshipMode(body.dispatch_mode)) {
+              return Response.json({ ok: false, error: "dispatch_mode inválido" }, { status: 400 });
+            }
             const campaign = await createRelationshipCampaign(companyId, body.name, body.segment_id);
             if (typeof body.template_purpose === "string") {
               await (supabaseAdmin as any).from("relationship_campaigns")
                 .update({ template_purpose: body.template_purpose })
                 .eq("company_id", companyId).eq("id", campaign.id);
+            }
+            // Modo escolhido na criação; automação SEMPRE nasce desligada.
+            if (isRelationshipMode(body.dispatch_mode) && body.dispatch_mode !== "manual") {
+              const { error } = await (supabaseAdmin as any).from("relationship_campaigns")
+                .update({ dispatch_mode: body.dispatch_mode, automatic_enabled: false })
+                .eq("company_id", companyId).eq("id", campaign.id);
+              if (error) throw error;
             }
             return Response.json({ ok: true, campaign }, { status: 201 });
           }
@@ -118,14 +150,61 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             });
           }
 
-          if (action === "activate_automation") {
-            const enabled = body.enabled === true;
+          if (action === "set_campaign_mode" || action === "set_campaign_automation") {
+            if (typeof body.relationship_campaign_id !== "string") {
+              return Response.json({ ok: false, error: "relationship_campaign_id é obrigatório" }, { status: 400 });
+            }
+            if (!(await isCompanyAdmin(userId, companyId))) {
+              return Response.json({ ok: false, error: "apenas administradores" }, { status: 403 });
+            }
+            if (action === "set_campaign_mode") {
+              if (!isRelationshipMode(body.dispatch_mode)) {
+                return Response.json({ ok: false, error: "dispatch_mode inválido" }, { status: 400 });
+              }
+              return Response.json({
+                ok: true,
+                campaign: await setRelationshipCampaignMode(
+                  companyId, body.relationship_campaign_id, body.dispatch_mode, userId,
+                ),
+              });
+            }
+            if (typeof body.enabled !== "boolean") {
+              return Response.json({ ok: false, error: "enabled é obrigatório" }, { status: 400 });
+            }
             return Response.json({
               ok: true,
-              settings: await saveRelationshipSettings(companyId, {
-                mode: enabled ? "automatic" : "manual",
-                automatic_enabled: enabled,
-              }),
+              campaign: await setRelationshipCampaignAutomation(
+                companyId, body.relationship_campaign_id, body.enabled, userId,
+              ),
+            });
+          }
+
+          if (action === "prepare_batch") {
+            if (typeof body.relationship_campaign_id !== "string") {
+              return Response.json({ ok: false, error: "relationship_campaign_id é obrigatório" }, { status: 400 });
+            }
+            return Response.json({
+              ok: true,
+              ...(await prepareRelationshipCampaignBatch({
+                companyId,
+                relationshipCampaignId: body.relationship_campaign_id,
+                limit: typeof body.limit === "number" ? body.limit : undefined,
+              })),
+            });
+          }
+
+          if (action === "dispatch_send") {
+            if (typeof body.relationship_campaign_id !== "string" || typeof body.recipient_id !== "string") {
+              return Response.json({ ok: false, error: "campaign_id e recipient_id são obrigatórios" }, { status: 400 });
+            }
+            // Envia só o var1 salvo; kill switch do servidor continua valendo.
+            return Response.json({
+              ok: true,
+              ...(await sendRelationshipRecipientByOperator({
+                companyId,
+                relationshipCampaignId: body.relationship_campaign_id,
+                recipientId: body.recipient_id,
+              })),
             });
           }
 
