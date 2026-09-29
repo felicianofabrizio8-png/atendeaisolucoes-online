@@ -1,4 +1,5 @@
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { extractLegacyMetaMedia } from "../../../../supabase/functions/meta-webhook/media";
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
@@ -98,7 +99,9 @@ function ImagePreview({
   const [lightbox, setLightbox] = useState(false);
   const display = useResolvedMediaSrc({ path, url, bucket });
   if (error) {
-    return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
+    return (
+      <span className="text-xs italic opacity-70">Imagem indisponível</span>
+    );
   }
   if (!display) {
     // Placeholder com aspect-ratio 4/3 reservado — evita layout shift quando a URL
@@ -111,64 +114,58 @@ function ImagePreview({
     );
   }
   return (
-    <div className="space-y-1">
-      <button
-        type="button"
-        onClick={() => setLightbox(true)}
-        className="block focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
-      >
-        {/* width/height atributos reservam aspect-ratio antes do decode
-            (browsers usam ratio como hint); w-auto/h-auto ajustam para a
-            proporção natural após onLoad. Elimina shift de altura no bubble. */}
-        <img
-          src={display}
-          alt={filename ?? "Imagem"}
-          width={240}
-          height={180}
-          onLoad={(event) => {
-            const img = event.currentTarget;
-            traceInboxScroll("IMAGE_DECODE", "IMAGE_LOAD", {
-              src: display,
-              naturalWidth: img.naturalWidth,
-              naturalHeight: img.naturalHeight,
-              renderedWidth: img.clientWidth,
-              renderedHeight: img.clientHeight,
-            });
-          }}
-          onError={() => setError(true)}
-          className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
-          loading="lazy"
-          decoding="async"
-        />
-      </button>
-      <DownloadButton href={display} filename={filename} />
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
-          onClick={() => setLightbox(false)}
-          role="dialog"
-          aria-modal="true"
-        >
+    <Dialog open={lightbox} onOpenChange={setLightbox}>
+      <div className="space-y-1">
+        <DialogTrigger asChild>
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setLightbox(false);
-            }}
-            className="absolute top-4 right-4 text-white/90 hover:text-white"
-            aria-label="Fechar"
+            aria-label={`Ampliar ${filename ?? "imagem"}`}
+            className="block focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
           >
-            <X className="size-6" />
+            {/* width/height atributos reservam aspect-ratio antes do decode
+            (browsers usam ratio como hint); w-auto/h-auto ajustam para a
+            proporção natural após onLoad. Elimina shift de altura no bubble. */}
+            <img
+              src={display}
+              alt={filename ?? "Imagem"}
+              width={240}
+              height={180}
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                traceInboxScroll("IMAGE_DECODE", "IMAGE_LOAD", {
+                  src: display,
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight,
+                  renderedWidth: img.clientWidth,
+                  renderedHeight: img.clientHeight,
+                });
+              }}
+              onError={() => setError(true)}
+              className="rounded-md max-w-full md:max-w-[240px] w-auto h-auto max-h-[50vh] md:max-h-none object-contain cursor-zoom-in bg-muted/40"
+              loading="lazy"
+              decoding="async"
+            />
           </button>
+        </DialogTrigger>
+        <DownloadButton href={display} filename={filename} />
+        {/* O portal evita que active:scale do balão reposicione o modal ao fechar. */}
+        <DialogContent
+          aria-describedby={undefined}
+          className="w-auto max-w-[calc(100vw-2rem)] overflow-visible border-0 bg-background p-0 sm:p-0 [&>button]:z-10 [&>button]:rounded-full [&>button]:bg-background/90 [&>button]:p-2 [&>button]:opacity-100"
+          onTouchStart={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <DialogTitle className="sr-only">
+            {filename ?? "Imagem ampliada"}
+          </DialogTitle>
           <img
             src={display}
             alt={filename ?? "Imagem ampliada"}
-            className="max-w-full max-h-full object-contain"
-            onClick={(e) => e.stopPropagation()}
+            className="block max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-6rem)] object-contain"
           />
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </div>
+    </Dialog>
   );
 }
 
