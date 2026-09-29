@@ -170,6 +170,30 @@ describe("leadRepo — reconciliação de Realtime", () => {
     expect(repo.getMessagesFor("conv-1")).toHaveLength(1);
   });
 
+  it("clears unread badge immediately after agent reply", async () => {
+    mock.leads = [lead()];
+    mock.conversations = [conversation()];
+    const repo = await load();
+
+    emit("messages", "INSERT", message("msg-lead"));
+    expect(repo.getConversationById("conv-1")).toMatchObject({
+      unread: 1,
+      awaitingReply: true,
+    });
+
+    emit("messages", "INSERT", {
+      ...message("msg-agent"),
+      role: "agent",
+      text: "reply",
+      at: "2026-08-17T10:02:00Z",
+    });
+    expect(repo.getConversationById("conv-1")).toMatchObject({
+      unread: 0,
+      awaitingReply: false,
+      slaBreached: false,
+    });
+  });
+
   it("busca e adiciona uma conversation ausente", async () => {
     mock.leads = [lead()];
     const repo = await load();

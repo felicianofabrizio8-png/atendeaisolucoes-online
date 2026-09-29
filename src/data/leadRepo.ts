@@ -363,9 +363,9 @@ function bumpConversationForMessage(
       new Date(row.at).getTime() >= new Date(prev.lastMessageAt).getTime()
         ? row.at
         : prev.lastMessageAt,
-    unread: isLead ? (prev.unread ?? 0) + 1 : prev.unread,
-    awaitingReply: isLead ? true : prev.awaitingReply,
-    slaBreached: isLead ? ageMin >= currentSlaMinutes : prev.slaBreached,
+    unread: isLead ? (prev.unread ?? 0) + 1 : 0,
+    awaitingReply: isLead,
+    slaBreached: isLead ? ageMin >= currentSlaMinutes : false,
   };
   remoteConversations = [
     ...remoteConversations.slice(0, convIdx),
