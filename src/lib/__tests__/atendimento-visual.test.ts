@@ -363,7 +363,7 @@ describe("Atendimento 2.0 runtime", () => {
       }],
     });
     render(React.createElement(RouteView));
-    const image = await screen.findByRole("img", { name: "Imagem", exact: true });
+    const image = await screen.findByRole("img", { name: /^Imagem$/ });
     await waitFor(() => expect(image.getAttribute("src")).toBe(url));
     const bubble = document.getElementById("msg-instagram-photo")!;
     expect(within(bubble).queryByText("[mídia]", { exact: true })).toBeNull();
