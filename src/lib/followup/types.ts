@@ -137,6 +137,12 @@ export interface ManualFollowupResult {
   blockedReason?: string;
   rule?: string;
   generatedMessage?: string;
+  /** Template: mensagem com a variável entre {{ }} — só para exibição. */
+  generatedMessagePreview?: string | null;
+  /** Nome do template usado (fora da janela 24h). */
+  templateName?: string | null;
+  /** Origem do {{1}} da retomada: "ai" | "context" | "generic". */
+  resumePhraseSource?: string | null;
   sendStatus?: "sent" | "failed" | "blocked" | "simulated";
   sendError?: string;
   externalId?: string | null;

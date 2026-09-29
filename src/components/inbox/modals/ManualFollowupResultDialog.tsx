@@ -1,4 +1,5 @@
 import { CheckCircle2, X, XCircle } from "lucide-react";
+import { MarkedTemplateText } from "@/components/templates/MarkedTemplateText";
 import type { ManualFollowupResult } from "@/lib/manual-followup.functions";
 
 /** Resultado de "Executar Follow-up Agora": elegibilidade, regra e envio. */
@@ -62,10 +63,30 @@ export function ManualFollowupResultDialog({
             )}
             {result.generatedMessage && (
               <div>
-                <div className="text-muted-foreground mb-1">Mensagem gerada:</div>
-                <div className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap">
-                  {result.generatedMessage}
+                <div className="text-muted-foreground mb-1">
+                  Mensagem gerada
+                  {result.templateName ? (
+                    <span className="font-mono text-xs"> · template {result.templateName}</span>
+                  ) : null}
+                  :
                 </div>
+                <div
+                  className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap"
+                  aria-label="Mensagem gerada"
+                >
+                  {result.generatedMessagePreview ? (
+                    <MarkedTemplateText text={result.generatedMessagePreview} />
+                  ) : (
+                    result.generatedMessage
+                  )}
+                </div>
+                {result.generatedMessagePreview && (
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    As chaves {"{{ }}"} só marcam o trecho da variável ({"{{1}}"}
+                    {result.resumePhraseSource ? `, origem: ${result.resumePhraseSource}` : ""}); o
+                    cliente recebe apenas o conteúdo interno.
+                  </div>
+                )}
               </div>
             )}
             {result.sendStatus && (

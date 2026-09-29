@@ -59,18 +59,16 @@ const tpl = vi.hoisted(() => ({
   approved: {} as Record<string, any>,
   send: vi.fn(),
 }));
-vi.mock("@/lib/wa-templates.server", () => ({
-  findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
-    tpl.approved[purpose] ?? null,
-  renderTemplateBody: (t: any, vars: Record<string, string>) => ({
-    body: (t.variables as string[]).reduce(
-      (acc: string, name: string, i: number) => acc.replaceAll(`{{${i + 1}}}`, vars[name] ?? ""),
-      t.components[0].text as string,
-    ),
-    parameters: [],
-  }),
-  sendWhatsappTemplate: tpl.send,
-}));
+vi.mock("@/lib/wa-templates.server", async (importOriginal) => {
+  // Render REAL (contrato do template); só busca e envio são simulados.
+  const actual = await importOriginal<typeof import("@/lib/wa-templates.server")>();
+  return {
+    ...actual,
+    findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
+      tpl.approved[purpose] ?? null,
+    sendWhatsappTemplate: tpl.send,
+  };
+});
 
 // ---------- IA ----------
 const llm = vi.hoisted(() => ({ run: vi.fn() }));
@@ -87,12 +85,17 @@ vi.mock("@/lib/llm-gateway/providers/LovableChatProvider", () => ({
 
 import { dispatchFollowup, type DispatchInput } from "../dispatch";
 
+// Formato do chamar_novamente no caso real (lead_silent): o texto fixo entra
+// byte a byte — vírgula depois do {{1}} e linhas em branco entre parágrafos.
+const CHAMAR_BODY =
+  "Olá {{1}}, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.";
 const CHAMAR_NOVAMENTE = {
   name: "chamar_novamente",
   category: "marketing",
   variables: ["var1"],
-  components: [{ type: "BODY", text: "Oi! {{1}} Estou por aqui para ajudar." }],
+  components: [{ type: "BODY", text: CHAMAR_BODY }],
 };
+const REAL_VAR1 = "sobre as informações que solicitou, para darmos continuidade ao seu atendimento";
 const LEGACY = {
   name: "followup_orcamento",
   category: "marketing",
@@ -182,7 +185,7 @@ beforeEach(() => {
   tpl.approved = { followup_resume: CHAMAR_NOVAMENTE, quote_no_reply: LEGACY };
   tpl.send.mockResolvedValue({ ok: true, simulated: false, externalId: "wamid.T" });
   sendText.mockResolvedValue({ ok: true, simulated: false, externalId: "wamid.X" });
-  llm.run.mockResolvedValue({ text: "Conseguiu avaliar o orçamento do ar split inverter?" });
+  llm.run.mockResolvedValue({ text: REAL_VAR1 });
 });
 
 describe("dispatchFollowup — fora da janela: chamar_novamente contextual", () => {
@@ -193,28 +196,62 @@ describe("dispatchFollowup — fora da janela: chamar_novamente contextual", () 
     expect(tpl.send).toHaveBeenCalledTimes(1);
     const call = tpl.send.mock.calls[0][0];
     expect(call.purpose).toBe("followup_resume");
-    expect(call.variables).toEqual({ var1: "Conseguiu avaliar o orçamento do ar split inverter?" });
+    // Payload Meta: só o conteúdo interno, sem {{ }}.
+    expect(call.variables).toEqual({ var1: REAL_VAR1 });
     expect(JSON.stringify(call.variables)).not.toMatch(/mariana|souza/i);
 
     // A IA recebeu o contexto real da conversa e o corpo do template.
     const prompt = llm.run.mock.calls[0][0].messages.map((m: any) => m.content).join("\n");
-    expect(prompt).toContain("Oi! {{1}} Estou por aqui para ajudar.");
+    expect(prompt).toContain(CHAMAR_BODY);
     expect(prompt).toContain("Ar split 12.000 BTUs inverter");
     expect(prompt).toContain("preço");
     expect(prompt).toContain("Vou pensar no valor");
 
     const [fup] = followUps();
     expect(fup.status).toBe("sent");
+    // Exatamente o texto do caso real: body aprovado + var1, nada inventado.
     expect(fup.message_text).toBe(
-      "Oi! Conseguiu avaliar o orçamento do ar split inverter? Estou por aqui para ajudar.",
+      "Olá sobre as informações que solicitou, para darmos continuidade ao seu atendimento, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.",
     );
+    expect(fup.message_text).not.toMatch(/\{\{|\}\}/);
     expect(fup.metadata).toMatchObject({
       via: "template",
       template_name: "chamar_novamente",
-      resume_phrase: "Conseguiu avaliar o orçamento do ar split inverter?",
+      resume_phrase: REAL_VAR1,
       resume_phrase_source: "ai",
       external_id: "wamid.T",
     });
+  });
+
+  it("prévia marca o var1 entre {{ }} só para exibição; texto enviado sem chaves", async () => {
+    const r = await dispatchFollowup(input());
+    expect(r.messagePreview).toBe(
+      "Olá {{sobre as informações que solicitou, para darmos continuidade ao seu atendimento}}, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.",
+    );
+    expect(r.message).toBe(CHAMAR_BODY.replace("{{1}}", REAL_VAR1));
+    expect(r.messagePreview!.replace(/\{\{|\}\}/g, "")).toBe(r.message);
+  });
+
+  it("var1 da IA com pontuação no fim não duplica a vírgula do template", async () => {
+    llm.run.mockResolvedValueOnce({ text: REAL_VAR1 + "," });
+    const r = await dispatchFollowup(input());
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({ var1: REAL_VAR1 });
+    expect(r.message).toContain("atendimento, tudo bem?");
+    expect(r.message).not.toContain(",,");
+  });
+
+  it("chamar_novamente com mais de uma variável: bloqueia, nada vazio vai à Meta", async () => {
+    tpl.approved.followup_resume = {
+      ...CHAMAR_NOVAMENTE,
+      variables: ["var1", "var2"],
+      components: [{ type: "BODY", text: "Olá {{1}}, {{2}}" }],
+    };
+    const r = await dispatchFollowup(input());
+    expect(r).toMatchObject({ status: "blocked" });
+    expect(r.reason).toMatch(/2 variáveis/);
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(followUps()[0]).toMatchObject({ status: "blocked" });
   });
 
   it("frase da IA com o nome do cliente é descartada e entra a retomada contextual", async () => {

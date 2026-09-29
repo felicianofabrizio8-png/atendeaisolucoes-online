@@ -61,23 +61,24 @@ vi.mock("@/lib/ai-agent.server", () => ({
   sendWhatsappText: (...args: unknown[]) => sendSpy(...args),
 }));
 const templateSpy = vi.fn();
-vi.mock("@/lib/wa-templates.server", () => ({
-  // Só o legado por propósito existe: sem chamar_novamente não há IA no caminho.
-  findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
-    purpose === "followup_resume"
-      ? null
-      : {
-          name: "reativacao_cliente",
-          category: "marketing",
-          variables: ["var1"],
-          components: [{ type: "BODY", text: "Olá {{1}}" }],
-        },
-  renderTemplateBody: (_t: unknown, vars: Record<string, string>) => ({
-    body: `Olá ${vars.var1}`,
-    parameters: [],
-  }),
-  sendWhatsappTemplate: (...args: unknown[]) => templateSpy(...args),
-}));
+vi.mock("@/lib/wa-templates.server", async (importOriginal) => {
+  // Render REAL (contrato do template); só busca e envio são simulados.
+  const actual = await importOriginal<typeof import("@/lib/wa-templates.server")>();
+  return {
+    ...actual,
+    // Só o legado por propósito existe: sem chamar_novamente não há IA no caminho.
+    findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
+      purpose === "followup_resume"
+        ? null
+        : {
+            name: "reativacao_cliente",
+            category: "marketing",
+            variables: ["var1"],
+            components: [{ type: "BODY", text: "Olá {{1}}" }],
+          },
+    sendWhatsappTemplate: (...args: unknown[]) => templateSpy(...args),
+  };
+});
 
 vi.mock("@/lib/ai-readiness.server", () => ({ getReadiness: async () => ({ status: "ativa" }) }));
 vi.mock("@/lib/followup/gates", () => ({

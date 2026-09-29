@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { MarkedTemplateText } from "@/components/templates/MarkedTemplateText";
 import {
   isRelationshipPurpose,
   RELATIONSHIP_PURPOSES,
@@ -516,23 +517,6 @@ function PurposeBadge({ purpose }: { purpose: string }) {
   );
 }
 
-/** Destaca os trechos {{…}} da prévia (o texto fixo do template fica intacto). */
-function MarkedContent({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(/(\{\{[\s\S]*?\}\})/).map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="rounded bg-sky-500/15 px-0.5 text-foreground">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
-
 function PreviewPanel({
   preview,
   onRegenerate,
@@ -573,7 +557,7 @@ function PreviewPanel({
       )}
       {(preview.content_preview ?? preview.content) && (
         <div className="rounded border bg-background px-2 py-1.5 whitespace-pre-wrap">
-          <MarkedContent text={preview.content_preview ?? preview.content ?? ""} />
+          <MarkedTemplateText text={preview.content_preview ?? preview.content ?? ""} />
         </div>
       )}
       {preview.content_preview && (

@@ -13,6 +13,7 @@
 //  - inbox / messages / conversations
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { renderBodyWithParameters, templateBodyText } from "@/lib/wa-template-contract";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
@@ -206,19 +207,30 @@ export function renderTemplateBody(
   template: TemplateRow,
   variables: Record<string, string>,
 ): RenderedTemplate {
-  const bodyComp = (template.components as Array<Record<string, unknown>>).find(
-    (c) => (c.type as string)?.toUpperCase() === "BODY",
-  );
-  const text = (bodyComp?.text as string) ?? "";
   // Variáveis declaradas em ordem (pelo nome lógico) — mapeia para {{1..N}}.
   const orderedNames = template.variables ?? [];
   const parameters: string[] = orderedNames.map((n) => variables[n] ?? "");
-  let rendered = text;
-  parameters.forEach((value, i) => {
-    // Função como substituto: `$&`, `$1`… no valor não são padrões especiais.
-    rendered = rendered.replaceAll(`{{${i + 1}}}`, () => value);
-  });
-  return { body: rendered, parameters };
+  return {
+    body: renderBodyWithParameters(templateBodyText(template.components), parameters),
+    parameters,
+  };
+}
+
+/**
+ * Mesmo render do envio + a versão para exibição, com cada parâmetro entre
+ * {{ }}. `marked` é só para a UI — o payload da Meta usa `parameters`.
+ */
+export function renderTemplatePreview(
+  template: TemplateRow,
+  variables: Record<string, string>,
+): RenderedTemplate & { marked: string } {
+  const rendered = renderTemplateBody(template, variables);
+  return {
+    ...rendered,
+    marked: renderBodyWithParameters(templateBodyText(template.components), rendered.parameters, {
+      marked: true,
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------

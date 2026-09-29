@@ -15,6 +15,7 @@ import {
   type ResumeContext,
   type ResumePhraseSource,
 } from "./resume-phrase";
+import { fitVar1ToTemplate } from "@/lib/wa-template-contract";
 
 const RESUME_MODEL = "google/gemini-2.5-flash";
 
@@ -95,6 +96,19 @@ export interface ResumePhrase {
  * contextual. Sem contexto nenhum, nem chama a IA.
  */
 export async function generateResumePhrase(args: {
+  companyId: string;
+  context: ResumeContext;
+  templateBody: string;
+}): Promise<ResumePhrase> {
+  const phrase = await generateRawResumePhrase(args);
+  // Contrato do template: o var1 encaixa no texto fixo que vem depois do {{1}}.
+  const fitted = fitVar1ToTemplate(phrase.text, args.templateBody);
+  if (normalizeResumePhrase(fitted, args.context) === fitted) return { ...phrase, text: fitted };
+  const fallback = fallbackResumePhrase(args.context);
+  return { ...fallback, text: fitVar1ToTemplate(fallback.text, args.templateBody) };
+}
+
+async function generateRawResumePhrase(args: {
   companyId: string;
   context: ResumeContext;
   templateBody: string;

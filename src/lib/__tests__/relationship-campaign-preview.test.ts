@@ -123,8 +123,9 @@ const template = (name: string, body: string, variables = ["var1"]) => ({
   components: [{ type: "BODY", text: body }],
 });
 // Texto aprovado do chamar_novamente — o fixo não pode mudar nem um espaço.
+// Mesmo formato do caso real do Follow-up V2 (contrato único do template).
 const CHAMAR_BODY =
-  "Olá {{1}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.";
+  "Olá {{1}}, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.";
 const CHAMAR = template("chamar_novamente", CHAMAR_BODY);
 const PHRASE =
   "estou passando para retomar nossa conversa sobre a piscina que você estava analisando. Vi que falamos sobre o modelo Sol 401 e queria saber se ainda posso te ajudar com esse projeto";
@@ -283,9 +284,7 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
     });
     expect(r.variables.var1).not.toMatch(/mariana|souza/i);
     // prévia: var1 entre {{ }} no texto fixo aprovado, intacto
-    expect(r.content_preview).toBe(
-      `Olá {{${PHRASE}}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.`,
-    );
+    expect(r.content_preview).toBe(CHAMAR_BODY.replace("{{1}}", `{{${PHRASE}}}`));
     // conteúdo real (o que a Meta renderiza): sem chaves, mesmo texto fixo
     expect(r.content).toBe(CHAMAR_BODY.replace("{{1}}", PHRASE));
     expect(r.content).not.toMatch(/\{\{|\}\}/);
@@ -304,9 +303,7 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
       "estou passando para retomar nossa conversa sobre Ar split 12.000 BTUs e ver se consigo ajudar com a questão de preço",
     );
     expect(a.phrase_source).toBe("context");
-    expect(a.content_preview).toBe(
-      `Olá {{${a.variables.var1}}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.`,
-    );
+    expect(a.content_preview).toBe(CHAMAR_BODY.replace("{{1}}", `{{${a.variables.var1}}}`));
 
     llm.run.mockRejectedValueOnce(new Error("timeout"));
     const b: any = await previewRelationshipDispatch({ ...input, regenerate: true });

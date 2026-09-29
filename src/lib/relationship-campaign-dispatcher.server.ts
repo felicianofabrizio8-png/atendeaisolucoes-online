@@ -1,5 +1,11 @@
 import {
+  fitVar1ToTemplate,
+  resumeTemplateProblem,
+  templateBodyText,
+} from "@/lib/wa-template-contract";
+import {
   findApprovedTemplateForPurpose,
+  renderTemplatePreview,
   renderTemplateBody,
   sendWhatsappTemplate,
   type TemplatePurpose,
@@ -382,7 +388,8 @@ function preparedProblem(
     if (/\{\{|\}\}|[\r\n\t]| {4,}/.test(value)) return `variável ${name} com formato inválido`;
     const stillValid =
       kind === "resume_phrase"
-        ? normalizeResumePhrase(value, { leadName: expected.lead.name }) === value
+        ? normalizeResumePhrase(value, { leadName: expected.lead.name }) === value &&
+          fitVar1ToTemplate(value, templateBodyText(template.components)) === value
         : value === firstName(expected.lead.name);
     if (!stillValid) return `variável ${name} não passa mais nas proteções`;
   }
@@ -514,11 +521,14 @@ export async function prepareRelationshipDispatch(input: {
   if (!template)
     return { status: "blocked", reason: `template "${info.template}" não está aprovado para ${info.label}` };
   const names = template.variables ?? [];
-  if (names.length > 1)
-    return {
-      status: "blocked",
-      reason: `template "${template.name}" tem ${names.length} variáveis; só {{1}} é suportado`,
-    };
+  // Mesmo contrato do Follow-up V2 para a retomada (exatamente {{1}}).
+  const contract =
+    info.var1 === "resume_phrase"
+      ? resumeTemplateProblem(template)
+      : names.length > 1
+        ? `template "${template.name}" tem ${names.length} variáveis; só {{1}} é suportado`
+        : null;
+  if (contract) return { status: "blocked", reason: contract };
 
   const conversation = await findWhatsappConversation(companyId, lead.id);
 
@@ -548,13 +558,10 @@ export async function prepareRelationshipDispatch(input: {
   } else if (names.length === 1) {
     if (info.var1 === "resume_phrase") {
       const context = await loadResumeContext(companyId, conversation?.id ?? null, lead.id);
-      const body = (template.components as Array<Record<string, unknown>>).find(
-        (c) => String(c.type ?? "").toUpperCase() === "BODY",
-      );
       const phrase = await generateResumePhrase({
         companyId,
         context,
-        templateBody: String(body?.text ?? ""),
+        templateBody: templateBodyText(template.components),
       });
       variables[names[0]] = phrase.text;
       phraseSource = phrase.source;
@@ -562,15 +569,11 @@ export async function prepareRelationshipDispatch(input: {
       variables[names[0]] = firstName(lead.name);
     }
   }
-  const rendered = renderTemplateBody(template, variables);
-  if (rendered.parameters.some((p) => !p || !p.trim()))
-    return { status: "blocked", reason: `variável {{1}} ficaria vazia no template "${template.name}"` };
   // Prévia: mesmo template, mesmas variáveis; as chaves só marcam o trecho
   // variável na tela — o envio usa `variables` sem elas.
-  const marked = renderTemplateBody(
-    template,
-    Object.fromEntries(Object.entries(variables).map(([k, v]) => [k, `{{${v}}}`])),
-  );
+  const rendered = renderTemplatePreview(template, variables);
+  if (rendered.parameters.some((p) => !p || !p.trim()))
+    return { status: "blocked", reason: `variável {{1}} ficaria vazia no template "${template.name}"` };
   const preparedRecord: PreparedVariables = reuse
     ? stored!
     : {
@@ -598,7 +601,7 @@ export async function prepareRelationshipDispatch(input: {
     variables,
     parameters: rendered.parameters,
     content: rendered.body,
-    contentPreview: marked.body,
+    contentPreview: rendered.marked,
     phraseSource,
     preparedRecord,
     preparedOrigin: reuse ? "reused" : "generated",

@@ -105,15 +105,16 @@ const sendText = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/ai-agent.server", () => ({ sendWhatsappText: sendText }));
 
 const tpl = vi.hoisted(() => ({ approved: {} as Record<string, any>, send: vi.fn() }));
-vi.mock("@/lib/wa-templates.server", () => ({
-  findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
-    tpl.approved[purpose] ?? null,
-  renderTemplateBody: (t: any, vars: Record<string, string>) => ({
-    body: String(t.components[0].text).replace("{{1}}", vars[t.variables[0]] ?? ""),
-    parameters: [],
-  }),
-  sendWhatsappTemplate: tpl.send,
-}));
+vi.mock("@/lib/wa-templates.server", async (importOriginal) => {
+  // Render REAL (contrato do template); só busca e envio são simulados.
+  const actual = await importOriginal<typeof import("@/lib/wa-templates.server")>();
+  return {
+    ...actual,
+    findApprovedTemplateForPurpose: async (_c: string, purpose: string) =>
+      tpl.approved[purpose] ?? null,
+    sendWhatsappTemplate: tpl.send,
+  };
+});
 
 const llm = vi.hoisted(() => ({ resume: vi.fn(), nextContact: vi.fn() }));
 vi.mock("@/lib/llm-gateway/LLMGateway.server", () => ({
@@ -142,11 +143,14 @@ const brt = (d: number, h: number, m = 0, mo = 7) =>
   new Date(Date.UTC(2026, mo - 1, d, h + 3, m)).toISOString();
 const NOW = new Date(brt(15, 11));
 
+// Formato do chamar_novamente no caso real: texto fixo exato.
+const CHAMAR_BODY =
+  "Olá {{1}}, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.";
 const CHAMAR = {
   name: "chamar_novamente",
   category: "marketing",
   variables: ["var1"],
-  components: [{ type: "BODY", text: "Oi! {{1}} Estou por aqui." }],
+  components: [{ type: "BODY", text: CHAMAR_BODY }],
 };
 
 function msg(
@@ -232,7 +236,7 @@ beforeEach(() => {
   tpl.approved = { followup_resume: CHAMAR };
   tpl.send.mockResolvedValue({ ok: true, simulated: false, externalId: "wamid.T" });
   sendText.mockResolvedValue({ ok: true, simulated: false, externalId: "wamid.X" });
-  llm.resume.mockResolvedValue({ text: "Conseguiu ver a instalação do ar split?" });
+  llm.resume.mockResolvedValue({ text: "sobre a instalação do ar split que conversamos" });
   llm.nextContact.mockResolvedValue({ text: '{"date":null,"evidence":""}' });
 });
 afterEach(() => vi.useRealTimers());
@@ -355,7 +359,7 @@ describe("tentativas do ciclo", () => {
     expect(r).toMatchObject({ opened: 1, sent: 1 });
     expect(tpl.send.mock.calls[0][0]).toMatchObject({
       purpose: "followup_resume",
-      variables: { var1: "Conseguiu ver a instalação do ar split?" },
+      variables: { var1: "sobre a instalação do ar split que conversamos" },
     });
     const c = cycles()[0];
     expect(c).toMatchObject({ attempts: 1, state: "active", last_contact_at: NOW.toISOString() });
@@ -550,6 +554,22 @@ describe("Follow-up agora", () => {
       conversationId: "conv-1",
     });
     expect(out).toMatchObject({ eligible: true, sendStatus: "sent", attempt: 1, via: "template" });
+    // Modal "Execução manual": var1 entre {{ }} só na exibição; enviado sem chaves.
+    expect(out).toMatchObject({
+      templateName: "chamar_novamente",
+      resumePhraseSource: "ai",
+      generatedMessage: CHAMAR_BODY.replace(
+        "{{1}}",
+        "sobre a instalação do ar split que conversamos",
+      ),
+      generatedMessagePreview: CHAMAR_BODY.replace(
+        "{{1}}",
+        "{{sobre a instalação do ar split que conversamos}}",
+      ),
+    });
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({
+      var1: "sobre a instalação do ar split que conversamos",
+    });
     expect(out.nextFollowupAt).toBe(new Date(brt(20, 11)).toISOString());
     expect(cycles()[0]).toMatchObject({ attempts: 1, state: "active" });
     expect(followUps()[0]).toMatchObject({

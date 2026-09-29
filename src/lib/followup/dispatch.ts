@@ -16,9 +16,10 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendWhatsappText } from "@/lib/ai-agent.server";
+import { resumeTemplateProblem, templateBodyText } from "@/lib/wa-template-contract";
 import {
   findApprovedTemplateForPurpose,
-  renderTemplateBody,
+  renderTemplatePreview,
   sendWhatsappTemplate,
   type TemplatePurpose,
   type TemplateRow,
@@ -77,6 +78,11 @@ export interface DispatchResult {
   templateName?: string;
   /** Texto efetivamente enviado (ou que seria). */
   message: string;
+  /**
+   * Template: o mesmo texto com cada variável entre {{ }} — SÓ para exibição
+   * (modal de execução manual). Nunca é enviado.
+   */
+  messagePreview?: string;
   externalId?: string | null;
   simulationId?: string | null;
   resumePhrase?: string;
@@ -235,10 +241,7 @@ async function pickTemplate(
 }
 
 function bodyText(template: TemplateRow): string {
-  const body = (template.components as Array<Record<string, unknown>>).find(
-    (c) => String(c.type ?? "").toUpperCase() === "BODY",
-  );
-  return String(body?.text ?? "");
+  return templateBodyText(template.components);
 }
 
 export async function dispatchFollowup(input: DispatchInput): Promise<DispatchResult> {
@@ -301,6 +304,19 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
 
   if (picked.kind === "resume") {
     purpose = "followup_resume";
+    // Mesmo contrato das Campanhas de Relacionamento: exatamente {{1}}.
+    const problem = resumeTemplateProblem(template);
+    if (problem) {
+      const result: DispatchResult = {
+        status: "blocked",
+        reason: problem,
+        via: "template",
+        templateName: template.name,
+        message: input.text,
+      };
+      await persist(input, result, { purpose, reason: "template_contract" });
+      return result;
+    }
     const context = await loadResumeContext(input.companyId, input.conversationId, input.leadId);
     const phrase = await generateResumePhrase({
       companyId: input.companyId,
@@ -323,7 +339,21 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       variables[v] = i === 0 ? legacyFirstName(lead?.name) : "";
     });
   }
-  const message = renderTemplateBody(template, variables).body || input.text;
+  // Texto fixo = body aprovado, exato; `messagePreview` só marca a variável.
+  const rendered = renderTemplatePreview(template, variables);
+  const message = rendered.body;
+  const messagePreview = rendered.marked;
+  if (!message.trim()) {
+    const result: DispatchResult = {
+      status: "blocked",
+      reason: `template "${template.name}" sem corpo`,
+      via: "template",
+      templateName: template.name,
+      message: input.text,
+    };
+    await persist(input, result, { purpose, reason: "template_contract" });
+    return result;
+  }
 
   // A geração da frase leva tempo: o cliente pode ter respondido.
   const late = await revalidateFollowup(input);
@@ -335,6 +365,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       via: "template",
       templateName: template.name,
       message,
+      messagePreview,
       resumePhrase: resumePhrase?.text,
       resumePhraseSource: resumePhrase?.source,
     };
@@ -358,6 +389,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     via: "template",
     templateName: template.name,
     message,
+    messagePreview,
     resumePhrase: resumePhrase?.text,
     resumePhraseSource: resumePhrase?.source,
   };
