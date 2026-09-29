@@ -7,14 +7,15 @@ import {
   previewRelationshipSegment,
 } from "@/lib/relationship-campaigns.server";
 import {
-  dispatchRelationshipRecipient,
   getRelationshipSettings,
+  previewRelationshipDispatch,
   listRelationshipCampaigns,
   listRelationshipRecipients,
   saveRelationshipSettings,
   scheduleRelationshipCampaign,
   upsertRelationshipSuppression,
 } from "@/lib/relationship-campaign-dispatcher.server";
+import { isRelationshipPurpose } from "@/lib/relationship-campaign-purposes";
 
 async function authenticatedCompanyId(request: Request): Promise<string | null> {
   const authorization = request.headers.get("authorization") ?? "";
@@ -88,6 +89,9 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             if (typeof body.name !== "string" || typeof body.segment_id !== "string") {
               return Response.json({ ok: false, error: "name e segment_id são obrigatórios" }, { status: 400 });
             }
+            if (body.template_purpose !== undefined && !isRelationshipPurpose(body.template_purpose)) {
+              return Response.json({ ok: false, error: "template_purpose inválido" }, { status: 400 });
+            }
             const campaign = await createRelationshipCampaign(companyId, body.name, body.segment_id);
             if (typeof body.template_purpose === "string") {
               await (supabaseAdmin as any).from("relationship_campaigns")
@@ -144,14 +148,15 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             if (typeof body.relationship_campaign_id !== "string" || typeof body.recipient_id !== "string") {
               return Response.json({ ok: false, error: "campaign_id e recipient_id são obrigatórios" }, { status: 400 });
             }
+            // Prévia: mesma preparação do envio real, sem enviar, sem criar
+            // conversa e sem alterar o destinatário.
             return Response.json({
               ok: true,
-              ...(await dispatchRelationshipRecipient({
+              ...(await previewRelationshipDispatch({
                 companyId,
                 relationshipCampaignId: body.relationship_campaign_id,
                 recipientId: body.recipient_id,
                 mode: (body.mode as "manual" | "assisted" | "automatic") ?? "manual",
-                dryRun: true,
               })),
             });
           }

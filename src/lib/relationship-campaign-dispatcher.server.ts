@@ -1,6 +1,17 @@
-import { sendWhatsappTemplate, type TemplatePurpose } from "@/lib/wa-templates.server";
+import {
+  findApprovedTemplateForPurpose,
+  renderTemplateBody,
+  sendWhatsappTemplate,
+  type TemplatePurpose,
+} from "@/lib/wa-templates.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isLeadInSegment, parseSegmentDefinition } from "@/lib/relationship-campaigns.server";
+import { generateResumePhrase, loadResumeContext } from "@/lib/followup/resume";
+import {
+  isRelationshipPurpose,
+  RELATIONSHIP_PURPOSES,
+  type RelationshipPurpose,
+} from "@/lib/relationship-campaign-purposes";
 
 export type RelationshipMode = "manual" | "assisted" | "automatic";
 export type RelationshipRecipientStatus =
@@ -184,25 +195,216 @@ async function hasSuppression(companyId: string, leadId: string, phone: string) 
   return data;
 }
 
-async function findOrCreateConversation(companyId: string, leadId: string, dryRun: boolean) {
-  const { data: existing, error } = await db
+/** Conversa WhatsApp do lead (a de outro canal não serve para template WhatsApp). */
+async function findWhatsappConversation(companyId: string, leadId: string) {
+  const { data, error } = await db
     .from("conversations")
     .select("id,company_id,lead_id,channel")
     .eq("company_id", companyId)
     .eq("lead_id", leadId)
+    .eq("channel", "whatsapp")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  if (existing) return existing;
-  if (dryRun) return null;
-  const { data: created, error: createError } = await db
+  return (data as { id: string } | null) ?? null;
+}
+
+/** Só no envio real: a simulação nunca cria conversa. */
+async function createWhatsappConversation(companyId: string, leadId: string) {
+  const { data, error } = await db
     .from("conversations")
     .insert({ company_id: companyId, lead_id: leadId, channel: "whatsapp" })
     .select("id,company_id,lead_id,channel")
     .single();
-  if (createError) throw createError;
-  return created;
+  if (error) throw error;
+  return data as { id: string };
+}
+
+function firstName(name: string | null | undefined): string {
+  return String(name ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+type HardStop = { status: "blocked"; reason: string };
+
+/** Destinatário que não pode receber — só na simulação isso fica sem registro. */
+type Exclusion = {
+  status: "ineligible" | "suppressed";
+  reason: string;
+  recipientPatch: Record<string, unknown>;
+};
+
+export type PreparedDispatch = {
+  status: "ready";
+  recipient: any;
+  lead: any;
+  purpose: RelationshipPurpose;
+  purposeLabel: string;
+  template: { name: string; category: string; language: string };
+  variables: Record<string, string>;
+  parameters: string[];
+  content: string;
+  phraseSource?: string;
+  conversationId: string | null;
+  /** Impedem o envio real agora (a prévia mostra, o envio respeita). */
+  blockers: string[];
+};
+
+/**
+ * Tudo o que o envio real faz até ANTES da chamada externa: destinatário,
+ * lead, segmento, supressão, telefone, conversa WhatsApp, template aprovado,
+ * variáveis e conteúdo renderizado. Só lê — nenhuma escrita acontece aqui.
+ */
+export async function prepareRelationshipDispatch(input: {
+  companyId: string;
+  relationshipCampaignId: string;
+  recipientId: string;
+  mode: RelationshipMode;
+  now: Date;
+}): Promise<PreparedDispatch | HardStop | Exclusion> {
+  const { companyId, now } = input;
+  const settings = await getRelationshipSettings(companyId);
+  const blockers: string[] = [];
+  if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic"))
+    blockers.push("automação desativada");
+  if (!isWithinRelationshipWindow(now, settings)) blockers.push("fora do horário comercial configurado");
+
+  const { data: recipient, error: recipientError } = await db
+    .from("relationship_campaign_recipients")
+    .select("*, relationship_campaigns!inner(id,company_id,template_purpose,segment_id)")
+    .eq("company_id", companyId)
+    .eq("relationship_campaign_id", input.relationshipCampaignId)
+    .eq("id", input.recipientId)
+    .maybeSingle();
+  if (recipientError) throw recipientError;
+  if (!recipient) return { status: "blocked", reason: "destinatário não encontrado" };
+  if (finalStatus(recipient.status)) blockers.push(`destinatário já está como ${recipient.status}`);
+  if (recipient.attempts >= settings.retry_max + 1) blockers.push("limite de tentativas atingido");
+
+  const { data: lead, error: leadError } = await db
+    .from("leads")
+    .select("id,company_id,name,phone,external_id,status,closed_at,channel,tags,product,assigned_to")
+    .eq("company_id", companyId)
+    .eq("id", recipient.lead_id)
+    .maybeSingle();
+  if (leadError) throw leadError;
+  if (!lead) return { status: "blocked", reason: "lead não encontrado" };
+
+  const { data: segment, error: segmentError } = await db
+    .from("relationship_segments")
+    .select("definition,active")
+    .eq("company_id", companyId)
+    .eq("id", recipient.relationship_campaigns?.segment_id)
+    .maybeSingle();
+  if (segmentError) throw segmentError;
+  if (!segment?.active || !isLeadInSegment(lead, parseSegmentDefinition(segment.definition))) {
+    return {
+      status: "ineligible",
+      reason: "lead não é mais elegível para o segmento",
+      recipientPatch: { status: "ineligible", last_error: "segmento mudou antes do envio" },
+    };
+  }
+
+  const suppression = await hasSuppression(companyId, lead.id, lead.external_id ?? lead.phone);
+  if (suppression || lead.status === "fechado" || lead.status === "perdido" || lead.closed_at) {
+    const reason = suppression?.reason ?? "lead encerrado";
+    return { status: "suppressed", reason, recipientPatch: { status: "suppressed", last_error: reason } };
+  }
+
+  const phone = normalizeRelationshipPhone(lead.external_id ?? lead.phone);
+  if (phone.length < 8 || phone.length > 15) return { status: "blocked", reason: "telefone inválido para WhatsApp" };
+
+  const rawPurpose = recipient.relationship_campaigns?.template_purpose ?? "reactivation";
+  if (!isRelationshipPurpose(rawPurpose))
+    return { status: "blocked", reason: `propósito de template não suportado: ${rawPurpose}` };
+  const purpose: RelationshipPurpose = rawPurpose;
+  const info = RELATIONSHIP_PURPOSES[purpose];
+
+  const template = await findApprovedTemplateForPurpose(companyId, purpose as TemplatePurpose);
+  if (!template)
+    return { status: "blocked", reason: `template "${info.template}" não está aprovado para ${info.label}` };
+  const names = template.variables ?? [];
+  if (names.length > 1)
+    return {
+      status: "blocked",
+      reason: `template "${template.name}" tem ${names.length} variáveis; só {{1}} é suportado`,
+    };
+
+  const conversation = await findWhatsappConversation(companyId, lead.id);
+
+  const variables: Record<string, string> = {};
+  let phraseSource: string | undefined;
+  if (names.length === 1) {
+    if (info.var1 === "resume_phrase") {
+      const context = await loadResumeContext(companyId, conversation?.id ?? null, lead.id);
+      const body = (template.components as Array<Record<string, unknown>>).find(
+        (c) => String(c.type ?? "").toUpperCase() === "BODY",
+      );
+      const phrase = await generateResumePhrase({
+        companyId,
+        context,
+        templateBody: String(body?.text ?? ""),
+      });
+      variables[names[0]] = phrase.text;
+      phraseSource = phrase.source;
+    } else {
+      variables[names[0]] = firstName(lead.name);
+    }
+  }
+  const rendered = renderTemplateBody(template, variables);
+  if (rendered.parameters.some((p) => !p || !p.trim()))
+    return { status: "blocked", reason: `variável {{1}} ficaria vazia no template "${template.name}"` };
+
+  return {
+    status: "ready",
+    recipient,
+    lead,
+    purpose,
+    purposeLabel: info.label,
+    template: { name: template.name, category: template.category, language: template.language },
+    variables,
+    parameters: rendered.parameters,
+    content: rendered.body,
+    phraseSource,
+    conversationId: conversation?.id ?? null,
+    blockers,
+  };
+}
+
+/**
+ * Prévia do disparo para um destinatário: a mesma preparação do envio real,
+ * sem enviar, sem criar conversa e sem alterar o destinatário.
+ */
+export async function previewRelationshipDispatch(input: {
+  companyId: string;
+  relationshipCampaignId: string;
+  recipientId: string;
+  mode: RelationshipMode;
+  now?: Date;
+}) {
+  const prepared = await prepareRelationshipDispatch({ ...input, now: input.now ?? new Date() });
+  if (prepared.status !== "ready") {
+    return { status: "preview" as const, would_send: false, blockers: [prepared.reason], outcome: prepared.status };
+  }
+  const blockers = [...prepared.blockers];
+  if (!realSendIsEnabled()) blockers.push("envio real desabilitado no servidor");
+  return {
+    status: "preview" as const,
+    would_send: blockers.length === 0,
+    blockers,
+    purpose: prepared.purpose,
+    purpose_label: prepared.purposeLabel,
+    template: prepared.template,
+    variables: prepared.variables,
+    parameters: prepared.parameters,
+    content: prepared.content,
+    phrase_source: prepared.phraseSource ?? null,
+    lead_id: prepared.lead.id,
+    conversation_id: prepared.conversationId,
+    conversation_note: prepared.conversationId
+      ? null
+      : "lead sem conversa WhatsApp — o envio real criaria uma; a prévia não cria",
+  };
 }
 
 export async function dispatchRelationshipRecipient(input: {
@@ -214,68 +416,29 @@ export async function dispatchRelationshipRecipient(input: {
   dryRun?: boolean;
 }) {
   const now = input.now ?? new Date();
-  const settings = await getRelationshipSettings(input.companyId);
-  if (input.mode === "automatic" && (!settings.automatic_enabled || settings.mode !== "automatic")) {
-    return { status: "blocked" as const, reason: "automação desativada" };
-  }
-  if (!isWithinRelationshipWindow(now, settings)) {
-    return { status: "blocked" as const, reason: "fora do horário comercial configurado" };
+  // Simulação (pedida ou forçada pelo gate do servidor) = prévia, sem efeitos.
+  if (input.dryRun !== false || !realSendIsEnabled()) {
+    return previewRelationshipDispatch({ ...input, now });
   }
 
-  const { data: recipient, error: recipientError } = await db
-    .from("relationship_campaign_recipients")
-    .select("*, relationship_campaigns!inner(id,company_id,template_purpose,segment_id)")
-    .eq("company_id", input.companyId)
-    .eq("relationship_campaign_id", input.relationshipCampaignId)
-    .eq("id", input.recipientId)
-    .maybeSingle();
-  if (recipientError) throw recipientError;
-  if (!recipient) return { status: "blocked" as const, reason: "destinatário não encontrado" };
-  if (finalStatus(recipient.status)) return { status: "idempotent" as const, recipient };
-  if (recipient.attempts >= settings.retry_max + 1) {
-    return { status: "blocked" as const, reason: "limite de tentativas atingido" };
+  const prepared = await prepareRelationshipDispatch({ ...input, now });
+  if (prepared.status !== "ready") {
+    // Só no envio real a exclusão fica registrada no destinatário.
+    if ("recipientPatch" in prepared) {
+      await db
+        .from("relationship_campaign_recipients")
+        .update({ ...prepared.recipientPatch, updated_at: now.toISOString() })
+        .eq("company_id", input.companyId)
+        .eq("id", input.recipientId);
+    }
+    return { status: prepared.status, reason: prepared.reason };
   }
+  if (finalStatus(prepared.recipient.status)) return { status: "idempotent" as const, recipient: prepared.recipient };
+  if (prepared.blockers.length > 0) return { status: "blocked" as const, reason: prepared.blockers.join("; ") };
 
-  const { data: lead, error: leadError } = await db
-    .from("leads")
-    .select("id,company_id,name,phone,external_id,status,closed_at,channel,tags,product,assigned_to")
-    .eq("company_id", input.companyId)
-    .eq("id", recipient.lead_id)
-    .maybeSingle();
-  if (leadError) throw leadError;
-  if (!lead) return { status: "blocked" as const, reason: "lead não encontrado" };
-
-  const { data: segment, error: segmentError } = await db
-    .from("relationship_segments")
-    .select("definition,active")
-    .eq("company_id", input.companyId)
-    .eq("id", recipient.relationship_campaigns?.segment_id)
-    .maybeSingle();
-  if (segmentError) throw segmentError;
-  if (!segment?.active || !isLeadInSegment(lead, parseSegmentDefinition(segment.definition))) {
-    await db.from("relationship_campaign_recipients").update({ status: "ineligible", last_error: "segmento mudou antes do envio", updated_at: now.toISOString() }).eq("company_id", input.companyId).eq("id", recipient.id);
-    return { status: "blocked" as const, reason: "lead não é mais elegível para o segmento" };
-  }
-
-  const suppression = await hasSuppression(input.companyId, lead.id, lead.external_id ?? lead.phone);
-  if (suppression || lead.status === "fechado" || lead.status === "perdido" || lead.closed_at) {
-    await db.from("relationship_campaign_recipients")
-      .update({ status: "suppressed", last_error: suppression?.reason ?? "lead encerrado", updated_at: now.toISOString() })
-      .eq("company_id", input.companyId).eq("id", recipient.id);
-    return { status: "suppressed" as const, reason: suppression?.reason ?? "lead encerrado" };
-  }
-
-  const dryRun = input.dryRun !== false || !realSendIsEnabled();
-  const conversation = await findOrCreateConversation(input.companyId, lead.id, dryRun);
-  if (!conversation) return { status: "blocked" as const, reason: "lead ainda sem conversa WhatsApp" };
-  if (dryRun) {
-    return {
-      status: "dry_run" as const,
-      reason: realSendIsEnabled() ? "simulação solicitada" : "envio real desabilitado no servidor",
-      lead_id: lead.id,
-      conversation_id: conversation.id,
-    };
-  }
+  const { recipient, lead } = prepared;
+  const conversationId =
+    prepared.conversationId ?? (await createWhatsappConversation(input.companyId, lead.id)).id;
 
   const dispatchKey = `relationship:${input.relationshipCampaignId}:${recipient.id}:${recipient.attempts + 1}`;
   const { data: claimed, error: claimError } = await db
@@ -296,44 +459,60 @@ export async function dispatchRelationshipRecipient(input: {
   if (claimError) throw claimError;
   if (!claimed) return { status: "idempotent" as const, reason: "destinatário já reservado" };
 
-  const purpose = (recipient.relationship_campaigns?.template_purpose ?? "reactivation") as TemplatePurpose;
+  // Mesmo propósito e mesmas variáveis da preparação (e da prévia).
   const send = await sendWhatsappTemplate({
     companyId: input.companyId,
-    conversationId: conversation.id,
+    conversationId,
     leadId: lead.id,
-    purpose,
-    variables: { nome: lead.name, name: lead.name },
+    purpose: prepared.purpose as TemplatePurpose,
+    variables: prepared.variables,
     source: "relationship_campaign",
     sourceMetadata: {
       relationship_campaign_id: input.relationshipCampaignId,
       relationship_recipient_id: recipient.id,
       dispatch_key: dispatchKey,
+      relationship_purpose: prepared.purpose,
     },
   });
 
   if (!send.ok || send.simulated) {
-    const nextAttempt = new Date(now.getTime() + settings.retry_backoff_seconds * 1000 * Math.max(1, recipient.attempts + 1));
-    await db.from("relationship_campaign_recipients").update({
-      status: "failed",
-      last_error: send.ok ? "simulated delivery" : send.error,
-      next_attempt_at: nextAttempt.toISOString(),
-      locked_until: null,
-      updated_at: now.toISOString(),
-    }).eq("company_id", input.companyId).eq("id", recipient.id);
+    const nextAttempt = new Date(
+      now.getTime() + settingsBackoffMs(await getRelationshipSettings(input.companyId), recipient.attempts + 1),
+    );
+    await db
+      .from("relationship_campaign_recipients")
+      .update({
+        status: "failed",
+        last_error: send.ok ? "simulated delivery" : send.error,
+        next_attempt_at: nextAttempt.toISOString(),
+        locked_until: null,
+        updated_at: now.toISOString(),
+      })
+      .eq("company_id", input.companyId)
+      .eq("id", recipient.id);
     return { status: "failed" as const, error: send.ok ? "simulated delivery" : send.error };
   }
 
-  await db.from("relationship_campaign_recipients").update({
-    status: "sent",
-    sent_at: now.toISOString(),
-    external_message_id: send.externalId,
-    next_attempt_at: null,
-    locked_until: null,
-    last_error: null,
-    updated_at: now.toISOString(),
-  }).eq("company_id", input.companyId).eq("id", recipient.id);
+  await db
+    .from("relationship_campaign_recipients")
+    .update({
+      status: "sent",
+      sent_at: now.toISOString(),
+      external_message_id: send.externalId,
+      conversation_id: conversationId,
+      next_attempt_at: null,
+      locked_until: null,
+      last_error: null,
+      updated_at: now.toISOString(),
+    })
+    .eq("company_id", input.companyId)
+    .eq("id", recipient.id);
 
-  return { status: "sent" as const, external_id: send.externalId };
+  return { status: "sent" as const, external_id: send.externalId, content: prepared.content };
+}
+
+function settingsBackoffMs(settings: RelationshipSettings, attempt: number): number {
+  return settings.retry_backoff_seconds * 1000 * Math.max(1, attempt);
 }
 
 export async function scheduleRelationshipCampaign(input: {

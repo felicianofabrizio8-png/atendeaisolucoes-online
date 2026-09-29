@@ -20,9 +20,11 @@ const RESUME_MODEL = "google/gemini-2.5-flash";
 
 export async function loadResumeContext(
   companyId: string,
-  conversationId: string,
+  /** `null` = lead ainda sem conversa: o contexto vem só do lead e do orçamento. */
+  conversationId: string | null,
   leadId: string,
 ): Promise<ResumeContext> {
+  const none = Promise.resolve({ data: null });
   const [{ data: lead }, { data: conv }, { data: quote }, { data: msgs }] = await Promise.all([
     supabaseAdmin
       .from("leads")
@@ -30,14 +32,16 @@ export async function loadResumeContext(
       .eq("company_id", companyId)
       .eq("id", leadId)
       .maybeSingle(),
-    supabaseAdmin
-      .from("conversations")
-      .select(
-        "detected_intent, detected_interest, detected_objections, purchase_timing, lead_ready_to_close",
-      )
-      .eq("company_id", companyId)
-      .eq("id", conversationId)
-      .maybeSingle(),
+    conversationId
+      ? supabaseAdmin
+          .from("conversations")
+          .select(
+            "detected_intent, detected_interest, detected_objections, purchase_timing, lead_ready_to_close",
+          )
+          .eq("company_id", companyId)
+          .eq("id", conversationId)
+          .maybeSingle()
+      : none,
     supabaseAdmin
       .from("quotes")
       .select("product_name")
@@ -47,13 +51,15 @@ export async function loadResumeContext(
       .order("sent_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabaseAdmin
-      .from("messages")
-      .select("role, text, at")
-      .eq("company_id", companyId)
-      .eq("conversation_id", conversationId)
-      .order("at", { ascending: false })
-      .limit(20),
+    conversationId
+      ? supabaseAdmin
+          .from("messages")
+          .select("role, text, at")
+          .eq("company_id", companyId)
+          .eq("conversation_id", conversationId)
+          .order("at", { ascending: false })
+          .limit(20)
+      : none,
   ]);
 
   const objections = (conv?.detected_objections ?? []) as string[];

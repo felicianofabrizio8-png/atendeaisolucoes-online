@@ -284,7 +284,7 @@ export async function sendWhatsappTemplate(params: {
     .select("company_id, phone, external_id, integration_id, name")
     .eq("id", leadId)
     .maybeSingle();
-  if (!lead || (lead.company_id && lead.company_id !== companyId)) return { ok: false, simulated: false, error: "lead n�o encontrado" };
+  if (!lead || (lead.company_id && lead.company_id !== companyId)) return { ok: false, simulated: false, error: "lead não encontrado" };
   const recipient = String(lead.external_id ?? lead.phone ?? "").replace(/\D/g, "");
   if (recipient.length < 8 || recipient.length > 15) {
     return { ok: false, simulated: false, error: "telefone inválido" };
