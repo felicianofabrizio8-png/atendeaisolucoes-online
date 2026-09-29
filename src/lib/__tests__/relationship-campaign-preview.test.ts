@@ -107,7 +107,12 @@ const template = (name: string, body: string, variables = ["var1"]) => ({
   variables,
   components: [{ type: "BODY", text: body }],
 });
-const CHAMAR = template("chamar_novamente", "Oi! {{1}} Estou por aqui para ajudar.");
+// Texto aprovado do chamar_novamente — o fixo não pode mudar nem um espaço.
+const CHAMAR_BODY =
+  "Olá {{1}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.";
+const CHAMAR = template("chamar_novamente", CHAMAR_BODY);
+const PHRASE =
+  "estou passando para retomar nossa conversa sobre a piscina que você estava analisando. Vi que falamos sobre o modelo Sol 401 e queria saber se ainda posso te ajudar com esse projeto";
 const REATIVACAO = template(
   "reativacao_cliente",
   "Olá {{1}}, quanto tempo! Posso te ajudar com algo?",
@@ -208,7 +213,7 @@ beforeEach(() => {
   delete process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND;
   tpl.approved = { followup_resume: CHAMAR, reactivation: REATIVACAO };
   tpl.send.mockResolvedValue({ ok: true, simulated: false, externalId: "wamid.RC" });
-  llm.run.mockResolvedValue({ text: "Conseguiu avaliar o ar split que conversamos?" });
+  llm.run.mockResolvedValue({ text: PHRASE });
 });
 afterEach(() => {
   delete process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND;
@@ -232,12 +237,20 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
       purpose: "followup_resume",
       purpose_label: "Retomada",
       template: { name: "chamar_novamente", category: "marketing", language: "pt_BR" },
-      variables: { var1: "Conseguiu avaliar o ar split que conversamos?" },
-      content: "Oi! Conseguiu avaliar o ar split que conversamos? Estou por aqui para ajudar.",
+      variables: { var1: PHRASE },
       phrase_source: "ai",
       conversation_id: "conv-wa",
     });
     expect(r.variables.var1).not.toMatch(/mariana|souza/i);
+    // prévia: var1 entre {{ }} no texto fixo aprovado, intacto
+    expect(r.content_preview).toBe(
+      `Olá {{${PHRASE}}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.`,
+    );
+    // conteúdo real (o que a Meta renderiza): sem chaves, mesmo texto fixo
+    expect(r.content).toBe(CHAMAR_BODY.replace("{{1}}", PHRASE));
+    expect(r.content).not.toMatch(/\{\{|\}\}/);
+    expect(r.parameters).toEqual([PHRASE]);
+    expect(r.content_preview.replace(/\{\{|\}\}/g, "")).toBe(r.content);
     // a IA leu a conversa real
     const prompt = llm.run.mock.calls[0][0].messages.map((m: any) => m.content).join("\n");
     expect(prompt).toContain("Vou pensar no valor");
@@ -248,9 +261,12 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
     llm.run.mockResolvedValueOnce({ text: "Mariana, bora fechar?" });
     const a: any = await previewRelationshipDispatch(input);
     expect(a.variables.var1).toBe(
-      "Posso ajudar com a questão de preço sobre Ar split 12.000 BTUs?",
+      "estou passando para retomar nossa conversa sobre Ar split 12.000 BTUs e ver se consigo ajudar com a questão de preço",
     );
     expect(a.phrase_source).toBe("context");
+    expect(a.content_preview).toBe(
+      `Olá {{${a.variables.var1}}} tudo bem?\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\nObrigado.`,
+    );
 
     llm.run.mockRejectedValueOnce(new Error("timeout"));
     const b: any = await previewRelationshipDispatch(input);
@@ -267,6 +283,7 @@ describe("Reativação (reactivation → reativacao_cliente)", () => {
       template: { name: "reativacao_cliente" },
       variables: { var1: "Mariana" },
       content: "Olá Mariana, quanto tempo! Posso te ajudar com algo?",
+      content_preview: "Olá {{Mariana}}, quanto tempo! Posso te ajudar com algo?",
     });
     expect(llm.run).not.toHaveBeenCalled();
   });
@@ -337,7 +354,7 @@ describe("prévia sem efeitos colaterais", () => {
       ...input,
       now: new Date("2026-09-28T23:00:00Z"),
     });
-    expect(r.content).toContain("Oi!");
+    expect(r.content).toContain("tudo bem?");
     expect(r.blockers).toContain("fora do horário comercial configurado");
   });
 
@@ -346,6 +363,21 @@ describe("prévia sem efeitos colaterais", () => {
     expect(r.status).toBe("preview");
     expect(tpl.send).not.toHaveBeenCalled();
     expect(db.writes).toEqual([]);
+  });
+});
+
+describe("renderização do var1", () => {
+  it("var1 com `$&`/`$1` não é tratado como padrão de substituição", async () => {
+    llm.run.mockResolvedValueOnce({
+      text: "estou retomando o pedido 'A$&B' e o item $1 que você viu",
+    });
+    const r: any = await previewRelationshipDispatch(input);
+    expect(r.content).toBe(
+      CHAMAR_BODY.replace(
+        "{{1}}",
+        () => "estou retomando o pedido 'A$&B' e o item $1 que você viu",
+      ),
+    );
   });
 });
 
@@ -373,6 +405,8 @@ describe("envio real (gate ligado só neste teste) usa a mesma preparação da p
     expect(tpl.send).toHaveBeenCalledWith(
       expect.objectContaining({ purpose: "followup_resume", variables: preview.variables }),
     );
+    // Meta recebe só o conteúdo interno: exatamente o var1 da prévia, sem chaves
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({ var1: PHRASE });
     expect(db.tables.conversations[0]).toMatchObject({ lead_id: "lead-1", channel: "whatsapp" });
     expect(recipient()).toMatchObject({
       status: "sent",

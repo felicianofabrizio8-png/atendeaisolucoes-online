@@ -116,7 +116,7 @@ export async function generateResumePhrase(args: {
       companyId,
       model: RESUME_MODEL,
       temperature: 0.4,
-      maxTokens: 80,
+      maxTokens: 200,
       messages: buildResumePrompt(context, templateBody),
       tags: { feature: "followup_resume_phrase", prompt_version: RESUME_PROMPT_VERSION },
     });

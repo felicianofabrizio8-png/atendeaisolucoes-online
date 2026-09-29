@@ -1,12 +1,12 @@
 // ============================================================================
 // followup/resume-phrase.ts
-// Responsabilidade: frase curta de retomada que preenche o {{1}} do template
+// Responsabilidade: trecho de retomada que preenche o {{1}} do template
 // `chamar_novamente`. Funções puras — prompt, validação e fallback — para a
 // regra ser testável sem rede; a chamada à IA fica em `resume.ts`.
 //
 // Contrato da frase:
-//  - uma frase, curta, em português, contextual (produto/modelo, orçamento,
-//    objeção, decisão pendente ou próximo passo);
+//  - texto livre em português, gerado do histórico real, que se encaixa
+//    entre o texto fixo antes e depois do {{1}} ("Olá {{1}} tudo bem?");
 //  - NUNCA o nome do cliente (o template decide saudação e tratamento);
 //  - sem quebra de linha/tab e sem 4+ espaços seguidos (a Meta rejeita);
 //  - sem valores em dinheiro: preço só vem de ferramenta determinística, e
@@ -29,9 +29,10 @@ export interface ResumeContext {
 
 export type ResumePhraseSource = "ai" | "context" | "generic";
 
-export const RESUME_PHRASE_MAX = 120;
+export const RESUME_PHRASE_MAX = 280;
 const RESUME_PHRASE_MIN = 8;
-export const GENERIC_RESUME_PHRASE = "Podemos continuar de onde paramos?";
+export const GENERIC_RESUME_PHRASE =
+  "estou passando para retomar nossa conversa e saber se ainda posso te ajudar";
 
 function stripAccents(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -107,11 +108,17 @@ export function fallbackResumePhrase(ctx: ResumeContext): {
   const product = clean(ctx.product) ?? clean(ctx.interest);
   const objection = clean(ctx.objection);
 
-  if (quoted) candidates.push(`Ficou alguma dúvida sobre o orçamento de ${quoted}?`);
+  // Continuações de "Olá {{1}} tudo bem?": começam em minúscula e não fecham
+  // com pontuação — o texto fixo do template vem logo depois.
+  const lead = "estou passando para retomar nossa conversa sobre";
+  if (quoted) candidates.push(`${lead} o orçamento de ${quoted} e saber se ficou alguma dúvida`);
   if (objection && product)
-    candidates.push(`Posso ajudar com a questão de ${objection.toLowerCase()} sobre ${product}?`);
-  if (product && ctx.readyToClose) candidates.push(`Podemos seguir com o pedido de ${product}?`);
-  if (product) candidates.push(`Ainda tem interesse em ${product}?`);
+    candidates.push(
+      `${lead} ${product} e ver se consigo ajudar com a questão de ${objection.toLowerCase()}`,
+    );
+  if (product && ctx.readyToClose)
+    candidates.push(`${lead} ${product} e saber se podemos seguir com o pedido`);
+  if (product) candidates.push(`${lead} ${product} e saber se ainda posso te ajudar`);
 
   for (const c of candidates) {
     const ok = normalizeResumePhrase(c, ctx);
@@ -120,7 +127,7 @@ export function fallbackResumePhrase(ctx: ResumeContext): {
   return { text: GENERIC_RESUME_PHRASE, source: "generic" };
 }
 
-export const RESUME_PROMPT_VERSION = "2026-09-28.a";
+export const RESUME_PROMPT_VERSION = "2026-09-29.a";
 
 /** Mensagens para a IA gerar a frase. `templateBody` é o corpo com {{1}}. */
 export function buildResumePrompt(
@@ -145,14 +152,14 @@ export function buildResumePrompt(
     .map((m) => `${m.role === "lead" ? "Cliente" : "Atendente"}: ${clean(m.text)!.slice(0, 280)}`)
     .join("\n");
 
-  const system = `Você escreve a frase de retomada de um follow-up de WhatsApp.
-A frase vai substituir {{1}} dentro deste template aprovado pela Meta:
+  const system = `Você escreve o trecho de retomada de um follow-up de WhatsApp.
+O trecho vai substituir {{1}} dentro deste template aprovado pela Meta, cujo texto fixo não muda:
 """${templateBody}"""
 
 Regras obrigatórias:
-- UMA frase curta em português do Brasil (até ${RESUME_PHRASE_MAX} caracteres) que encaixe no lugar de {{1}}.
-- Retome o ponto concreto em que a conversa parou: produto/modelo, orçamento, objeção, decisão pendente ou próximo passo.
-- NÃO use o nome do cliente. NÃO cumprimente (o template já faz isso).
+- Texto em português do Brasil (até ${RESUME_PHRASE_MAX} caracteres) que se encaixe gramaticalmente entre o texto antes e depois de {{1}}: pode começar em minúscula e não precisa terminar com pontuação se o template continua logo depois.
+- Use o histórico real da conversa: retome o ponto concreto em que ela parou (produto/modelo, orçamento, objeção, decisão pendente ou próximo passo).
+- NÃO use o nome do cliente. NÃO repita a saudação do template.
 - NÃO cite preços, valores, descontos, prazos ou condições que não estejam nos fatos abaixo. Nunca invente.
 - Sem emojis, sem aspas, sem quebra de linha.
 - Responda APENAS com a frase.`;

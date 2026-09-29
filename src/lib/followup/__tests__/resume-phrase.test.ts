@@ -59,6 +59,12 @@ describe("normalizeResumePhrase", () => {
     );
   });
 
+  it("aceita um trecho longo, gerado do histórico, que continua o template", () => {
+    const phrase =
+      "estou passando para retomar nossa conversa sobre a piscina que você estava analisando. Vi que falamos sobre o modelo Sol 401 e queria saber se ainda posso te ajudar com esse projeto";
+    expect(normalizeResumePhrase(phrase, ctx())).toBe(phrase);
+  });
+
   it("recusa valores em dinheiro, placeholders, vazio e texto longo", () => {
     expect(normalizeResumePhrase("O orçamento de R$ 1.200 ainda vale?", ctx())).toBeNull();
     expect(normalizeResumePhrase("O valor de 1.299,90 ainda te atende?", ctx())).toBeNull();
@@ -74,20 +80,22 @@ describe("fallbackResumePhrase", () => {
       ctx({ quote: { productName: "Piscina 8x4" }, product: "Piscina" }),
     );
     expect(out).toEqual({
-      text: "Ficou alguma dúvida sobre o orçamento de Piscina 8x4?",
+      text: "estou passando para retomar nossa conversa sobre o orçamento de Piscina 8x4 e saber se ficou alguma dúvida",
       source: "context",
     });
   });
 
   it("usa objeção e produto quando não há orçamento", () => {
     const out = fallbackResumePhrase(ctx({ objection: "Preço", product: "ar split 9000" }));
-    expect(out.text).toBe("Posso ajudar com a questão de preço sobre ar split 9000?");
+    expect(out.text).toBe(
+      "estou passando para retomar nossa conversa sobre ar split 9000 e ver se consigo ajudar com a questão de preço",
+    );
     expect(out.source).toBe("context");
   });
 
   it("usa o produto de interesse", () => {
     expect(fallbackResumePhrase(ctx({ interest: "cortina blackout" })).text).toBe(
-      "Ainda tem interesse em cortina blackout?",
+      "estou passando para retomar nossa conversa sobre cortina blackout e saber se ainda posso te ajudar",
     );
   });
 

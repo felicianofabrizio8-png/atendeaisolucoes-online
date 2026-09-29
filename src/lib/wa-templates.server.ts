@@ -215,7 +215,8 @@ export function renderTemplateBody(
   const parameters: string[] = orderedNames.map((n) => variables[n] ?? "");
   let rendered = text;
   parameters.forEach((value, i) => {
-    rendered = rendered.replaceAll(`{{${i + 1}}}`, value);
+    // Função como substituto: `$&`, `$1`… no valor não são padrões especiais.
+    rendered = rendered.replaceAll(`{{${i + 1}}}`, () => value);
   });
   return { body: rendered, parameters };
 }

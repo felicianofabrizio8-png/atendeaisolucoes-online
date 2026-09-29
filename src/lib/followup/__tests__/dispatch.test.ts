@@ -221,7 +221,7 @@ describe("dispatchFollowup — fora da janela: chamar_novamente contextual", () 
     llm.run.mockResolvedValueOnce({ text: "Mariana, ainda quer o ar?" });
     await dispatchFollowup(input());
     expect(tpl.send.mock.calls[0][0].variables).toEqual({
-      var1: "Ficou alguma dúvida sobre o orçamento de Ar split 12.000 BTUs inverter?",
+      var1: "estou passando para retomar nossa conversa sobre o orçamento de Ar split 12.000 BTUs inverter e saber se ficou alguma dúvida",
     });
     expect(followUps()[0].metadata.resume_phrase_source).toBe("context");
   });

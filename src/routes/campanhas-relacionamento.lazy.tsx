@@ -28,6 +28,7 @@ type DispatchPreview = {
   template?: { name: string; category: string; language: string };
   variables?: Record<string, string>;
   content?: string;
+  content_preview?: string;
   phrase_source?: string | null;
   conversation_id?: string | null;
   conversation_note?: string | null;
@@ -283,6 +284,23 @@ function PurposeBadge({ purpose }: { purpose: string }) {
   );
 }
 
+/** Destaca os trechos {{…}} da prévia (o texto fixo do template fica intacto). */
+function MarkedContent({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\{\{[\s\S]*?\}\})/).map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={i} className="rounded bg-sky-500/15 px-0.5 text-foreground">
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 function PreviewPanel({ preview }: { preview: DispatchPreview | { error: string } }) {
   if ("error" in preview) {
     return (
@@ -315,8 +333,15 @@ function PreviewPanel({ preview }: { preview: DispatchPreview | { error: string 
           )}
         </div>
       )}
-      {preview.content && (
-        <div className="rounded border bg-background px-2 py-1.5 whitespace-pre-wrap">{preview.content}</div>
+      {(preview.content_preview ?? preview.content) && (
+        <div className="rounded border bg-background px-2 py-1.5 whitespace-pre-wrap">
+          <MarkedContent text={preview.content_preview ?? preview.content ?? ""} />
+        </div>
+      )}
+      {preview.content_preview && (
+        <div className="text-muted-foreground">
+          As chaves {"{{ }}"} só marcam o trecho variável; a Meta recebe apenas o conteúdo interno.
+        </div>
       )}
       {preview.conversation_note && <div className="text-muted-foreground">{preview.conversation_note}</div>}
       {preview.blockers.length > 0 ? (

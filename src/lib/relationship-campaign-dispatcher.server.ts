@@ -244,6 +244,8 @@ export type PreparedDispatch = {
   variables: Record<string, string>;
   parameters: string[];
   content: string;
+  /** Mesmo conteúdo com cada variável entre {{ }} — só para exibição. */
+  contentPreview: string;
   phraseSource?: string;
   conversationId: string | null;
   /** Impedem o envio real agora (a prévia mostra, o envio respeita). */
@@ -354,6 +356,12 @@ export async function prepareRelationshipDispatch(input: {
   const rendered = renderTemplateBody(template, variables);
   if (rendered.parameters.some((p) => !p || !p.trim()))
     return { status: "blocked", reason: `variável {{1}} ficaria vazia no template "${template.name}"` };
+  // Prévia: mesmo template, mesmas variáveis; as chaves só marcam o trecho
+  // variável na tela — o envio usa `variables` sem elas.
+  const marked = renderTemplateBody(
+    template,
+    Object.fromEntries(Object.entries(variables).map(([k, v]) => [k, `{{${v}}}`])),
+  );
 
   return {
     status: "ready",
@@ -365,6 +373,7 @@ export async function prepareRelationshipDispatch(input: {
     variables,
     parameters: rendered.parameters,
     content: rendered.body,
+    contentPreview: marked.body,
     phraseSource,
     conversationId: conversation?.id ?? null,
     blockers,
@@ -398,6 +407,7 @@ export async function previewRelationshipDispatch(input: {
     variables: prepared.variables,
     parameters: prepared.parameters,
     content: prepared.content,
+    content_preview: prepared.contentPreview,
     phrase_source: prepared.phraseSource ?? null,
     lead_id: prepared.lead.id,
     conversation_id: prepared.conversationId,
