@@ -7,6 +7,7 @@ import {
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isLeadInSegment, parseSegmentDefinition } from "@/lib/relationship-campaigns.server";
 import { generateResumePhrase, loadResumeContext } from "@/lib/followup/resume";
+import { normalizeResumePhrase } from "@/lib/followup/resume-phrase";
 import {
   isRelationshipPurpose,
   RELATIONSHIP_PURPOSES,
@@ -225,6 +226,81 @@ function firstName(name: string | null | undefined): string {
   return String(name ?? "").trim().split(/\s+/)[0] ?? "";
 }
 
+/**
+ * var1 preparado na prévia, guardado em `metadata.prepared_dispatch` do
+ * destinatário. O envio real reutiliza exatamente estas variáveis — sem
+ * chamar a IA de novo — e bloqueia se não houver registro válido.
+ */
+export type PreparedVariables = {
+  version: 1;
+  id: string;
+  company_id: string;
+  relationship_campaign_id: string;
+  recipient_id: string;
+  lead_id: string;
+  purpose: RelationshipPurpose;
+  template: { name: string; language: string };
+  /** Conteúdo interno, sem {{ }} — é o que vai no payload da Meta. */
+  variables: Record<string, string>;
+  content: string;
+  phrase_source: string | null;
+  prepared_at: string;
+};
+
+const PREPARED_KEY = "prepared_dispatch";
+
+function storedPrepared(recipient: any): PreparedVariables | null {
+  const value = recipient?.metadata?.[PREPARED_KEY];
+  return value && typeof value === "object" ? (value as PreparedVariables) : null;
+}
+
+/** Por que o var1 salvo não pode ser usado agora; `null` = pode. */
+function preparedProblem(
+  stored: PreparedVariables | null,
+  expected: {
+    companyId: string;
+    relationshipCampaignId: string;
+    recipientId: string;
+    lead: { id: string; name: string | null };
+    purpose: RelationshipPurpose;
+    template: TemplateForPreparation;
+  },
+): string | null {
+  if (!stored) return "nenhum var1 preparado na prévia";
+  if (stored.version !== 1) return "registro de preparação em formato desconhecido";
+  if (
+    stored.company_id !== expected.companyId ||
+    stored.relationship_campaign_id !== expected.relationshipCampaignId ||
+    stored.recipient_id !== expected.recipientId ||
+    stored.lead_id !== expected.lead.id
+  )
+    return "var1 preparado pertence a outro destinatário";
+  if (stored.purpose !== expected.purpose) return "tipo de campanha mudou desde a prévia";
+  const { template } = expected;
+  if (stored.template?.name !== template.name || stored.template?.language !== template.language)
+    return "template mudou desde a prévia";
+  const names = template.variables ?? [];
+  const stamped = stored.variables && typeof stored.variables === "object" ? stored.variables : {};
+  if (Object.keys(stamped).sort().join(",") !== [...names].sort().join(","))
+    return "variáveis do template mudaram desde a prévia";
+  const kind = RELATIONSHIP_PURPOSES[expected.purpose].var1;
+  for (const name of names) {
+    const value = stamped[name];
+    if (typeof value !== "string" || !value.trim()) return `variável ${name} vazia`;
+    if (/\{\{|\}\}|[\r\n\t]| {4,}/.test(value)) return `variável ${name} com formato inválido`;
+    const stillValid =
+      kind === "resume_phrase"
+        ? normalizeResumePhrase(value, { leadName: expected.lead.name }) === value
+        : value === firstName(expected.lead.name);
+    if (!stillValid) return `variável ${name} não passa mais nas proteções`;
+  }
+  if (renderTemplateBody(template, stamped).body !== stored.content)
+    return "texto do template mudou desde a prévia";
+  return null;
+}
+
+type TemplateForPreparation = NonNullable<Awaited<ReturnType<typeof findApprovedTemplateForPurpose>>>;
+
 type HardStop = { status: "blocked"; reason: string };
 
 /** Destinatário que não pode receber — só na simulação isso fica sem registro. */
@@ -247,6 +323,9 @@ export type PreparedDispatch = {
   /** Mesmo conteúdo com cada variável entre {{ }} — só para exibição. */
   contentPreview: string;
   phraseSource?: string;
+  /** Registro do var1: recém-gerado (a prévia salva) ou reutilizado do salvo. */
+  preparedRecord: PreparedVariables;
+  preparedOrigin: "generated" | "reused";
   conversationId: string | null;
   /** Impedem o envio real agora (a prévia mostra, o envio respeita). */
   blockers: string[];
@@ -256,6 +335,12 @@ export type PreparedDispatch = {
  * Tudo o que o envio real faz até ANTES da chamada externa: destinatário,
  * lead, segmento, supressão, telefone, conversa WhatsApp, template aprovado,
  * variáveis e conteúdo renderizado. Só lê — nenhuma escrita acontece aqui.
+ *
+ * `varSource`:
+ *  - "preview" (padrão): reutiliza o var1 salvo se ainda for válido; senão
+ *    (ou com `regenerate`) gera um novo — quem chama decide salvar.
+ *  - "prepared": envio real. Só o var1 salvo serve; sem ele, bloqueia. Nunca
+ *    chama a IA.
  */
 export async function prepareRelationshipDispatch(input: {
   companyId: string;
@@ -263,6 +348,8 @@ export async function prepareRelationshipDispatch(input: {
   recipientId: string;
   mode: RelationshipMode;
   now: Date;
+  varSource?: "preview" | "prepared";
+  regenerate?: boolean;
 }): Promise<PreparedDispatch | HardStop | Exclusion> {
   const { companyId, now } = input;
   const settings = await getRelationshipSettings(companyId);
@@ -334,9 +421,28 @@ export async function prepareRelationshipDispatch(input: {
 
   const conversation = await findWhatsappConversation(companyId, lead.id);
 
+  const stored = storedPrepared(recipient);
+  const problem = preparedProblem(stored, {
+    companyId,
+    relationshipCampaignId: input.relationshipCampaignId,
+    recipientId: recipient.id,
+    lead,
+    purpose,
+    template,
+  });
+  if (input.varSource === "prepared" && problem)
+    return {
+      status: "blocked",
+      reason: `envio bloqueado: ${problem} — gere a prévia do destinatário antes de enviar`,
+    };
+  const reuse = !problem && (input.varSource === "prepared" || !input.regenerate);
+
   const variables: Record<string, string> = {};
   let phraseSource: string | undefined;
-  if (names.length === 1) {
+  if (reuse) {
+    Object.assign(variables, stored!.variables);
+    phraseSource = stored!.phrase_source ?? undefined;
+  } else if (names.length === 1) {
     if (info.var1 === "resume_phrase") {
       const context = await loadResumeContext(companyId, conversation?.id ?? null, lead.id);
       const body = (template.components as Array<Record<string, unknown>>).find(
@@ -362,6 +468,22 @@ export async function prepareRelationshipDispatch(input: {
     template,
     Object.fromEntries(Object.entries(variables).map(([k, v]) => [k, `{{${v}}}`])),
   );
+  const preparedRecord: PreparedVariables = reuse
+    ? stored!
+    : {
+        version: 1,
+        id: crypto.randomUUID(),
+        company_id: companyId,
+        relationship_campaign_id: input.relationshipCampaignId,
+        recipient_id: recipient.id,
+        lead_id: lead.id,
+        purpose,
+        template: { name: template.name, language: template.language },
+        variables,
+        content: rendered.body,
+        phrase_source: phraseSource ?? null,
+        prepared_at: now.toISOString(),
+      };
 
   return {
     status: "ready",
@@ -375,14 +497,45 @@ export async function prepareRelationshipDispatch(input: {
     content: rendered.body,
     contentPreview: marked.body,
     phraseSource,
+    preparedRecord,
+    preparedOrigin: reuse ? "reused" : "generated",
     conversationId: conversation?.id ?? null,
     blockers,
   };
 }
 
 /**
+ * Salva o var1 da prévia no destinatário — só `metadata.prepared_dispatch`;
+ * status, tentativas e demais campos não mudam. Escrita condicionada ao
+ * `updated_at` lido (compare-and-set): prévias concorrentes não se atropelam.
+ */
+async function savePreparedVariables(
+  companyId: string,
+  relationshipCampaignId: string,
+  recipient: any,
+  record: PreparedVariables,
+): Promise<{ saved: boolean; error?: string }> {
+  if (!["pending", "failed"].includes(recipient.status))
+    return { saved: false, error: `destinatário está como ${recipient.status}` };
+  const { data, error } = await db
+    .from("relationship_campaign_recipients")
+    .update({ metadata: { ...(recipient.metadata ?? {}), [PREPARED_KEY]: record } })
+    .eq("company_id", companyId)
+    .eq("relationship_campaign_id", relationshipCampaignId)
+    .eq("id", recipient.id)
+    .eq("updated_at", recipient.updated_at)
+    .in("status", ["pending", "failed"])
+    .select("id")
+    .maybeSingle();
+  if (error) return { saved: false, error: error.message ?? String(error) };
+  if (!data) return { saved: false, error: "destinatário mudou durante a prévia; gere a prévia de novo" };
+  return { saved: true };
+}
+
+/**
  * Prévia do disparo para um destinatário: a mesma preparação do envio real,
- * sem enviar, sem criar conversa e sem alterar o destinatário.
+ * sem enviar e sem criar conversa. A única escrita é salvar o var1 preparado
+ * (quando é novo), que o envio real vai reutilizar tal e qual.
  */
 export async function previewRelationshipDispatch(input: {
   companyId: string;
@@ -390,12 +543,28 @@ export async function previewRelationshipDispatch(input: {
   recipientId: string;
   mode: RelationshipMode;
   now?: Date;
+  /** Gera outro var1 mesmo havendo um salvo válido. */
+  regenerate?: boolean;
 }) {
-  const prepared = await prepareRelationshipDispatch({ ...input, now: input.now ?? new Date() });
+  const prepared = await prepareRelationshipDispatch({
+    ...input,
+    now: input.now ?? new Date(),
+    varSource: "preview",
+  });
   if (prepared.status !== "ready") {
     return { status: "preview" as const, would_send: false, blockers: [prepared.reason], outcome: prepared.status };
   }
   const blockers = [...prepared.blockers];
+  const save =
+    prepared.preparedOrigin === "reused"
+      ? { saved: true }
+      : await savePreparedVariables(
+          input.companyId,
+          input.relationshipCampaignId,
+          prepared.recipient,
+          prepared.preparedRecord,
+        );
+  if (!save.saved) blockers.push(`var1 não foi salvo para o envio: ${save.error}`);
   if (!realSendIsEnabled()) blockers.push("envio real desabilitado no servidor");
   return {
     status: "preview" as const,
@@ -409,6 +578,13 @@ export async function previewRelationshipDispatch(input: {
     content: prepared.content,
     content_preview: prepared.contentPreview,
     phrase_source: prepared.phraseSource ?? null,
+    prepared: {
+      id: prepared.preparedRecord.id,
+      prepared_at: prepared.preparedRecord.prepared_at,
+      reused: prepared.preparedOrigin === "reused",
+      saved: save.saved,
+      error: save.error ?? null,
+    },
     lead_id: prepared.lead.id,
     conversation_id: prepared.conversationId,
     conversation_note: prepared.conversationId
@@ -431,7 +607,8 @@ export async function dispatchRelationshipRecipient(input: {
     return previewRelationshipDispatch({ ...input, now });
   }
 
-  const prepared = await prepareRelationshipDispatch({ ...input, now });
+  // Envio real: só com o var1 salvo na prévia — sem IA, sem gerar outro.
+  const prepared = await prepareRelationshipDispatch({ ...input, now, varSource: "prepared" });
   if (prepared.status !== "ready") {
     // Só no envio real a exclusão fica registrada no destinatário.
     if ("recipientPatch" in prepared) {
@@ -462,14 +639,19 @@ export async function dispatchRelationshipRecipient(input: {
       updated_at: now.toISOString(),
     })
     .eq("company_id", input.companyId)
+    .eq("relationship_campaign_id", input.relationshipCampaignId)
     .eq("id", recipient.id)
+    // Compare-and-set: se outra prévia trocou o var1 (ou outro worker reservou)
+    // depois da leitura, nada é enviado.
+    .eq("updated_at", recipient.updated_at)
     .in("status", ["pending", "failed"])
     .select("id")
     .maybeSingle();
   if (claimError) throw claimError;
-  if (!claimed) return { status: "idempotent" as const, reason: "destinatário já reservado" };
+  if (!claimed)
+    return { status: "idempotent" as const, reason: "destinatário mudou ou já foi reservado; nada enviado" };
 
-  // Mesmo propósito e mesmas variáveis da preparação (e da prévia).
+  // Exatamente o var1 salvo na prévia (conteúdo interno, sem {{ }}).
   const send = await sendWhatsappTemplate({
     companyId: input.companyId,
     conversationId,

@@ -1,5 +1,6 @@
 // Campanhas de relacionamento — prévia e envio: template certo, {{1}}/var1
-// nunca vazio, prévia sem efeitos colaterais e lead sem conversa WhatsApp.
+// nunca vazio, prévia sem efeitos colaterais (além de salvar o var1), lead sem
+// conversa WhatsApp e envio real reutilizando exatamente o var1 da prévia.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,11 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("@/integrations/supabase/client.server", () => {
+  // Simula o trigger set_updated_at: toda escrita troca o updated_at.
+  function touch(r: Row, patch: Row) {
+    Object.assign(r, patch);
+    if ("updated_at" in r) r.updated_at = `ts-${++db.seq}`;
+  }
   function from(table: string) {
     const preds: Array<(r: Row) => boolean> = [];
     let limit = Infinity;
@@ -25,7 +31,8 @@ vi.mock("@/integrations/supabase/client.server", () => {
       gte: () => chain,
       order: () => chain,
       limit: (n: number) => ((limit = n), chain),
-      maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
+      // cópia, como o PostgREST: escrever no banco não muda o que já foi lido
+      maybeSingle: async () => ({ data: structuredClone(rows()[0] ?? null), error: null }),
       then: (cb: any) => cb({ data: rows(), error: null }),
       insert: (row: Row) => {
         const full = { id: `${table}-${++db.seq}`, ...row };
@@ -41,12 +48,12 @@ vi.mock("@/integrations/supabase/client.server", () => {
           select: () => upd,
           maybeSingle: async () => {
             const hit = rows();
-            for (const r of hit) Object.assign(r, patch);
+            for (const r of hit) touch(r, patch);
             db.writes.push({ op: "update", table, row: patch });
             return { data: hit[0] ? { id: hit[0].id } : null, error: null };
           },
           then: (cb: any) => {
-            for (const r of rows()) Object.assign(r, patch);
+            for (const r of rows()) touch(r, patch);
             db.writes.push({ op: "update", table, row: patch });
             return cb({ error: null });
           },
@@ -144,6 +151,8 @@ function seed(purpose = "followup_resume") {
         lead_id: "lead-1",
         status: "pending",
         attempts: 0,
+        metadata: { source: "relationship_segment" },
+        updated_at: "ts-0",
         relationship_campaigns: {
           id: "camp-1",
           company_id: "c1",
@@ -206,6 +215,19 @@ const input = {
   now: NOW,
 };
 const recipient = () => db.tables.relationship_campaign_recipients[0];
+const stored = () => recipient().metadata.prepared_dispatch;
+/** A única escrita permitida à prévia: metadata.prepared_dispatch do destinatário. */
+const onlyPreparedWrites = () =>
+  db.writes.every(
+    (w) =>
+      w.op === "update" &&
+      w.table === "relationship_campaign_recipients" &&
+      Object.keys(w.row).join() === "metadata",
+  );
+const realSend = () => {
+  process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+  return dispatchRelationshipRecipient({ ...input, dryRun: false }) as Promise<any>;
+};
 
 beforeEach(() => {
   seed();
@@ -269,7 +291,7 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
     );
 
     llm.run.mockRejectedValueOnce(new Error("timeout"));
-    const b: any = await previewRelationshipDispatch(input);
+    const b: any = await previewRelationshipDispatch({ ...input, regenerate: true });
     expect(b.variables.var1.trim().length).toBeGreaterThan(0);
   });
 });
@@ -317,12 +339,18 @@ describe("bloqueios de template", () => {
 });
 
 describe("prévia sem efeitos colaterais", () => {
-  it("não envia, não cria conversa e não altera o destinatário", async () => {
+  it("não envia, não cria conversa e só salva o var1 no destinatário", async () => {
     const r: any = await previewRelationshipDispatch(input);
-    expect(r.blockers).toContain("envio real desabilitado no servidor");
+    expect(r.blockers).toEqual(["envio real desabilitado no servidor"]);
     expect(tpl.send).not.toHaveBeenCalled();
-    expect(db.writes).toEqual([]);
-    expect(recipient()).toMatchObject({ status: "pending", attempts: 0 });
+    expect(db.writes).toHaveLength(1);
+    expect(onlyPreparedWrites()).toBe(true);
+    expect(recipient()).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      metadata: { source: "relationship_segment" }, // o que já havia fica
+    });
+    expect(recipient().dispatch_key).toBeUndefined();
   });
 
   it("suprimido/inelegível aparece na prévia, mas o destinatário não muda", async () => {
@@ -346,6 +374,7 @@ describe("prévia sem efeitos colaterais", () => {
     expect(ineligible).toMatchObject({ would_send: false, outcome: "ineligible" });
 
     expect(db.writes).toEqual([]);
+    expect(stored()).toBeUndefined();
     expect(recipient().status).toBe("pending");
   });
 
@@ -362,7 +391,7 @@ describe("prévia sem efeitos colaterais", () => {
     const r: any = await dispatchRelationshipRecipient({ ...input, dryRun: false });
     expect(r.status).toBe("preview");
     expect(tpl.send).not.toHaveBeenCalled();
-    expect(db.writes).toEqual([]);
+    expect(onlyPreparedWrites()).toBe(true);
   });
 });
 
@@ -390,28 +419,159 @@ describe("lead sem conversa WhatsApp", () => {
     expect(r).toMatchObject({ conversation_id: null });
     expect(r.conversation_note).toMatch(/sem conversa WhatsApp/);
     expect(r.variables.var1.trim()).not.toBe(""); // frase sai do lead/produto
-    expect(db.writes).toEqual([]);
+    expect(onlyPreparedWrites()).toBe(true);
     expect(db.tables.conversations).toHaveLength(1);
   });
 });
 
-describe("envio real (gate ligado só neste teste) usa a mesma preparação da prévia", () => {
-  it("mesmo template e mesmo var1; cria conversa WhatsApp só aqui", async () => {
+describe("var1 salvo na prévia", () => {
+  it("fica no destinatário com company/campaign/recipient/lead, sem {{ }}", async () => {
+    const r: any = await previewRelationshipDispatch(input);
+    expect(r.prepared).toMatchObject({ saved: true, reused: false, error: null });
+    expect(stored()).toMatchObject({
+      version: 1,
+      id: r.prepared.id,
+      company_id: "c1",
+      relationship_campaign_id: "camp-1",
+      recipient_id: "rec-1",
+      lead_id: "lead-1",
+      purpose: "followup_resume",
+      template: { name: "chamar_novamente", language: "pt_BR" },
+      variables: { var1: PHRASE },
+      content: r.content,
+      phrase_source: "ai",
+    });
+  });
+
+  it("nova prévia reutiliza o var1 salvo, sem IA e sem nova escrita (idempotente)", async () => {
+    const first: any = await previewRelationshipDispatch(input);
+    llm.run.mockClear();
+    db.writes = [];
+    const again: any = await previewRelationshipDispatch(input);
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(db.writes).toEqual([]);
+    expect(again.prepared).toMatchObject({ id: first.prepared.id, reused: true, saved: true });
+    expect(again.variables).toEqual(first.variables);
+    expect(again.content_preview).toBe(first.content_preview);
+  });
+
+  it('"Gerar outra frase" (regenerate) chama a IA e substitui o salvo', async () => {
+    const first: any = await previewRelationshipDispatch(input);
+    llm.run.mockResolvedValueOnce({ text: "estou retomando nossa conversa sobre o ar split" });
+    const again: any = await previewRelationshipDispatch({ ...input, regenerate: true });
+    expect(again.prepared.id).not.toBe(first.prepared.id);
+    expect(stored().variables).toEqual({ var1: "estou retomando nossa conversa sobre o ar split" });
+  });
+
+  it("destinatário alterado durante a prévia: não sobrescreve e avisa", async () => {
+    // outra escrita chega entre a leitura e o salvamento (updated_at muda)
+    llm.run.mockImplementationOnce(async () => {
+      recipient().updated_at = "ts-concorrente";
+      return { text: PHRASE };
+    });
+    const r: any = await previewRelationshipDispatch(input);
+    expect(r.prepared.saved).toBe(false);
+    expect(r.blockers.join()).toMatch(/var1 não foi salvo.*mudou durante a prévia/);
+    expect(stored()).toBeUndefined();
+  });
+
+  it("destinatário já enviado: a prévia não grava nada", async () => {
+    recipient().status = "sent";
+    const r: any = await previewRelationshipDispatch(input);
+    expect(r.prepared.saved).toBe(false);
+    expect(db.writes).toEqual([]);
+  });
+});
+
+describe("envio real (gate ligado só nestes testes) reutiliza o var1 da prévia", () => {
+  it("usa exatamente o var1 salvo, sem chamar a IA; Meta recebe só o conteúdo interno", async () => {
     const preview: any = await previewRelationshipDispatch(input);
     db.tables.conversations = [];
-    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
-    const r: any = await dispatchRelationshipRecipient({ ...input, dryRun: false });
+    llm.run.mockClear();
+    llm.run.mockResolvedValue({ text: "estou com outra frase que não pode ir" });
+
+    const r = await realSend();
     expect(r).toMatchObject({ status: "sent", external_id: "wamid.RC", content: preview.content });
-    expect(tpl.send).toHaveBeenCalledWith(
-      expect.objectContaining({ purpose: "followup_resume", variables: preview.variables }),
-    );
-    // Meta recebe só o conteúdo interno: exatamente o var1 da prévia, sem chaves
-    expect(tpl.send.mock.calls[0][0].variables).toEqual({ var1: PHRASE });
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send).toHaveBeenCalledTimes(1);
+    expect(tpl.send.mock.calls[0][0]).toMatchObject({
+      purpose: "followup_resume",
+      variables: { var1: PHRASE },
+    });
+    expect(tpl.send.mock.calls[0][0].variables.var1).not.toMatch(/\{\{|\}\}/);
     expect(db.tables.conversations[0]).toMatchObject({ lead_id: "lead-1", channel: "whatsapp" });
     expect(recipient()).toMatchObject({
       status: "sent",
       attempts: 1,
       external_message_id: "wamid.RC",
     });
+  });
+
+  it("sem var1 preparado: bloqueia, sem IA, sem envio, sem reservar", async () => {
+    const r = await realSend();
+    expect(r.status).toBe("blocked");
+    expect(r.reason).toMatch(/nenhum var1 preparado.*gere a prévia/);
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(db.writes).toEqual([]);
+    expect(recipient()).toMatchObject({ status: "pending", attempts: 0 });
+  });
+
+  it("var1 de outra campanha/destinatário/empresa copiado para cá: bloqueia", async () => {
+    await previewRelationshipDispatch(input);
+    for (const [field, value] of [
+      ["relationship_campaign_id", "camp-2"],
+      ["recipient_id", "rec-2"],
+      ["company_id", "c2"],
+      ["lead_id", "lead-2"],
+    ] as const) {
+      const original = { ...stored() };
+      recipient().metadata.prepared_dispatch = { ...original, [field]: value };
+      const r = await realSend();
+      expect(r).toMatchObject({ status: "blocked" });
+      expect(r.reason).toMatch(/pertence a outro destinatário/);
+      recipient().metadata.prepared_dispatch = original;
+    }
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("template mudou desde a prévia: bloqueia em vez de mandar texto diferente", async () => {
+    await previewRelationshipDispatch(input);
+    tpl.approved.followup_resume = template("chamar_novamente", "Oi {{1}}! Tudo certo?");
+    const r = await realSend();
+    expect(r.reason).toMatch(/texto do template mudou desde a prévia/);
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("var1 salvo adulterado (nome do cliente, chaves ou vazio): bloqueia", async () => {
+    await previewRelationshipDispatch(input);
+    for (const bad of ["Mariana, bora fechar?", "{{estou retomando}}", "   "]) {
+      recipient().metadata.prepared_dispatch.variables = { var1: bad };
+      const r = await realSend();
+      expect(r.status).toBe("blocked");
+    }
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("idempotente: segundo disparo não reenvia", async () => {
+    await previewRelationshipDispatch(input);
+    await realSend();
+    const again = await realSend();
+    expect(again.status).toBe("idempotent");
+    expect(tpl.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("falha da Meta: a nova tentativa reutiliza o mesmo var1", async () => {
+    await previewRelationshipDispatch(input);
+    tpl.send.mockResolvedValueOnce({ ok: false, simulated: false, error: "HTTP 500" });
+    expect((await realSend()).status).toBe("failed");
+    expect(recipient().status).toBe("failed");
+    const retry = await realSend();
+    expect(retry.status).toBe("sent");
+    expect(tpl.send.mock.calls.map((c: any[]) => c[0].variables)).toEqual([
+      { var1: PHRASE },
+      { var1: PHRASE },
+    ]);
+    expect(llm.run).toHaveBeenCalledTimes(1); // só a prévia
   });
 });

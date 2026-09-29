@@ -148,8 +148,8 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
             if (typeof body.relationship_campaign_id !== "string" || typeof body.recipient_id !== "string") {
               return Response.json({ ok: false, error: "campaign_id e recipient_id são obrigatórios" }, { status: 400 });
             }
-            // Prévia: mesma preparação do envio real, sem enviar, sem criar
-            // conversa e sem alterar o destinatário.
+            // Prévia: mesma preparação do envio real, sem enviar e sem criar
+            // conversa; salva só o var1 que o envio real vai reutilizar.
             return Response.json({
               ok: true,
               ...(await previewRelationshipDispatch({
@@ -157,6 +157,7 @@ export const Route = createFileRoute("/api/relationship-campaigns")({
                 relationshipCampaignId: body.relationship_campaign_id,
                 recipientId: body.recipient_id,
                 mode: (body.mode as "manual" | "assisted" | "automatic") ?? "manual",
+                regenerate: body.regenerate === true,
               })),
             });
           }

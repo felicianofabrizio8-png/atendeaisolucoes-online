@@ -30,6 +30,13 @@ type DispatchPreview = {
   content?: string;
   content_preview?: string;
   phrase_source?: string | null;
+  prepared?: {
+    id: string;
+    prepared_at: string;
+    reused: boolean;
+    saved: boolean;
+    error: string | null;
+  };
   conversation_id?: string | null;
   conversation_note?: string | null;
 };
@@ -115,7 +122,7 @@ function RelationshipCampaignsPage() {
   }
 
   /** "Testar": prévia sem efeitos, mostrada junto do destinatário. */
-  async function previewRecipient(campaignId: string, recipientId: string) {
+  async function previewRecipient(campaignId: string, recipientId: string, regenerate = false) {
     setPreviews((p) => ({ ...p, [recipientId]: { error: "" } }));
     try {
       const result = await callApi({
@@ -123,6 +130,7 @@ function RelationshipCampaignsPage() {
         relationship_campaign_id: campaignId,
         recipient_id: recipientId,
         mode: "manual",
+        regenerate,
       });
       setPreviews((p) => ({ ...p, [recipientId]: result as DispatchPreview }));
     } catch (error) {
@@ -252,7 +260,9 @@ function RelationshipCampaignsPage() {
                   campaign={campaign}
                   recipients={recipients}
                   previews={previews}
-                  onPreview={(recipientId) => void previewRecipient(campaign.id, recipientId)}
+                  onPreview={(recipientId, regenerate) =>
+                    void previewRecipient(campaign.id, recipientId, regenerate)
+                  }
                   onAction={run}
                 />
               )}
@@ -301,7 +311,13 @@ function MarkedContent({ text }: { text: string }) {
   );
 }
 
-function PreviewPanel({ preview }: { preview: DispatchPreview | { error: string } }) {
+function PreviewPanel({
+  preview,
+  onRegenerate,
+}: {
+  preview: DispatchPreview | { error: string };
+  onRegenerate: () => void;
+}) {
   if ("error" in preview) {
     return (
       <div className="mt-2 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -343,6 +359,22 @@ function PreviewPanel({ preview }: { preview: DispatchPreview | { error: string 
           As chaves {"{{ }}"} só marcam o trecho variável; a Meta recebe apenas o conteúdo interno.
         </div>
       )}
+      {preview.prepared && (
+        <div className="flex items-center gap-2 flex-wrap text-muted-foreground">
+          <span>
+            {preview.prepared.saved
+              ? preview.prepared.reused
+                ? "var1 já salvo — o envio real usará exatamente este texto, sem nova IA."
+                : "var1 salvo — o envio real usará exatamente este texto, sem nova IA."
+              : "var1 não salvo — o envio real ficará bloqueado."}
+          </span>
+          {preview.purpose === "followup_resume" && (
+            <button onClick={onRegenerate} className="h-6 px-2 rounded border text-foreground">
+              Gerar outra frase
+            </button>
+          )}
+        </div>
+      )}
       {preview.conversation_note && <div className="text-muted-foreground">{preview.conversation_note}</div>}
       {preview.blockers.length > 0 ? (
         <ul className="list-disc pl-4 text-amber-700 dark:text-amber-300">
@@ -367,7 +399,7 @@ function RecipientList({
   campaign: Campaign;
   recipients: Recipient[];
   previews: Record<string, DispatchPreview | { error: string }>;
-  onPreview: (recipientId: string) => void;
+  onPreview: (recipientId: string, regenerate?: boolean) => void;
   onAction: (action: Record<string, unknown>) => void;
 }) {
   return (
@@ -384,7 +416,12 @@ function RecipientList({
             {["pending", "failed"].includes(recipient.status) && <button onClick={() => onPreview(recipient.id)} className="h-7 px-2 rounded border inline-flex items-center gap-1"><FlaskConical className="h-3 w-3" /> Testar</button>}
             {["pending", "failed"].includes(recipient.status) && <button onClick={() => onAction({ action: "suppress", lead_id: recipient.lead_id, reason: "opt_out" })} className="h-7 px-2 rounded border">Opt-out</button>}
             </div>
-            {previews[recipient.id] && <PreviewPanel preview={previews[recipient.id]} />}
+            {previews[recipient.id] && (
+              <PreviewPanel
+                preview={previews[recipient.id]}
+                onRegenerate={() => onPreview(recipient.id, true)}
+              />
+            )}
           </div>
         ))}
       </div>
