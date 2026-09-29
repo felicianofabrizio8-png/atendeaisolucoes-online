@@ -1,6 +1,7 @@
 // Campanhas de relacionamento — prévia e envio: template certo, {{1}}/var1
 // nunca vazio, prévia sem efeitos colaterais (além de salvar o var1), lead sem
-// conversa WhatsApp e envio real reutilizando exatamente o var1 da prévia.
+// conversa WhatsApp e envio real reutilizando exatamente o var1 da prévia —
+// no automático, preparado pelo mesmo pipeline do "Testar" antes de enviar.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +30,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
       eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), chain),
       in: (c: string, vs: unknown[]) => (preds.push((r) => vs.includes(r[c])), chain),
       gte: () => chain,
+      or: () => chain,
       order: () => chain,
       limit: (n: number) => ((limit = n), chain),
       // cópia, como o PostgREST: escrever no banco não muda o que já foi lido
@@ -98,6 +100,7 @@ vi.mock("@/lib/llm-gateway/providers/LovableChatProvider", () => ({
 import {
   dispatchRelationshipRecipient,
   previewRelationshipDispatch,
+  runAutomaticRelationshipBatch,
 } from "../relationship-campaign-dispatcher.server";
 import { RELATIONSHIP_PURPOSES } from "../relationship-campaign-purposes";
 import { PURPOSE_TEMPLATE_MAP } from "../wa-templates.server";
@@ -573,5 +576,191 @@ describe("envio real (gate ligado só nestes testes) reutiliza o var1 da prévia
       { var1: PHRASE },
     ]);
     expect(llm.run).toHaveBeenCalledTimes(1); // só a prévia
+  });
+});
+
+describe("modo automático: prepara pelo pipeline do Testar e envia só o salvo", () => {
+  // automação ligada só no banco falso destes testes
+  const enableAutomation = () =>
+    Object.assign(db.tables.relationship_campaign_settings[0], {
+      mode: "automatic",
+      automatic_enabled: true,
+    });
+  const autoSend = () => {
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    return dispatchRelationshipRecipient({
+      ...input,
+      mode: "automatic",
+      dryRun: false,
+    }) as Promise<any>;
+  };
+
+  it("sem var1 salvo: gera uma vez, salva e envia exatamente o salvo", async () => {
+    enableAutomation();
+    const r = await autoSend();
+    expect(r.status).toBe("sent");
+    expect(llm.run).toHaveBeenCalledTimes(1);
+    expect(stored()).toMatchObject({ recipient_id: "rec-1", variables: { var1: PHRASE } });
+    expect(tpl.send.mock.calls[0][0].variables).toEqual(stored().variables);
+    expect(tpl.send.mock.calls[0][0].variables.var1).not.toMatch(/\{\{|\}\}/);
+    expect(recipient()).toMatchObject({ status: "sent", attempts: 1 });
+  });
+
+  it("var1 salvo válido (ex.: do Testar): não chama a IA", async () => {
+    await previewRelationshipDispatch(input);
+    enableAutomation();
+    llm.run.mockClear();
+    const r = await autoSend();
+    expect(r.status).toBe("sent");
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({ var1: PHRASE });
+  });
+
+  it("var1 salvo inválido (de outro destinatário): prepara de novo e envia o novo", async () => {
+    await previewRelationshipDispatch(input);
+    recipient().metadata.prepared_dispatch.recipient_id = "rec-2";
+    enableAutomation();
+    llm.run.mockResolvedValueOnce({ text: "estou retomando nossa conversa sobre o ar split" });
+    const r = await autoSend();
+    expect(r.status).toBe("sent");
+    expect(stored().recipient_id).toBe("rec-1");
+    expect(tpl.send.mock.calls[0][0].variables).toEqual({
+      var1: "estou retomando nossa conversa sobre o ar split",
+    });
+  });
+
+  it("automação desligada: bloqueia antes da IA, sem escrita", async () => {
+    const r = await autoSend();
+    expect(r).toMatchObject({ status: "blocked", reason: "automação desativada" });
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(db.writes).toEqual([]);
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("fora do horário: bloqueia antes da IA, sem escrita", async () => {
+    enableAutomation();
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r: any = await dispatchRelationshipRecipient({
+      ...input,
+      mode: "automatic",
+      dryRun: false,
+      now: new Date("2026-09-28T23:00:00Z"),
+    });
+    expect(r.reason).toMatch(/fora do horário/);
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(db.writes).toEqual([]);
+  });
+
+  it("opt-out: registra supressão, sem IA e sem envio", async () => {
+    enableAutomation();
+    db.tables.relationship_campaign_suppressions.push({
+      id: "s1",
+      company_id: "c1",
+      lead_id: "lead-1",
+      active: true,
+      reason: "opt_out",
+    });
+    const r = await autoSend();
+    expect(r.status).toBe("suppressed");
+    expect(recipient().status).toBe("suppressed");
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(tpl.send).not.toHaveBeenCalled();
+  });
+
+  it("preparação gera conteúdo inválido ({{1}} vazio): não envia e registra o motivo", async () => {
+    seed("reactivation");
+    enableAutomation();
+    db.tables.leads[0].name = "   ";
+    const r = await autoSend();
+    expect(r.status).toBe("blocked");
+    expect(r.reason).toMatch(/preparação automática falhou.*ficaria vazia/);
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(recipient()).toMatchObject({ status: "pending", attempts: 0 });
+    expect(recipient().last_error).toMatch(/^preparação automática: .*ficaria vazia/);
+    expect(recipient().next_attempt_at).toBe(new Date(NOW.getTime() + 300_000).toISOString());
+  });
+
+  it("salvamento concorrente falha: não envia e registra o motivo", async () => {
+    enableAutomation();
+    llm.run.mockImplementationOnce(async () => {
+      recipient().updated_at = "ts-concorrente";
+      return { text: PHRASE };
+    });
+    const r = await autoSend();
+    expect(r.reason).toMatch(/preparação automática falhou: var1 não foi salvo/);
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(stored()).toBeUndefined();
+    expect(recipient().last_error).toMatch(/mudou durante a prévia/);
+  });
+
+  it("IA fora do ar: usa a retomada contextual (validada), salva e envia a salva", async () => {
+    enableAutomation();
+    llm.run.mockRejectedValueOnce(new Error("timeout"));
+    const r = await autoSend();
+    expect(r.status).toBe("sent");
+    expect(stored().phrase_source).toBe("context");
+    expect(tpl.send.mock.calls[0][0].variables).toEqual(stored().variables);
+  });
+
+  it("idempotente: segundo ciclo não reenvia nem regenera", async () => {
+    enableAutomation();
+    await autoSend();
+    const again = await autoSend();
+    expect(again.status).toBe("idempotent");
+    expect(tpl.send).toHaveBeenCalledTimes(1);
+    expect(llm.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("manual continua exigindo a prévia explícita", async () => {
+    enableAutomation();
+    const r = await realSend(); // mode manual
+    expect(r.reason).toMatch(/nenhum var1 preparado/);
+    expect(llm.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("runAutomaticRelationshipBatch", () => {
+  it("automação desligada: nada é preparado nem enviado", async () => {
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r = await runAutomaticRelationshipBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+    });
+    expect(r.status).toBe("disabled");
+    expect(llm.run).not.toHaveBeenCalled();
+    expect(db.writes).toEqual([]);
+  });
+
+  it("envio real desligado: o ciclo só prepara (prévia salva), sem enviar", async () => {
+    Object.assign(db.tables.relationship_campaign_settings[0], {
+      mode: "automatic",
+      automatic_enabled: true,
+    });
+    const r = await runAutomaticRelationshipBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+    });
+    expect(r).toMatchObject({ status: "ran", real_send_enabled: false });
+    expect(r.results[0]).toMatchObject({ recipient_id: "rec-1", status: "preview" });
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(recipient()).toMatchObject({ status: "pending", attempts: 0 });
+    expect(stored().variables).toEqual({ var1: PHRASE });
+  });
+
+  it("com o gate ligado (só no teste): prepara e envia cada candidato", async () => {
+    Object.assign(db.tables.relationship_campaign_settings[0], {
+      mode: "automatic",
+      automatic_enabled: true,
+    });
+    process.env.RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND = "true";
+    const r = await runAutomaticRelationshipBatch({
+      companyId: "c1",
+      relationshipCampaignId: "camp-1",
+      now: NOW,
+    });
+    expect(r.results[0]).toMatchObject({ recipient_id: "rec-1", status: "sent" });
+    expect(tpl.send.mock.calls[0][0].variables).toEqual(stored().variables);
   });
 });

@@ -301,7 +301,14 @@ function preparedProblem(
 
 type TemplateForPreparation = NonNullable<Awaited<ReturnType<typeof findApprovedTemplateForPurpose>>>;
 
-type HardStop = { status: "blocked"; reason: string };
+type HardStop = {
+  status: "blocked";
+  reason: string;
+  /** "not_prepared": falta var1 válido salvo (só no envio real). */
+  code?: "not_prepared";
+  /** Bloqueios de política já apurados (automação, horário, status, tentativas). */
+  blockers?: string[];
+};
 
 /** Destinatário que não pode receber — só na simulação isso fica sem registro. */
 type Exclusion = {
@@ -433,6 +440,8 @@ export async function prepareRelationshipDispatch(input: {
   if (input.varSource === "prepared" && problem)
     return {
       status: "blocked",
+      code: "not_prepared",
+      blockers,
       reason: `envio bloqueado: ${problem} — gere a prévia do destinatário antes de enviar`,
     };
   const reuse = !problem && (input.varSource === "prepared" || !input.regenerate);
@@ -608,7 +617,24 @@ export async function dispatchRelationshipRecipient(input: {
   }
 
   // Envio real: só com o var1 salvo na prévia — sem IA, sem gerar outro.
-  const prepared = await prepareRelationshipDispatch({ ...input, now, varSource: "prepared" });
+  let prepared = await prepareRelationshipDispatch({ ...input, now, varSource: "prepared" });
+
+  // Automático: sem var1 válido salvo, prepara agora pelo mesmo pipeline do
+  // "Testar" (prévia + salvamento) e relê do banco. Manual/assistido seguem
+  // exigindo a prévia explícita.
+  if (prepared.status === "blocked" && prepared.code === "not_prepared" && input.mode === "automatic") {
+    // Proteções antes da IA: automação desligada, fora do horário, status
+    // final ou tentativas esgotadas não geram nada.
+    if (prepared.blockers?.length) return { status: "blocked" as const, reason: prepared.blockers.join("; ") };
+    const failure = await autoPrepareRecipient(input, now);
+    if (failure) return failure;
+    prepared = await prepareRelationshipDispatch({ ...input, now, varSource: "prepared" });
+    if (prepared.status === "blocked" && prepared.code === "not_prepared") {
+      await recordPreparationFailure(input, now, prepared.reason);
+      return { status: "blocked" as const, reason: `preparação automática inválida: ${prepared.reason}` };
+    }
+  }
+
   if (prepared.status !== "ready") {
     // Só no envio real a exclusão fica registrada no destinatário.
     if ("recipientPatch" in prepared) {
@@ -703,6 +729,52 @@ export async function dispatchRelationshipRecipient(input: {
   return { status: "sent" as const, external_id: send.externalId, content: prepared.content };
 }
 
+/**
+ * Preparação automática: exatamente `previewRelationshipDispatch` (o mesmo do
+ * botão "Testar"), que gera o var1 e o salva com compare-and-set. Devolve o
+ * bloqueio quando não há var1 salvo utilizável — e registra o motivo.
+ */
+async function autoPrepareRecipient(
+  input: { companyId: string; relationshipCampaignId: string; recipientId: string; mode: RelationshipMode },
+  now: Date,
+): Promise<{ status: "blocked"; reason: string } | null> {
+  let reason: string | null = null;
+  try {
+    const preview = await previewRelationshipDispatch({ ...input, now });
+    if (!("prepared" in preview) || !preview.prepared) reason = preview.blockers.join("; ");
+    else if (!preview.prepared.saved) reason = `var1 não foi salvo: ${preview.prepared.error}`;
+  } catch (e) {
+    reason = e instanceof Error ? e.message : String(e);
+  }
+  if (!reason) return null;
+  await recordPreparationFailure(input, now, reason);
+  return { status: "blocked", reason: `preparação automática falhou: ${reason}` };
+}
+
+/**
+ * Registra no destinatário por que a preparação automática não serviu e adia
+ * a próxima tentativa (backoff). Status e tentativas não mudam: nada foi enviado.
+ */
+async function recordPreparationFailure(
+  input: { companyId: string; relationshipCampaignId: string; recipientId: string },
+  now: Date,
+  reason: string,
+) {
+  const settings = await getRelationshipSettings(input.companyId);
+  const { error } = await db
+    .from("relationship_campaign_recipients")
+    .update({
+      last_error: `preparação automática: ${reason}`.slice(0, 500),
+      next_attempt_at: new Date(now.getTime() + settingsBackoffMs(settings, 1)).toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .eq("company_id", input.companyId)
+    .eq("relationship_campaign_id", input.relationshipCampaignId)
+    .eq("id", input.recipientId)
+    .in("status", ["pending", "failed"]);
+  if (error) throw error;
+}
+
 function settingsBackoffMs(settings: RelationshipSettings, attempt: number): number {
   return settings.retry_backoff_seconds * 1000 * Math.max(1, attempt);
 }
@@ -755,6 +827,43 @@ export async function scheduleRelationshipCampaign(input: {
     dry_run: true,
     real_send_enabled: realSendIsEnabled(),
   };
+}
+
+/**
+ * Um ciclo do modo automático para uma campanha: o scheduler aplica
+ * automação ligada, horário e limites; cada candidato passa por
+ * `dispatchRelationshipRecipient` (modo automático), que prepara o var1 se
+ * preciso e envia só o salvo. Com o envio real desligado no servidor, cada
+ * disparo vira prévia. Nenhuma rota/cron chama isto ainda.
+ */
+export async function runAutomaticRelationshipBatch(input: {
+  companyId: string;
+  relationshipCampaignId: string;
+  now?: Date;
+  limit?: number;
+}) {
+  const now = input.now ?? new Date();
+  const plan = await scheduleRelationshipCampaign({ ...input, now, mode: "automatic" });
+  if (plan.status !== "planned")
+    return { status: plan.status, reason: plan.reason, results: [] as Array<Record<string, unknown>> };
+
+  const results: Array<Record<string, unknown>> = [];
+  for (const candidate of plan.candidates as Array<{ id: string }>) {
+    try {
+      const result = await dispatchRelationshipRecipient({
+        companyId: input.companyId,
+        relationshipCampaignId: input.relationshipCampaignId,
+        recipientId: candidate.id,
+        mode: "automatic",
+        now,
+        dryRun: false,
+      });
+      results.push({ recipient_id: candidate.id, ...result });
+    } catch (e) {
+      results.push({ recipient_id: candidate.id, status: "error", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { status: "ran" as const, real_send_enabled: realSendIsEnabled(), results };
 }
 
 export async function upsertRelationshipSuppression(
