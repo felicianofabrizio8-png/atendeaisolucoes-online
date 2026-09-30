@@ -54,6 +54,8 @@ import {
 import type { ConversationSalesState } from "./conversation-sales-state";
 import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
+import { safeTimeZone, zonedParts } from "./followup/calendar";
+import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { resolveSalesAgentMode } from "./sales-agent-mode";
@@ -256,8 +258,6 @@ export function redactSalesAgentDecision(decision: AgentDecision): AgentDecision
     : { ...decision };
 }
 
-const DEBOUNCE_MS = 30_000;
-
 const GATEWAY_ERROR_FIELDS = ["type", "code", "param", "message"] as const;
 
 function sanitizeGatewayErrorValue(value: unknown, apiKey: string): string | undefined {
@@ -317,6 +317,8 @@ export type SkipReason =
   | "business_hours"
   | "human_active"
   | "rate_limit"
+  | "human_pending"
+  | "already_answered"
   | "lock_busy"
   | "no_lead_message"
   | "missing_integration"
@@ -351,34 +353,59 @@ export async function logEvent(
 // Decision guards (puras)
 // ----------------------------------------------------------------------------
 
+/**
+ * Horário comercial no fuso da empresa (`company_settings.ai_followup_timezone`).
+ * O Worker roda em UTC: nunca usar `getHours()` direto. Suporta faixa que
+ * atravessa a meia-noite (ex.: 18:00–02:00).
+ */
 export function isWithinBusinessHours(s: AgentSettings, now: Date = new Date()): boolean {
-  const [sh, sm] = s.business_hours_start.split(":").map(Number);
-  const [eh, em] = s.business_hours_end.split(":").map(Number);
-  const minsNow = now.getHours() * 60 + now.getMinutes();
+  const [sh, sm = 0] = s.business_hours_start.split(":").map(Number);
+  const [eh, em = 0] = s.business_hours_end.split(":").map(Number);
+  const local = zonedParts(now, safeTimeZone(s.ai_followup_timezone ?? null));
+  const minsNow = local.hour * 60 + local.minute;
   const minsStart = sh * 60 + sm;
   const minsEnd = eh * 60 + em;
-  return minsNow >= minsStart && minsNow < minsEnd;
+  if (minsStart <= minsEnd) return minsNow >= minsStart && minsNow < minsEnd;
+  return minsNow >= minsStart || minsNow < minsEnd;
 }
 
+/** Janela móvel do limite `ai_max_auto_replies` (antes era vitalício por conversa). */
+export const AUTO_REPLY_WINDOW_HOURS = 24;
+
+/**
+ * Guardas antes de qualquer chamada ao LLM.
+ *
+ * `recentAutoReplyCount` = respostas automáticas enviadas na conversa dentro de
+ * `AUTO_REPLY_WINDOW_HOURS`. Mensagens rápidas do cliente não são mais
+ * descartadas por tempo: a idempotência vem do lock + checagem de
+ * "última mensagem do cliente ainda sem resposta" no tick.
+ */
 export function shouldAutoReply(
   conv: AgentConversation,
   settings: AgentSettings,
   now: Date = new Date(),
+  recentAutoReplyCount: number = conv.auto_reply_count,
 ): { ok: true } | { ok: false; reason: SkipReason } {
   if (!settings.ai_auto_reply_enabled) return { ok: false, reason: "disabled" };
   if (conv.ai_status === "assumido_humano") return { ok: false, reason: "human_active" };
   if (conv.human_takeover_at) return { ok: false, reason: "human_active" };
+  if (conv.ai_status === "aguardando_humano") return { ok: false, reason: "human_pending" };
   if (settings.ai_after_hours_only && isWithinBusinessHours(settings, now)) {
     return { ok: false, reason: "business_hours" };
   }
-  if (conv.auto_reply_count >= settings.ai_max_auto_replies) {
+  if (recentAutoReplyCount >= settings.ai_max_auto_replies) {
     return { ok: false, reason: "rate_limit" };
   }
-  if (conv.last_auto_reply_at) {
-    const diff = now.getTime() - new Date(conv.last_auto_reply_at).getTime();
-    if (diff < DEBOUNCE_MS) return { ok: false, reason: "rate_limit" };
-  }
   return { ok: true };
+}
+
+/** true quando a última mensagem do cliente ainda não foi respondida. */
+export function hasUnansweredLeadMessage(
+  history: ReadonlyArray<{ role: "lead" | "agent" | "system" }>,
+): boolean {
+  const roles = history.map((item) => item.role);
+  const lastLead = roles.lastIndexOf("lead");
+  return lastLead >= 0 && lastLead > roles.lastIndexOf("agent");
 }
 
 // ----------------------------------------------------------------------------
@@ -818,15 +845,11 @@ export async function sendWhatsappText(params: {
     ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
     : await integrationQuery.limit(1).maybeSingle();
 
-  const accessTok =
-    integration?.access_token ||
-    process.env.WHATSAPP_ACCESS_TOKEN ||
-    process.env.WHATSAPP_API_KEY ||
-    "";
-  const phoneNumberId =
-    integration?.external_account_id || process.env.WHATSAPP_PHONE_NUMBER_ID || "";
-  if (!accessTok || !phoneNumberId)
+  // Nunca completa credenciais com o número global de outro tenant.
+  const credentials = resolveWhatsappSendCredentials(integration);
+  if (!credentials.ok)
     return { ok: false, simulated: false, error: "WhatsApp não conectado" };
+  const { accessToken: accessTok, phoneNumberId } = credentials;
 
   const apiUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   const payload = {
@@ -937,8 +960,11 @@ async function qualifyAndPersist(params: {
   lastLeadText: string;
   current: ConvQualifyRow;
   decision: AgentDecision | null;
+  /** false no modo `silent`: calcula e audita, mas não altera conversa/lead. */
+  persist?: boolean;
 }): Promise<{ temperature: Temperature; score: number; readyToClose: boolean }> {
   const { companyId, conversationId, leadId, lastLeadText, current, decision } = params;
+  const persist = params.persist !== false;
 
   const detectedObjections: Objection[] = detectObjections(lastLeadText);
   const readyDetected = detectReadyToClose(lastLeadText);
@@ -977,10 +1003,22 @@ async function qualifyAndPersist(params: {
   next.lead_score = score;
   next.lead_temperature = temperature;
 
+  if (!persist) {
+    await logEvent(companyId, conversationId, leadId, "sales_agent_silent_qualification", {
+      mode: "silent",
+      score,
+      temperature,
+      ready_to_close: !!next.lead_ready_to_close,
+      objections: mergedObjections,
+    });
+    return { temperature, score, readyToClose: !!next.lead_ready_to_close };
+  }
+
   await supabaseAdmin
     .from("conversations")
     .update(next as never)
-    .eq("id", conversationId);
+    .eq("id", conversationId)
+    .eq("company_id", companyId);
 
   // Eventos de timeline — apenas diffs
   const diffs: Array<[string, unknown]> = [];
@@ -1027,13 +1065,15 @@ async function qualifyAndPersist(params: {
       .from("leads")
       .select("status")
       .eq("id", leadId)
+      .eq("company_id", companyId)
       .maybeSingle();
     const s = leadRow?.status as string | undefined;
     if (s === "novo" || s === "morno") {
       await supabaseAdmin
         .from("leads")
         .update({ status: "quente" as never })
-        .eq("id", leadId);
+        .eq("id", leadId)
+        .eq("company_id", companyId);
       await logEvent(companyId, conversationId, leadId, "lead_bumped_to_hot", { from: s });
     }
   }
@@ -1045,11 +1085,117 @@ async function qualifyAndPersist(params: {
 // Tick orquestrador: 1 turno completo
 // ----------------------------------------------------------------------------
 
-export async function runAgentTick(conversationId: string): Promise<{
+export type AgentTickResult = {
   ok: boolean;
   action: "replied" | "handoff" | "skipped" | "error" | "simulated";
   reason?: string;
-}> {
+};
+
+/** Reprocessamentos extras quando o cliente escreve enquanto o turno roda. */
+export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
+
+/**
+ * Um turno completo + recuperação de mensagens rápidas.
+ *
+ * Mensagens do cliente que chegam enquanto o turno está em andamento não
+ * disparam novo tick (trigger ignora conversa com lock e a rota responde
+ * `lock_busy`). Por isso, depois de liberar o lock, verificamos se há
+ * mensagem do cliente mais nova que o histórico lido; se houver, rodamos
+ * de novo (limitado), sem a checagem de "já respondida" — a resposta
+ * anterior foi gerada sem ver essa mensagem.
+ */
+export async function runAgentTick(conversationId: string): Promise<AgentTickResult> {
+  let pass = await runAgentTickOnce(conversationId, { force: false });
+  for (let run = 0; run < MAX_AGENT_TICK_CATCHUP_RUNS; run += 1) {
+    if (!pass.snapshot) break;
+    const newer = await hasLeadMessageAfter(pass.snapshot);
+    if (!newer) break;
+    const next = await runAgentTickOnce(conversationId, { force: true });
+    if (!next.snapshot && next.result.reason === "lock_busy") break;
+    pass = next;
+  }
+  return pass.result;
+}
+
+type AgentTickSnapshot = { companyId: string; conversationId: string; lastMessageAt: string | null };
+
+async function hasLeadMessageAfter(snapshot: AgentTickSnapshot): Promise<boolean> {
+  try {
+    let query = supabaseAdmin
+      .from("messages")
+      .select("id")
+      .eq("company_id", snapshot.companyId)
+      .eq("conversation_id", snapshot.conversationId)
+      .eq("role", "lead");
+    if (snapshot.lastMessageAt) query = query.gt("at", snapshot.lastMessageAt);
+    const { data, error } = await query.limit(1);
+    return !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Releitura do status: humano assumiu ou a conversa foi encaminhada a humano. */
+async function humanTookOver(companyId: string, conversationId: string): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("conversations")
+      .select("ai_status, human_takeover_at")
+      .eq("id", conversationId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    const row = data as { ai_status?: string | null; human_takeover_at?: string | null } | null;
+    return (
+      row?.ai_status === "assumido_humano" ||
+      row?.ai_status === "aguardando_humano" ||
+      Boolean(row?.human_takeover_at)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Conta respostas automáticas de texto na janela móvel (imagens não contam). */
+async function countRecentAutoReplies(
+  companyId: string,
+  conversationId: string,
+  fallback: number,
+  now: Date = new Date(),
+): Promise<number> {
+  try {
+    const since = new Date(now.getTime() - AUTO_REPLY_WINDOW_HOURS * 3_600_000).toISOString();
+    const { data, error } = await supabaseAdmin
+      .from("messages")
+      .select("id, source_subtype")
+      .eq("company_id", companyId)
+      .eq("conversation_id", conversationId)
+      .eq("role", "agent")
+      .eq("source", "ai_agent")
+      .gte("at", since)
+      .limit(500);
+    if (error || !Array.isArray(data)) return fallback;
+    return data.filter((row) => !(row as { source_subtype?: string | null }).source_subtype).length;
+  } catch {
+    return fallback;
+  }
+}
+
+async function runAgentTickOnce(
+  conversationId: string,
+  options: { force: boolean },
+): Promise<{ result: AgentTickResult; snapshot: AgentTickSnapshot | null }> {
+  let snapshot: AgentTickSnapshot | null = null;
+  const result = await runAgentTickPass(conversationId, options, (value) => {
+    snapshot = value;
+  });
+  return { result, snapshot };
+}
+
+async function runAgentTickPass(
+  conversationId: string,
+  options: { force: boolean },
+  recordSnapshot: (snapshot: AgentTickSnapshot) => void,
+): Promise<AgentTickResult> {
   const { data: conv } = await supabaseAdmin
     .from("conversations")
     .select(
@@ -1128,17 +1274,32 @@ export async function runAgentTick(conversationId: string): Promise<{
     return { ok: true, action: "skipped", reason: "no_whatsapp_integration" };
   }
 
-  const guard = shouldAutoReply(conv as AgentConversation, ctx.settings);
+  const recentAutoReplies = await countRecentAutoReplies(
+    conv.company_id,
+    conv.id,
+    conv.auto_reply_count ?? 0,
+  );
+  const guard = shouldAutoReply(
+    conv as AgentConversation,
+    ctx.settings,
+    new Date(),
+    recentAutoReplies,
+  );
   if (!guard.ok) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, `skipped_${guard.reason}`, {});
     return { ok: true, action: "skipped", reason: guard.reason };
   }
+
+  // `silent` só interpreta e audita: nunca envia nem altera conversa/lead.
+  const v2Mode = resolveSalesAgentMode(ctx.settings);
+  const silent = v2Mode === "silent";
 
   // Lock leve anti-corrida
   const { data: locked } = await supabaseAdmin
     .from("conversations")
     .update({ ai_handling: true })
     .eq("id", conv.id)
+    .eq("company_id", conv.company_id)
     .eq("ai_handling", false)
     .select("id")
     .maybeSingle();
@@ -1154,9 +1315,15 @@ export async function runAgentTick(conversationId: string): Promise<{
     const { data: msgs } = await supabaseAdmin
       .from("messages")
       .select("role, text, at, source_metadata")
+      .eq("company_id", conv.company_id)
       .eq("conversation_id", conv.id)
       .order("at", { ascending: false })
       .limit(40);
+    recordSnapshot({
+      companyId: conv.company_id,
+      conversationId: conv.id,
+      lastMessageAt: (msgs ?? [])[0]?.at ?? null,
+    });
     const history = [...(msgs ?? [])].reverse().map((m) => {
       const metadata =
         m.source_metadata &&
@@ -1180,6 +1347,11 @@ export async function runAgentTick(conversationId: string): Promise<{
     if (!lastLeadMsg) {
       return { ok: true, action: "skipped", reason: "no_lead_message" };
     }
+    // Idempotência: gatilho duplicado/atrasado para mensagem já respondida
+    // (pela IA ou por humano) não gera novo turno nem custo de LLM.
+    if (!options.force && !hasUnansweredLeadMessage(history)) {
+      return { ok: true, action: "skipped", reason: "already_answered" };
+    }
 
     // Pre-check handoff — sempre qualifica antes para timeline ficar completa
     const triggerCheck = detectHandoffNeeded(lastLeadMsg.text);
@@ -1192,11 +1364,17 @@ export async function runAgentTick(conversationId: string): Promise<{
         lastLeadText: lastLeadMsg.text,
         current: currentQual,
         decision: null,
+        persist: !silent,
       });
+      if (silent) {
+        await writeSalesAgentAudit("handoff", "pre_check", [], ["handoff", "mode_guard"], "v2_silent");
+        return { ok: true, action: "skipped", reason: "v2_silent" };
+      }
       await supabaseAdmin
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
-        .eq("id", conv.id);
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
       await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
         source: "pre_check",
         pattern: triggerCheck.reason ?? (readyToClose ? "ready_to_close" : undefined),
@@ -1213,6 +1391,7 @@ export async function runAgentTick(conversationId: string): Promise<{
       .from("leads")
       .select("name")
       .eq("id", conv.lead_id)
+      .eq("company_id", conv.company_id)
       .maybeSingle();
 
     const turnCtx = await loadAgentContext(conv.company_id, history);
@@ -1238,9 +1417,19 @@ export async function runAgentTick(conversationId: string): Promise<{
       lastLeadText: lastLeadMsg.text,
       current: currentQual,
       decision,
+      persist: !silent,
     });
 
-    const v2Mode = resolveSalesAgentMode(ctx.settings);
+    if (decision.kind === "handoff" && silent) {
+      await writeSalesAgentAudit(
+        "handoff",
+        "mode_gate",
+        decision.suggested_products ?? [],
+        ["safety_layer", "mode_guard"],
+        "v2_silent",
+      );
+      return { ok: true, action: "skipped", reason: "v2_silent" };
+    }
 
     if (decision.kind === "handoff") {
       if (v2Mode) {
@@ -1261,7 +1450,8 @@ export async function runAgentTick(conversationId: string): Promise<{
       await supabaseAdmin
         .from("conversations")
         .update({ ai_status: "aguardando_humano" })
-        .eq("id", conv.id);
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
       const reason = decision.reason ?? "unknown";
       let evType = "handoff_human";
       if (reason.startsWith("safety_block")) evType = "safety_handoff";
@@ -1308,6 +1498,15 @@ export async function runAgentTick(conversationId: string): Promise<{
         });
         return { ok: true, action: "skipped", reason: authorization.reason };
       }
+    }
+
+    // O turno do LLM leva segundos: um humano pode ter assumido nesse meio tempo.
+    if (await humanTookOver(conv.company_id, conv.id)) {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "skipped_human_active", {
+        reason: "human_took_over_during_turn",
+      });
+      await writeSalesAgentAudit("skipped", "human_active", decision.suggested_products ?? [], ["mode_guard"], "human_active");
+      return { ok: true, action: "skipped", reason: "human_active" };
     }
 
     const sent = await sendWhatsappText({
@@ -1390,15 +1589,18 @@ export async function runAgentTick(conversationId: string): Promise<{
       }
     }
 
-    // Atualiza counters + status IA (apenas envio real)
+    // Atualiza counters + status IA (apenas envio real). Não sobrescreve
+    // status de atendimento humano definido durante o envio das mídias.
+    const humanNow = await humanTookOver(conv.company_id, conv.id);
     await supabaseAdmin
       .from("conversations")
       .update({
-        ai_status: "pre_atendido_ia",
+        ...(humanNow ? {} : { ai_status: "pre_atendido_ia" }),
         auto_reply_count: (conv.auto_reply_count ?? 0) + 1,
         last_auto_reply_at: new Date().toISOString(),
       })
-      .eq("id", conv.id);
+      .eq("id", conv.id)
+      .eq("company_id", conv.company_id);
 
     await logEvent(conv.company_id, conv.id, conv.lead_id, "auto_reply_sent", {
       message: decision.message.slice(0, 240),
@@ -1412,6 +1614,10 @@ export async function runAgentTick(conversationId: string): Promise<{
     return { ok: true, action: "replied" };
   } finally {
     // Libera lock
-    await supabaseAdmin.from("conversations").update({ ai_handling: false }).eq("id", conv.id);
+    await supabaseAdmin
+      .from("conversations")
+      .update({ ai_handling: false })
+      .eq("id", conv.id)
+      .eq("company_id", conv.company_id);
   }
 }

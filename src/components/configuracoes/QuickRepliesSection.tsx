@@ -240,14 +240,14 @@ export function QuickRepliesSection() {
             <h2 className="text-sm font-semibold">Respostas Rápidas</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            Mensagens prontas exibidas no botão ➕ do Inbox
+            Mensagens prontas disponíveis no Atendimento
           </p>
         </div>
         <button
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 shrink-0"
         >
-          <Plus className="h-3.5 w-3.5" /> Nova
+          <Plus className="h-3.5 w-3.5" /> Nova resposta rápida
         </button>
       </div>
 
@@ -317,7 +317,7 @@ export function QuickRepliesSection() {
                   <input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ex.: Itens Inclusos"
+                    placeholder="Ex.: Saudação inicial"
                     className="mt-1 h-9 w-full rounded-md bg-input px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>

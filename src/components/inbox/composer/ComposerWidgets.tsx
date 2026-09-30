@@ -10,7 +10,8 @@ import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { productMatches } from "@/lib/product-search";
 import { buildProductCaption, buildProductCardSubtitle } from "@/lib/product-caption";
-import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
+import { buildLibraryPicks } from "@/lib/inbox/product-library";
+import { listQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { SmartImage } from "@/components/SmartImage";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -209,7 +210,7 @@ export function QuickRepliesButton({
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    ensureDefaultQuickReplies(companyId)
+    listQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
         setItems(rows.filter((r) => r.active));
@@ -443,7 +444,7 @@ export function MediaSendPanel({
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    ensureDefaultQuickReplies(companyId)
+    listQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
         setQuickReplies(rows.filter((r) => r.active));
@@ -930,18 +931,6 @@ export function ProductsLibraryModal({
     return Array.from(map.entries());
   }, [filtered]);
 
-  // path → product (para preservar a associação imagem → produto na seleção
-  // e ao montar a legenda). Prioriza o primeiro produto que declara a imagem.
-  const imageToProduct = useMemo(() => {
-    const map = new Map<string, Product>();
-    for (const p of all) {
-      for (const img of p.images ?? []) {
-        if (!map.has(img)) map.set(img, p);
-      }
-    }
-    return map;
-  }, [all]);
-
   const toggle = (img: string) => {
     setSelected((prev) =>
       prev.includes(img) ? prev.filter((p) => p !== img) : [...prev, img],
@@ -950,15 +939,7 @@ export function ProductsLibraryModal({
   const clearSelection = () => setSelected([]);
   const confirmSend = () => {
     if (selected.length === 0) return;
-    const items: LibraryPick[] = selected.map((path) => {
-      const p = imageToProduct.get(path);
-      return {
-        path,
-        productId: p?.id ?? "",
-        caption: p ? buildProductCaption(p) : "",
-      };
-    });
-    onPick(items);
+    onPick(buildLibraryPicks(selected, all));
   };
 
 

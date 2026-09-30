@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { products } from "@/data/products";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  buildSuggestProductCatalog,
+  formatSuggestProductCatalog,
+} from "@/lib/product-suggestion";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -61,11 +64,26 @@ export const Route = createFileRoute("/api/ai/suggest-product")({
           .map((m) => `${m.role === "lead" ? "Cliente" : m.role === "agent" ? "Vendedor" : "Sistema"}: ${m.text}`)
           .join("\n");
 
-        const catalog = products
-          .map((p) => `- ${p.id} | ${p.category} | ${p.name}${p.description ? ` — ${p.description}` : ""}`)
-          .join("\n");
+        // Catálogo ativo da empresa do usuário (isolado por company_id).
+        const companyId = profile.company_id as string;
+        const { data: productRows, error: productsError } = await supabaseAdmin
+          .from("products")
+          .select("id, company_id, active, name, category, description")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("name", { ascending: true })
+          .limit(300);
+        if (productsError) {
+          return Response.json({ error: "Falha ao carregar o catálogo" }, { status: 502 });
+        }
+        const companyProducts = buildSuggestProductCatalog(productRows, companyId);
+        if (companyProducts.length === 0) {
+          return Response.json({ error: "Catálogo vazio para esta empresa" }, { status: 422 });
+        }
 
-        const productIds = products.map((p) => p.id);
+        const catalog = formatSuggestProductCatalog(companyProducts);
+
+        const productIds = companyProducts.map((p) => p.id);
 
         const systemPrompt = `Você é um assistente que identifica qual produto do catálogo melhor corresponde ao interesse do cliente em uma conversa de atendimento.
 Analise a conversa e devolva, via tool call:

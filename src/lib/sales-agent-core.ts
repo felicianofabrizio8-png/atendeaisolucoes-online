@@ -32,6 +32,8 @@ export interface AgentSettings {
   ai_agent_name: string;
   business_hours_start: string;
   business_hours_end: string;
+  /** Fuso IANA da empresa (company_settings); ausente/inválido → padrão do calendário. */
+  ai_followup_timezone?: string | null;
   sales_agent_v2_enabled?: boolean;
   sales_agent_v2_mode?: string;
 }
@@ -714,15 +716,13 @@ function objectiveClaimSentences(message: string): string[] {
     );
 }
 
-function validateObjectiveProductClaims(
+type PriceClaim = { value: number; promo: boolean; index: number };
+
+/** Valores monetários afirmados na mensagem (R$, "custa", "fica", "5 mil"...). */
+function extractPriceClaims(
   message: string,
-  products: SalesAgentGrounding["catalog"] | undefined,
-  suggestedProductIds: string[],
-  commercialRules: SalesAgentGrounding["commercialRules"],
   history: SalesAgentCoreInput["history"],
-): boolean {
-  if (isNonFactualObjectiveMessage(message)) return true;
-  const objectiveSentences = objectiveClaimSentences(message);
+): PriceClaim[] {
   const priceClaims = [
     ...message.matchAll(/\b(pre[cç]o|valor|custa|fica)(?:\s+(promocional|promo[cç][aã]o|promo))?[^\d]{0,20}(?:r\$\s*)?([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?/gi),
     ...[...message.matchAll(/r\$\s*([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?/gi)].map((match) => {
@@ -740,13 +740,93 @@ function validateObjectiveProductClaims(
       ),
       index: match.index ?? 0,
     }))
-    .filter((claim): claim is { value: number; promo: boolean; index: number } => claim.value != null)
+    .filter((claim): claim is PriceClaim => claim.value != null)
     .filter((claim, index, claims) => claims.findIndex((item) => item.index === claim.index) === index);
   const standaloneMoney = message.trim().match(/^([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?$/i);
   if (standaloneMoney && hasMonetaryContext(message, history)) {
     const value = parseMoneyClaim(standaloneMoney[1], standaloneMoney[2]);
     if (value != null) priceClaims.push({ value, promo: false, index: 0 });
   }
+  return priceClaims;
+}
+
+// Valores inequivocamente monetários: "R$ 5.000", "5 mil", "5.000 reais" ou
+// palavra de preço seguida de número que não é percentual, prazo ou medida.
+const EXPLICIT_MONEY_PATTERN =
+  /r\$\s*([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k)\b)?|(?<![\d.,])([\d.]+(?:,\d{1,2})?)\s*(mil|k|reais)\b/gi;
+const PRICE_WORD_MONEY_PATTERN =
+  /\b(?:pre[cç]o|valor|custa|custam|sai\s+por|fica\s+por)\b[^\d%]{0,20}?([\d.]+(?:,\d{1,2})?)(?![\d.,]|\s*(?:%|x\b|vezes|parcelas?|dias?|meses|m[eê]s|horas?|h\b|anos?|m\b|metros?|cm|mm|l\b|litros?|mil\b|k\b|reais\b))/gi;
+
+function monetaryClaimsIn(sentence: string): PriceClaim[] {
+  const claims: PriceClaim[] = [];
+  const promoAt = (index: number) =>
+    /promo/i.test(sentence.slice(Math.max(0, index - 30), index + 40));
+  for (const match of sentence.matchAll(EXPLICIT_MONEY_PATTERN)) {
+    const value = parseMoneyClaim(match[1] ?? match[3], match[2] ?? match[4]);
+    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
+  }
+  for (const match of sentence.matchAll(PRICE_WORD_MONEY_PATTERN)) {
+    const value = parseMoneyClaim(match[1]);
+    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
+  }
+  return claims;
+}
+
+/**
+ * Preços afirmados apenas em frases declarativas. Perguntas e intenções
+ * ("Seria 20 mil?", "Vou consultar o valor de 20 mil.") não são fatos, nem
+ * percentuais, prazos ou medidas ("entrada de 50%", "fica pronta em 15 dias").
+ * Divide só em pontuação seguida de espaço para não quebrar "17.500,00".
+ */
+export function extractFactualPriceClaims(
+  message: string,
+  _history: SalesAgentCoreInput["history"] = [],
+): PriceClaim[] {
+  const seen = new Set<string>();
+  return message
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0 && !isNonFactualObjectiveMessage(sentence))
+    .flatMap(monetaryClaimsIn)
+    .filter((claim) => {
+      const key = `${claim.value}:${claim.promo}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/** Todo preço afirmado precisa ser o preço (normal ou promocional) de um produto do turno. */
+export function factualPriceClaimsMatchProducts(
+  claims: readonly PriceClaim[],
+  products: SalesAgentGrounding["catalog"],
+): boolean {
+  return claims.every((claim) =>
+    products.some((product) =>
+      claim.promo
+        ? product.promoPrice != null && sameCatalogNumber(product.promoPrice, claim.value)
+        : [product.price, product.promoPrice].some(
+            (price) => price != null && sameCatalogNumber(price, claim.value),
+          ),
+    ),
+  );
+}
+
+function validateObjectiveProductClaims(
+  message: string,
+  products: SalesAgentGrounding["catalog"] | undefined,
+  suggestedProductIds: string[],
+  commercialRules: SalesAgentGrounding["commercialRules"],
+  history: SalesAgentCoreInput["history"],
+): boolean {
+  // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
+  // ("Fica R$ 5.000. Posso reservar?").
+  if (
+    isNonFactualObjectiveMessage(message) &&
+    extractFactualPriceClaims(message, history).length === 0
+  ) return true;
+  const priceClaims = extractPriceClaims(message, history);
+  const objectiveSentences = objectiveClaimSentences(message);
   const dimensionClaims = [...message.matchAll(
     /(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?\s*(?:m|metros?)?/gi,
   )]
@@ -778,6 +858,8 @@ function validateObjectiveProductClaims(
       .filter((value): value is string => Boolean(value))
       .some((value) => normalizedMessage.includes(comparablePromptText(value))),
       );
+  // Sem produto nomeado, o preço afirmado é validado em `decide` contra os
+  // produtos sugeridos no turno (validateFactualPriceClaims).
   const candidates = byMention;
   if (candidates.length === 0) return true;
 
@@ -1386,7 +1468,9 @@ export class SalesAgentCore {
     if (!replyContinuesAffirmedOffer(reply.message, params.history)) {
       return deterministicFallback("affirmative_continuation_not_answered");
     }
-    const isNonFactualReply = isNonFactualObjectiveMessage(reply.message);
+    const isNonFactualReply =
+      isNonFactualObjectiveMessage(reply.message) &&
+      extractFactualPriceClaims(reply.message, params.history).length === 0;
     const catalogIds = new Set(
       catalogSearch.products.map((product) => product.id),
     );
@@ -1447,6 +1531,17 @@ export class SalesAgentCore {
       requestedSuggestions.length === 0
     ) {
       return deterministicFallback("catalog_unvalidated_product_claim");
+    }
+    // Preço afirmado (com ou sem "R$", com ou sem pergunta depois) só sai se
+    // for exatamente o preço cadastrado de um produto do turno.
+    const factualPriceClaims = extractFactualPriceClaims(reply.message, params.history);
+    if (factualPriceClaims.length > 0) {
+      if (selectedProducts.length === 0) {
+        return safeHandoff("catalog_unvalidated_price_claim");
+      }
+      if (!factualPriceClaimsMatchProducts(factualPriceClaims, selectedProducts)) {
+        return deterministicFallback("catalog_unvalidated_price_claim");
+      }
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
       ? selectedProducts.filter((product) => product.images.length > 0).map((product) => product.id)

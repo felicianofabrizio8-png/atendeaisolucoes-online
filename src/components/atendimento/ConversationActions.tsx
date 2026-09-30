@@ -96,7 +96,7 @@ export function ConversationActions({
   /** Clientes de exemplo: nada aqui pode gravar no banco. */
   disabled: boolean;
   onSystemMessage: (text: string) => void;
-  onClosed: () => void;
+  onClosed: (kind: "sale" | "lost") => void;
   /** Envia pelo mesmo fluxo do composer; `true` quando o envio foi aceito. */
   onSendText: (text: string) => Promise<boolean>;
   onFollowupUpdated?: () => void | Promise<void>;
@@ -112,13 +112,13 @@ export function ConversationActions({
   const confirmClose = (value: number) => {
     setModal(null);
     onSystemMessage(closeSale(lead.id, value));
-    onClosed();
+    onClosed("sale");
   };
 
   const confirmLost = (reason: string, notes?: string) => {
     setModal(null);
     onSystemMessage(markLost(lead.id, reason, notes));
-    onClosed();
+    onClosed("lost");
     toast.success("Lead marcado como perdido");
   };
 

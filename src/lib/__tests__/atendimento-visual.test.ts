@@ -421,6 +421,32 @@ describe("Atendimento 2.0 runtime", () => {
     expect(repoMock.calls.forbiddenAi).toBe(0);
   });
 
+  it("keeps composer enabled for a closed-sale customer", async () => {
+    setRemoteSnapshot({
+      leads: [{ ...lead, status: "fechado", closedAt: "2026-09-18T12:00:00.000Z" }],
+    });
+    render(React.createElement(RouteView));
+
+    const composer = screen.getByLabelText("Mensagem") as HTMLTextAreaElement;
+    expect(composer.disabled).toBe(false);
+    expect(screen.queryByPlaceholderText("Conversa encerrada.")).toBeNull();
+
+    fireEvent.change(composer, { target: { value: "Mensagem para cliente" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(manualSendMock.sendManualText).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps composer blocked for a lost lead", () => {
+    setRemoteSnapshot({
+      leads: [{ ...lead, status: "perdido" }],
+    });
+    render(React.createElement(RouteView));
+
+    const composer = screen.getByLabelText("Mensagem") as HTMLTextAreaElement;
+    expect(composer.disabled).toBe(true);
+    expect(screen.getByPlaceholderText("Conversa encerrada.")).toBeTruthy();
+  });
+
   it("gera sugestão com IA no composer sem enviar automaticamente", async () => {
     setRemoteSnapshot();
     render(React.createElement(RouteView));

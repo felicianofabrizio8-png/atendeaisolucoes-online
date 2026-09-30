@@ -397,13 +397,14 @@ describe("api.whatsapp.send — guards de envio manual", () => {
     expect(postGraphSpy).not.toHaveBeenCalled();
   });
 
-  it("bloqueia conversa fechada server-side", async () => {
+  it("mantém comunicação habilitada para venda fechada/Cliente", async () => {
     tableRows.leads = { ...tableRows.leads, status: "fechado", closed_at: "2026-09-18T10:00:00.000Z" };
+    postGraphSpy.mockResolvedValueOnce({ success: true, simulated: false, environment: "legacy", externalRequestSent: true, externalId: "wamid.CLOSED", status: 200, raw: { messages: [{ id: "wamid.CLOSED" }] } });
 
     const res = await invoke("@/routes/api.whatsapp.send", makeRequest({ conversationId: "conv-1", text: "oi" }));
 
-    expect(res.status).toBe(409);
-    expect(postGraphSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(postGraphSpy).toHaveBeenCalledOnce();
   });
 
   it("bloqueia fora da janela de 24h", async () => {
@@ -456,10 +457,11 @@ describe("api.whatsapp.send-reply — guards de tenant e fechamento", () => {
     expect(postGraphSpy).not.toHaveBeenCalled();
   });
 
-  it("rejeita reply em conversa fechada", async () => {
+  it("mantém reply habilitado para venda fechada/Cliente", async () => {
     tableRows.leads = { ...tableRows.leads, status: "fechado", closed_at: "2026-09-18T10:00:00.000Z" };
+    postGraphSpy.mockResolvedValueOnce({ success: true, simulated: false, environment: "legacy", externalRequestSent: true, externalId: "wamid.CLOSED.REPLY", status: 200, raw: { messages: [{ id: "wamid.CLOSED.REPLY" }] } });
     const res = await invoke("@/routes/api.whatsapp.send-reply", makeRequest({ conversationId: "conv-1", text: "resposta", replyToMessageId: "orig-1" }));
-    expect(res.status).toBe(409);
-    expect(postGraphSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(postGraphSpy).toHaveBeenCalledOnce();
   });
 });
