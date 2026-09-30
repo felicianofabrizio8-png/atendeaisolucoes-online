@@ -749,7 +749,8 @@ const validationContext: AgentContext = {
         }),
       ]),
     );
-    expect(request.messages[0].content).toContain('Você é "Ana", pré-atendente automático');
+    expect(request.messages[0].content).toContain('Você é "Ana", vendedora consultiva');
+    expect(request.messages[0].content).not.toContain("pré-atendente");
     expect(request.messages[0].content).toContain("NUNCA invente nem negocie desconto, preço");
     expect(request.messages[0].content).toContain("Piscina 6x3");
     expect(request.messages[1].content).not.toContain("Cliente: mensagem-0\n");
@@ -1917,12 +1918,12 @@ const validationContext: AgentContext = {
     });
     const prompt = request.messages[0].content;
 
-    expect(prompt).toContain("REGRAS DE CARGA E INSTALAÇÃO");
+    expect(prompt).toContain("devem ser respondidas pelas POLÍTICAS OFICIAIS cadastradas");
     expect(prompt).toContain("Instalação: Instalação em até 10 dias úteis");
     expect(prompt).toContain("Frete: Carga em até 2 dias úteis");
     expect(prompt).toContain("Próxima carga prevista: Primeira quinzena do mês");
     expect(prompt).toContain(
-      "Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada",
+      "Para perguntas sobre prazo de entrega/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada",
     );
     expect(prompt).not.toContain("Se o cliente pedir qualquer item acima, chame request_human_handoff.");
   });

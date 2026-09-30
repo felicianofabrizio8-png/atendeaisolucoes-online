@@ -57,6 +57,11 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
 import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
+import {
+  customerContextFromEventPayload,
+  mergeCustomerContext,
+  type CustomerContext,
+} from "./sales-agent-intelligence";
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
@@ -587,6 +592,56 @@ export async function loadAgentContext(
 // LLM gateway adapter (efeito externo mantido fora do SalesAgentCore)
 // ----------------------------------------------------------------------------
 
+/** Evento append-only que guarda o Customer Context por empresa + conversa. */
+export const SALES_TURN_PLAN_EVENT = "sales_turn_plan";
+
+/** Último Customer Context da conversa (tolerante a falha: sem memória, segue). */
+async function loadCustomerContext(
+  companyId: string,
+  conversationId: string,
+): Promise<CustomerContext | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("ai_flow_events")
+      .select("payload")
+      .eq("company_id", companyId)
+      .eq("conversation_id", conversationId)
+      .eq("event_type", SALES_TURN_PLAN_EVENT)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return customerContextFromEventPayload((data as { payload?: unknown }).payload);
+  } catch {
+    return null;
+  }
+}
+
+async function saveCustomerContext(
+  companyId: string,
+  conversationId: string,
+  decision: AgentDecision,
+  previous: CustomerContext | null,
+): Promise<void> {
+  const plan = decision.sales_plan;
+  if (!plan) return;
+  const merged = mergeCustomerContext(previous, {
+    stage: plan.stage,
+    nextAction: plan.nextAction,
+    context: plan.context,
+    presentedProductIds:
+      decision.kind === "reply" ? decision.presented_product_ids ?? decision.suggested_products ?? [] : [],
+  });
+  await logEvent(companyId, conversationId, null, SALES_TURN_PLAN_EVENT, {
+    stage: plan.stage,
+    next_action: plan.nextAction,
+    adjustments: plan.adjustments,
+    decision: decision.kind,
+    after_reply: decision.after_reply ?? null,
+    customer_context: merged,
+  });
+}
+
 export async function runAgentTurn(params: {
   ctx: AgentContextBase;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
@@ -646,6 +701,9 @@ export async function runAgentTurn(params: {
   });
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
+    : null;
+  const previousCustomerContext = stateScope
+    ? await loadCustomerContext(stateScope.companyId, stateScope.scopeId)
     : null;
   const loadedSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
   let memoryStatus: "found" | "missing" | "error" = loadedSalesState?.status ?? "missing";
@@ -817,7 +875,13 @@ export async function runAgentTurn(params: {
       catalog: validatedCatalog,
       attributeMatches: filterProductsByStructuredAttributes(validatedCatalog, effectiveHistory),
     },
+    customerContext: previousCustomerContext,
   });
+  // Customer Context: memória comercial da conversa, atualizada pelo plano
+  // que o LLM escolheu e o gate validou.
+  if (stateScope && decision.sales_plan) {
+    await saveCustomerContext(stateScope.companyId, stateScope.scopeId, decision, previousCustomerContext);
+  }
   if (stateScope && memoryStatus !== "error") {
     await saveSalesStateSafely(
       stateScope,
@@ -1690,7 +1754,8 @@ async function runAgentTickPass(
       conversationId: conv.id,
       leadId: conv.lead_id,
       text: decision.message,
-      productIds: decision.suggested_products,
+      // Só o que o cliente viu vira "apresentado" na conversa.
+      productIds: decision.presented_product_ids ?? decision.suggested_products,
       metadata: decision.clarification
         ? { sales_agent_clarification: decision.clarification }
         : audioUnavailable
@@ -1791,6 +1856,22 @@ async function runAgentTickPass(
       learning_ids_used: decision.learning_ids_used ?? [],
     });
     await writeSalesAgentAudit("reply", "sent", decision.suggested_products ?? [], ["catalog_search", "action_contract", "whatsapp_text"]);
+
+    // Fechamento: a IA confirmou a escolha do cliente; o pedido é concluído
+    // por um atendente (capacidade `closing: human` da empresa).
+    if (decision.after_reply === "handoff_for_closing" && !humanNow) {
+      await supabaseAdmin
+        .from("conversations")
+        .update({ ai_status: "aguardando_humano" })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
+        source: "sales_plan",
+        reason: "ready_to_close",
+      });
+      await sendHandoffNotice(conv, ctx.settings, v2Mode);
+      return { ok: true, action: "handoff", reason: "ready_to_close_after_reply" };
+    }
 
     return { ok: true, action: "replied" };
   } finally {

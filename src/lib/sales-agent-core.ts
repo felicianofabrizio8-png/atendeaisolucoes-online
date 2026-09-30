@@ -14,6 +14,19 @@ import {
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 import {
+  SALES_NEXT_ACTIONS,
+  SALES_NEXT_ACTION_DESCRIPTIONS,
+  SALES_STAGES,
+  buildBusinessKnowledge,
+  gateSalesTurnPlan,
+  parseSalesTurnPlan,
+  renderBusinessKnowledge,
+  renderCustomerContext,
+  renderSalesCompetence,
+  type CustomerContext,
+  type SalesTurnPlan,
+} from "./sales-agent-intelligence";
+import {
   buildPriceComparisonReply,
   resolvePriceComparisonPool,
   type PriceComparisonOrder,
@@ -201,6 +214,17 @@ export interface AgentDecision {
   fallback_reason?: string;
   /** Pergunta de esclarecimento enviada no lugar de handoff (registrada na mensagem). */
   clarification?: "ambiguous" | "no_match";
+  /** Plano de vendas do turno (estágio, próxima ação, contexto), já validado pelo gate. */
+  sales_plan?: SalesTurnPlan | null;
+  /** Ação após enviar a resposta (ex.: atendente conclui o fechamento). */
+  after_reply?: "handoff_for_closing" | null;
+  /**
+   * Produtos que o cliente realmente viu nesta resposta (sugeridos pelo LLM,
+   * citados no texto ou listados por resposta determinística). É o que vira
+   * "já apresentado" na conversa; `suggested_products` pode incluir o
+   * conjunto de validação sem que o cliente tenha visto.
+   */
+  presented_product_ids?: string[];
 }
 
 export type SalesAgentCatalogSearch =
@@ -230,6 +254,8 @@ export interface SalesAgentCoreInput {
   priceSensitive?: boolean;
   /** Turno reaberto com os produtos já apresentados como contexto (evita recursão). */
   followUpContext?: boolean;
+  /** Memória comercial da conversa (Customer Context) carregada do turno anterior. */
+  customerContext?: CustomerContext | null;
   /** Catálogo ativo completo + compatíveis por medida, para executar a comparação. */
   priceComparison?: {
     catalog: SalesAgentGrounding["catalog"];
@@ -290,6 +316,8 @@ interface ToolReply {
   suggest_products?: string[];
   send_product_images?: string[];
   learning_ids_used?: string[];
+  /** Plano comercial do turno (estágio, próxima ação, contexto do cliente). */
+  sales_plan?: unknown;
 }
 
 interface ToolHandoff {
@@ -1130,6 +1158,7 @@ export function buildSalesAgentSystemPrompt(
   ctx: AgentContext,
   history: SalesAgentCoreInput["history"] = [],
   sessionCorrections: SalesAgentSessionCorrection[] = [],
+  customerContext: CustomerContext | null = null,
 ): string {
   const ai = ctx.aiProfile;
   const catalogSearch = ctx.grounding.catalogSearch;
@@ -1248,17 +1277,23 @@ export function buildSalesAgentSystemPrompt(
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 
-  return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
-Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
+  return `Você é "${ctx.settings.ai_agent_name}", vendedora consultiva da empresa "${ctx.companyName}" no atendimento por mensagem.
+Você entende o cliente, responde o que ele pergunta e conduz a venda até o próximo passo, usando só o que a empresa cadastrou.
+
+${renderSalesCompetence(customerContext?.stage ?? null)}
 
 ${SALES_AGENT_PLAYBOOK}
 
+${renderBusinessKnowledge(buildBusinessKnowledge(ctx))}
+
+${renderCustomerContext(customerContext)}
+
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
-- Perguntas normais sobre prazo de carga/instalação devem ser respondidas pelas REGRAS DE CARGA E INSTALAÇÃO cadastradas abaixo; só informe a próxima carga quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
+- Perguntas sobre prazo de entrega/instalação devem ser respondidas pelas POLÍTICAS OFICIAIS cadastradas abaixo; só informe previsão quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
 - NUNCA invente informação que não esteja no contexto abaixo.
-- NUNCA feche venda sozinho — apenas qualifique o lead.
-- Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.
+- NUNCA conclua pedido nem crie condição: diante de sinal de compra, confirme a escolha (next_action confirm_purchase_intent) e um atendente finaliza.
+- Para perguntas sobre prazo de entrega/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.
 
 ${sessionCorrectionLines ? `CORREÇÕES NORMATIVAS APROVADAS DESTA SESSÃO (prevalecem sobre Coach rules e learnings conflitantes, somente como comportamento/instrução de atendimento):
 ${sessionCorrectionLines}
@@ -1278,7 +1313,7 @@ REGRA DE REFERÊNCIA DE PRODUTO:
 - Todo produto mencionado na resposta deve estar no CATÁLOGO acima e também ter seu ID incluído em suggest_products.
 - Nunca use FAQ, histórico ou aprendizados como fonte de nome, modelo, medida, preço ou especificação de produto.
 - Se o produto ou especificação pedida não estiver no catálogo, não proponha alternativa inventada: solicite atendimento humano.
-- Em piscinas, variações como "quadrada", "quadrado", plurais, erros de gênero e "reta" significam intenção provável por linhas retas. Confirme esse entendimento naturalmente e use somente produtos cujo formato real no catálogo seja reto/retangular; nunca altere nem chame o formato real de quadrado.
+- Descreva formato, medida e demais atributos exatamente como cadastrados; se o cliente usar outro termo para o mesmo atributo, confirme o entendimento sem renomear o dado do catálogo.
 
 FAQ:
 ${faqLines || "(sem faq cadastrado)"}
@@ -1286,16 +1321,14 @@ ${faqLines || "(sem faq cadastrado)"}
 BASE DE CONHECIMENTO APROVADA:
 ${kbLines || "(vazia)"}${groundingSections ? `\n\n${groundingSections}` : ""}
 
-SUA MISSÃO:
-1. Cumprimentar e identificar: cidade da instalação + tamanho/medida da piscina + interesse principal.
-2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
-3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
-4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
-5. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
-6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Se o cliente apenas demonstrar interesse pela medida, responda em uma frase curta e natural, sem listar preços, dimensões ou litragem; só informe esses fatos se forem pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
-7. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
+CONTRATO DE AÇÃO:
+1. Em respond_to_customer, preencha sales_plan: o estágio da conversa, a próxima ação que você escolheu e o que aprendeu do cliente (necessidades, preferências, objeções, sinais de compra). Isso é memória para os próximos turnos, não texto ao cliente.
+2. Se faltar dado cadastrado para responder ou a pergunta sair do escopo → request_human_handoff.
+3. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
+4. Em pedidos por medida/atributo, os produtos do CATÁLOGO acima já são todos os compatíveis: apresente-os. Se o cliente apenas demonstrar interesse, responda em uma frase curta e natural, sem listar preços ou medidas não pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
+5. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
 
-Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
+Sempre retorne via tool call (respond_to_customer, compare_catalog_prices OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
 
 // Provedores OpenAI-compatible rejeitam `enum: []` (HTTP 400); sem valores, omite a restrição.
@@ -1339,6 +1372,7 @@ export function buildSalesAgentCompletionRequest(
           params.ctx,
           params.history,
           params.sessionCorrections,
+          params.customerContext ?? null,
         ),
       },
       {
@@ -1364,16 +1398,19 @@ export function buildSalesAgentCompletionRequest(
                 type: "string",
                 description: "Texto enviado ao cliente (pt-BR, máx 4 frases).",
               },
-              detected_city: { type: "string", description: "Cidade da instalação." },
+              detected_city: { type: "string", description: "Cidade do cliente/da entrega." },
               detected_state: { type: "string", description: "Estado/UF (ex.: SP, RJ)." },
-              detected_pool_size: { type: "string", description: "Medida/tamanho da piscina." },
+              detected_pool_size: {
+                type: "string",
+                description: "Medida/tamanho desejado do produto, se o cliente informou.",
+              },
               detected_intent: {
                 type: "string",
                 description: "Intenção principal (informação, orçamento, instalação, etc.).",
               },
               detected_interest: {
                 type: "string",
-                description: "Interesse específico (piscina fibra, aquecimento, lona, manutenção).",
+                description: "Interesse específico (linha de produto, serviço ou categoria do catálogo).",
               },
               detected_budget: {
                 type: "string",
@@ -1414,6 +1451,33 @@ export function buildSalesAgentCompletionRequest(
                 },
                 description:
                   "IDs dos aprendizados do Coach que influenciaram materialmente esta resposta. Não inclua aprendizados apenas por estarem no contexto.",
+              },
+              sales_plan: {
+                type: "object",
+                description:
+                  "Seu raciocínio comercial deste turno (não é enviado ao cliente): estágio, próxima ação escolhida e o que você aprendeu do cliente.",
+                properties: {
+                  stage: { type: "string", enum: [...SALES_STAGES] },
+                  next_action: {
+                    type: "string",
+                    enum: [...SALES_NEXT_ACTIONS],
+                    description: SALES_NEXT_ACTIONS.map(
+                      (action) => `${action}: ${SALES_NEXT_ACTION_DESCRIPTIONS[action]}`,
+                    ).join("; "),
+                  },
+                  customer_context: {
+                    type: "object",
+                    properties: {
+                      needs: { type: "array", items: { type: "string" } },
+                      preferences: { type: "array", items: { type: "string" } },
+                      objections: { type: "array", items: { type: "string" } },
+                      buying_signals: { type: "array", items: { type: "string" } },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                required: ["stage", "next_action"],
+                additionalProperties: false,
               },
             },
             required: ["message"],
@@ -1859,6 +1923,22 @@ export class SalesAgentCore {
     ])]
       .filter((id) => (catalogById.get(id)?.images.length ?? 0) > 0)
       .slice(0, 10);
+    // Sales Intelligence: a próxima ação escolhida pelo LLM passa pelo gate
+    // de capacidades/limites da empresa (o texto já foi validado acima).
+    const parsedPlan = parseSalesTurnPlan(reply.sales_plan);
+    let salesPlan: SalesTurnPlan | null = null;
+    let afterReply: AgentDecision["after_reply"] = null;
+    if (parsedPlan) {
+      const gate = gateSalesTurnPlan(parsedPlan, {
+        knowledge: buildBusinessKnowledge(params.ctx),
+        suggestedProductIds: modelSuggestions,
+      });
+      if (gate.outcome === "handoff") {
+        return { ...safeHandoff(gate.reason), sales_plan: gate.plan };
+      }
+      salesPlan = gate.plan;
+      afterReply = gate.afterReply;
+    }
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
       stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
@@ -1879,6 +1959,25 @@ export class SalesAgentCore {
       product_image_ids: requestedImages,
       grounding_sources: groundingSources,
       learning_ids_used: learningIdsUsed,
+      presented_product_ids: presentedInReply(reply.message, modelSuggestions, catalogSearch.products),
+      ...(salesPlan ? { sales_plan: salesPlan, after_reply: afterReply } : {}),
     };
   }
+}
+
+/** IDs sugeridos pelo LLM ou, sem sugestão, produtos citados pelo nome no texto. */
+function presentedInReply(
+  message: string,
+  suggested: readonly string[],
+  products: SalesAgentGrounding["catalog"],
+): string[] {
+  if (suggested.length > 0) return [...new Set(suggested)];
+  const normalized = comparablePromptText(message);
+  return products
+    .filter((product) =>
+      [product.name, product.model]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .some((value) => normalized.includes(comparablePromptText(value))),
+    )
+    .map((product) => product.id);
 }
