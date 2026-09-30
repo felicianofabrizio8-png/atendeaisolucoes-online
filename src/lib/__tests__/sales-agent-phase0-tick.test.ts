@@ -30,7 +30,8 @@ vi.mock("../sales-agent-config.server", () => ({
   }),
 }));
 
-import { runAgentTick } from "../ai-agent.server";
+import { DEFAULT_HANDOFF_MESSAGE, runAgentTick } from "../ai-agent.server";
+import { AUDIO_UNAVAILABLE_REPLY } from "../sales-agent-media";
 import { SalesAgentCore, type AgentDecision } from "../sales-agent-core";
 
 const COMPANY = "company-tick";
@@ -88,6 +89,8 @@ type Scenario = {
   newerLeadMessage?: boolean[];
   recentAutoReplies?: number;
   statusDuringTurn?: string | null;
+  /** Linha de marketing_knowledge_base (políticas cadastradas da empresa). */
+  commercial?: Record<string, unknown> | null;
 };
 
 const product = {
@@ -215,9 +218,10 @@ function install(scenario: Scenario) {
       };
     }
     if (table === "products") return { data: [product], error: null };
-    if (table === "marketing_knowledge_base" || table === "conversation_sales_states") {
-      return { data: null, error: null };
+    if (table === "marketing_knowledge_base") {
+      return { data: scenario.commercial ?? null, error: null };
     }
+    if (table === "conversation_sales_states") return { data: null, error: null };
     return { data: [], error: null };
   };
 }
@@ -396,5 +400,150 @@ describe("runAgentTick · Fase 0", () => {
     for (const call of scoped) {
       expect(call.filters).toContainEqual(["company_id", "eq", COMPANY]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fase 1
+// ---------------------------------------------------------------------------
+
+function sentTexts(): string[] {
+  return postGraph.mock.calls
+    .map((args) => JSON.parse((args[0] as { body: string }).body))
+    .filter((payload) => payload.type === "text")
+    .map((payload) => payload.text.body as string);
+}
+
+function insertedAgentMessages(): Array<Record<string, unknown>> {
+  return calls()
+    .filter((c) => c.table === "messages" && c.op === "insert")
+    .map((c) => c.values ?? {});
+}
+
+describe("runAgentTick · Fase 1", () => {
+  it("handoff avisa o cliente com o texto padrão neutro", async () => {
+    install({});
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "model_requested" });
+
+    const result = await runAgentTick(CONV);
+
+    expect(result).toMatchObject({ action: "handoff" });
+    expect(sentTexts()).toEqual([DEFAULT_HANDOFF_MESSAGE]);
+    expect(insertedAgentMessages()[0]?.source_metadata).toMatchObject({
+      sales_agent_notice: "handoff",
+    });
+    expect(events()).toContain("handoff_notice_sent");
+  });
+
+  it("usa a mensagem configurada pela empresa e respeita desativação", async () => {
+    install({ settings: { ai_handoff_message: "Um consultor da loja já vai te responder." } });
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "model_requested" });
+    await runAgentTick(CONV);
+    expect(sentTexts()).toEqual(["Um consultor da loja já vai te responder."]);
+
+    postGraph.mockClear();
+    install({ settings: { ai_handoff_message: "" } });
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "model_requested" });
+    await runAgentTick(CONV);
+    expect(postGraph).not.toHaveBeenCalled();
+  });
+
+  it("no modo assisted o handoff não envia nada ao cliente", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "model_requested" });
+    const result = await runAgentTick(CONV);
+    expect(result).toMatchObject({ action: "handoff" });
+    expect(postGraph).not.toHaveBeenCalled();
+  });
+
+  it("parcelamento com política cadastrada vai para a IA, não para humano", async () => {
+    install({
+      commercial: { payment_policy: "Pix ou cartão em até 10x sem juros." },
+      histories: [[{ role: "lead", text: "Quero parcelar no cartão", at: "2026-09-30T12:00:00Z" }]],
+    });
+    const result = await runAgentTick(CONV);
+    expect(decideSpy).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ action: "replied" });
+    expect(statusUpdates()).not.toContain("aguardando_humano");
+  });
+
+  it("sem política de pagamento, parcelamento continua indo para humano", async () => {
+    install({
+      histories: [[{ role: "lead", text: "Quero parcelar no cartão", at: "2026-09-30T12:00:00Z" }]],
+    });
+    const result = await runAgentTick(CONV);
+    expect(decideSpy).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ action: "handoff" });
+  });
+
+  it("registra a marca de esclarecimento na mensagem enviada", async () => {
+    install({});
+    decideSpy.mockResolvedValue({
+      kind: "reply",
+      message: "Pode me passar mais detalhes?",
+      suggested_products: [],
+      clarification: "no_match",
+    });
+    await runAgentTick(CONV);
+    expect(insertedAgentMessages()[0]?.source_metadata).toMatchObject({
+      sales_agent_clarification: "no_match",
+    });
+  });
+
+  it("espera a transcrição do áudio e responde ao texto transcrito", async () => {
+    vi.useFakeTimers();
+    try {
+      const audio = {
+        role: "lead",
+        text: "[áudio]",
+        at: "2026-09-30T12:00:00Z",
+        source_subtype: "audio",
+        source_metadata: {},
+      };
+      install({
+        histories: [
+          [audio],
+          [audio],
+          [
+            {
+              ...audio,
+              text: "Quero saber do Item Um",
+              source_metadata: { transcription_text: "Quero saber do Item Um" },
+            },
+          ],
+        ],
+      });
+      const pending = runAgentTick(CONV);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+
+      expect(result).toMatchObject({ action: "replied" });
+      const history = (decideSpy.mock.calls[0][0] as { history: Array<{ text: string }> }).history;
+      expect(history.at(-1)?.text).toBe("Quero saber do Item Um");
+      expect(statusUpdates()).not.toContain("aguardando_humano");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("áudio sem transcrição pede texto ao cliente em vez de ir para humano", async () => {
+    install({
+      histories: [
+        [
+          {
+            role: "lead",
+            text: "[áudio]",
+            at: "2026-09-30T12:00:00Z",
+            source_subtype: "audio",
+            source_metadata: { ai_media_error: "Whisper HTTP 500" },
+          },
+        ],
+      ],
+    });
+    const result = await runAgentTick(CONV);
+    expect(result).toMatchObject({ action: "replied" });
+    expect(decideSpy).not.toHaveBeenCalled();
+    expect(sentTexts()).toEqual([AUDIO_UNAVAILABLE_REPLY]);
+    expect(statusUpdates()).not.toContain("aguardando_humano");
   });
 });

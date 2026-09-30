@@ -172,6 +172,32 @@ export function resolveCatalogProductReferenceWithContext<T extends CatalogProdu
     }
   }
 
+  // Identificador explícito (nome completo ou trecho do nome com número, ex.:
+  // "<linha> 602") de um produto que NÃO está entre os apresentados vence um
+  // casamento contextual por palavras de descrição dos apresentados. Sem isso,
+  // "e o <modelo novo> tem <acessório>?" ficava preso ao produto anterior (ou
+  // ambíguo) e o produto existente parecia "não encontrado".
+  const explicitProduct = explicit.product;
+  const explicitIsPresented = explicitProduct
+    ? presentedProducts.some(
+        (product) =>
+          product === explicitProduct || (product.id != null && product.id === explicitProduct.id),
+      )
+    : false;
+  if (explicit.product && !explicitIsPresented) {
+    const messageTokens = normalizeTokens(text);
+    const namesExplicitly =
+      containsTokenSequence(messageTokens, normalizeTokens(explicit.product.name)) ||
+      nameSequences(explicit.product.name).some((sequence) =>
+        containsTokenSequence(messageTokens, sequence),
+      );
+    const presentedNamed = presentedProducts.some((product) =>
+      containsTokenSequence(messageTokens, normalizeTokens(product.name)) ||
+      nameSequences(product.name).some((sequence) => containsTokenSequence(messageTokens, sequence)),
+    );
+    if (namesExplicitly && !presentedNamed) return explicit;
+  }
+
   if (contextual.product || contextual.ambiguous) return contextual;
   return explicit;
 }

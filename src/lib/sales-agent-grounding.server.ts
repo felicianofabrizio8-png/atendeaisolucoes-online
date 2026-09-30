@@ -32,7 +32,27 @@ function resolveV2NumericAlias(text: string, products: CatalogProduct[]): { prod
   const tokens = catalogSearchTerms(text);
   const numericTokens = tokens.filter((token) => /^\d{3,}$/.test(token));
   const blockedContext = /\b\d{1,3}\s*(?:metros?|m|litros?|l)\b/i.test(text) || /\b(?:orcamento|parcelas?|parcela|prestacoes?)\b/i.test(text) || /\b\d+(?:\s*[x×]\s*\d+)+\b/i.test(text) || /\b(?:largura|comprimento|profundidade|medidas?)\s*(?:de|:)?\s*\d/i.test(text);
-  const hasModelMarker = /\b(?:sol|modelo)\s+\d{3,}\b/i.test(text) || /\ba\s+\d{3,}\b/i.test(text);
+  // Marcador de modelo vem do próprio catálogo da empresa: a palavra que
+  // antecede o número nos nomes/modelos cadastrados (ex.: "<linha> 602").
+  // Nenhuma linha de produto de tenant é fixada no código.
+  const catalogMarkers = new Set(
+    products.flatMap((product) =>
+      [product.name, product.model]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .flatMap((value) => {
+          const valueTokens = catalogSearchTerms(value);
+          return valueTokens.flatMap((token, index) =>
+            index > 0 && /^\d{3,}$/.test(token) && !/^\d+$/.test(valueTokens[index - 1])
+              ? [valueTokens[index - 1]]
+              : [],
+          );
+        }),
+    ),
+  );
+  const hasModelMarker =
+    /\bmodelo\s+\d{3,}\b/i.test(text) ||
+    /\ba\s+\d{3,}\b/i.test(text) ||
+    tokens.some((token, index) => index + 1 < tokens.length && catalogMarkers.has(token) && /^\d{3,}$/.test(tokens[index + 1]));
   if (blockedContext || numericTokens.length !== 1 || !hasModelMarker) return { product: null, ambiguous: false };
   const numericToken = numericTokens[0];
   const matches = products.filter((product) =>

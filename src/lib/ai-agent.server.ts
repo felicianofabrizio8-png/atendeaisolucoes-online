@@ -55,10 +55,12 @@ import type { ConversationSalesState } from "./conversation-sales-state";
 import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repository";
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
+import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { resolveSalesAgentMode } from "./sales-agent-mode";
+import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
+import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
 import { authorizeSalesAgentReply } from "./sales-agent-execution";
@@ -412,17 +414,20 @@ export function hasUnansweredLeadMessage(
 // Handoff trigger detection (regex + heurística)
 // ----------------------------------------------------------------------------
 
+const PAYMENT_TERMS_PATTERN = /\bparcel/i;
+const DELIVERY_TIME_PATTERN = /\bquand?o.*\b(instal|entreg|chega)/i;
+
 const HANDOFF_PATTERNS: RegExp[] = [
   /\bdesconto\b/i,
   /\babatimento\b/i,
   /\bdescont/i,
   /\bnegoci/i,
-  /\bparcel/i,
+  PAYMENT_TERMS_PATTERN,
   /\bbarat/i,
   /\bmenor preço\b/i,
   /\bfechar\b.*\b(hoje|agora|pedido)\b/i,
   /\bfinaliz/i,
-  /\bquand?o.*\b(instal|entreg|chega)/i,
+  DELIVERY_TIME_PATTERN,
   /\bgaranti/i,
   /\breclama/i,
   /\bproblema\b/i,
@@ -433,13 +438,25 @@ const HANDOFF_PATTERNS: RegExp[] = [
   /\bjurídic/i,
 ];
 
-export function detectHandoffNeeded(text: string): { needed: boolean; reason?: string } {
+// Padrões de pergunta institucional: só vão para humano quando a empresa não
+// cadastrou a política correspondente (ver sales-agent-institutional).
+const INSTITUTIONAL_HANDOFF_PATTERNS = new Set<RegExp>([
+  PAYMENT_TERMS_PATTERN,
+  DELIVERY_TIME_PATTERN,
+]);
+
+export function detectHandoffNeeded(
+  text: string,
+  commercialRules?: AgentContext["grounding"]["commercialRules"] | null,
+): { needed: boolean; reason?: string } {
   const normalized = text.trim();
   const informationalQuestion =
     /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
     /^se\s+eu\s+fechar\b/i.test(normalized);
   if (informationalQuestion) return { needed: false };
+  const answeredByPolicy = resolveInstitutionalPolicies(text, commercialRules) !== null;
   for (const re of HANDOFF_PATTERNS) {
+    if (answeredByPolicy && INSTITUTIONAL_HANDOFF_PATTERNS.has(re)) continue;
     if (re.test(text)) return { needed: true, reason: re.source };
   }
   return { needed: false };
@@ -822,6 +839,8 @@ export async function sendWhatsappText(params: {
   leadId: string;
   text: string;
   productIds?: string[];
+  /** Marcas adicionais gravadas em messages.source_metadata (ex.: esclarecimento). */
+  metadata?: Record<string, string>;
 }): Promise<SendWhatsappTextResult> {
   const { data: lead } = await supabaseAdmin
     .from("leads")
@@ -916,6 +935,7 @@ export async function sendWhatsappText(params: {
     integration_id: integration?.id ?? null,
     source: "ai_agent",
     source_metadata: {
+      ...(params.metadata ?? {}),
       catalog_product_ids: (params.productIds ?? []).slice(0, 5),
     },
   });
@@ -1135,6 +1155,93 @@ async function hasLeadMessageAfter(snapshot: AgentTickSnapshot): Promise<boolean
   }
 }
 
+type HistoryRow = {
+  role: string;
+  text: string;
+  at: string;
+  source_subtype?: string | null;
+  source_metadata?: unknown;
+};
+
+/** Linha de `messages` → item de histórico do agente (produtos, esclarecimento, transcrição). */
+function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string } {
+  const metadata =
+    row.source_metadata && typeof row.source_metadata === "object" && !Array.isArray(row.source_metadata)
+      ? (row.source_metadata as Record<string, unknown>)
+      : {};
+  const productIds = Array.isArray(metadata.catalog_product_ids)
+    ? metadata.catalog_product_ids.filter((id): id is string => typeof id === "string")
+    : typeof metadata.product_id === "string"
+      ? [metadata.product_id]
+      : [];
+  const transcription =
+    typeof metadata.transcription_text === "string" && metadata.transcription_text.trim()
+      ? metadata.transcription_text.trim()
+      : null;
+  const text = transcription && isAudioPlaceholder(row.text) ? transcription : row.text;
+  const clarification =
+    typeof metadata.sales_agent_clarification === "string" ? metadata.sales_agent_clarification : null;
+  return {
+    role: row.role as "lead" | "agent" | "system",
+    text,
+    ...(productIds.length > 0 ? { productIds } : {}),
+    ...(clarification ? { clarification } : {}),
+  };
+}
+
+/** Espera máxima pela transcrição de áudio feita pelo webhook (após o INSERT). */
+export const AUDIO_TRANSCRIPTION_WAIT_MS = 20_000;
+export const AUDIO_TRANSCRIPTION_POLL_MS = 2_000;
+
+function agentSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Texto neutro padrão (multissegmento, sem promessa de prazo). */
+export const DEFAULT_HANDOFF_MESSAGE =
+  "Vou passar sua conversa para um atendente da nossa equipe, que vai continuar seu atendimento por aqui.";
+
+/**
+ * Mensagem de transição por empresa (`company_settings.ai_handoff_message`):
+ * ausente → padrão; texto vazio → desativada pela empresa.
+ */
+export function resolveHandoffMessage(settings: Pick<AgentSettings, "ai_handoff_message">): string | null {
+  const configured = settings.ai_handoff_message;
+  if (configured === undefined || configured === null) return DEFAULT_HANDOFF_MESSAGE;
+  const trimmed = configured.trim();
+  return trimmed ? trimmed.slice(0, 1000) : null;
+}
+
+/**
+ * Avisa o cliente de que um atendente vai continuar. Só em modos que podem
+ * enviar (legado/automatic); em silent/assisted o humano decide. Falha no
+ * aviso nunca desfaz o handoff.
+ */
+async function sendHandoffNotice(
+  conv: { id: string; company_id: string; lead_id: string },
+  settings: AgentSettings,
+  mode: SalesAgentMode | null,
+): Promise<void> {
+  if (!canSalesAgentSend(mode)) return;
+  const text = resolveHandoffMessage(settings);
+  if (!text) return;
+  try {
+    const sent = await sendWhatsappText({
+      companyId: conv.company_id,
+      conversationId: conv.id,
+      leadId: conv.lead_id,
+      text,
+      metadata: { sales_agent_notice: "handoff" },
+    });
+    await logEvent(conv.company_id, conv.id, conv.lead_id, sent.ok ? "handoff_notice_sent" : "handoff_notice_failed", {
+      simulated: sent.ok ? sent.simulated : false,
+      ...(sent.ok ? {} : { error: sent.error }),
+    });
+  } catch {
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_notice_failed", {});
+  }
+}
+
 /** Releitura do status: humano assumiu ou a conversa foi encaminhada a humano. */
 async function humanTookOver(companyId: string, conversationId: string): Promise<boolean> {
   try {
@@ -1312,36 +1419,36 @@ async function runAgentTickPass(
 
   try {
     // Histórico do DB (não confia no body)
-    const { data: msgs } = await supabaseAdmin
-      .from("messages")
-      .select("role, text, at, source_metadata")
-      .eq("company_id", conv.company_id)
-      .eq("conversation_id", conv.id)
-      .order("at", { ascending: false })
-      .limit(40);
+    const readHistoryRows = async (): Promise<HistoryRow[]> => {
+      const { data } = await supabaseAdmin
+        .from("messages")
+        .select("role, text, at, source_subtype, source_metadata")
+        .eq("company_id", conv.company_id)
+        .eq("conversation_id", conv.id)
+        .order("at", { ascending: false })
+        .limit(40);
+      return (data ?? []) as HistoryRow[];
+    };
+    let msgs = await readHistoryRows();
+    // Áudio recém-chegado ainda sem transcrição: espera (limitado) o webhook
+    // concluir antes de interpretar, em vez de responder ao placeholder.
+    const newestLead = msgs.find((m) => m.role === "lead");
+    let audioState = newestLead ? classifyLeadAudio(newestLead) : "none";
+    if (audioState === "pending") {
+      const deadline = Date.now() + AUDIO_TRANSCRIPTION_WAIT_MS;
+      while (audioState === "pending" && Date.now() < deadline) {
+        await agentSleep(AUDIO_TRANSCRIPTION_POLL_MS);
+        msgs = await readHistoryRows();
+        const refreshed = msgs.find((m) => m.role === "lead");
+        audioState = refreshed ? classifyLeadAudio(refreshed) : "none";
+      }
+    }
     recordSnapshot({
       companyId: conv.company_id,
       conversationId: conv.id,
-      lastMessageAt: (msgs ?? [])[0]?.at ?? null,
+      lastMessageAt: msgs[0]?.at ?? null,
     });
-    const history = [...(msgs ?? [])].reverse().map((m) => {
-      const metadata =
-        m.source_metadata &&
-        typeof m.source_metadata === "object" &&
-        !Array.isArray(m.source_metadata)
-          ? (m.source_metadata as Record<string, unknown>)
-          : {};
-      const productIds = Array.isArray(metadata.catalog_product_ids)
-        ? metadata.catalog_product_ids.filter((id): id is string => typeof id === "string")
-        : typeof metadata.product_id === "string"
-          ? [metadata.product_id]
-          : [];
-      return {
-        role: m.role as "lead" | "agent" | "system",
-        text: m.text,
-        ...(productIds.length > 0 ? { productIds } : {}),
-      };
-    });
+    const history = [...msgs].reverse().map(toAgentHistoryItem);
 
     const lastLeadMsg = [...history].reverse().find((m) => m.role === "lead");
     if (!lastLeadMsg) {
@@ -1353,9 +1460,17 @@ async function runAgentTickPass(
       return { ok: true, action: "skipped", reason: "already_answered" };
     }
 
-    // Pre-check handoff — sempre qualifica antes para timeline ficar completa
-    const triggerCheck = detectHandoffNeeded(lastLeadMsg.text);
-    const readyToClose = detectReadyToClose(lastLeadMsg.text);
+    // Áudio sem transcrição (falhou ou não chegou a tempo): pede texto ao
+    // cliente em vez de encaminhar a humano por falta de conteúdo.
+    const audioUnavailable = audioState === "pending" || audioState === "failed";
+
+    // Pre-check handoff — sempre qualifica antes para timeline ficar completa.
+    // Perguntas de pagamento/entrega/instalação com política cadastrada seguem
+    // para a IA responder pela política.
+    const triggerCheck = audioUnavailable
+      ? { needed: false }
+      : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules);
+    const readyToClose = !audioUnavailable && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
         companyId: conv.company_id,
@@ -1380,6 +1495,7 @@ async function runAgentTickPass(
         pattern: triggerCheck.reason ?? (readyToClose ? "ready_to_close" : undefined),
       });
       await writeSalesAgentAudit("handoff", "pre_check", [], ["handoff"], "pre_check");
+      await sendHandoffNotice(conv, ctx.settings, v2Mode);
       return {
         ok: true,
         action: "handoff",
@@ -1394,19 +1510,43 @@ async function runAgentTickPass(
       .eq("company_id", conv.company_id)
       .maybeSingle();
 
-    const turnCtx = await loadAgentContext(conv.company_id, history);
-    if (!turnCtx) return { ok: false, action: "error", reason: "no_settings" };
-
-    const decision = runSafetyLayer(
-      await runAgentTurn({
-        ctx: turnCtx,
-        history,
-        leadName: lead?.name ?? null,
-        salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
-        qualification: currentQual,
-      }),
-      ctx.grounding.commercialRules.commercialTerms,
-    );
+    let decision: AgentDecision;
+    if (audioUnavailable) {
+      decision = {
+        kind: "reply",
+        message: AUDIO_UNAVAILABLE_REPLY,
+        suggested_products: [],
+        product_image_ids: [],
+        grounding_sources: [],
+        learning_ids_used: [],
+        fallback_reason: audioState === "failed" ? "audio_transcription_failed" : "audio_transcription_pending",
+      };
+    } else {
+      const turnCtx = await loadAgentContext(conv.company_id, history);
+      if (!turnCtx) return { ok: false, action: "error", reason: "no_settings" };
+      // Percentuais citados em qualquer política cadastrada (ex.: entrada)
+      // podem ser repetidos; os demais continuam bloqueados.
+      const rules = ctx.grounding.commercialRules;
+      decision = runSafetyLayer(
+        await runAgentTurn({
+          ctx: turnCtx,
+          history,
+          leadName: lead?.name ?? null,
+          salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+          qualification: currentQual,
+        }),
+        [
+          rules.commercialTerms,
+          rules.paymentPolicy,
+          rules.paymentMethods,
+          rules.installationPolicy,
+          rules.shippingPolicy,
+          rules.nextLoadForecast,
+          rules.visitPolicy,
+          rules.includedItemsPolicy,
+        ].filter(Boolean).join(" "),
+      );
+    }
     auditFallbackReason = decision.fallback_reason ?? null;
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
@@ -1462,6 +1602,7 @@ async function runAgentTickPass(
         learning_ids_used: decision.learning_ids_used ?? [],
       });
       await writeSalesAgentAudit("handoff", evType, decision.suggested_products ?? [], ["safety_layer", "handoff"], reason);
+      await sendHandoffNotice(conv, ctx.settings, v2Mode);
       return { ok: true, action: "handoff", reason };
     }
 
@@ -1515,6 +1656,11 @@ async function runAgentTickPass(
       leadId: conv.lead_id,
       text: decision.message,
       productIds: decision.suggested_products,
+      metadata: decision.clarification
+        ? { sales_agent_clarification: decision.clarification }
+        : audioUnavailable
+          ? { sales_agent_notice: "audio_unavailable" }
+          : undefined,
     });
 
     if (!sent.ok) {

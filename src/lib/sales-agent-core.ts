@@ -13,6 +13,37 @@ import {
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
+import {
+  buildInstitutionalPolicyReply,
+  replyNumbersAreGrounded,
+  resolveInstitutionalPolicies,
+} from "./sales-agent-institutional";
+
+/** Texto neutro (multissegmento) quando o item pedido não foi achado no catálogo. */
+export const NO_MATCH_CLARIFICATION =
+  "Não encontrei esse item no nosso catálogo com essas informações. Pode me passar mais detalhes, como o nome ou o modelo, para eu verificar?";
+
+/** Pergunta qual das opções reais do catálogo o cliente quer (nomes cadastrados). */
+export function buildAmbiguityClarification(products: ReadonlyArray<{ name: string }>): string {
+  const names = products.map((product) => product.name.trim()).filter(Boolean);
+  const list = names.length > 1
+    ? `${names.slice(0, -1).join(", ")} ou ${names[names.length - 1]}`
+    : names[0] ?? "";
+  return `Encontrei mais de uma opção que pode ser a que você procura: ${list}. Qual delas você quer?`;
+}
+
+/** A última mensagem da IA antes do cliente já foi um pedido de esclarecimento. */
+export function previousAgentAskedClarification(
+  history: ReadonlyArray<{ role: "lead" | "agent" | "system"; clarification?: string }>,
+): boolean {
+  const lastLead = history.map((item) => item.role).lastIndexOf("lead");
+  for (let index = lastLead - 1; index >= 0; index -= 1) {
+    const item = history[index];
+    if (item.role === "lead") return false;
+    if (item.role === "agent") return Boolean(item.clarification);
+  }
+  return false;
+}
 
 export type SalesAgentGroundingSource =
   | "catalog"
@@ -34,6 +65,8 @@ export interface AgentSettings {
   business_hours_end: string;
   /** Fuso IANA da empresa (company_settings); ausente/inválido → padrão do calendário. */
   ai_followup_timezone?: string | null;
+  /** Aviso ao cliente no handoff; ausente → texto padrão neutro, vazio → desativado. */
+  ai_handoff_message?: string | null;
   sales_agent_v2_enabled?: boolean;
   sales_agent_v2_mode?: string;
 }
@@ -158,6 +191,8 @@ export interface AgentDecision {
   learning_ids_used?: string[];
   /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
   fallback_reason?: string;
+  /** Pergunta de esclarecimento enviada no lugar de handoff (registrada na mensagem). */
+  clarification?: "ambiguous" | "no_match";
 }
 
 export type SalesAgentCatalogSearch =
@@ -169,7 +204,15 @@ export type SalesAgentCatalogSearch =
 
 export interface SalesAgentCoreInput {
   ctx: AgentContext;
-  history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
+  history: Array<{
+    role: "lead" | "agent" | "system";
+    text: string;
+    productIds?: string[];
+    /** Marca de esclarecimento que a IA já enviou nesta mensagem. */
+    clarification?: string;
+  }>;
+  /** Turno respondido só com as políticas cadastradas (sem catálogo). */
+  institutionalOnly?: boolean;
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
@@ -1268,9 +1311,11 @@ export function buildSalesAgentCompletionRequest(
       },
       {
         role: "user",
-      content: params.compactContextEnabled
+      content: (params.institutionalOnly
+        ? "PERGUNTA INSTITUCIONAL: responda somente com o que está nas POLÍTICAS OFICIAIS cadastradas, sem citar produtos, valores ou prazos que não estejam nelas. Não negocie.\n\n"
+        : "") + (params.compactContextEnabled
         ? `Estado compacto: ${params.conversationSummary ?? "none"}\n\nUltimas mensagens:\n${transcript.join("\n")}\n\nResponda seguindo as regras da sessao.`
-        : `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`,
+        : `Lead: ${params.leadName ?? "—"}\n\nConversa até agora:\n${transcript.join("\n")}\n\nResponda seguindo as regras normativas da sessão quando forem relevantes.`),
       },
     ],
     tools: [
@@ -1387,14 +1432,77 @@ export class SalesAgentCore {
         learning_ids_used: [],
       };
     }
+    const lastLeadText =
+      [...params.history].reverse().find((message) => message.role === "lead")?.text ?? "";
+    // Pergunta institucional respondível pelas políticas cadastradas da empresa.
+    const institutionalPolicies = resolveInstitutionalPolicies(
+      lastLeadText,
+      params.ctx.grounding.commercialRules,
+    );
+    const policyReply = (reason: string): AgentDecision => ({
+      kind: "reply",
+      message: buildInstitutionalPolicyReply(institutionalPolicies ?? []),
+      suggested_products: [],
+      product_image_ids: [],
+      grounding_sources: ["commercial_rules"],
+      learning_ids_used: [],
+      fallback_reason: reason,
+    });
     if (catalogSearch.status !== "matches") {
-      const reason = catalogSearch.status === "query_error"
-        ? "catalog_query_error"
-        : catalogSearch.status === "empty_catalog"
-          ? "catalog_empty"
-          : catalogSearch.status === "no_match"
-            ? "catalog_product_not_found"
-            : "catalog_product_ambiguous";
+      if (catalogSearch.status === "query_error") {
+        return {
+          kind: "handoff",
+          reason: "catalog_query_error",
+          grounding_sources: groundingSources,
+          learning_ids_used: [],
+        };
+      }
+      if (institutionalPolicies) {
+        // Pergunta sobre política não depende de produto: segue para o LLM só
+        // com as políticas (sem catálogo), validada abaixo.
+        return this.decide({
+          ...params,
+          catalogSearch: { status: "matches", products: [] },
+          institutionalOnly: true,
+          ctx: {
+            ...params.ctx,
+            grounding: { ...params.ctx.grounding, catalogSearch: { status: "matches", products: [] } },
+          },
+        });
+      }
+      if (catalogSearch.status === "ambiguous" && catalogSearch.products.length > 1) {
+        const options = catalogSearch.products.slice(0, SALES_AGENT_MAX_OPTIONS);
+        return {
+          kind: "reply",
+          message: buildAmbiguityClarification(options),
+          suggested_products: options.map((product) => product.id),
+          product_image_ids: [],
+          grounding_sources: groundingSources,
+          learning_ids_used: [],
+          clarification: "ambiguous",
+          fallback_reason: "catalog_product_ambiguous_clarification",
+        };
+      }
+      if (
+        (catalogSearch.status === "no_match" || catalogSearch.status === "ambiguous") &&
+        !previousAgentAskedClarification(params.history)
+      ) {
+        return {
+          kind: "reply",
+          message: NO_MATCH_CLARIFICATION,
+          suggested_products: [],
+          product_image_ids: [],
+          grounding_sources: groundingSources,
+          learning_ids_used: [],
+          clarification: "no_match",
+          fallback_reason: "catalog_product_not_found_clarification",
+        };
+      }
+      const reason = catalogSearch.status === "empty_catalog"
+        ? "catalog_empty"
+        : catalogSearch.status === "no_match"
+          ? "catalog_product_not_found"
+          : "catalog_product_ambiguous";
       return {
         kind: "handoff",
         reason,
@@ -1412,13 +1520,20 @@ export class SalesAgentCore {
       ? catalogSearch.products
       : [];
     const fallbackProducts = deterministicProducts.slice(0, SALES_AGENT_MAX_OPTIONS);
-    const deterministicFallback = (reason: string): AgentDecision => ({
+    const deterministicFallback = (reason: string): AgentDecision =>
+      fallbackProducts.length === 0 && institutionalPolicies
+        ? policyReply(reason)
+        : ({
       ...(fallbackProducts.length > 0
         ? {
             kind: "reply" as const,
-            message: buildValidatedCatalogReply(fallbackProducts, {
-              includePrice: customerAskedForPrice(params.history),
-            }),
+            // Pergunta mista (produto + política): catálogo validado + texto da política.
+            message: [
+              buildValidatedCatalogReply(fallbackProducts, {
+                includePrice: customerAskedForPrice(params.history),
+              }),
+              institutionalPolicies ? buildInstitutionalPolicyReply(institutionalPolicies) : null,
+            ].filter(Boolean).join("\n"),
             suggested_products: fallbackProducts.map((product) => product.id),
             product_image_ids: automaticProductImageIds,
           }
@@ -1436,20 +1551,25 @@ export class SalesAgentCore {
       learning_ids_used: [],
       fallback_reason: fallbackReason,
     });
+    // Pergunta institucional com política cadastrada: se o provedor falhar,
+    // responde com o texto da própria política (determinístico, sem fato novo).
+    const providerFailure = (reason: string): AgentDecision =>
+      institutionalPolicies ? policyReply(reason) : safeHandoff(reason);
     const completion = await this.complete(buildSalesAgentCompletionRequest(params));
     if (!completion.ok) {
-      return safeHandoff(completion.reason);
+      return providerFailure(completion.reason);
     }
     const data = completion.data;
     const call = data.choices?.[0]?.message?.tool_calls?.[0]?.function;
     if (!call?.name || !call.arguments) {
-      return safeHandoff("no_tool_call");
+      return providerFailure("no_tool_call");
     }
 
     let args: ToolReply | ToolHandoff;
     try {
       args = JSON.parse(call.arguments);
     } catch {
+      if (institutionalPolicies) return policyReply("tool_args_parse_fail");
       return {
         kind: "handoff",
         reason: "tool_args_parse_fail",
@@ -1467,6 +1587,22 @@ export class SalesAgentCore {
     }
     if (!replyContinuesAffirmedOffer(reply.message, params.history)) {
       return deterministicFallback("affirmative_continuation_not_answered");
+    }
+    // Resposta institucional: todo número (parcelas, %, prazo, valor) tem de
+    // vir da política cadastrada ou de fato do catálogo deste turno.
+    if (
+      institutionalPolicies &&
+      !replyNumbersAreGrounded(
+        reply.message,
+        institutionalPolicies,
+        catalogSearch.products.flatMap((product) =>
+          [product.price, product.promoPrice, product.lengthM, product.widthM, product.depthM, product.capacityL]
+            .filter((value): value is number => value != null)
+            .map((value) => String(value)),
+        ),
+      )
+    ) {
+      return deterministicFallback("institutional_unvalidated_number");
     }
     const isNonFactualReply =
       isNonFactualObjectiveMessage(reply.message) &&
@@ -1509,6 +1645,7 @@ export class SalesAgentCore {
         params.history,
       )
     ) {
+      if (institutionalPolicies) return deterministicFallback("catalog_unvalidated_objective_claim");
       return {
         kind: "handoff",
         reason: "catalog_unvalidated_objective_claim",
@@ -1534,8 +1671,10 @@ export class SalesAgentCore {
     }
     // Preço afirmado (com ou sem "R$", com ou sem pergunta depois) só sai se
     // for exatamente o preço cadastrado de um produto do turno.
+    // (Em resposta institucional os números já foram validados contra política
+    // + catálogo acima; valores da política, ex. entrada, não são preço de produto.)
     const factualPriceClaims = extractFactualPriceClaims(reply.message, params.history);
-    if (factualPriceClaims.length > 0) {
+    if (factualPriceClaims.length > 0 && !institutionalPolicies) {
       if (selectedProducts.length === 0) {
         return safeHandoff("catalog_unvalidated_price_claim");
       }

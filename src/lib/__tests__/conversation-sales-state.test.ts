@@ -223,6 +223,6 @@ describe("ConversationSalesState", () => {
 
   it("carrega no WhatsApp as mensagens mais recentes e restaura ordem cronológica", () => {
     expect(agentSource).toContain('.order("at", { ascending: false })');
-    expect(agentSource).toContain("[...(msgs ?? [])].reverse().map");
+    expect(agentSource).toContain("[...msgs].reverse().map(toAgentHistoryItem)");
   });
 });
