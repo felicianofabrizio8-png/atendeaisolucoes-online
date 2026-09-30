@@ -105,6 +105,8 @@ export function ChatThread({
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   // Encerrada nesta sessão, antes do realtime refletir o novo status do lead.
   const [closedHere, setClosedHere] = useState(false);
+  // Estado de conversa perdida local: continua bloqueando comunicação.
+  const [lostHere, setLostHere] = useState(false);
 
   activeConversationIdRef.current = conversationId;
 
@@ -122,9 +124,10 @@ export function ChatThread({
 
   const thread = useConversationThread(conversationId, messages, { enabled: !simulated });
 
-  const closed =
+  const commercialClosed =
     closedHere || lead.status === "fechado" || lead.status === "perdido" || !!lead.closedAt;
-  const locked = closed || simulated;
+  const communicationClosed = lostHere || lead.status === "perdido";
+  const locked = communicationClosed || simulated;
 
   // Troca de conversa: zera o estado efêmero e recupera o rascunho dela.
   useEffect(() => {
@@ -137,6 +140,7 @@ export function ChatThread({
     setReplyingTo(null);
     setLocalMessages([]);
     setClosedHere(false);
+    setLostHere(false);
     sendingRef.current = false;
     setSending(false);
     setSuggesting(false);
@@ -361,7 +365,7 @@ export function ChatThread({
         : "Facebook";
   const placeholder = simulated
     ? "Clientes de exemplo — envio desativado"
-    : closed
+    : communicationClosed
       ? "Conversa encerrada."
       : conversation.interactionType === "comment"
         ? "Resposta ao comentário…"
@@ -392,7 +396,7 @@ export function ChatThread({
               ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
               : ""}
             {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
-            {closed ? " · encerrada" : ""}
+            {communicationClosed ? " · encerrada" : ""}
           </p>
         </div>
         {!simulated && (
@@ -402,10 +406,13 @@ export function ChatThread({
             messages={messages}
             companyId={companyId}
             isAdmin={isAdmin}
-            closed={closed}
+            closed={commercialClosed}
             disabled={simulated}
             onSystemMessage={pushSystemMessage}
-            onClosed={() => setClosedHere(true)}
+            onClosed={(kind) => {
+              setClosedHere(true);
+              if (kind === "lost") setLostHere(true);
+            }}
             onSendText={sendText}
             onFollowupUpdated={onFollowupUpdated}
           />
