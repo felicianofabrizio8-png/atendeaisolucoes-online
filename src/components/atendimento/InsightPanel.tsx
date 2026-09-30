@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Check, Copy, Loader2, Paperclip, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatBRL } from "@/data/mock";
+import { listProducts, subscribeProducts } from "@/data/products";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
 import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
 import { CoachPanel } from "@/components/coach/CoachPanel";
@@ -12,6 +12,7 @@ import { CustomerTierBadge } from "./CustomerTierBadge";
 import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
 import { followupReasonLabel, type FollowupCycleView } from "@/lib/atendimento/followup-view";
+import { extractConversationFacts, type Fact } from "@/lib/atendimento/conversation-facts";
 
 type Tab = "info" | "ia";
 
@@ -137,19 +138,37 @@ function PanelHeading({ title, subtitle }: { title: string; subtitle: string }) 
   );
 }
 
+const SOURCE_TAG: Record<Fact["source"], string | null> = {
+  registro: null,
+  conversa: "da conversa",
+  sugerida: "sugerida",
+};
+
 function Field({
   label,
-  value,
+  value: rawValue,
+  fact,
   badge,
   multiline,
+  emptyText = "não informado",
 }: {
   label: string;
   value?: string | null;
+  /** Fato extraído: valor + origem + trecho de evidência. */
+  fact?: Fact | null;
   badge?: React.ReactNode;
   multiline?: boolean;
+  emptyText?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const value = rawValue ?? fact?.value ?? null;
   const empty = !value;
+  const tag = fact ? SOURCE_TAG[fact.source] : null;
+  const title = fact?.evidence
+    ? `Da conversa: “${fact.evidence}” — clique para copiar`
+    : value
+      ? "Clique para copiar"
+      : undefined;
 
   const copy = () => {
     if (!value) return;
@@ -163,23 +182,30 @@ function Field({
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-[13px] font-bold">{label}</span>
-        {badge}
+        {badge ??
+          (tag && value ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {tag}
+            </span>
+          ) : null)}
       </div>
       <button
         type="button"
         onClick={copy}
-        title={value ? "Clique para copiar" : undefined}
+        title={title}
         className={cn(
           // Superfície cheia + borda: os campos precisam se ler como caixas
           // com contorno próprio, não como manchas um pouco mais claras que
           // o fundo preto.
           "group relative w-full rounded-2xl border border-border bg-secondary px-3.5 text-left text-sm transition-colors hover:bg-accent",
-          multiline ? "min-h-[110px] py-3 leading-relaxed" : "h-11 flex items-center",
+          multiline
+            ? "min-h-[110px] py-3 leading-relaxed"
+            : "flex min-h-11 items-center py-2.5 pr-8 leading-snug",
           empty && "text-muted-foreground",
         )}
       >
-        <span className={cn("block", multiline && "whitespace-pre-wrap")}>
-          {value ?? "não informado"}
+        <span className={cn("block break-words", multiline && "whitespace-pre-wrap")}>
+          {value ?? emptyText}
         </span>
         {value && (
           <span className="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100">
@@ -196,26 +222,45 @@ function Field({
 }
 
 function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?: FollowupCycleView }) {
-  const { lead, conversation, history, summary } = contact;
+  const { lead, conversation, history, summary, messages } = contact;
   const tier = classifyCustomer(history);
+  const catalog = useSyncExternalStore(subscribeProducts, listProducts, listProducts);
+  // Sem inventar: cadastro primeiro, depois o que a própria conversa diz.
+  const facts = useMemo(
+    () =>
+      extractConversationFacts({
+        lead,
+        conversation,
+        messages,
+        catalog,
+        followupNextAt: followup?.nextFollowupAt ?? null,
+      }),
+    [lead, conversation, messages, catalog, followup?.nextFollowupAt],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-      <PanelHeading title="Informações" subtitle="Dados gerados por IA" />
+      <PanelHeading title="Informações" subtitle="Do cadastro e da conversa" />
 
       <Field label="Nome" value={lead.name} badge={<CustomerTierBadge history={history} />} />
       <Field label="Telefone" value={lead.phone ?? lead.handle} />
-      <Field label="Cidade" value={conversation.detectedCity} />
-      <Field label="Estado" value={conversation.detectedState} />
-      <Field label="Resumo" multiline value={summary ?? conversation.detectedIntent ?? null} />
+      <Field label="Cidade/UF" fact={facts.location} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Interesse" fact={facts.interest} />
+        <Field label="Modelo/medida" fact={facts.model} />
+        <Field label="Valor apresentado" fact={facts.presentedValue} />
+        <Field label="Pagamento" fact={facts.payment} />
+      </div>
+
+      <Field label="Prazo/intenção" fact={facts.timing} />
       <Field
-        label="Próxima ação"
-        value={
-          lead.nextAction
-            ? `${lead.nextAction.label} · ${new Date(lead.nextAction.dueAt).toLocaleString("pt-BR")}`
-            : null
-        }
+        label="Resumo"
+        multiline
+        value={summary ?? facts.summary}
+        emptyText="Ainda não há dados comerciais na conversa."
       />
+      <Field label="Próxima ação" fact={facts.nextAction} />
       {followup && (
         <div className="rounded-2xl border border-border bg-secondary/30 p-3.5">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -246,7 +291,7 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
         </div>
       )}
 
-      <div className="rounded-2xl border border-border p-3.5">
+      <div className="mb-2 rounded-2xl border border-border p-3.5">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
           Relacionamento
         </p>
@@ -258,27 +303,6 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
         <p className="mt-1 text-xs text-muted-foreground">{tier.reason}</p>
         <p className="mt-2 text-[11px] text-muted-foreground">{describeHistory(history)}</p>
       </div>
-
-      <dl className="grid grid-cols-2 gap-2 pb-2">
-        <MiniStat label="Interesse" value={lead.product} />
-        <MiniStat
-          label="Ticket"
-          value={lead.estimatedValue ? formatBRL(lead.estimatedValue) : null}
-        />
-        <MiniStat label="Orçamento" value={conversation.detectedBudget} />
-        <MiniStat label="Prazo" value={conversation.purchaseTiming} />
-      </dl>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="rounded-xl border border-border bg-secondary px-3 py-2">
-      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-0.5 text-xs font-medium leading-snug">{value ?? "—"}</dd>
     </div>
   );
 }
