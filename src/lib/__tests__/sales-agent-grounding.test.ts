@@ -946,7 +946,7 @@ describe("SalesAgent grounding", () => {
       readFile(new URL("../ai-agent.server.ts", import.meta.url), "utf8"),
     );
     expect(agentSource).toContain("catalog_product_ids");
-    expect(agentSource).toContain('select("role, text, at, source_metadata")');
+    expect(agentSource).toContain('select("role, text, at, source_subtype, source_metadata")');
     expect(agentSource).toContain("productIds: decision.suggested_products");
   });
 });
