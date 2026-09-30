@@ -10,7 +10,8 @@
 //  - Rejeita companyId/tenantId vindos do cliente — company_id derivado
 //    server-side a partir da conversa.
 //  - Rate limit por conversation_id e global.
-//  - Dedupe por conversation_id em bucket curto (evita custo LLM duplicado).
+//  - Idempotência no tick (lock + mensagem já respondida), não por janela de
+//    tempo: mensagens rápidas do cliente nunca são descartadas.
 //  - Logs sanitizados (sem PII, sem secret, sem payload bruto).
 // ============================================================================
 
@@ -20,14 +21,12 @@ import { runAgentTick } from "@/lib/ai-agent.server";
 import {
   safeEqualSecret,
   rateLimit,
-  seenRecently,
   correlationId,
   maskId,
 } from "@/lib/runtime/HookSecurity.server";
 import { getHookSecret } from "@/lib/runtime/HookSecretVault.server";
 
 const MAX_BODY_BYTES = 2 * 1024;
-const DEDUPE_TTL_MS = 30_000;
 const RATE_PER_CONV_PER_MIN = 6;
 const RATE_GLOBAL_PER_MIN = 300;
 
@@ -104,7 +103,7 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
         }
 
-        const { rateLimitCheck, tryDedupe, auditRuntimeEvent } = await import(
+        const { rateLimitCheck } = await import(
           "@/lib/runtime/RuntimeStateStore.server"
         );
         const distGlobalOk = await rateLimitCheck({
@@ -118,24 +117,10 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
           return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
         }
 
-        // Dedupe LOCAL curto (evita callback repetido no mesmo isolate).
-        if (seenRecently(`agent-trigger:${conversationId}`, DEDUPE_TTL_MS)) {
-          console.info("[agent-trigger]", { cid, event: "duplicate_prevented_local", conv: maskId(conversationId), ms: Date.now() - startedAt });
-          return Response.json({ ok: true, deduped: true, scope: "local" });
-        }
-        // Dedupe DISTRIBUÍDO (unique constraint) — bucket de 30s.
-        const nowSec = Math.floor(Date.now() / 1000);
-        const distDedupeOk = await tryDedupe({
-          operation: "agent-trigger",
-          resourceKey: conversationId,
-          bucket: Math.floor(nowSec / 30),
-          ttlSeconds: 60,
-        });
-        if (!distDedupeOk) {
-          await auditRuntimeEvent({ action: "agent_trigger_dedup_hit", after: { conv: maskId(conversationId) } });
-          console.info("[agent-trigger]", { cid, event: "duplicate_prevented_dist", conv: maskId(conversationId), ms: Date.now() - startedAt });
-          return Response.json({ ok: true, deduped: true, scope: "distributed" });
-        }
+        // Sem dedupe por janela de tempo: um bucket de 30s descartava a
+        // mensagem seguinte do cliente ("sim" logo após a resposta). A
+        // idempotência fica no tick: lock + "última mensagem do cliente já
+        // respondida" + recuperação de mensagens chegadas durante o turno.
 
         try {
           // company_id é derivado dentro de runAgentTick a partir da conversa.

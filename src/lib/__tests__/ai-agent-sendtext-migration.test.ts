@@ -10,7 +10,7 @@
 //   6. Consumidores atuais (followup/*) continuam compilando sem alteração.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---------- Fake supabaseAdmin ----------
 type Row = Record<string, unknown> | null;
@@ -215,7 +215,7 @@ describe("sendWhatsappText — migração B.4", () => {
 
   it("H. integração ausente → devolve error sem chamar postGraph", async () => {
     tableRows.integrations = null;
-    // ai-agent ainda tenta env vars como fallback — limpa-os pra este teste
+    // Sem integração, nem as env vars globais podem ser usadas (ver I–K).
     const oldA = process.env.WHATSAPP_ACCESS_TOKEN;
     const oldB = process.env.WHATSAPP_API_KEY;
     const oldC = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -231,6 +231,49 @@ describe("sendWhatsappText — migração B.4", () => {
       if (oldB) process.env.WHATSAPP_API_KEY = oldB;
       if (oldC) process.env.WHATSAPP_PHONE_NUMBER_ID = oldC;
     }
+  });
+
+  describe("credenciais globais nunca enviam por outro tenant", () => {
+    const keys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_API_KEY", "WHATSAPP_PHONE_NUMBER_ID"] as const;
+    let saved: Record<string, string | undefined> = {};
+    beforeEach(() => {
+      saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+      process.env.WHATSAPP_ACCESS_TOKEN = "GLOBAL-TOKEN";
+      process.env.WHATSAPP_PHONE_NUMBER_ID = "PLATFORM-NUMBER";
+    });
+    afterEach(() => {
+      for (const k of keys) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    });
+
+    it("I. empresa sem integração não usa o número global", async () => {
+      tableRows.integrations = null;
+      const out = await callSend();
+      expect(out.ok).toBe(false);
+      expect(postGraphSpy).not.toHaveBeenCalled();
+    });
+
+    it("J. integração de outro número sem token não herda o token global", async () => {
+      tableRows.integrations = { id: "int-1", access_token: null, external_account_id: "TENANT-NUMBER" };
+      const out = await callSend();
+      expect(out.ok).toBe(false);
+      expect(postGraphSpy).not.toHaveBeenCalled();
+    });
+
+    it("K. token global completa só a integração do mesmo número", async () => {
+      tableRows.integrations = { id: "int-1", access_token: null, external_account_id: "PLATFORM-NUMBER" };
+      postGraphSpy.mockResolvedValueOnce({
+        success: true, simulated: false, environment: "legacy",
+        externalRequestSent: true, externalId: "wamid.K", status: 200, raw: {},
+      });
+      const out = await callSend();
+      expect(out.ok).toBe(true);
+      const call = postGraphSpy.mock.calls[0][0];
+      expect(call.url).toBe("https://graph.facebook.com/v20.0/PLATFORM-NUMBER/messages");
+      expect(call.headers.Authorization).toBe("Bearer GLOBAL-TOKEN");
+    });
   });
 });
 

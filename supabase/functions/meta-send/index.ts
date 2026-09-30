@@ -235,13 +235,18 @@ Deno.serve(async (req) => {
       hasPhoneNumberId: !!integration?.external_account_id,
     });
 
+    // Credenciais sempre da integração da própria empresa. As variáveis de
+    // ambiente globais só completam o token quando o número configurado no
+    // ambiente é exatamente o número desta integração — nunca enviam pelo
+    // número de outro tenant (espelha src/lib/whatsapp/send-credentials.ts).
+    const phoneNumberId = String(integration?.external_account_id ?? "").trim();
+    const envPhoneNumberId = (Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
+    const envAccessTok = (
+      Deno.env.get("WHATSAPP_ACCESS_TOKEN") || Deno.env.get("WHATSAPP_API_KEY") || ""
+    ).trim();
     const accessTok =
-      integration?.access_token ||
-      Deno.env.get("WHATSAPP_ACCESS_TOKEN") ||
-      Deno.env.get("WHATSAPP_API_KEY") ||
-      "";
-    const phoneNumberId =
-      integration?.external_account_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+      String(integration?.access_token ?? "").trim() ||
+      (phoneNumberId && envPhoneNumberId === phoneNumberId ? envAccessTok : "");
     if (!accessTok || !phoneNumberId) {
       return json({ ok: false, code: "whatsapp_not_connected", error: "WhatsApp não conectado para esta empresa", requestId, attemptId }, 400);
     }

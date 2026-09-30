@@ -15,6 +15,10 @@ import { processStatusEvents } from "@/lib/whatsapp/status.server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { extractText } from "@/lib/whatsapp/extract-text";
 import { normalizePhone } from "@/lib/phone";
+import {
+  findOrCreateWhatsappLead,
+  type LeadIdentityClient,
+} from "@/lib/whatsapp/lead-identity";
 import type { WhatsAppMessage as SharedWhatsAppMessage } from "@/lib/whatsapp/extract-text";
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
@@ -543,47 +547,10 @@ async function findOrCreateLead(args: {
   normalizedPhone: string;
   leadName: string;
 }): Promise<string> {
-  const { companyId, integrationId, waId, normalizedPhone, leadName } = args;
-
-  // Tenta o upsert atômico usando phone como chave de conflito.
-  // waId da Meta é o external_id. O phone agora é normalizado (DDI 55).
-  const { data: lead, error } = await supabaseAdmin
-    .from("leads")
-    .upsert(
-      {
-        company_id: companyId,
-        integration_id: integrationId,
-        external_id: waId,
-        name: leadName,
-        phone: normalizedPhone,
-        channel: "whatsapp",
-        status: "novo",
-        tags: [],
-      },
-      { 
-        onConflict: "company_id,phone",
-        ignoreDuplicates: false // queremos que atualize integration_id/external_id se já existir por telefone
-      }
-    )
-    .select("id")
-    .single();
-
-  if (error) {
-    // Se falhar por conflito no external_id (caso seja diferente do phone, embora raro no WA Cloud API)
-    // fazemos um fallback seguro de busca.
-    const { data: existing } = await supabaseAdmin
-      .from("leads")
-      .select("id")
-      .eq("company_id", companyId)
-      .or(`external_id.eq.${waId},phone.eq.${normalizedPhone},phone.eq.${waId}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (existing?.id) return existing.id;
-    throw error;
-  }
-
-  return lead.id;
+  // Antes era um upsert que reescrevia status="novo", tags=[] e nome a cada
+  // mensagem recebida, apagando o funil do lead. Agora lead existente só tem
+  // o vínculo de integração completado (e "perdido" reativado).
+  return findOrCreateWhatsappLead(supabaseAdmin as unknown as LeadIdentityClient, args);
 }
 
 async function findOrCreateConversation(args: {
