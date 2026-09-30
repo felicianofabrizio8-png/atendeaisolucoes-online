@@ -50,6 +50,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
 // ===== Form modal =====
 
 export interface QuoteFormModalProps {
+  quote?: Quote;
   defaultLeadId?: string;
   defaultConversationId?: string;
   defaultProductId?: string;
@@ -65,6 +66,7 @@ export function todayPlusDays(days: number): string {
 }
 
 export function QuoteFormModal({
+  quote,
   defaultLeadId,
   defaultConversationId,
   defaultProductId,
@@ -107,21 +109,24 @@ export function QuoteFormModal({
   }, [leads, clientSearch]);
 
   const [productId, setProductId] = useState(
-    defaultProductId && getProduct(defaultProductId) ? defaultProductId : (products[0]?.id ?? ""),
+    quote?.productId ??
+      (defaultProductId && getProduct(defaultProductId)
+        ? defaultProductId
+        : (products[0]?.id ?? "")),
   );
   // O aviso "sugerido pela IA" some assim que o usuário troca o produto
   const [showSuggestion, setShowSuggestion] = useState(!!defaultProductId && !!suggestionReason);
-  const [discountRaw, setDiscountRaw] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
-  const [installments, setInstallments] = useState(1);
-  const [validUntil, setValidUntil] = useState(todayPlusDays(7));
+  const [discountRaw, setDiscountRaw] = useState(String(quote?.discount ?? 0));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(quote?.paymentMethod ?? "Pix");
+  const [installments, setInstallments] = useState(quote?.installments ?? 1);
+  const [validUntil, setValidUntil] = useState(quote?.validUntil ?? todayPlusDays(7));
   const [submitting, setSubmitting] = useState(false);
 
   // Textos multilinha (preservam quebras de linha, emojis e marcadores).
-  const [inclusosText, setInclusosText] = useState("");
-  const [brindesText, setBrindesText] = useState("");
-  const [porContaText, setPorContaText] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [inclusosText, setInclusosText] = useState(quote?.inclusos.join("\n") ?? "");
+  const [brindesText, setBrindesText] = useState(quote?.brindes.join("\n") ?? "");
+  const [porContaText, setPorContaText] = useState(quote?.porConta.join("\n") ?? "");
+  const [observacoes, setObservacoes] = useState(quote?.notes ?? "");
 
   // Defaults da empresa (company_settings).
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
@@ -152,22 +157,23 @@ export function QuoteFormModal({
       setDefGifts(gif);
       setDefCustomer(cus);
       // Pré-preenche apenas se o usuário ainda não digitou nada.
-      setInclusosText((prev) => (prev ? prev : inc));
-      setBrindesText((prev) => (prev ? prev : gif));
-      setPorContaText((prev) => (prev ? prev : cus));
+      if (!quote) setInclusosText((prev) => (prev ? prev : inc));
+      if (!quote) setBrindesText((prev) => (prev ? prev : gif));
+      if (!quote) setPorContaText((prev) => (prev ? prev : cus));
       setDefaultsLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, quote]);
 
   const [editingMessage, setEditingMessage] = useState(false);
-  const [customMessage, setCustomMessage] = useState<string | null>(null);
+  const [customMessage, setCustomMessage] = useState<string | null>(quote?.message ?? null);
 
   const product = getProduct(productId);
-  const unitPrice = product ? activePrice(product) : 0;
-  const discount = Math.max(0, Math.min(Number(discountRaw.replace(/[^\d]/g, "")) || 0, unitPrice));
+  const unitPrice =
+    quote?.productId === productId ? quote.unitPrice : product ? activePrice(product) : 0;
+  const discount = Math.max(0, Math.min(Number(discountRaw.replace(",", ".")) || 0, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
 
   const autoMessage = useMemo(() => {
@@ -301,23 +307,26 @@ export function QuoteFormModal({
       })();
       const finalMessage = customMessage ?? recomposedAuto;
 
-      const q = await createQuote({
-        leadId: finalLeadId,
-        conversationId:
-          defaultConversationId && defaultLeadId === finalLeadId
-            ? defaultConversationId
-            : undefined,
-        productId,
-        discount,
-        paymentMethod,
-        installments,
-        validUntil,
-        message: finalMessage,
-        inclusos: finalInclusos,
-        brindes: finalBrindes,
-        porConta: finalPorConta,
-        notes: finalObservacoes,
-      });
+      const q = await createQuote(
+        {
+          leadId: finalLeadId,
+          conversationId:
+            defaultConversationId && defaultLeadId === finalLeadId
+              ? defaultConversationId
+              : undefined,
+          productId,
+          discount,
+          paymentMethod,
+          installments,
+          validUntil,
+          message: finalMessage,
+          inclusos: finalInclusos,
+          brindes: finalBrindes,
+          porConta: finalPorConta,
+          notes: finalObservacoes,
+        },
+        quote?.id,
+      );
 
       onCreated(q);
     } catch (e) {
@@ -348,6 +357,7 @@ export function QuoteFormModal({
   };
 
   const applyDefaultsNow = () => {
+    setCustomMessage(null);
     setInclusosText(defIncluded);
     setBrindesText(defGifts);
     setPorContaText(defCustomer);
@@ -365,7 +375,7 @@ export function QuoteFormModal({
       >
         <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Novo orçamento</h2>
+          <h2 className="text-sm font-semibold">{quote ? "Editar orçamento" : "Novo orçamento"}</h2>
           <button
             onClick={onCancel}
             aria-label="Fechar"
@@ -526,6 +536,7 @@ export function QuoteFormModal({
               value={productId}
               onChange={(e) => {
                 setProductId(e.target.value);
+                setCustomMessage(null);
                 setShowSuggestion(false);
               }}
               className={cn(
@@ -566,7 +577,10 @@ export function QuoteFormModal({
             <input
               inputMode="numeric"
               value={discountRaw}
-              onChange={(e) => setDiscountRaw(e.target.value.replace(/[^\d]/g, ""))}
+              onChange={(e) => {
+                setDiscountRaw(e.target.value.replace(/[^\d,.]/g, ""));
+                setCustomMessage(null);
+              }}
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
               placeholder="0"
             />
@@ -576,7 +590,10 @@ export function QuoteFormModal({
           <Field label="Forma de pagamento" icon={CreditCard}>
             <select
               value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+              onChange={(e) => {
+                setPaymentMethod(e.target.value as PaymentMethod);
+                setCustomMessage(null);
+              }}
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {PAYMENT_METHODS.map((m) => (
@@ -591,7 +608,10 @@ export function QuoteFormModal({
           <Field label="Parcelas">
             <select
               value={installments}
-              onChange={(e) => setInstallments(Number(e.target.value))}
+              onChange={(e) => {
+                setInstallments(Number(e.target.value));
+                setCustomMessage(null);
+              }}
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             >
               {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((n) => (
@@ -607,7 +627,10 @@ export function QuoteFormModal({
             <input
               type="date"
               value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
+              onChange={(e) => {
+                setValidUntil(e.target.value);
+                setCustomMessage(null);
+              }}
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -668,19 +691,28 @@ export function QuoteFormModal({
                 label="✅ Itens inclusos"
                 placeholder={"Ex:\n• Piscina 8x4\n• Instalação\n• Filtro"}
                 value={inclusosText}
-                onChange={setInclusosText}
+                onChange={(value) => {
+                  setInclusosText(value);
+                  setCustomMessage(null);
+                }}
               />
               <TextBlockField
                 label="🎁 Brindes"
                 placeholder={"Ex:\n• Led colorido\n• Kit limpeza"}
                 value={brindesText}
-                onChange={setBrindesText}
+                onChange={(value) => {
+                  setBrindesText(value);
+                  setCustomMessage(null);
+                }}
               />
               <TextBlockField
                 label="⚠️ Por conta do cliente"
                 placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
                 value={porContaText}
-                onChange={setPorContaText}
+                onChange={(value) => {
+                  setPorContaText(value);
+                  setCustomMessage(null);
+                }}
               />
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">
@@ -695,7 +727,10 @@ export function QuoteFormModal({
             </div>
             <textarea
               value={observacoes}
-              onChange={(e) => setObservacoes(e.target.value)}
+              onChange={(e) => {
+                setObservacoes(e.target.value);
+                setCustomMessage(null);
+              }}
               rows={3}
               placeholder="Ex: Entrega em até 7 dias. Garantia de 1 ano."
               className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring resize-y"
@@ -785,7 +820,7 @@ export function QuoteFormModal({
               )}
               {submitting
                 ? "Salvando…"
-                : defaultConversationId && defaultLeadId && defaultLeadId === leadId
+                : !quote && defaultConversationId && defaultLeadId && defaultLeadId === leadId
                   ? "Salvar e enviar"
                   : "Salvar orçamento"}
             </button>

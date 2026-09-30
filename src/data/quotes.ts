@@ -1,3 +1,4 @@
+import { quoteDate } from "@/lib/quote-presentation";
 // Store de orçamentos com dois modos:
 //  - "demo": memória local (não persiste).
 //  - "remote": grava na tabela `quotes` do Supabase, vinculando lead_id, product_id
@@ -15,7 +16,6 @@ import {
   type NormalizedQuoteSendError,
 } from "@/lib/quote-send/errors";
 import { qsDebug, qsError } from "@/lib/quote-send/diagnostics";
-
 
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
@@ -46,11 +46,11 @@ export interface Quote {
   notes: string;
 }
 
-
 export function computeQuoteStatus(q: Quote): QuoteStatus {
   if (q.rawStatus === "aceito") return "aprovado";
   const today = new Date().toISOString().slice(0, 10);
-  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent)) return "vencido";
+  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent))
+    return "vencido";
   if (q.viewedAt || q.rawStatus === "visualizado") return "visualizado";
   if (q.sent) return "enviado";
   return "pendente";
@@ -112,7 +112,6 @@ export interface QuoteInput {
   notes?: string;
 }
 
-
 export function buildQuoteMessage(args: {
   product: Product;
   finalValue: number;
@@ -122,7 +121,7 @@ export function buildQuoteMessage(args: {
   discount: number;
 }): string {
   const { product, finalValue, installments, paymentMethod, validUntil, discount } = args;
-  const validStr = new Date(validUntil).toLocaleDateString("pt-BR");
+  const validStr = quoteDate(validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${product.name}* ficou em *${formatBRL(finalValue)}*.`);
   if (discount > 0) {
@@ -203,7 +202,6 @@ function toQuote(r: DbQuote): Quote {
   };
 }
 
-
 // ---------- modo & realtime ----------
 export function getQuotesMode(): Mode {
   return mode;
@@ -283,23 +281,24 @@ export async function loadQuotesRemote(cid: string) {
 }
 
 // ---------- mutações ----------
-export async function createQuote(input: QuoteInput): Promise<Quote> {
+export async function createQuote(input: QuoteInput, existingId?: string): Promise<Quote> {
   const product = getProduct(input.productId);
   if (!product) throw new Error("Produto não encontrado");
-  const unitPrice = activePrice(product);
+  const existing = existingId ? getQuote(existingId) : undefined;
+  if (existingId && !existing) throw new Error("Orçamento não encontrado");
+  const unitPrice = existing?.productId === product.id ? existing.unitPrice : activePrice(product);
   const discount = Math.max(0, Math.min(input.discount, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
-  const message =
-    input.message?.trim()
-      ? input.message
-      : buildQuoteMessage({
-          product,
-          finalValue,
-          installments: input.installments,
-          paymentMethod: input.paymentMethod,
-          validUntil: input.validUntil,
-          discount,
-        });
+  const message = input.message?.trim()
+    ? input.message
+    : buildQuoteMessage({
+        product,
+        finalValue,
+        installments: input.installments,
+        paymentMethod: input.paymentMethod,
+        validUntil: input.validUntil,
+        discount,
+      });
 
   const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
   const brindes = (input.brindes ?? []).map((s) => s.trim()).filter(Boolean);
@@ -307,54 +306,56 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
   const notes = (input.notes ?? "").trim();
 
   if (mode === "remote" && companyId) {
-    const { data, error } = await supabase
-      .from("quotes")
-      .insert({
-        company_id: companyId,
-        lead_id: input.leadId,
-        conversation_id: input.conversationId ?? null,
-        product_id: product.id,
-        product_name: product.name,
-        unit_price: unitPrice,
-        discount,
-        final_value: finalValue,
-        total: finalValue,
-        payment_method: input.paymentMethod,
-        installments: input.installments,
-        valid_until: input.validUntil,
-        message,
-        sent: false,
-        status: "rascunho",
-        inclusos,
-        brindes,
-        por_conta: porConta,
-        notes,
-        items: [
-          {
-            product_id: product.id,
-            name: product.name,
-            unit_price: unitPrice,
-            quantity: 1,
-            discount,
-            total: finalValue,
-          },
-        ],
-      })
-
-      .select(QUOTE_SELECT)
-      .single();
+    const values = {
+      company_id: companyId,
+      lead_id: input.leadId,
+      conversation_id: input.conversationId ?? null,
+      product_id: product.id,
+      product_name: product.name,
+      unit_price: unitPrice,
+      discount,
+      final_value: finalValue,
+      total: finalValue,
+      payment_method: input.paymentMethod,
+      installments: input.installments,
+      valid_until: input.validUntil,
+      message,
+      sent: false,
+      status: "rascunho" as const,
+      sent_at: null,
+      viewed_at: null,
+      external_message_id: null,
+      inclusos,
+      brindes,
+      por_conta: porConta,
+      notes,
+      items: [
+        {
+          product_id: product.id,
+          name: product.name,
+          unit_price: unitPrice,
+          quantity: 1,
+          discount,
+          total: finalValue,
+        },
+      ],
+    };
+    const mutation = existingId
+      ? supabase.from("quotes").update(values).eq("id", existingId).eq("company_id", companyId)
+      : supabase.from("quotes").insert(values);
+    const { data, error } = await mutation.select(QUOTE_SELECT).single();
     if (error) throw error;
     const quote = toQuote(data as DbQuote);
-    if (!quotes.some((q) => q.id === quote.id)) {
-      quotes.unshift(quote);
-      notify();
-    }
+    const index = quotes.findIndex((q) => q.id === quote.id);
+    if (index >= 0) quotes[index] = quote;
+    else quotes.unshift(quote);
+    notify();
     return quote;
   }
 
   // demo
   const quote: Quote = {
-    id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: existingId ?? `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     leadId: input.leadId,
     conversationId: input.conversationId,
     productId: product.id,
@@ -366,7 +367,7 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     installments: input.installments,
     validUntil: input.validUntil,
     message,
-    createdAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
     sent: false,
     inclusos,
     brindes,
@@ -374,7 +375,9 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     notes,
   };
 
-  quotes.unshift(quote);
+  const index = quotes.findIndex((q) => q.id === quote.id);
+  if (index >= 0) quotes[index] = quote;
+  else quotes.unshift(quote);
   notify();
   return quote;
 }
@@ -434,8 +437,6 @@ export async function deleteQuote(id: string): Promise<void> {
   }
 }
 
-
-
 /**
  * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
  * Returns the new/existing conversationId so the caller can open the chat.
@@ -489,13 +490,15 @@ export async function sendQuoteWhatsApp(args: {
   const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
   const sessionMs = Math.round(performance.now() - sessionStart);
   if (sessionErr || !sessionData?.session) {
-    const norm = normalizeQuoteSendError(
-      sessionErr ?? new Error("no active session"),
-      "session",
-      { ...base, durationMs: sessionMs },
-    );
+    const norm = normalizeQuoteSendError(sessionErr ?? new Error("no active session"), "session", {
+      ...base,
+      durationMs: sessionMs,
+    });
     qsError("QUOTE_SEND_ERROR", { ...base, step: "session", norm });
-    throw new QuoteSendError({ ...norm, code: norm.code === "unknown" ? "session_expired" : norm.code });
+    throw new QuoteSendError({
+      ...norm,
+      code: norm.code === "unknown" ? "session_expired" : norm.code,
+    });
   }
   qsDebug("QUOTE_SEND_SESSION_READY", { ...base, durationMs: sessionMs });
 
@@ -568,5 +571,3 @@ export async function sendQuoteWhatsApp(args: {
   });
   return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
-
-

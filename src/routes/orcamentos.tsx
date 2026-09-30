@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Search, X } from "lucide-react";
+import { getLeads, subscribeRepo } from "@/data/leadRepo";
+import { matchesQuote, normalizeQuoteSearch } from "@/lib/quote-presentation";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
@@ -50,7 +52,40 @@ function QuotesPage() {
   const [returnTo, setReturnTo] = useState<"atendimento" | undefined>();
   const PAGE_SIZE = 20;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const visibleQuotes = quotes.slice(0, visibleCount);
+  const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const filteredQuotes = quotes.filter((q) =>
+    matchesQuote(
+      q,
+      leads.find((l) => l.id === q.leadId),
+      query,
+    ),
+  );
+  const visibleQuotes = filteredQuotes.slice(0, visibleCount);
+  const suggestions = leads
+    .filter(
+      (lead) =>
+        quotes.some((q) => q.leadId === lead.id) &&
+        normalizeQuoteSearch(lead.name).includes(normalizeQuoteSearch(query)),
+    )
+    .slice(0, 6);
+  const suggestionsOpen = showSuggestions && !!query.trim() && suggestions.length > 0;
+  const chooseSuggestion = (name: string) => {
+    setQuery(name);
+    setVisibleCount(PAGE_SIZE);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+  };
+  const openCreate = () => {
+    setPrefillLeadId(undefined);
+    setPrefillConvId(undefined);
+    setPrefillProductId(undefined);
+    setSuggestionReason(undefined);
+    setReturnTo(undefined);
+    setOpen(true);
+  };
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
@@ -74,47 +109,120 @@ function QuotesPage() {
   ]);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <header className="sticky top-0 z-20 bg-background h-14 px-4 md:px-6 border-b border-border flex items-center gap-3 safe-top">
-        <FileText className="h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold">Orçamentos</h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
-            {quotes.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setPrefillLeadId(undefined);
-            setPrefillConvId(undefined);
-            setOpen(true);
+    <div className="min-w-0 flex-1 overflow-y-auto bg-background dark:bg-black text-foreground">
+      <div className="@container mx-auto w-full max-w-6xl px-5 py-8 sm:px-10 lg:px-16 lg:py-10">
+        <header className="mb-8 flex items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Orçamentos</h1>
+          <button
+            onClick={openCreate}
+            className="h-10 min-w-24 rounded-full border border-foreground/40 px-7 text-base font-semibold transition-colors hover:bg-foreground/10"
+          >
+            Criar
+          </button>
+        </header>
+        <div
+          className="relative mb-9"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
           }}
-          aria-label="Novo orçamento"
-          className="inline-flex items-center justify-center gap-1.5 h-11 w-11 md:h-9 md:w-auto md:px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold shrink-0"
         >
-          <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
-          <span className="hidden md:inline">Novo orçamento</span>
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="flex h-12 items-center gap-3 rounded-full border border-border bg-secondary/20 px-4 focus-within:border-foreground/50">
+            <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              role="combobox"
+              aria-label="Pesquisar orçamentos"
+              aria-expanded={suggestionsOpen}
+              aria-controls="quote-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                suggestionsOpen && activeSuggestion >= 0
+                  ? `quote-suggestion-${activeSuggestion}`
+                  : undefined
+              }
+              value={query}
+              onFocus={() => setShowSuggestions(true)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+                setShowSuggestions(true);
+                setActiveSuggestion(-1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setShowSuggestions(false);
+                if (suggestionsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                  e.preventDefault();
+                  setActiveSuggestion(
+                    (i) =>
+                      (i + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) %
+                      suggestions.length,
+                  );
+                }
+                if (suggestionsOpen && e.key === "Enter" && activeSuggestion >= 0) {
+                  e.preventDefault();
+                  chooseSuggestion(suggestions[activeSuggestion].name);
+                }
+              }}
+              placeholder="Pesquisar por nome, telefone ou produto"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            {query && (
+              <button
+                aria-label="Limpar pesquisa"
+                onClick={() => chooseSuggestion("")}
+                className="rounded-full p-1 hover:bg-secondary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {suggestionsOpen && (
+            <ul
+              id="quote-suggestions"
+              role="listbox"
+              aria-label="Clientes encontrados"
+              className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-background p-2 shadow-xl"
+            >
+              {suggestions.map((lead, index) => (
+                <li
+                  key={lead.id}
+                  role="option"
+                  aria-selected={index === activeSuggestion}
+                  id={`quote-suggestion-${index}`}
+                >
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => chooseSuggestion(lead.name)}
+                    className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-secondary ${index === activeSuggestion ? "bg-secondary" : ""}`}
+                  >
+                    <span className="truncate font-medium">{lead.name}</span>
+                    <span className="text-xs text-muted-foreground">{lead.phone}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {quotes.length === 0 ? (
-          <EmptyState onCreate={() => setOpen(true)} />
+          <EmptyState onCreate={openCreate} />
         ) : (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
+            {filteredQuotes.length === 0 && (
+              <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+                Nenhum orçamento encontrado. Tente outro nome, telefone ou produto.
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-6 @min-[760px]:grid-cols-2 @min-[760px]:gap-x-12 @min-[760px]:gap-y-12">
               {visibleQuotes.map((q) => (
                 <QuoteCard key={q.id} quote={q} />
               ))}
             </div>
-            {visibleCount < quotes.length && (
+            {visibleCount < filteredQuotes.length && (
               <div className="max-w-5xl mt-4 flex justify-center">
                 <button
                   onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
                 >
-                  Carregar mais ({quotes.length - visibleCount})
+                  Carregar mais ({filteredQuotes.length - visibleCount})
                 </button>
               </div>
             )}
