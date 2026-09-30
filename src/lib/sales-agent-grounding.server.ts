@@ -8,7 +8,6 @@ import {
 } from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import { productMatchesMeasure } from "./product-measure-filter";
-import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -260,26 +259,6 @@ export function searchSalesAgentCatalog(
   // Filtro por atributo estruturado (comprimento/largura/profundidade/
   // capacidade) sobre os campos cadastrados — não por substring de texto.
   const attributeMatches = filterProductsByStructuredAttributes(products, history);
-
-  // Comparação de preço ("qual o mais barato?", "melhor preço") não é
-  // negociação: compara os preços cadastrados do conjunto em discussão —
-  // os produtos citados, os compatíveis com a medida pedida, os já
-  // apresentados ou, sem contexto, o catálogo ativo.
-  if (isPriceComparisonRequest(lastLeadText)) {
-    const named = products.filter((product) =>
-      [product.name, product.model, product.sku]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .some((value) => query.includes(normalizeCatalogText(value))),
-    );
-    const pool = named.length >= 2
-      ? named
-      : attributeMatches && attributeMatches.length > 0
-        ? attributeMatches
-        : selectedProducts.length > 0
-          ? selectedProducts
-          : products;
-    return { status: "matches", products: pool, exhaustive: true };
-  }
 
   const contextualReference = resolveCatalogProductReferenceWithContext(
     lastLeadText,

@@ -550,9 +550,31 @@ describe("runAgentTick · Fase 1", () => {
   });
 });
 
-describe("runAgentTick · comparação de preço ponta a ponta (sem LLM)", () => {
-  it("'qual você tem boa de preço?' após apresentar produtos responde com preços reais", async () => {
+describe("runAgentTick · comparação de preço ponta a ponta", () => {
+  it("'qual você tem boa de preço?': LLM classifica, preços vêm só do catálogo", async () => {
     decideSpy.mockRestore();
+    // O LLM só identifica a intenção; nenhum preço sai do modelo.
+    const llm = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: "compare_catalog_prices",
+                      arguments: JSON.stringify({ order: "lowest_first", price: 1 }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", llm);
     const row = (id: string, name: string, price: number, lengthM = 6) => ({
       ...product,
       id,
@@ -582,13 +604,62 @@ describe("runAgentTick · comparação de preço ponta a ponta (sem LLM)", () =>
       ],
     });
 
-    const result = await runAgentTick(CONV);
+    try {
+      const result = await runAgentTick(CONV);
 
-    expect(result).toMatchObject({ action: "replied" });
-    expect(statusUpdates()).not.toContain("aguardando_humano");
-    const [text] = sentTexts();
-    expect(text).toContain("Opção Dois (R$ 18.000,00)");
-    expect(text).not.toContain("Opção Quatro");
-    expect(text.indexOf("Opção Dois")).toBeLessThan(text.indexOf("Opção Três"));
+      expect(llm).toHaveBeenCalledTimes(1);
+      const request = JSON.parse(llm.mock.calls[0][1].body);
+      expect(request.tools.map((t: { function: { name: string } }) => t.function.name)).toContain(
+        "compare_catalog_prices",
+      );
+      expect(result).toMatchObject({ action: "replied" });
+      expect(statusUpdates()).not.toContain("aguardando_humano");
+      const [text] = sentTexts();
+      expect(text).toContain("Opção Dois (R$ 18.000,00)");
+      expect(text).not.toContain("Opção Quatro");
+      expect(text).not.toContain("R$ 1,00");
+      expect(text.indexOf("Opção Dois")).toBeLessThan(text.indexOf("Opção Três"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("palavra de preço ambígua sem comparação continua indo para humano", async () => {
+    decideSpy.mockRestore();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      function: {
+                        name: "respond_to_customer",
+                        arguments: JSON.stringify({ message: "Consigo um valor melhor pra você." }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    install({
+      histories: [
+        [{ role: "lead", text: "faz mais barato esse Item Um", at: "2026-09-30T12:00:00Z" }],
+      ],
+    });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "handoff" });
+      expect(sentTexts()).not.toContain("Consigo um valor melhor pra você.");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

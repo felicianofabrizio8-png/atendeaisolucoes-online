@@ -36,6 +36,7 @@ import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
+  filterProductsByStructuredAttributes,
   searchSalesAgentCatalog,
   selectRelevantSalesAgentCoachRules,
   type AgentHistory,
@@ -56,7 +57,6 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
 import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
-import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
@@ -448,27 +448,36 @@ const INSTITUTIONAL_HANDOFF_PATTERNS = new Set<RegExp>([
   PAYMENT_TERMS_PATTERN,
   DELIVERY_TIME_PATTERN,
 ]);
-const PRICE_COMPARISON_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_PATTERN]);
+// Palavras de preço ambíguas: podem ser comparação de preços cadastrados
+// ("qual sai mais barato") ou negociação ("faz mais barato"). Quem distingue
+// é o LLM; o turno fica marcado como sensível a preço (ver `priceSensitive`).
+const PRICE_SENSITIVE_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_PATTERN]);
 
 export function detectHandoffNeeded(
   text: string,
   commercialRules?: AgentContext["grounding"]["commercialRules"] | null,
-): { needed: boolean; reason?: string } {
+  options: { deferPriceSensitive?: boolean } = {},
+): { needed: boolean; reason?: string; priceSensitive?: boolean } {
   const normalized = text.trim();
   const informationalQuestion =
     /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
     /^se\s+eu\s+fechar\b/i.test(normalized);
   if (informationalQuestion) return { needed: false };
   const answeredByPolicy = resolveInstitutionalPolicies(text, commercialRules) !== null;
-  // "Qual o mais barato?" compara preços cadastrados; só pedido de condição
-  // nova (desconto, "faz por", "melhora o valor") é negociação.
-  const priceComparison = isPriceComparisonRequest(text);
+  let priceSensitive = false;
   for (const re of HANDOFF_PATTERNS) {
     if (answeredByPolicy && INSTITUTIONAL_HANDOFF_PATTERNS.has(re)) continue;
-    if (priceComparison && PRICE_COMPARISON_PATTERNS.has(re)) continue;
-    if (re.test(text)) return { needed: true, reason: re.source };
+    if (!re.test(text)) continue;
+    // Sem outro sinal de humano, adia a decisão para o LLM: no turno sensível
+    // a preço, só a comparação determinística do catálogo pode responder;
+    // qualquer outra saída continua indo para humano.
+    if (options.deferPriceSensitive && PRICE_SENSITIVE_PATTERNS.has(re)) {
+      priceSensitive = true;
+      continue;
+    }
+    return { needed: true, reason: re.source };
   }
-  return { needed: false };
+  return priceSensitive ? { needed: false, priceSensitive: true } : { needed: false };
 }
 
 // ----------------------------------------------------------------------------
@@ -583,6 +592,8 @@ export async function runAgentTurn(params: {
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   sessionCorrections?: NormativeCorrection[];
+  /** Turno com palavra de preço ambígua: só a comparação determinística responde. */
+  priceSensitive?: boolean;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
   qualification?: {
     detected_pool_size: string | null;
@@ -800,6 +811,12 @@ export async function runAgentTurn(params: {
     catalogSearch,
     interpretation,
     memoryStatus: effectiveMemoryStatus,
+    // Catálogo ativo completo da empresa para executar a comparação de preço
+    // escolhida pelo LLM (o conjunto e os preços nunca vêm do modelo).
+    priceComparison: {
+      catalog: validatedCatalog,
+      attributeMatches: filterProductsByStructuredAttributes(validatedCatalog, effectiveHistory),
+    },
   });
   if (stateScope && memoryStatus !== "error") {
     await saveSalesStateSafely(
@@ -1478,9 +1495,15 @@ async function runAgentTickPass(
     // Pre-check handoff — sempre qualifica antes para timeline ficar completa.
     // Perguntas de pagamento/entrega/instalação com política cadastrada seguem
     // para a IA responder pela política.
-    const triggerCheck = audioUnavailable
-      ? { needed: false }
-      : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules);
+    // Palavra de preço ambígua ("barato", "menor preço") não encaminha direto:
+    // o LLM distingue comparação de negociação e só a comparação
+    // determinística do catálogo pode responder esse turno.
+    const triggerCheck: { needed: boolean; reason?: string; priceSensitive?: boolean } =
+      audioUnavailable
+        ? { needed: false }
+        : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
+            deferPriceSensitive: true,
+          });
     const readyToClose = !audioUnavailable && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
@@ -1540,6 +1563,7 @@ async function runAgentTickPass(
       const rules = ctx.grounding.commercialRules;
       decision = runSafetyLayer(
         await runAgentTurn({
+          priceSensitive: triggerCheck.priceSensitive === true,
           ctx: turnCtx,
           history,
           leadName: lead?.name ?? null,

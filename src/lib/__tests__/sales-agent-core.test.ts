@@ -729,7 +729,7 @@ const validationContext: AgentContext = {
     expect(request.model).toBe(salesModel);
     expect(request).not.toHaveProperty("reasoning_effort");
     expect(request.tool_choice).toBe("auto");
-    expect(request.tools).toHaveLength(2);
+    expect(request.tools).toHaveLength(3); // respond, compare_catalog_prices, handoff
     expect(request.tools[0]).toMatchObject({
       function: {
         parameters: {
@@ -811,7 +811,7 @@ const validationContext: AgentContext = {
 
       expect(request.reasoning_effort).toBe("none");
       expect(request.tool_choice).toBe("auto");
-      expect(request.tools).toHaveLength(2);
+      expect(request.tools).toHaveLength(3); // respond, compare_catalog_prices, handoff
     },
   );
 

@@ -14,11 +14,14 @@ import {
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 import {
-  asksForMostExpensive,
   buildPriceComparisonReply,
-  isPriceComparisonRequest,
+  resolvePriceComparisonPool,
+  type PriceComparisonOrder,
 } from "./sales-agent-price-comparison";
 import {
+  INSTITUTIONAL_TOPICS,
+  resolvePoliciesForTopics,
+  type InstitutionalPolicy,
   buildInstitutionalPolicyReply,
   replyNumbersAreGrounded,
   resolveInstitutionalPolicies,
@@ -219,6 +222,19 @@ export interface SalesAgentCoreInput {
   }>;
   /** Turno respondido só com as políticas cadastradas (sem catálogo). */
   institutionalOnly?: boolean;
+  /**
+   * Palavra de preço ambígua no turno (pré-check): só a comparação
+   * determinística (`compare_catalog_prices`) pode responder; texto livre ou
+   * outra saída vai para humano, como antes.
+   */
+  priceSensitive?: boolean;
+  /** Turno reaberto com os produtos já apresentados como contexto (evita recursão). */
+  followUpContext?: boolean;
+  /** Catálogo ativo completo + compatíveis por medida, para executar a comparação. */
+  priceComparison?: {
+    catalog: SalesAgentGrounding["catalog"];
+    attributeMatches?: SalesAgentGrounding["catalog"] | null;
+  };
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
@@ -278,6 +294,15 @@ interface ToolReply {
 
 interface ToolHandoff {
   reason: string;
+}
+
+/** Tool em que o LLM sinaliza a intenção de comparar preços cadastrados. */
+export const COMPARE_CATALOG_PRICES_TOOL = "compare_catalog_prices";
+
+interface ToolComparePrices {
+  order?: PriceComparisonOrder | string;
+  product_ids?: unknown[];
+  other_topics?: unknown[];
 }
 
 export function customerAskedForProductImages(history: SalesAgentCoreInput["history"]): boolean {
@@ -1268,6 +1293,7 @@ SUA MISSÃO:
 4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
 5. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
 6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Se o cliente apenas demonstrar interesse pela medida, responda em uma frase curta e natural, sem listar preços, dimensões ou litragem; só informe esses fatos se forem pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
+7. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
 
 Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -1398,6 +1424,41 @@ export function buildSalesAgentCompletionRequest(
       {
         type: "function",
         function: {
+          name: COMPARE_CATALOG_PRICES_TOOL,
+          description:
+            "Use quando o cliente quer saber qual opção custa menos ou custa mais (comparar os preços cadastrados), seja qual for a forma de dizer. O sistema monta a resposta só com preços reais do catálogo; não escreva preços. NÃO use para: pedido de desconto, abatimento, contraproposta, 'faz por X' ou pedir para baixar/melhorar o valor (isso é negociação: use request_human_handoff); nem para custo-benefício, qualidade ou 'qual vale mais a pena' (isso não é só preço: responda com respond_to_customer usando os fatos do catálogo).",
+          parameters: {
+            type: "object",
+            properties: {
+              order: {
+                type: "string",
+                enum: ["lowest_first", "highest_first"],
+                description: "lowest_first = quer a opção que custa menos; highest_first = a que custa mais.",
+              },
+              product_ids: {
+                type: "array",
+                items: {
+                  type: "string",
+                  ...nonEmptyEnum(catalogProducts.map((product) => product.id)),
+                },
+                description:
+                  "IDs exatos dos produtos que o cliente quer comparar, se ele citou ou restringiu opções. Vazio = opções já em discussão.",
+              },
+              other_topics: {
+                type: "array",
+                items: { type: "string", enum: [...INSTITUTIONAL_TOPICS] },
+                description:
+                  "Se a mesma mensagem também pergunta sobre pagamento (payment), instalação (installation), entrega/frete (delivery), visita (visit) ou itens inclusos (included), liste esses assuntos. O sistema responde com as políticas oficiais cadastradas. Vazio se não houver.",
+              },
+            },
+            required: ["order"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
           name: "request_human_handoff",
           description: "Parar IA e marcar conversa para humano.",
           parameters: {
@@ -1410,6 +1471,62 @@ export function buildSalesAgentCompletionRequest(
       },
     ],
     tool_choice: "auto",
+  };
+}
+
+/**
+ * Executa a comparação escolhida pelo LLM de forma determinística: conjunto e
+ * preços vêm só do catálogo ativo da empresa; outros assuntos da mesma
+ * mensagem são respondidos com as políticas cadastradas.
+ */
+function executePriceComparison(
+  params: SalesAgentCoreInput,
+  args: ToolComparePrices,
+  helpers: {
+    institutionalPolicies: InstitutionalPolicy[] | null;
+    safeHandoff: (reason: string, fallbackReason?: string) => AgentDecision;
+  },
+): AgentDecision {
+  const catalog =
+    params.priceComparison?.catalog ??
+    (params.catalogSearch.status === "matches" ? params.catalogSearch.products : []);
+  const requestedProductIds = Array.isArray(args.product_ids)
+    ? args.product_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  const pool = resolvePriceComparisonPool({
+    catalog,
+    history: params.history,
+    requestedProductIds,
+    attributeMatches: params.priceComparison?.attributeMatches ?? null,
+  });
+  const comparison = buildPriceComparisonReply(pool, {
+    order: args.order === "highest_first" ? "highest_first" : "lowest_first",
+  });
+  if (!comparison) return helpers.safeHandoff("catalog_price_unavailable");
+
+  // Outros assuntos da mesma mensagem: tópicos do LLM + detecção
+  // determinística existente; resposta sempre pelo texto da política.
+  const requestedTopics = [
+    ...(Array.isArray(args.other_topics)
+      ? args.other_topics.filter((topic): topic is string => typeof topic === "string")
+      : []),
+    ...(helpers.institutionalPolicies ?? []).map((policy) => policy.topic),
+  ];
+  const policies = resolvePoliciesForTopics(requestedTopics, params.ctx.grounding.commercialRules);
+  if (policies === null) {
+    // Um dos assuntos pedidos não tem política cadastrada: não responder pela metade.
+    return helpers.safeHandoff("secondary_topic_without_policy");
+  }
+  return {
+    kind: "reply",
+    message: [comparison.message, policies.length > 0 ? buildInstitutionalPolicyReply(policies) : null]
+      .filter(Boolean)
+      .join("\n"),
+    suggested_products: comparison.productIds,
+    product_image_ids: [],
+    grounding_sources: policies.length > 0 ? ["catalog", "commercial_rules"] : ["catalog"],
+    learning_ids_used: [],
+    fallback_reason: "catalog_price_comparison",
   };
 }
 
@@ -1476,6 +1593,34 @@ export class SalesAgentCore {
           },
         });
       }
+      // Pergunta de continuação sobre produtos já apresentados ("tem algum
+      // mais em conta?", "qual compensa mais?") não é pedido de item novo: a
+      // busca textual não acha um produto na frase, mas o contexto existe.
+      // Segue para o LLM com os apresentados em vez de pedir esclarecimento.
+      if (
+        (catalogSearch.status === "no_match" ||
+          (catalogSearch.status === "ambiguous" && catalogSearch.products.length === 0)) &&
+        !params.followUpContext
+      ) {
+        const known = params.priceComparison?.catalog ?? params.ctx.catalogForValidation ?? [];
+        const knownById = new Map(known.map((product) => [product.id, product]));
+        const presented = getPresentedProductIds(params.history).flatMap((id) => {
+          const product = knownById.get(id);
+          return product ? [product] : [];
+        });
+        if (presented.length > 0) {
+          const followUpSearch: SalesAgentCatalogSearch = { status: "matches", products: presented };
+          return this.decide({
+            ...params,
+            followUpContext: true,
+            catalogSearch: followUpSearch,
+            ctx: {
+              ...params.ctx,
+              grounding: { ...params.ctx.grounding, catalogSearch: followUpSearch },
+            },
+          });
+        }
+      }
       if (catalogSearch.status === "ambiguous" && catalogSearch.products.length > 1) {
         const options = catalogSearch.products.slice(0, SALES_AGENT_MAX_OPTIONS);
         return {
@@ -1530,23 +1675,6 @@ export class SalesAgentCore {
     const maxOptions = catalogSearch.exhaustive
       ? Math.max(SALES_AGENT_MAX_OPTIONS, Math.min(catalogSearch.products.length, MAX_SALES_AGENT_PRODUCT_IMAGES))
       : SALES_AGENT_MAX_OPTIONS;
-    // Comparação de preço: resposta só com preços cadastrados, sem LLM.
-    if (isPriceComparisonRequest(lastLeadText)) {
-      const comparisonReply = buildPriceComparisonReply(catalogSearch.products, {
-        mostExpensive: asksForMostExpensive(lastLeadText),
-      });
-      if (comparisonReply) {
-        return {
-          kind: "reply",
-          message: comparisonReply.message,
-          suggested_products: comparisonReply.productIds,
-          product_image_ids: [],
-          grounding_sources: ["catalog"],
-          learning_ids_used: [],
-          fallback_reason: "catalog_price_comparison",
-        };
-      }
-    }
     const fallbackProducts = deterministicProducts.slice(0, maxOptions);
     const deterministicFallback = (reason: string): AgentDecision =>
       fallbackProducts.length === 0 && institutionalPolicies
@@ -1608,6 +1736,17 @@ export class SalesAgentCore {
 
     if (call.name === "request_human_handoff") {
       return safeHandoff((args as ToolHandoff).reason || "model_requested", "model_requested_handoff");
+    }
+    if (call.name === COMPARE_CATALOG_PRICES_TOOL) {
+      return executePriceComparison(params, args as ToolComparePrices, {
+        institutionalPolicies,
+        safeHandoff,
+      });
+    }
+    // Turno com palavra de preço ambígua que o LLM não tratou como comparação:
+    // mantém a proteção do pré-check (negociação vai para humano).
+    if (params.priceSensitive) {
+      return safeHandoff("pre_check_price_sensitive", "price_sensitive_not_comparison");
     }
     const reply = args as ToolReply;
     if (!reply.message) {
