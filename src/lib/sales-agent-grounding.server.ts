@@ -7,6 +7,8 @@ import {
   type SalesAgentGroundingBase,
 } from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
+import { productMatchesMeasure } from "./product-measure-filter";
+import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -68,6 +70,40 @@ function resolveV2NumericAlias(text: string, products: CatalogProduct[]): { prod
     : { product: null, ambiguous: true };
 }
 
+type StructuredMeasureField = "lengthM" | "widthM" | "depthM" | "capacityL";
+
+function sameMeasure(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.001;
+}
+
+/**
+ * Produtos cujos campos estruturados batem com TODAS as medidas pedidas na
+ * última mensagem do cliente. `null` quando a mensagem não pede medida.
+ * Comprimento sem campo cadastrado usa a medida principal do nome/descrição
+ * (ex.: "6x3", "6 m"), nunca números soltos como preço ou código de modelo.
+ */
+export function filterProductsByStructuredAttributes<T extends CatalogProduct>(
+  products: readonly T[],
+  history: AgentHistory,
+): T[] | null {
+  const attributes = extractCurrentProductAttributes(history);
+  const criteria = (["lengthM", "widthM", "depthM", "capacityL"] as const)
+    .map((field) => [field, attributes[field]] as [StructuredMeasureField, number | undefined])
+    .filter((entry): entry is [StructuredMeasureField, number] => typeof entry[1] === "number");
+  if (criteria.length === 0) return null;
+  return products.filter((product) =>
+    criteria.every(([field, value]) => {
+      const registered = product[field];
+      if (typeof registered === "number" && Number.isFinite(registered)) {
+        return sameMeasure(registered, value);
+      }
+      return field === "lengthM" && Number.isInteger(value)
+        ? productMatchesMeasure({ name: product.name, description: product.description }, value)
+        : false;
+    }),
+  );
+}
+
 export type CatalogSearchStatus =
   | "query_error"
   | "empty_catalog"
@@ -80,7 +116,8 @@ export type CatalogSearchResult =
   | { status: "empty_catalog"; products: [] }
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: CatalogProduct[] }
-  | { status: "matches"; products: CatalogProduct[] };
+  /** `exhaustive`: conjunto completo de compatíveis (atributo/medida ou comparação de preço). */
+  | { status: "matches"; products: CatalogProduct[]; exhaustive?: boolean };
 
 export type CatalogSearchOptions = {
   continuityEnabled?: boolean;
@@ -220,6 +257,30 @@ export function searchSalesAgentCatalog(
 
   const comparison = /\b(?:compar\w*|versus|vs\.?|diferenc\w*|entre)\b/i.test(query);
   const selectedProducts = products.filter((product) => selectedIds.has(product.id));
+  // Filtro por atributo estruturado (comprimento/largura/profundidade/
+  // capacidade) sobre os campos cadastrados — não por substring de texto.
+  const attributeMatches = filterProductsByStructuredAttributes(products, history);
+
+  // Comparação de preço ("qual o mais barato?", "melhor preço") não é
+  // negociação: compara os preços cadastrados do conjunto em discussão —
+  // os produtos citados, os compatíveis com a medida pedida, os já
+  // apresentados ou, sem contexto, o catálogo ativo.
+  if (isPriceComparisonRequest(lastLeadText)) {
+    const named = products.filter((product) =>
+      [product.name, product.model, product.sku]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .some((value) => query.includes(normalizeCatalogText(value))),
+    );
+    const pool = named.length >= 2
+      ? named
+      : attributeMatches && attributeMatches.length > 0
+        ? attributeMatches
+        : selectedProducts.length > 0
+          ? selectedProducts
+          : products;
+    return { status: "matches", products: pool, exhaustive: true };
+  }
+
   const contextualReference = resolveCatalogProductReferenceWithContext(
     lastLeadText,
     products,
@@ -236,6 +297,12 @@ export function searchSalesAgentCatalog(
     : { product: null, ambiguous: false };
   if (numericAlias.ambiguous) return { status: "ambiguous", products: selectedProducts };
   if (numericAlias.product) return { status: "matches", products: [numericAlias.product] };
+  // Pedido por medida/capacidade: TODOS os ativos compatíveis da empresa.
+  // Sem nenhum compatível, segue a busca textual (a medida pode ser do
+  // espaço do cliente, não do produto).
+  if (!comparison && attributeMatches && attributeMatches.length > 0) {
+    return { status: "matches", products: attributeMatches, exhaustive: true };
+  }
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))

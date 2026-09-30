@@ -14,6 +14,11 @@ import {
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 import {
+  asksForMostExpensive,
+  buildPriceComparisonReply,
+  isPriceComparisonRequest,
+} from "./sales-agent-price-comparison";
+import {
   buildInstitutionalPolicyReply,
   replyNumbersAreGrounded,
   resolveInstitutionalPolicies,
@@ -200,7 +205,8 @@ export type SalesAgentCatalogSearch =
   | { status: "empty_catalog"; products: [] }
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: SalesAgentGrounding["catalog"] }
-  | { status: "matches"; products: SalesAgentGrounding["catalog"] };
+  /** `exhaustive`: todos os compatíveis por atributo/medida ou comparação de preço (sem corte em 3). */
+  | { status: "matches"; products: SalesAgentGrounding["catalog"]; exhaustive?: boolean };
 
 export interface SalesAgentCoreInput {
   ctx: AgentContext;
@@ -1519,7 +1525,29 @@ export class SalesAgentCore {
     )
       ? catalogSearch.products
       : [];
-    const fallbackProducts = deterministicProducts.slice(0, SALES_AGENT_MAX_OPTIONS);
+    // Busca exaustiva (medida/atributo): todos os compatíveis podem ser
+    // apresentados (até o limite de mídia); nas demais, 2–3 opções.
+    const maxOptions = catalogSearch.exhaustive
+      ? Math.max(SALES_AGENT_MAX_OPTIONS, Math.min(catalogSearch.products.length, MAX_SALES_AGENT_PRODUCT_IMAGES))
+      : SALES_AGENT_MAX_OPTIONS;
+    // Comparação de preço: resposta só com preços cadastrados, sem LLM.
+    if (isPriceComparisonRequest(lastLeadText)) {
+      const comparisonReply = buildPriceComparisonReply(catalogSearch.products, {
+        mostExpensive: asksForMostExpensive(lastLeadText),
+      });
+      if (comparisonReply) {
+        return {
+          kind: "reply",
+          message: comparisonReply.message,
+          suggested_products: comparisonReply.productIds,
+          product_image_ids: [],
+          grounding_sources: ["catalog"],
+          learning_ids_used: [],
+          fallback_reason: "catalog_price_comparison",
+        };
+      }
+    }
+    const fallbackProducts = deterministicProducts.slice(0, maxOptions);
     const deterministicFallback = (reason: string): AgentDecision =>
       fallbackProducts.length === 0 && institutionalPolicies
         ? policyReply(reason)
@@ -1626,8 +1654,8 @@ export class SalesAgentCore {
       return safeHandoff("catalog_invalid_product_reference");
     }
     const requestedSuggestions = modelSuggestions.length > 0
-      ? modelSuggestions.slice(0, SALES_AGENT_MAX_OPTIONS)
-      : deterministicProducts.slice(0, SALES_AGENT_MAX_OPTIONS).map((product) => product.id);
+      ? modelSuggestions.slice(0, maxOptions)
+      : deterministicProducts.slice(0, maxOptions).map((product) => product.id);
     const selectedProducts = requestedSuggestions.flatMap((id) => {
       const product = catalogById.get(id);
       return product ? [product] : [];

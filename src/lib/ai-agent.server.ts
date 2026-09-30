@@ -56,9 +56,11 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
 import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
+import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
@@ -416,6 +418,8 @@ export function hasUnansweredLeadMessage(
 
 const PAYMENT_TERMS_PATTERN = /\bparcel/i;
 const DELIVERY_TIME_PATTERN = /\bquand?o.*\b(instal|entreg|chega)/i;
+const CHEAPER_PATTERN = /\bbarat/i;
+const LOWEST_PRICE_PATTERN = /\bmenor preço\b/i;
 
 const HANDOFF_PATTERNS: RegExp[] = [
   /\bdesconto\b/i,
@@ -423,8 +427,8 @@ const HANDOFF_PATTERNS: RegExp[] = [
   /\bdescont/i,
   /\bnegoci/i,
   PAYMENT_TERMS_PATTERN,
-  /\bbarat/i,
-  /\bmenor preço\b/i,
+  CHEAPER_PATTERN,
+  LOWEST_PRICE_PATTERN,
   /\bfechar\b.*\b(hoje|agora|pedido)\b/i,
   /\bfinaliz/i,
   DELIVERY_TIME_PATTERN,
@@ -444,6 +448,7 @@ const INSTITUTIONAL_HANDOFF_PATTERNS = new Set<RegExp>([
   PAYMENT_TERMS_PATTERN,
   DELIVERY_TIME_PATTERN,
 ]);
+const PRICE_COMPARISON_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_PATTERN]);
 
 export function detectHandoffNeeded(
   text: string,
@@ -455,8 +460,12 @@ export function detectHandoffNeeded(
     /^se\s+eu\s+fechar\b/i.test(normalized);
   if (informationalQuestion) return { needed: false };
   const answeredByPolicy = resolveInstitutionalPolicies(text, commercialRules) !== null;
+  // "Qual o mais barato?" compara preços cadastrados; só pedido de condição
+  // nova (desconto, "faz por", "melhora o valor") é negociação.
+  const priceComparison = isPriceComparisonRequest(text);
   for (const re of HANDOFF_PATTERNS) {
     if (answeredByPolicy && INSTITUTIONAL_HANDOFF_PATTERNS.has(re)) continue;
+    if (priceComparison && PRICE_COMPARISON_PATTERNS.has(re)) continue;
     if (re.test(text)) return { needed: true, reason: re.source };
   }
   return { needed: false };
@@ -936,7 +945,9 @@ export async function sendWhatsappText(params: {
     source: "ai_agent",
     source_metadata: {
       ...(params.metadata ?? {}),
-      catalog_product_ids: (params.productIds ?? []).slice(0, 5),
+      // Todos os produtos apresentados (até o limite de opções exaustivas),
+      // para "qual deles é mais barato?" comparar o conjunto inteiro.
+      catalog_product_ids: (params.productIds ?? []).slice(0, MAX_SALES_AGENT_PRODUCT_IMAGES),
     },
   });
   await supabaseAdmin

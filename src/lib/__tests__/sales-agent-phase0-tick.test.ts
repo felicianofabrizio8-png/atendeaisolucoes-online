@@ -91,6 +91,8 @@ type Scenario = {
   statusDuringTurn?: string | null;
   /** Linha de marketing_knowledge_base (políticas cadastradas da empresa). */
   commercial?: Record<string, unknown> | null;
+  /** Linhas ativas de products da empresa (padrão: um item). */
+  products?: Array<Record<string, unknown>>;
 };
 
 const product = {
@@ -217,7 +219,7 @@ function install(scenario: Scenario) {
         error: null,
       };
     }
-    if (table === "products") return { data: [product], error: null };
+    if (table === "products") return { data: scenario.products ?? [product], error: null };
     if (table === "marketing_knowledge_base") {
       return { data: scenario.commercial ?? null, error: null };
     }
@@ -545,5 +547,48 @@ describe("runAgentTick · Fase 1", () => {
     expect(decideSpy).not.toHaveBeenCalled();
     expect(sentTexts()).toEqual([AUDIO_UNAVAILABLE_REPLY]);
     expect(statusUpdates()).not.toContain("aguardando_humano");
+  });
+});
+
+describe("runAgentTick · comparação de preço ponta a ponta (sem LLM)", () => {
+  it("'qual você tem boa de preço?' após apresentar produtos responde com preços reais", async () => {
+    decideSpy.mockRestore();
+    const row = (id: string, name: string, price: number, lengthM = 6) => ({
+      ...product,
+      id,
+      name,
+      price,
+      promo_price: null,
+      length_m: lengthM,
+    });
+    install({
+      products: [
+        row("p-1", "Opção Um", 21_000),
+        row("p-2", "Opção Dois", 18_000),
+        row("p-3", "Opção Três", 19_500),
+        row("p-4", "Opção Quatro", 12_000, 5),
+      ],
+      histories: [
+        [
+          { role: "lead", text: "estava pensando em 6 metros", at: "2026-09-30T12:00:00Z" },
+          {
+            role: "agent",
+            text: "Temos estas opções de 6 m.",
+            at: "2026-09-30T12:00:10Z",
+            source_metadata: { catalog_product_ids: ["p-1", "p-2", "p-3"] },
+          },
+          { role: "lead", text: "Qual voce tem boa de preço ai?", at: "2026-09-30T12:01:00Z" },
+        ],
+      ],
+    });
+
+    const result = await runAgentTick(CONV);
+
+    expect(result).toMatchObject({ action: "replied" });
+    expect(statusUpdates()).not.toContain("aguardando_humano");
+    const [text] = sentTexts();
+    expect(text).toContain("Opção Dois (R$ 18.000,00)");
+    expect(text).not.toContain("Opção Quatro");
+    expect(text.indexOf("Opção Dois")).toBeLessThan(text.indexOf("Opção Três"));
   });
 });
