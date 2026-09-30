@@ -120,7 +120,7 @@ import {
 
 import type { LibraryPick } from "@/lib/inbox/types";
 
-import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
+import { listQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { SmartImage } from "@/components/SmartImage";
 import { getQuote, markQuoteSent, type Quote } from "@/data/quotes";

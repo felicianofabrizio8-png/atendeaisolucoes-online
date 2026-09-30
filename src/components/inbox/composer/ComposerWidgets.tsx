@@ -10,7 +10,7 @@ import { SendLocationDialog } from "@/components/SendLocationDialog";
 import { listProducts, subscribeProducts, type Product } from "@/data/products";
 import { productMatches } from "@/lib/product-search";
 import { buildProductCaption, buildProductCardSubtitle } from "@/lib/product-caption";
-import { listQuickReplies, ensureDefaultQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
+import { listQuickReplies, updateQuickReply, type QuickReply } from "@/data/quickReplies";
 import { SmartImage } from "@/components/SmartImage";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -209,7 +209,7 @@ export function QuickRepliesButton({
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    ensureDefaultQuickReplies(companyId)
+    listQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
         setItems(rows.filter((r) => r.active));
@@ -443,7 +443,7 @@ export function MediaSendPanel({
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    ensureDefaultQuickReplies(companyId)
+    listQuickReplies(companyId)
       .then((rows) => {
         if (cancelled) return;
         setQuickReplies(rows.filter((r) => r.active));
