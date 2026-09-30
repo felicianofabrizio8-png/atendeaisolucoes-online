@@ -135,7 +135,7 @@ export const Route = createFileRoute("/api/whatsapp/send-reply")({
         if (!lead || lead.company_id !== companyId) {
           return Response.json({ error: "lead não encontrado" }, { status: 404 });
         }
-        if (lead.status === "fechado" || lead.status === "perdido" || lead.closed_at) {
+        if (lead.status === "perdido") {
           return Response.json({ error: "conversa fechada não aceita novas mensagens" }, { status: 409 });
         }
         const recipient = String(lead?.external_id ?? lead?.phone ?? "").replace(/\D/g, "");
