@@ -57,6 +57,7 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
 import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
+import { getConversationFocusProductIds, withConversationFocus } from "./sales-agent-focus";
 import {
   customerContextFromEventPayload,
   mergeCustomerContext,
@@ -740,7 +741,7 @@ export async function runAgentTurn(params: {
     ? (contextualMemoryError ? "error" : "missing")
     : memoryStatus;
   const interpretation = interpretSalesAgentTurn(effectiveHistory);
-  const catalogSearch = resolveSalesAgentCatalogSearch(
+  const lexicalCatalogSearch = resolveSalesAgentCatalogSearch(
     interpretation,
     safeContext,
     memoryStatus === "error" ? null : previousSalesState,
@@ -748,6 +749,21 @@ export async function runAgentTurn(params: {
       continuityEnabled: resolveSalesAgentMode(params.ctx.settings) !== null,
       structuredInterpretation: interpretation.structured,
     },
+  );
+  // Foco da conversa (produtos em discussão), resolvido no histórico e na
+  // memória do tenant. A busca lê só a última mensagem; em continuação sem
+  // referência forte ("quanto tá?"), o foco entra com seus fatos validados.
+  const validatedById = new Map(validatedCatalog.map((product) => [product.id, product]));
+  const focusProductIds = getConversationFocusProductIds(effectiveHistory, [
+    ...(previousCustomerContext?.presentedProductIds ?? []),
+    ...(memoryStatus === "error" ? [] : previousSalesState?.lastValidProductIds ?? []),
+  ]).filter((id) => validatedById.has(id));
+  const catalogSearch = withConversationFocus(
+    lexicalCatalogSearch,
+    focusProductIds.flatMap((id) => {
+      const product = validatedById.get(id);
+      return product ? [product] : [];
+    }),
   );
   if (catalogSearch.status === "query_error") {
     await logEvent(params.ctx.settings.company_id, stateScope?.scopeId ?? null, null, "ai_flow_step", {
@@ -876,6 +892,7 @@ export async function runAgentTurn(params: {
       attributeMatches: filterProductsByStructuredAttributes(validatedCatalog, effectiveHistory),
     },
     customerContext: previousCustomerContext,
+    focusProductIds,
   });
   // Customer Context: memória comercial da conversa, atualizada pelo plano
   // que o LLM escolheu e o gate validou.

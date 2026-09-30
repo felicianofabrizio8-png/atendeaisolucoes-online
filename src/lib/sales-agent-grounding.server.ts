@@ -116,7 +116,18 @@ export type CatalogSearchResult =
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: CatalogProduct[] }
   /** `exhaustive`: conjunto completo de compatíveis (atributo/medida ou comparação de preço). */
-  | { status: "matches"; products: CatalogProduct[]; exhaustive?: boolean };
+  | {
+      status: "matches";
+      products: CatalogProduct[];
+      exhaustive?: boolean;
+      /** Ausente = referência forte (explícita, contextual, alias ou atributo). */
+      basis?: CatalogMatchBasis;
+      /** IDs em foco na conversa incluídos no conjunto (ver sales-agent-focus). */
+      focusProductIds?: string[];
+    };
+
+/** Base fraca: casamento só textual da última mensagem, ou conjunto padrão; "focus" = com foco da conversa. */
+export type CatalogMatchBasis = "text_match" | "default" | "focus";
 
 export type CatalogSearchOptions = {
   continuityEnabled?: boolean;
@@ -322,10 +333,11 @@ export function searchSalesAgentCatalog(
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.product);
-  if (ranked.length > 0) return { status: "matches", products: ranked };
+  // Correspondência só textual/lexical da última mensagem: base fraca.
+  if (ranked.length > 0) return { status: "matches", products: ranked, basis: "text_match" };
   if (isSpecificProductQuestion(query)) return { status: "no_match", products: [] };
-  if (isGenericProductQuestion(query)) return { status: "matches", products };
-  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS) };
+  if (isGenericProductQuestion(query)) return { status: "matches", products, basis: "default" };
+  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS), basis: "default" };
 }
 
 const PLAYBOOK_RULE_CATEGORIES = new Set([

@@ -396,6 +396,34 @@ describe("conversa comercial completa conduzida pela Sales Intelligence", () => 
     expect(store.conversation.ai_status).toBe("aguardando_humano");
   });
 
+  it("continuação 'e quanto tá?' leva ao LLM os fatos do produto em foco e responde sem handoff", async () => {
+    customerSays("tenho pouco espaço, qual mesa?");
+    llm.mockResolvedValueOnce(
+      llmTurn("respond_to_customer", {
+        message: "Para pouco espaço, a Mesa Compacta 90 é a mais indicada.",
+        suggest_products: ["desk-90"],
+        sales_plan: { stage: "recommendation", next_action: "recommend_products" },
+      }),
+    );
+    await runAgentTick(CONV);
+
+    customerSays("e quanto tá?");
+    llm.mockResolvedValueOnce(
+      llmTurn("respond_to_customer", {
+        message: "A Mesa Compacta 90 sai por R$ 890,00.",
+        suggest_products: ["desk-90"],
+        sales_plan: { stage: "recommendation", next_action: "answer_question" },
+      }),
+    );
+    const result = await runAgentTick(CONV);
+
+    expect(result).toMatchObject({ action: "replied" });
+    const prompt = systemPromptOfCall(1);
+    expect(prompt).toContain("Mesa Compacta 90 (ID: desk-90) [em foco na conversa]");
+    expect(prompt).toContain("Preço cadastrado: R$ 890,00");
+    expect(sentTexts().at(-1)).toBe("A Mesa Compacta 90 sai por R$ 890,00.");
+  });
+
   it("memória é por empresa: evento de outra empresa não é carregado", async () => {
     store.events.push({
       company_id: "outra-empresa",

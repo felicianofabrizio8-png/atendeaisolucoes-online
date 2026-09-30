@@ -13,6 +13,8 @@ import {
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
+import { getConversationFocusProductIds } from "./sales-agent-focus";
+import { segmentClaimsByProduct } from "./sales-agent-claim-anchors";
 import {
   SALES_NEXT_ACTIONS,
   SALES_NEXT_ACTION_DESCRIPTIONS,
@@ -233,7 +235,15 @@ export type SalesAgentCatalogSearch =
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: SalesAgentGrounding["catalog"] }
   /** `exhaustive`: todos os compatíveis por atributo/medida ou comparação de preço (sem corte em 3). */
-  | { status: "matches"; products: SalesAgentGrounding["catalog"]; exhaustive?: boolean };
+  | {
+      status: "matches";
+      products: SalesAgentGrounding["catalog"];
+      exhaustive?: boolean;
+      /** Ausente = referência forte; "text_match"/"default" = base fraca; "focus" = inclui o foco da conversa. */
+      basis?: "text_match" | "default" | "focus";
+      /** Produtos em foco na conversa presentes no conjunto (vão marcados no prompt). */
+      focusProductIds?: string[];
+    };
 
 export interface SalesAgentCoreInput {
   ctx: AgentContext;
@@ -256,6 +266,8 @@ export interface SalesAgentCoreInput {
   followUpContext?: boolean;
   /** Memória comercial da conversa (Customer Context) carregada do turno anterior. */
   customerContext?: CustomerContext | null;
+  /** Produtos em foco na conversa (histórico + memória), já validados no catálogo do tenant. */
+  focusProductIds?: string[];
   /** Catálogo ativo completo + compatíveis por medida, para executar a comparação. */
   priceComparison?: {
     catalog: SalesAgentGrounding["catalog"];
@@ -920,6 +932,8 @@ function validateObjectiveProductClaims(
   suggestedProductIds: string[],
   commercialRules: SalesAgentGrounding["commercialRules"],
   history: SalesAgentCoreInput["history"],
+  /** Produto ao qual este trecho se refere (segmento ancorado). */
+  anchor?: SalesAgentGrounding["catalog"][number],
 ): boolean {
   // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
   // ("Fica R$ 5.000. Posso reservar?").
@@ -947,12 +961,26 @@ function validateObjectiveProductClaims(
     const product = products.find((candidate) => candidate.id === id);
     return product ? [product] : [];
   });
-  const resolvedProduct = resolveCatalogProductReferenceWithContext(
-    message,
-    products,
-    presentedProducts,
-  );
-  if (resolvedProduct.ambiguous) return false;
+  const resolvedProduct = anchor
+    ? { product: anchor, ambiguous: false }
+    : resolveCatalogProductReferenceWithContext(message, products, presentedProducts);
+  if (resolvedProduct.ambiguous) {
+    // Resposta sobre vários produtos: cada afirmação é validada contra o
+    // produto cuja menção a inicia no texto. Sem âncora, não há validação
+    // possível e o guardrail bloqueia.
+    const segments = segmentClaimsByProduct(message, products);
+    if (!segments || segments.length < 2) return false;
+    return segments.every((segment) =>
+      validateObjectiveProductClaims(
+        segment.text,
+        [segment.product],
+        [segment.product.id],
+        commercialRules,
+        history,
+        segment.product,
+      ),
+    );
+  }
   const byMention = resolvedProduct.product
     ? [resolvedProduct.product]
     : products.filter((product) =>
@@ -1164,6 +1192,7 @@ export function buildSalesAgentSystemPrompt(
   const catalogSearch = ctx.grounding.catalogSearch;
   const usesGroundedCatalog = catalogSearch.status === "matches";
   const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
+  const focusIds = new Set(usesGroundedCatalog ? catalogSearch.focusProductIds ?? [] : []);
   const relevantFaqs = selectRelevantFaqs(
     ctx.grounding.faqKnowledge,
     ai?.faq ?? [],
@@ -1172,7 +1201,7 @@ export function buildSalesAgentSystemPrompt(
   );
   const productLines = groundedProducts
     .map((p, i) => {
-      const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
+      const parts = [`${i + 1}. ${p.name} (ID: ${p.id})${focusIds.has(p.id) ? " [em foco na conversa]" : ""}`];
       if (p.model) parts.push(`   Modelo: ${p.model}`);
       if (p.sku) parts.push(`   SKU: ${p.sku}`);
       if (p.category) parts.push(`   Categoria: ${p.category}`);
@@ -1306,7 +1335,11 @@ CONTEXTO DA EMPRESA:
 - Diferenciais: ${ai?.differentials ?? "—"}
 - Pagamento (apenas mencionar formas, sem negociar): ${ctx.grounding.commercialRules.paymentPolicy || ctx.grounding.commercialRules.paymentMethods ? "—" : ai?.payment_methods ?? "—"}
 
-CATÁLOGO (use apenas estes produtos):
+CATÁLOGO (use apenas estes produtos):${
+    focusIds.size > 0
+      ? "\nOs marcados [em foco na conversa] são os que o cliente acabou de ver; interprete pelo histórico a que produto(s) ele se refere e use só os fatos listados aqui."
+      : ""
+  }
 ${productLines || "(catálogo vazio)"}
 
 REGRA DE REFERÊNCIA DE PRODUTO:
@@ -1668,12 +1701,22 @@ export class SalesAgentCore {
       ) {
         const known = params.priceComparison?.catalog ?? params.ctx.catalogForValidation ?? [];
         const knownById = new Map(known.map((product) => [product.id, product]));
-        const presented = getPresentedProductIds(params.history).flatMap((id) => {
+        // Foco resolvido pelo runtime (histórico + memória); sem ele, o último
+        // conjunto apresentado no histórico.
+        const focusIds = params.focusProductIds?.length
+          ? params.focusProductIds
+          : getConversationFocusProductIds(params.history);
+        const presented = focusIds.flatMap((id) => {
           const product = knownById.get(id);
           return product ? [product] : [];
         });
         if (presented.length > 0) {
-          const followUpSearch: SalesAgentCatalogSearch = { status: "matches", products: presented };
+          const followUpSearch: SalesAgentCatalogSearch = {
+            status: "matches",
+            products: presented,
+            basis: "focus",
+            focusProductIds: presented.map((product) => product.id),
+          };
           return this.decide({
             ...params,
             followUpContext: true,
