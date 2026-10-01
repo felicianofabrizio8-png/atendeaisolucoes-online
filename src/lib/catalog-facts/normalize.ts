@@ -392,6 +392,9 @@ export function normalizeProductFacts(product: FactSourceProduct): NormalizedPro
   if (variants.length > 0) {
     push(UNIVERSAL_FACT_KEYS.variants, "Variantes", { kind: "list", items: variants }, "field");
   }
+  // Fallback legado temporário: descrição/observações ainda valem como fato
+  // (texto livre) até as empresas tiparem as características; a auditoria
+  // sinaliza grandezas que só existem aqui (fact_only_in_free_text).
   const description = text(product.description);
   if (description) {
     push(

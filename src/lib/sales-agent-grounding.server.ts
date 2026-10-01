@@ -893,6 +893,7 @@ export function selectRelevantSalesAgentProducts(
     if (selected.length > 0) return selected;
   }
 
+  // TODO(fase-2-multissegmento): hardcode de piscina (conceitos de intenção fixos: aquecimento, acessórios...).
   const intentConcepts = [
     /\bfibr/,
     /\bvinil/,

@@ -577,6 +577,7 @@ function messageHasOnlyValidatedProductFacts(
   ) {
     return false;
   }
+  // TODO(fase-2-multissegmento): hardcode de piscina (lista de formatos); remover quando fact_claims cobrir o legado.
   const claimedShape = declaredFacts
     ? undefined
     : ["retangular", "quadrad", "redond", "oval"].find((shape) => normalized.includes(shape));
@@ -632,6 +633,7 @@ export function buildValidatedCatalogReply(
   return `${confirmation}Encontrei no catálogo: ${items.join(" ")}`;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (intenção "quadrada/reta" → retangular).
 export function hasRectangularPoolIntent(
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
 ): boolean {
@@ -792,6 +794,8 @@ function sameCatalogNumber(left: number, right: number): boolean {
   return Math.abs(left - right) < 0.001;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (campos técnicos e sinônimos fixos). Safety net do caminho
+// legado; os fatos declarados (fact_claims) não dependem disto.
 const TECHNICAL_FIELD_SYNONYMS: Record<string, string[]> = {
   material: ["material", "composicao", "revestimento"],
   potencia: ["potencia"],
@@ -840,6 +844,7 @@ function technicalValueMatches(actual: string, expected: string): boolean {
   return false;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (vocabulário fixo: fibra, vinil, filtro, bomba, aquecimento...).
 function objectiveClaimSentences(message: string): string[] {
   return message
     .split(/[.!?;\n]+/)
@@ -1115,6 +1120,7 @@ function validateObjectiveProductClaims(
   );
   return objectiveSentences.every((sentence) => {
     const normalizedSentence = comparablePromptText(sentence);
+    // TODO(fase-2-multissegmento): hardcode de piscina (roteamento de frase por palavra-chave do segmento).
     const relevantFacts = /\binstalacao\b/.test(normalizedSentence)
       ? [
           comparablePromptText(commercialRules.installationPolicy ?? ""),
@@ -1186,6 +1192,7 @@ function validateObjectiveProductClaims(
     );
     // Característica afirmada (presença de recurso/material/serviço) precisa
     // existir no cadastro do produto ou nas políticas cadastradas.
+    // TODO(fase-2-multissegmento): hardcode de piscina (lista de recursos/materiais).
     const claimedFeatures = normalizedSentence.match(
       /\b(?:fibra|vinil|filtro|bomba|aquecimento|aqueci\w*|drenagem|instalacao|inclus[oa]s?)\b/g,
     ) ?? [];
