@@ -61,7 +61,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
   return (
     <>
       <article
-        className="relative isolate flex min-h-[222px] min-w-0 flex-col justify-between overflow-hidden rounded-[18px] border border-foreground/35 bg-background dark:bg-black p-5"
+        className="relative isolate flex min-h-[248px] min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card/60 p-5 shadow-sm shadow-black/20 transition-shadow duration-200 hover:shadow-md hover:shadow-black/25 sm:min-h-[272px] sm:p-6 xl:min-h-[288px] xl:p-7"
         aria-label={`Orçamento de ${lead?.name ?? "cliente não selecionado"}`}
       >
         <div
@@ -71,54 +71,69 @@ export function QuoteCard({ quote }: { quote: Quote }) {
         />
         <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-3">
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span aria-hidden="true" className="h-9 w-9 shrink-0 rounded-full bg-foreground" />
+            <span
+              aria-hidden="true"
+              className="h-10 w-10 shrink-0 rounded-full bg-foreground sm:h-11 sm:w-11"
+            />
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-bold leading-tight" title={lead?.name}>
+              <h2
+                className="truncate text-base font-bold leading-tight sm:text-lg"
+                title={lead?.name}
+              >
                 {lead?.name ?? "Sem cliente"}
               </h2>
-              <p className="truncate text-xs font-semibold">
+              <p className="truncate text-sm font-semibold text-muted-foreground sm:text-base">
                 {lead?.phone || lead?.handle || "Sem telefone"}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1">
-            <span className="text-[9px] font-medium text-muted-foreground">
+            <span className="text-[10px] font-medium text-muted-foreground sm:text-xs">
               Val. {quoteDate(quote.validUntil).replace(/\/(\d{2})(\d{2})$/, "/$2")}
             </span>
             <button
               onClick={() => setDetailsOpen(true)}
-              className={cn(button, "min-h-7 px-3 text-[10px] font-semibold")}
+              className={cn(
+                button,
+                "min-h-8 px-3.5 text-[11px] font-semibold sm:min-h-9 sm:px-4 sm:text-xs",
+              )}
             >
               Detalhes
             </button>
           </div>
         </div>
-        <div className="mt-16 flex flex-wrap items-end justify-between gap-3">
+        <div className="mt-10 flex flex-wrap items-end justify-between gap-3 sm:mt-12">
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setWaOpen(true)}
               disabled={!canWhatsApp}
               title={canWhatsApp ? "Enviar pelo WhatsApp" : "Cliente sem telefone válido"}
-              className={cn(button, "h-8 min-w-20 px-4 text-xs font-semibold")}
+              className={cn(
+                button,
+                "h-9 min-w-24 px-5 text-sm font-semibold sm:h-10 sm:min-w-28 sm:px-6",
+              )}
             >
               Enviar
             </button>
             <button
               onClick={() => setEditing(true)}
               aria-label="Editar orçamento"
-              className={cn(button, "h-8 w-8")}
+              className={cn(button, "h-9 w-9 sm:h-10 sm:w-10")}
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="h-4 w-4" />
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
               aria-label="Excluir orçamento"
-              className={cn(button, "h-8 w-8 border-red-600/70 text-red-500 hover:bg-red-500/10")}
+              className={cn(
+                button,
+                "h-9 w-9 border-red-600/70 text-red-500 hover:bg-red-500/10 sm:h-10 sm:w-10",
+              )}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
-          <p className="ml-auto text-right text-[clamp(1.5rem,2.8vw,2rem)] font-bold leading-none tracking-tight">
+          <p className="ml-auto text-right text-[clamp(1.7rem,3vw,2.5rem)] font-bold leading-none tracking-tight">
             {new Intl.NumberFormat("pt-BR", {
               style: "currency",
               currency: "BRL",

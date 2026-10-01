@@ -110,8 +110,8 @@ function QuotesPage() {
 
   return (
     <div className="min-w-0 flex-1 overflow-y-auto bg-background dark:bg-black text-foreground">
-      <div className="@container mx-auto w-full max-w-6xl px-5 py-8 sm:px-10 lg:px-16 lg:py-10">
-        <header className="mb-8 flex items-center justify-between gap-4">
+      <div className="@container mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 xl:px-10 2xl:px-12">
+        <header className="mb-7 flex items-center justify-between gap-4 sm:mb-8">
           <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Orçamentos</h1>
           <button
             onClick={openCreate}
@@ -121,7 +121,7 @@ function QuotesPage() {
           </button>
         </header>
         <div
-          className="relative mb-9"
+          className="relative mx-auto mb-9 w-full max-w-5xl"
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
           }}
@@ -211,7 +211,7 @@ function QuotesPage() {
                 Nenhum orçamento encontrado. Tente outro nome, telefone ou produto.
               </p>
             )}
-            <div className="grid grid-cols-1 gap-6 @min-[760px]:grid-cols-2 @min-[760px]:gap-x-12 @min-[760px]:gap-y-12">
+            <div className="grid grid-cols-1 gap-5 sm:gap-6 @min-[880px]:grid-cols-2 @min-[880px]:gap-x-8 @min-[880px]:gap-y-8 xl:@min-[880px]:gap-x-10 2xl:@min-[880px]:gap-x-12">
               {visibleQuotes.map((q) => (
                 <QuoteCard key={q.id} quote={q} />
               ))}
