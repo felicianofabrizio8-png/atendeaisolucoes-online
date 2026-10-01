@@ -227,6 +227,18 @@ export interface AgentDecision {
    * conjunto de validação sem que o cliente tenha visto.
    */
   presented_product_ids?: string[];
+  /** Quando a validação bloqueia/troca a resposta do LLM: texto rejeitado e fatos usados. */
+  validation_diagnostic?: SalesAgentValidationDiagnostic;
+}
+
+export interface SalesAgentValidationDiagnostic {
+  /** Qual verificação rejeitou: objective_claim | product_fact | price_claim. */
+  check: string;
+  rejected_reply: string;
+  suggested_product_ids: string[];
+  /** "reference" (referência forte), "text_match", "default" ou "focus". */
+  catalog_basis: string;
+  validated_products: Array<{ id: string; name: string; price: number | null; promo_price: number | null }>;
 }
 
 export type SalesAgentCatalogSearch =
@@ -1910,6 +1922,21 @@ export class SalesAgentCore {
       ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
       : [];
     const catalogForValidation = catalogSearch.products;
+    // Diagnóstico de validação: o que o LLM escreveu e com quais fatos de
+    // Produtos ele foi validado. Sem isso não há como provar qual afirmação
+    // foi rejeitada (o texto rejeitado nunca é enviado nem era gravado).
+    const validationDiagnostic = (check: string): SalesAgentValidationDiagnostic => ({
+      check,
+      rejected_reply: reply.message.slice(0, 600),
+      suggested_product_ids: modelSuggestions.slice(0, 10),
+      catalog_basis: catalogSearch.basis ?? "reference",
+      validated_products: catalogSearch.products.slice(0, 10).map((product) => ({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        promo_price: product.promoPrice,
+      })),
+    });
     if (
       !validateObjectiveProductClaims(
         reply.message,
@@ -1919,12 +1946,16 @@ export class SalesAgentCore {
         params.history,
       )
     ) {
-      if (institutionalPolicies) return deterministicFallback("catalog_unvalidated_objective_claim");
+      const diagnostic = validationDiagnostic("objective_claim");
+      if (institutionalPolicies) {
+        return { ...deterministicFallback("catalog_unvalidated_objective_claim"), validation_diagnostic: diagnostic };
+      }
       return {
         kind: "handoff",
         reason: "catalog_unvalidated_objective_claim",
         grounding_sources: groundingSources,
         learning_ids_used: learningIdsUsed,
+        validation_diagnostic: diagnostic,
       };
     }
     if (
@@ -1934,7 +1965,10 @@ export class SalesAgentCore {
         catalogSearch.products,
       )
     ) {
-      return deterministicFallback("catalog_invalid_product_fact");
+      return {
+        ...deterministicFallback("catalog_invalid_product_fact"),
+        validation_diagnostic: validationDiagnostic("product_fact"),
+      };
     }
     if (
       !isNonFactualReply &&
@@ -1950,10 +1984,13 @@ export class SalesAgentCore {
     const factualPriceClaims = extractFactualPriceClaims(reply.message, params.history);
     if (factualPriceClaims.length > 0 && !institutionalPolicies) {
       if (selectedProducts.length === 0) {
-        return safeHandoff("catalog_unvalidated_price_claim");
+        return { ...safeHandoff("catalog_unvalidated_price_claim"), validation_diagnostic: validationDiagnostic("price_claim") };
       }
       if (!factualPriceClaimsMatchProducts(factualPriceClaims, selectedProducts)) {
-        return deterministicFallback("catalog_unvalidated_price_claim");
+        return {
+          ...deterministicFallback("catalog_unvalidated_price_claim"),
+          validation_diagnostic: validationDiagnostic("price_claim"),
+        };
       }
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)

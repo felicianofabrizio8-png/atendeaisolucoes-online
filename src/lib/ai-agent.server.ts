@@ -1716,6 +1716,7 @@ async function runAgentTickPass(
         reason,
         grounding_sources: decision.grounding_sources ?? [],
         learning_ids_used: decision.learning_ids_used ?? [],
+        ...(decision.validation_diagnostic ? { validation_diagnostic: decision.validation_diagnostic } : {}),
       });
       await writeSalesAgentAudit("handoff", evType, decision.suggested_products ?? [], ["safety_layer", "handoff"], reason);
       await sendHandoffNotice(conv, ctx.settings, v2Mode);
@@ -1871,6 +1872,7 @@ async function runAgentTickPass(
       suggested_products: decision.suggested_products ?? [],
       grounding_sources: decision.grounding_sources ?? [],
       learning_ids_used: decision.learning_ids_used ?? [],
+      ...(decision.validation_diagnostic ? { validation_diagnostic: decision.validation_diagnostic } : {}),
     });
     await writeSalesAgentAudit("reply", "sent", decision.suggested_products ?? [], ["catalog_search", "action_contract", "whatsapp_text"]);
 
