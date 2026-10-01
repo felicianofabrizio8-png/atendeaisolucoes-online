@@ -1703,20 +1703,23 @@ const validationContext: AgentContext = {
     });
     const prompt = complete.mock.calls[0][0].messages[0].content;
 
-    expect(prompt).toContain("Modelo: Caribe 6");
-    expect(prompt).toContain("SKU: CAR-6X3-AZ");
-    expect(prompt).toContain("Comprimento: 6 m");
-    expect(prompt).toContain("Largura: 3 m");
-    expect(prompt).toContain("Profundidade: 1.4 m");
-    expect(prompt).toContain("Capacidade: 24000 L");
-    expect(prompt).toContain("Formato real: retangular");
-    expect(prompt).toContain('Especificações: {"material":"fibra"}');
-    expect(prompt).toContain('Variantes/cores: [{"name":"Azul","color":"azul"}]');
+    // Cada fato normalizado de Produtos vai ao prompt com a sua chave.
+    expect(prompt).toContain("Modelo: Caribe 6 [modelo]");
+    expect(prompt).toContain("SKU: CAR-6X3-AZ [sku]");
+    expect(prompt).toContain("Comprimento: 6 m [comprimento]");
+    expect(prompt).toContain("Largura: 3 m [largura]");
+    expect(prompt).toContain("Profundidade: 1,4 m [profundidade]");
+    expect(prompt).toContain("Medidas (C x L x P): 6 x 3 x 1,4 m [medidas]");
+    expect(prompt).toContain("Capacidade: 24.000 L [capacidade]");
+    expect(prompt).toContain("Formato: retangular [formato]");
+    expect(prompt).toContain("material: fibra [material]");
+    expect(prompt).toContain("Itens inclusos: Filtro, Bomba [itens_inclusos]");
+    expect(prompt).toContain("Variantes: Azul [variantes]");
     expect(decision.message).toContain("modelo Caribe 6");
-    expect(decision.message).toContain("dimensões 6 x 3 x 1.4 m");
-    expect(decision.message).toContain("capacidade 24000 L");
+    expect(decision.message).toContain("dimensões 6 x 3 x 1,4 m");
+    expect(decision.message).toContain("capacidade 24.000 L");
     expect(decision.message).toContain("formato retangular");
-    expect(decision.message).toContain("variantes/cores: Azul/azul");
+    expect(decision.message).toContain("variantes Azul");
     expect(decision.message).not.toContain("Dados inventados");
   });
 

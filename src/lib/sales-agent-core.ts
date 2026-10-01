@@ -26,6 +26,15 @@ import {
   validatePriceFact,
 } from "./sales-agent-fact-claims";
 import {
+  attributeFacts,
+  normalizeProductFacts,
+  parseDeclaredFactClaims,
+  renderFactValue,
+  UNIVERSAL_FACT_KEYS,
+  validateDeclaredFactClaims,
+  type DeclaredFactClaim,
+} from "./catalog-facts";
+import {
   SALES_NEXT_ACTIONS,
   SALES_NEXT_ACTION_DESCRIPTIONS,
   SALES_STAGES,
@@ -239,6 +248,8 @@ export interface AgentDecision {
   presented_product_ids?: string[];
   /** Quando a validação bloqueia/troca a resposta do LLM: texto rejeitado e fatos usados. */
   validation_diagnostic?: SalesAgentValidationDiagnostic;
+  /** Fatos de produto declarados e validados nesta resposta (auditoria). */
+  fact_claims?: DeclaredFactClaim[];
 }
 
 export interface SalesAgentValidationDiagnostic {
@@ -249,6 +260,12 @@ export interface SalesAgentValidationDiagnostic {
   /** "reference" (referência forte), "text_match", "default" ou "focus". */
   catalog_basis: string;
   validated_products: Array<{ id: string; name: string; price: number | null; promo_price: number | null }>;
+  /** Declarações de fatos enviadas pelo LLM (ausente = contrato antigo). */
+  fact_claims?: DeclaredFactClaim[];
+  /** Declaração rejeitada e o motivo (check fact_claim). */
+  rejected_fact_claim?: DeclaredFactClaim & { reason: string };
+  /** Grandeza afirmada sem declaração validada (check undeclared_fact). */
+  undeclared_quantity?: string;
 }
 
 export type SalesAgentCatalogSearch =
@@ -352,6 +369,8 @@ interface ToolReply {
   learning_ids_used?: string[];
   /** Plano comercial do turno (estágio, próxima ação, contexto do cliente). */
   sales_plan?: unknown;
+  /** Fatos de produto afirmados na mensagem, ligados à chave do fato em Produtos. */
+  fact_claims?: unknown;
 }
 
 interface ToolHandoff {
@@ -512,6 +531,8 @@ function messageHasOnlyValidatedProductFacts(
   message: string,
   selectedProducts: SalesAgentGrounding["catalog"],
   catalog: SalesAgentGrounding["catalog"],
+  /** Fatos declarados e validados por atributo (medidas/formato já conferidos). */
+  declaredFacts = false,
 ): boolean {
   const normalize = (value: string) =>
     value
@@ -535,7 +556,7 @@ function messageHasOnlyValidatedProductFacts(
   }
   // Medidas: cada valor é uma dimensão cadastrada do produto (campo
   // estruturado ou o mesmo fato escrito no próprio cadastro).
-  const claimedMeasures = [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
+  const claimedMeasures = declaredFacts ? [] : [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
     .map((match) => Number(match[1].replace(",", ".")))
     .filter(Number.isFinite);
   if (
@@ -556,9 +577,9 @@ function messageHasOnlyValidatedProductFacts(
   ) {
     return false;
   }
-  const claimedShape = ["retangular", "quadrad", "redond", "oval"].find((shape) =>
-    normalized.includes(shape),
-  );
+  const claimedShape = declaredFacts
+    ? undefined
+    : ["retangular", "quadrad", "redond", "oval"].find((shape) => normalized.includes(shape));
   if (claimedShape) {
     const shapeMatches = selectedProducts.some((product) => {
       const shape = normalize(product.shape ?? "");
@@ -574,48 +595,35 @@ export function buildValidatedCatalogReply(
   options: { rectangularPoolIntent?: boolean; includePrice?: boolean } = {},
 ): string {
   const items = products.map((product) => {
-    const specificationFacts =
-      product.specifications && typeof product.specifications === "object"
-        ? Object.entries(product.specifications as Record<string, unknown>)
-            .map(([key, value]) => `${key}: ${String(value)}`)
-            .join(", ")
-        : "";
-    const variantFacts = (product.variants ?? [])
-      .flatMap((variant) => {
-        if (!variant || typeof variant !== "object") return [];
-        const row = variant as Record<string, unknown>;
-        const values = [row.name, row.color].filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0,
-        );
-        return values.length > 0 ? [values.join("/")] : [];
-      })
-      .join(", ");
-    const facts = [
-      product.model ? `modelo ${product.model}` : null,
-      product.sku ? `SKU ${product.sku}` : null,
-      product.category ? `categoria ${product.category}` : null,
-      options.includePrice
-        ? `preço ${formatPrice(
-            product.promoPrice != null &&
-              Number.isFinite(product.promoPrice) &&
-              product.promoPrice > 0
-              ? product.promoPrice
-              : product.price,
-          )}`
-        : null,
-      product.lengthM != null || product.widthM != null || product.depthM != null
-        ? `dimensões ${[product.lengthM, product.widthM, product.depthM]
-            .filter((value) => value != null)
-            .join(" x ")} m`
-        : null,
-      product.capacityL != null ? `capacidade ${product.capacityL} L` : null,
-      product.shape ? `formato ${product.shape}` : null,
-      product.description || null,
-      product.includedItems?.length ? `itens inclusos: ${product.includedItems.join(", ")}` : null,
-      specificationFacts ? `especificações: ${specificationFacts}` : null,
-      variantFacts ? `variantes/cores: ${variantFacts}` : null,
-      product.notes ? `observações: ${product.notes}` : null,
-    ].filter((fact): fact is string => Boolean(fact));
+    // Fatos normalizados de Produtos (campos universais + atributos da empresa).
+    const normalized = normalizeProductFacts(product).facts;
+    const hasComposite = normalized.some((fact) => fact.key === "medidas" && fact.source === "field");
+    const facts = normalized.flatMap((fact) => {
+      if (fact.key === UNIVERSAL_FACT_KEYS.name) return [];
+      // Colunas de medida já resumidas em "dimensões C x L x P".
+      if (fact.source === "field" && fact.key === "medidas") return [`dimensões ${renderFactValue(fact.value)}`];
+      if (
+        hasComposite &&
+        fact.source === "field" &&
+        ["comprimento", "largura", "profundidade"].includes(fact.key)
+      ) {
+        return [];
+      }
+      if (fact.key === UNIVERSAL_FACT_KEYS.price || fact.key === UNIVERSAL_FACT_KEYS.promoPrice) return [];
+      if (fact.key === UNIVERSAL_FACT_KEYS.description) return [renderFactValue(fact.value)];
+      return [`${fact.label.toLowerCase()} ${renderFactValue(fact.value)}`];
+    });
+    if (options.includePrice) {
+      facts.splice(
+        Math.min(3, facts.length),
+        0,
+        `preço ${formatPrice(
+          product.promoPrice != null && Number.isFinite(product.promoPrice) && product.promoPrice > 0
+            ? product.promoPrice
+            : product.price,
+        )}`,
+      );
+    }
     return `${product.name}${facts.length ? ` — ${facts.join("; ")}` : ""}.`;
   });
   const confirmation = options.rectangularPoolIntent
@@ -962,6 +970,11 @@ function validateObjectiveProductClaims(
   history: SalesAgentCoreInput["history"],
   /** Produto ao qual este trecho se refere (segmento ancorado). */
   anchor?: SalesAgentGrounding["catalog"][number],
+  /**
+   * Fatos já declarados pela interpretação semântica e validados por
+   * atributo: aqui só restam as verificações qualitativas.
+   */
+  options: { skipNumeric?: boolean } = {},
 ): boolean {
   // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
   // ("Fica R$ 5.000. Posso reservar?").
@@ -985,7 +998,7 @@ function validateObjectiveProductClaims(
     .split(/(?<=[.!?;])\s+|\n+/)
     .map((sentence) =>
       splitClauses(sentence)
-        .filter((clause) => !hasNumericFacts(extractNumericFacts(clause)))
+        .filter((clause) => !hasNumericFacts({ ...extractNumericFacts(clause), quantities: [] }))
         .join(", "),
     )
     .filter(Boolean)
@@ -1022,6 +1035,7 @@ function validateObjectiveProductClaims(
         commercialRules,
         history,
         segment.product,
+        options,
       ),
     );
   }
@@ -1049,7 +1063,7 @@ function validateObjectiveProductClaims(
   // (que responde com o catálogo validado); medidas/capacidade são
   // verificadas aqui contra o escopo do turno.
   const factsToCheck = named ? numericFacts : { ...numericFacts, prices: [] };
-  if (!numericFactsHoldFor(factsToCheck, candidates)) return false;
+  if (!options.skipNumeric && !numericFactsHoldFor(factsToCheck, candidates)) return false;
 
   const semanticFacts = candidates.map((product) => ({
     model: comparablePromptText(`${product.name} ${product.model ?? ""}`),
@@ -1064,11 +1078,11 @@ function validateObjectiveProductClaims(
       capacityL: product.capacityL,
       shape: product.shape,
     })),
-    specifications: Object.entries(
-      product.specifications && typeof product.specifications === "object" && !Array.isArray(product.specifications)
-        ? product.specifications
-        : {},
-    ).map(([key, value]) => ({ key: comparablePromptText(key), value: comparablePromptText(String(value)) })),
+    // Atributos da empresa já normalizados (tipados ou legados).
+    specifications: attributeFacts(normalizeProductFacts(product).facts).map((fact) => ({
+      key: comparablePromptText(fact.label),
+      value: comparablePromptText(renderFactValue(fact.value)),
+    })),
     components: comparablePromptText(
       `${product.notes ?? ""} ${(product.includedItems ?? []).join(" ")}`,
     ),
@@ -1290,33 +1304,22 @@ export function buildSalesAgentSystemPrompt(
   const productLines = groundedProducts
     .map((p, i) => {
       const parts = [`${i + 1}. ${p.name} (ID: ${p.id})${focusIds.has(p.id) ? " [em foco na conversa]" : ""}`];
-      if (p.model) parts.push(`   Modelo: ${p.model}`);
-      if (p.sku) parts.push(`   SKU: ${p.sku}`);
-      if (p.category) parts.push(`   Categoria: ${p.category}`);
-      if (p.lengthM != null) parts.push(`   Comprimento: ${p.lengthM} m`);
-      if (p.widthM != null) parts.push(`   Largura: ${p.widthM} m`);
-      if (p.depthM != null) parts.push(`   Profundidade: ${p.depthM} m`);
-      if (p.capacityL != null) parts.push(`   Capacidade: ${p.capacityL} L`);
-      if (p.shape) parts.push(`   Formato real: ${p.shape}`);
-      if (p.description) parts.push(`   ${p.description}`);
-      if (usesGroundedCatalog) {
-        parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
-        if (p.promoPrice != null) {
-          parts.push(`   Preço promocional cadastrado: ${formatPrice(p.promoPrice)}`);
-        }
+      // Fatos normalizados de Produtos; a chave [..] é a que o LLM declara
+      // em fact_claims ao afirmar o fato.
+      const facts = normalizeProductFacts(p).facts;
+      if (!facts.some((fact) => fact.key === UNIVERSAL_FACT_KEYS.price)) {
+        parts.push(`   Preço cadastrado: ${formatPrice(null)}`);
       }
-      if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
-      if (p.includedItems?.length) {
-        parts.push(`   Itens inclusos: ${p.includedItems.join(", ")}`);
+      for (const fact of facts) {
+        if (fact.key === UNIVERSAL_FACT_KEYS.name) continue;
+        const label =
+          fact.key === UNIVERSAL_FACT_KEYS.price
+            ? "Preço cadastrado"
+            : fact.key === UNIVERSAL_FACT_KEYS.promoPrice
+              ? "Preço promocional cadastrado"
+              : fact.label;
+        parts.push(`   ${label}: ${renderFactValue(fact.value)} [${fact.key}]`);
       }
-      if (
-        p.specifications &&
-        typeof p.specifications === "object" &&
-        Object.keys(p.specifications).length > 0
-      ) {
-        parts.push(`   Especificações: ${JSON.stringify(p.specifications)}`);
-      }
-      if (p.variants?.length) parts.push(`   Variantes/cores: ${JSON.stringify(p.variants)}`);
       if (p.images.length > 0) parts.push(`   Fotos cadastradas: ${p.images.length}`);
       return parts.join("\n");
     })
@@ -1448,6 +1451,7 @@ CONTRATO DE AÇÃO:
 3. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
 4. Em pedidos por medida/atributo, os produtos do CATÁLOGO acima já são todos os compatíveis: apresente-os. Se o cliente apenas demonstrar interesse, responda em uma frase curta e natural, sem listar preços ou medidas não pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
 5. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
+6. Em respond_to_customer, declare em fact_claims CADA fato de produto que a mensagem afirma ou nega (preço, medida, quantidade, característica, item incluso, variante...): o ID do produto, a chave [..] do fato no CATÁLOGO a que ele corresponde, o valor exatamente como escrito na mensagem e denies=true se a mensagem nega o fato. Escreva com suas palavras, mas só afirme fatos que existem no CATÁLOGO; pergunta sobre algo sem chave cadastrada não se responde por suposição: diga que vai confirmar ou use request_human_handoff. Sem fato de produto na mensagem, envie fact_claims vazio.
 
 Sempre retorne via tool call (respond_to_customer, compare_catalog_prices OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
@@ -1573,6 +1577,35 @@ export function buildSalesAgentCompletionRequest(
                 description:
                   "IDs dos aprendizados do Coach que influenciaram materialmente esta resposta. Não inclua aprendizados apenas por estarem no contexto.",
               },
+              fact_claims: {
+                type: "array",
+                description:
+                  "Cada fato de produto afirmado ou negado na mensagem, ligado ao fato cadastrado no CATÁLOGO (vazio se a mensagem não afirma fato de produto).",
+                items: {
+                  type: "object",
+                  properties: {
+                    product_id: {
+                      type: "string",
+                      ...nonEmptyEnum(catalogProducts.map((product) => product.id)),
+                    },
+                    fact: {
+                      type: "string",
+                      description: "Chave [..] do fato no CATÁLOGO a que a afirmação se refere.",
+                    },
+                    stated: {
+                      type: "string",
+                      description:
+                        "Valor exatamente como escrito na mensagem (ex.: '1,40 m', 'R$ 12.900,00', 'linho').",
+                    },
+                    denies: {
+                      type: "boolean",
+                      description: "true quando a mensagem nega o fato (ex.: 'não inclui').",
+                    },
+                  },
+                  required: ["product_id", "fact", "stated"],
+                  additionalProperties: false,
+                },
+              },
               sales_plan: {
                 type: "object",
                 description:
@@ -1601,7 +1634,7 @@ export function buildSalesAgentCompletionRequest(
                 additionalProperties: false,
               },
             },
-            required: ["message"],
+            required: ["message", "fact_claims"],
             additionalProperties: false,
           },
         },
@@ -2013,6 +2046,42 @@ export class SalesAgentCore {
         promo_price: product.promoPrice,
       })),
     });
+    // Fatos declarados pela interpretação semântica (o LLM liga cada
+    // afirmação ao fato de Produtos); validação determinística de tipo,
+    // valor e unidade, e cobertura de toda grandeza da resposta.
+    const declaredClaims = parseDeclaredFactClaims(reply.fact_claims);
+    if (declaredClaims) {
+      const claimsResult = validateDeclaredFactClaims({
+        message: reply.message,
+        claims: declaredClaims,
+        products: catalogSearch.products,
+        coverageTexts: Object.values(params.ctx.grounding.commercialRules).filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        ),
+      });
+      if (!claimsResult.ok) {
+        const diagnostic: SalesAgentValidationDiagnostic = {
+          ...validationDiagnostic(claimsResult.check),
+          fact_claims: declaredClaims.slice(0, 20),
+          ...(claimsResult.check === "fact_claim"
+            ? { rejected_fact_claim: { ...claimsResult.claim, reason: claimsResult.reason } }
+            : { undeclared_quantity: claimsResult.quantity }),
+        };
+        if (institutionalPolicies) {
+          return {
+            ...deterministicFallback("catalog_unvalidated_objective_claim"),
+            validation_diagnostic: diagnostic,
+          };
+        }
+        return {
+          kind: "handoff",
+          reason: "catalog_unvalidated_objective_claim",
+          grounding_sources: groundingSources,
+          learning_ids_used: learningIdsUsed,
+          validation_diagnostic: diagnostic,
+        };
+      }
+    }
     if (
       !validateObjectiveProductClaims(
         reply.message,
@@ -2020,6 +2089,8 @@ export class SalesAgentCore {
         requestedSuggestions,
         params.ctx.grounding.commercialRules,
         params.history,
+        undefined,
+        { skipNumeric: declaredClaims != null },
       )
     ) {
       const diagnostic = validationDiagnostic("objective_claim");
@@ -2039,6 +2110,7 @@ export class SalesAgentCore {
         reply.message,
         selectedProducts,
         catalogSearch.products,
+        declaredClaims != null,
       )
     ) {
       return {
@@ -2116,6 +2188,7 @@ export class SalesAgentCore {
       grounding_sources: groundingSources,
       learning_ids_used: learningIdsUsed,
       presented_product_ids: presentedInReply(reply.message, modelSuggestions, catalogSearch.products),
+      ...(declaredClaims ? { fact_claims: declaredClaims } : {}),
       ...(salesPlan ? { sales_plan: salesPlan, after_reply: afterReply } : {}),
     };
   }

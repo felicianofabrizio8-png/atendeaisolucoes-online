@@ -8,6 +8,7 @@ import {
 } from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import { productMatchesMeasure } from "./product-measure-filter";
+import { specificationsSearchText } from "./catalog-facts";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -162,7 +163,7 @@ function catalogSearchText(product: CatalogProduct): string {
       product.depthM == null ? null : `${product.depthM}m`,
       product.capacityL,
       product.shape,
-      product.specifications ? JSON.stringify(product.specifications) : null,
+      product.specifications ? specificationsSearchText(product.specifications) : null,
       product.includedItems?.join(" "),
       product.variants ? JSON.stringify(product.variants) : null,
       product.price,
@@ -911,7 +912,7 @@ export function selectRelevantSalesAgentProducts(
         product.category,
         product.description,
         product.notes,
-        product.specifications ? JSON.stringify(product.specifications) : null,
+        product.specifications ? specificationsSearchText(product.specifications) : null,
       ]
         .filter(Boolean)
         .join(" "),

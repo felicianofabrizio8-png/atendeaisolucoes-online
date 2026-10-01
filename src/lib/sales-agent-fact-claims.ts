@@ -7,7 +7,21 @@
 // próprio cadastro do produto (descrição/observações/especificações). A
 // redação ao redor ("está saindo por", "medidas externas") não é comparada
 // com o catálogo.
+//
+// Os fatos do produto vêm do normalizador de Produtos (campos universais +
+// atributos tipados/legados de cada empresa); números são comparados por
+// família de unidade, nunca por coincidência de dígitos.
 // ============================================================================
+
+import {
+  extractQuantities,
+  factQuantities,
+  normalizeProductFacts,
+  productFactsText,
+  sameQuantity,
+  unitFamily,
+  type Quantity,
+} from "./catalog-facts";
 
 export interface FactProduct {
   name: string;
@@ -20,6 +34,10 @@ export interface FactProduct {
   widthM?: number | null;
   depthM?: number | null;
   capacityL?: number | null;
+  category?: string | null;
+  shape?: string | null;
+  sku?: string | null;
+  variants?: unknown[];
   price: number | null;
   promoPrice: number | null;
 }
@@ -35,6 +53,8 @@ export interface NumericFacts {
   dimensions: number[][];
   measures: number[];
   capacities: number[];
+  /** Demais grandezas físicas (massa, potência, tensão, área...). */
+  quantities: Quantity[];
 }
 
 const EPSILON = 0.001;
@@ -108,7 +128,11 @@ export function extractNumericFacts(text: string): NumericFacts {
   const capacities = [...text.matchAll(CAPACITY_PATTERN)]
     .map((match) => parseNumber(match[1]))
     .filter((value): value is number => value != null);
-  return { prices, dimensions, measures, capacities };
+  const quantities = extractQuantities(withoutTuples).quantities.filter((quantity) => {
+    const family = unitFamily(quantity.unit);
+    return family != null && !["length", "volume", "time", "percent"].includes(family);
+  });
+  return { prices, dimensions, measures, capacities, quantities };
 }
 
 export function hasNumericFacts(facts: NumericFacts): boolean {
@@ -116,35 +140,48 @@ export function hasNumericFacts(facts: NumericFacts): boolean {
     facts.prices.length > 0 ||
     facts.dimensions.length > 0 ||
     facts.measures.length > 0 ||
-    facts.capacities.length > 0
+    facts.capacities.length > 0 ||
+    facts.quantities.length > 0
   );
 }
 
-/** Texto do próprio cadastro do produto (fonte dos fatos sem campo estruturado). */
+/** Texto "Rótulo: valor" dos fatos do cadastro (normalizados). */
 export function productFactText(product: FactProduct): string {
-  const specifications =
-    product.specifications &&
-    typeof product.specifications === "object" &&
-    !Array.isArray(product.specifications)
-      ? Object.entries(product.specifications as Record<string, unknown>)
-          .map(([key, value]) => `${key}: ${String(value)}`)
-          .join(". ")
-      : "";
-  return [
-    product.name,
-    product.model,
-    product.description,
-    product.notes,
-    specifications,
-    ...(product.includedItems ?? []),
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join(". ");
+  return productFactsText(product);
 }
 
-function structuredDimensions(product: FactProduct): number[] {
-  return [product.lengthM, product.widthM, product.depthM].filter(
-    (value): value is number => value != null && Number.isFinite(value),
+/** Grandezas cadastradas do produto (campos + atributos + texto livre). */
+function registeredQuantities(product: FactProduct): Quantity[] {
+  const { facts } = normalizeProductFacts(product);
+  const structured = facts.flatMap((fact) => factQuantities(fact.value));
+  const freeText = facts
+    .filter((fact) => fact.value.kind === "text")
+    .flatMap((fact) => {
+      const extracted = extractQuantities(fact.value.kind === "text" ? fact.value.text : "");
+      return [
+        ...extracted.quantities,
+        ...extracted.dimensions.flatMap((tuple) =>
+          tuple.values.map((value) => ({ value, unit: tuple.unit })),
+        ),
+      ];
+    });
+  return [...structured, ...freeText];
+}
+
+function registeredTuples(product: FactProduct): number[][] {
+  const { facts } = normalizeProductFacts(product);
+  return [
+    ...facts.flatMap((fact) => (fact.value.kind === "dimensions" ? [fact.value.values] : [])),
+    ...extractNumericFacts(productFactText(product)).dimensions,
+  ];
+}
+
+function hasRegisteredQuantity(product: FactProduct, claimed: Quantity): boolean {
+  return registeredQuantities(product).some(
+    (registered) =>
+      registered.unit != null &&
+      unitFamily(registered.unit) === unitFamily(claimed.unit) &&
+      sameQuantity(registered, claimed),
   );
 }
 
@@ -156,31 +193,31 @@ export function validatePriceFact(fact: PriceFact, product: FactProduct): boolea
 }
 
 export function validateDimensionFact(tuple: readonly number[], product: FactProduct): boolean {
-  const structured = structuredDimensions(product);
-  const matchesStructured =
-    tuple.length <= structured.length &&
-    tuple.every((value, index) => same(value, structured[index]));
-  if (matchesStructured) return true;
-  return extractNumericFacts(productFactText(product)).dimensions.some(
-    (registered) =>
-      tuple.length <= registered.length &&
-      tuple.every((value, index) => same(value, registered[index])),
-  );
+  // Mesma sequência cadastrada (campo composto ou texto)...
+  if (
+    registeredTuples(product).some(
+      (registered) =>
+        tuple.length <= registered.length &&
+        tuple.every((value, index) => same(value, registered[index])),
+    )
+  ) {
+    return true;
+  }
+  // ...ou cada medida é uma grandeza de comprimento cadastrada do produto
+  // (ex.: comprimento/largura em campos e profundidade em atributo).
+  return tuple.every((value) => hasRegisteredQuantity(product, { value, unit: "m" }));
 }
 
 export function validateMeasureFact(value: number, product: FactProduct): boolean {
-  if (structuredDimensions(product).some((registered) => same(registered, value))) return true;
-  const text = extractNumericFacts(productFactText(product));
-  return [...text.measures, ...text.dimensions.flat()].some((registered) =>
-    same(registered, value),
-  );
+  return hasRegisteredQuantity(product, { value, unit: "m" });
 }
 
 export function validateCapacityFact(value: number, product: FactProduct): boolean {
-  if (product.capacityL != null && same(product.capacityL, value)) return true;
-  return extractNumericFacts(productFactText(product)).capacities.some((registered) =>
-    same(registered, value),
-  );
+  return hasRegisteredQuantity(product, { value, unit: "L" });
+}
+
+export function validateQuantityFact(quantity: Quantity, product: FactProduct): boolean {
+  return hasRegisteredQuantity(product, quantity);
 }
 
 /** Todo fato numérico do texto é verdadeiro para ALGUM dos produtos dados. */
@@ -199,6 +236,9 @@ export function numericFactsHoldFor(
     ) &&
     facts.capacities.every((value) =>
       products.some((product) => validateCapacityFact(value, product)),
+    ) &&
+    facts.quantities.every((quantity) =>
+      products.some((product) => validateQuantityFact(quantity, product)),
     )
   );
 }

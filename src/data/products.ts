@@ -11,24 +11,19 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { ProductSpecifications, ProductVariant } from "@/lib/product-catalog-fields";
 
-export type ProductCategory =
-  | "Piscinas de fibra"
-  | "Piscinas de vinil"
-  | "Troca de vinil"
-  | "Aquecedores"
-  | "Spas e banheiras"
-  | "Acessórios"
-  | "Tratamento de água";
+/**
+ * Categoria livre, criada por cada empresa (qualquer segmento). "" = sem
+ * categoria. Antes era uma lista fixa de categorias de piscina e qualquer
+ * outra era trocada pela primeira da lista ao carregar.
+ */
+export type ProductCategory = string;
 
-export const PRODUCT_CATEGORIES: ProductCategory[] = [
-  "Piscinas de fibra",
-  "Piscinas de vinil",
-  "Troca de vinil",
-  "Aquecedores",
-  "Spas e banheiras",
-  "Acessórios",
-  "Tratamento de água",
-];
+/** Categorias já usadas no catálogo da empresa (sugestões na tela). */
+export function listProductCategories(products: readonly Pick<Product, "category">[]): string[] {
+  return [...new Set(products.map((product) => product.category.trim()).filter(Boolean))].sort(
+    (left, right) => left.localeCompare(right, "pt-BR"),
+  );
+}
 
 export interface Product {
   id: string;
@@ -222,7 +217,6 @@ function optionalNumber(value: number | string | null | undefined): number | und
 }
 
 export function toProduct(r: DbProduct): Product {
-  const cat = (r.category as ProductCategory) ?? PRODUCT_CATEGORIES[0];
   const images = Array.isArray(r.images)
     ? (r.images.filter((x) => typeof x === "string") as string[])
     : [];
@@ -231,7 +225,7 @@ export function toProduct(r: DbProduct): Product {
     name: r.name,
     model: r.model?.trim() || undefined,
     sku: r.sku?.trim() || undefined,
-    category: PRODUCT_CATEGORIES.includes(cat) ? cat : PRODUCT_CATEGORIES[0],
+    category: r.category?.trim() ?? "",
     description: r.description ?? undefined,
     lengthM: optionalNumber(r.length_m),
     widthM: optionalNumber(r.width_m),
@@ -266,7 +260,7 @@ export function toDbProductFields(input: Omit<Product, "id">) {
     name: input.name,
     model: input.model ?? null,
     sku: input.sku ?? null,
-    category: input.category,
+    category: input.category.trim() || null,
     description: input.description ?? null,
     length_m: input.lengthM ?? null,
     width_m: input.widthM ?? null,
@@ -417,7 +411,7 @@ export async function updateProduct(
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.model !== undefined) dbPatch.model = patch.model ?? null;
     if (patch.sku !== undefined) dbPatch.sku = patch.sku ?? null;
-    if (patch.category !== undefined) dbPatch.category = patch.category;
+    if (patch.category !== undefined) dbPatch.category = patch.category.trim() || null;
     if (patch.description !== undefined) dbPatch.description = patch.description ?? null;
     if (patch.lengthM !== undefined) dbPatch.length_m = patch.lengthM ?? null;
     if (patch.widthM !== undefined) dbPatch.width_m = patch.widthM ?? null;
@@ -435,6 +429,7 @@ export async function updateProduct(
       .from("products")
       .update(dbPatch)
       .eq("id", id)
+      .eq("company_id", companyId)
       .select(PRODUCT_SELECT)
       .single();
 

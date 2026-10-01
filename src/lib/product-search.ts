@@ -1,7 +1,7 @@
 // Shared product search matcher — used by the main Products catalog page and
 // by the in-chat Products Library modal. Keep a single source of truth so
 // filter behavior stays consistent across surfaces.
-import { PRODUCT_CATEGORIES, type Product } from "@/data/products";
+import type { Product } from "@/data/products";
 import { parseMeasureQuery, productMatchesMeasure } from "@/lib/product-measure-filter";
 
 export function normalizeSearch(text: string): string {
@@ -17,7 +17,12 @@ export function normalizeSearch(text: string): string {
  *  2. Category name query → exact category match.
  *  3. Free-text fuzzy match on name/category/description/notes (no price).
  */
-export function productMatches(product: Product, rawQuery: string): boolean {
+export function productMatches(
+  product: Product,
+  rawQuery: string,
+  /** Categorias do catálogo da empresa (padrão: a do próprio produto). */
+  categories: readonly string[] = [product.category],
+): boolean {
   if (!rawQuery.trim()) return true;
 
   const measure = parseMeasureQuery(rawQuery);
@@ -30,7 +35,7 @@ export function productMatches(product: Product, rawQuery: string): boolean {
 
   const q = normalizeSearch(rawQuery);
   const productCat = normalizeSearch(product.category ?? "");
-  const isCategoryQuery = PRODUCT_CATEGORIES.some((cat) => {
+  const isCategoryQuery = categories.filter(Boolean).some((cat) => {
     const nc = normalizeSearch(cat);
     return nc === q || nc.startsWith(q) || nc.endsWith(q);
   });

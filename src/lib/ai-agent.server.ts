@@ -1873,6 +1873,8 @@ async function runAgentTickPass(
       grounding_sources: decision.grounding_sources ?? [],
       learning_ids_used: decision.learning_ids_used ?? [],
       ...(decision.validation_diagnostic ? { validation_diagnostic: decision.validation_diagnostic } : {}),
+      // Fatos de Produtos que a resposta afirmou (declarados e validados).
+      ...(decision.fact_claims ? { fact_claims: decision.fact_claims.slice(0, 20) } : {}),
     });
     await writeSalesAgentAudit("reply", "sent", decision.suggested_products ?? [], ["catalog_search", "action_contract", "whatsapp_text"]);
 
