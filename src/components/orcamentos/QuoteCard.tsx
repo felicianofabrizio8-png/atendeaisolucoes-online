@@ -182,6 +182,7 @@ export function QuoteCard({
                 <DetailField label="Email" value={quote.customerDetails.email} />
                 <DetailField label="Telefone 2" value={quote.customerDetails.phone2} />
                 <DetailField label="Rua" value={quote.customerDetails.street} />
+                <DetailField label="Número" value={quote.customerDetails.number} />
                 <DetailField label="Cidade" value={quote.customerDetails.city} />
                 <DetailField label="Bairro" value={quote.customerDetails.neighborhood} />
                 <DetailField label="Estado" value={quote.customerDetails.state} />

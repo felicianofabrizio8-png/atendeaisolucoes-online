@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { quoteDate, quoteGlow } from "@/lib/quote-presentation";
+import { quoteGlow } from "@/lib/quote-presentation";
 import type { Quote } from "@/data/quotes";
 
 export function QuoteSuccessModal({
@@ -25,7 +25,7 @@ export function QuoteSuccessModal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="isolate flex min-h-[390px] w-[calc(100vw-2rem)] max-w-[720px] flex-col overflow-hidden rounded-[32px] border-white/10 bg-black p-8 text-white shadow-2xl sm:min-h-[440px] sm:p-14">
+      <DialogContent className="isolate flex min-h-[390px] w-[calc(100vw-2rem)] max-w-[720px] flex-col overflow-hidden rounded-[36px] border-white/10 bg-black p-8 text-white shadow-2xl sm:min-h-[440px] sm:rounded-[44px] sm:p-14">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -left-20 -bottom-20 -z-10 h-64 w-64 rounded-full opacity-40 blur-[60px]"
@@ -43,15 +43,6 @@ export function QuoteSuccessModal({
         <DialogDescription className="sr-only">
           Escolha como continuar com o orçamento criado.
         </DialogDescription>
-        <p
-          className="mt-4 max-w-[360px] truncate rounded-full bg-[#1d1d1d] px-4 py-1 text-sm font-semibold text-white/70"
-          title={quote.productName}
-        >
-          {quote.productName}
-        </p>
-        <p className="mt-2 text-sm font-semibold text-white/45">
-          Val. {quoteDate(quote.validUntil).replace(/\/(\d{2})(\d{2})$/, "/$2")}
-        </p>
         <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-12">
           <div className="flex items-center gap-3">
             <button

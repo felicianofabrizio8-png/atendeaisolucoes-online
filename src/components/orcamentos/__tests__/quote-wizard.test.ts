@@ -5,9 +5,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QuoteFormModal } from "../QuoteFormModal";
 import { QuoteSuccessModal } from "../QuoteSuccessModal";
+import { createLead } from "@/data/leadRepo";
 import type { Quote } from "@/data/quotes";
 
-const leads = vi.hoisted(() => []);
+const leads = vi.hoisted(
+  () => [] as Array<{ id: string; name: string; phone: string; channel: "whatsapp" }>,
+);
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ profile: null }) }));
 vi.mock("@/data/leadRepo", () => ({
   getLeads: () => leads,
@@ -15,7 +18,11 @@ vi.mock("@/data/leadRepo", () => ({
   createLead: vi.fn(async ({ name }: { name: string }) => ({ id: "lead-wizard", name })),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  leads.length = 0;
+  vi.mocked(createLead).mockClear();
+});
 
 describe("Criação de orçamento por etapas", () => {
   it("preserva os dados das três fases no orçamento criado", async () => {
@@ -27,6 +34,7 @@ describe("Criação de orçamento por etapas", () => {
     await user.type(screen.getByLabelText("Sobrenome"), "Silva");
     await user.type(screen.getByLabelText("Telefone 1"), "15999991234");
     await user.type(screen.getByLabelText("Cidade"), "Sorocaba");
+    await user.type(screen.getByLabelText("Número"), "42");
     await user.click(screen.getByRole("button", { name: "Avançar" }));
 
     expect(screen.getByText("Produto")).toBeTruthy();
@@ -45,11 +53,32 @@ describe("Criação de orçamento por etapas", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
     const quote = onCreated.mock.calls[0][0];
     expect(quote.customerDetails?.city).toBe("Sorocaba");
+    expect(quote.customerDetails?.number).toBe("42");
     expect(quote.customerDetails?.firstName).toBe("Ana");
     expect(quote.productDescription).toBe("Piscina azul com instalação");
     expect(quote.benefits).toBe("Entrega rápida");
     expect(quote.unitPrice).toBe(14000);
     expect(quote.finalValue).toBe(13000);
+  });
+  it("reutiliza cliente da empresa quando o telefone já está cadastrado", async () => {
+    leads.push({
+      id: "lead-existente",
+      name: "Ana Silva",
+      phone: "5515999991234",
+      channel: "whatsapp",
+    });
+    const user = userEvent.setup();
+    const onCreated = vi.fn<(quote: Quote) => void>();
+    render(createElement(QuoteFormModal, { onCancel: vi.fn(), onCreated }));
+    await user.type(screen.getByLabelText("Nome"), "Ana");
+    await user.type(screen.getByLabelText("Sobrenome"), "Silva");
+    await user.type(screen.getByLabelText("Telefone 1"), "15999991234");
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Criar" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(onCreated.mock.calls[0][0].leadId).toBe("lead-existente");
+    expect(createLead).not.toHaveBeenCalled();
   });
   it("abre a conclusão com envio, edição e visualização", async () => {
     const user = userEvent.setup();
@@ -86,7 +115,8 @@ describe("Criação de orçamento por etapas", () => {
       }),
     );
     expect(screen.getByText(/Orçamento criado/)).toBeTruthy();
-    expect(screen.getByText("Piscina 6 metros")).toBeTruthy();
+    expect(screen.queryByText("Piscina 6 metros")).toBeNull();
+    expect(screen.queryByText(/Val\./)).toBeNull();
     await user.click(screen.getByRole("button", { name: "Enviar" }));
     await user.click(screen.getByRole("button", { name: "Editar orçamento" }));
     await user.click(screen.getByRole("button", { name: "Visualizar" }));

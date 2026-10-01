@@ -28,6 +28,7 @@ export interface QuoteCustomerDetails {
   phone1: string;
   phone2: string;
   street: string;
+  number: string;
   city: string;
   neighborhood: string;
   state: string;
@@ -388,7 +389,10 @@ export async function createQuote(input: QuoteInput, existingId?: string): Promi
       ? supabase.from("quotes").update(values).eq("id", existingId).eq("company_id", companyId)
       : supabase.from("quotes").insert(values);
     const { data, error } = await mutation.select(QUOTE_SELECT).single();
-    if (error) throw error;
+    if (error) {
+      const code = error.code ? ` (${error.code})` : "";
+      throw new Error(`Não foi possível salvar o orçamento${code}: ${error.message}`);
+    }
     const quote = toQuote(data as DbQuote);
     const index = quotes.findIndex((q) => q.id === quote.id);
     if (index >= 0) quotes[index] = quote;

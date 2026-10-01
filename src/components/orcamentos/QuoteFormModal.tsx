@@ -51,13 +51,14 @@ const emptyCustomer: QuoteCustomerDetails = {
   phone1: "",
   phone2: "",
   street: "",
+  number: "",
   city: "",
   neighborhood: "",
   state: "",
   postalCode: "",
 };
 const inputClass =
-  "w-full min-h-10 rounded-md border border-transparent bg-[#1d1d1d] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/50";
+  "quote-form-input w-full min-h-10 rounded-md border border-transparent bg-[#1d1d1d] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/50";
 function FormField({
   label,
   children,
@@ -92,6 +93,35 @@ function parseMoney(value: string) {
       : value;
   return Number(normalized) || 0;
 }
+function quoteFormErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object") return "Falha ao criar orçamento";
+  const result = error as { code?: unknown; message?: unknown };
+  if (result.code === "23505")
+    return "Cliente já cadastrado. Pesquise e selecione o cliente existente.";
+  const message = typeof result.message === "string" ? result.message : "";
+  if (result.code === "42501" || /row.level security/i.test(message))
+    return "Sua sessão não tem permissão para salvar este orçamento.";
+  return message || "Falha ao criar orçamento";
+}
+function isDuplicatePhoneError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const result = error as { code?: unknown; message?: unknown };
+  return (
+    result.code === "23505" &&
+    typeof result.message === "string" &&
+    result.message.includes("leads_company_phone_key")
+  );
+}
+async function findCompanyLeadByPhone(companyId: string, phone: string) {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("id,name")
+    .eq("company_id", companyId)
+    .eq("phone", phone)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? undefined;
+}
 
 export function QuoteFormModal({
   quote,
@@ -112,9 +142,10 @@ export function QuoteFormModal({
   const [leadId, setLeadId] = useState(quote?.leadId ?? defaultLeadId ?? "");
   const [clientSearch, setClientSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [customer, setCustomer] = useState<QuoteCustomerDetails>(
-    quote?.customerDetails ?? emptyCustomer,
-  );
+  const [customer, setCustomer] = useState<QuoteCustomerDetails>({
+    ...emptyCustomer,
+    ...quote?.customerDetails,
+  });
   const [channel, setChannel] = useState<Channel>("whatsapp");
   const [handle, setHandle] = useState("");
   const [productId, setProductId] = useState(
@@ -291,16 +322,35 @@ export function QuoteFormModal({
     try {
       let finalLeadId = leadId;
       if (clientMode === "new") {
-        const created = await createLead(
-          {
-            name: fullName,
-            channel,
-            phone: customer.phone1.trim() || undefined,
-            handle: handle.trim() || undefined,
-          },
-          companyId,
-        );
-        finalLeadId = created.id;
+        const phone = normalizePhone(customer.phone1);
+        const existingLead = !phone
+          ? undefined
+          : companyId
+            ? await findCompanyLeadByPhone(companyId, phone)
+            : leads.find((lead) => normalizePhone(lead.phone) === phone);
+        if (existingLead) {
+          finalLeadId = existingLead.id;
+          toast.info(`Telefone já cadastrado. Orçamento associado a ${existingLead.name}.`);
+        } else {
+          try {
+            const created = await createLead(
+              {
+                name: fullName,
+                channel,
+                phone: phone || undefined,
+                handle: handle.trim() || undefined,
+              },
+              companyId,
+            );
+            finalLeadId = created.id;
+          } catch (error) {
+            if (!isDuplicatePhoneError(error) || !companyId || !phone) throw error;
+            const matched = await findCompanyLeadByPhone(companyId, phone);
+            if (!matched) throw error;
+            finalLeadId = matched.id;
+            toast.info(`Telefone já cadastrado. Orçamento associado a ${matched.name}.`);
+          }
+        }
       }
       const result = await createQuote(
         {
@@ -328,7 +378,7 @@ export function QuoteFormModal({
       );
       onCreated(result);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao criar orçamento");
+      toast.error(quoteFormErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -359,7 +409,7 @@ export function QuoteFormModal({
           aria-modal="true"
           aria-label={quote ? "Editar orçamento" : "Novo Orçamento"}
           onClick={(event) => event.stopPropagation()}
-          className="relative flex h-[100dvh] w-full max-w-[560px] flex-col overflow-hidden bg-black text-white shadow-2xl sm:h-[min(760px,calc(100dvh-2rem))] sm:rounded-[20px] sm:border sm:border-white/10"
+          className="quote-form relative flex h-[100dvh] w-full max-w-[560px] flex-col overflow-hidden bg-black text-white shadow-2xl sm:h-[min(760px,calc(100dvh-2rem))] sm:rounded-[20px] sm:border sm:border-white/10"
         >
           <div className="shrink-0 px-6 pt-7 sm:px-10 sm:pt-9">
             <div className="flex items-start justify-between gap-3">
@@ -375,7 +425,7 @@ export function QuoteFormModal({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="relative mt-4 flex h-9 items-center rounded-full border border-white/25 px-3">
+            <div className="relative mt-4 flex h-9 items-center rounded-full border border-white/25 pl-3 pr-[3px]">
               <input
                 value={clientSearch}
                 onFocus={() => setSearchOpen(true)}
@@ -385,12 +435,12 @@ export function QuoteFormModal({
                 }}
                 placeholder="Pesquisar Cliente"
                 aria-label="Pesquisar Cliente"
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/45"
+                className="quote-form-search min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/45"
               />
               <button
                 type="button"
                 onClick={addClient}
-                className="ml-2 rounded-full bg-white px-4 py-1 text-xs font-bold text-black hover:bg-white/85"
+                className="ml-2 flex h-[27px] min-w-12 items-center justify-center rounded-full bg-white px-3 text-xs font-bold text-black hover:bg-white/85"
               >
                 Add
               </button>
@@ -472,13 +522,23 @@ export function QuoteFormModal({
                 <section>
                   <h3 className="mb-4 text-lg font-bold">Endereço</h3>
                   <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                    <FormField label="Rua" className="col-span-2">
-                      <input
-                        value={customer.street}
-                        onChange={(event) => changeCustomer("street", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
+                    <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_5rem] gap-x-5">
+                      <FormField label="Rua">
+                        <input
+                          value={customer.street}
+                          onChange={(event) => changeCustomer("street", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Número">
+                        <input
+                          inputMode="numeric"
+                          value={customer.number}
+                          onChange={(event) => changeCustomer("number", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
                     <FormField label="Cidade">
                       <input
                         value={customer.city}
