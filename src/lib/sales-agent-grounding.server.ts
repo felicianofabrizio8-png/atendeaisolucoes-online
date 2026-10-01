@@ -8,7 +8,12 @@ import {
 } from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import { productMatchesMeasure } from "./product-measure-filter";
-import { specificationsSearchText } from "./catalog-facts";
+import {
+  productFactsSearchText,
+  productHasQuantities,
+  requestedQuantities,
+  specificationsSearchText,
+} from "./catalog-facts";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -164,6 +169,8 @@ function catalogSearchText(product: CatalogProduct): string {
       product.capacityL,
       product.shape,
       product.specifications ? specificationsSearchText(product.specifications) : null,
+      // Fatos normalizados com o número cru ("1.200 W" e "1200").
+      productFactsSearchText(product),
       product.includedItems?.join(" "),
       product.variants ? JSON.stringify(product.variants) : null,
       product.price,
@@ -293,6 +300,22 @@ export function searchSalesAgentCatalog(
   // espaço do cliente, não do produto).
   if (!comparison && attributeMatches && attributeMatches.length > 0) {
     return { status: "matches", products: attributeMatches, exhaustive: true };
+  }
+  // Mesma grandeza em QUALQUER atributo cadastrado pela empresa (mesma
+  // camada de fatos que valida as respostas), por família de unidade:
+  // "480 litros", "1200 W", "2,10 m", "1,2 kg". Medida do espaço do cliente
+  // não é grandeza do produto.
+  if (!comparison && !attributeMatches?.length) {
+    const currentAttributes = extractCurrentProductAttributes(history);
+    const describesSpace =
+      currentAttributes.spaceLengthM != null || currentAttributes.spaceWidthM != null;
+    const requested = describesSpace ? [] : requestedQuantities(lastLeadText);
+    const quantityMatches = requested.length
+      ? products.filter((product) => productHasQuantities(product, requested))
+      : [];
+    if (quantityMatches.length > 0) {
+      return { status: "matches", products: quantityMatches, exhaustive: true };
+    }
   }
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]

@@ -979,7 +979,11 @@ function validateObjectiveProductClaims(
    * Fatos já declarados pela interpretação semântica e validados por
    * atributo: aqui só restam as verificações qualitativas.
    */
-  options: { skipNumeric?: boolean } = {},
+  options: {
+    skipNumeric?: boolean;
+    /** Termos (valor + rótulo do atributo) das declarações validadas. */
+    declaredTokens?: ReadonlySet<string>;
+  } = {},
 ): boolean {
   // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
   // ("Fica R$ 5.000. Posso reservar?").
@@ -1160,6 +1164,28 @@ function validateObjectiveProductClaims(
         "de", "do", "da", "e", "metros",
       ]).has(token));
     if (claimTokens.length === 0) return true;
+    // Fatos declarados pela interpretação semântica e já validados contra o
+    // atributo da empresa: frase cujos termos de catálogo estão todos
+    // cobertos pelas declarações (valor + rótulo do atributo) não passa pelo
+    // roteamento fixo por campo abaixo (cor → variantes, formato → coluna...).
+    // Termo não declarado continua no safety net.
+    if (options.declaredTokens) {
+      const declared = options.declaredTokens;
+      const identity = new Set(
+        candidates.flatMap((product) =>
+          comparablePromptText(`${product.name} ${product.model ?? ""}`).split(" "),
+        ),
+      );
+      // TODO(fase-2-multissegmento): hardcode de piscina (mesma lista de recursos do safety net).
+      const legacyFeatures =
+        normalizedSentence.match(
+          /\b(?:fibra|vinil|filtro|bomba|aquecimento|aqueci\w*|drenagem|instalacao|inclus[oa]s?)\b/g,
+        ) ?? [];
+      const factTerms = [
+        ...new Set([...claimTokens.filter((token) => catalogVocabulary.has(token)), ...legacyFeatures]),
+      ].filter((token) => !identity.has(token));
+      if (factTerms.every((token) => declared.has(token))) return true;
+    }
     const technicalFieldClaim = Object.entries(TECHNICAL_FIELD_SYNONYMS).find(([, aliases]) =>
       aliases.some((alias) => normalizedSentence.includes(alias)),
     );
@@ -2097,7 +2123,12 @@ export class SalesAgentCore {
         params.ctx.grounding.commercialRules,
         params.history,
         undefined,
-        { skipNumeric: declaredClaims != null },
+        declaredClaims
+          ? {
+              skipNumeric: true,
+              declaredTokens: declaredFactTokens(declaredClaims, catalogSearch.products),
+            }
+          : {},
       )
     ) {
       const diagnostic = validationDiagnostic("objective_claim");
@@ -2199,6 +2230,29 @@ export class SalesAgentCore {
       ...(salesPlan ? { sales_plan: salesPlan, after_reply: afterReply } : {}),
     };
   }
+}
+
+/**
+ * Termos cobertos pelas declarações validadas: o valor afirmado e o rótulo
+ * do atributo da empresa a que ele se refere (só afirmações, não negações).
+ */
+function declaredFactTokens(
+  claims: readonly DeclaredFactClaim[],
+  products: SalesAgentGrounding["catalog"],
+): Set<string> {
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return new Set(
+    claims
+      .filter((claim) => !claim.denies)
+      .flatMap((claim) => {
+        const product = byId.get(claim.productId);
+        const fact = product
+          ? normalizeProductFacts(product).facts.find((candidate) => candidate.key === claim.fact)
+          : undefined;
+        return comparablePromptText(`${claim.stated} ${fact?.label ?? ""}`).split(" ");
+      })
+      .filter(Boolean),
+  );
 }
 
 /** IDs sugeridos pelo LLM ou, sem sugestão, produtos citados pelo nome no texto. */
