@@ -36,6 +36,7 @@ import {
   loadRelevantSalesAgentLearnings,
   loadSalesAgentGrounding,
   extractCurrentProductAttributes,
+  filterProductsByStructuredAttributes,
   searchSalesAgentCatalog,
   selectRelevantSalesAgentCoachRules,
   type AgentHistory,
@@ -56,7 +57,12 @@ import { listActiveCoachRulesForGrounding } from "./coach-rules/coach-rules.repo
 import { SALES_AGENT_PLAYBOOK } from "./sales-agent-playbook";
 import { safeTimeZone, zonedParts } from "./followup/calendar";
 import { resolveInstitutionalPolicies } from "./sales-agent-institutional";
-import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
+import { getConversationFocusProductIds, withConversationFocus } from "./sales-agent-focus";
+import {
+  customerContextFromEventPayload,
+  mergeCustomerContext,
+  type CustomerContext,
+} from "./sales-agent-intelligence";
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
@@ -448,27 +454,36 @@ const INSTITUTIONAL_HANDOFF_PATTERNS = new Set<RegExp>([
   PAYMENT_TERMS_PATTERN,
   DELIVERY_TIME_PATTERN,
 ]);
-const PRICE_COMPARISON_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_PATTERN]);
+// Palavras de preço ambíguas: podem ser comparação de preços cadastrados
+// ("qual sai mais barato") ou negociação ("faz mais barato"). Quem distingue
+// é o LLM; o turno fica marcado como sensível a preço (ver `priceSensitive`).
+const PRICE_SENSITIVE_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_PATTERN]);
 
 export function detectHandoffNeeded(
   text: string,
   commercialRules?: AgentContext["grounding"]["commercialRules"] | null,
-): { needed: boolean; reason?: string } {
+  options: { deferPriceSensitive?: boolean } = {},
+): { needed: boolean; reason?: string; priceSensitive?: boolean } {
   const normalized = text.trim();
   const informationalQuestion =
     /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
     /^se\s+eu\s+fechar\b/i.test(normalized);
   if (informationalQuestion) return { needed: false };
   const answeredByPolicy = resolveInstitutionalPolicies(text, commercialRules) !== null;
-  // "Qual o mais barato?" compara preços cadastrados; só pedido de condição
-  // nova (desconto, "faz por", "melhora o valor") é negociação.
-  const priceComparison = isPriceComparisonRequest(text);
+  let priceSensitive = false;
   for (const re of HANDOFF_PATTERNS) {
     if (answeredByPolicy && INSTITUTIONAL_HANDOFF_PATTERNS.has(re)) continue;
-    if (priceComparison && PRICE_COMPARISON_PATTERNS.has(re)) continue;
-    if (re.test(text)) return { needed: true, reason: re.source };
+    if (!re.test(text)) continue;
+    // Sem outro sinal de humano, adia a decisão para o LLM: no turno sensível
+    // a preço, só a comparação determinística do catálogo pode responder;
+    // qualquer outra saída continua indo para humano.
+    if (options.deferPriceSensitive && PRICE_SENSITIVE_PATTERNS.has(re)) {
+      priceSensitive = true;
+      continue;
+    }
+    return { needed: true, reason: re.source };
   }
-  return { needed: false };
+  return priceSensitive ? { needed: false, priceSensitive: true } : { needed: false };
 }
 
 // ----------------------------------------------------------------------------
@@ -578,11 +593,63 @@ export async function loadAgentContext(
 // LLM gateway adapter (efeito externo mantido fora do SalesAgentCore)
 // ----------------------------------------------------------------------------
 
+/** Evento append-only que guarda o Customer Context por empresa + conversa. */
+export const SALES_TURN_PLAN_EVENT = "sales_turn_plan";
+
+/** Último Customer Context da conversa (tolerante a falha: sem memória, segue). */
+async function loadCustomerContext(
+  companyId: string,
+  conversationId: string,
+): Promise<CustomerContext | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("ai_flow_events")
+      .select("payload")
+      .eq("company_id", companyId)
+      .eq("conversation_id", conversationId)
+      .eq("event_type", SALES_TURN_PLAN_EVENT)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return customerContextFromEventPayload((data as { payload?: unknown }).payload);
+  } catch {
+    return null;
+  }
+}
+
+async function saveCustomerContext(
+  companyId: string,
+  conversationId: string,
+  decision: AgentDecision,
+  previous: CustomerContext | null,
+): Promise<void> {
+  const plan = decision.sales_plan;
+  if (!plan) return;
+  const merged = mergeCustomerContext(previous, {
+    stage: plan.stage,
+    nextAction: plan.nextAction,
+    context: plan.context,
+    presentedProductIds:
+      decision.kind === "reply" ? decision.presented_product_ids ?? decision.suggested_products ?? [] : [],
+  });
+  await logEvent(companyId, conversationId, null, SALES_TURN_PLAN_EVENT, {
+    stage: plan.stage,
+    next_action: plan.nextAction,
+    adjustments: plan.adjustments,
+    decision: decision.kind,
+    after_reply: decision.after_reply ?? null,
+    customer_context: merged,
+  });
+}
+
 export async function runAgentTurn(params: {
   ctx: AgentContextBase;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
   sessionCorrections?: NormativeCorrection[];
+  /** Turno com palavra de preço ambígua: só a comparação determinística responde. */
+  priceSensitive?: boolean;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
   qualification?: {
     detected_pool_size: string | null;
@@ -636,6 +703,9 @@ export async function runAgentTurn(params: {
   const stateScope = params.salesStateScope
     ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
     : null;
+  const previousCustomerContext = stateScope
+    ? await loadCustomerContext(stateScope.companyId, stateScope.scopeId)
+    : null;
   const loadedSalesState = stateScope ? await loadConversationSalesState(stateScope) : null;
   let memoryStatus: "found" | "missing" | "error" = loadedSalesState?.status ?? "missing";
   let previousSalesState: ConversationSalesState | null = null;
@@ -671,7 +741,7 @@ export async function runAgentTurn(params: {
     ? (contextualMemoryError ? "error" : "missing")
     : memoryStatus;
   const interpretation = interpretSalesAgentTurn(effectiveHistory);
-  const catalogSearch = resolveSalesAgentCatalogSearch(
+  const lexicalCatalogSearch = resolveSalesAgentCatalogSearch(
     interpretation,
     safeContext,
     memoryStatus === "error" ? null : previousSalesState,
@@ -679,6 +749,21 @@ export async function runAgentTurn(params: {
       continuityEnabled: resolveSalesAgentMode(params.ctx.settings) !== null,
       structuredInterpretation: interpretation.structured,
     },
+  );
+  // Foco da conversa (produtos em discussão), resolvido no histórico e na
+  // memória do tenant. A busca lê só a última mensagem; em continuação sem
+  // referência forte ("quanto tá?"), o foco entra com seus fatos validados.
+  const validatedById = new Map(validatedCatalog.map((product) => [product.id, product]));
+  const focusProductIds = getConversationFocusProductIds(effectiveHistory, [
+    ...(previousCustomerContext?.presentedProductIds ?? []),
+    ...(memoryStatus === "error" ? [] : previousSalesState?.lastValidProductIds ?? []),
+  ]).filter((id) => validatedById.has(id));
+  const catalogSearch = withConversationFocus(
+    lexicalCatalogSearch,
+    focusProductIds.flatMap((id) => {
+      const product = validatedById.get(id);
+      return product ? [product] : [];
+    }),
   );
   if (catalogSearch.status === "query_error") {
     await logEvent(params.ctx.settings.company_id, stateScope?.scopeId ?? null, null, "ai_flow_step", {
@@ -800,7 +885,20 @@ export async function runAgentTurn(params: {
     catalogSearch,
     interpretation,
     memoryStatus: effectiveMemoryStatus,
+    // Catálogo ativo completo da empresa para executar a comparação de preço
+    // escolhida pelo LLM (o conjunto e os preços nunca vêm do modelo).
+    priceComparison: {
+      catalog: validatedCatalog,
+      attributeMatches: filterProductsByStructuredAttributes(validatedCatalog, effectiveHistory),
+    },
+    customerContext: previousCustomerContext,
+    focusProductIds,
   });
+  // Customer Context: memória comercial da conversa, atualizada pelo plano
+  // que o LLM escolheu e o gate validou.
+  if (stateScope && decision.sales_plan) {
+    await saveCustomerContext(stateScope.companyId, stateScope.scopeId, decision, previousCustomerContext);
+  }
   if (stateScope && memoryStatus !== "error") {
     await saveSalesStateSafely(
       stateScope,
@@ -1478,9 +1576,15 @@ async function runAgentTickPass(
     // Pre-check handoff — sempre qualifica antes para timeline ficar completa.
     // Perguntas de pagamento/entrega/instalação com política cadastrada seguem
     // para a IA responder pela política.
-    const triggerCheck = audioUnavailable
-      ? { needed: false }
-      : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules);
+    // Palavra de preço ambígua ("barato", "menor preço") não encaminha direto:
+    // o LLM distingue comparação de negociação e só a comparação
+    // determinística do catálogo pode responder esse turno.
+    const triggerCheck: { needed: boolean; reason?: string; priceSensitive?: boolean } =
+      audioUnavailable
+        ? { needed: false }
+        : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
+            deferPriceSensitive: true,
+          });
     const readyToClose = !audioUnavailable && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
@@ -1540,6 +1644,7 @@ async function runAgentTickPass(
       const rules = ctx.grounding.commercialRules;
       decision = runSafetyLayer(
         await runAgentTurn({
+          priceSensitive: triggerCheck.priceSensitive === true,
           ctx: turnCtx,
           history,
           leadName: lead?.name ?? null,
@@ -1611,6 +1716,7 @@ async function runAgentTickPass(
         reason,
         grounding_sources: decision.grounding_sources ?? [],
         learning_ids_used: decision.learning_ids_used ?? [],
+        ...(decision.validation_diagnostic ? { validation_diagnostic: decision.validation_diagnostic } : {}),
       });
       await writeSalesAgentAudit("handoff", evType, decision.suggested_products ?? [], ["safety_layer", "handoff"], reason);
       await sendHandoffNotice(conv, ctx.settings, v2Mode);
@@ -1666,7 +1772,8 @@ async function runAgentTickPass(
       conversationId: conv.id,
       leadId: conv.lead_id,
       text: decision.message,
-      productIds: decision.suggested_products,
+      // Só o que o cliente viu vira "apresentado" na conversa.
+      productIds: decision.presented_product_ids ?? decision.suggested_products,
       metadata: decision.clarification
         ? { sales_agent_clarification: decision.clarification }
         : audioUnavailable
@@ -1765,8 +1872,27 @@ async function runAgentTickPass(
       suggested_products: decision.suggested_products ?? [],
       grounding_sources: decision.grounding_sources ?? [],
       learning_ids_used: decision.learning_ids_used ?? [],
+      ...(decision.validation_diagnostic ? { validation_diagnostic: decision.validation_diagnostic } : {}),
+      // Fatos de Produtos que a resposta afirmou (declarados e validados).
+      ...(decision.fact_claims ? { fact_claims: decision.fact_claims.slice(0, 20) } : {}),
     });
     await writeSalesAgentAudit("reply", "sent", decision.suggested_products ?? [], ["catalog_search", "action_contract", "whatsapp_text"]);
+
+    // Fechamento: a IA confirmou a escolha do cliente; o pedido é concluído
+    // por um atendente (capacidade `closing: human` da empresa).
+    if (decision.after_reply === "handoff_for_closing" && !humanNow) {
+      await supabaseAdmin
+        .from("conversations")
+        .update({ ai_status: "aguardando_humano" })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
+        source: "sales_plan",
+        reason: "ready_to_close",
+      });
+      await sendHandoffNotice(conv, ctx.settings, v2Mode);
+      return { ok: true, action: "handoff", reason: "ready_to_close_after_reply" };
+    }
 
     return { ok: true, action: "replied" };
   } finally {

@@ -7,7 +7,7 @@ import { Virtuoso } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import { Send, Loader2, X, Check, Copy, Plus, Image as ImageIcon, Video as VideoIcon, Library as LibraryIcon, MapPin } from "lucide-react";
 import { SendLocationDialog } from "@/components/SendLocationDialog";
-import { listProducts, subscribeProducts, type Product } from "@/data/products";
+import { listProductCategories, listProducts, subscribeProducts, type Product } from "@/data/products";
 import { productMatches } from "@/lib/product-search";
 import { buildProductCaption, buildProductCardSubtitle } from "@/lib/product-caption";
 import { buildLibraryPicks } from "@/lib/inbox/product-library";
@@ -916,10 +916,10 @@ export function ProductsLibraryModal({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const all = listProducts();
-  const filtered = useMemo<Product[]>(
-    () => all.filter((p) => productMatches(p, query)),
-    [all, query],
-  );
+  const filtered = useMemo<Product[]>(() => {
+    const categories = listProductCategories(all);
+    return all.filter((p) => productMatches(p, query, categories));
+  }, [all, query]);
   const byCategory = useMemo(() => {
     const map = new Map<string, Product[]>();
     for (const p of filtered) {

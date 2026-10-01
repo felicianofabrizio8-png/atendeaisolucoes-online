@@ -170,12 +170,15 @@ describe("structured product catalog phase 2A", () => {
       "setDepthM",
       "setCapacityL",
       "setShape",
-      "setSpecifications",
+      // Características: linhas tipadas (rótulo/tipo/valor/unidade) em vez de JSON.
+      "setAttributeRows",
       "setIncludedItems",
       "setVariants",
     ]) {
       expect(productsRouteSource).toContain(state);
     }
     expect(productsRouteSource).toContain("<ProductImagesField images={images}");
+    expect(productsRouteSource).toContain("specifications: attributes.specifications");
+    expect(productsRouteSource).not.toContain("Especificações JSON");
   });
 });

@@ -6,9 +6,8 @@ import {
   updateProduct,
   deleteProduct,
   getProductsCompanyId,
-  PRODUCT_CATEGORIES,
+  listProductCategories,
   type Product,
-  type ProductCategory,
 } from "@/data/products";
 import { formatBRL } from "@/data/mock";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,11 +39,24 @@ import { motion } from "framer-motion";
 import {
   parseIncludedItems,
   parseOptionalCatalogNumber,
-  parseSpecifications,
   parseVariants,
   categoryRequiresDimensions,
   hasCompleteProductDimensions,
 } from "@/lib/product-catalog-fields";
+import {
+  attributeRowsFromSpecifications,
+  attributeRowsToSpecifications,
+  auditProductFacts,
+  factKeyFromLabel,
+  normalizeProductFacts,
+  type AttributeRow,
+  type AttributeRowError,
+} from "@/lib/catalog-facts";
+import {
+  ProductAttributesField,
+  type AttributeSuggestion,
+} from "@/components/products/ProductAttributesField";
+import { CatalogAuditPanel } from "@/components/products/CatalogAuditPanel";
 
 export const Route = createFileRoute("/produtos")({
   // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.
@@ -89,12 +101,16 @@ function ProductsPage() {
       );
   }, []);
 
+  // Categorias e características já usadas pela empresa (sugestões na tela).
+  const categories = useMemo(() => listProductCategories(products), [products]);
+  const attributeSuggestions = useMemo(() => collectAttributeSuggestions(products), [products]);
+
   const filtered = useMemo(() => {
-    return products.filter((p) => productMatches(p, query));
-  }, [products, query]);
+    return products.filter((p) => productMatches(p, query, categories));
+  }, [products, query, categories]);
 
   const grouped = useMemo(() => {
-    const map = new Map<ProductCategory, Product[]>();
+    const map = new Map<string, Product[]>();
     for (const p of filtered) {
       const arr = map.get(p.category) ?? [];
       arr.push(p);
@@ -152,6 +168,8 @@ function ProductsPage() {
           )}
         </div>
 
+        {!query.trim() && <CatalogAuditPanel products={products} onEdit={setEditing} />}
+
         {products.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
             <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
@@ -173,7 +191,7 @@ function ProductsPage() {
         {grouped.map(([category, items]) => (
           <section key={category}>
             <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3 px-1">
-              {category}
+              {category || "Sem categoria"}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
               {items.map((p, idx) => (
@@ -230,6 +248,8 @@ function ProductsPage() {
         <ProductFormModal
           product={editing}
           dimensionRequiredCategories={dimensionRequiredCategories}
+          categories={categories}
+          attributeSuggestions={attributeSuggestions}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -249,6 +269,38 @@ function ProductsPage() {
       )}
     </div>
   );
+}
+
+/** Número digitado ou null (para avisos ao vivo, sem bloquear a digitação). */
+function parseLooseNumber(value: string): number | null {
+  try {
+    return parseOptionalCatalogNumber(value) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Rótulo → tipo/unidade mais frequentes nas características da empresa. */
+function collectAttributeSuggestions(products: Product[]): AttributeSuggestion[] {
+  const counts = new Map<string, { suggestion: AttributeSuggestion; count: number }>();
+  for (const product of products) {
+    for (const row of attributeRowsFromSpecifications(product.specifications)) {
+      const id = `${factKeyFromLabel(row.label)}|${row.type}|${row.unit}`;
+      const current = counts.get(id);
+      counts.set(id, {
+        suggestion: current?.suggestion ?? { label: row.label, type: row.type, unit: row.unit },
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+  }
+  const byLabel = new Map<string, { suggestion: AttributeSuggestion; count: number }>();
+  for (const entry of counts.values()) {
+    const key = factKeyFromLabel(entry.suggestion.label);
+    if ((byLabel.get(key)?.count ?? 0) < entry.count) byLabel.set(key, entry);
+  }
+  return [...byLabel.values()]
+    .map((entry) => entry.suggestion)
+    .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 }
 
 function highlightMatch(text: string, query: string): React.ReactNode {
@@ -407,19 +459,21 @@ function CardIconButton({
 function ProductFormModal({
   product,
   dimensionRequiredCategories,
+  categories,
+  attributeSuggestions,
   onClose,
 }: {
   product: Product | null;
   dimensionRequiredCategories: string[];
+  categories: string[];
+  attributeSuggestions: AttributeSuggestion[];
   onClose: () => void;
 }) {
   const isEdit = !!product;
   const [name, setName] = useState(product?.name ?? "");
   const [model, setModel] = useState(product?.model ?? "");
   const [sku, setSku] = useState(product?.sku ?? "");
-  const [category, setCategory] = useState<ProductCategory>(
-    product?.category ?? PRODUCT_CATEGORIES[0],
-  );
+  const [category, setCategory] = useState(product?.category ?? "");
   const [price, setPrice] = useState<string>(product ? String(product.price) : "");
   const [promoPrice, setPromoPrice] = useState<string>(
     product?.promoPrice ? String(product.promoPrice) : "",
@@ -432,14 +486,37 @@ function ProductFormModal({
     product?.capacityL != null ? String(product.capacityL) : "",
   );
   const [shape, setShape] = useState(product?.shape ?? "");
-  const [specifications, setSpecifications] = useState(
-    JSON.stringify(product?.specifications ?? {}, null, 2),
+  const [attributeRows, setAttributeRows] = useState<AttributeRow[]>(() =>
+    attributeRowsFromSpecifications(product?.specifications),
+  );
+  const [attributeErrors, setAttributeErrors] = useState<Partial<Record<number, AttributeRowError>>>(
+    {},
   );
   const [includedItems, setIncludedItems] = useState((product?.includedItems ?? []).join("\n"));
   const [variants, setVariants] = useState(JSON.stringify(product?.variants ?? [], null, 2));
   const [notes, setNotes] = useState(product?.notes ?? "");
   const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [error, setError] = useState<string | null>(null);
+  // Medida/quantidade escrita só na descrição/observações: a Vendedora não a
+  // confirma (aviso, não bloqueia).
+  const freeTextWarnings = useMemo(() => {
+    const attributes = attributeRowsToSpecifications(attributeRows).specifications;
+    return auditProductFacts({
+      id: product?.id ?? "draft",
+      name: name || "draft",
+      description,
+      notes,
+      lengthM: parseLooseNumber(lengthM),
+      widthM: parseLooseNumber(widthM),
+      depthM: parseLooseNumber(depthM),
+      capacityL: parseLooseNumber(capacityL),
+      specifications: attributes,
+      price: 1,
+    })
+      .issues.filter((issue) => issue.code === "fact_only_in_free_text")
+      .map((issue) => issue.detail)
+      .filter((detail): detail is string => Boolean(detail));
+  }, [attributeRows, product?.id, name, description, notes, lengthM, widthM, depthM, capacityL]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -457,6 +534,14 @@ function ProductFormModal({
       setError("Preço promocional inválido.");
       return;
     }
+    const attributes = attributeRowsToSpecifications(attributeRows);
+    setAttributeErrors(
+      Object.fromEntries(attributes.issues.map((issue) => [issue.index, issue.error])),
+    );
+    if (attributes.issues.length > 0) {
+      setError("Revise as características destacadas.");
+      return;
+    }
     let structured;
     try {
       structured = {
@@ -464,7 +549,7 @@ function ProductFormModal({
         widthM: parseOptionalCatalogNumber(widthM),
         depthM: parseOptionalCatalogNumber(depthM),
         capacityL: parseOptionalCatalogNumber(capacityL),
-        specifications: parseSpecifications(specifications),
+        specifications: attributes.specifications,
         includedItems: parseIncludedItems(includedItems),
         variants: parseVariants(variants),
       };
@@ -484,6 +569,19 @@ function ProductFormModal({
       !hasCompleteProductDimensions(structured)
     ) {
       setError("Comprimento, largura e profundidade são obrigatórios para esta categoria.");
+      return;
+    }
+    // Característica com o mesmo nome de um campo acima e valor diferente.
+    const conflict = normalizeProductFacts({
+      name: name.trim(),
+      price: priceNum,
+      shape: shape.trim() || null,
+      ...structured,
+    }).conflicts[0];
+    if (conflict) {
+      setError(
+        `"${conflict.label}" está com ${conflict.attributeValue} nas características e ${conflict.fieldValue} no campo principal.`,
+      );
       return;
     }
     const emptyValue = isEdit ? null : undefined;
@@ -577,17 +675,19 @@ function ProductFormModal({
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
               Categoria
             </label>
-            <select
+            <input
+              type="text"
+              list="product-categories"
               value={category}
-              onChange={(e) => setCategory(e.target.value as ProductCategory)}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Ex.: Sofás, Refrigeradores, Serviços"
               className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {PRODUCT_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+            />
+            <datalist id="product-categories">
+              {categories.map((c) => (
+                <option key={c} value={c} />
               ))}
-            </select>
+            </datalist>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -672,6 +772,12 @@ function ProductFormModal({
               placeholder="Detalhes do produto…"
               className="mt-1 w-full px-3 py-2 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
+            {freeTextWarnings.length > 0 && (
+              <p className="mt-1 text-[10px] text-amber-700">
+                {freeTextWarnings.join(", ")} só no texto: cadastre como característica para a IA
+                poder confirmar.
+              </p>
+            )}
           </div>
 
           <div>
@@ -687,17 +793,14 @@ function ProductFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Especificações JSON (opcional)
-              <textarea
-                value={specifications}
-                onChange={(e) => setSpecifications(e.target.value)}
-                rows={6}
-                spellCheck={false}
-                className="mt-1 w-full px-3 py-2 font-mono text-xs normal-case rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </label>
+          <ProductAttributesField
+            rows={attributeRows}
+            onChange={setAttributeRows}
+            errors={attributeErrors}
+            suggestions={attributeSuggestions}
+          />
+
+          <div>
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
               Variantes/cores JSON (opcional)
               <textarea

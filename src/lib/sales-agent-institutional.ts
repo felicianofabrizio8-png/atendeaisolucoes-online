@@ -40,8 +40,10 @@ const TOPIC_LABELS: Record<InstitutionalTopic, string> = {
 };
 
 // Pedidos que continuam exigindo humano mesmo com política cadastrada.
+// ("barato"/"menor preço" não entram: comparar preços cadastrados não é
+// negociação — quem distingue é o LLM, ver compare_catalog_prices.)
 const HUMAN_ONLY_PATTERN =
-  /\b(?:desconto|descont\w*|abatimento|negoci\w*|barat\w*|menor\s+pre[cç]o|faz\s+por|faria\s+por|abaix\w*|fechar|fecho|finaliz\w*|contrato|cpf|cr[eé]dito|an[aá]lise\s+(?:financeira|de\s+cr[eé]dito)|financiament\w*|garanti\w*|reclama\w*|defeit\w*|quebr\w*|problema)\b/i;
+  /\b(?:desconto|descont\w*|abatimento|negoci\w*|faz\s+por|faria\s+por|abaix\w*|fechar|fecho|finaliz\w*|contrato|cpf|cr[eé]dito|an[aá]lise\s+(?:financeira|de\s+cr[eé]dito)|financiament\w*|garanti\w*|reclama\w*|defeit\w*|quebr\w*|problema)\b/i;
 
 function normalize(text: string): string {
   return text.normalize("NFC");
@@ -93,6 +95,35 @@ export function resolveInstitutionalPolicies(
   if (topics.length === 0) return null;
   const policies: InstitutionalPolicy[] = [];
   for (const topic of topics) {
+    const texts = policyTextsFor(topic, rules);
+    if (texts.length === 0) return null;
+    policies.push({ topic, label: TOPIC_LABELS[topic], text: texts.join(" ") });
+  }
+  return policies;
+}
+
+export const INSTITUTIONAL_TOPICS: readonly InstitutionalTopic[] = [
+  "payment",
+  "installation",
+  "delivery",
+  "visit",
+  "included",
+];
+
+/**
+ * Políticas cadastradas para tópicos já identificados (ex.: pelo LLM).
+ * `null` se algum tópico pedido não tiver política — não responder pela metade.
+ */
+export function resolvePoliciesForTopics(
+  topics: readonly string[],
+  rules: CommercialRules | null | undefined,
+): InstitutionalPolicy[] | null {
+  if (!rules) return topics.length === 0 ? [] : null;
+  const unique = [...new Set(topics)].filter((topic): topic is InstitutionalTopic =>
+    (INSTITUTIONAL_TOPICS as readonly string[]).includes(topic),
+  );
+  const policies: InstitutionalPolicy[] = [];
+  for (const topic of unique) {
     const texts = policyTextsFor(topic, rules);
     if (texts.length === 0) return null;
     policies.push({ topic, label: TOPIC_LABELS[topic], text: texts.join(" ") });

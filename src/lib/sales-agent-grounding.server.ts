@@ -8,7 +8,12 @@ import {
 } from "./sales-agent-core";
 import { SALES_AGENT_MAX_OPTIONS } from "./sales-agent-playbook";
 import { productMatchesMeasure } from "./product-measure-filter";
-import { isPriceComparisonRequest } from "./sales-agent-price-comparison";
+import {
+  productFactsSearchText,
+  productHasQuantities,
+  requestedQuantities,
+  specificationsSearchText,
+} from "./catalog-facts";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -117,7 +122,18 @@ export type CatalogSearchResult =
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: CatalogProduct[] }
   /** `exhaustive`: conjunto completo de compatíveis (atributo/medida ou comparação de preço). */
-  | { status: "matches"; products: CatalogProduct[]; exhaustive?: boolean };
+  | {
+      status: "matches";
+      products: CatalogProduct[];
+      exhaustive?: boolean;
+      /** Ausente = referência forte (explícita, contextual, alias ou atributo). */
+      basis?: CatalogMatchBasis;
+      /** IDs em foco na conversa incluídos no conjunto (ver sales-agent-focus). */
+      focusProductIds?: string[];
+    };
+
+/** Base fraca: casamento só textual da última mensagem, ou conjunto padrão; "focus" = com foco da conversa. */
+export type CatalogMatchBasis = "text_match" | "default" | "focus";
 
 export type CatalogSearchOptions = {
   continuityEnabled?: boolean;
@@ -152,7 +168,9 @@ function catalogSearchText(product: CatalogProduct): string {
       product.depthM == null ? null : `${product.depthM}m`,
       product.capacityL,
       product.shape,
-      product.specifications ? JSON.stringify(product.specifications) : null,
+      product.specifications ? specificationsSearchText(product.specifications) : null,
+      // Fatos normalizados com o número cru ("1.200 W" e "1200").
+      productFactsSearchText(product),
       product.includedItems?.join(" "),
       product.variants ? JSON.stringify(product.variants) : null,
       product.price,
@@ -261,26 +279,6 @@ export function searchSalesAgentCatalog(
   // capacidade) sobre os campos cadastrados — não por substring de texto.
   const attributeMatches = filterProductsByStructuredAttributes(products, history);
 
-  // Comparação de preço ("qual o mais barato?", "melhor preço") não é
-  // negociação: compara os preços cadastrados do conjunto em discussão —
-  // os produtos citados, os compatíveis com a medida pedida, os já
-  // apresentados ou, sem contexto, o catálogo ativo.
-  if (isPriceComparisonRequest(lastLeadText)) {
-    const named = products.filter((product) =>
-      [product.name, product.model, product.sku]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .some((value) => query.includes(normalizeCatalogText(value))),
-    );
-    const pool = named.length >= 2
-      ? named
-      : attributeMatches && attributeMatches.length > 0
-        ? attributeMatches
-        : selectedProducts.length > 0
-          ? selectedProducts
-          : products;
-    return { status: "matches", products: pool, exhaustive: true };
-  }
-
   const contextualReference = resolveCatalogProductReferenceWithContext(
     lastLeadText,
     products,
@@ -302,6 +300,22 @@ export function searchSalesAgentCatalog(
   // espaço do cliente, não do produto).
   if (!comparison && attributeMatches && attributeMatches.length > 0) {
     return { status: "matches", products: attributeMatches, exhaustive: true };
+  }
+  // Mesma grandeza em QUALQUER atributo cadastrado pela empresa (mesma
+  // camada de fatos que valida as respostas), por família de unidade:
+  // "480 litros", "1200 W", "2,10 m", "1,2 kg". Medida do espaço do cliente
+  // não é grandeza do produto.
+  if (!comparison && !attributeMatches?.length) {
+    const currentAttributes = extractCurrentProductAttributes(history);
+    const describesSpace =
+      currentAttributes.spaceLengthM != null || currentAttributes.spaceWidthM != null;
+    const requested = describesSpace ? [] : requestedQuantities(lastLeadText);
+    const quantityMatches = requested.length
+      ? products.filter((product) => productHasQuantities(product, requested))
+      : [];
+    if (quantityMatches.length > 0) {
+      return { status: "matches", products: quantityMatches, exhaustive: true };
+    }
   }
   const explicitMatches = products.filter((product) =>
     [product.name, product.model, product.sku]
@@ -343,10 +357,11 @@ export function searchSalesAgentCatalog(
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.product);
-  if (ranked.length > 0) return { status: "matches", products: ranked };
+  // Correspondência só textual/lexical da última mensagem: base fraca.
+  if (ranked.length > 0) return { status: "matches", products: ranked, basis: "text_match" };
   if (isSpecificProductQuestion(query)) return { status: "no_match", products: [] };
-  if (isGenericProductQuestion(query)) return { status: "matches", products };
-  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS) };
+  if (isGenericProductQuestion(query)) return { status: "matches", products, basis: "default" };
+  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS), basis: "default" };
 }
 
 const PLAYBOOK_RULE_CATEGORIES = new Set([
@@ -901,6 +916,7 @@ export function selectRelevantSalesAgentProducts(
     if (selected.length > 0) return selected;
   }
 
+  // TODO(fase-2-multissegmento): hardcode de piscina (conceitos de intenção fixos: aquecimento, acessórios...).
   const intentConcepts = [
     /\bfibr/,
     /\bvinil/,
@@ -920,7 +936,7 @@ export function selectRelevantSalesAgentProducts(
         product.category,
         product.description,
         product.notes,
-        product.specifications ? JSON.stringify(product.specifications) : null,
+        product.specifications ? specificationsSearchText(product.specifications) : null,
       ]
         .filter(Boolean)
         .join(" "),

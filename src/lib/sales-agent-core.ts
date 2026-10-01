@@ -9,16 +9,53 @@ import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.reposit
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 import {
   getPresentedProductIds,
+  resolveCatalogProductReference,
   resolveCatalogProductReferenceWithContext,
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
+import { getConversationFocusProductIds } from "./sales-agent-focus";
+import { segmentClaimsByProduct } from "./sales-agent-claim-anchors";
 import {
-  asksForMostExpensive,
+  extractNumericFacts,
+  hasNumericFacts,
+  numericFactsHoldFor,
+  productFactText,
+  splitClauses,
+  validateMeasureFact,
+  validatePriceFact,
+} from "./sales-agent-fact-claims";
+import {
+  attributeFacts,
+  normalizeProductFacts,
+  parseDeclaredFactClaims,
+  renderFactValue,
+  UNIVERSAL_FACT_KEYS,
+  validateDeclaredFactClaims,
+  type DeclaredFactClaim,
+} from "./catalog-facts";
+import {
+  SALES_NEXT_ACTIONS,
+  SALES_NEXT_ACTION_DESCRIPTIONS,
+  SALES_STAGES,
+  buildBusinessKnowledge,
+  gateSalesTurnPlan,
+  parseSalesTurnPlan,
+  renderBusinessKnowledge,
+  renderCustomerContext,
+  renderSalesCompetence,
+  type CustomerContext,
+  type SalesTurnPlan,
+} from "./sales-agent-intelligence";
+import {
   buildPriceComparisonReply,
-  isPriceComparisonRequest,
+  resolvePriceComparisonPool,
+  type PriceComparisonOrder,
 } from "./sales-agent-price-comparison";
 import {
+  INSTITUTIONAL_TOPICS,
+  resolvePoliciesForTopics,
+  type InstitutionalPolicy,
   buildInstitutionalPolicyReply,
   replyNumbersAreGrounded,
   resolveInstitutionalPolicies,
@@ -198,6 +235,37 @@ export interface AgentDecision {
   fallback_reason?: string;
   /** Pergunta de esclarecimento enviada no lugar de handoff (registrada na mensagem). */
   clarification?: "ambiguous" | "no_match";
+  /** Plano de vendas do turno (estágio, próxima ação, contexto), já validado pelo gate. */
+  sales_plan?: SalesTurnPlan | null;
+  /** Ação após enviar a resposta (ex.: atendente conclui o fechamento). */
+  after_reply?: "handoff_for_closing" | null;
+  /**
+   * Produtos que o cliente realmente viu nesta resposta (sugeridos pelo LLM,
+   * citados no texto ou listados por resposta determinística). É o que vira
+   * "já apresentado" na conversa; `suggested_products` pode incluir o
+   * conjunto de validação sem que o cliente tenha visto.
+   */
+  presented_product_ids?: string[];
+  /** Quando a validação bloqueia/troca a resposta do LLM: texto rejeitado e fatos usados. */
+  validation_diagnostic?: SalesAgentValidationDiagnostic;
+  /** Fatos de produto declarados e validados nesta resposta (auditoria). */
+  fact_claims?: DeclaredFactClaim[];
+}
+
+export interface SalesAgentValidationDiagnostic {
+  /** Qual verificação rejeitou: objective_claim | product_fact | price_claim. */
+  check: string;
+  rejected_reply: string;
+  suggested_product_ids: string[];
+  /** "reference" (referência forte), "text_match", "default" ou "focus". */
+  catalog_basis: string;
+  validated_products: Array<{ id: string; name: string; price: number | null; promo_price: number | null }>;
+  /** Declarações de fatos enviadas pelo LLM (ausente = contrato antigo). */
+  fact_claims?: DeclaredFactClaim[];
+  /** Declaração rejeitada e o motivo (check fact_claim). */
+  rejected_fact_claim?: DeclaredFactClaim & { reason: string };
+  /** Grandeza afirmada sem declaração validada (check undeclared_fact). */
+  undeclared_quantity?: string;
 }
 
 export type SalesAgentCatalogSearch =
@@ -206,7 +274,15 @@ export type SalesAgentCatalogSearch =
   | { status: "no_match"; products: [] }
   | { status: "ambiguous"; products: SalesAgentGrounding["catalog"] }
   /** `exhaustive`: todos os compatíveis por atributo/medida ou comparação de preço (sem corte em 3). */
-  | { status: "matches"; products: SalesAgentGrounding["catalog"]; exhaustive?: boolean };
+  | {
+      status: "matches";
+      products: SalesAgentGrounding["catalog"];
+      exhaustive?: boolean;
+      /** Ausente = referência forte; "text_match"/"default" = base fraca; "focus" = inclui o foco da conversa. */
+      basis?: "text_match" | "default" | "focus";
+      /** Produtos em foco na conversa presentes no conjunto (vão marcados no prompt). */
+      focusProductIds?: string[];
+    };
 
 export interface SalesAgentCoreInput {
   ctx: AgentContext;
@@ -219,6 +295,23 @@ export interface SalesAgentCoreInput {
   }>;
   /** Turno respondido só com as políticas cadastradas (sem catálogo). */
   institutionalOnly?: boolean;
+  /**
+   * Palavra de preço ambígua no turno (pré-check): só a comparação
+   * determinística (`compare_catalog_prices`) pode responder; texto livre ou
+   * outra saída vai para humano, como antes.
+   */
+  priceSensitive?: boolean;
+  /** Turno reaberto com os produtos já apresentados como contexto (evita recursão). */
+  followUpContext?: boolean;
+  /** Memória comercial da conversa (Customer Context) carregada do turno anterior. */
+  customerContext?: CustomerContext | null;
+  /** Produtos em foco na conversa (histórico + memória), já validados no catálogo do tenant. */
+  focusProductIds?: string[];
+  /** Catálogo ativo completo + compatíveis por medida, para executar a comparação. */
+  priceComparison?: {
+    catalog: SalesAgentGrounding["catalog"];
+    attributeMatches?: SalesAgentGrounding["catalog"] | null;
+  };
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
@@ -274,10 +367,23 @@ interface ToolReply {
   suggest_products?: string[];
   send_product_images?: string[];
   learning_ids_used?: string[];
+  /** Plano comercial do turno (estágio, próxima ação, contexto do cliente). */
+  sales_plan?: unknown;
+  /** Fatos de produto afirmados na mensagem, ligados à chave do fato em Produtos. */
+  fact_claims?: unknown;
 }
 
 interface ToolHandoff {
   reason: string;
+}
+
+/** Tool em que o LLM sinaliza a intenção de comparar preços cadastrados. */
+export const COMPARE_CATALOG_PRICES_TOOL = "compare_catalog_prices";
+
+interface ToolComparePrices {
+  order?: PriceComparisonOrder | string;
+  product_ids?: unknown[];
+  other_topics?: unknown[];
 }
 
 export function customerAskedForProductImages(history: SalesAgentCoreInput["history"]): boolean {
@@ -425,6 +531,8 @@ function messageHasOnlyValidatedProductFacts(
   message: string,
   selectedProducts: SalesAgentGrounding["catalog"],
   catalog: SalesAgentGrounding["catalog"],
+  /** Fatos declarados e validados por atributo (medidas/formato já conferidos). */
+  declaredFacts = false,
 ): boolean {
   const normalize = (value: string) =>
     value
@@ -446,35 +554,33 @@ function messageHasOnlyValidatedProductFacts(
   ) {
     return false;
   }
-  const claimedMeasures = [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
+  // Medidas: cada valor é uma dimensão cadastrada do produto (campo
+  // estruturado ou o mesmo fato escrito no próprio cadastro).
+  const claimedMeasures = declaredFacts ? [] : [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
     .map((match) => Number(match[1].replace(",", ".")))
     .filter(Number.isFinite);
-  const validMeasures = new Set(
-    selectedProducts.flatMap((product) =>
-      [product.lengthM, product.widthM, product.depthM].filter(
-        (value): value is number => value != null,
-      ),
-    ),
-  );
-  if (!claimedMeasures.every((measure) => validMeasures.has(measure))) return false;
+  if (
+    !claimedMeasures.every((measure) =>
+      selectedProducts.some((product) => validateMeasureFact(measure, product)),
+    )
+  ) {
+    return false;
+  }
+  // Preços: o normal OU o promocional cadastrado (os dois podem aparecer).
   const claimedPrices = [...message.matchAll(/R\$\s*([\d.]+(?:,\d{1,2})?)/gi)]
     .map((match) => Number(match[1].replace(/\./g, "").replace(",", ".")))
     .filter(Number.isFinite);
-  const validPrices = new Set(
-    selectedProducts.flatMap((product) => {
-      const effectivePrice =
-        product.promoPrice != null && Number.isFinite(product.promoPrice) && product.promoPrice > 0
-          ? product.promoPrice
-          : product.price != null && Number.isFinite(product.price) && product.price > 0
-            ? product.price
-            : null;
-      return effectivePrice == null ? [] : [effectivePrice];
-    }),
-  );
-  if (!claimedPrices.every((price) => validPrices.has(price))) return false;
-  const claimedShape = ["retangular", "quadrad", "redond", "oval"].find((shape) =>
-    normalized.includes(shape),
-  );
+  if (
+    !claimedPrices.every((value) =>
+      selectedProducts.some((product) => validatePriceFact({ value, promo: false }, product)),
+    )
+  ) {
+    return false;
+  }
+  // TODO(fase-2-multissegmento): hardcode de piscina (lista de formatos); remover quando fact_claims cobrir o legado.
+  const claimedShape = declaredFacts
+    ? undefined
+    : ["retangular", "quadrad", "redond", "oval"].find((shape) => normalized.includes(shape));
   if (claimedShape) {
     const shapeMatches = selectedProducts.some((product) => {
       const shape = normalize(product.shape ?? "");
@@ -490,48 +596,35 @@ export function buildValidatedCatalogReply(
   options: { rectangularPoolIntent?: boolean; includePrice?: boolean } = {},
 ): string {
   const items = products.map((product) => {
-    const specificationFacts =
-      product.specifications && typeof product.specifications === "object"
-        ? Object.entries(product.specifications as Record<string, unknown>)
-            .map(([key, value]) => `${key}: ${String(value)}`)
-            .join(", ")
-        : "";
-    const variantFacts = (product.variants ?? [])
-      .flatMap((variant) => {
-        if (!variant || typeof variant !== "object") return [];
-        const row = variant as Record<string, unknown>;
-        const values = [row.name, row.color].filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0,
-        );
-        return values.length > 0 ? [values.join("/")] : [];
-      })
-      .join(", ");
-    const facts = [
-      product.model ? `modelo ${product.model}` : null,
-      product.sku ? `SKU ${product.sku}` : null,
-      product.category ? `categoria ${product.category}` : null,
-      options.includePrice
-        ? `preço ${formatPrice(
-            product.promoPrice != null &&
-              Number.isFinite(product.promoPrice) &&
-              product.promoPrice > 0
-              ? product.promoPrice
-              : product.price,
-          )}`
-        : null,
-      product.lengthM != null || product.widthM != null || product.depthM != null
-        ? `dimensões ${[product.lengthM, product.widthM, product.depthM]
-            .filter((value) => value != null)
-            .join(" x ")} m`
-        : null,
-      product.capacityL != null ? `capacidade ${product.capacityL} L` : null,
-      product.shape ? `formato ${product.shape}` : null,
-      product.description || null,
-      product.includedItems?.length ? `itens inclusos: ${product.includedItems.join(", ")}` : null,
-      specificationFacts ? `especificações: ${specificationFacts}` : null,
-      variantFacts ? `variantes/cores: ${variantFacts}` : null,
-      product.notes ? `observações: ${product.notes}` : null,
-    ].filter((fact): fact is string => Boolean(fact));
+    // Fatos normalizados de Produtos (campos universais + atributos da empresa).
+    const normalized = normalizeProductFacts(product).facts;
+    const hasComposite = normalized.some((fact) => fact.key === "medidas" && fact.source === "field");
+    const facts = normalized.flatMap((fact) => {
+      if (fact.key === UNIVERSAL_FACT_KEYS.name) return [];
+      // Colunas de medida já resumidas em "dimensões C x L x P".
+      if (fact.source === "field" && fact.key === "medidas") return [`dimensões ${renderFactValue(fact.value)}`];
+      if (
+        hasComposite &&
+        fact.source === "field" &&
+        ["comprimento", "largura", "profundidade"].includes(fact.key)
+      ) {
+        return [];
+      }
+      if (fact.key === UNIVERSAL_FACT_KEYS.price || fact.key === UNIVERSAL_FACT_KEYS.promoPrice) return [];
+      if (fact.key === UNIVERSAL_FACT_KEYS.description) return [renderFactValue(fact.value)];
+      return [`${fact.label.toLowerCase()} ${renderFactValue(fact.value)}`];
+    });
+    if (options.includePrice) {
+      facts.splice(
+        Math.min(3, facts.length),
+        0,
+        `preço ${formatPrice(
+          product.promoPrice != null && Number.isFinite(product.promoPrice) && product.promoPrice > 0
+            ? product.promoPrice
+            : product.price,
+        )}`,
+      );
+    }
     return `${product.name}${facts.length ? ` — ${facts.join("; ")}` : ""}.`;
   });
   const confirmation = options.rectangularPoolIntent
@@ -540,6 +633,7 @@ export function buildValidatedCatalogReply(
   return `${confirmation}Encontrei no catálogo: ${items.join(" ")}`;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (intenção "quadrada/reta" → retangular).
 export function hasRectangularPoolIntent(
   history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
 ): boolean {
@@ -700,6 +794,8 @@ function sameCatalogNumber(left: number, right: number): boolean {
   return Math.abs(left - right) < 0.001;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (campos técnicos e sinônimos fixos). Safety net do caminho
+// legado; os fatos declarados (fact_claims) não dependem disto.
 const TECHNICAL_FIELD_SYNONYMS: Record<string, string[]> = {
   material: ["material", "composicao", "revestimento"],
   potencia: ["potencia"],
@@ -748,6 +844,7 @@ function technicalValueMatches(actual: string, expected: string): boolean {
   return false;
 }
 
+// TODO(fase-2-multissegmento): hardcode de piscina (vocabulário fixo: fibra, vinil, filtro, bomba, aquecimento...).
 function objectiveClaimSentences(message: string): string[] {
   return message
     .split(/[.!?;\n]+/)
@@ -808,15 +905,24 @@ const PRICE_WORD_MONEY_PATTERN =
 
 function monetaryClaimsIn(sentence: string): PriceClaim[] {
   const claims: PriceClaim[] = [];
-  const promoAt = (index: number) =>
-    /promo/i.test(sentence.slice(Math.max(0, index - 30), index + 40));
-  for (const match of sentence.matchAll(EXPLICIT_MONEY_PATTERN)) {
-    const value = parseMoneyClaim(match[1] ?? match[3], match[2] ?? match[4]);
-    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
-  }
-  for (const match of sentence.matchAll(PRICE_WORD_MONEY_PATTERN)) {
-    const value = parseMoneyClaim(match[1]);
-    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
+  // O rótulo "promocional" vale só para o preço da MESMA oração, e só quando
+  // ela tem um único preço ("R$ 12.900 promocional; normal R$ 15.900"). Uma
+  // janela de caracteres atribuía o rótulo ao preço normal vizinho.
+  let offset = 0;
+  for (const clause of splitClauses(sentence)) {
+    const clauseClaims: PriceClaim[] = [];
+    for (const match of clause.matchAll(EXPLICIT_MONEY_PATTERN)) {
+      const value = parseMoneyClaim(match[1] ?? match[3], match[2] ?? match[4]);
+      if (value != null) clauseClaims.push({ value, promo: false, index: offset + (match.index ?? 0) });
+    }
+    for (const match of clause.matchAll(PRICE_WORD_MONEY_PATTERN)) {
+      const value = parseMoneyClaim(match[1]);
+      if (value != null) clauseClaims.push({ value, promo: false, index: offset + (match.index ?? 0) });
+    }
+    const distinctValues = new Set(clauseClaims.map((claim) => claim.value));
+    const promo = distinctValues.size === 1 && /promo/i.test(clause);
+    claims.push(...clauseClaims.map((claim) => ({ ...claim, promo })));
+    offset += clause.length + 1;
   }
   return claims;
 }
@@ -867,6 +973,17 @@ function validateObjectiveProductClaims(
   suggestedProductIds: string[],
   commercialRules: SalesAgentGrounding["commercialRules"],
   history: SalesAgentCoreInput["history"],
+  /** Produto ao qual este trecho se refere (segmento ancorado). */
+  anchor?: SalesAgentGrounding["catalog"][number],
+  /**
+   * Fatos já declarados pela interpretação semântica e validados por
+   * atributo: aqui só restam as verificações qualitativas.
+   */
+  options: {
+    skipNumeric?: boolean;
+    /** Termos (valor + rótulo do atributo) das declarações validadas. */
+    declaredTokens?: ReadonlySet<string>;
+  } = {},
 ): boolean {
   // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
   // ("Fica R$ 5.000. Posso reservar?").
@@ -874,17 +991,29 @@ function validateObjectiveProductClaims(
     isNonFactualObjectiveMessage(message) &&
     extractFactualPriceClaims(message, history).length === 0
   ) return true;
-  const priceClaims = extractPriceClaims(message, history);
-  const objectiveSentences = objectiveClaimSentences(message);
-  const dimensionClaims = [...message.matchAll(
-    /(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?\s*(?:m|metros?)?/gi,
-  )]
-    .filter((match) => /\b(?:m|metros?)\b/i.test(match[0]))
-    .map((match) => match.slice(1).filter(Boolean).map((value) => parseCatalogNumber(value)));
-  const capacityClaims = [...message.matchAll(/([\d.]+(?:,\d+)?)\s*l(?:itros?)?\b/gi)]
-    .map((match) => parseCatalogNumber(match[1]))
-    .filter((value): value is number => value != null);
-  const hasObjectiveValue = priceClaims.length > 0 || dimensionClaims.length > 0 || capacityClaims.length > 0 || objectiveSentences.length > 0;
+  // Fatos numéricos tipados (preço, dimensões, medida, capacidade), cada um
+  // validado contra o seu campo — nunca a frase inteira contra o catálogo.
+  const numericFacts = extractNumericFacts(message);
+  const standaloneMoney = message.trim().match(/^([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?$/i);
+  if (standaloneMoney && hasMonetaryContext(message, history)) {
+    const value = parseMoneyClaim(standaloneMoney[1], standaloneMoney[2]);
+    if (value != null) numericFacts.prices.push({ value, promo: false });
+  }
+  // Afirmações qualitativas só nas orações que não carregam número já
+  // validado por campo ("está saindo por R$ X", "medidas: 4 x 2,5 m").
+  // (Remove só a oração numérica; o restante da MESMA frase continua junto,
+  // preservando o sentido — "inclui instalação, filtro e bomba".)
+  const qualitativeText = message
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((sentence) =>
+      splitClauses(sentence)
+        .filter((clause) => !hasNumericFacts({ ...extractNumericFacts(clause), quantities: [] }))
+        .join(", "),
+    )
+    .filter(Boolean)
+    .join(". ");
+  const objectiveSentences = objectiveClaimSentences(qualitativeText);
+  const hasObjectiveValue = hasNumericFacts(numericFacts) || objectiveSentences.length > 0;
   if (!hasObjectiveValue) return true;
   if (!products) return false;
 
@@ -894,12 +1023,31 @@ function validateObjectiveProductClaims(
     const product = products.find((candidate) => candidate.id === id);
     return product ? [product] : [];
   });
-  const resolvedProduct = resolveCatalogProductReferenceWithContext(
-    message,
-    products,
-    presentedProducts,
-  );
-  if (resolvedProduct.ambiguous) return false;
+  // A quem a resposta se refere: só pela identidade do produto no texto
+  // (nome, modelo, apelido numérico). Referências posicionais ("a primeira",
+  // "2") servem para mensagens do cliente; aplicadas à resposta, confundiam
+  // dígitos de medidas/preços com referência a produto.
+  const resolvedProduct = anchor
+    ? { product: anchor, ambiguous: false }
+    : resolveCatalogProductReference(message, products);
+  if (resolvedProduct.ambiguous) {
+    // Resposta sobre vários produtos: cada afirmação é validada contra o
+    // produto cuja menção a inicia no texto. Sem âncora, não há validação
+    // possível e o guardrail bloqueia.
+    const segments = segmentClaimsByProduct(message, products);
+    if (!segments || segments.length < 2) return false;
+    return segments.every((segment) =>
+      validateObjectiveProductClaims(
+        segment.text,
+        [segment.product],
+        [segment.product.id],
+        commercialRules,
+        history,
+        segment.product,
+        options,
+      ),
+    );
+  }
   const byMention = resolvedProduct.product
     ? [resolvedProduct.product]
     : products.filter((product) =>
@@ -907,35 +1055,24 @@ function validateObjectiveProductClaims(
       .filter((value): value is string => Boolean(value))
       .some((value) => normalizedMessage.includes(comparablePromptText(value))),
       );
-  // Sem produto nomeado, o preço afirmado é validado em `decide` contra os
-  // produtos sugeridos no turno (validateFactualPriceClaims).
-  const candidates = byMention;
-  if (candidates.length === 0) return true;
+  // Sem produto nomeado, o escopo são os produtos do turno a que a resposta
+  // se refere: sugeridos pelo LLM, senão os já apresentados, senão o
+  // conjunto validado do turno. Fato que não vale para nenhum deles bloqueia.
+  const named = byMention.length > 0;
+  const suggestedScope = products.filter((product) => suggestedProductIds.includes(product.id));
+  const candidates = named
+    ? byMention
+    : suggestedScope.length > 0
+      ? suggestedScope
+      : presentedProducts.length > 0
+        ? presentedProducts
+        : products;
 
-  if (priceClaims.some((claim) =>
-    !candidates.some((product) => {
-      if (claim.promo) {
-        return product.promoPrice != null && sameCatalogNumber(product.promoPrice, claim.value);
-      }
-      return [product.price, product.promoPrice]
-        .some((price) => price != null && sameCatalogNumber(price, claim.value));
-    }),
-  )) return false;
-
-  if (dimensionClaims.some((claim) => {
-    const dimensions = claim.filter((value): value is number => value != null);
-    return !candidates.some((product) => {
-      const productDimensions = [product.lengthM, product.widthM, product.depthM]
-        .filter((value): value is number => value != null);
-      return dimensions.length <= productDimensions.length && dimensions.every((value, index) =>
-        sameCatalogNumber(value, productDimensions[index]),
-      );
-    });
-  })) return false;
-
-  if (capacityClaims.some((claim) =>
-    !candidates.some((product) => product.capacityL != null && sameCatalogNumber(product.capacityL, claim)),
-  )) return false;
+  // Preço sem produto nomeado segue para a verificação de preço da decisão
+  // (que responde com o catálogo validado); medidas/capacidade são
+  // verificadas aqui contra o escopo do turno.
+  const factsToCheck = named ? numericFacts : { ...numericFacts, prices: [] };
+  if (!options.skipNumeric && !numericFactsHoldFor(factsToCheck, candidates)) return false;
 
   const semanticFacts = candidates.map((product) => ({
     model: comparablePromptText(`${product.name} ${product.model ?? ""}`),
@@ -950,17 +1087,44 @@ function validateObjectiveProductClaims(
       capacityL: product.capacityL,
       shape: product.shape,
     })),
-    specifications: Object.entries(
-      product.specifications && typeof product.specifications === "object" && !Array.isArray(product.specifications)
-        ? product.specifications
-        : {},
-    ).map(([key, value]) => ({ key: comparablePromptText(key), value: comparablePromptText(String(value)) })),
+    // Atributos da empresa já normalizados (tipados ou legados).
+    specifications: attributeFacts(normalizeProductFacts(product).facts).map((fact) => ({
+      key: comparablePromptText(fact.label),
+      value: comparablePromptText(renderFactValue(fact.value)),
+    })),
     components: comparablePromptText(
       `${product.notes ?? ""} ${(product.includedItems ?? []).join(" ")}`,
     ),
+    category: comparablePromptText(product.category ?? ""),
+    // Todos os fatos do próprio cadastro (nome, categoria, descrição, notas,
+    // especificações, itens, formato, variantes).
+    general: comparablePromptText(
+      [
+        productFactText(product),
+        product.category ?? "",
+        product.shape ?? "",
+        JSON.stringify(product.variants ?? []),
+      ].join(" "),
+    ),
   }));
+  // Vocabulário de fatos do conjunto do turno: palavra que aparece em algum
+  // produto é um fato de catálogo; palavra que não aparece em nenhum é
+  // redação ("saindo", "externas") e não é comparada.
+  const catalogVocabulary = new Set(
+    products.flatMap((product) =>
+      comparablePromptText(
+        [productFactText(product), product.category ?? "", product.shape ?? "", JSON.stringify(product.variants ?? [])].join(" "),
+      ).split(" "),
+    ),
+  );
+  const policyFacts = comparablePromptText(
+    [commercialRules.installationPolicy, commercialRules.includedItemsPolicy]
+      .filter((value): value is string => Boolean(value))
+      .join(" "),
+  );
   return objectiveSentences.every((sentence) => {
     const normalizedSentence = comparablePromptText(sentence);
+    // TODO(fase-2-multissegmento): hardcode de piscina (roteamento de frase por palavra-chave do segmento).
     const relevantFacts = /\binstalacao\b/.test(normalizedSentence)
       ? [
           comparablePromptText(commercialRules.installationPolicy ?? ""),
@@ -974,9 +1138,9 @@ function validateObjectiveProductClaims(
         : /\bformato\b/.test(normalizedSentence)
           ? semanticFacts.map((facts) => facts.shape).join(" ")
           : /\b(?:material|fibra|vinil)\b/.test(normalizedSentence)
-            ? semanticFacts.flatMap((facts) => facts.specifications
+            ? semanticFacts.flatMap((facts) => [facts.category, ...facts.specifications
               .filter((specification) => /material|composicao|revestimento|tipo/.test(specification.key))
-              .map((specification) => `${specification.key} ${specification.value}`)).join(" ")
+              .map((specification) => `${specification.key} ${specification.value}`)]).join(" ")
             : /\b(?:filtro|bomba|inclus[oa]s?)\b/.test(normalizedSentence)
               ? [
                   comparablePromptText(commercialRules.includedItemsPolicy ?? ""),
@@ -1000,6 +1164,28 @@ function validateObjectiveProductClaims(
         "de", "do", "da", "e", "metros",
       ]).has(token));
     if (claimTokens.length === 0) return true;
+    // Fatos declarados pela interpretação semântica e já validados contra o
+    // atributo da empresa: frase cujos termos de catálogo estão todos
+    // cobertos pelas declarações (valor + rótulo do atributo) não passa pelo
+    // roteamento fixo por campo abaixo (cor → variantes, formato → coluna...).
+    // Termo não declarado continua no safety net.
+    if (options.declaredTokens) {
+      const declared = options.declaredTokens;
+      const identity = new Set(
+        candidates.flatMap((product) =>
+          comparablePromptText(`${product.name} ${product.model ?? ""}`).split(" "),
+        ),
+      );
+      // TODO(fase-2-multissegmento): hardcode de piscina (mesma lista de recursos do safety net).
+      const legacyFeatures =
+        normalizedSentence.match(
+          /\b(?:fibra|vinil|filtro|bomba|aquecimento|aqueci\w*|drenagem|instalacao|inclus[oa]s?)\b/g,
+        ) ?? [];
+      const factTerms = [
+        ...new Set([...claimTokens.filter((token) => catalogVocabulary.has(token)), ...legacyFeatures]),
+      ].filter((token) => !identity.has(token));
+      if (factTerms.every((token) => declared.has(token))) return true;
+    }
     const technicalFieldClaim = Object.entries(TECHNICAL_FIELD_SYNONYMS).find(([, aliases]) =>
       aliases.some((alias) => normalizedSentence.includes(alias)),
     );
@@ -1021,10 +1207,40 @@ function validateObjectiveProductClaims(
         return technicalValueMatches(claimValue, specification.value);
       });
     }
-    if (!/\b(?:modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|pot[eÃª]ncia|voltagem|tens[aÃ£]o|instala[cÃ§][aÃ£]o|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(normalizedSentence)) {
+    if (!/\b(?:modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|potencia|voltagem|tensao|instalacao|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(normalizedSentence)) {
       return true;
     }
-    return claimTokens.every((token) => relevantFacts.includes(token));
+    const productFacts = new Set(
+      [relevantFacts, policyFacts, ...semanticFacts.map((facts) => facts.general)]
+        .join(" ")
+        .split(" ")
+        .filter(Boolean),
+    );
+    // Característica afirmada (presença de recurso/material/serviço) precisa
+    // existir no cadastro do produto ou nas políticas cadastradas.
+    // TODO(fase-2-multissegmento): hardcode de piscina (lista de recursos/materiais).
+    const claimedFeatures = normalizedSentence.match(
+      /\b(?:fibra|vinil|filtro|bomba|aquecimento|aqueci\w*|drenagem|instalacao|inclus[oa]s?)\b/g,
+    ) ?? [];
+    const featuresHold = claimedFeatures.every((feature) =>
+      productFacts.has(feature) ||
+      [...productFacts].some((fact) => fact.startsWith(feature.slice(0, 6))),
+    );
+    // Demais palavras: só as que são fato de catálogo precisam pertencer a
+    // ESTE produto (fato de outro produto associado errado é bloqueado).
+    // Atributo nomeado (cor, formato, material, acabamento, estrutura): o
+    // valor afirmado tem de estar NO CAMPO desse atributo, não em outro.
+    const identityTokens = new Set(
+      candidates.flatMap((product) => comparablePromptText(`${product.name} ${product.model ?? ""}`).split(" ")),
+    );
+    const namesAttributeField = /\b(?:cor|formato|material|acabamento|estrutura)\b/.test(normalizedSentence);
+    const fieldFacts = namesAttributeField
+      ? new Set(relevantFacts.split(" ").filter(Boolean))
+      : productFacts;
+    const catalogFactTokens = claimTokens.filter(
+      (token) => catalogVocabulary.has(token) && !identityTokens.has(token),
+    );
+    return featuresHold && catalogFactTokens.every((token) => fieldFacts.has(token));
   });
 }
 
@@ -1105,11 +1321,13 @@ export function buildSalesAgentSystemPrompt(
   ctx: AgentContext,
   history: SalesAgentCoreInput["history"] = [],
   sessionCorrections: SalesAgentSessionCorrection[] = [],
+  customerContext: CustomerContext | null = null,
 ): string {
   const ai = ctx.aiProfile;
   const catalogSearch = ctx.grounding.catalogSearch;
   const usesGroundedCatalog = catalogSearch.status === "matches";
   const groundedProducts = usesGroundedCatalog ? catalogSearch.products : [];
+  const focusIds = new Set(usesGroundedCatalog ? catalogSearch.focusProductIds ?? [] : []);
   const relevantFaqs = selectRelevantFaqs(
     ctx.grounding.faqKnowledge,
     ai?.faq ?? [],
@@ -1118,34 +1336,23 @@ export function buildSalesAgentSystemPrompt(
   );
   const productLines = groundedProducts
     .map((p, i) => {
-      const parts = [`${i + 1}. ${p.name} (ID: ${p.id})`];
-      if (p.model) parts.push(`   Modelo: ${p.model}`);
-      if (p.sku) parts.push(`   SKU: ${p.sku}`);
-      if (p.category) parts.push(`   Categoria: ${p.category}`);
-      if (p.lengthM != null) parts.push(`   Comprimento: ${p.lengthM} m`);
-      if (p.widthM != null) parts.push(`   Largura: ${p.widthM} m`);
-      if (p.depthM != null) parts.push(`   Profundidade: ${p.depthM} m`);
-      if (p.capacityL != null) parts.push(`   Capacidade: ${p.capacityL} L`);
-      if (p.shape) parts.push(`   Formato real: ${p.shape}`);
-      if (p.description) parts.push(`   ${p.description}`);
-      if (usesGroundedCatalog) {
-        parts.push(`   Preço cadastrado: ${formatPrice(p.price)}`);
-        if (p.promoPrice != null) {
-          parts.push(`   Preço promocional cadastrado: ${formatPrice(p.promoPrice)}`);
-        }
+      const parts = [`${i + 1}. ${p.name} (ID: ${p.id})${focusIds.has(p.id) ? " [em foco na conversa]" : ""}`];
+      // Fatos normalizados de Produtos; a chave [..] é a que o LLM declara
+      // em fact_claims ao afirmar o fato.
+      const facts = normalizeProductFacts(p).facts;
+      if (!facts.some((fact) => fact.key === UNIVERSAL_FACT_KEYS.price)) {
+        parts.push(`   Preço cadastrado: ${formatPrice(null)}`);
       }
-      if (p.notes) parts.push(`   Inclusos: ${p.notes}`);
-      if (p.includedItems?.length) {
-        parts.push(`   Itens inclusos: ${p.includedItems.join(", ")}`);
+      for (const fact of facts) {
+        if (fact.key === UNIVERSAL_FACT_KEYS.name) continue;
+        const label =
+          fact.key === UNIVERSAL_FACT_KEYS.price
+            ? "Preço cadastrado"
+            : fact.key === UNIVERSAL_FACT_KEYS.promoPrice
+              ? "Preço promocional cadastrado"
+              : fact.label;
+        parts.push(`   ${label}: ${renderFactValue(fact.value)} [${fact.key}]`);
       }
-      if (
-        p.specifications &&
-        typeof p.specifications === "object" &&
-        Object.keys(p.specifications).length > 0
-      ) {
-        parts.push(`   Especificações: ${JSON.stringify(p.specifications)}`);
-      }
-      if (p.variants?.length) parts.push(`   Variantes/cores: ${JSON.stringify(p.variants)}`);
       if (p.images.length > 0) parts.push(`   Fotos cadastradas: ${p.images.length}`);
       return parts.join("\n");
     })
@@ -1223,17 +1430,23 @@ export function buildSalesAgentSystemPrompt(
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 
-  return `Você é "${ctx.settings.ai_agent_name}", pré-atendente automático da empresa "${ctx.companyName}".
-Você atende clientes via WhatsApp/Instagram FORA do horário comercial enquanto o vendedor humano não chega.
+  return `Você é "${ctx.settings.ai_agent_name}", vendedora consultiva da empresa "${ctx.companyName}" no atendimento por mensagem.
+Você entende o cliente, responde o que ele pergunta e conduz a venda até o próximo passo, usando só o que a empresa cadastrou.
+
+${renderSalesCompetence(customerContext?.stage ?? null)}
 
 ${SALES_AGENT_PLAYBOOK}
 
+${renderBusinessKnowledge(buildBusinessKnowledge(ctx))}
+
+${renderCustomerContext(customerContext)}
+
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
 - NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
-- Perguntas normais sobre prazo de carga/instalação devem ser respondidas pelas REGRAS DE CARGA E INSTALAÇÃO cadastradas abaixo; só informe a próxima carga quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
+- Perguntas sobre prazo de entrega/instalação devem ser respondidas pelas POLÍTICAS OFICIAIS cadastradas abaixo; só informe previsão quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
 - NUNCA invente informação que não esteja no contexto abaixo.
-- NUNCA feche venda sozinho — apenas qualifique o lead.
-- Para perguntas sobre prazo de carga/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.
+- NUNCA conclua pedido nem crie condição: diante de sinal de compra, confirme a escolha (next_action confirm_purchase_intent) e um atendente finaliza.
+- Para perguntas sobre prazo de entrega/instalação, só chame request_human_handoff se o cliente exigir uma data específica ou antecipada que dependa de confirmação humana.
 
 ${sessionCorrectionLines ? `CORREÇÕES NORMATIVAS APROVADAS DESTA SESSÃO (prevalecem sobre Coach rules e learnings conflitantes, somente como comportamento/instrução de atendimento):
 ${sessionCorrectionLines}
@@ -1246,14 +1459,18 @@ CONTEXTO DA EMPRESA:
 - Diferenciais: ${ai?.differentials ?? "—"}
 - Pagamento (apenas mencionar formas, sem negociar): ${ctx.grounding.commercialRules.paymentPolicy || ctx.grounding.commercialRules.paymentMethods ? "—" : ai?.payment_methods ?? "—"}
 
-CATÁLOGO (use apenas estes produtos):
+CATÁLOGO (use apenas estes produtos):${
+    focusIds.size > 0
+      ? "\nOs marcados [em foco na conversa] são os que o cliente acabou de ver; interprete pelo histórico a que produto(s) ele se refere e use só os fatos listados aqui."
+      : ""
+  }
 ${productLines || "(catálogo vazio)"}
 
 REGRA DE REFERÊNCIA DE PRODUTO:
 - Todo produto mencionado na resposta deve estar no CATÁLOGO acima e também ter seu ID incluído em suggest_products.
 - Nunca use FAQ, histórico ou aprendizados como fonte de nome, modelo, medida, preço ou especificação de produto.
 - Se o produto ou especificação pedida não estiver no catálogo, não proponha alternativa inventada: solicite atendimento humano.
-- Em piscinas, variações como "quadrada", "quadrado", plurais, erros de gênero e "reta" significam intenção provável por linhas retas. Confirme esse entendimento naturalmente e use somente produtos cujo formato real no catálogo seja reto/retangular; nunca altere nem chame o formato real de quadrado.
+- Descreva formato, medida e demais atributos exatamente como cadastrados; se o cliente usar outro termo para o mesmo atributo, confirme o entendimento sem renomear o dado do catálogo.
 
 FAQ:
 ${faqLines || "(sem faq cadastrado)"}
@@ -1261,15 +1478,15 @@ ${faqLines || "(sem faq cadastrado)"}
 BASE DE CONHECIMENTO APROVADA:
 ${kbLines || "(vazia)"}${groundingSections ? `\n\n${groundingSections}` : ""}
 
-SUA MISSÃO:
-1. Cumprimentar e identificar: cidade da instalação + tamanho/medida da piscina + interesse principal.
-2. Quando tiver os dados, sugerir produtos compatíveis do catálogo.
-3. Responder dúvidas básicas (inclusos/por conta, dimensões) usando catálogo + KB.
-4. Se faltar dado ou pergunta sair do escopo → request_human_handoff com lowConfidence=true.
-5. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
-6. Em pedidos por comprimento, apresente TODOS os produtos do catálogo com o comprimento correspondente. Se o cliente apenas demonstrar interesse pela medida, responda em uma frase curta e natural, sem listar preços, dimensões ou litragem; só informe esses fatos se forem pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
+CONTRATO DE AÇÃO:
+1. Em respond_to_customer, preencha sales_plan: o estágio da conversa, a próxima ação que você escolheu e o que aprendeu do cliente (necessidades, preferências, objeções, sinais de compra). Isso é memória para os próximos turnos, não texto ao cliente.
+2. Se faltar dado cadastrado para responder ou a pergunta sair do escopo → request_human_handoff.
+3. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
+4. Em pedidos por medida/atributo, os produtos do CATÁLOGO acima já são todos os compatíveis: apresente-os. Se o cliente apenas demonstrar interesse, responda em uma frase curta e natural, sem listar preços ou medidas não pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
+5. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
+6. Em respond_to_customer, declare em fact_claims CADA fato de produto que a mensagem afirma ou nega (preço, medida, quantidade, característica, item incluso, variante...): o ID do produto, a chave [..] do fato no CATÁLOGO a que ele corresponde, o valor exatamente como escrito na mensagem e denies=true se a mensagem nega o fato. Escreva com suas palavras, mas só afirme fatos que existem no CATÁLOGO; pergunta sobre algo sem chave cadastrada não se responde por suposição: diga que vai confirmar ou use request_human_handoff. Sem fato de produto na mensagem, envie fact_claims vazio.
 
-Sempre retorne via tool call (respond_to_customer OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
+Sempre retorne via tool call (respond_to_customer, compare_catalog_prices OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
 }
 
 // Provedores OpenAI-compatible rejeitam `enum: []` (HTTP 400); sem valores, omite a restrição.
@@ -1313,6 +1530,7 @@ export function buildSalesAgentCompletionRequest(
           params.ctx,
           params.history,
           params.sessionCorrections,
+          params.customerContext ?? null,
         ),
       },
       {
@@ -1338,16 +1556,19 @@ export function buildSalesAgentCompletionRequest(
                 type: "string",
                 description: "Texto enviado ao cliente (pt-BR, máx 4 frases).",
               },
-              detected_city: { type: "string", description: "Cidade da instalação." },
+              detected_city: { type: "string", description: "Cidade do cliente/da entrega." },
               detected_state: { type: "string", description: "Estado/UF (ex.: SP, RJ)." },
-              detected_pool_size: { type: "string", description: "Medida/tamanho da piscina." },
+              detected_pool_size: {
+                type: "string",
+                description: "Medida/tamanho desejado do produto, se o cliente informou.",
+              },
               detected_intent: {
                 type: "string",
                 description: "Intenção principal (informação, orçamento, instalação, etc.).",
               },
               detected_interest: {
                 type: "string",
-                description: "Interesse específico (piscina fibra, aquecimento, lona, manutenção).",
+                description: "Interesse específico (linha de produto, serviço ou categoria do catálogo).",
               },
               detected_budget: {
                 type: "string",
@@ -1389,8 +1610,99 @@ export function buildSalesAgentCompletionRequest(
                 description:
                   "IDs dos aprendizados do Coach que influenciaram materialmente esta resposta. Não inclua aprendizados apenas por estarem no contexto.",
               },
+              fact_claims: {
+                type: "array",
+                description:
+                  "Cada fato de produto afirmado ou negado na mensagem, ligado ao fato cadastrado no CATÁLOGO (vazio se a mensagem não afirma fato de produto).",
+                items: {
+                  type: "object",
+                  properties: {
+                    product_id: {
+                      type: "string",
+                      ...nonEmptyEnum(catalogProducts.map((product) => product.id)),
+                    },
+                    fact: {
+                      type: "string",
+                      description: "Chave [..] do fato no CATÁLOGO a que a afirmação se refere.",
+                    },
+                    stated: {
+                      type: "string",
+                      description:
+                        "Valor exatamente como escrito na mensagem (ex.: '1,40 m', 'R$ 12.900,00', 'linho').",
+                    },
+                    denies: {
+                      type: "boolean",
+                      description: "true quando a mensagem nega o fato (ex.: 'não inclui').",
+                    },
+                  },
+                  required: ["product_id", "fact", "stated"],
+                  additionalProperties: false,
+                },
+              },
+              sales_plan: {
+                type: "object",
+                description:
+                  "Seu raciocínio comercial deste turno (não é enviado ao cliente): estágio, próxima ação escolhida e o que você aprendeu do cliente.",
+                properties: {
+                  stage: { type: "string", enum: [...SALES_STAGES] },
+                  next_action: {
+                    type: "string",
+                    enum: [...SALES_NEXT_ACTIONS],
+                    description: SALES_NEXT_ACTIONS.map(
+                      (action) => `${action}: ${SALES_NEXT_ACTION_DESCRIPTIONS[action]}`,
+                    ).join("; "),
+                  },
+                  customer_context: {
+                    type: "object",
+                    properties: {
+                      needs: { type: "array", items: { type: "string" } },
+                      preferences: { type: "array", items: { type: "string" } },
+                      objections: { type: "array", items: { type: "string" } },
+                      buying_signals: { type: "array", items: { type: "string" } },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                required: ["stage", "next_action"],
+                additionalProperties: false,
+              },
             },
-            required: ["message"],
+            required: ["message", "fact_claims"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: COMPARE_CATALOG_PRICES_TOOL,
+          description:
+            "Use quando o cliente quer saber qual opção custa menos ou custa mais (comparar os preços cadastrados), seja qual for a forma de dizer. O sistema monta a resposta só com preços reais do catálogo; não escreva preços. NÃO use para: pedido de desconto, abatimento, contraproposta, 'faz por X' ou pedir para baixar/melhorar o valor (isso é negociação: use request_human_handoff); nem para custo-benefício, qualidade ou 'qual vale mais a pena' (isso não é só preço: responda com respond_to_customer usando os fatos do catálogo).",
+          parameters: {
+            type: "object",
+            properties: {
+              order: {
+                type: "string",
+                enum: ["lowest_first", "highest_first"],
+                description: "lowest_first = quer a opção que custa menos; highest_first = a que custa mais.",
+              },
+              product_ids: {
+                type: "array",
+                items: {
+                  type: "string",
+                  ...nonEmptyEnum(catalogProducts.map((product) => product.id)),
+                },
+                description:
+                  "IDs exatos dos produtos que o cliente quer comparar, se ele citou ou restringiu opções. Vazio = opções já em discussão.",
+              },
+              other_topics: {
+                type: "array",
+                items: { type: "string", enum: [...INSTITUTIONAL_TOPICS] },
+                description:
+                  "Se a mesma mensagem também pergunta sobre pagamento (payment), instalação (installation), entrega/frete (delivery), visita (visit) ou itens inclusos (included), liste esses assuntos. O sistema responde com as políticas oficiais cadastradas. Vazio se não houver.",
+              },
+            },
+            required: ["order"],
             additionalProperties: false,
           },
         },
@@ -1410,6 +1722,62 @@ export function buildSalesAgentCompletionRequest(
       },
     ],
     tool_choice: "auto",
+  };
+}
+
+/**
+ * Executa a comparação escolhida pelo LLM de forma determinística: conjunto e
+ * preços vêm só do catálogo ativo da empresa; outros assuntos da mesma
+ * mensagem são respondidos com as políticas cadastradas.
+ */
+function executePriceComparison(
+  params: SalesAgentCoreInput,
+  args: ToolComparePrices,
+  helpers: {
+    institutionalPolicies: InstitutionalPolicy[] | null;
+    safeHandoff: (reason: string, fallbackReason?: string) => AgentDecision;
+  },
+): AgentDecision {
+  const catalog =
+    params.priceComparison?.catalog ??
+    (params.catalogSearch.status === "matches" ? params.catalogSearch.products : []);
+  const requestedProductIds = Array.isArray(args.product_ids)
+    ? args.product_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  const pool = resolvePriceComparisonPool({
+    catalog,
+    history: params.history,
+    requestedProductIds,
+    attributeMatches: params.priceComparison?.attributeMatches ?? null,
+  });
+  const comparison = buildPriceComparisonReply(pool, {
+    order: args.order === "highest_first" ? "highest_first" : "lowest_first",
+  });
+  if (!comparison) return helpers.safeHandoff("catalog_price_unavailable");
+
+  // Outros assuntos da mesma mensagem: tópicos do LLM + detecção
+  // determinística existente; resposta sempre pelo texto da política.
+  const requestedTopics = [
+    ...(Array.isArray(args.other_topics)
+      ? args.other_topics.filter((topic): topic is string => typeof topic === "string")
+      : []),
+    ...(helpers.institutionalPolicies ?? []).map((policy) => policy.topic),
+  ];
+  const policies = resolvePoliciesForTopics(requestedTopics, params.ctx.grounding.commercialRules);
+  if (policies === null) {
+    // Um dos assuntos pedidos não tem política cadastrada: não responder pela metade.
+    return helpers.safeHandoff("secondary_topic_without_policy");
+  }
+  return {
+    kind: "reply",
+    message: [comparison.message, policies.length > 0 ? buildInstitutionalPolicyReply(policies) : null]
+      .filter(Boolean)
+      .join("\n"),
+    suggested_products: comparison.productIds,
+    product_image_ids: [],
+    grounding_sources: policies.length > 0 ? ["catalog", "commercial_rules"] : ["catalog"],
+    learning_ids_used: [],
+    fallback_reason: "catalog_price_comparison",
   };
 }
 
@@ -1476,6 +1844,44 @@ export class SalesAgentCore {
           },
         });
       }
+      // Pergunta de continuação sobre produtos já apresentados ("tem algum
+      // mais em conta?", "qual compensa mais?") não é pedido de item novo: a
+      // busca textual não acha um produto na frase, mas o contexto existe.
+      // Segue para o LLM com os apresentados em vez de pedir esclarecimento.
+      if (
+        (catalogSearch.status === "no_match" ||
+          (catalogSearch.status === "ambiguous" && catalogSearch.products.length === 0)) &&
+        !params.followUpContext
+      ) {
+        const known = params.priceComparison?.catalog ?? params.ctx.catalogForValidation ?? [];
+        const knownById = new Map(known.map((product) => [product.id, product]));
+        // Foco resolvido pelo runtime (histórico + memória); sem ele, o último
+        // conjunto apresentado no histórico.
+        const focusIds = params.focusProductIds?.length
+          ? params.focusProductIds
+          : getConversationFocusProductIds(params.history);
+        const presented = focusIds.flatMap((id) => {
+          const product = knownById.get(id);
+          return product ? [product] : [];
+        });
+        if (presented.length > 0) {
+          const followUpSearch: SalesAgentCatalogSearch = {
+            status: "matches",
+            products: presented,
+            basis: "focus",
+            focusProductIds: presented.map((product) => product.id),
+          };
+          return this.decide({
+            ...params,
+            followUpContext: true,
+            catalogSearch: followUpSearch,
+            ctx: {
+              ...params.ctx,
+              grounding: { ...params.ctx.grounding, catalogSearch: followUpSearch },
+            },
+          });
+        }
+      }
       if (catalogSearch.status === "ambiguous" && catalogSearch.products.length > 1) {
         const options = catalogSearch.products.slice(0, SALES_AGENT_MAX_OPTIONS);
         return {
@@ -1530,23 +1936,6 @@ export class SalesAgentCore {
     const maxOptions = catalogSearch.exhaustive
       ? Math.max(SALES_AGENT_MAX_OPTIONS, Math.min(catalogSearch.products.length, MAX_SALES_AGENT_PRODUCT_IMAGES))
       : SALES_AGENT_MAX_OPTIONS;
-    // Comparação de preço: resposta só com preços cadastrados, sem LLM.
-    if (isPriceComparisonRequest(lastLeadText)) {
-      const comparisonReply = buildPriceComparisonReply(catalogSearch.products, {
-        mostExpensive: asksForMostExpensive(lastLeadText),
-      });
-      if (comparisonReply) {
-        return {
-          kind: "reply",
-          message: comparisonReply.message,
-          suggested_products: comparisonReply.productIds,
-          product_image_ids: [],
-          grounding_sources: ["catalog"],
-          learning_ids_used: [],
-          fallback_reason: "catalog_price_comparison",
-        };
-      }
-    }
     const fallbackProducts = deterministicProducts.slice(0, maxOptions);
     const deterministicFallback = (reason: string): AgentDecision =>
       fallbackProducts.length === 0 && institutionalPolicies
@@ -1609,6 +1998,17 @@ export class SalesAgentCore {
     if (call.name === "request_human_handoff") {
       return safeHandoff((args as ToolHandoff).reason || "model_requested", "model_requested_handoff");
     }
+    if (call.name === COMPARE_CATALOG_PRICES_TOOL) {
+      return executePriceComparison(params, args as ToolComparePrices, {
+        institutionalPolicies,
+        safeHandoff,
+      });
+    }
+    // Turno com palavra de preço ambígua que o LLM não tratou como comparação:
+    // mantém a proteção do pré-check (negociação vai para humano).
+    if (params.priceSensitive) {
+      return safeHandoff("pre_check_price_sensitive", "price_sensitive_not_comparison");
+    }
     const reply = args as ToolReply;
     if (!reply.message) {
       return safeHandoff("empty_message");
@@ -1664,6 +2064,57 @@ export class SalesAgentCore {
       ? reply.learning_ids_used.filter((id) => availableLearningIds.includes(id))
       : [];
     const catalogForValidation = catalogSearch.products;
+    // Diagnóstico de validação: o que o LLM escreveu e com quais fatos de
+    // Produtos ele foi validado. Sem isso não há como provar qual afirmação
+    // foi rejeitada (o texto rejeitado nunca é enviado nem era gravado).
+    const validationDiagnostic = (check: string): SalesAgentValidationDiagnostic => ({
+      check,
+      rejected_reply: reply.message.slice(0, 600),
+      suggested_product_ids: modelSuggestions.slice(0, 10),
+      catalog_basis: catalogSearch.basis ?? "reference",
+      validated_products: catalogSearch.products.slice(0, 10).map((product) => ({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        promo_price: product.promoPrice,
+      })),
+    });
+    // Fatos declarados pela interpretação semântica (o LLM liga cada
+    // afirmação ao fato de Produtos); validação determinística de tipo,
+    // valor e unidade, e cobertura de toda grandeza da resposta.
+    const declaredClaims = parseDeclaredFactClaims(reply.fact_claims);
+    if (declaredClaims) {
+      const claimsResult = validateDeclaredFactClaims({
+        message: reply.message,
+        claims: declaredClaims,
+        products: catalogSearch.products,
+        coverageTexts: Object.values(params.ctx.grounding.commercialRules).filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        ),
+      });
+      if (!claimsResult.ok) {
+        const diagnostic: SalesAgentValidationDiagnostic = {
+          ...validationDiagnostic(claimsResult.check),
+          fact_claims: declaredClaims.slice(0, 20),
+          ...(claimsResult.check === "fact_claim"
+            ? { rejected_fact_claim: { ...claimsResult.claim, reason: claimsResult.reason } }
+            : { undeclared_quantity: claimsResult.quantity }),
+        };
+        if (institutionalPolicies) {
+          return {
+            ...deterministicFallback("catalog_unvalidated_objective_claim"),
+            validation_diagnostic: diagnostic,
+          };
+        }
+        return {
+          kind: "handoff",
+          reason: "catalog_unvalidated_objective_claim",
+          grounding_sources: groundingSources,
+          learning_ids_used: learningIdsUsed,
+          validation_diagnostic: diagnostic,
+        };
+      }
+    }
     if (
       !validateObjectiveProductClaims(
         reply.message,
@@ -1671,14 +2122,25 @@ export class SalesAgentCore {
         requestedSuggestions,
         params.ctx.grounding.commercialRules,
         params.history,
+        undefined,
+        declaredClaims
+          ? {
+              skipNumeric: true,
+              declaredTokens: declaredFactTokens(declaredClaims, catalogSearch.products),
+            }
+          : {},
       )
     ) {
-      if (institutionalPolicies) return deterministicFallback("catalog_unvalidated_objective_claim");
+      const diagnostic = validationDiagnostic("objective_claim");
+      if (institutionalPolicies) {
+        return { ...deterministicFallback("catalog_unvalidated_objective_claim"), validation_diagnostic: diagnostic };
+      }
       return {
         kind: "handoff",
         reason: "catalog_unvalidated_objective_claim",
         grounding_sources: groundingSources,
         learning_ids_used: learningIdsUsed,
+        validation_diagnostic: diagnostic,
       };
     }
     if (
@@ -1686,9 +2148,13 @@ export class SalesAgentCore {
         reply.message,
         selectedProducts,
         catalogSearch.products,
+        declaredClaims != null,
       )
     ) {
-      return deterministicFallback("catalog_invalid_product_fact");
+      return {
+        ...deterministicFallback("catalog_invalid_product_fact"),
+        validation_diagnostic: validationDiagnostic("product_fact"),
+      };
     }
     if (
       !isNonFactualReply &&
@@ -1704,10 +2170,13 @@ export class SalesAgentCore {
     const factualPriceClaims = extractFactualPriceClaims(reply.message, params.history);
     if (factualPriceClaims.length > 0 && !institutionalPolicies) {
       if (selectedProducts.length === 0) {
-        return safeHandoff("catalog_unvalidated_price_claim");
+        return { ...safeHandoff("catalog_unvalidated_price_claim"), validation_diagnostic: validationDiagnostic("price_claim") };
       }
       if (!factualPriceClaimsMatchProducts(factualPriceClaims, selectedProducts)) {
-        return deterministicFallback("catalog_unvalidated_price_claim");
+        return {
+          ...deterministicFallback("catalog_unvalidated_price_claim"),
+          validation_diagnostic: validationDiagnostic("price_claim"),
+        };
       }
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
@@ -1720,6 +2189,22 @@ export class SalesAgentCore {
     ])]
       .filter((id) => (catalogById.get(id)?.images.length ?? 0) > 0)
       .slice(0, 10);
+    // Sales Intelligence: a próxima ação escolhida pelo LLM passa pelo gate
+    // de capacidades/limites da empresa (o texto já foi validado acima).
+    const parsedPlan = parseSalesTurnPlan(reply.sales_plan);
+    let salesPlan: SalesTurnPlan | null = null;
+    let afterReply: AgentDecision["after_reply"] = null;
+    if (parsedPlan) {
+      const gate = gateSalesTurnPlan(parsedPlan, {
+        knowledge: buildBusinessKnowledge(params.ctx),
+        suggestedProductIds: modelSuggestions,
+      });
+      if (gate.outcome === "handoff") {
+        return { ...safeHandoff(gate.reason), sales_plan: gate.plan };
+      }
+      salesPlan = gate.plan;
+      afterReply = gate.afterReply;
+    }
     const stageRaw = reply.customer_stage?.toLowerCase().trim();
     const stage: CustomerStage | null =
       stageRaw === "curioso" || stageRaw === "pesquisando" || stageRaw === "pronto_para_comprar"
@@ -1740,6 +2225,49 @@ export class SalesAgentCore {
       product_image_ids: requestedImages,
       grounding_sources: groundingSources,
       learning_ids_used: learningIdsUsed,
+      presented_product_ids: presentedInReply(reply.message, modelSuggestions, catalogSearch.products),
+      ...(declaredClaims ? { fact_claims: declaredClaims } : {}),
+      ...(salesPlan ? { sales_plan: salesPlan, after_reply: afterReply } : {}),
     };
   }
+}
+
+/**
+ * Termos cobertos pelas declarações validadas: o valor afirmado e o rótulo
+ * do atributo da empresa a que ele se refere (só afirmações, não negações).
+ */
+function declaredFactTokens(
+  claims: readonly DeclaredFactClaim[],
+  products: SalesAgentGrounding["catalog"],
+): Set<string> {
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return new Set(
+    claims
+      .filter((claim) => !claim.denies)
+      .flatMap((claim) => {
+        const product = byId.get(claim.productId);
+        const fact = product
+          ? normalizeProductFacts(product).facts.find((candidate) => candidate.key === claim.fact)
+          : undefined;
+        return comparablePromptText(`${claim.stated} ${fact?.label ?? ""}`).split(" ");
+      })
+      .filter(Boolean),
+  );
+}
+
+/** IDs sugeridos pelo LLM ou, sem sugestão, produtos citados pelo nome no texto. */
+function presentedInReply(
+  message: string,
+  suggested: readonly string[],
+  products: SalesAgentGrounding["catalog"],
+): string[] {
+  if (suggested.length > 0) return [...new Set(suggested)];
+  const normalized = comparablePromptText(message);
+  return products
+    .filter((product) =>
+      [product.name, product.model]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .some((value) => normalized.includes(comparablePromptText(value))),
+    )
+    .map((product) => product.id);
 }
