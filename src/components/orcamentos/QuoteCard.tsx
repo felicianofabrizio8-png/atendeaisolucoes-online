@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Check, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -26,16 +26,34 @@ import { SendWhatsAppModal } from "./SendWhatsAppModal";
 import { QuoteFormModal } from "./QuoteFormModal";
 import { quoteDate, quoteGlow } from "@/lib/quote-presentation";
 
-export function QuoteCard({ quote }: { quote: Quote }) {
+export function QuoteCard({
+  quote,
+  requestedAction,
+  onActionHandled,
+}: {
+  quote: Quote;
+  requestedAction?: "send" | "edit" | "details";
+  onActionHandled?: () => void;
+}) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
   const lead = leads.find((l) => l.id === quote.leadId);
+  const customerName = quote.customerDetails
+    ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim() || lead?.name
+    : lead?.name;
   const [waOpen, setWaOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const phone = lead?.phone?.replace(/\D/g, "") ?? "";
+  const phone = (quote.customerDetails?.phone1 || lead?.phone || "").replace(/\D/g, "");
   const canWhatsApp = !!lead && phone.length >= 8 && phone.length <= 15;
+  useEffect(() => {
+    if (!requestedAction) return;
+    if (requestedAction === "send" && canWhatsApp) setWaOpen(true);
+    if (requestedAction === "edit") setEditing(true);
+    if (requestedAction === "details") setDetailsOpen(true);
+    onActionHandled?.();
+  }, [requestedAction, canWhatsApp, onActionHandled]);
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -62,7 +80,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
     <>
       <article
         className="relative isolate flex min-h-[248px] min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card/60 p-5 shadow-sm shadow-black/20 transition-shadow duration-200 hover:shadow-md hover:shadow-black/25 sm:min-h-[272px] sm:p-6 xl:min-h-[288px] xl:p-7"
-        aria-label={`Orçamento de ${lead?.name ?? "cliente não selecionado"}`}
+        aria-label={`Orçamento de ${customerName ?? "cliente não selecionado"}`}
       >
         <div
           aria-hidden="true"
@@ -78,12 +96,12 @@ export function QuoteCard({ quote }: { quote: Quote }) {
             <div className="min-w-0">
               <h2
                 className="truncate text-base font-bold leading-tight sm:text-lg"
-                title={lead?.name}
+                title={customerName}
               >
-                {lead?.name ?? "Sem cliente"}
+                {customerName ?? "Sem cliente"}
               </h2>
               <p className="truncate text-sm font-semibold text-muted-foreground sm:text-base">
-                {lead?.phone || lead?.handle || "Sem telefone"}
+                {quote.customerDetails?.phone1 || lead?.phone || lead?.handle || "Sem telefone"}
               </p>
             </div>
           </div>
@@ -146,7 +164,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
         </div>
       </article>
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl">
+        <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle>Detalhes do orçamento</DialogTitle>
             <DialogDescription>
@@ -154,10 +172,28 @@ export function QuoteCard({ quote }: { quote: Quote }) {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <DetailField label="Cliente" value={lead?.name ?? "Sem cliente"} />
-            <DetailField label="Contato" value={lead?.phone || lead?.handle || "—"} />
+            <DetailField label="Cliente" value={customerName ?? "Sem cliente"} />
+            <DetailField
+              label="Contato"
+              value={quote.customerDetails?.phone1 || lead?.phone || lead?.handle || "—"}
+            />
+            {quote.customerDetails && (
+              <>
+                <DetailField label="Email" value={quote.customerDetails.email} />
+                <DetailField label="Telefone 2" value={quote.customerDetails.phone2} />
+                <DetailField label="Rua" value={quote.customerDetails.street} />
+                <DetailField label="Cidade" value={quote.customerDetails.city} />
+                <DetailField label="Bairro" value={quote.customerDetails.neighborhood} />
+                <DetailField label="Estado" value={quote.customerDetails.state} />
+                <DetailField label="CEP" value={quote.customerDetails.postalCode} />
+              </>
+            )}
             <DetailField label="Canal" value={lead?.channel ?? "—"} />
             <DetailField label="Produto" value={quote.productName} />
+            {quote.productDescription && (
+              <DetailField label="Descrição" value={quote.productDescription} multiline />
+            )}
+            {quote.benefits && <DetailField label="Benefícios" value={quote.benefits} multiline />}
             <DetailField label="Preço original" value={formatBRL(quote.unitPrice)} />
             <DetailField label="Desconto" value={formatBRL(quote.discount)} />
             <DetailField label="Valor final" value={formatBRL(quote.finalValue)} />
@@ -210,7 +246,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
       {waOpen && lead && (
         <SendWhatsAppModal
           quote={quote}
-          leadName={lead.name}
+          leadName={customerName || lead.name}
           phone={phone}
           onClose={() => setWaOpen(false)}
           onSent={() => {

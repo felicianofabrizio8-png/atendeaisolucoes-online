@@ -3,9 +3,10 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { FileText, Plus, Search, X } from "lucide-react";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
 import { matchesQuote, normalizeQuoteSearch } from "@/lib/quote-presentation";
-import { listQuotes, subscribeQuotes } from "@/data/quotes";
+import { listQuotes, subscribeQuotes, type Quote } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
+import { QuoteSuccessModal } from "@/components/orcamentos/QuoteSuccessModal";
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
@@ -45,6 +46,11 @@ function QuotesPage() {
   const navigate = useNavigate();
   const quotes = useQuotes();
   const [open, setOpen] = useState(false);
+  const [successQuote, setSuccessQuote] = useState<Quote | null>(null);
+  const [requestedAction, setRequestedAction] = useState<{
+    id: string;
+    action: "send" | "edit" | "details";
+  } | null>(null);
   const [prefillLeadId, setPrefillLeadId] = useState<string | undefined>();
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
@@ -64,13 +70,27 @@ function QuotesPage() {
     ),
   );
   const visibleQuotes = filteredQuotes.slice(0, visibleCount);
-  const suggestions = leads
-    .filter(
-      (lead) =>
-        quotes.some((q) => q.leadId === lead.id) &&
-        normalizeQuoteSearch(lead.name).includes(normalizeQuoteSearch(query)),
-    )
-    .slice(0, 6);
+  const suggestions = [
+    ...new Map(
+      quotes
+        .map((quote) => {
+          const lead = leads.find((item) => item.id === quote.leadId);
+          const name = quote.customerDetails
+            ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim() ||
+              lead?.name ||
+              ""
+            : lead?.name || "";
+          const phone = quote.customerDetails?.phone1 || lead?.phone || "";
+          return { name, phone };
+        })
+        .filter(
+          (customer) =>
+            customer.name &&
+            normalizeQuoteSearch(customer.name).includes(normalizeQuoteSearch(query)),
+        )
+        .map((customer) => [normalizeQuoteSearch(customer.name), customer] as const),
+    ).values(),
+  ].slice(0, 6);
   const suggestionsOpen = showSuggestions && !!query.trim() && suggestions.length > 0;
   const chooseSuggestion = (name: string) => {
     setQuery(name);
@@ -85,6 +105,20 @@ function QuotesPage() {
     setSuggestionReason(undefined);
     setReturnTo(undefined);
     setOpen(true);
+  };
+  const closeSuccess = () => {
+    const createdQuote = successQuote;
+    setSuccessQuote(null);
+    if (!createdQuote?.conversationId) return;
+    if (returnTo === "atendimento") {
+      navigate({ to: "/atendimento", search: { conversation: createdQuote.conversationId } });
+    } else {
+      navigate({
+        to: "/inbox/$conversationId",
+        params: { conversationId: createdQuote.conversationId },
+        search: { quote: createdQuote.id },
+      });
+    }
   };
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
@@ -184,7 +218,7 @@ function QuotesPage() {
             >
               {suggestions.map((lead, index) => (
                 <li
-                  key={lead.id}
+                  key={normalizeQuoteSearch(lead.name)}
                   role="option"
                   aria-selected={index === activeSuggestion}
                   id={`quote-suggestion-${index}`}
@@ -213,7 +247,14 @@ function QuotesPage() {
             )}
             <div className="grid grid-cols-1 gap-5 sm:gap-6 @min-[880px]:grid-cols-2 @min-[880px]:gap-x-8 @min-[880px]:gap-y-8 xl:@min-[880px]:gap-x-10 2xl:@min-[880px]:gap-x-12">
               {visibleQuotes.map((q) => (
-                <QuoteCard key={q.id} quote={q} />
+                <QuoteCard
+                  key={q.id}
+                  quote={q}
+                  requestedAction={
+                    requestedAction?.id === q.id ? requestedAction.action : undefined
+                  }
+                  onActionHandled={() => setRequestedAction(null)}
+                />
               ))}
             </div>
             {visibleCount < filteredQuotes.length && (
@@ -239,17 +280,35 @@ function QuotesPage() {
           onCancel={() => setOpen(false)}
           onCreated={(q) => {
             setOpen(false);
-            // Se criado a partir de uma conversa, voltar para ela com a mensagem pronta
-            if (q.conversationId && returnTo === "atendimento") {
-              // O Atendimento 2.0 encontra o orçamento pendente do lead sozinho.
-              navigate({ to: "/atendimento", search: { conversation: q.conversationId } });
-            } else if (q.conversationId) {
-              navigate({
-                to: "/inbox/$conversationId",
-                params: { conversationId: q.conversationId },
-                search: { quote: q.id },
-              });
-            }
+            setQuery("");
+            setVisibleCount(PAGE_SIZE);
+            setSuccessQuote(q);
+          }}
+        />
+      )}
+      {successQuote && (
+        <QuoteSuccessModal
+          quote={successQuote}
+          canSend={(() => {
+            const lead = leads.find((item) => item.id === successQuote.leadId);
+            const phone = (successQuote.customerDetails?.phone1 || lead?.phone || "").replace(
+              /\D/g,
+              "",
+            );
+            return !!lead && phone.length >= 8 && phone.length <= 15;
+          })()}
+          onClose={closeSuccess}
+          onSend={() => {
+            setRequestedAction({ id: successQuote.id, action: "send" });
+            setSuccessQuote(null);
+          }}
+          onEdit={() => {
+            setRequestedAction({ id: successQuote.id, action: "edit" });
+            setSuccessQuote(null);
+          }}
+          onView={() => {
+            setRequestedAction({ id: successQuote.id, action: "details" });
+            setSuccessQuote(null);
           }}
         />
       )}

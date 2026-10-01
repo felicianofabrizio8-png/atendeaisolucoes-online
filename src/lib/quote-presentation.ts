@@ -20,7 +20,17 @@ export function matchesQuote(
   query: string,
 ): boolean {
   const text = normalizeQuoteSearch(
-    [lead?.name, lead?.phone, lead?.handle, quote.productName, quote.id].join(" "),
+    [
+      lead?.name,
+      lead?.phone,
+      lead?.handle,
+      quote.customerDetails?.firstName,
+      quote.customerDetails?.lastName,
+      quote.customerDetails?.phone1,
+      quote.customerDetails?.phone2,
+      quote.productName,
+      quote.id,
+    ].join(" "),
   );
   return normalizeQuoteSearch(query)
     .split(/\s+/)
@@ -28,7 +38,9 @@ export function matchesQuote(
       (term) =>
         text.includes(term) ||
         (/^[\d()+.-]+$/.test(term) &&
-          (lead?.phone ?? "").replace(/\D/g, "").includes(term.replace(/\D/g, ""))),
+          [lead?.phone, quote.customerDetails?.phone1, quote.customerDetails?.phone2].some(
+            (phone) => (phone ?? "").replace(/\D/g, "").includes(term.replace(/\D/g, "")),
+          )),
     );
 }
 

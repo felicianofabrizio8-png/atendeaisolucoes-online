@@ -74,6 +74,10 @@ describe("Orçamentos: apresentação e ações", () => {
     for (const query of ["joao", "15999991234", "piscina 6", "q-test"])
       expect(matchesQuote(quote, leads[0], query)).toBe(true);
     expect(matchesQuote(quote, leads[0], "Maria")).toBe(false);
+    expect(matchesQuote({ ...quote, customerDetails: {
+      firstName: "Maria", lastName: "Souza", email: "", phone1: "5515987654321",
+      phone2: "", street: "", city: "", neighborhood: "", state: "", postalCode: "",
+    } }, leads[0], "Maria")).toBe(true);
   });
   it("validade não retrocede por fuso e cores são estáveis por orçamento", () => {
     expect(quoteDate("2030-10-04")).toBe("04/10/2030");

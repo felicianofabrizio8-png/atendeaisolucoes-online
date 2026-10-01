@@ -25,6 +25,8 @@ export function buildBaseText(quote: Quote): string {
   const validStr = quoteDate(quote.validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`);
+  if (quote.productDescription?.trim()) lines.push(`Descrição: ${quote.productDescription.trim()}`);
+  if (quote.benefits?.trim()) lines.push(`Benefícios: ${quote.benefits.trim()}`);
   if (quote.installments > 1) {
     const parcela = quote.finalValue / quote.installments;
     lines.push(

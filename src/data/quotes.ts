@@ -21,6 +21,19 @@ export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transfer
 
 export type QuoteStatus = "pendente" | "enviado" | "visualizado" | "aprovado" | "vencido";
 
+export interface QuoteCustomerDetails {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone1: string;
+  phone2: string;
+  street: string;
+  city: string;
+  neighborhood: string;
+  state: string;
+  postalCode: string;
+}
+
 export interface Quote {
   id: string;
   leadId: string;
@@ -44,6 +57,9 @@ export interface Quote {
   brindes: string[];
   porConta: string[];
   notes: string;
+  customerDetails?: QuoteCustomerDetails;
+  productDescription?: string;
+  benefits?: string;
 }
 
 export function computeQuoteStatus(q: Quote): QuoteStatus {
@@ -110,6 +126,10 @@ export interface QuoteInput {
   brindes?: string[];
   porConta?: string[];
   notes?: string;
+  customerDetails?: QuoteCustomerDetails;
+  productDescription?: string;
+  benefits?: string;
+  unitPrice?: number;
 }
 
 export function buildQuoteMessage(args: {
@@ -165,10 +185,11 @@ type DbQuote = {
   brindes?: unknown;
   por_conta?: unknown;
   notes?: string | null;
+  items?: unknown;
 };
 
 const QUOTE_SELECT =
-  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes";
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes,items";
 
 function toStringArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -176,6 +197,14 @@ function toStringArr(v: unknown): string[] {
 }
 
 function toQuote(r: DbQuote): Quote {
+  const firstItem =
+    Array.isArray(r.items) && r.items[0] && typeof r.items[0] === "object"
+      ? (r.items[0] as Record<string, unknown>)
+      : {};
+  const customerDetails =
+    firstItem.customer_details && typeof firstItem.customer_details === "object"
+      ? (firstItem.customer_details as QuoteCustomerDetails)
+      : undefined;
   return {
     id: r.id,
     leadId: r.lead_id ?? "",
@@ -199,6 +228,10 @@ function toQuote(r: DbQuote): Quote {
     brindes: toStringArr(r.brindes),
     porConta: toStringArr(r.por_conta),
     notes: r.notes ?? "",
+    customerDetails,
+    productDescription:
+      typeof firstItem.product_description === "string" ? firstItem.product_description : undefined,
+    benefits: typeof firstItem.benefits === "string" ? firstItem.benefits : undefined,
   };
 }
 
@@ -286,7 +319,10 @@ export async function createQuote(input: QuoteInput, existingId?: string): Promi
   if (!product) throw new Error("Produto não encontrado");
   const existing = existingId ? getQuote(existingId) : undefined;
   if (existingId && !existing) throw new Error("Orçamento não encontrado");
-  const unitPrice = existing?.productId === product.id ? existing.unitPrice : activePrice(product);
+  const unitPrice =
+    input.unitPrice ??
+    (existing?.productId === product.id ? existing.unitPrice : activePrice(product));
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error("Informe um valor válido");
   const discount = Math.max(0, Math.min(input.discount, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
   const message = input.message?.trim()
@@ -337,6 +373,14 @@ export async function createQuote(input: QuoteInput, existingId?: string): Promi
           quantity: 1,
           discount,
           total: finalValue,
+          customer_details: input.customerDetails
+            ? { ...input.customerDetails }
+            : existing?.customerDetails
+              ? { ...existing.customerDetails }
+              : null,
+          product_description:
+            input.productDescription ?? existing?.productDescription ?? product.description ?? "",
+          benefits: input.benefits ?? existing?.benefits ?? "",
         },
       ],
     };
@@ -373,6 +417,10 @@ export async function createQuote(input: QuoteInput, existingId?: string): Promi
     brindes,
     porConta,
     notes,
+    customerDetails: input.customerDetails ?? existing?.customerDetails,
+    productDescription:
+      input.productDescription ?? existing?.productDescription ?? product.description,
+    benefits: input.benefits ?? existing?.benefits,
   };
 
   const index = quotes.findIndex((q) => q.id === quote.id);
