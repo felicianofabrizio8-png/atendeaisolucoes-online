@@ -96,12 +96,11 @@ async function decide(message: string, suggest: string[] = ["p-1"]) {
 
 describe("diagnóstico de validação", () => {
   it("rejeição registra texto, check e fatos de Produtos (preço e promocional)", async () => {
-    const decision = await decide(
-      "A Linha 500 está na promoção por R$ 12.900,00 (de R$ 15.900,00).",
-    );
+    // Preço promocional inventado (o cadastrado é 12.900).
+    const decision = await decide("A Linha 500 está na promoção por R$ 11.900,00.");
     expect(decision.validation_diagnostic).toMatchObject({
       check: expect.any(String),
-      rejected_reply: "A Linha 500 está na promoção por R$ 12.900,00 (de R$ 15.900,00).",
+      rejected_reply: "A Linha 500 está na promoção por R$ 11.900,00.",
       suggested_product_ids: ["p-1"],
       catalog_basis: "reference",
       validated_products: [{ id: "p-1", name: "Linha 500", price: 15_900, promo_price: 12_900 }],

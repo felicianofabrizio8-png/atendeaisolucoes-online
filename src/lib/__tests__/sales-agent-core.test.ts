@@ -677,7 +677,8 @@ const validationContext: AgentContext = {
      leadName: null,
      model: salesModel,
      interpretation: testInterpretation,
-      catalogSearch: (context).grounding.catalogSearch,
+      // A capacidade afirmada é validada contra o produto do turno (que a tem).
+      catalogSearch: { status: "matches", products: [product] },
    });
     expect(decision.kind).toBe("reply");
   });

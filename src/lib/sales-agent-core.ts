@@ -9,12 +9,22 @@ import type { ActiveCoachRuleGrounding } from "./coach-rules/coach-rules.reposit
 import type { QuickReplyGrounding } from "./quick-replies/quick-replies.repository";
 import {
   getPresentedProductIds,
+  resolveCatalogProductReference,
   resolveCatalogProductReferenceWithContext,
 } from "./sales-agent-product-resolution";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import type { StructuredSalesAgentInterpretation } from "./sales-agent-interpretation";
 import { getConversationFocusProductIds } from "./sales-agent-focus";
 import { segmentClaimsByProduct } from "./sales-agent-claim-anchors";
+import {
+  extractNumericFacts,
+  hasNumericFacts,
+  numericFactsHoldFor,
+  productFactText,
+  splitClauses,
+  validateMeasureFact,
+  validatePriceFact,
+} from "./sales-agent-fact-claims";
 import {
   SALES_NEXT_ACTIONS,
   SALES_NEXT_ACTION_DESCRIPTIONS,
@@ -523,32 +533,29 @@ function messageHasOnlyValidatedProductFacts(
   ) {
     return false;
   }
+  // Medidas: cada valor é uma dimensão cadastrada do produto (campo
+  // estruturado ou o mesmo fato escrito no próprio cadastro).
   const claimedMeasures = [...normalized.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:m|metros?)\b/g)]
     .map((match) => Number(match[1].replace(",", ".")))
     .filter(Number.isFinite);
-  const validMeasures = new Set(
-    selectedProducts.flatMap((product) =>
-      [product.lengthM, product.widthM, product.depthM].filter(
-        (value): value is number => value != null,
-      ),
-    ),
-  );
-  if (!claimedMeasures.every((measure) => validMeasures.has(measure))) return false;
+  if (
+    !claimedMeasures.every((measure) =>
+      selectedProducts.some((product) => validateMeasureFact(measure, product)),
+    )
+  ) {
+    return false;
+  }
+  // Preços: o normal OU o promocional cadastrado (os dois podem aparecer).
   const claimedPrices = [...message.matchAll(/R\$\s*([\d.]+(?:,\d{1,2})?)/gi)]
     .map((match) => Number(match[1].replace(/\./g, "").replace(",", ".")))
     .filter(Number.isFinite);
-  const validPrices = new Set(
-    selectedProducts.flatMap((product) => {
-      const effectivePrice =
-        product.promoPrice != null && Number.isFinite(product.promoPrice) && product.promoPrice > 0
-          ? product.promoPrice
-          : product.price != null && Number.isFinite(product.price) && product.price > 0
-            ? product.price
-            : null;
-      return effectivePrice == null ? [] : [effectivePrice];
-    }),
-  );
-  if (!claimedPrices.every((price) => validPrices.has(price))) return false;
+  if (
+    !claimedPrices.every((value) =>
+      selectedProducts.some((product) => validatePriceFact({ value, promo: false }, product)),
+    )
+  ) {
+    return false;
+  }
   const claimedShape = ["retangular", "quadrad", "redond", "oval"].find((shape) =>
     normalized.includes(shape),
   );
@@ -885,15 +892,24 @@ const PRICE_WORD_MONEY_PATTERN =
 
 function monetaryClaimsIn(sentence: string): PriceClaim[] {
   const claims: PriceClaim[] = [];
-  const promoAt = (index: number) =>
-    /promo/i.test(sentence.slice(Math.max(0, index - 30), index + 40));
-  for (const match of sentence.matchAll(EXPLICIT_MONEY_PATTERN)) {
-    const value = parseMoneyClaim(match[1] ?? match[3], match[2] ?? match[4]);
-    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
-  }
-  for (const match of sentence.matchAll(PRICE_WORD_MONEY_PATTERN)) {
-    const value = parseMoneyClaim(match[1]);
-    if (value != null) claims.push({ value, promo: promoAt(match.index ?? 0), index: match.index ?? 0 });
+  // O rótulo "promocional" vale só para o preço da MESMA oração, e só quando
+  // ela tem um único preço ("R$ 12.900 promocional; normal R$ 15.900"). Uma
+  // janela de caracteres atribuía o rótulo ao preço normal vizinho.
+  let offset = 0;
+  for (const clause of splitClauses(sentence)) {
+    const clauseClaims: PriceClaim[] = [];
+    for (const match of clause.matchAll(EXPLICIT_MONEY_PATTERN)) {
+      const value = parseMoneyClaim(match[1] ?? match[3], match[2] ?? match[4]);
+      if (value != null) clauseClaims.push({ value, promo: false, index: offset + (match.index ?? 0) });
+    }
+    for (const match of clause.matchAll(PRICE_WORD_MONEY_PATTERN)) {
+      const value = parseMoneyClaim(match[1]);
+      if (value != null) clauseClaims.push({ value, promo: false, index: offset + (match.index ?? 0) });
+    }
+    const distinctValues = new Set(clauseClaims.map((claim) => claim.value));
+    const promo = distinctValues.size === 1 && /promo/i.test(clause);
+    claims.push(...clauseClaims.map((claim) => ({ ...claim, promo })));
+    offset += clause.length + 1;
   }
   return claims;
 }
@@ -953,17 +969,29 @@ function validateObjectiveProductClaims(
     isNonFactualObjectiveMessage(message) &&
     extractFactualPriceClaims(message, history).length === 0
   ) return true;
-  const priceClaims = extractPriceClaims(message, history);
-  const objectiveSentences = objectiveClaimSentences(message);
-  const dimensionClaims = [...message.matchAll(
-    /(\d{1,2}(?:[.,]\d+)?)\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*[x×]\s*(\d{1,2}(?:[.,]\d+)?))?\s*(?:m|metros?)?/gi,
-  )]
-    .filter((match) => /\b(?:m|metros?)\b/i.test(match[0]))
-    .map((match) => match.slice(1).filter(Boolean).map((value) => parseCatalogNumber(value)));
-  const capacityClaims = [...message.matchAll(/([\d.]+(?:,\d+)?)\s*l(?:itros?)?\b/gi)]
-    .map((match) => parseCatalogNumber(match[1]))
-    .filter((value): value is number => value != null);
-  const hasObjectiveValue = priceClaims.length > 0 || dimensionClaims.length > 0 || capacityClaims.length > 0 || objectiveSentences.length > 0;
+  // Fatos numéricos tipados (preço, dimensões, medida, capacidade), cada um
+  // validado contra o seu campo — nunca a frase inteira contra o catálogo.
+  const numericFacts = extractNumericFacts(message);
+  const standaloneMoney = message.trim().match(/^([\d.]+(?:,\d{1,2})?)(?:\s*(mil|k))?$/i);
+  if (standaloneMoney && hasMonetaryContext(message, history)) {
+    const value = parseMoneyClaim(standaloneMoney[1], standaloneMoney[2]);
+    if (value != null) numericFacts.prices.push({ value, promo: false });
+  }
+  // Afirmações qualitativas só nas orações que não carregam número já
+  // validado por campo ("está saindo por R$ X", "medidas: 4 x 2,5 m").
+  // (Remove só a oração numérica; o restante da MESMA frase continua junto,
+  // preservando o sentido — "inclui instalação, filtro e bomba".)
+  const qualitativeText = message
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((sentence) =>
+      splitClauses(sentence)
+        .filter((clause) => !hasNumericFacts(extractNumericFacts(clause)))
+        .join(", "),
+    )
+    .filter(Boolean)
+    .join(". ");
+  const objectiveSentences = objectiveClaimSentences(qualitativeText);
+  const hasObjectiveValue = hasNumericFacts(numericFacts) || objectiveSentences.length > 0;
   if (!hasObjectiveValue) return true;
   if (!products) return false;
 
@@ -973,9 +1001,13 @@ function validateObjectiveProductClaims(
     const product = products.find((candidate) => candidate.id === id);
     return product ? [product] : [];
   });
+  // A quem a resposta se refere: só pela identidade do produto no texto
+  // (nome, modelo, apelido numérico). Referências posicionais ("a primeira",
+  // "2") servem para mensagens do cliente; aplicadas à resposta, confundiam
+  // dígitos de medidas/preços com referência a produto.
   const resolvedProduct = anchor
     ? { product: anchor, ambiguous: false }
-    : resolveCatalogProductReferenceWithContext(message, products, presentedProducts);
+    : resolveCatalogProductReference(message, products);
   if (resolvedProduct.ambiguous) {
     // Resposta sobre vários produtos: cada afirmação é validada contra o
     // produto cuja menção a inicia no texto. Sem âncora, não há validação
@@ -1000,35 +1032,24 @@ function validateObjectiveProductClaims(
       .filter((value): value is string => Boolean(value))
       .some((value) => normalizedMessage.includes(comparablePromptText(value))),
       );
-  // Sem produto nomeado, o preço afirmado é validado em `decide` contra os
-  // produtos sugeridos no turno (validateFactualPriceClaims).
-  const candidates = byMention;
-  if (candidates.length === 0) return true;
+  // Sem produto nomeado, o escopo são os produtos do turno a que a resposta
+  // se refere: sugeridos pelo LLM, senão os já apresentados, senão o
+  // conjunto validado do turno. Fato que não vale para nenhum deles bloqueia.
+  const named = byMention.length > 0;
+  const suggestedScope = products.filter((product) => suggestedProductIds.includes(product.id));
+  const candidates = named
+    ? byMention
+    : suggestedScope.length > 0
+      ? suggestedScope
+      : presentedProducts.length > 0
+        ? presentedProducts
+        : products;
 
-  if (priceClaims.some((claim) =>
-    !candidates.some((product) => {
-      if (claim.promo) {
-        return product.promoPrice != null && sameCatalogNumber(product.promoPrice, claim.value);
-      }
-      return [product.price, product.promoPrice]
-        .some((price) => price != null && sameCatalogNumber(price, claim.value));
-    }),
-  )) return false;
-
-  if (dimensionClaims.some((claim) => {
-    const dimensions = claim.filter((value): value is number => value != null);
-    return !candidates.some((product) => {
-      const productDimensions = [product.lengthM, product.widthM, product.depthM]
-        .filter((value): value is number => value != null);
-      return dimensions.length <= productDimensions.length && dimensions.every((value, index) =>
-        sameCatalogNumber(value, productDimensions[index]),
-      );
-    });
-  })) return false;
-
-  if (capacityClaims.some((claim) =>
-    !candidates.some((product) => product.capacityL != null && sameCatalogNumber(product.capacityL, claim)),
-  )) return false;
+  // Preço sem produto nomeado segue para a verificação de preço da decisão
+  // (que responde com o catálogo validado); medidas/capacidade são
+  // verificadas aqui contra o escopo do turno.
+  const factsToCheck = named ? numericFacts : { ...numericFacts, prices: [] };
+  if (!numericFactsHoldFor(factsToCheck, candidates)) return false;
 
   const semanticFacts = candidates.map((product) => ({
     model: comparablePromptText(`${product.name} ${product.model ?? ""}`),
@@ -1051,7 +1072,33 @@ function validateObjectiveProductClaims(
     components: comparablePromptText(
       `${product.notes ?? ""} ${(product.includedItems ?? []).join(" ")}`,
     ),
+    category: comparablePromptText(product.category ?? ""),
+    // Todos os fatos do próprio cadastro (nome, categoria, descrição, notas,
+    // especificações, itens, formato, variantes).
+    general: comparablePromptText(
+      [
+        productFactText(product),
+        product.category ?? "",
+        product.shape ?? "",
+        JSON.stringify(product.variants ?? []),
+      ].join(" "),
+    ),
   }));
+  // Vocabulário de fatos do conjunto do turno: palavra que aparece em algum
+  // produto é um fato de catálogo; palavra que não aparece em nenhum é
+  // redação ("saindo", "externas") e não é comparada.
+  const catalogVocabulary = new Set(
+    products.flatMap((product) =>
+      comparablePromptText(
+        [productFactText(product), product.category ?? "", product.shape ?? "", JSON.stringify(product.variants ?? [])].join(" "),
+      ).split(" "),
+    ),
+  );
+  const policyFacts = comparablePromptText(
+    [commercialRules.installationPolicy, commercialRules.includedItemsPolicy]
+      .filter((value): value is string => Boolean(value))
+      .join(" "),
+  );
   return objectiveSentences.every((sentence) => {
     const normalizedSentence = comparablePromptText(sentence);
     const relevantFacts = /\binstalacao\b/.test(normalizedSentence)
@@ -1067,9 +1114,9 @@ function validateObjectiveProductClaims(
         : /\bformato\b/.test(normalizedSentence)
           ? semanticFacts.map((facts) => facts.shape).join(" ")
           : /\b(?:material|fibra|vinil)\b/.test(normalizedSentence)
-            ? semanticFacts.flatMap((facts) => facts.specifications
+            ? semanticFacts.flatMap((facts) => [facts.category, ...facts.specifications
               .filter((specification) => /material|composicao|revestimento|tipo/.test(specification.key))
-              .map((specification) => `${specification.key} ${specification.value}`)).join(" ")
+              .map((specification) => `${specification.key} ${specification.value}`)]).join(" ")
             : /\b(?:filtro|bomba|inclus[oa]s?)\b/.test(normalizedSentence)
               ? [
                   comparablePromptText(commercialRules.includedItemsPolicy ?? ""),
@@ -1114,10 +1161,39 @@ function validateObjectiveProductClaims(
         return technicalValueMatches(claimValue, specification.value);
       });
     }
-    if (!/\b(?:modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|pot[eÃª]ncia|voltagem|tens[aÃ£]o|instala[cÃ§][aÃ£]o|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(normalizedSentence)) {
+    if (!/\b(?:modelo|formato|material|fibra|vinil|cor|acabamento|estrutura|filtro|bomba|potencia|voltagem|tensao|instalacao|inclus[oa]s?|aquecimento|aqueci|drenagem)\b/i.test(normalizedSentence)) {
       return true;
     }
-    return claimTokens.every((token) => relevantFacts.includes(token));
+    const productFacts = new Set(
+      [relevantFacts, policyFacts, ...semanticFacts.map((facts) => facts.general)]
+        .join(" ")
+        .split(" ")
+        .filter(Boolean),
+    );
+    // Característica afirmada (presença de recurso/material/serviço) precisa
+    // existir no cadastro do produto ou nas políticas cadastradas.
+    const claimedFeatures = normalizedSentence.match(
+      /\b(?:fibra|vinil|filtro|bomba|aquecimento|aqueci\w*|drenagem|instalacao|inclus[oa]s?)\b/g,
+    ) ?? [];
+    const featuresHold = claimedFeatures.every((feature) =>
+      productFacts.has(feature) ||
+      [...productFacts].some((fact) => fact.startsWith(feature.slice(0, 6))),
+    );
+    // Demais palavras: só as que são fato de catálogo precisam pertencer a
+    // ESTE produto (fato de outro produto associado errado é bloqueado).
+    // Atributo nomeado (cor, formato, material, acabamento, estrutura): o
+    // valor afirmado tem de estar NO CAMPO desse atributo, não em outro.
+    const identityTokens = new Set(
+      candidates.flatMap((product) => comparablePromptText(`${product.name} ${product.model ?? ""}`).split(" ")),
+    );
+    const namesAttributeField = /\b(?:cor|formato|material|acabamento|estrutura)\b/.test(normalizedSentence);
+    const fieldFacts = namesAttributeField
+      ? new Set(relevantFacts.split(" ").filter(Boolean))
+      : productFacts;
+    const catalogFactTokens = claimTokens.filter(
+      (token) => catalogVocabulary.has(token) && !identityTokens.has(token),
+    );
+    return featuresHold && catalogFactTokens.every((token) => fieldFacts.has(token));
   });
 }
 
