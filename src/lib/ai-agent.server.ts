@@ -66,6 +66,7 @@ import {
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import { callExternalSalesAgent } from "./external-sales-agent-adapter.server";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
@@ -849,6 +850,14 @@ export async function runAgentTurn(params: {
       },
     },
   };
+
+  const external = await callExternalSalesAgent({
+    companyId: params.ctx.settings.company_id,
+    history: params.history,
+    leadName: params.leadName,
+    context: params.ctx,
+  });
+  if (external.enabled && external.ok) return external.decision;
 
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;
@@ -1675,6 +1684,10 @@ async function runAgentTickPass(
       decision,
       persist: !silent,
     });
+
+    if (decision.external_silent) {
+      return { ok: true, action: "skipped", reason: "external_silent" };
+    }
 
     if (decision.kind === "handoff" && silent) {
       await writeSalesAgentAudit(

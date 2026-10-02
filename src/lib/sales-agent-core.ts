@@ -231,6 +231,8 @@ export interface AgentDecision {
   product_image_ids?: string[];
   grounding_sources?: SalesAgentGroundingSource[];
   learning_ids_used?: string[];
+  external_silent?: boolean;
+  next_action?: string | null;
   /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
   fallback_reason?: string;
   /** Pergunta de esclarecimento enviada no lugar de handoff (registrada na mensagem). */
@@ -367,6 +369,8 @@ interface ToolReply {
   suggest_products?: string[];
   send_product_images?: string[];
   learning_ids_used?: string[];
+  external_silent?: boolean;
+  next_action?: string | null;
   /** Plano comercial do turno (estágio, próxima ação, contexto do cliente). */
   sales_plan?: unknown;
   /** Fatos de produto afirmados na mensagem, ligados à chave do fato em Produtos. */
