@@ -3,8 +3,9 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { runAgentTick, productFilters, productRows, fetchMock } = vi.hoisted(() => ({
+const { runAgentTick, scheduleBackgroundTask, productFilters, productRows, fetchMock } = vi.hoisted(() => ({
   runAgentTick: vi.fn(),
+  scheduleBackgroundTask: vi.fn(),
   productFilters: [] as Array<[string, unknown]>,
   productRows: { value: [] as unknown[] },
   fetchMock: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock("@/lib/runtime/HookSecretVault.server", () => ({
   getHookSecret: async () => "hook-secret",
 }));
 vi.mock("@/lib/runtime/RuntimeStateStore.server", () => ({ rateLimitCheck: async () => true }));
+vi.mock("@/lib/runtime/BackgroundTask.server", () => ({ scheduleBackgroundTask }));
 
 function chain(result: { data: unknown; error: unknown }, onEq?: (c: string, v: unknown) => void) {
   const c: any = {
@@ -54,6 +56,8 @@ describe("POST /api/public/hooks/agent-trigger", () => {
   beforeEach(() => {
     runAgentTick.mockReset();
     runAgentTick.mockResolvedValue({ ok: true, action: "replied" });
+    scheduleBackgroundTask.mockReset();
+    scheduleBackgroundTask.mockReturnValue(false);
   });
 
   function trigger(conversationId: string, secret = "hook-secret") {
@@ -80,6 +84,41 @@ describe("POST /api/public/hooks/agent-trigger", () => {
     const res = await post({ request: trigger("33333333-3333-4333-8333-333333333333", "errado") });
     expect(res.status).toBe(401);
     expect(runAgentTick).not.toHaveBeenCalled();
+  });
+
+  it("no Workers responde 202 antes do turno e o roda no waitUntil", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    scheduleBackgroundTask.mockImplementation((_request: Request, task: () => Promise<void>) => {
+      tasks.push(task);
+      return true;
+    });
+    const post = await handler("../api.public.hooks.agent-trigger");
+    const res = await post({ request: trigger("44444444-4444-4444-8444-444444444444") });
+    expect(res.status).toBe(202);
+    expect(scheduleBackgroundTask).toHaveBeenCalledWith(expect.any(Request), expect.any(Function));
+    expect(runAgentTick).not.toHaveBeenCalled();
+    expect(tasks).toHaveLength(1);
+    await tasks[0]();
+    expect(runAgentTick).toHaveBeenCalledWith("44444444-4444-4444-8444-444444444444");
+  });
+
+  it("erro do turno em segundo plano não vaza da tarefa", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    scheduleBackgroundTask.mockImplementation((_request: Request, task: () => Promise<void>) => {
+      tasks.push(task);
+      return true;
+    });
+    runAgentTick.mockRejectedValue(new Error("boom"));
+    const post = await handler("../api.public.hooks.agent-trigger");
+    await post({ request: trigger("55555555-5555-4555-8555-555555555555") });
+    await expect(tasks[0]()).resolves.toBeUndefined();
+  });
+
+  it("sem waitUntil mantém a execução inline e responde 500 em erro", async () => {
+    runAgentTick.mockRejectedValue(new Error("boom"));
+    const post = await handler("../api.public.hooks.agent-trigger");
+    const res = await post({ request: trigger("66666666-6666-4666-8666-666666666666") });
+    expect(res.status).toBe(500);
   });
 });
 
