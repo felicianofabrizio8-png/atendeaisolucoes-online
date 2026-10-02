@@ -59,4 +59,16 @@ describe("external sales agent adapter", () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "timeout" });
   });
+  it("audita external_disabled", async () => {
+    const onResult = vi.fn();
+    await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_COMPANY_IDS: "" }, onResult });
+    expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, reason: "disabled" }));
+  });
+
+  it("audita external_fallback e rejeita timeout remoto acima de 10000 ms", async () => {
+    const onResult = vi.fn();
+    const result = await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "10001" }, onResult });
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "config_invalid" });
+    expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, ok: false, reason: "config_invalid" }));
+  });
 });

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 
-const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
@@ -23,6 +23,7 @@ type ExternalSalesAgentInput = {
   nextCatalogQuery?: unknown;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  onResult?: (result: ExternalSalesAgentResult) => void | Promise<void>;
 };
 
 type ExternalSalesAgentResponse = {
@@ -32,6 +33,10 @@ type ExternalSalesAgentResponse = {
   selected_products?: unknown;
   next_action?: unknown;
 };
+
+async function notify(input: ExternalSalesAgentInput, result: ExternalSalesAgentResult): Promise<void> {
+  try { await input.onResult?.(result); } catch { /* auditoria não altera o fallback */ }
+}
 
 function configuredCompanyIds(env: Record<string, string | undefined>): Set<string> {
   return new Set((env.EXTERNAL_SALES_AGENT_COMPANY_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
@@ -50,7 +55,7 @@ function getConfig(env: Record<string, string | undefined>) {
   } catch {
     return null;
   }
-  const maxTimeoutMs = localTestEndpoint ? 60_000 : 20_000;
+  const maxTimeoutMs = localTestEndpoint ? 60_000 : 10_000;
   if (!endpoint || !apiKey || !Number.isFinite(timeoutValue) || timeoutValue < 250 || timeoutValue > maxTimeoutMs) return null;
   return { endpoint, apiKey, timeoutMs: Math.floor(timeoutValue) };
 }
@@ -105,10 +110,22 @@ function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: 
 export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Promise<ExternalSalesAgentResult> {
   const env = input.env ?? process.env;
   const correlationId = randomUUID();
-  if (!configuredCompanyIds(env).has(input.companyId)) return { enabled: false, reason: "disabled", correlationId };
-  if (input.context.settings.sales_agent_v2_enabled !== true || input.context.settings.sales_agent_v2_mode !== "silent") return { enabled: false, reason: "not_silent", correlationId };
+  if (!configuredCompanyIds(env).has(input.companyId)) {
+    const result = { enabled: false as const, reason: "disabled" as const, correlationId };
+    await notify(input, result);
+    return result;
+  }
+  if (input.context.settings.sales_agent_v2_enabled !== true || input.context.settings.sales_agent_v2_mode !== "silent") {
+    const result = { enabled: false as const, reason: "not_silent" as const, correlationId };
+    await notify(input, result);
+    return result;
+  }
   const config = getConfig(env);
-  if (!config) return { enabled: true, ok: false, reason: "config_invalid", correlationId };
+  if (!config) {
+    const result = { enabled: true as const, ok: false as const, reason: "config_invalid" as const, correlationId };
+    await notify(input, result);
+    return result;
+  }
   const allowedProducts = new Set(input.context.grounding.catalog.map((product) => product.id));
   const payload = {
     company_id: input.companyId,
@@ -141,14 +158,18 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!response.ok) return { enabled: true, ok: false, reason: "http_error", correlationId };
+    if (!response.ok) { const result = { enabled: true as const, ok: false as const, reason: "http_error" as const, correlationId }; await notify(input, result); return result; }
     let body: unknown;
-    try { body = await response.json(); } catch { return { enabled: true, ok: false, reason: "invalid_response", correlationId }; }
-    if (!body || typeof body !== "object" || Array.isArray(body)) return { enabled: true, ok: false, reason: "invalid_response", correlationId };
+    try { body = await response.json(); } catch { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
     const decision = normalizeDecision(body as ExternalSalesAgentResponse, allowedProducts);
-    return decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId };
+    const result = decision ? { enabled: true as const, ok: true as const, decision, correlationId } : { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId };
+    await notify(input, result);
+    return result;
   } catch (error) {
-    return { enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId };
+    const result = { enabled: true as const, ok: false as const, reason: (error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error") as "timeout" | "network_error", correlationId };
+    await notify(input, result);
+    return result;
   } finally {
     clearTimeout(timeout);
   }

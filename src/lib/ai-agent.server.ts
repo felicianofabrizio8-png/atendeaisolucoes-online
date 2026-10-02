@@ -66,7 +66,7 @@ import {
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { callExternalSalesAgent } from "./external-sales-agent-adapter.server";
+import { callExternalSalesAgent, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
@@ -648,6 +648,7 @@ export async function runAgentTurn(params: {
   ctx: AgentContextBase;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
+  onExternalSalesAgentResult?: (result: ExternalSalesAgentResult) => void | Promise<void>;
   sessionCorrections?: NormativeCorrection[];
   /** Turno com palavra de preço ambígua: só a comparação determinística responde. */
   priceSensitive?: boolean;
@@ -857,6 +858,9 @@ export async function runAgentTurn(params: {
     leadName: params.leadName,
     context: params.ctx,
   });
+  if (params.onExternalSalesAgentResult) {
+    try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
+  }
   if (external.enabled && external.ok) return external.decision;
 
   const core = new SalesAgentCore(async (payload) => {
@@ -1659,6 +1663,15 @@ async function runAgentTickPass(
           leadName: lead?.name ?? null,
           salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
           qualification: currentQual,
+          onExternalSalesAgentResult: async (external) => {
+            if (external.enabled && external.ok) return;
+            await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_flow_step", {
+              audit_kind: "external_sales_agent",
+              result: external.enabled ? "external_fallback" : "external_disabled",
+              reason: external.reason,
+              correlation_id: external.correlationId,
+            });
+          },
         }),
         [
           rules.commercialTerms,
