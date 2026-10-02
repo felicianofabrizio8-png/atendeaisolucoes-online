@@ -25,6 +25,7 @@ import {
   maskId,
 } from "@/lib/runtime/HookSecurity.server";
 import { getHookSecret } from "@/lib/runtime/HookSecretVault.server";
+import { scheduleBackgroundTask } from "@/lib/runtime/BackgroundTask.server";
 
 const MAX_BODY_BYTES = 2 * 1024;
 const RATE_PER_CONV_PER_MIN = 6;
@@ -122,29 +123,44 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         // idempotência fica no tick: lock + "última mensagem do cliente já
         // respondida" + recuperação de mensagens chegadas durante o turno.
 
-        try {
-          // company_id é derivado dentro de runAgentTick a partir da conversa.
-          // Guardas de tenant/integração já existentes são respeitadas.
-          const result = await runAgentTick(conversationId);
-          console.info("[agent-trigger]", {
-            cid,
-            event: "ok",
-            conv: maskId(conversationId),
-            action: result.action,
-            reason: result.reason ?? null,
-            ms: Date.now() - startedAt,
-          });
-          return Response.json({ ok: true, result: { action: result.action } });
-        } catch (e) {
-          console.error("[agent-trigger]", {
-            cid,
-            event: "internal_error",
-            conv: maskId(conversationId),
-            ms: Date.now() - startedAt,
-            code: e instanceof Error ? e.name : "Error",
-          });
-          return Response.json({ ok: false, error: "internal_error" }, { status: 500 });
-        }
+        // company_id é derivado dentro de runAgentTick a partir da conversa.
+        // Guardas de tenant/integração já existentes são respeitadas.
+        const tick = async () => {
+          try {
+            const result = await runAgentTick(conversationId);
+            console.info("[agent-trigger]", {
+              cid,
+              event: "ok",
+              conv: maskId(conversationId),
+              action: result.action,
+              reason: result.reason ?? null,
+              ms: Date.now() - startedAt,
+            });
+            return result;
+          } catch (e) {
+            console.error("[agent-trigger]", {
+              cid,
+              event: "internal_error",
+              conv: maskId(conversationId),
+              ms: Date.now() - startedAt,
+              code: e instanceof Error ? e.name : "Error",
+            });
+            return null;
+          }
+        };
+
+        // O trigger postgres (pg_net) desiste após 5 s e o Workers cancela a
+        // requisição quando o cliente desconecta — o turno morria depois de
+        // pegar o lock, sem liberar ai_handling. Responde já e roda o turno
+        // no waitUntil.
+        const deferred = scheduleBackgroundTask(request, async () => {
+          await tick();
+        });
+        if (deferred) return Response.json({ ok: true, accepted: true }, { status: 202 });
+
+        const result = await tick();
+        if (!result) return Response.json({ ok: false, error: "internal_error" }, { status: 500 });
+        return Response.json({ ok: true, result: { action: result.action } });
       },
       GET: async () => methodNotAllowed(),
       PUT: async () => methodNotAllowed(),

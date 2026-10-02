@@ -1236,6 +1236,12 @@ export type AgentTickResult = {
 
 /** Reprocessamentos extras quando o cliente escreve enquanto o turno roda. */
 export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
+/**
+ * Prazo total do tick. Rodando via waitUntil, o Worker tem ~30 s depois da
+ * resposta; o lock precisa ser liberado antes disso.
+ */
+export const AGENT_TICK_BUDGET_MS = 25_000;
+const AGENT_CATCHUP_MIN_BUDGET_MS = 10_000;
 
 /**
  * Um turno completo + recuperação de mensagens rápidas.
@@ -1247,13 +1253,20 @@ export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
  * de novo (limitado), sem a checagem de "já respondida" — a resposta
  * anterior foi gerada sem ver essa mensagem.
  */
-export async function runAgentTick(conversationId: string): Promise<AgentTickResult> {
-  let pass = await runAgentTickOnce(conversationId, { force: false });
+export async function runAgentTick(
+  conversationId: string,
+  options: { budgetMs?: number } = {},
+): Promise<AgentTickResult> {
+  const deadlineAt = Date.now() + (options.budgetMs ?? AGENT_TICK_BUDGET_MS);
+  let pass = await runAgentTickOnce(conversationId, { force: false, deadlineAt });
   for (let run = 0; run < MAX_AGENT_TICK_CATCHUP_RUNS; run += 1) {
     if (!pass.snapshot) break;
+    // Sem orçamento para um turno inteiro, não pega o lock: o isolate seria
+    // encerrado no meio e deixaria ai_handling=true.
+    if (deadlineAt - Date.now() < AGENT_CATCHUP_MIN_BUDGET_MS) break;
     const newer = await hasLeadMessageAfter(pass.snapshot);
     if (!newer) break;
-    const next = await runAgentTickOnce(conversationId, { force: true });
+    const next = await runAgentTickOnce(conversationId, { force: true, deadlineAt });
     if (!next.snapshot && next.result.reason === "lock_busy") break;
     pass = next;
   }
@@ -1412,7 +1425,7 @@ async function countRecentAutoReplies(
 
 async function runAgentTickOnce(
   conversationId: string,
-  options: { force: boolean },
+  options: { force: boolean; deadlineAt: number },
 ): Promise<{ result: AgentTickResult; snapshot: AgentTickSnapshot | null }> {
   let snapshot: AgentTickSnapshot | null = null;
   const result = await runAgentTickPass(conversationId, options, (value) => {
@@ -1421,9 +1434,25 @@ async function runAgentTickOnce(
   return { result, snapshot };
 }
 
+async function releaseAgentLock(conv: { id: string; company_id: string; lead_id: string }): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await supabaseAdmin
+        .from("conversations")
+        .update({ ai_handling: false })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
+      if (!error) return;
+    } catch {
+      // tenta de novo
+    }
+  }
+  await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_lock_release_failed", {});
+}
+
 async function runAgentTickPass(
   conversationId: string,
-  options: { force: boolean },
+  options: { force: boolean; deadlineAt: number },
   recordSnapshot: (snapshot: AgentTickSnapshot) => void,
 ): Promise<AgentTickResult> {
   const { data: conv } = await supabaseAdmin
@@ -1540,7 +1569,11 @@ async function runAgentTickPass(
     return { ok: true, action: "skipped", reason: "lock_busy" };
   }
 
-  try {
+  // Passado o prazo, o turno é abandonado: o lock é liberado já e o que
+  // ainda estiver rodando não envia nem altera a conversa.
+  let abandoned = false;
+  const abandonedResult: AgentTickResult = { ok: true, action: "skipped", reason: "turn_deadline" };
+  const lockedTurn = (async (): Promise<AgentTickResult> => {
     // Histórico do DB (não confia no body)
     const readHistoryRows = async (): Promise<HistoryRow[]> => {
       const { data } = await supabaseAdmin
@@ -1665,11 +1698,14 @@ async function runAgentTickPass(
           salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
           qualification: currentQual,
           onExternalSalesAgentResult: async (external) => {
-            if (external.enabled && external.ok) return;
+            // Sucesso também audita: no silent o turno termina em external_silent
+            // sem nenhum outro evento.
             await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_flow_step", {
               audit_kind: "external_sales_agent",
-              result: external.enabled ? "external_fallback" : "external_disabled",
-              reason: external.reason,
+              result: external.enabled ? (external.ok ? "external_ok" : "external_fallback") : "external_disabled",
+              ...(external.enabled && external.ok
+                ? { decision: external.decision.kind }
+                : { reason: external.reason }),
               correlation_id: external.correlationId,
             });
           },
@@ -1687,6 +1723,8 @@ async function runAgentTickPass(
       );
     }
     auditFallbackReason = decision.fallback_reason ?? null;
+
+    if (abandoned) return abandonedResult;
 
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
     await qualifyAndPersist({
@@ -1786,6 +1824,7 @@ async function runAgentTickPass(
     }
 
     // O turno do LLM leva segundos: um humano pode ter assumido nesse meio tempo.
+    if (abandoned) return abandonedResult;
     if (await humanTookOver(conv.company_id, conv.id)) {
       await logEvent(conv.company_id, conv.id, conv.lead_id, "skipped_human_active", {
         reason: "human_took_over_during_turn",
@@ -1922,12 +1961,21 @@ async function runAgentTickPass(
     }
 
     return { ok: true, action: "replied" };
+  })();
+  lockedTurn.catch(() => undefined);
+
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"deadline">((resolve) => {
+    deadlineTimer = setTimeout(() => resolve("deadline"), Math.max(0, options.deadlineAt - Date.now()));
+  });
+  try {
+    const outcome = await Promise.race([lockedTurn, deadline]);
+    if (outcome !== "deadline") return outcome;
+    abandoned = true;
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "agent_turn_deadline", {});
+    return { ok: false, action: "error", reason: "turn_deadline" };
   } finally {
-    // Libera lock
-    await supabaseAdmin
-      .from("conversations")
-      .update({ ai_handling: false })
-      .eq("id", conv.id)
-      .eq("company_id", conv.company_id);
+    clearTimeout(deadlineTimer);
+    await releaseAgentLock(conv);
   }
 }
