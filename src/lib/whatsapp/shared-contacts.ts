@@ -89,3 +89,13 @@ export function formatSharedContactsText(contacts: SharedContact[]): string {
   const extra = contacts.length > 1 ? ` (+${contacts.length - 1})` : "";
   return `${GENERIC_LABEL}: ${main}${extra}`;
 }
+
+/** Texto curto para listas: nome · telefone quando o contato é recuperável. */
+export function sharedContactsPreview(message: {
+  text?: string | null;
+  sourceSubtype?: string | null;
+  sourceMetadata?: Record<string, unknown> | null;
+}): string | null {
+  const contacts = getSharedContacts(message);
+  return contacts.length > 0 ? formatSharedContactsText(contacts) : null;
+}

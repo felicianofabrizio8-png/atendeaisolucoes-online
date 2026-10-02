@@ -1,22 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowLeft,
-  Check,
-  Clock3,
-  Copy,
-  ExternalLink,
-  MessageCircle,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
+import { ArrowLeft, Clock3, MessageCircle, Sparkles } from "lucide-react";
 import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendimentoData";
 import type { Message } from "@/data/mock";
-import {
-  formatSharedContactsText,
-  getSharedContacts,
-  type SharedContact,
-} from "@/lib/whatsapp/shared-contacts";
+import { getSharedContacts, sharedContactsPreview } from "@/lib/whatsapp/shared-contacts";
+import { SharedContactList } from "@/components/inbox/message/SharedContactCard";
 
 
 export const Route = createFileRoute("/atendimento-2")({
@@ -53,56 +41,7 @@ function statusLabel(status: string) {
 }
 
 function messagePreview(message: Message) {
-  const shared = getSharedContacts(message);
-  return shared.length > 0 ? formatSharedContactsText(shared) : message.text;
-}
-
-function SharedContactCard({ contact }: { contact: SharedContact }) {
-  const [copied, setCopied] = useState(false);
-  const copyPhone = () => {
-    if (!contact.phone) return;
-    void navigator.clipboard?.writeText(contact.phone).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <div className="min-w-[220px] rounded-xl border border-border bg-background/60 p-3">
-      <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
-          <UserRound className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{contact.name ?? "Contato sem nome"}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {contact.phone ?? "Sem telefone"}
-          </p>
-        </div>
-      </div>
-      {contact.phone ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={copyPhone}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-[11px] font-semibold hover:bg-accent"
-          >
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied ? "Copiado" : "Copiar telefone"}
-          </button>
-          {contact.whatsappUrl ? (
-            <a
-              href={contact.whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-primary hover:bg-accent"
-            >
-              <ExternalLink className="h-3 w-3" /> Abrir no WhatsApp
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+  return sharedContactsPreview(message) ?? message.text;
 }
 
 function contactTitle(contact: AtendimentoContact) {
@@ -205,11 +144,7 @@ function ConversationView({ contact }: { contact: AtendimentoContact }) {
                 }`}
               >
                 {shared.length > 0 ? (
-                  <div className="space-y-2">
-                    {shared.map((item, index) => (
-                      <SharedContactCard key={index} contact={item} />
-                    ))}
-                  </div>
+                  <SharedContactList contacts={shared} />
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
                 )}
