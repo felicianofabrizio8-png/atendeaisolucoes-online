@@ -134,7 +134,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     lead_name: input.leadName,
     catalog: input.context.grounding.catalog,
     commercial_state: input.commercialState ?? {},
-    next_catalog_query: input.nextCatalogQuery ?? null,
+    next_catalog_query: typeof input.nextCatalogQuery === "string" ? input.nextCatalogQuery : null,
     authorized_context: {
       company_name: input.context.companyName,
       ai_profile: input.context.aiProfile,
