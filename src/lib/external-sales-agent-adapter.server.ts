@@ -6,11 +6,13 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
+// Limite de corpo do http_api da Vendedora standalone (max_body_bytes); acima disso ela responde 400.
+const MAX_REQUEST_BYTES = 1_000_000;
 
 export type ExternalSalesAgentResult =
   | { enabled: false; reason: "disabled" | "not_silent" | "not_configured"; correlationId: string }
   | { enabled: true; ok: true; decision: AgentDecision; correlationId: string }
-  | { enabled: true; ok: false; reason: "config_invalid" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string };
+  | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string };
 
 type ExternalSalesAgentInput = {
   companyId: string;
@@ -89,6 +91,49 @@ function cleanCommercialState(value: unknown): Record<string, string | null> | n
   return output;
 }
 
+type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; available: true; source: "catalog" };
+
+// A standalone faz Product.from_dict: float(price) e str(campo). price null → 400;
+// description/category null viram o fato literal "None". Só enviamos produtos com
+// preço validado; os demais ficam fora do catálogo autorizado do turno.
+function toStandaloneCatalog(catalog: AgentContextBase["grounding"]["catalog"]): StandaloneCatalogItem[] {
+  const items: StandaloneCatalogItem[] = [];
+  for (const product of catalog) {
+    const id = typeof product.id === "string" && product.id.trim() ? product.id : "";
+    const name = typeof product.name === "string" ? product.name.trim() : "";
+    if (!id || !name || typeof product.price !== "number" || !Number.isFinite(product.price) || product.price < 0) continue;
+    items.push({
+      id,
+      name,
+      description: typeof product.description === "string" ? product.description : "",
+      price: product.price,
+      currency: "BRL",
+      category: typeof product.category === "string" ? product.category : "",
+      available: true,
+      source: "catalog",
+    });
+  }
+  return items;
+}
+
+const STANDALONE_ROLES = { lead: "user", agent: "assistant", system: "system" } as const;
+
+// A standalone acrescenta `message` ao histórico por conta própria, então o turno
+// atual sai do history; papéis seguem o vocabulário dela (user/assistant).
+function toStandaloneHistory(history: ExternalSalesAgentInput["history"], currentIndex: number) {
+  return history
+    .filter((item, index) => index !== currentIndex && typeof item.text === "string" && item.role in STANDALONE_ROLES)
+    .slice(-40)
+    .map((item) => {
+      const productIds = Array.isArray(item.productIds) ? item.productIds.filter((id): id is string => typeof id === "string") : [];
+      return { role: STANDALONE_ROLES[item.role], text: item.text, ...(productIds.length ? { productIds } : {}) };
+    });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>): AgentDecision | null {
   const state = cleanCommercialState(body.commercial_state);
   const products = cleanProductIds(body.selected_products, allowedProductIds);
@@ -126,14 +171,19 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     await notify(input, result);
     return result;
   }
-  const allowedProducts = new Set(input.context.grounding.catalog.map((product) => product.id));
+  const catalog = toStandaloneCatalog(input.context.grounding.catalog);
+  const allowedProducts = new Set(catalog.map((product) => product.id));
+  let currentIndex = input.history.length - 1;
+  while (currentIndex >= 0 && !(input.history[currentIndex].role === "lead" && typeof input.history[currentIndex].text === "string" && input.history[currentIndex].text.trim())) currentIndex -= 1;
+  const message = currentIndex >= 0 ? input.history[currentIndex].text.trim() : "";
+  const leadName = typeof input.leadName === "string" && input.leadName.trim() ? input.leadName.trim() : null;
   const payload = {
     company_id: input.companyId,
-    message: [...input.history].reverse().find((item) => item.role === "lead")?.text ?? "",
-    history: input.history.slice(-40),
-    lead_name: input.leadName,
-    catalog: input.context.grounding.catalog,
-    commercial_state: input.commercialState ?? {},
+    message,
+    history: toStandaloneHistory(input.history, currentIndex),
+    lead_name: leadName,
+    catalog,
+    commercial_state: isPlainObject(input.commercialState) ? input.commercialState : {},
     next_catalog_query: typeof input.nextCatalogQuery === "string" ? input.nextCatalogQuery : null,
     authorized_context: {
       company_name: input.context.companyName,
@@ -143,6 +193,13 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
       interpretation: input.interpretation ?? null,
     },
   };
+  const body = JSON.stringify(payload);
+  // Pedidos que a standalone recusaria com 400 nem saem: fallback local direto.
+  if (!message || new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) {
+    const result = { enabled: true as const, ok: false as const, reason: "invalid_request" as const, correlationId };
+    await notify(input, result);
+    return result;
+  }
   const turnFingerprint = createHash("sha256").update(JSON.stringify({ companyId: input.companyId, conversationId: input.conversationId ?? null, history: input.history })).digest("hex").slice(0, 32);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
@@ -155,14 +212,14 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
         "X-Correlation-Id": correlationId,
         "Idempotency-Key": `atende-ai:${input.companyId}:${input.conversationId ?? "no-conversation"}:${turnFingerprint}`,
       },
-      body: JSON.stringify(payload),
+      body,
       signal: controller.signal,
     });
     if (!response.ok) { const result = { enabled: true as const, ok: false as const, reason: "http_error" as const, correlationId }; await notify(input, result); return result; }
-    let body: unknown;
-    try { body = await response.json(); } catch { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
-    if (!body || typeof body !== "object" || Array.isArray(body)) { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
-    const decision = normalizeDecision(body as ExternalSalesAgentResponse, allowedProducts);
+    let responseBody: unknown;
+    try { responseBody = await response.json(); } catch { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
+    if (!isPlainObject(responseBody)) { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
+    const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts);
     const result = decision ? { enabled: true as const, ok: true as const, decision, correlationId } : { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId };
     await notify(input, result);
     return result;

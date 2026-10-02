@@ -82,4 +82,76 @@ describe("external sales agent adapter", () => {
     expect(result).toMatchObject({ enabled: true, ok: true });
     const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(request.body)).next_catalog_query).toBeNull();
-  });});
+  });
+
+  // Espelha _request_from_payload/Product.from_dict de vendedora/http_api.py: qualquer
+  // divergência aqui vira HTTP 400 na standalone.
+  function sentPayload(fetchImpl: ReturnType<typeof vi.fn>) {
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    return JSON.parse(String(request.body)) as Record<string, unknown>;
+  }
+  function withCatalog(catalog: unknown[]) {
+    return { ...context, grounding: { ...context.grounding, catalog } } as unknown as AgentContextBase;
+  }
+
+  it("envia todos os campos obrigatórios da standalone com os tipos esperados", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, leadName: undefined as unknown as null, commercialState: [], fetchImpl });
+    const body = sentPayload(fetchImpl);
+    for (const key of ["company_id", "message", "history", "lead_name", "catalog", "commercial_state", "next_catalog_query", "authorized_context"]) expect(body).toHaveProperty(key);
+    expect(body).toMatchObject({ company_id: "company-1", message: "Quero o produto", lead_name: null, commercial_state: {}, next_catalog_query: null });
+    expect(body.authorized_context).toEqual(expect.any(Object));
+  });
+
+  it("envia só produtos com preço numérico e sem null que vire o fato \"None\"", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", selected_products: ["p1"] }));
+    const catalog = [
+      { id: "p1", name: "Produto", category: null, description: null, price: 10, promoPrice: null, images: ["x"], notes: null, specifications: { a: 1 } },
+      { id: "p2", name: "Sob consulta", category: "c", description: "d", price: null, promoPrice: 5, images: [], notes: null },
+      { id: "p3", name: "", category: null, description: null, price: 3, promoPrice: null, images: [], notes: null },
+    ];
+    await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl });
+    expect(sentPayload(fetchImpl).catalog).toEqual([
+      { id: "p1", name: "Produto", description: "", price: 10, currency: "BRL", category: "", available: true, source: "catalog" },
+    ]);
+  });
+
+  it("não aceita produto que ficou fora do catálogo enviado", async () => {
+    const catalog = [
+      { id: "p1", name: "Produto", category: null, description: null, price: 10, promoPrice: null, images: [], notes: null },
+      { id: "p2", name: "Sob consulta", category: null, description: null, price: null, promoPrice: null, images: [], notes: null },
+    ];
+    const result = await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["p2"] })) });
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_response" });
+  });
+
+  it("usa papéis user/assistant e não duplica a mensagem atual no history", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const history = [
+      { role: "lead" as const, text: "Oi" },
+      { role: "agent" as const, text: "Olá!", productIds: ["p1"] },
+      { role: "lead" as const, text: " Quero o produto " },
+    ];
+    await callExternalSalesAgent({ ...input, history, fetchImpl });
+    const body = sentPayload(fetchImpl);
+    expect(body.message).toBe("Quero o produto");
+    expect(body.history).toEqual([{ role: "user", text: "Oi" }, { role: "assistant", text: "Olá!", productIds: ["p1"] }]);
+  });
+
+  it("não chama a standalone sem mensagem do lead e cai no fallback", async () => {
+    const fetchImpl = vi.fn();
+    const onResult = vi.fn();
+    const result = await callExternalSalesAgent({ ...input, history: [{ role: "agent", text: "Olá" }, { role: "lead", text: "   " }], fetchImpl, onResult });
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_request" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ reason: "invalid_request" }));
+  });
+
+  it("não chama a standalone quando o corpo excede o limite dela", async () => {
+    const fetchImpl = vi.fn();
+    const big = { ...context, knowledge: ["x".repeat(1_000_001)] } as unknown as AgentContextBase;
+    const result = await callExternalSalesAgent({ ...input, context: big, fetchImpl });
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_request" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
