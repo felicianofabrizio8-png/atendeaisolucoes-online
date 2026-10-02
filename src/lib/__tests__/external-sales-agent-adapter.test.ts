@@ -71,4 +71,15 @@ describe("external sales agent adapter", () => {
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "config_invalid" });
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, ok: false, reason: "config_invalid" }));
   });
-});
+
+  it("normaliza lastCatalogQuery estruturado para o contrato string/null da standalone", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", selected_products: ["p1"] }));
+    const result = await callExternalSalesAgent({
+      ...input,
+      nextCatalogQuery: { status: "matches", criteria: { widthM: 3 }, referencedProductIds: ["p1"] },
+      fetchImpl,
+    });
+    expect(result).toMatchObject({ enabled: true, ok: true });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).next_catalog_query).toBeNull();
+  });});
