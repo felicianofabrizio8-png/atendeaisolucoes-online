@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -98,7 +99,19 @@ function cleanCommercialState(value: unknown): Record<string, string | null> | n
   return output;
 }
 
-type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; available: true; source: "catalog" };
+type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; features: string[]; available: true; source: "catalog" };
+
+// Campos que a standalone já recebe em colunas próprias; os demais fatos de Produtos
+// (modelo, SKU, preço promocional, medidas, atributos da empresa, itens inclusos,
+// variantes, observações) vão em `features`, no mesmo "Rótulo: valor" do agente interno.
+const STANDALONE_OWN_FACT_KEYS = new Set<string>([UNIVERSAL_FACT_KEYS.name, UNIVERSAL_FACT_KEYS.category, UNIVERSAL_FACT_KEYS.price, UNIVERSAL_FACT_KEYS.description]);
+
+function standaloneFeatures(product: AgentContextBase["grounding"]["catalog"][number]): string[] {
+  // Fatos normalizados (fonte oficial): atributo em conflito com campo não vira fato.
+  return normalizeProductFacts(product).facts
+    .filter((fact) => !STANDALONE_OWN_FACT_KEYS.has(fact.key))
+    .map((fact) => `${fact.label}: ${renderFactValue(fact.value)}`);
+}
 
 // A standalone faz Product.from_dict: float(price) e str(campo). price null → 400;
 // description/category null viram o fato literal "None". Só enviamos produtos com
@@ -116,6 +129,7 @@ function toStandaloneCatalog(catalog: AgentContextBase["grounding"]["catalog"]):
       price: product.price,
       currency: "BRL",
       category: typeof product.category === "string" ? product.category : "",
+      features: standaloneFeatures(product),
       available: true,
       source: "catalog",
     });
