@@ -854,6 +854,7 @@ export async function runAgentTurn(params: {
 
   const external = await callExternalSalesAgent({
     companyId: params.ctx.settings.company_id,
+    conversationId: params.salesStateScope?.scopeId ?? null,
     history: params.history,
     leadName: params.leadName,
     context: params.ctx,
