@@ -36,6 +36,14 @@ describe("external sales agent adapter", () => {
     expect((request.headers as Record<string, string>)["Idempotency-Key"]).toContain("company-1");
     expect(JSON.parse(String(request.body)).company_id).toBe("company-1");
   });
+  it("informa à standalone o orçamento do turno descontando a rede", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, fetchImpl });
+    await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "1500" }, fetchImpl });
+    const budgets = fetchImpl.mock.calls.map(([, request]) => (request as RequestInit).headers as Record<string, string>);
+    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("9000");
+    expect(budgets[1]["X-Request-Timeout-Ms"]).toBe("750");
+  });
   it("rejeita produto fora do catálogo", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["other"] })) });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_response" });

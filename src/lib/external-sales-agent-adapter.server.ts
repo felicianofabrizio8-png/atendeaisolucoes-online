@@ -6,6 +6,9 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
+// Folga para a ida e a volta da rede (Workers → Railway): a standalone recebe só o
+// que sobra do nosso timeout e decide se ainda cabe a correção de evidências.
+const NETWORK_MARGIN_MS = 1_000;
 // Limite de corpo do http_api da Vendedora standalone (max_body_bytes); acima disso ela responde 400.
 const MAX_REQUEST_BYTES = 1_000_000;
 
@@ -60,6 +63,10 @@ function getConfig(env: Record<string, string | undefined>) {
   const maxTimeoutMs = localTestEndpoint ? 60_000 : 10_000;
   if (!endpoint || !apiKey || !Number.isFinite(timeoutValue) || timeoutValue < 250 || timeoutValue > maxTimeoutMs) return null;
   return { endpoint, apiKey, timeoutMs: Math.floor(timeoutValue) };
+}
+
+function turnBudgetMs(timeoutMs: number): number {
+  return Math.max(Math.floor(timeoutMs / 2), timeoutMs - NETWORK_MARGIN_MS);
 }
 
 function cleanString(value: unknown, max: number): string | null {
@@ -211,6 +218,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
         "Content-Type": "application/json",
         "X-Correlation-Id": correlationId,
         "Idempotency-Key": `atende-ai:${input.companyId}:${input.conversationId ?? "no-conversation"}:${turnFingerprint}`,
+        "X-Request-Timeout-Ms": String(turnBudgetMs(config.timeoutMs)),
       },
       body,
       signal: controller.signal,
