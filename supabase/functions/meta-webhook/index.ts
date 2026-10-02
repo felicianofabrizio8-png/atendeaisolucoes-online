@@ -328,7 +328,24 @@ function extractWaText(m: any): string {
   if (m?.type === "video") return "[vídeo]";
   if (m?.type === "document") return "[documento]";
   if (m?.type === "location") return "[localização]";
+  if (m?.type === "contacts") return sharedContactText(m?.contacts);
   return `[${m?.type ?? "mensagem"}]`;
+}
+
+// Mantido em sincronia com src/lib/whatsapp/shared-contacts.ts
+// (formatSharedContactsText). O payload completo continua em source_metadata.raw.
+function sharedContactText(contacts: unknown): string {
+  const list = Array.isArray(contacts) ? contacts : [];
+  const first = list.find((c: any) => c && typeof c === "object") as any;
+  const n = first?.name ?? {};
+  const name =
+    (typeof n.formatted_name === "string" && n.formatted_name.trim()) ||
+    [n.first_name, n.middle_name, n.last_name].filter((v) => typeof v === "string" && v.trim()).join(" ");
+  const p = Array.isArray(first?.phones) ? first.phones.find((x: any) => x?.phone || x?.wa_id) : null;
+  const phone = (typeof p?.phone === "string" && p.phone.trim()) || (typeof p?.wa_id === "string" && p.wa_id) || "";
+  const main = [name, phone].filter(Boolean).join(" · ");
+  if (!main) return "👤 Contato";
+  return `👤 Contato: ${main}${list.length > 1 ? ` (+${list.length - 1})` : ""}`;
 }
 
 // Constrói um preview textual curto da mensagem original que foi respondida.
