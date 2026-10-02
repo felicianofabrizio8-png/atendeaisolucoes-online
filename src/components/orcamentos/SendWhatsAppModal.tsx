@@ -1,3 +1,4 @@
+import { quoteDate } from "@/lib/quote-presentation";
 // Extraído de src/routes/orcamentos.tsx (Sprint 7 — Fase 7.2).
 // Movimento literal: JSX, estados, efeitos, queries, mutations, cálculos e
 // validações permanecem idênticos ao original.
@@ -21,9 +22,11 @@ export type BlockKey = "photos" | "base" | "inclusos" | "brindes" | "porConta" |
 export type BlockStatus = "pendente" | "enviando" | "enviado" | "erro";
 
 export function buildBaseText(quote: Quote): string {
-  const validStr = new Date(quote.validUntil).toLocaleDateString("pt-BR");
+  const validStr = quoteDate(quote.validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`);
+  if (quote.productDescription?.trim()) lines.push(`Descrição: ${quote.productDescription.trim()}`);
+  if (quote.benefits?.trim()) lines.push(`Benefícios: ${quote.benefits.trim()}`);
   if (quote.installments > 1) {
     const parcela = quote.finalValue / quote.installments;
     lines.push(

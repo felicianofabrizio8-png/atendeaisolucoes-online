@@ -520,6 +520,23 @@
   }
 }
 
+/* Mantém a paleta escura do formulário quando o navegador preenche os campos. */
+.quote-form .quote-form-input:-webkit-autofill,
+.quote-form .quote-form-input:-webkit-autofill:hover,
+.quote-form .quote-form-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1d1d1d inset !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+}
+
+.quote-form .quote-form-search:-webkit-autofill,
+.quote-form .quote-form-search:-webkit-autofill:hover,
+.quote-form .quote-form-search:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #000 inset !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+}
+
 /* NEXUS-PRO:WATERMARK-HIDE:START */
 /* Overlay do badge oficial ocultado por conflito com UI custom.
    Bloco idempotente gerenciado pela extensão Nexus Pro.

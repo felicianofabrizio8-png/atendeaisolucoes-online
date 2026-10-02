@@ -1,3 +1,4 @@
+import { quoteDate } from "@/lib/quote-presentation";
 // Store de orçamentos com dois modos:
 //  - "demo": memória local (não persiste).
 //  - "remote": grava na tabela `quotes` do Supabase, vinculando lead_id, product_id
@@ -16,10 +17,23 @@ import {
 } from "@/lib/quote-send/errors";
 import { qsDebug, qsError } from "@/lib/quote-send/diagnostics";
 
-
 export type PaymentMethod = "Pix" | "Cartão de crédito" | "Boleto" | "Transferência" | "Dinheiro";
 
 export type QuoteStatus = "pendente" | "enviado" | "visualizado" | "aprovado" | "vencido";
+
+export interface QuoteCustomerDetails {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone1: string;
+  phone2: string;
+  street: string;
+  number: string;
+  city: string;
+  neighborhood: string;
+  state: string;
+  postalCode: string;
+}
 
 export interface Quote {
   id: string;
@@ -44,13 +58,16 @@ export interface Quote {
   brindes: string[];
   porConta: string[];
   notes: string;
+  customerDetails?: QuoteCustomerDetails;
+  productDescription?: string;
+  benefits?: string;
 }
-
 
 export function computeQuoteStatus(q: Quote): QuoteStatus {
   if (q.rawStatus === "aceito") return "aprovado";
   const today = new Date().toISOString().slice(0, 10);
-  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent)) return "vencido";
+  if (q.rawStatus === "expirado" || (q.validUntil && q.validUntil < today && !q.sent))
+    return "vencido";
   if (q.viewedAt || q.rawStatus === "visualizado") return "visualizado";
   if (q.sent) return "enviado";
   return "pendente";
@@ -110,8 +127,11 @@ export interface QuoteInput {
   brindes?: string[];
   porConta?: string[];
   notes?: string;
+  customerDetails?: QuoteCustomerDetails;
+  productDescription?: string;
+  benefits?: string;
+  unitPrice?: number;
 }
-
 
 export function buildQuoteMessage(args: {
   product: Product;
@@ -122,7 +142,7 @@ export function buildQuoteMessage(args: {
   discount: number;
 }): string {
   const { product, finalValue, installments, paymentMethod, validUntil, discount } = args;
-  const validStr = new Date(validUntil).toLocaleDateString("pt-BR");
+  const validStr = quoteDate(validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${product.name}* ficou em *${formatBRL(finalValue)}*.`);
   if (discount > 0) {
@@ -166,10 +186,11 @@ type DbQuote = {
   brindes?: unknown;
   por_conta?: unknown;
   notes?: string | null;
+  items?: unknown;
 };
 
 const QUOTE_SELECT =
-  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes";
+  "id,lead_id,conversation_id,product_id,product_name,unit_price,discount,final_value,payment_method,installments,valid_until,message,sent,created_at,sent_at,viewed_at,external_message_id,status,inclusos,brindes,por_conta,notes,items";
 
 function toStringArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -177,6 +198,14 @@ function toStringArr(v: unknown): string[] {
 }
 
 function toQuote(r: DbQuote): Quote {
+  const firstItem =
+    Array.isArray(r.items) && r.items[0] && typeof r.items[0] === "object"
+      ? (r.items[0] as Record<string, unknown>)
+      : {};
+  const customerDetails =
+    firstItem.customer_details && typeof firstItem.customer_details === "object"
+      ? (firstItem.customer_details as QuoteCustomerDetails)
+      : undefined;
   return {
     id: r.id,
     leadId: r.lead_id ?? "",
@@ -200,9 +229,12 @@ function toQuote(r: DbQuote): Quote {
     brindes: toStringArr(r.brindes),
     porConta: toStringArr(r.por_conta),
     notes: r.notes ?? "",
+    customerDetails,
+    productDescription:
+      typeof firstItem.product_description === "string" ? firstItem.product_description : undefined,
+    benefits: typeof firstItem.benefits === "string" ? firstItem.benefits : undefined,
   };
 }
-
 
 // ---------- modo & realtime ----------
 export function getQuotesMode(): Mode {
@@ -283,23 +315,27 @@ export async function loadQuotesRemote(cid: string) {
 }
 
 // ---------- mutações ----------
-export async function createQuote(input: QuoteInput): Promise<Quote> {
+export async function createQuote(input: QuoteInput, existingId?: string): Promise<Quote> {
   const product = getProduct(input.productId);
   if (!product) throw new Error("Produto não encontrado");
-  const unitPrice = activePrice(product);
+  const existing = existingId ? getQuote(existingId) : undefined;
+  if (existingId && !existing) throw new Error("Orçamento não encontrado");
+  const unitPrice =
+    input.unitPrice ??
+    (existing?.productId === product.id ? existing.unitPrice : activePrice(product));
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error("Informe um valor válido");
   const discount = Math.max(0, Math.min(input.discount, unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
-  const message =
-    input.message?.trim()
-      ? input.message
-      : buildQuoteMessage({
-          product,
-          finalValue,
-          installments: input.installments,
-          paymentMethod: input.paymentMethod,
-          validUntil: input.validUntil,
-          discount,
-        });
+  const message = input.message?.trim()
+    ? input.message
+    : buildQuoteMessage({
+        product,
+        finalValue,
+        installments: input.installments,
+        paymentMethod: input.paymentMethod,
+        validUntil: input.validUntil,
+        discount,
+      });
 
   const inclusos = (input.inclusos ?? []).map((s) => s.trim()).filter(Boolean);
   const brindes = (input.brindes ?? []).map((s) => s.trim()).filter(Boolean);
@@ -307,54 +343,67 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
   const notes = (input.notes ?? "").trim();
 
   if (mode === "remote" && companyId) {
-    const { data, error } = await supabase
-      .from("quotes")
-      .insert({
-        company_id: companyId,
-        lead_id: input.leadId,
-        conversation_id: input.conversationId ?? null,
-        product_id: product.id,
-        product_name: product.name,
-        unit_price: unitPrice,
-        discount,
-        final_value: finalValue,
-        total: finalValue,
-        payment_method: input.paymentMethod,
-        installments: input.installments,
-        valid_until: input.validUntil,
-        message,
-        sent: false,
-        status: "rascunho",
-        inclusos,
-        brindes,
-        por_conta: porConta,
-        notes,
-        items: [
-          {
-            product_id: product.id,
-            name: product.name,
-            unit_price: unitPrice,
-            quantity: 1,
-            discount,
-            total: finalValue,
-          },
-        ],
-      })
-
-      .select(QUOTE_SELECT)
-      .single();
-    if (error) throw error;
-    const quote = toQuote(data as DbQuote);
-    if (!quotes.some((q) => q.id === quote.id)) {
-      quotes.unshift(quote);
-      notify();
+    const values = {
+      company_id: companyId,
+      lead_id: input.leadId,
+      conversation_id: input.conversationId ?? null,
+      product_id: product.id,
+      product_name: product.name,
+      unit_price: unitPrice,
+      discount,
+      final_value: finalValue,
+      total: finalValue,
+      payment_method: input.paymentMethod,
+      installments: input.installments,
+      valid_until: input.validUntil,
+      message,
+      sent: false,
+      status: "rascunho" as const,
+      sent_at: null,
+      viewed_at: null,
+      external_message_id: null,
+      inclusos,
+      brindes,
+      por_conta: porConta,
+      notes,
+      items: [
+        {
+          product_id: product.id,
+          name: product.name,
+          unit_price: unitPrice,
+          quantity: 1,
+          discount,
+          total: finalValue,
+          customer_details: input.customerDetails
+            ? { ...input.customerDetails }
+            : existing?.customerDetails
+              ? { ...existing.customerDetails }
+              : null,
+          product_description:
+            input.productDescription ?? existing?.productDescription ?? product.description ?? "",
+          benefits: input.benefits ?? existing?.benefits ?? "",
+        },
+      ],
+    };
+    const mutation = existingId
+      ? supabase.from("quotes").update(values).eq("id", existingId).eq("company_id", companyId)
+      : supabase.from("quotes").insert(values);
+    const { data, error } = await mutation.select(QUOTE_SELECT).single();
+    if (error) {
+      const code = error.code ? ` (${error.code})` : "";
+      throw new Error(`Não foi possível salvar o orçamento${code}: ${error.message}`);
     }
+    const quote = toQuote(data as DbQuote);
+    const index = quotes.findIndex((q) => q.id === quote.id);
+    if (index >= 0) quotes[index] = quote;
+    else quotes.unshift(quote);
+    notify();
     return quote;
   }
 
   // demo
   const quote: Quote = {
-    id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: existingId ?? `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     leadId: input.leadId,
     conversationId: input.conversationId,
     productId: product.id,
@@ -366,15 +415,21 @@ export async function createQuote(input: QuoteInput): Promise<Quote> {
     installments: input.installments,
     validUntil: input.validUntil,
     message,
-    createdAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
     sent: false,
     inclusos,
     brindes,
     porConta,
     notes,
+    customerDetails: input.customerDetails ?? existing?.customerDetails,
+    productDescription:
+      input.productDescription ?? existing?.productDescription ?? product.description,
+    benefits: input.benefits ?? existing?.benefits,
   };
 
-  quotes.unshift(quote);
+  const index = quotes.findIndex((q) => q.id === quote.id);
+  if (index >= 0) quotes[index] = quote;
+  else quotes.unshift(quote);
   notify();
   return quote;
 }
@@ -434,8 +489,6 @@ export async function deleteQuote(id: string): Promise<void> {
   }
 }
 
-
-
 /**
  * Sends a quote message through WhatsApp Cloud API via the meta-send edge function.
  * Returns the new/existing conversationId so the caller can open the chat.
@@ -489,13 +542,15 @@ export async function sendQuoteWhatsApp(args: {
   const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
   const sessionMs = Math.round(performance.now() - sessionStart);
   if (sessionErr || !sessionData?.session) {
-    const norm = normalizeQuoteSendError(
-      sessionErr ?? new Error("no active session"),
-      "session",
-      { ...base, durationMs: sessionMs },
-    );
+    const norm = normalizeQuoteSendError(sessionErr ?? new Error("no active session"), "session", {
+      ...base,
+      durationMs: sessionMs,
+    });
     qsError("QUOTE_SEND_ERROR", { ...base, step: "session", norm });
-    throw new QuoteSendError({ ...norm, code: norm.code === "unknown" ? "session_expired" : norm.code });
+    throw new QuoteSendError({
+      ...norm,
+      code: norm.code === "unknown" ? "session_expired" : norm.code,
+    });
   }
   qsDebug("QUOTE_SEND_SESSION_READY", { ...base, durationMs: sessionMs });
 
@@ -568,5 +623,3 @@ export async function sendQuoteWhatsApp(args: {
   });
   return { conversationId: payload.conversationId, messageId: payload.messageId };
 }
-
-

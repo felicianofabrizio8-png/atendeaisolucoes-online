@@ -1,9 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { FileText, Plus } from "lucide-react";
-import { listQuotes, subscribeQuotes } from "@/data/quotes";
+import { FileText, Plus, Search, X } from "lucide-react";
+import { getLeads, subscribeRepo } from "@/data/leadRepo";
+import { matchesQuote, normalizeQuoteSearch } from "@/lib/quote-presentation";
+import { listQuotes, subscribeQuotes, type Quote } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
+import { QuoteSuccessModal } from "@/components/orcamentos/QuoteSuccessModal";
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
@@ -43,6 +46,11 @@ function QuotesPage() {
   const navigate = useNavigate();
   const quotes = useQuotes();
   const [open, setOpen] = useState(false);
+  const [successQuote, setSuccessQuote] = useState<Quote | null>(null);
+  const [requestedAction, setRequestedAction] = useState<{
+    id: string;
+    action: "send" | "edit" | "details";
+  } | null>(null);
   const [prefillLeadId, setPrefillLeadId] = useState<string | undefined>();
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
@@ -50,7 +58,68 @@ function QuotesPage() {
   const [returnTo, setReturnTo] = useState<"atendimento" | undefined>();
   const PAGE_SIZE = 20;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const visibleQuotes = quotes.slice(0, visibleCount);
+  const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const filteredQuotes = quotes.filter((q) =>
+    matchesQuote(
+      q,
+      leads.find((l) => l.id === q.leadId),
+      query,
+    ),
+  );
+  const visibleQuotes = filteredQuotes.slice(0, visibleCount);
+  const suggestions = [
+    ...new Map(
+      quotes
+        .map((quote) => {
+          const lead = leads.find((item) => item.id === quote.leadId);
+          const name = quote.customerDetails
+            ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim() ||
+              lead?.name ||
+              ""
+            : lead?.name || "";
+          const phone = quote.customerDetails?.phone1 || lead?.phone || "";
+          return { name, phone };
+        })
+        .filter(
+          (customer) =>
+            customer.name &&
+            normalizeQuoteSearch(customer.name).includes(normalizeQuoteSearch(query)),
+        )
+        .map((customer) => [normalizeQuoteSearch(customer.name), customer] as const),
+    ).values(),
+  ].slice(0, 6);
+  const suggestionsOpen = showSuggestions && !!query.trim() && suggestions.length > 0;
+  const chooseSuggestion = (name: string) => {
+    setQuery(name);
+    setVisibleCount(PAGE_SIZE);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+  };
+  const openCreate = () => {
+    setPrefillLeadId(undefined);
+    setPrefillConvId(undefined);
+    setPrefillProductId(undefined);
+    setSuggestionReason(undefined);
+    setReturnTo(undefined);
+    setOpen(true);
+  };
+  const closeSuccess = () => {
+    const createdQuote = successQuote;
+    setSuccessQuote(null);
+    if (!createdQuote?.conversationId) return;
+    if (returnTo === "atendimento") {
+      navigate({ to: "/atendimento", search: { conversation: createdQuote.conversationId } });
+    } else {
+      navigate({
+        to: "/inbox/$conversationId",
+        params: { conversationId: createdQuote.conversationId },
+        search: { quote: createdQuote.id },
+      });
+    }
+  };
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
@@ -74,47 +143,127 @@ function QuotesPage() {
   ]);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <header className="sticky top-0 z-20 bg-background h-14 px-4 md:px-6 border-b border-border flex items-center gap-3 safe-top">
-        <FileText className="h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold">Orçamentos</h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
-            {quotes.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setPrefillLeadId(undefined);
-            setPrefillConvId(undefined);
-            setOpen(true);
+    <div className="min-w-0 flex-1 overflow-y-auto bg-background dark:bg-black text-foreground">
+      <div className="@container mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 xl:px-10 2xl:px-12">
+        <header className="mb-7 flex items-center justify-between gap-4 sm:mb-8">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Orçamentos</h1>
+          <button
+            onClick={openCreate}
+            className="h-10 min-w-24 rounded-full border border-foreground/40 px-7 text-base font-semibold transition-colors hover:bg-foreground/10"
+          >
+            Criar
+          </button>
+        </header>
+        <div
+          className="relative mx-auto mb-9 w-full max-w-5xl"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
           }}
-          aria-label="Novo orçamento"
-          className="inline-flex items-center justify-center gap-1.5 h-11 w-11 md:h-9 md:w-auto md:px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold shrink-0"
         >
-          <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
-          <span className="hidden md:inline">Novo orçamento</span>
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="flex h-12 items-center gap-3 rounded-full border border-border bg-secondary/20 px-4 focus-within:border-foreground/50">
+            <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              role="combobox"
+              aria-label="Pesquisar orçamentos"
+              aria-expanded={suggestionsOpen}
+              aria-controls="quote-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                suggestionsOpen && activeSuggestion >= 0
+                  ? `quote-suggestion-${activeSuggestion}`
+                  : undefined
+              }
+              value={query}
+              onFocus={() => setShowSuggestions(true)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+                setShowSuggestions(true);
+                setActiveSuggestion(-1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setShowSuggestions(false);
+                if (suggestionsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                  e.preventDefault();
+                  setActiveSuggestion(
+                    (i) =>
+                      (i + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) %
+                      suggestions.length,
+                  );
+                }
+                if (suggestionsOpen && e.key === "Enter" && activeSuggestion >= 0) {
+                  e.preventDefault();
+                  chooseSuggestion(suggestions[activeSuggestion].name);
+                }
+              }}
+              placeholder="Pesquisar por nome, telefone ou produto"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            {query && (
+              <button
+                aria-label="Limpar pesquisa"
+                onClick={() => chooseSuggestion("")}
+                className="rounded-full p-1 hover:bg-secondary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {suggestionsOpen && (
+            <ul
+              id="quote-suggestions"
+              role="listbox"
+              aria-label="Clientes encontrados"
+              className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-background p-2 shadow-xl"
+            >
+              {suggestions.map((lead, index) => (
+                <li
+                  key={normalizeQuoteSearch(lead.name)}
+                  role="option"
+                  aria-selected={index === activeSuggestion}
+                  id={`quote-suggestion-${index}`}
+                >
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => chooseSuggestion(lead.name)}
+                    className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-secondary ${index === activeSuggestion ? "bg-secondary" : ""}`}
+                  >
+                    <span className="truncate font-medium">{lead.name}</span>
+                    <span className="text-xs text-muted-foreground">{lead.phone}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {quotes.length === 0 ? (
-          <EmptyState onCreate={() => setOpen(true)} />
+          <EmptyState onCreate={openCreate} />
         ) : (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
+            {filteredQuotes.length === 0 && (
+              <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+                Nenhum orçamento encontrado. Tente outro nome, telefone ou produto.
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-5 sm:gap-6 @min-[880px]:grid-cols-2 @min-[880px]:gap-x-8 @min-[880px]:gap-y-8 xl:@min-[880px]:gap-x-10 2xl:@min-[880px]:gap-x-12">
               {visibleQuotes.map((q) => (
-                <QuoteCard key={q.id} quote={q} />
+                <QuoteCard
+                  key={q.id}
+                  quote={q}
+                  requestedAction={
+                    requestedAction?.id === q.id ? requestedAction.action : undefined
+                  }
+                  onActionHandled={() => setRequestedAction(null)}
+                />
               ))}
             </div>
-            {visibleCount < quotes.length && (
+            {visibleCount < filteredQuotes.length && (
               <div className="max-w-5xl mt-4 flex justify-center">
                 <button
                   onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
                 >
-                  Carregar mais ({quotes.length - visibleCount})
+                  Carregar mais ({filteredQuotes.length - visibleCount})
                 </button>
               </div>
             )}
@@ -131,17 +280,35 @@ function QuotesPage() {
           onCancel={() => setOpen(false)}
           onCreated={(q) => {
             setOpen(false);
-            // Se criado a partir de uma conversa, voltar para ela com a mensagem pronta
-            if (q.conversationId && returnTo === "atendimento") {
-              // O Atendimento 2.0 encontra o orçamento pendente do lead sozinho.
-              navigate({ to: "/atendimento", search: { conversation: q.conversationId } });
-            } else if (q.conversationId) {
-              navigate({
-                to: "/inbox/$conversationId",
-                params: { conversationId: q.conversationId },
-                search: { quote: q.id },
-              });
-            }
+            setQuery("");
+            setVisibleCount(PAGE_SIZE);
+            setSuccessQuote(q);
+          }}
+        />
+      )}
+      {successQuote && (
+        <QuoteSuccessModal
+          quote={successQuote}
+          canSend={(() => {
+            const lead = leads.find((item) => item.id === successQuote.leadId);
+            const phone = (successQuote.customerDetails?.phone1 || lead?.phone || "").replace(
+              /\D/g,
+              "",
+            );
+            return !!lead && phone.length >= 8 && phone.length <= 15;
+          })()}
+          onClose={closeSuccess}
+          onSend={() => {
+            setRequestedAction({ id: successQuote.id, action: "send" });
+            setSuccessQuote(null);
+          }}
+          onEdit={() => {
+            setRequestedAction({ id: successQuote.id, action: "edit" });
+            setSuccessQuote(null);
+          }}
+          onView={() => {
+            setRequestedAction({ id: successQuote.id, action: "details" });
+            setSuccessQuote(null);
           }}
         />
       )}
