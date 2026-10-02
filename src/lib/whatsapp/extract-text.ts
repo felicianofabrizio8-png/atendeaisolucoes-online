@@ -1,3 +1,5 @@
+import { formatSharedContactsText, sharedContactsFromPayload } from "./shared-contacts";
+
 /**
  * Pure helpers to convert a WhatsApp Cloud API message payload into the
  * short text stored in `messages.text`. Kept in its own module so the
@@ -30,6 +32,7 @@ export interface WhatsAppMessage {
   video?: WhatsAppMediaPart;
   document?: WhatsAppMediaPart;
   sticker?: WhatsAppMediaPart;
+  contacts?: unknown[];
 }
 
 export function extractText(m: WhatsAppMessage): string {
@@ -48,7 +51,7 @@ export function extractText(m: WhatsAppMessage): string {
     return m.document?.caption ?? (m.document?.filename ? `📎 ${m.document.filename}` : "📎 Documento");
   if (m.type === "sticker") return "🌟 Sticker";
   if (m.type === "location") return "📍 Localização";
-  if (m.type === "contacts") return "👤 Contato";
+  if (m.type === "contacts") return formatSharedContactsText(sharedContactsFromPayload(m.contacts));
   if (m.type === "reaction") return "💬 Reação";
   if (m.type === "order") return "🛒 Pedido";
   if (m.type === "poll") return "📊 Enquete";
