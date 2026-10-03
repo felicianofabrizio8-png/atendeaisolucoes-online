@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/auth/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { getLeadById } from "@/data/leadRepo";
 import { timeAgo } from "@/data/mock";
 import { num, useInView } from "./charts/primitives";
@@ -13,6 +16,26 @@ const FATIAS = [
 ] as const;
 
 export function AICommand({ data }: { data: DashboardData }) {
+  const { profile } = useAuth();
+  const companyId = profile?.company_id;
+  const [mode, setMode] = useState<{ companyId: string; label: string } | null>(null);
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void supabase.from("company_settings")
+      .select("ai_auto_reply_enabled, sales_agent_v2_enabled, sales_agent_v2_mode")
+      .eq("company_id", companyId)
+      .maybeSingle()
+      .then(({ data: settings, error }) => {
+        if (cancelled) return;
+        const label = error || !settings ? "Estado indisponível"
+          : settings.sales_agent_v2_enabled && settings.sales_agent_v2_mode === "silent" ? "Em avaliação"
+          : settings.sales_agent_v2_enabled && settings.sales_agent_v2_mode === "assisted" ? "Assistida"
+          : settings.ai_auto_reply_enabled ? "Respostas habilitadas" : "Respostas desativadas";
+        setMode({ companyId, label });
+      });
+    return () => { cancelled = true; };
+  }, [companyId]);
   const active = data.conversations.filter((item) => item.aiHandling).length;
   const completed = data.conversations.filter((item) => item.aiStatus === "pre_atendido_ia").length;
   const waitingHuman = data.conversations.filter(
@@ -47,9 +70,8 @@ export function AICommand({ data }: { data: DashboardData }) {
                 Como a carga da IA está distribuída agora
               </p>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-status-won/25 bg-status-won/10 px-2.5 py-1 text-[11px] font-medium text-status-won">
-              <span className="h-1.5 w-1.5 rounded-full bg-status-won motion-safe:animate-pulse" />
-              Operando
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              {mode?.companyId === companyId ? mode.label : "Verificando estado"}
             </span>
           </div>
 
