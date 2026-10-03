@@ -82,4 +82,17 @@ describe("auditoria da Vendedora V2", () => {
     expect(maskAuditIdentifier("conversation-1234")).toBe("conv…1234");
     expect(maskAuditIdentifier(null)).toBe("-");
   });
+  it("não transforma narrativa de handoff em código aparentemente seguro", () => {
+    const payload = buildSalesAgentAuditPayload({
+      companyId: "company-1", conversationId: "conversation-1", mode: "silent",
+      decision: "handoff", result: "handoff_human",
+      blocked: "O cliente forneceu dados de contato para uma nova análise",
+      latencyMs: 12,
+    });
+    expect(payload.blocked).toBe("redacted_block");
+    expect(buildSalesAgentAuditPayload({
+      companyId: "company-1", conversationId: "conversation-1", mode: "silent",
+      decision: "skipped", result: "mode_gate", blocked: "v2_silent", latencyMs: 1,
+    }).blocked).toBe("v2_silent");
+  });
 });

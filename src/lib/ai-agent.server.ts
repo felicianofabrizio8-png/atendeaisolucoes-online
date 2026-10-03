@@ -1718,6 +1718,10 @@ async function runAgentTickPass(
               ...(external.enabled && external.timing
                 ? { budget_ms: external.timing.budgetMs, duration_ms: external.timing.durationMs }
                 : {}),
+              ...(external.enabled && !external.ok && external.httpStatus
+                ? { http_status: external.httpStatus } : {}),
+              ...(external.enabled && !external.ok && external.invalidResponseCode
+                ? { invalid_response_code: external.invalidResponseCode } : {}),
               correlation_id: external.correlationId,
             });
           },

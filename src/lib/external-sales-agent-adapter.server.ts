@@ -17,7 +17,7 @@ const MAX_REQUEST_BYTES = 1_000_000;
 export type ExternalSalesAgentResult =
   | { enabled: false; reason: "disabled" | "not_silent" | "not_configured"; correlationId: string }
   | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming }
-  | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming };
+  | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming; httpStatus?: number; invalidResponseCode?: "invalid_json" | "invalid_shape" | "invalid_decision" };
 
 /** Só números: o timeout efetivo dado à Vendedora e quanto a chamada levou. */
 export type ExternalSalesAgentTiming = { budgetMs: number; durationMs: number };
@@ -256,12 +256,13 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
       body,
       signal: controller.signal,
     });
-    if (!response.ok) return await finish({ enabled: true, ok: false, reason: "http_error", correlationId });
+    // Only record protocol metadata; the upstream body may contain customer data or secrets.
+    if (!response.ok) return await finish({ enabled: true, ok: false, reason: "http_error", correlationId, httpStatus: response.status });
     let responseBody: unknown;
-    try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId }); }
-    if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId });
+    try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
+    if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
     const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts);
-    return await finish(decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId });
+    return await finish(decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
     return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });
   } finally {

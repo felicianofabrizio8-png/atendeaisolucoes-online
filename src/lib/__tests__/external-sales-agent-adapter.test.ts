@@ -72,6 +72,18 @@ describe("external sales agent adapter", () => {
     }
     expect(onResult.mock.calls.map(([result]) => Object.keys((result as { timing: object }).timing).sort())).toEqual([["budgetMs", "durationMs"], ["budgetMs", "durationMs"]]);
   });
+  it("registra somente código HTTP, nunca o corpo sensível do erro remoto", async () => {
+    const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(new Response("dados do cliente", { status: 422 })) });
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "http_error", httpStatus: 422 });
+    expect(JSON.stringify(result)).not.toContain("dados do cliente");
+  });
+  it("distingue as formas de resposta inválida sem salvar seu conteúdo", async () => {
+    const malformed = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(new Response("não-json")) });
+    const shape = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response(["unexpected"])) });
+    const decision = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["outro"] })) });
+    expect([malformed, shape, decision].map((result) => result.enabled && !result.ok && result.invalidResponseCode))
+      .toEqual(["invalid_json", "invalid_shape", "invalid_decision"]);
+  });
 
   it("rejeita produto fora do catálogo", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["other"] })) });
