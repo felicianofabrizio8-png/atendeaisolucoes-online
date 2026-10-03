@@ -112,14 +112,14 @@ describe("quality gate estrutural", () => {
     const impls = files.filter((f) =>
       /export function safeEqualSecret/.test(fs.readFileSync(f, "utf8")),
     );
-    expect(impls.map((f) => path.relative(SRC, f))).toEqual(["lib/shared/secure-compare.server.ts"]);
+    expect(impls.map((f) => path.relative(SRC, f).replace(/\\/g, "/"))).toEqual(["lib/shared/secure-compare.server.ts"]);
   });
 
   it("correlationId tem uma única implementação em src/", () => {
     const impls = files.filter((f) =>
       /function correlationId\(\): string/.test(fs.readFileSync(f, "utf8")),
     );
-    expect(impls.map((f) => path.relative(SRC, f))).toEqual(["lib/shared/correlation.ts"]);
+    expect(impls.map((f) => path.relative(SRC, f).replace(/\\/g, "/"))).toEqual(["lib/shared/correlation.ts"]);
   });
 
   it("o módulo client-safe de correlação não importa nada server-only", () => {

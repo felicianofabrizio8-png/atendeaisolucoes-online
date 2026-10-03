@@ -21,7 +21,9 @@ export type BlockKey = "photos" | "base" | "inclusos" | "brindes" | "porConta" |
 export type BlockStatus = "pendente" | "enviando" | "enviado" | "erro";
 
 export function buildBaseText(quote: Quote): string {
-  const validStr = new Date(quote.validUntil).toLocaleDateString("pt-BR");
+  const validStr = /^\d{4}-\d{2}-\d{2}$/.test(quote.validUntil)
+    ? quote.validUntil.split("-").reverse().join("/")
+    : new Date(quote.validUntil).toLocaleDateString("pt-BR");
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`);
   if (quote.installments > 1) {

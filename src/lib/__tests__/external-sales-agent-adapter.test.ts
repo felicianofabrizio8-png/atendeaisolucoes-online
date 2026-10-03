@@ -41,7 +41,7 @@ describe("external sales agent adapter", () => {
     await callExternalSalesAgent({ ...input, fetchImpl });
     await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "1500" }, fetchImpl });
     const budgets = fetchImpl.mock.calls.map(([, request]) => (request as RequestInit).headers as Record<string, string>);
-    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("9000");
+    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("29000");
     expect(budgets[1]["X-Request-Timeout-Ms"]).toBe("750");
   });
   it("rejeita produto fora do catálogo", async () => {
@@ -73,9 +73,9 @@ describe("external sales agent adapter", () => {
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, reason: "disabled" }));
   });
 
-  it("audita external_fallback e rejeita timeout remoto acima de 10000 ms", async () => {
+  it("audita external_fallback e rejeita timeout remoto acima de 30000 ms", async () => {
     const onResult = vi.fn();
-    const result = await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "10001" }, onResult });
+    const result = await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "30001" }, onResult });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "config_invalid" });
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, ok: false, reason: "config_invalid" }));
   });

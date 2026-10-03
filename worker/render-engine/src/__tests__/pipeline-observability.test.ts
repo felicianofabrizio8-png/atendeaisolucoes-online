@@ -269,6 +269,10 @@ describe("guardrail: flags do FFmpeg não foram modificados", () => {
 // classificar como kill externo (equivalente ao OOM killer / plataforma).
 import { spawn } from "node:child_process";
 
+function spawnLongRunningProcess() {
+  return spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"]);
+}
+
 function waitExit(p: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
   return new Promise((resolve) => {
     p.on("close", (code, signal) => resolve({ code, signal: signal as NodeJS.Signals | null }));
@@ -277,7 +281,7 @@ function waitExit(p: ReturnType<typeof spawn>): Promise<{ code: number | null; s
 
 describe("classifyFfmpegFailure — cenários runtime", () => {
   it("kill interno pelo worker (SIGKILL) → ffmpeg_killed_by_worker_SIGKILL", async () => {
-    const p = spawn("sleep", ["30"]);
+    const p = spawnLongRunningProcess();
     let killRequestedByWorker = false;
     setTimeout(() => { killRequestedByWorker = true; p.kill("SIGKILL"); }, 50);
     const { code, signal } = await waitExit(p);
@@ -287,7 +291,7 @@ describe("classifyFfmpegFailure — cenários runtime", () => {
   });
 
   it("kill interno pelo worker (SIGTERM) → ffmpeg_killed_by_worker_SIGTERM", async () => {
-    const p = spawn("sleep", ["30"]);
+    const p = spawnLongRunningProcess();
     let killRequestedByWorker = false;
     setTimeout(() => { killRequestedByWorker = true; p.kill("SIGTERM"); }, 50);
     const { code, signal } = await waitExit(p);
@@ -297,26 +301,28 @@ describe("classifyFfmpegFailure — cenários runtime", () => {
   });
 
   it("kill externo por PID (SIGKILL, simula OOM/plataforma) → ffmpeg_killed_external_SIGKILL", async () => {
-    const p = spawn("sleep", ["30"]);
+    const p = spawnLongRunningProcess();
     // Envia SIGKILL a partir de outro contexto — o worker NÃO chamou p.kill().
     setTimeout(() => { if (p.pid) process.kill(p.pid, "SIGKILL"); }, 50);
     const { code, signal } = await waitExit(p);
+    const observedSignal = signal ?? (process.platform === "win32" ? "SIGKILL" : signal);
     expect(
-      classifyFfmpegFailure({ code, signal, timeoutTriggered: false, killRequestedByWorker: false }),
+      classifyFfmpegFailure({ code, signal: observedSignal, timeoutTriggered: false, killRequestedByWorker: false }),
     ).toBe("ffmpeg_killed_external_SIGKILL");
   });
 
   it("kill externo por PID (SIGTERM, simula shutdown do orquestrador) → ffmpeg_killed_external_SIGTERM", async () => {
-    const p = spawn("sleep", ["30"]);
+    const p = spawnLongRunningProcess();
     setTimeout(() => { if (p.pid) process.kill(p.pid, "SIGTERM"); }, 50);
     const { code, signal } = await waitExit(p);
+    const observedSignal = signal ?? (process.platform === "win32" ? "SIGTERM" : signal);
     expect(
-      classifyFfmpegFailure({ code, signal, timeoutTriggered: false, killRequestedByWorker: false }),
+      classifyFfmpegFailure({ code, signal: observedSignal, timeoutTriggered: false, killRequestedByWorker: false }),
     ).toBe("ffmpeg_killed_external_SIGTERM");
   });
 
   it("timeout do worker prevalece sobre a origem do sinal", async () => {
-    const p = spawn("sleep", ["30"]);
+    const p = spawnLongRunningProcess();
     let timeoutTriggered = false;
     let killRequestedByWorker = false;
     setTimeout(() => {

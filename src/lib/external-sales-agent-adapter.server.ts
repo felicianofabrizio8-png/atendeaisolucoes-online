@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
@@ -61,7 +61,7 @@ function getConfig(env: Record<string, string | undefined>) {
   } catch {
     return null;
   }
-  const maxTimeoutMs = localTestEndpoint ? 60_000 : 10_000;
+  const maxTimeoutMs = localTestEndpoint ? 60_000 : 30_000;
   if (!endpoint || !apiKey || !Number.isFinite(timeoutValue) || timeoutValue < 250 || timeoutValue > maxTimeoutMs) return null;
   return { endpoint, apiKey, timeoutMs: Math.floor(timeoutValue) };
 }
