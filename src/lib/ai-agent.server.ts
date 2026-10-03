@@ -67,6 +67,7 @@ import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
 import { callExternalSalesAgent, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
+import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
@@ -653,6 +654,8 @@ export async function runAgentTurn(params: {
   /** Turno com palavra de preço ambígua: só a comparação determinística responde. */
   priceSensitive?: boolean;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
+  /** Prazo do tick (epoch ms). Cada etapa do turno usa só o que resta dele. */
+  deadlineAt?: number;
   qualification?: {
     detected_pool_size: string | null;
     detected_interest: string | null;
@@ -858,6 +861,7 @@ export async function runAgentTurn(params: {
     history: params.history,
     leadName: params.leadName,
     context: params.ctx,
+    budgetMs: externalSalesAgentBudgetMs(params.deadlineAt),
   });
   if (params.onExternalSalesAgentResult) {
     try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
@@ -866,9 +870,13 @@ export async function runAgentTurn(params: {
 
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;
+    // Só o que resta do tick (menos a margem e o pós-decisão). Sem tempo útil, não chama o provedor:
+    // a falha segue o caminho seguro existente (política cadastrada ou handoff).
+    const timeoutMs = internalLlmTimeoutMs(params.deadlineAt);
+    if (timeoutMs === null) return { ok: false, reason: "gateway_budget_exhausted" };
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20_000);
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
       res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -1696,6 +1704,7 @@ async function runAgentTickPass(
           history,
           leadName: lead?.name ?? null,
           salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+          deadlineAt: options.deadlineAt,
           qualification: currentQual,
           onExternalSalesAgentResult: async (external) => {
             // Sucesso também audita: no silent o turno termina em external_silent
@@ -1706,6 +1715,9 @@ async function runAgentTickPass(
               ...(external.enabled && external.ok
                 ? { decision: external.decision.kind }
                 : { reason: external.reason }),
+              ...(external.enabled && external.timing
+                ? { budget_ms: external.timing.budgetMs, duration_ms: external.timing.durationMs }
+                : {}),
               correlation_id: external.correlationId,
             });
           },
