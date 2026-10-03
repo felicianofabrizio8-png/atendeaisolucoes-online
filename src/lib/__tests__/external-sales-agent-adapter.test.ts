@@ -41,9 +41,38 @@ describe("external sales agent adapter", () => {
     await callExternalSalesAgent({ ...input, fetchImpl });
     await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "1500" }, fetchImpl });
     const budgets = fetchImpl.mock.calls.map(([, request]) => (request as RequestInit).headers as Record<string, string>);
-    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("9000");
+    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("14000");
     expect(budgets[1]["X-Request-Timeout-Ms"]).toBe("750");
   });
+  // Orçamento que desce do tick: o adapter usa o menor entre ele e a config.
+  it("usa o orçamento restante do turno como timeout e no header", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, budgetMs: 9_000, fetchImpl });
+    await callExternalSalesAgent({ ...input, budgetMs: 40_000, fetchImpl });
+    const budgets = fetchImpl.mock.calls.map(([, request]) => (request as RequestInit).headers as Record<string, string>);
+    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("8000");
+    expect(budgets[1]["X-Request-Timeout-Ms"]).toBe("14000");
+  });
+
+  it("sem tempo útil para a Vendedora nem chama e audita budget_exhausted", async () => {
+    const fetchImpl = vi.fn();
+    const onResult = vi.fn();
+    const result = await callExternalSalesAgent({ ...input, budgetMs: 5_999, fetchImpl, onResult });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ enabled: true, ok: false, reason: "budget_exhausted", timing: { budgetMs: 5_999, durationMs: 0 } });
+    expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ reason: "budget_exhausted" }));
+  });
+
+  it("toda resposta da Vendedora volta com timing numérico para a auditoria", async () => {
+    const onResult = vi.fn();
+    const ok = await callExternalSalesAgent({ ...input, budgetMs: 12_000, onResult, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" })) });
+    const failed = await callExternalSalesAgent({ ...input, budgetMs: 12_000, onResult, fetchImpl: vi.fn().mockResolvedValue(response({ error: "x" }, { status: 502 })) });
+    for (const result of [ok, failed]) {
+      expect(result).toMatchObject({ enabled: true, timing: { budgetMs: 12_000, durationMs: expect.any(Number) } });
+    }
+    expect(onResult.mock.calls.map(([result]) => Object.keys((result as { timing: object }).timing).sort())).toEqual([["budgetMs", "durationMs"], ["budgetMs", "durationMs"]]);
+  });
+
   it("rejeita produto fora do catálogo", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["other"] })) });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_response" });
@@ -73,9 +102,9 @@ describe("external sales agent adapter", () => {
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, reason: "disabled" }));
   });
 
-  it("audita external_fallback e rejeita timeout remoto acima de 10000 ms", async () => {
+  it("audita external_fallback e rejeita timeout remoto acima de 15000 ms", async () => {
     const onResult = vi.fn();
-    const result = await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "10001" }, onResult });
+    const result = await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "15001" }, onResult });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "config_invalid" });
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, ok: false, reason: "config_invalid" }));
   });
