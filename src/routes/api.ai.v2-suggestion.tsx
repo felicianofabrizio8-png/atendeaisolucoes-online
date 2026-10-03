@@ -175,7 +175,10 @@ export const Route = createFileRoute("/api/ai/v2-suggestion")({
           .update(transition.update)
           .eq("id", body.suggestionId)
           .eq("company_id", authentication.companyId)
-          .eq("was_sent", false);
+          .eq("was_sent", false)
+          .eq("classification", "v2_status:pending")
+          .select("id")
+          .maybeSingle();
 
         if (updateError) {
           return Response.json({ error: "falha ao atualizar sugestão" }, { status: 500 });

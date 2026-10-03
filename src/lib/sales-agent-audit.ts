@@ -32,6 +32,11 @@ export type SalesAgentAuditPayload = {
 };
 
 const SAFE_RESULT = /^[a-zA-Z0-9_.:-]{1,120}$/;
+// Audit fields are operational codes, never free-form model explanations.
+const SAFE_BLOCK_CODES = new Set([
+  "approval_required", "v2_silent", "pre_check", "human_active",
+  "no_message", "send_failed", "simulated", "catalog_unvalidated_objective_claim",
+]);
 
 function safeCode(value: string, fallback: string): string {
   const raw = value.trim();
@@ -70,7 +75,11 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
     product_ids: productIds,
     tools,
     result: safeCode(input.result, "redacted_result"),
-    blocked: input.blocked ? safeCode(input.blocked, "redacted_block") : null,
+    blocked: input.blocked
+      ? SAFE_BLOCK_CODES.has(input.blocked.trim())
+        ? input.blocked.trim()
+        : "redacted_block"
+      : null,
     latency_ms: safePositiveInteger(input.latencyMs),
     tokens_available:
       input.tokensAvailable === null || input.tokensAvailable === undefined
