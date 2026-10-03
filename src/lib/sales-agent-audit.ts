@@ -55,6 +55,11 @@ function safeCode(value: string, fallback: string): string {
   return SAFE_RESULT.test(normalized) ? normalized : fallback;
 }
 
+function operationalCode(value: string, fallback: string): string {
+  const raw = value.trim();
+  return /^[a-z][a-z0-9_:-]{0,63}$/.test(raw) ? safeCode(raw, fallback) : fallback;
+}
+
 function safePositiveInteger(value: number): number {
   return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
 }
@@ -78,7 +83,7 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
     decision: input.decision,
     product_ids: productIds,
     tools,
-    result: safeCode(input.result, "redacted_result"),
+    result: operationalCode(input.result, "redacted_result"),
     blocked: input.blocked
       ? SAFE_BLOCK_CODES.has(input.blocked.trim())
         ? input.blocked.trim()
@@ -90,7 +95,7 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
         ? null
         : safePositiveInteger(input.tokensAvailable),
     ...(input.fallbackReason
-      ? { fallback_reason: safeCode(input.fallbackReason, "redacted_fallback") }
+      ? { fallback_reason: operationalCode(input.fallbackReason, "redacted_fallback") }
       : {}),
   };
 }
