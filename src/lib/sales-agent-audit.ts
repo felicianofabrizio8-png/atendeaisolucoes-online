@@ -36,6 +36,10 @@ const SAFE_RESULT = /^[a-zA-Z0-9_.:-]{1,120}$/;
 const SAFE_BLOCK_CODES = new Set([
   "approval_required", "v2_silent", "pre_check", "human_active",
   "no_message", "send_failed", "simulated", "catalog_unvalidated_objective_claim",
+  "suggestion_persist_error", "memory_error", "catalog_error",
+  "company_id_required", "invalid_input", "access_denied", "product_not_found",
+  "product_inactive", "ambiguous_product", "price_unavailable",
+  "data_unavailable", "invalid_value", "query_error", "action_not_allowed",
 ]);
 
 function safeCode(value: string, fallback: string): string {
