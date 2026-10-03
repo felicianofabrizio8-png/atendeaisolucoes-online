@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { EXTERNAL_SALES_AGENT_MAX_MS, EXTERNAL_SALES_AGENT_MIN_MS } from "./agent-turn-budget";
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = EXTERNAL_SALES_AGENT_MAX_MS;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
@@ -15,8 +16,11 @@ const MAX_REQUEST_BYTES = 1_000_000;
 
 export type ExternalSalesAgentResult =
   | { enabled: false; reason: "disabled" | "not_silent" | "not_configured"; correlationId: string }
-  | { enabled: true; ok: true; decision: AgentDecision; correlationId: string }
-  | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string };
+  | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming }
+  | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming; httpStatus?: number; invalidResponseCode?: "invalid_json" | "invalid_shape" | "invalid_decision" };
+
+/** Só números: o timeout efetivo dado à Vendedora e quanto a chamada levou. */
+export type ExternalSalesAgentTiming = { budgetMs: number; durationMs: number };
 
 type ExternalSalesAgentInput = {
   companyId: string;
@@ -29,6 +33,8 @@ type ExternalSalesAgentInput = {
   nextCatalogQuery?: unknown;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  /** Tempo que resta ao turno para a Vendedora (do prazo do tick); undefined = só a config. */
+  budgetMs?: number;
   onResult?: (result: ExternalSalesAgentResult) => void | Promise<void>;
 };
 
@@ -61,7 +67,7 @@ function getConfig(env: Record<string, string | undefined>) {
   } catch {
     return null;
   }
-  const maxTimeoutMs = localTestEndpoint ? 60_000 : 30_000;
+  const maxTimeoutMs = localTestEndpoint ? 60_000 : EXTERNAL_SALES_AGENT_MAX_MS;
   if (!endpoint || !apiKey || !Number.isFinite(timeoutValue) || timeoutValue < 250 || timeoutValue > maxTimeoutMs) return null;
   return { endpoint, apiKey, timeoutMs: Math.floor(timeoutValue) };
 }
@@ -192,6 +198,13 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     await notify(input, result);
     return result;
   }
+  // O prazo do turno manda: a config é só o teto.
+  const timeoutMs = input.budgetMs === undefined ? config.timeoutMs : Math.min(config.timeoutMs, Math.floor(input.budgetMs));
+  if (input.budgetMs !== undefined && timeoutMs < EXTERNAL_SALES_AGENT_MIN_MS) {
+    const result = { enabled: true as const, ok: false as const, reason: "budget_exhausted" as const, correlationId, timing: { budgetMs: Math.max(0, timeoutMs), durationMs: 0 } };
+    await notify(input, result);
+    return result;
+  }
   const catalog = toStandaloneCatalog(input.context.grounding.catalog);
   const allowedProducts = new Set(catalog.map((product) => product.id));
   let currentIndex = input.history.length - 1;
@@ -223,7 +236,13 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
   }
   const turnFingerprint = createHash("sha256").update(JSON.stringify({ companyId: input.companyId, conversationId: input.conversationId ?? null, history: input.history })).digest("hex").slice(0, 32);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  const finish = async (result: Extract<ExternalSalesAgentResult, { enabled: true }>) => {
+    const timed = { ...result, timing: { budgetMs: timeoutMs, durationMs: Date.now() - startedAt } };
+    await notify(input, timed);
+    return timed;
+  };
   try {
     const response = await (input.fetchImpl ?? fetch)(config.endpoint, {
       method: "POST",
@@ -232,23 +251,20 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
         "Content-Type": "application/json",
         "X-Correlation-Id": correlationId,
         "Idempotency-Key": `atende-ai:${input.companyId}:${input.conversationId ?? "no-conversation"}:${turnFingerprint}`,
-        "X-Request-Timeout-Ms": String(turnBudgetMs(config.timeoutMs)),
+        "X-Request-Timeout-Ms": String(turnBudgetMs(timeoutMs)),
       },
       body,
       signal: controller.signal,
     });
-    if (!response.ok) { const result = { enabled: true as const, ok: false as const, reason: "http_error" as const, correlationId }; await notify(input, result); return result; }
+    // Only record protocol metadata; the upstream body may contain customer data or secrets.
+    if (!response.ok) return await finish({ enabled: true, ok: false, reason: "http_error", correlationId, httpStatus: response.status });
     let responseBody: unknown;
-    try { responseBody = await response.json(); } catch { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
-    if (!isPlainObject(responseBody)) { const result = { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId }; await notify(input, result); return result; }
+    try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
+    if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
     const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts);
-    const result = decision ? { enabled: true as const, ok: true as const, decision, correlationId } : { enabled: true as const, ok: false as const, reason: "invalid_response" as const, correlationId };
-    await notify(input, result);
-    return result;
+    return await finish(decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
-    const result = { enabled: true as const, ok: false as const, reason: (error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error") as "timeout" | "network_error", correlationId };
-    await notify(input, result);
-    return result;
+    return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });
   } finally {
     clearTimeout(timeout);
   }

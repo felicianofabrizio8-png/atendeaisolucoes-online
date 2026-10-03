@@ -187,6 +187,21 @@ describe("SalesAgentCore", () => {
     });
   });
 
+  it("gateway sem orçamento segue a mesma falha segura do provedor", async () => {
+    // runAgentTurn devolve gateway_budget_exhausted sem chamar o provedor quando o
+    // tick não tem tempo útil; o core trata como qualquer falha do provedor.
+    const complete = vi.fn().mockResolvedValue({ ok: false, reason: "gateway_budget_exhausted" });
+    const decision = await new SalesAgentCore(complete).decide({
+      ctx: context,
+      history: [{ role: "lead", text: "Quero uma piscina de 6m" }],
+      leadName: null,
+      model: salesModel,
+      interpretation: testInterpretation,
+      catalogSearch: { status: "matches", products: context.grounding.catalog },
+    });
+    expect(decision).toMatchObject({ kind: "handoff", reason: "gateway_budget_exhausted", fallback_reason: "gateway_budget_exhausted" });
+  });
+
   it("prioriza uma correção salva da sessão na próxima pergunta semelhante", async () => {
     const correction = "Comece entendendo a necessidade do cliente antes de sugerir uma solução.";
     const complete = vi.fn(async (request: SalesAgentCompletionRequest) => {

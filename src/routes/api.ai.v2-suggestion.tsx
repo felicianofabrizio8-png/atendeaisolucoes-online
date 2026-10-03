@@ -170,15 +170,21 @@ export const Route = createFileRoute("/api/ai/v2-suggestion")({
           return Response.json({ error: transition.code }, { status });
         }
 
-        const { error: updateError } = await supabaseAdmin
+        const { data: updated, error: updateError } = await supabaseAdmin
           .from("ai_suggestions_log")
           .update(transition.update)
           .eq("id", body.suggestionId)
           .eq("company_id", authentication.companyId)
-          .eq("was_sent", false);
+          .eq("was_sent", false)
+          .eq("classification", "v2_status:pending")
+          .select("id")
+          .maybeSingle();
 
         if (updateError) {
           return Response.json({ error: "falha ao atualizar sugestão" }, { status: 500 });
+        }
+        if (!updated) {
+          return Response.json({ error: "suggestion_not_pending" }, { status: 409 });
         }
 
         await logEvent(
