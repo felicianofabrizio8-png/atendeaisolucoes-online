@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
+// Folga para a ida e a volta da rede (Workers → Railway): a standalone recebe só o
+// que sobra do nosso timeout e decide se ainda cabe a correção de evidências.
+const NETWORK_MARGIN_MS = 1_000;
 // Limite de corpo do http_api da Vendedora standalone (max_body_bytes); acima disso ela responde 400.
 const MAX_REQUEST_BYTES = 1_000_000;
 
@@ -62,6 +66,10 @@ function getConfig(env: Record<string, string | undefined>) {
   return { endpoint, apiKey, timeoutMs: Math.floor(timeoutValue) };
 }
 
+function turnBudgetMs(timeoutMs: number): number {
+  return Math.max(Math.floor(timeoutMs / 2), timeoutMs - NETWORK_MARGIN_MS);
+}
+
 function cleanString(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const result = value.trim();
@@ -91,7 +99,19 @@ function cleanCommercialState(value: unknown): Record<string, string | null> | n
   return output;
 }
 
-type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; available: true; source: "catalog" };
+type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; features: string[]; available: true; source: "catalog" };
+
+// Campos que a standalone já recebe em colunas próprias; os demais fatos de Produtos
+// (modelo, SKU, preço promocional, medidas, atributos da empresa, itens inclusos,
+// variantes, observações) vão em `features`, no mesmo "Rótulo: valor" do agente interno.
+const STANDALONE_OWN_FACT_KEYS = new Set<string>([UNIVERSAL_FACT_KEYS.name, UNIVERSAL_FACT_KEYS.category, UNIVERSAL_FACT_KEYS.price, UNIVERSAL_FACT_KEYS.description]);
+
+function standaloneFeatures(product: AgentContextBase["grounding"]["catalog"][number]): string[] {
+  // Fatos normalizados (fonte oficial): atributo em conflito com campo não vira fato.
+  return normalizeProductFacts(product).facts
+    .filter((fact) => !STANDALONE_OWN_FACT_KEYS.has(fact.key))
+    .map((fact) => `${fact.label}: ${renderFactValue(fact.value)}`);
+}
 
 // A standalone faz Product.from_dict: float(price) e str(campo). price null → 400;
 // description/category null viram o fato literal "None". Só enviamos produtos com
@@ -109,6 +129,7 @@ function toStandaloneCatalog(catalog: AgentContextBase["grounding"]["catalog"]):
       price: product.price,
       currency: "BRL",
       category: typeof product.category === "string" ? product.category : "",
+      features: standaloneFeatures(product),
       available: true,
       source: "catalog",
     });
@@ -211,6 +232,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
         "Content-Type": "application/json",
         "X-Correlation-Id": correlationId,
         "Idempotency-Key": `atende-ai:${input.companyId}:${input.conversationId ?? "no-conversation"}:${turnFingerprint}`,
+        "X-Request-Timeout-Ms": String(turnBudgetMs(config.timeoutMs)),
       },
       body,
       signal: controller.signal,

@@ -36,6 +36,14 @@ describe("external sales agent adapter", () => {
     expect((request.headers as Record<string, string>)["Idempotency-Key"]).toContain("company-1");
     expect(JSON.parse(String(request.body)).company_id).toBe("company-1");
   });
+  it("informa à standalone o orçamento do turno descontando a rede", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, fetchImpl });
+    await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_TIMEOUT_MS: "1500" }, fetchImpl });
+    const budgets = fetchImpl.mock.calls.map(([, request]) => (request as RequestInit).headers as Record<string, string>);
+    expect(budgets[0]["X-Request-Timeout-Ms"]).toBe("9000");
+    expect(budgets[1]["X-Request-Timeout-Ms"]).toBe("750");
+  });
   it("rejeita produto fora do catálogo", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["other"] })) });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_response" });
@@ -112,8 +120,49 @@ describe("external sales agent adapter", () => {
     ];
     await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl });
     expect(sentPayload(fetchImpl).catalog).toEqual([
-      { id: "p1", name: "Produto", description: "", price: 10, currency: "BRL", category: "", available: true, source: "catalog" },
+      { id: "p1", name: "Produto", description: "", price: 10, currency: "BRL", category: "", features: ["a: 1"], available: true, source: "catalog" },
     ]);
+  });
+
+  // Contrato universal de produto: os atributos comerciais de Produtos chegam à
+  // standalone como fatos "Rótulo: valor" (normalizeProductFacts), em qualquer segmento.
+  it("envia os atributos comerciais de Produtos em features, para qualquer segmento", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const catalog = [
+      { id: "pool-7", name: "Piscina Fibra 7", category: "Piscinas", description: "Piscina de fibra.", price: 18990, promoPrice: 16990, images: [], notes: null,
+        model: "PF-7", sku: null, lengthM: 7, widthM: 3.5, depthM: 1.4, capacityL: null, shape: "retangular",
+        specifications: { Cor: { type: "text", value: "azul" } }, includedItems: ["filtro", "escada"], variants: [] },
+      { id: "net-500", name: "Plano Fibra", category: "Internet", description: "Internet residencial.", price: 129, promoPrice: null, images: [], notes: "Instalação em até 5 dias úteis.",
+        specifications: { Velocidade: { type: "number", value: 500, unit: "Mbps" }, "Wi-Fi 6": { type: "boolean", value: true } }, includedItems: [], variants: [{ nome: "Mensal" }, { nome: "Anual" }] },
+      { id: "solar-6", name: "Kit Solar", category: "Energia", description: "Kit fotovoltaico.", price: 18000, promoPrice: null, images: [], notes: null,
+        specifications: { Potência: { type: "number", value: 6, unit: "kWp" }, "Geração mensal": { type: "range", value: { min: 650, max: 780 }, unit: "kWh" } } },
+      { id: "curso-40", name: "Curso de Vendas", category: "Cursos", description: "Online.", price: 400, promoPrice: null, images: [], notes: null,
+        specifications: { "Carga horária": { type: "number", value: 40, unit: "h" } } },
+    ];
+    await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl });
+    const features = Object.fromEntries((sentPayload(fetchImpl).catalog as Array<{ id: string; features: string[] }>).map((item) => [item.id, item.features]));
+    expect(features).toEqual({
+      "pool-7": ["Modelo: PF-7", "Preço promocional: R$ 16.990,00", "Comprimento: 7 m", "Largura: 3,5 m", "Profundidade: 1,4 m",
+        "Medidas (C x L x P): 7 x 3,5 x 1,4 m", "Formato: retangular", "Cor: azul", "Itens inclusos: filtro, escada"],
+      "net-500": ["Velocidade: 500 mbps", "Wi-Fi 6: sim", "Variantes: Mensal, Anual", "Observações: Instalação em até 5 dias úteis."],
+      "solar-6": ["Potência: 6 kwp", "Geração mensal: 650 a 780 kWh"],
+      "curso-40": ["Carga horária: 40 h"],
+    });
+    // Nenhum campo próprio é repetido em features.
+    for (const list of Object.values(features)) expect(list.some((item) => /^(Nome|Categoria|Preço|Descrição):/.test(item))).toBe(false);
+  });
+
+  it("produtos sem atributos opcionais (cadastros antigos) seguem com features vazio", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, context: withCatalog([{ id: "p1", name: "Produto", category: "c", description: "d", price: 10 }]), fetchImpl });
+    expect(sentPayload(fetchImpl).catalog).toEqual([{ id: "p1", name: "Produto", description: "d", price: 10, currency: "BRL", category: "c", features: [], available: true, source: "catalog" }]);
+  });
+
+  it("atributo em conflito com o campo oficial não vira fato", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const catalog = [{ id: "p1", name: "Produto", category: null, description: null, price: 10, promoPrice: null, images: [], notes: null, lengthM: 7, specifications: { Comprimento: "8 m" } }];
+    await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl });
+    expect((sentPayload(fetchImpl).catalog as Array<{ features: string[] }>)[0].features).toEqual(["Comprimento: 7 m"]);
   });
 
   it("não aceita produto que ficou fora do catálogo enviado", async () => {
