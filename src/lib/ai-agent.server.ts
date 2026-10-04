@@ -71,6 +71,7 @@ import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replie
 import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, isConversationAutoReply, resolveSalesAgentMode, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
+import { applyQuotedMessage, quotedExternalId, type QuotedSourceRow } from "./sales-agent-quoted-message";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
@@ -1372,6 +1373,7 @@ type HistoryRow = {
   at: string;
   source_subtype?: string | null;
   source_metadata?: unknown;
+  external_id?: string | null;
 };
 
 /** Linha de `messages` → item de histórico do agente (produtos, esclarecimento, transcrição). */
@@ -1692,7 +1694,7 @@ async function runAgentTickPass(
     const readHistoryRows = async (): Promise<HistoryRow[]> => {
       const { data } = await supabaseAdmin
         .from("messages")
-        .select("role, text, at, source_subtype, source_metadata")
+        .select("role, text, at, source_subtype, source_metadata, external_id")
         .eq("company_id", conv.company_id)
         .eq("conversation_id", conv.id)
         .order("at", { ascending: false })
@@ -1718,7 +1720,38 @@ async function runAgentTickPass(
       conversationId: conv.id,
       lastMessageAt: msgs[0]?.at ?? null,
     });
+    const orderedRows = [...msgs].reverse();
     const history = [...msgs].reverse().map(toAgentHistoryItem);
+    // Cliente respondeu a uma mensagem específica (ex.: a foto de um produto): a pergunta
+    // passa a carregar a mensagem citada e os produtos dela. Falha aqui não derruba o turno.
+    // Só para empresa atendida pela Vendedora 2.0: o fluxo anterior segue como estava.
+    try {
+      if (!isExternalSalesAgentActive(ctx.settings)) throw null;
+      const byExternalId = new Map<string, QuotedSourceRow>();
+      for (const row of orderedRows) if (row.external_id) byExternalId.set(row.external_id, row);
+      for (let index = 0; index < orderedRows.length; index += 1) {
+        const row = orderedRows[index];
+        if (row.role !== "lead") continue;
+        const quotedId = quotedExternalId(row.source_metadata);
+        if (!quotedId) continue;
+        let quoted = byExternalId.get(quotedId) ?? null;
+        if (!quoted) {
+          // Mensagem citada mais antiga que a janela do histórico.
+          const { data } = await supabaseAdmin
+            .from("messages")
+            .select("external_id, text, source_metadata")
+            .eq("company_id", conv.company_id)
+            .eq("conversation_id", conv.id)
+            .eq("external_id", quotedId)
+            .limit(1)
+            .maybeSingle();
+          quoted = (data as QuotedSourceRow | null) ?? null;
+        }
+        history[index] = applyQuotedMessage(history[index], quoted);
+      }
+    } catch (error) {
+      if (error !== null) console.warn("[SALES_AGENT_QUOTED_MESSAGE_FAILED]");
+    }
 
     const lastLeadMsg = [...history].reverse().find((m) => m.role === "lead");
     if (!lastLeadMsg) {
