@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { callExternalSalesAgent } from "../external-sales-agent-adapter.server";
+import { callExternalSalesAgent, isExternalSalesAgentActive } from "../external-sales-agent-adapter.server";
 import type { AgentContextBase } from "../sales-agent-core";
 
 const context = {
@@ -111,6 +111,56 @@ describe("external sales agent adapter", () => {
   it("sem pedido de fotos a decisão não leva product_image_ids", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", selected_products: ["p1"], next_action: "ask_budget" })) });
     expect(result.enabled && result.ok ? result.decision.product_image_ids : "missing").toBeUndefined();
+  });
+  it("envia à Vendedora o tom e os fatos cadastrados pela empresa, com as respostas rápidas", async () => {
+    const company = {
+      ...context,
+      aiProfile: { tone: "consultivo", description: "Clínica de fisioterapia.", products: null, payment_methods: "Pix ou cartão em até 3x", avg_lead_time: null, business_hours: "Seg a sex, 8h às 18h", region: null, differentials: null, faq: [{ q: "Atende convênio?", a: "Sim, os principais." }] },
+      knowledge: [{ question: "Tem estacionamento?", answer: "Sim, gratuito.", type: "faq" }],
+      grounding: { ...context.grounding, commercialRules: { ...context.grounding.commercialRules, shippingPolicy: "Não se aplica." } },
+    } as unknown as AgentContextBase;
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const loadQuickReplies = vi.fn().mockResolvedValue([{ name: "Garantia", content: "Reavaliação gratuita em 30 dias." }]);
+    await callExternalSalesAgent({ ...input, context: company, fetchImpl, loadQuickReplies });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const authorized = JSON.parse(String(request.body)).authorized_context;
+    expect(authorized.tone).toBe("consultivo");
+    expect(authorized.company_facts).toEqual([
+      { label: "Descrição da empresa", text: "Clínica de fisioterapia." },
+      { label: "Formas de pagamento", text: "Pix ou cartão em até 3x" },
+      { label: "Horário de atendimento", text: "Seg a sex, 8h às 18h" },
+      { label: "Política de frete", text: "Não se aplica." },
+      { label: "Garantia", text: "Reavaliação gratuita em 30 dias." },
+      { label: "Atende convênio?", text: "Sim, os principais." },
+      { label: "Tem estacionamento?", text: "Sim, gratuito." },
+    ]);
+  });
+  it("não lê as respostas rápidas quando a Vendedora externa não é chamada, e segue sem elas se a leitura falhar", async () => {
+    const skipped = vi.fn();
+    await callExternalSalesAgent({ ...input, env: { ...input.env, EXTERNAL_SALES_AGENT_COMPANY_IDS: "" }, loadQuickReplies: skipped });
+    expect(skipped).not.toHaveBeenCalled();
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const result = await callExternalSalesAgent({ ...input, fetchImpl, loadQuickReplies: vi.fn().mockRejectedValue(new Error("db")) });
+    expect(result).toMatchObject({ enabled: true, ok: true });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).authorized_context.company_facts).toEqual([]);
+  });
+  it("devolve como evidência do turno o catálogo e os fatos da empresa enviados à Vendedora", async () => {
+    const company = { ...context, aiProfile: { tone: "comercial", description: null, products: null, payment_methods: "50% na assinatura", avg_lead_time: null, region: null, differentials: null, faq: [] } } as unknown as AgentContextBase;
+    const result = await callExternalSalesAgent({
+      ...input, context: company, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" })),
+      loadQuickReplies: async () => [{ name: "Garantia", content: "2 anos de garantia." }],
+    });
+    const evidence = result.enabled && result.ok ? result.evidenceText : "";
+    for (const text of ["Produto", "10", "Formas de pagamento", "50% na assinatura", "Garantia", "2 anos de garantia."]) expect(evidence).toContain(text);
+  });
+  it("só considera a Vendedora externa ativa com allowlist, modo habilitado e configuração válida", () => {
+    const settings = { company_id: "company-1", sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" };
+    expect(isExternalSalesAgentActive(settings, input.env)).toBe(true);
+    expect(isExternalSalesAgentActive({ ...settings, company_id: "other" }, input.env)).toBe(false);
+    expect(isExternalSalesAgentActive({ ...settings, sales_agent_v2_enabled: false }, input.env)).toBe(false);
+    expect(isExternalSalesAgentActive({ ...settings, sales_agent_v2_mode: "automatic" }, input.env)).toBe(false);
+    expect(isExternalSalesAgentActive(settings, { ...input.env, EXTERNAL_SALES_AGENT_API_KEY: "" })).toBe(false);
   });
   it("transforma handoff em decisão dominante", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ handoff: { required: true, reason: "cliente pediu humano" }, selected_products: ["p1"] })) });

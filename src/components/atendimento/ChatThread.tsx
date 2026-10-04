@@ -7,7 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { ArrowLeft, Hand, Loader2, Lock, RotateCw } from "lucide-react";
+import { ArrowLeft, Bot, Hand, Loader2, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
@@ -99,7 +99,7 @@ export function ChatThread({
   const [simulatedNotice, setSimulatedNotice] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const { takeOver, takingOver } = useTakeOver(conversationId);
+  const { takeOver, takingOver, release, releasing } = useTakeOver(conversationId);
   // Bolhas otimistas e mensagens de sistema locais ("Venda fechada"). O
   // realtime do leadRepo entrega as definitivas em `contact.messages`.
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
@@ -436,8 +436,40 @@ export function ChatThread({
             {takingOver && <Loader2 className="h-3 w-3 animate-spin" />}
             Assumir
           </button>
+          <button
+            type="button"
+            onClick={() => void release()}
+            disabled={releasing}
+            data-testid="release-to-ai"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/50 px-3 py-1 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:opacity-60 dark:text-amber-300"
+          >
+            {releasing && <Loader2 className="h-3 w-3 animate-spin" />}
+            Devolver para a IA
+          </button>
         </div>
       )}
+
+      {/* Humano no atendimento: a IA fica pausada até alguém devolver a conversa. */}
+      {!simulated &&
+        conversation.aiStatus !== "aguardando_humano" &&
+        (conversation.aiStatus === "assumido_humano" || Boolean(conversation.humanTakeoverAt)) && (
+          <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl border border-border bg-muted/50 px-3 py-2 sm:mx-5">
+            <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="min-w-0 flex-1 text-xs font-semibold text-muted-foreground">
+              Atendimento humano: a IA está pausada nesta conversa.
+            </p>
+            <button
+              type="button"
+              onClick={() => void release()}
+              disabled={releasing}
+              data-testid="release-to-ai"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {releasing && <Loader2 className="h-3 w-3 animate-spin" />}
+              Devolver para a IA
+            </button>
+          </div>
+        )}
 
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <MessagesContext.Provider value={messages}>

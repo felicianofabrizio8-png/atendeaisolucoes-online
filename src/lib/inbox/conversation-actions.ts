@@ -118,6 +118,21 @@ export async function takeOverConversation(conversationId: string): Promise<void
   if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao assumir");
 }
 
+/** Devolve a conversa para a IA: ela volta a atuar na próxima mensagem do cliente. */
+export async function releaseConversationToAi(conversationId: string): Promise<void> {
+  const token = await accessToken();
+  const res = await fetch("/api/ai/agent-takeover", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ conversation_id: conversationId, action: "release" }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao devolver para a IA");
+}
+
 /**
  * Produto sugerido para um orçamento novo. Falha silenciosa por contrato: sem
  * sugestão o vendedor escolhe o produto manualmente.

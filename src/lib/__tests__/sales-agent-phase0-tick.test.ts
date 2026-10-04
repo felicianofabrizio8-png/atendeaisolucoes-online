@@ -728,6 +728,97 @@ describe("runAgentTick · liberação do lock ai_handling", () => {
   });
 });
 
+describe("runAgentTick · Vendedora externa decide com os dados cadastrados da empresa", () => {
+  const external = (body: Record<string, unknown>) => {
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ selected_products: [], handoff: { required: false, reason: null }, ...body }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+  const cleanup = () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  };
+  const handoffs = () =>
+    calls().filter((c) => c.table === "conversations" && c.op === "update" && c.values?.ai_status === "aguardando_humano");
+  const pendingInserts = () => calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+
+  it("palavra-chave do cliente (garantia) não transfere antes de a Vendedora ser consultada", async () => {
+    install({
+      settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" },
+      histories: [[{ role: "lead", text: "E a garantia do Item Um", at: "2026-09-30T12:00:00Z" }]],
+    });
+    const fetchMock = external({ response: "Vou te explicar a cobertura." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(pendingInserts()).toHaveLength(1);
+      expect(handoffs()).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("percentual cadastrado pela empresa nas regras comerciais é aceito na resposta", async () => {
+    install({
+      settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" },
+      commercial: { payment_policy: "Entrada de 50% e o restante na entrega." },
+    });
+    external({ response: "A entrada é de 50%." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(pendingInserts()[0]?.values).toMatchObject({ generated_text: "A entrada é de 50%." });
+      expect(handoffs()).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("percentual sem nenhum cadastro da empresa continua indo para humano e não vira sugestão", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    external({ response: "Consigo 15% para você." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "handoff" });
+      expect(pendingInserts()).toHaveLength(0);
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("nova mensagem do cliente tira do cartão a sugestão pendente anterior antes de gerar a nova", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    external({ response: "Olá!" });
+    try {
+      await runAgentTick(CONV);
+      const log = calls().filter((c) => c.table === "ai_suggestions_log");
+      const superseded = log.findIndex((c) => c.op === "update" && c.values?.classification === "v2_status:superseded");
+      const inserted = log.findIndex((c) => c.op === "insert" && c.values?.classification === "v2_status:pending");
+      expect(superseded).toBeGreaterThanOrEqual(0);
+      expect(inserted).toBeGreaterThan(superseded);
+      expect(log[superseded].filters).toEqual(
+        expect.arrayContaining([
+          ["company_id", "eq", COMPANY],
+          ["conversation_id", "eq", CONV],
+          ["classification", "eq", "v2_status:pending"],
+        ]),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("runAgentTick · auditoria da Vendedora externa", () => {
   it("turno assisted com falha da Vendedora externa termina sem sugestão e sem handoff", async () => {
     install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });

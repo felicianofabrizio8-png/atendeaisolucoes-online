@@ -25,6 +25,17 @@ describe("execução assisted da Vendedora V2", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("sugestão substituída por uma mais nova não é pendente nem pode ser aprovada", () => {
+    expect(getAssistedSuggestionStatus("v2_status:superseded", false)).toBe("rejected");
+    expect(
+      transitionAssistedSuggestion(
+        { id: "s1", company_id: "company-1", conversation_id: "conversation-1", classification: "v2_status:superseded", was_sent: false },
+        "company-1",
+        "approve",
+      ),
+    ).toEqual({ ok: false, code: "invalid_status" });
+  });
+
   it.each(["approve", "reject"] as const)("tem transição segura de %s sem envio", (action) => {
     const send = vi.fn();
     const result = transitionAssistedSuggestion(

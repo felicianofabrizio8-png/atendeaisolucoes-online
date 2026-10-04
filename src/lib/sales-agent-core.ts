@@ -180,6 +180,7 @@ export interface AgentContext {
     products: string | null;
     payment_methods: string | null;
     avg_lead_time: string | null;
+    business_hours?: string | null;
     region: string | null;
     differentials: string | null;
     faq: Array<{ q?: string; a?: string }>;
@@ -232,6 +233,8 @@ export interface AgentDecision {
   grounding_sources?: SalesAgentGroundingSource[];
   learning_ids_used?: string[];
   external_silent?: boolean;
+  /** Decisão da Vendedora externa já passou pela safety layer com a evidência cadastrada da empresa. */
+  external_validated?: boolean;
   next_action?: string | null;
   /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
   fallback_reason?: string;

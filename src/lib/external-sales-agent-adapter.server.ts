@@ -20,7 +20,9 @@ const MAX_REQUEST_BYTES = 1_000_000;
 
 export type ExternalSalesAgentResult =
   | { enabled: false; reason: "disabled" | "mode_not_enabled" | "not_configured"; correlationId: string }
-  | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming }
+  | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming;
+      /** Texto de tudo o que a empresa cadastrou e foi enviado à Vendedora neste turno (catálogo + fatos da empresa). */
+      evidenceText: string }
   | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming; httpStatus?: number; invalidResponseCode?: "invalid_json" | "invalid_shape" | "invalid_decision" };
 
 /** Só números: o timeout efetivo dado à Vendedora e quanto a chamada levou. */
@@ -37,6 +39,8 @@ type ExternalSalesAgentInput = {
   nextCatalogQuery?: unknown;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  /** Respostas rápidas ativas da empresa; chamado só quando a Vendedora vai ser acionada. */
+  loadQuickReplies?: () => Promise<Array<{ name: string; content: string }>>;
   /** Tempo que resta ao turno para a Vendedora (do prazo do tick); undefined = só a config. */
   budgetMs?: number;
   onResult?: (result: ExternalSalesAgentResult) => void | Promise<void>;
@@ -69,6 +73,20 @@ function enabledModes(env: Record<string, string | undefined>): Set<SalesAgentMo
   return new Set(
     raw.split(",").map((value) => value.trim()).filter((value): value is SalesAgentMode => SALES_AGENT_MODES.includes(value as SalesAgentMode)),
   );
+}
+
+/**
+ * A Vendedora externa atende este tenant neste modo? (allowlist, modo e configuração válida.)
+ * Quando atende, é ela quem decide o turno com os dados cadastrados da empresa: o tick não
+ * faz a triagem por palavra-chave antes de chamá-la.
+ */
+export function isExternalSalesAgentActive(
+  settings: { company_id: string; sales_agent_v2_enabled?: boolean | null; sales_agent_v2_mode?: string | null },
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (!configuredCompanyIds(env).has(settings.company_id)) return false;
+  const mode = resolveSalesAgentMode(settings);
+  return mode !== null && enabledModes(env).has(mode) && getConfig(env) !== null;
 }
 
 function getConfig(env: Record<string, string | undefined>) {
@@ -114,7 +132,7 @@ function cleanCommercialState(value: unknown): Record<string, string | null> | n
   if (value === undefined) return {};
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;
-  const allowed = ["detected_city", "detected_state", "detected_pool_size", "detected_intent", "detected_interest", "detected_budget", "purchase_timing", "customer_stage"] as const;
+  const allowed = ["detected_city", "detected_state", "detected_intent", "detected_interest", "detected_budget", "purchase_timing", "customer_stage"] as const;
   const output: Record<string, string | null> = {};
   for (const key of allowed) {
     if (source[key] === undefined) continue;
@@ -163,6 +181,41 @@ function toStandaloneCatalog(catalog: AgentContextBase["grounding"]["catalog"]):
     });
   }
   return items;
+}
+
+type CompanyFact = { label: string; text: string };
+const MAX_COMPANY_FACTS = 40;
+
+// Tudo o que a empresa (company_id) cadastrou no sistema e a Vendedora pode afirmar:
+// perfil da IA, FAQ, base de conhecimento aprovada, regras comerciais e respostas rápidas.
+// Os rótulos são os nomes dos campos do sistema; o conteúdo é só o que a empresa preencheu.
+function toCompanyFacts(context: AgentContextBase, quickReplies: Array<{ name: string; content: string }>): CompanyFact[] {
+  const facts: CompanyFact[] = [];
+  const add = (label: unknown, text: unknown) => {
+    if (typeof label !== "string" || typeof text !== "string" || !label.trim() || !text.trim()) return;
+    if (facts.length < MAX_COMPANY_FACTS) facts.push({ label: label.trim(), text: text.trim() });
+  };
+  const profile = context.aiProfile;
+  add("Descrição da empresa", profile?.description);
+  add("Produtos e serviços", profile?.products);
+  add("Formas de pagamento", profile?.payment_methods);
+  add("Prazo médio", profile?.avg_lead_time);
+  add("Horário de atendimento", profile?.business_hours);
+  add("Região atendida", profile?.region);
+  add("Diferenciais", profile?.differentials);
+  const rules = context.grounding.commercialRules;
+  add("Termos comerciais", rules.commercialTerms);
+  add("Política de pagamento", rules.paymentPolicy);
+  add("Política de instalação", rules.installationPolicy);
+  add("Previsão da próxima carga", rules.nextLoadForecast);
+  add("Política de visita", rules.visitPolicy);
+  add("Política de aquecimento", rules.heatingPolicy);
+  add("Política de frete", rules.shippingPolicy);
+  add("Política de itens inclusos", rules.includedItemsPolicy);
+  for (const reply of quickReplies) add(reply.name, reply.content);
+  for (const item of profile?.faq ?? []) add(item.q, item.a);
+  for (const item of Array.isArray(context.knowledge) ? context.knowledge : []) add(item.question, item.answer);
+  return facts;
 }
 
 const STANDALONE_ROLES = { lead: "user", agent: "assistant", system: "system" } as const;
@@ -241,6 +294,13 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
   while (currentIndex >= 0 && !(input.history[currentIndex].role === "lead" && typeof input.history[currentIndex].text === "string" && input.history[currentIndex].text.trim())) currentIndex -= 1;
   const message = currentIndex >= 0 ? input.history[currentIndex].text.trim() : "";
   const leadName = typeof input.leadName === "string" && input.leadName.trim() ? input.leadName.trim() : null;
+  let quickReplies: Array<{ name: string; content: string }> = [];
+  try { quickReplies = (await input.loadQuickReplies?.()) ?? []; } catch { /* sem respostas rápidas o turno segue */ }
+  const companyFacts = toCompanyFacts(input.context, quickReplies);
+  const evidenceText = [
+    ...catalog.flatMap((product) => [product.name, product.description, product.category, String(product.price), ...product.features]),
+    ...companyFacts.flatMap((fact) => [fact.label, fact.text]),
+  ].filter(Boolean).join("\n");
   const payload = {
     company_id: input.companyId,
     message,
@@ -251,6 +311,9 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     next_catalog_query: typeof input.nextCatalogQuery === "string" ? input.nextCatalogQuery : null,
     authorized_context: {
       company_name: input.context.companyName,
+      // Contrato genérico lido pela Vendedora: tom e fatos cadastrados pela empresa.
+      tone: input.context.aiProfile?.tone ?? null,
+      company_facts: companyFacts,
       ai_profile: input.context.aiProfile,
       knowledge: input.context.knowledge,
       commercial_rules: input.context.grounding.commercialRules,
@@ -292,7 +355,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
     if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
     const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts, mode === "silent");
-    return await finish(decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
+    return await finish(decision ? { enabled: true, ok: true, decision, correlationId, evidenceText } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
     return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });
   } finally {

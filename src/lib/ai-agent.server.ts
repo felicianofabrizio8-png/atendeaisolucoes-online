@@ -66,7 +66,8 @@ import {
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { callExternalSalesAgent, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
+import { callExternalSalesAgent, isExternalSalesAgentActive, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
+import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replies.repository";
 import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
@@ -74,7 +75,11 @@ import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
 import { authorizeSalesAgentReply } from "./sales-agent-execution";
-import { buildPendingAssistedSuggestion } from "./sales-agent-assisted";
+import {
+  ASSISTED_PENDING_CLASSIFICATION,
+  ASSISTED_SUPERSEDED_CLASSIFICATION,
+  buildPendingAssistedSuggestion,
+} from "./sales-agent-assisted";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 import {
   prepareSalesAgentAction,
@@ -512,6 +517,8 @@ export function runSafetyLayer(
   decision: AgentDecision,
   commercialTerms?: string | null,
 ): AgentDecision {
+  // A decisão da Vendedora externa já foi validada contra o que a empresa cadastrou.
+  if (decision.external_validated) return decision;
   if (decision.kind !== "reply" || !decision.message) return decision;
   const registeredPercentages = new Set(
     (commercialTerms?.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage),
@@ -536,6 +543,32 @@ export function runSafetyLayer(
     }
   }
   return decision;
+}
+
+/**
+ * Safety da resposta da Vendedora externa. A fonte de verdade é o que a própria empresa
+ * (company_id) cadastrou e foi enviado à Vendedora no turno — catálogo, perfil da IA,
+ * respostas rápidas, FAQ/base aprovada e regras comerciais — e não uma lista fixa de temas:
+ *  - percentual só passa se estiver em algum desses cadastros;
+ *  - termo comercial sensível (desconto, parcelamento, promessa...) só passa se a empresa
+ *    cadastrou algo sobre ele; sem cadastro, continua bloqueado e vai para humano.
+ * Números, preços e medidas já foram conferidos pela Vendedora contra os fatos citados.
+ */
+export function runExternalSafetyLayer(decision: AgentDecision, evidenceText: string): AgentDecision {
+  if (decision.kind !== "reply" || !decision.message) return { ...decision, external_validated: true };
+  const registered = new Set((evidenceText.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage));
+  const unregistered = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
+    (percentage) => !registered.has(canonicalPercentage(percentage)),
+  );
+  if (unregistered) {
+    return { kind: "handoff", reason: "safety_block: percentual sem cadastro da empresa", external_validated: true };
+  }
+  for (const { pattern, reason } of SAFETY_BLOCK_PATTERNS) {
+    if (pattern.test(decision.message) && !pattern.test(evidenceText)) {
+      return { kind: "handoff", reason: `safety_block: ${reason}`, external_validated: true };
+    }
+  }
+  return { ...decision, external_validated: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -567,6 +600,7 @@ export async function loadAgentContext(
           payment_methods:
             (aiProfile as { payment_methods?: string | null }).payment_methods ?? null,
           avg_lead_time: (aiProfile as { avg_lead_time?: string | null }).avg_lead_time ?? null,
+          business_hours: (aiProfile as { business_hours?: string | null }).business_hours ?? null,
           region: (aiProfile as { region?: string | null }).region ?? null,
           differentials: (aiProfile as { differentials?: string | null }).differentials ?? null,
           faq: Array.isArray((aiProfile as { faq?: unknown }).faq)
@@ -656,6 +690,11 @@ export async function runAgentTurn(params: {
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
   /** Prazo do tick (epoch ms). Cada etapa do turno usa só o que resta dele. */
   deadlineAt?: number;
+  /**
+   * Triagem por palavra-chave que o tick deixou de fazer porque a Vendedora externa atende
+   * o tenant. Só é aplicada se ela falhar e o agente interno for assumir o turno.
+   */
+  deferredPrecheck?: () => AgentDecision | null;
   qualification?: {
     detected_pool_size: string | null;
     detected_interest: string | null;
@@ -862,17 +901,24 @@ export async function runAgentTurn(params: {
     leadName: params.leadName,
     context: params.ctx,
     budgetMs: externalSalesAgentBudgetMs(params.deadlineAt),
+    // Respostas rápidas ativas da empresa: só são lidas se a Vendedora externa for chamada.
+    loadQuickReplies: () => listActiveQuickRepliesForGrounding(params.ctx.settings.company_id, supabaseAdmin),
   });
   if (params.onExternalSalesAgentResult) {
     try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
   }
-  if (external.enabled && external.ok) return external.decision;
+  if (external.enabled && external.ok) return runExternalSafetyLayer(external.decision, external.evidenceText);
   // Assistido: se a Vendedora externa falha, o turno termina sem sugestão e o atendente
   // responde como já faria. O fallback para o agente interno podia transferir a conversa
   // para humano de verdade (aguardando_humano) numa falha que é só da integração.
   // Silent não altera nada e automatic precisa responder: ambos mantêm o fallback.
   if (external.enabled && !external.ok && resolveSalesAgentMode(params.ctx.settings) === "assisted") {
     return { kind: "skip", reason: "external_sales_agent_unavailable", fallback_reason: "external_sales_agent_unavailable" };
+  }
+  // A Vendedora externa falhou e o agente interno vai decidir: vale a triagem dele.
+  if (external.enabled && !external.ok) {
+    const deferred = params.deferredPrecheck?.();
+    if (deferred) return deferred;
   }
 
   const core = new SalesAgentCore(async (payload) => {
@@ -1590,6 +1636,21 @@ async function runAgentTickPass(
     return { ok: true, action: "skipped", reason: "lock_busy" };
   }
 
+  // Assistido: o cliente mandou outra mensagem, então a sugestão pendente anterior deixou
+  // de ser a atual. Sai do cartão (não é apagada) antes de o turno gerar a nova.
+  if (v2Mode === "assisted") {
+    try {
+      await supabaseAdmin
+        .from("ai_suggestions_log")
+        .update({ classification: ASSISTED_SUPERSEDED_CLASSIFICATION })
+        .eq("company_id", conv.company_id)
+        .eq("conversation_id", conv.id)
+        .eq("classification", ASSISTED_PENDING_CLASSIFICATION);
+    } catch {
+      console.warn("[SALES_AGENT_SUPERSEDE_PENDING_FAILED]");
+    }
+  }
+
   // Passado o prazo, o turno é abandonado: o lock é liberado já e o que
   // ainda estiver rodando não envia nem altera a conversa.
   let abandoned = false;
@@ -1647,13 +1708,17 @@ async function runAgentTickPass(
     // Palavra de preço ambígua ("barato", "menor preço") não encaminha direto:
     // o LLM distingue comparação de negociação e só a comparação
     // determinística do catálogo pode responder esse turno.
+    // Tenant atendido pela Vendedora externa: quem decide é ela, com os dados que a empresa
+    // cadastrou (garantia, pagamento, frete, contrato...). Uma palavra-chave não transfere a
+    // conversa antes de ela ser consultada; se ela falhar, a triagem volta (deferredPrecheck).
+    const externalActive = isExternalSalesAgentActive(ctx.settings);
     const triggerCheck: { needed: boolean; reason?: string; priceSensitive?: boolean } =
-      audioUnavailable
+      audioUnavailable || externalActive
         ? { needed: false }
         : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
             deferPriceSensitive: true,
           });
-    const readyToClose = !audioUnavailable && detectReadyToClose(lastLeadMsg.text);
+    const readyToClose = !audioUnavailable && !externalActive && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
         companyId: conv.company_id,
@@ -1719,6 +1784,14 @@ async function runAgentTickPass(
           salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
           deadlineAt: options.deadlineAt,
           qualification: currentQual,
+          deferredPrecheck: externalActive
+            ? () => {
+                if (detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules).needed) {
+                  return { kind: "handoff", reason: "pre_check" };
+                }
+                return detectReadyToClose(lastLeadMsg.text) ? { kind: "handoff", reason: "ready_to_close" } : null;
+              }
+            : undefined,
           onExternalSalesAgentResult: async (external) => {
             // Sucesso também audita: no silent o turno termina em external_silent
             // sem nenhum outro evento.
