@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { EXTERNAL_SALES_AGENT_MAX_MS, EXTERNAL_SALES_AGENT_MIN_MS } from "./agent-turn-budget";
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
+import { resolveSalesAgentMode, SALES_AGENT_MODES, type SalesAgentMode } from "./sales-agent-mode";
 
 const DEFAULT_TIMEOUT_MS = EXTERNAL_SALES_AGENT_MAX_MS;
 const MAX_RESPONSE_CHARS = 4_000;
@@ -15,7 +16,7 @@ const NETWORK_MARGIN_MS = 1_000;
 const MAX_REQUEST_BYTES = 1_000_000;
 
 export type ExternalSalesAgentResult =
-  | { enabled: false; reason: "disabled" | "not_silent" | "not_configured"; correlationId: string }
+  | { enabled: false; reason: "disabled" | "mode_not_enabled" | "not_configured"; correlationId: string }
   | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming }
   | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming; httpStatus?: number; invalidResponseCode?: "invalid_json" | "invalid_shape" | "invalid_decision" };
 
@@ -52,6 +53,19 @@ async function notify(input: ExternalSalesAgentInput, result: ExternalSalesAgent
 
 function configuredCompanyIds(env: Record<string, string | undefined>): Set<string> {
   return new Set((env.EXTERNAL_SALES_AGENT_COMPANY_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+}
+
+// Modos do tenant em que a Vendedora externa atua. Padrão: `silent` (só avalia) e
+// `assisted` (a resposta vira sugestão para o atendente aprovar). `automatic` — ela
+// mesma responde o cliente — exige opt-in explícito em EXTERNAL_SALES_AGENT_MODES.
+const DEFAULT_EXTERNAL_MODES: readonly SalesAgentMode[] = ["silent", "assisted"];
+
+function enabledModes(env: Record<string, string | undefined>): Set<SalesAgentMode> {
+  const raw = env.EXTERNAL_SALES_AGENT_MODES?.trim();
+  if (!raw) return new Set(DEFAULT_EXTERNAL_MODES);
+  return new Set(
+    raw.split(",").map((value) => value.trim()).filter((value): value is SalesAgentMode => SALES_AGENT_MODES.includes(value as SalesAgentMode)),
+  );
 }
 
 function getConfig(env: Record<string, string | undefined>) {
@@ -161,7 +175,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>): AgentDecision | null {
+// `external_silent` só no modo silent: aí o tick registra a resposta e encerra. Nos demais
+// modos a decisão segue o fluxo normal (safety layer, aprovação do assistido ou envio).
+function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>, silent: boolean): AgentDecision | null {
   const state = cleanCommercialState(body.commercial_state);
   const products = cleanProductIds(body.selected_products, allowedProductIds);
   if (!state || !products) return null;
@@ -174,9 +190,10 @@ function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: 
     : null;
   const message = cleanString(body.response, MAX_RESPONSE_CHARS);
   const nextAction = cleanString(body.next_action, MAX_NEXT_ACTION_CHARS);
-  if (handoffRequested) return { kind: "handoff", reason: handoffReason ?? "external_sales_agent_handoff", suggested_products: products, next_action: nextAction, external_silent: true, ...state };
+  const marker = silent ? { external_silent: true } : {};
+  if (handoffRequested) return { kind: "handoff", reason: handoffReason ?? "external_sales_agent_handoff", suggested_products: products, next_action: nextAction, ...marker, ...state };
   if (!message) return null;
-  return { kind: "reply", message, suggested_products: products, next_action: nextAction, external_silent: true, ...state };
+  return { kind: "reply", message, suggested_products: products, next_action: nextAction, ...marker, ...state };
 }
 
 export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Promise<ExternalSalesAgentResult> {
@@ -187,8 +204,9 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     await notify(input, result);
     return result;
   }
-  if (input.context.settings.sales_agent_v2_enabled !== true || input.context.settings.sales_agent_v2_mode !== "silent") {
-    const result = { enabled: false as const, reason: "not_silent" as const, correlationId };
+  const mode = resolveSalesAgentMode(input.context.settings);
+  if (mode === null || !enabledModes(env).has(mode)) {
+    const result = { enabled: false as const, reason: "mode_not_enabled" as const, correlationId };
     await notify(input, result);
     return result;
   }
@@ -261,7 +279,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     let responseBody: unknown;
     try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
     if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
-    const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts);
+    const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts, mode === "silent");
     return await finish(decision ? { enabled: true, ok: true, decision, correlationId } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
     return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });

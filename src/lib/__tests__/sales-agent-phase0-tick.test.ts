@@ -729,6 +729,33 @@ describe("runAgentTick · liberação do lock ai_handling", () => {
 });
 
 describe("runAgentTick · auditoria da Vendedora externa", () => {
+  it("turno assisted com resposta externa vira sugestão pendente e nada é enviado", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ response: "Olá!", selected_products: [], handoff: { required: false, reason: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      const pending = calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+      expect(pending).toHaveLength(1);
+      expect(pending[0].values).toMatchObject({ generated_text: "Olá!", classification: "v2_status:pending", was_sent: false });
+      expect(decideSpy).not.toHaveBeenCalled();
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
   it("turno silent com resposta externa válida registra ai_flow_event e libera o lock", async () => {
     install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "silent" } });
     vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);

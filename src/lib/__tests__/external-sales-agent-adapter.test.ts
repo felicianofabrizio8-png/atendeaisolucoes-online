@@ -103,6 +103,28 @@ describe("external sales agent adapter", () => {
     expect(handoff).toMatchObject({ ok: true, decision: { kind: "handoff", external_silent: true } });
     expect(reply).toMatchObject({ ok: true, decision: { kind: "reply", message: "Posso ajudar?", external_silent: true } });
   });
+  it("no modo assisted a decisão segue o fluxo normal, sem marca de silent", async () => {
+    const assisted = { ...context, settings: { ...context.settings, sales_agent_v2_mode: "assisted" } } as unknown as AgentContextBase;
+    const result = await callExternalSalesAgent({ ...input, context: assisted, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", selected_products: ["p1"] })) });
+    expect(result).toMatchObject({ enabled: true, ok: true, decision: { kind: "reply", message: "Posso ajudar?", suggested_products: ["p1"] } });
+    expect(result.enabled && result.ok ? result.decision.external_silent : "missing").toBeUndefined();
+  });
+  it("no modo automatic só atua com opt-in explícito em EXTERNAL_SALES_AGENT_MODES", async () => {
+    const automatic = { ...context, settings: { ...context.settings, sales_agent_v2_mode: "automatic" } } as unknown as AgentContextBase;
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const off = await callExternalSalesAgent({ ...input, context: automatic, fetchImpl });
+    expect(off).toMatchObject({ enabled: false, reason: "mode_not_enabled" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const on = await callExternalSalesAgent({ ...input, context: automatic, env: { ...input.env, EXTERNAL_SALES_AGENT_MODES: "silent,assisted,automatic" }, fetchImpl });
+    expect(on).toMatchObject({ enabled: true, ok: true, decision: { kind: "reply", message: "Posso ajudar?" } });
+    expect(on.enabled && on.ok ? on.decision.external_silent : "missing").toBeUndefined();
+  });
+  it("permanece desligado quando a V2 do tenant está desligada", async () => {
+    const off = { ...context, settings: { ...context.settings, sales_agent_v2_enabled: false } } as unknown as AgentContextBase;
+    const fetchImpl = vi.fn();
+    expect(await callExternalSalesAgent({ ...input, context: off, fetchImpl })).toMatchObject({ enabled: false, reason: "mode_not_enabled" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
   it("falha fechado para a integração e não lança timeout", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new DOMException("timeout", "AbortError"));
     const result = await callExternalSalesAgent({ ...input, fetchImpl });
