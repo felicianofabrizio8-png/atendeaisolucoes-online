@@ -1393,7 +1393,7 @@ type HistoryRow = {
 };
 
 /** Linha de `messages` → item de histórico do agente (produtos, esclarecimento, transcrição). */
-function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string } {
+function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string; notice?: string } {
   const metadata =
     row.source_metadata && typeof row.source_metadata === "object" && !Array.isArray(row.source_metadata)
       ? (row.source_metadata as Record<string, unknown>)
@@ -1415,6 +1415,8 @@ function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarifica
     text,
     ...(productIds.length > 0 ? { productIds } : {}),
     ...(clarification ? { clarification } : {}),
+    // Aviso automático do sistema (ex.: "vou passar para um atendente"), não uma fala da venda.
+    ...(typeof metadata.sales_agent_notice === "string" ? { notice: metadata.sales_agent_notice } : {}),
   };
 }
 

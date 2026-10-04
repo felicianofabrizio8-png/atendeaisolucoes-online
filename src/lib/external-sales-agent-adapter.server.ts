@@ -34,7 +34,7 @@ export type ExternalSalesAgentTiming = { budgetMs: number; durationMs: number };
 type ExternalSalesAgentInput = {
   companyId: string;
   conversationId?: string | null;
-  history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
+  history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[]; notice?: string }>;
   leadName: string | null;
   context: AgentContextBase;
   interpretation?: unknown;
@@ -250,7 +250,9 @@ const STANDALONE_ROLES = { lead: "user", agent: "assistant", system: "system" } 
 // A standalone acrescenta `message` ao histórico por conta própria, então o turno
 // atual sai do history; papéis seguem o vocabulário dela (user/assistant).
 function toStandaloneHistory(history: ExternalSalesAgentInput["history"], currentIndex: number) {
-  const previous = history.filter((item, index) => index !== currentIndex && typeof item.text === "string" && item.role in STANDALONE_ROLES);
+  // O aviso automático de encaminhamento não entra: lido como fala dela, fazia a Vendedora
+  // entender que a conversa "estava com a equipe" e encaminhar de novo a cada mensagem.
+  const previous = history.filter((item, index) => index !== currentIndex && typeof item.text === "string" && item.role in STANDALONE_ROLES && item.notice !== "handoff");
   return collapseImageRuns(previous)
     .slice(-40)
     .map((item) => {

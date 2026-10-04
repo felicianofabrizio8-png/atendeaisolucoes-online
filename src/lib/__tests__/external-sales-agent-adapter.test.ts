@@ -182,6 +182,16 @@ describe("external sales agent adapter", () => {
     expect(result).toMatchObject({ ok: true, sellerState: { buyer_stage: "evaluating_terms", buying_signals: ["asked_price", "asked_payment"], turns: 2 } });
     expect((result as { sellerState: Record<string, unknown> }).sellerState).not.toHaveProperty("shown_products");
   });
+  it("o aviso automático de encaminhamento não vai no histórico da Vendedora", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, fetchImpl, history: [
+      { role: "lead", text: "Sou de outra cidade" },
+      { role: "agent", text: "Vou passar sua conversa para um atendente.", notice: "handoff" },
+      { role: "lead", text: "Bom dia" },
+    ] });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).history).toEqual([{ role: "user", text: "Sou de outra cidade" }]);
+  });
   it("fotos em sequência chegam à Vendedora como uma linha só do histórico", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
     await callExternalSalesAgent({ ...input, fetchImpl, history: [
