@@ -8,6 +8,7 @@
 // (sandbox Lovable). Em qualquer outro ambiente, esses casos são marcados
 // como skip para não falharem a suíte por ausência do bind PG.
 import { describe, it, expect } from "vitest";
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 
 import { join, relative } from "node:path";
