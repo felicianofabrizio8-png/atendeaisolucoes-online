@@ -746,6 +746,13 @@ describe("runAgentTick · auditoria da Vendedora externa", () => {
     try {
       const result = await runAgentTick(CONV);
       expect(result).toMatchObject({ action: "skipped", reason: "external_silent" });
+      // A resposta que seria enviada fica registrada para avaliação, fora da fila de aprovação.
+      const silentReply = calls().find((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+      expect(silentReply?.values).toMatchObject({
+        generated_text: "Olá!",
+        classification: "external_silent",
+        was_sent: false,
+      });
       const audit = calls().find(
         (c) => c.table === "ai_flow_events" && (c.values?.payload as Record<string, unknown>)?.audit_kind === "external_sales_agent",
       );

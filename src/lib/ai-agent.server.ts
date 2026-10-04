@@ -1242,6 +1242,12 @@ export type AgentTickResult = {
   reason?: string;
 };
 
+/**
+ * Marca, em `ai_suggestions_log`, a resposta que a Vendedora externa daria no modo
+ * silent. Não é `v2_status:pending`: não entra na fila de aprovação do modo assistido.
+ */
+export const EXTERNAL_SILENT_CLASSIFICATION = "external_silent";
+
 /** Reprocessamentos extras quando o cliente escreve enquanto o turno roda. */
 export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
 /**
@@ -1754,6 +1760,27 @@ async function runAgentTickPass(
     });
 
     if (decision.external_silent) {
+      // Silent: a resposta da Vendedora externa não é enviada. Fica no log de sugestões
+      // (mesma tabela e RLS das sugestões da IA, visível em /ia) para avaliação humana;
+      // o ai_flow_events continua só com códigos. Falha aqui nunca altera o turno.
+      if (decision.kind === "reply" && decision.message) {
+        try {
+          const { error } = await supabaseAdmin.from("ai_suggestions_log").insert({
+            company_id: conv.company_id,
+            conversation_id: conv.id,
+            lead_id: conv.lead_id,
+            generated_text: decision.message,
+            classification: EXTERNAL_SILENT_CLASSIFICATION,
+            model: "vendedora-externa",
+            was_sent: false,
+            was_edited: false,
+            sent_text: null,
+          });
+          if (error) console.warn("[EXTERNAL_SALES_AGENT_SILENT_LOG_FAILED]");
+        } catch {
+          console.warn("[EXTERNAL_SALES_AGENT_SILENT_LOG_FAILED]");
+        }
+      }
       return { ok: true, action: "skipped", reason: "external_silent" };
     }
 
