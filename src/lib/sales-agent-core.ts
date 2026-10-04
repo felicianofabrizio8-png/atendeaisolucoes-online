@@ -235,6 +235,8 @@ export interface AgentDecision {
   external_silent?: boolean;
   /** Decisão da Vendedora externa já passou pela safety layer com a evidência cadastrada da empresa. */
   external_validated?: boolean;
+  /** Nomes dos cadastros da empresa que embasaram a resposta da Vendedora (só rótulos). */
+  evidence_labels?: string[];
   next_action?: string | null;
   /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
   fallback_reason?: string;

@@ -76,7 +76,8 @@ interface Turn {
 }
 
 export interface TeachSourceSuggestion {
-  suggestion_id: string;
+  /** Id em coach_suggestions; null quando a origem é uma sugestão da Vendedora 2.0. */
+  suggestion_id: string | null;
   client_message: string | null;
   suggestion_text: string;
   situation: string | null;

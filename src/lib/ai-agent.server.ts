@@ -903,6 +903,9 @@ export async function runAgentTurn(params: {
     budgetMs: externalSalesAgentBudgetMs(params.deadlineAt),
     // Respostas rápidas ativas da empresa: só são lidas se a Vendedora externa for chamada.
     loadQuickReplies: () => listActiveQuickRepliesForGrounding(params.ctx.settings.company_id, supabaseAdmin),
+    // O que a empresa ensinou e já está aprovado/ativo (mesmas listas do agente interno).
+    coachRules: normative.grounding.activeCoachRules ?? [],
+    learnings: normative.grounding.approvedCoachLearnings,
   });
   if (params.onExternalSalesAgentResult) {
     try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
@@ -1941,6 +1944,8 @@ async function runAgentTickPass(
           mode: v2Mode,
           reason: authorization.reason,
           suggested_products: decision.suggested_products ?? [],
+          // Nomes dos cadastros que embasaram a sugestão (o cartão mostra ao atendente).
+          evidence_labels: decision.evidence_labels ?? [],
         });
         return { ok: true, action: "skipped", reason: authorization.reason };
       }

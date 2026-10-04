@@ -162,6 +162,24 @@ describe("external sales agent adapter", () => {
     expect(isExternalSalesAgentActive({ ...settings, sales_agent_v2_mode: "automatic" }, input.env)).toBe(false);
     expect(isExternalSalesAgentActive(settings, { ...input.env, EXTERNAL_SALES_AGENT_API_KEY: "" })).toBe(false);
   });
+  it("regras ativas e aprendizados aprovados da empresa entram nos fatos enviados à Vendedora", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({
+      ...input, fetchImpl,
+      coachRules: [{ title: "Retorno", content: "Sempre ofereça o retorno em 30 dias." }],
+      learnings: [{ title: "Convênio", rule: "Informe que atendemos os principais convênios.", description: "" }],
+    });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).authorized_context.company_facts).toEqual([
+      { label: "Regra da empresa: Retorno", text: "Sempre ofereça o retorno em 30 dias." },
+      { label: "Aprendizado aprovado: Convênio", text: "Informe que atendemos os principais convênios." },
+    ]);
+  });
+  it("guarda só os cadastros que a Vendedora citou e que foram de fato enviados a ela", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", evidence: { company_facts: ["Garantia", "Rótulo que não enviamos", 7] } }));
+    const result = await callExternalSalesAgent({ ...input, fetchImpl, loadQuickReplies: async () => [{ name: "Garantia", content: "2 anos." }] });
+    expect(result).toMatchObject({ ok: true, decision: { kind: "reply", evidence_labels: ["Garantia"] } });
+  });
   it("transforma handoff em decisão dominante", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ handoff: { required: true, reason: "cliente pediu humano" }, selected_products: ["p1"] })) });
     expect(result).toMatchObject({ ok: true, decision: { kind: "handoff", reason: "cliente pediu humano", external_silent: true } });

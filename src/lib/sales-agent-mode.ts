@@ -15,6 +15,17 @@ export function resolveSalesAgentMode(settings: SalesAgentModeSettings): SalesAg
     : "assisted";
 }
 
+/**
+ * A empresa usa a Vendedora 2.0 no atendimento (assistido ou automático)? Decide, por
+ * empresa, qual painel de IA o atendente vê. Em `silent` ela só é avaliada, sem aparecer
+ * para o atendente, então o painel anterior continua valendo.
+ */
+export function isSalesAgentServingAttendants(settings: SalesAgentModeSettings | null | undefined): boolean {
+  if (!settings) return false;
+  const mode = resolveSalesAgentMode(settings);
+  return mode === "assisted" || mode === "automatic";
+}
+
 export function canSalesAgentSend(mode: SalesAgentMode | null): boolean {
   return mode === null || mode === "automatic";
 }

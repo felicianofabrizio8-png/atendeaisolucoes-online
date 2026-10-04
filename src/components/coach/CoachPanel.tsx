@@ -22,17 +22,9 @@ import {
 import { TeachModeDrawer, type TeachSourceSuggestion } from "@/components/coach/TeachModeDrawer";
 import { submitSuggestionFeedbackFn } from "@/lib/coach-learnings/coach-learnings.functions";
 import { SalesAgentAssistedCard } from "@/components/coach/SalesAgentAssistedCard";
-
-interface CoachAlert {
-  id: string;
-  alert_type: string;
-  severity: "low" | "medium" | "high" | "critical";
-  urgency_minutes: number | null;
-  risk_score: number;
-  payload: Record<string, unknown> | null;
-  status: string;
-  created_at: string;
-}
+import { ALERT_LABEL, SEVERITY_STYLE, type CoachAlert } from "@/components/coach/coach-alerts";
+import { VendedoraPanel } from "@/components/coach/VendedoraPanel";
+import { useSalesAgentPanelMode } from "@/hooks/useSalesAgentPanelMode";
 
 interface CoachSuggestion {
   id: string;
@@ -66,25 +58,6 @@ export interface CoachPanelMessage {
   sourceSubtype?: string;
 }
 
-const ALERT_LABEL: Record<string, string> = {
-  no_response: "Cliente sem resposta",
-  followup_overdue: "Follow-up vencido",
-  quote_no_reply: "Orçamento sem retorno",
-  window_closing: "Janela 24h fechando",
-  hot_lead_unattended: "Lead quente sem atendimento",
-  awaiting_quote: "Aguardando orçamento",
-  discount_requested: "Pediu desconto",
-  will_research: "Disse que vai pesquisar",
-  spouse_decision: "Decisão com cônjuge",
-};
-
-const SEVERITY_STYLE: Record<string, string> = {
-  low: "bg-muted text-muted-foreground border-border",
-  medium: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  high: "bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30",
-  critical: "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30",
-};
-
 // Janela de agrupamento — se várias mensagens do cliente chegarem em sequência,
 // consolidamos em uma única sugestão.
 const DEBOUNCE_MS = 1500;
@@ -111,12 +84,7 @@ function isMessageReady(msg: CoachPanelMessage, nowMs: number): boolean {
 
 type AutoState = "idle" | "waiting_media" | "debouncing" | "generating" | "ready" | "error";
 
-export function CoachPanel({
-  conversationId,
-  onInsertSuggestion,
-  messages,
-  composerHasDraft = false,
-}: {
+interface CoachPanelProps {
   conversationId: string;
   onInsertSuggestion?: (text: string) => void;
   /** Mensagens visíveis da conversa (ordem cronológica). Necessário para
@@ -125,7 +93,46 @@ export function CoachPanel({
   /** Se `true`, o compositor tem texto digitado pelo atendente. Usado só para
    *  telemetria de UX — o painel nunca sobrescreve o compositor sozinho. */
   composerHasDraft?: boolean;
-}) {
+  /** Estado da conversa (IA ativa x humano), quando a tela o conhece. */
+  aiStatus?: string | null;
+  humanTakeoverAt?: string | null;
+}
+
+/**
+ * Painel de IA da conversa. Qual painel aparece é decisão da configuração da empresa:
+ * com a Vendedora 2.0 atendendo, só o painel dela; sem ela, o Coach de sempre.
+ * Enquanto a configuração não é conhecida, nenhum dos dois é montado — assim o Coach
+ * não chama /api/coach/suggest numa empresa que usa a Vendedora 2.0.
+ */
+export function CoachPanel(props: CoachPanelProps) {
+  const { mode, retry } = useSalesAgentPanelMode();
+  if (mode === "vendedora") return <VendedoraPanel {...props} />;
+  if (mode === "coach") return <LegacyCoachPanel {...props} />;
+  return (
+    <div data-testid="ai-panel-pending" className="border-b border-border p-4 text-xs text-muted-foreground">
+      {mode === "error" ? (
+        <div className="flex items-center justify-between gap-2">
+          <span>Não foi possível carregar o painel de IA.</span>
+          <button type="button" onClick={retry} className="underline hover:text-foreground">
+            Tentar novamente
+          </button>
+        </div>
+      ) : (
+        <span className="inline-flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Carregando painel de IA…
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LegacyCoachPanel({
+  conversationId,
+  onInsertSuggestion,
+  messages,
+  composerHasDraft = false,
+}: CoachPanelProps) {
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { isAdmin } = useIsAdmin();
@@ -446,7 +453,7 @@ export function CoachPanel({
   const showAnalyzingState = isGenerating || isAnalyzingMedia;
 
   return (
-    <div className="border-b border-border p-4 space-y-3">
+    <div data-testid="coach-panel-legacy" className="border-b border-border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />

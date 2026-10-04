@@ -39,6 +39,10 @@ type ExternalSalesAgentInput = {
   nextCatalogQuery?: unknown;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  /** Regras ativas da empresa (mesma fonte e status que o agente interno já usa). */
+  coachRules?: Array<{ title: string; content: string }>;
+  /** Aprendizados aprovados da empresa (mesma fonte e status que o agente interno já usa). */
+  learnings?: Array<{ title: string; rule: string; description: string }>;
   /** Respostas rápidas ativas da empresa; chamado só quando a Vendedora vai ser acionada. */
   loadQuickReplies?: () => Promise<Array<{ name: string; content: string }>>;
   /** Tempo que resta ao turno para a Vendedora (do prazo do tick); undefined = só a config. */
@@ -47,6 +51,7 @@ type ExternalSalesAgentInput = {
 };
 
 type ExternalSalesAgentResponse = {
+  evidence?: unknown;
   response?: unknown;
   handoff?: unknown;
   commercial_state?: unknown;
@@ -189,7 +194,12 @@ const MAX_COMPANY_FACTS = 40;
 // Tudo o que a empresa (company_id) cadastrou no sistema e a Vendedora pode afirmar:
 // perfil da IA, FAQ, base de conhecimento aprovada, regras comerciais e respostas rápidas.
 // Os rótulos são os nomes dos campos do sistema; o conteúdo é só o que a empresa preencheu.
-function toCompanyFacts(context: AgentContextBase, quickReplies: Array<{ name: string; content: string }>): CompanyFact[] {
+function toCompanyFacts(
+  context: AgentContextBase,
+  quickReplies: Array<{ name: string; content: string }>,
+  coachRules: Array<{ title: string; content: string }> = [],
+  learnings: Array<{ title: string; rule: string; description: string }> = [],
+): CompanyFact[] {
   const facts: CompanyFact[] = [];
   const add = (label: unknown, text: unknown) => {
     if (typeof label !== "string" || typeof text !== "string" || !label.trim() || !text.trim()) return;
@@ -212,6 +222,9 @@ function toCompanyFacts(context: AgentContextBase, quickReplies: Array<{ name: s
   add("Política de aquecimento", rules.heatingPolicy);
   add("Política de frete", rules.shippingPolicy);
   add("Política de itens inclusos", rules.includedItemsPolicy);
+  // Só regras ativas e aprendizados aprovados (quem filtra o status é a fonte que já existe).
+  for (const rule of coachRules) add(`Regra da empresa: ${rule.title}`, rule.content);
+  for (const learning of learnings) add(`Aprendizado aprovado: ${learning.title}`, learning.rule || learning.description);
   for (const reply of quickReplies) add(reply.name, reply.content);
   for (const item of profile?.faq ?? []) add(item.q, item.a);
   for (const item of Array.isArray(context.knowledge) ? context.knowledge : []) add(item.question, item.answer);
@@ -238,7 +251,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 // `external_silent` só no modo silent: aí o tick registra a resposta e encerra. Nos demais
 // modos a decisão segue o fluxo normal (safety layer, aprovação do assistido ou envio).
-function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>, silent: boolean): AgentDecision | null {
+// Rótulos de cadastro que a Vendedora diz ter usado: só valem os que nós mesmos enviamos.
+function cleanEvidenceLabels(value: unknown, sentLabels: Set<string>): string[] {
+  const raw = isPlainObject(value) ? value.company_facts : null;
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((item): item is string => typeof item === "string" && sentLabels.has(item)))].slice(0, 10);
+}
+
+function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>, silent: boolean, sentLabels: Set<string> = new Set()): AgentDecision | null {
   const state = cleanCommercialState(body.commercial_state);
   const selected = cleanProductIds(body.selected_products, allowedProductIds);
   if (!state || !selected) return null;
@@ -258,7 +278,8 @@ function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: 
   // Mesmo mecanismo do agente interno: com product_image_ids o tick envia as fotos
   // cadastradas logo depois do texto (só quando o modo permite enviar ao cliente).
   const images = nextAction === SEND_PRODUCT_MEDIA_ACTION ? selected.slice(0, MAX_SALES_AGENT_PRODUCT_IMAGES) : [];
-  return { kind: "reply", message, suggested_products: products, ...(images.length ? { product_image_ids: images } : {}), next_action: nextAction, ...marker, ...state };
+  const labels = cleanEvidenceLabels(body.evidence, sentLabels);
+  return { kind: "reply", message, suggested_products: products, ...(images.length ? { product_image_ids: images } : {}), ...(labels.length ? { evidence_labels: labels } : {}), next_action: nextAction, ...marker, ...state };
 }
 
 export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Promise<ExternalSalesAgentResult> {
@@ -296,7 +317,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
   const leadName = typeof input.leadName === "string" && input.leadName.trim() ? input.leadName.trim() : null;
   let quickReplies: Array<{ name: string; content: string }> = [];
   try { quickReplies = (await input.loadQuickReplies?.()) ?? []; } catch { /* sem respostas rápidas o turno segue */ }
-  const companyFacts = toCompanyFacts(input.context, quickReplies);
+  const companyFacts = toCompanyFacts(input.context, quickReplies, input.coachRules, input.learnings);
   const evidenceText = [
     ...catalog.flatMap((product) => [product.name, product.description, product.category, String(product.price), ...product.features]),
     ...companyFacts.flatMap((fact) => [fact.label, fact.text]),
@@ -354,7 +375,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     let responseBody: unknown;
     try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
     if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
-    const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts, mode === "silent");
+    const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts, mode === "silent", new Set(companyFacts.map((fact) => fact.label)));
     return await finish(decision ? { enabled: true, ok: true, decision, correlationId, evidenceText } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
     return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });

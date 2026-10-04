@@ -6,6 +6,8 @@ import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
 import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { AITimeline } from "@/components/AITimeline";
+import { useSalesAgentPanelMode } from "@/hooks/useSalesAgentPanelMode";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { AiComposer, type Attachment } from "./AiComposer";
 import { SiriOrb } from "./SiriOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
@@ -81,6 +83,11 @@ function CoachTab({
     [contact.messages],
   );
 
+  // Empresa na Vendedora 2.0: o histórico técnico (códigos de eventos) é diagnóstico,
+  // não informação para o atendente — fica recolhido e só para admin.
+  const { mode } = useSalesAgentPanelMode();
+  const { isAdmin } = useIsAdmin();
+
   return (
     <div className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden rounded-2xl border border-border">
       <CoachPanel
@@ -88,8 +95,18 @@ function CoachTab({
         messages={coachMessages}
         onInsertSuggestion={onUseSuggestion}
         composerHasDraft={composerHasDraft}
+        aiStatus={contact.conversation.aiStatus ?? null}
+        humanTakeoverAt={contact.conversation.humanTakeoverAt ?? null}
       />
-      <AITimeline conversationId={contact.conversation.id} />
+      {mode === "coach" && <AITimeline conversationId={contact.conversation.id} />}
+      {mode === "vendedora" && isAdmin && (
+        <details data-testid="ai-technical-history" className="border-t border-border">
+          <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+            Histórico técnico
+          </summary>
+          <AITimeline conversationId={contact.conversation.id} />
+        </details>
+      )}
     </div>
   );
 }
