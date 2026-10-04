@@ -95,6 +95,23 @@ describe("external sales agent adapter", () => {
     const result = await callExternalSalesAgent({ ...input, context: many, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Temos sete opções.", selected_products: ids })) });
     expect(result).toMatchObject({ enabled: true, ok: true, decision: { kind: "reply", suggested_products: ["p1", "p2", "p3", "p4", "p5"] } });
   });
+  it("informa à Vendedora quais produtos têm foto e converte o pedido de fotos em product_image_ids", async () => {
+    const catalog = [
+      { ...context.grounding.catalog[0], id: "p1", images: ["company-1/p1.jpg"] },
+      { ...context.grounding.catalog[0], id: "p2", name: "Produto 2", images: [] },
+    ];
+    const withPhotos = { ...context, grounding: { ...context.grounding, catalog } } as unknown as AgentContextBase;
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Vou te mandar as fotos.", selected_products: ["p1"], next_action: "send_product_media" }));
+    const result = await callExternalSalesAgent({ ...input, context: withPhotos, fetchImpl });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const sent = JSON.parse(String(request.body)).catalog as Array<{ id: string; has_media: boolean }>;
+    expect(sent.map((item) => [item.id, item.has_media])).toEqual([["p1", true], ["p2", false]]);
+    expect(result).toMatchObject({ ok: true, decision: { kind: "reply", message: "Vou te mandar as fotos.", product_image_ids: ["p1"] } });
+  });
+  it("sem pedido de fotos a decisão não leva product_image_ids", async () => {
+    const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", selected_products: ["p1"], next_action: "ask_budget" })) });
+    expect(result.enabled && result.ok ? result.decision.product_image_ids : "missing").toBeUndefined();
+  });
   it("transforma handoff em decisão dominante", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ handoff: { required: true, reason: "cliente pediu humano" }, selected_products: ["p1"] })) });
     expect(result).toMatchObject({ ok: true, decision: { kind: "handoff", reason: "cliente pediu humano", external_silent: true } });
@@ -189,7 +206,7 @@ describe("external sales agent adapter", () => {
     ];
     await callExternalSalesAgent({ ...input, context: withCatalog(catalog), fetchImpl });
     expect(sentPayload(fetchImpl).catalog).toEqual([
-      { id: "p1", name: "Produto", description: "", price: 10, currency: "BRL", category: "", features: ["a: 1"], available: true, source: "catalog" },
+      { id: "p1", name: "Produto", description: "", price: 10, currency: "BRL", category: "", features: ["a: 1"], available: true, source: "catalog", has_media: true },
     ]);
   });
 
@@ -224,7 +241,7 @@ describe("external sales agent adapter", () => {
   it("produtos sem atributos opcionais (cadastros antigos) seguem com features vazio", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
     await callExternalSalesAgent({ ...input, context: withCatalog([{ id: "p1", name: "Produto", category: "c", description: "d", price: 10 }]), fetchImpl });
-    expect(sentPayload(fetchImpl).catalog).toEqual([{ id: "p1", name: "Produto", description: "d", price: 10, currency: "BRL", category: "c", features: [], available: true, source: "catalog" }]);
+    expect(sentPayload(fetchImpl).catalog).toEqual([{ id: "p1", name: "Produto", description: "d", price: 10, currency: "BRL", category: "c", features: [], available: true, source: "catalog", has_media: false }]);
   });
 
   it("atributo em conflito com o campo oficial não vira fato", async () => {

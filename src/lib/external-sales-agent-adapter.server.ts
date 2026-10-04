@@ -4,11 +4,14 @@ import { EXTERNAL_SALES_AGENT_MAX_MS, EXTERNAL_SALES_AGENT_MIN_MS } from "./agen
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
 import { resolveSalesAgentMode, SALES_AGENT_MODES, type SalesAgentMode } from "./sales-agent-mode";
+import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 
 const DEFAULT_TIMEOUT_MS = EXTERNAL_SALES_AGENT_MAX_MS;
 const MAX_RESPONSE_CHARS = 4_000;
 const MAX_NEXT_ACTION_CHARS = 160;
 const MAX_PRODUCTS = 5;
+// A Vendedora pede o envio das fotos cadastradas dos produtos que selecionou.
+const SEND_PRODUCT_MEDIA_ACTION = "send_product_media";
 // Folga para a ida e a volta da rede (Workers → Railway): a standalone recebe só o
 // que sobra do nosso timeout e decide se ainda cabe a correção de evidências.
 const NETWORK_MARGIN_MS = 1_000;
@@ -104,7 +107,7 @@ function cleanProductIds(value: unknown, allowed: Set<string>): string[] | null 
   // Vendedora pode apresentar várias opções num turno, e recusar a resposta inteira
   // por isso (invalid_decision) jogava o turno no fallback. Ficam os primeiros.
   if (ids.some((id) => !allowed.has(id))) return null;
-  return ids.slice(0, MAX_PRODUCTS);
+  return ids;
 }
 
 function cleanCommercialState(value: unknown): Record<string, string | null> | null {
@@ -122,7 +125,7 @@ function cleanCommercialState(value: unknown): Record<string, string | null> | n
   return output;
 }
 
-type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; features: string[]; available: true; source: "catalog" };
+type StandaloneCatalogItem = { id: string; name: string; description: string; price: number; currency: "BRL"; category: string; features: string[]; available: true; source: "catalog"; has_media: boolean };
 
 // Campos que a standalone já recebe em colunas próprias; os demais fatos de Produtos
 // (modelo, SKU, preço promocional, medidas, atributos da empresa, itens inclusos,
@@ -155,6 +158,8 @@ function toStandaloneCatalog(catalog: AgentContextBase["grounding"]["catalog"]):
       features: standaloneFeatures(product),
       available: true,
       source: "catalog",
+      // Só diz se há foto cadastrada: a Vendedora só promete enviar fotos de quem tem.
+      has_media: Array.isArray(product.images) && product.images.length > 0,
     });
   }
   return items;
@@ -182,8 +187,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 // modos a decisão segue o fluxo normal (safety layer, aprovação do assistido ou envio).
 function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: Set<string>, silent: boolean): AgentDecision | null {
   const state = cleanCommercialState(body.commercial_state);
-  const products = cleanProductIds(body.selected_products, allowedProductIds);
-  if (!state || !products) return null;
+  const selected = cleanProductIds(body.selected_products, allowedProductIds);
+  if (!state || !selected) return null;
+  const products = selected.slice(0, MAX_PRODUCTS);
   const handoff = body.handoff;
   const handoffRequested = typeof handoff === "boolean"
     ? handoff
@@ -196,7 +202,10 @@ function normalizeDecision(body: ExternalSalesAgentResponse, allowedProductIds: 
   const marker = silent ? { external_silent: true } : {};
   if (handoffRequested) return { kind: "handoff", reason: handoffReason ?? "external_sales_agent_handoff", suggested_products: products, next_action: nextAction, ...marker, ...state };
   if (!message) return null;
-  return { kind: "reply", message, suggested_products: products, next_action: nextAction, ...marker, ...state };
+  // Mesmo mecanismo do agente interno: com product_image_ids o tick envia as fotos
+  // cadastradas logo depois do texto (só quando o modo permite enviar ao cliente).
+  const images = nextAction === SEND_PRODUCT_MEDIA_ACTION ? selected.slice(0, MAX_SALES_AGENT_PRODUCT_IMAGES) : [];
+  return { kind: "reply", message, suggested_products: products, ...(images.length ? { product_image_ids: images } : {}), next_action: nextAction, ...marker, ...state };
 }
 
 export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Promise<ExternalSalesAgentResult> {
