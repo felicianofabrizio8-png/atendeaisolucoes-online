@@ -71,6 +71,7 @@ import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replie
 import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 import { canSalesAgentSend, isConversationAutoReply, resolveSalesAgentMode, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
+import { loadSellerState, saveSellerState } from "./sales-agent-seller-state.server";
 import { applyQuotedMessage, quotedExternalId, type QuotedSourceRow } from "./sales-agent-quoted-message";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
@@ -895,9 +896,18 @@ export async function runAgentTurn(params: {
     },
   };
 
+  // Continuidade comercial: o estado que a Vendedora devolveu no turno anterior desta conversa.
+  const sellerStateConversationId =
+    params.salesStateScope?.scopeType === "whatsapp_conversation" && isExternalSalesAgentActive(params.ctx.settings)
+      ? params.salesStateScope.scopeId
+      : null;
+  const sellerState = sellerStateConversationId
+    ? await loadSellerState(params.ctx.settings.company_id, sellerStateConversationId)
+    : null;
   const external = await callExternalSalesAgent({
     companyId: params.ctx.settings.company_id,
     conversationId: params.salesStateScope?.scopeId ?? null,
+    sellerState,
     history: params.history,
     leadName: params.leadName,
     context: params.ctx,
@@ -911,7 +921,13 @@ export async function runAgentTurn(params: {
   if (params.onExternalSalesAgentResult) {
     try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
   }
-  if (external.enabled && external.ok) return runExternalSafetyLayer(external.decision, external.evidenceText);
+  if (external.enabled && external.ok) {
+    // `silent` só avalia e não altera nada da conversa; nos demais modos o estado é guardado.
+    if (sellerStateConversationId && external.sellerState && resolveSalesAgentMode(params.ctx.settings) !== "silent") {
+      await saveSellerState(params.ctx.settings.company_id, sellerStateConversationId, external.sellerState);
+    }
+    return runExternalSafetyLayer(external.decision, external.evidenceText);
+  }
   // Assistido: se a Vendedora externa falha, o turno termina sem sugestão e o atendente
   // responde como já faria. O fallback para o agente interno podia transferir a conversa
   // para humano de verdade (aguardando_humano) numa falha que é só da integração.

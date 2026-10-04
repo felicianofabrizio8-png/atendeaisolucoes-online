@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { EXTERNAL_SALES_AGENT_MAX_MS, EXTERNAL_SALES_AGENT_MIN_MS } from "./agent-turn-budget";
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
+import { collapseImageRuns, sanitizeSellerState, type SellerState } from "./sales-agent-seller-state";
 import { isConversationAutoReply, resolveSalesAgentMode, SALES_AGENT_MODES, type SalesAgentMode, type SalesAgentModeSettings } from "./sales-agent-mode";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 
@@ -22,7 +23,9 @@ export type ExternalSalesAgentResult =
   | { enabled: false; reason: "disabled" | "mode_not_enabled" | "not_configured"; correlationId: string }
   | { enabled: true; ok: true; decision: AgentDecision; correlationId: string; timing?: ExternalSalesAgentTiming;
       /** Texto de tudo o que a empresa cadastrou e foi enviado à Vendedora neste turno (catálogo + fatos da empresa). */
-      evidenceText: string }
+      evidenceText: string;
+      /** Estado comercial devolvido pela Vendedora, para ser reenviado no próximo turno. */
+      sellerState: SellerState | null }
   | { enabled: true; ok: false; reason: "config_invalid" | "invalid_request" | "budget_exhausted" | "timeout" | "network_error" | "http_error" | "invalid_response"; correlationId: string; timing?: ExternalSalesAgentTiming; httpStatus?: number; invalidResponseCode?: "invalid_json" | "invalid_shape" | "invalid_decision" };
 
 /** Só números: o timeout efetivo dado à Vendedora e quanto a chamada levou. */
@@ -36,6 +39,8 @@ type ExternalSalesAgentInput = {
   context: AgentContextBase;
   interpretation?: unknown;
   commercialState?: unknown;
+  /** Estado comercial que a Vendedora devolveu no turno anterior desta conversa. */
+  sellerState?: unknown;
   nextCatalogQuery?: unknown;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
@@ -245,8 +250,8 @@ const STANDALONE_ROLES = { lead: "user", agent: "assistant", system: "system" } 
 // A standalone acrescenta `message` ao histórico por conta própria, então o turno
 // atual sai do history; papéis seguem o vocabulário dela (user/assistant).
 function toStandaloneHistory(history: ExternalSalesAgentInput["history"], currentIndex: number) {
-  return history
-    .filter((item, index) => index !== currentIndex && typeof item.text === "string" && item.role in STANDALONE_ROLES)
+  const previous = history.filter((item, index) => index !== currentIndex && typeof item.text === "string" && item.role in STANDALONE_ROLES);
+  return collapseImageRuns(previous)
     .slice(-40)
     .map((item) => {
       const productIds = Array.isArray(item.productIds) ? item.productIds.filter((id): id is string => typeof id === "string") : [];
@@ -337,7 +342,8 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     history: toStandaloneHistory(input.history, currentIndex),
     lead_name: leadName,
     catalog,
-    commercial_state: isPlainObject(input.commercialState) ? input.commercialState : {},
+    // O estado da própria Vendedora (turno anterior) é o que dá continuidade à venda.
+    commercial_state: sanitizeSellerState(input.sellerState) ?? (isPlainObject(input.commercialState) ? input.commercialState : {}),
     next_catalog_query: typeof input.nextCatalogQuery === "string" ? input.nextCatalogQuery : null,
     authorized_context: {
       company_name: input.context.companyName,
@@ -385,7 +391,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     try { responseBody = await response.json(); } catch { return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_json" }); }
     if (!isPlainObject(responseBody)) return await finish({ enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_shape" });
     const decision = normalizeDecision(responseBody as ExternalSalesAgentResponse, allowedProducts, mode === "silent", new Set(companyFacts.map((fact) => fact.label)));
-    return await finish(decision ? { enabled: true, ok: true, decision, correlationId, evidenceText } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
+    return await finish(decision ? { enabled: true, ok: true, decision, correlationId, evidenceText, sellerState: sanitizeSellerState((responseBody as ExternalSalesAgentResponse).commercial_state) } : { enabled: true, ok: false, reason: "invalid_response", correlationId, invalidResponseCode: "invalid_decision" });
   } catch (error) {
     return await finish({ enabled: true, ok: false, reason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "network_error", correlationId });
   } finally {

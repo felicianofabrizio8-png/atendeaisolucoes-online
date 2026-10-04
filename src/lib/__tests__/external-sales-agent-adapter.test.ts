@@ -174,6 +174,24 @@ describe("external sales agent adapter", () => {
     const companyWide = await callExternalSalesAgent({ ...input, fetchImpl, context: { ...context, settings: { ...perConversation, sales_agent_v2_mode_source: null } } as unknown as AgentContextBase });
     expect(companyWide).toMatchObject({ enabled: false, reason: "mode_not_enabled" });
   });
+  it("reenvia à Vendedora o estado do turno anterior e devolve o novo para ser guardado", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?", commercial_state: { buyer_stage: "evaluating_terms", buying_signals: ["asked_price", "asked_payment"], turns: 2, shown_products: ["p1"] } }));
+    const result = await callExternalSalesAgent({ ...input, fetchImpl, sellerState: { buyer_stage: "interested", buying_signals: ["asked_price"], turns: 1, lixo: true } });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).commercial_state).toEqual({ buyer_stage: "interested", buying_signals: ["asked_price"], turns: 1 });
+    expect(result).toMatchObject({ ok: true, sellerState: { buyer_stage: "evaluating_terms", buying_signals: ["asked_price", "asked_payment"], turns: 2 } });
+    expect((result as { sellerState: Record<string, unknown> }).sellerState).not.toHaveProperty("shown_products");
+  });
+  it("fotos em sequência chegam à Vendedora como uma linha só do histórico", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, fetchImpl, history: [
+      { role: "agent", text: "[imagem: Produto]", productIds: ["p1"] },
+      { role: "agent", text: "[imagem: Produto]", productIds: ["p1"] },
+      { role: "lead", text: "Quero o produto" },
+    ] });
+    const [, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).history).toEqual([{ role: "assistant", text: "[foto enviada: Produto]", productIds: ["p1"] }]);
+  });
   it("regras ativas e aprendizados aprovados da empresa entram nos fatos enviados à Vendedora", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
     await callExternalSalesAgent({
