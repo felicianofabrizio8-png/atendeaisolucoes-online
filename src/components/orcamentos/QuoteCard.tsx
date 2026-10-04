@@ -203,7 +203,10 @@ export function QuoteCard({
           leadName={lead.name}
           phone={phone}
           onClose={() => setWaOpen(false)}
+          onDone={inConversation ? () => setWaOpen(false) : undefined}
           onSent={(conversationId) => {
+            // Na conversa o atendente já está no lugar certo: não troca de tela.
+            if (inConversation) return;
             setWaOpen(false);
             const targetId = conversationId ?? targetConversationId;
             if (targetId) {

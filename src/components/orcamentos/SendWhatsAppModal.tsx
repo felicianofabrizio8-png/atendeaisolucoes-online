@@ -49,12 +49,15 @@ export function SendWhatsAppModal({
   phone,
   onClose,
   onSent,
+  onDone,
 }: {
   quote: Quote;
   leadName: string;
   phone: string;
   onClose: () => void;
   onSent: (conversationId?: string) => void;
+  /** Chamado quando o envio em sequência termina sem falhas. */
+  onDone?: () => void;
 }) {
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
@@ -254,6 +257,7 @@ export function SendWhatsAppModal({
     });
     if (okCount > 0 && !failedKey) {
       toast.success(`${okCount} mensagem(ns) enviada(s)`);
+      onDone?.();
       return;
     }
     if (okCount > 0 && failedKey) {
@@ -384,7 +388,7 @@ export function SendWhatsAppModal({
           </div>
 
           {/* Fotos */}
-          <BlockRow blockKey="photos" title="1. Fotos do produto">
+          <BlockRow blockKey="photos" title="Fotos do produto">
             {availableImages.length > 0 ? (
               <>
                 <div className="flex items-center justify-between">
@@ -436,25 +440,33 @@ export function SendWhatsAppModal({
             )}
           </BlockRow>
 
-          <BlockRow blockKey="base" title="2. Mensagem principal do orçamento">
+          <BlockRow blockKey="base" title="Mensagem do orçamento">
             <TextBlock blockKey="base" />
           </BlockRow>
 
-          <BlockRow blockKey="inclusos" title="3. Itens inclusos">
-            <TextBlock blockKey="inclusos" />
-          </BlockRow>
+          {available.inclusos && (
+            <BlockRow blockKey="inclusos" title="Itens inclusos">
+              <TextBlock blockKey="inclusos" />
+            </BlockRow>
+          )}
 
-          <BlockRow blockKey="brindes" title="4. Brindes">
-            <TextBlock blockKey="brindes" />
-          </BlockRow>
+          {available.brindes && (
+            <BlockRow blockKey="brindes" title="Brindes">
+              <TextBlock blockKey="brindes" />
+            </BlockRow>
+          )}
 
-          <BlockRow blockKey="porConta" title="5. Por conta do cliente">
-            <TextBlock blockKey="porConta" />
-          </BlockRow>
+          {available.porConta && (
+            <BlockRow blockKey="porConta" title="Por conta do cliente">
+              <TextBlock blockKey="porConta" />
+            </BlockRow>
+          )}
 
-          <BlockRow blockKey="notes" title="6. Observações">
-            <TextBlock blockKey="notes" />
-          </BlockRow>
+          {available.notes && (
+            <BlockRow blockKey="notes" title="Observações">
+              <TextBlock blockKey="notes" />
+            </BlockRow>
+          )}
         </div>
 
         <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:flex-wrap items-stretch md:items-center md:justify-end gap-2 safe-bottom">
