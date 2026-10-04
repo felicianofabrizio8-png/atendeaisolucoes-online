@@ -1665,6 +1665,26 @@ async function runAgentTickPass(
   );
   if (!guard.ok) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, `skipped_${guard.reason}`, {});
+    // Vendedora 2.0 respondendo sozinha e o limite de respostas automáticas acabou: em vez de
+    // deixar o cliente sem resposta e sem aviso, a conversa passa para a equipe (uma vez só —
+    // depois disso o status "aguardando_humano" já segura os próximos turnos).
+    if (guard.reason === "rate_limit" && resolveSalesAgentMode(ctx.settings) === "automatic") {
+      const { data: handed } = await supabaseAdmin
+        .from("conversations")
+        .update({ ai_status: "aguardando_humano" })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id)
+        .select("id")
+        .maybeSingle();
+      if (handed) {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
+          source: "auto_reply_limit",
+          reason: "auto_reply_limit_reached",
+        });
+        await sendHandoffNotice(conv, ctx.settings, "automatic");
+        return { ok: true, action: "handoff", reason: "auto_reply_limit_reached" };
+      }
+    }
     return { ok: true, action: "skipped", reason: guard.reason };
   }
 
