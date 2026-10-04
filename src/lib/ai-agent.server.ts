@@ -867,6 +867,13 @@ export async function runAgentTurn(params: {
     try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
   }
   if (external.enabled && external.ok) return external.decision;
+  // Assistido: se a Vendedora externa falha, o turno termina sem sugestão e o atendente
+  // responde como já faria. O fallback para o agente interno podia transferir a conversa
+  // para humano de verdade (aguardando_humano) numa falha que é só da integração.
+  // Silent não altera nada e automatic precisa responder: ambos mantêm o fallback.
+  if (external.enabled && !external.ok && resolveSalesAgentMode(params.ctx.settings) === "assisted") {
+    return { kind: "skip", reason: "external_sales_agent_unavailable", fallback_reason: "external_sales_agent_unavailable" };
+  }
 
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;

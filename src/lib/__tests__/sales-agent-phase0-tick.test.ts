@@ -729,6 +729,27 @@ describe("runAgentTick · liberação do lock ai_handling", () => {
 });
 
 describe("runAgentTick · auditoria da Vendedora externa", () => {
+  it("turno assisted com falha da Vendedora externa termina sem sugestão e sem handoff", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 502 })));
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "no_message" });
+      expect(decideSpy).not.toHaveBeenCalled();
+      expect(calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert")).toHaveLength(0);
+      expect(
+        calls().filter((c) => c.table === "conversations" && c.op === "update" && c.values?.ai_status === "aguardando_humano"),
+      ).toHaveLength(0);
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
   it("turno assisted com resposta externa vira sugestão pendente e nada é enviado", async () => {
     install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
     vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);

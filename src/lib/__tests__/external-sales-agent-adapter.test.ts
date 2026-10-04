@@ -89,6 +89,12 @@ describe("external sales agent adapter", () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ response: "x", selected_products: ["other"] })) });
     expect(result).toMatchObject({ enabled: true, ok: false, reason: "invalid_response" });
   });
+  it("aceita a resposta com muitos produtos apresentados, ficando com os primeiros", async () => {
+    const many = { ...context, grounding: { ...context.grounding, catalog: Array.from({ length: 7 }, (_, i) => ({ ...context.grounding.catalog[0], id: `p${i + 1}`, name: `Produto ${i + 1}` })) } } as unknown as AgentContextBase;
+    const ids = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"];
+    const result = await callExternalSalesAgent({ ...input, context: many, fetchImpl: vi.fn().mockResolvedValue(response({ response: "Temos sete opções.", selected_products: ids })) });
+    expect(result).toMatchObject({ enabled: true, ok: true, decision: { kind: "reply", suggested_products: ["p1", "p2", "p3", "p4", "p5"] } });
+  });
   it("transforma handoff em decisão dominante", async () => {
     const result = await callExternalSalesAgent({ ...input, fetchImpl: vi.fn().mockResolvedValue(response({ handoff: { required: true, reason: "cliente pediu humano" }, selected_products: ["p1"] })) });
     expect(result).toMatchObject({ ok: true, decision: { kind: "handoff", reason: "cliente pediu humano", external_silent: true } });

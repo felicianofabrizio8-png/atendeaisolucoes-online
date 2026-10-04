@@ -100,8 +100,11 @@ function cleanProductIds(value: unknown, allowed: Set<string>): string[] | null 
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const ids = [...new Set(value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())))];
-  if (ids.length > MAX_PRODUCTS || ids.some((id) => !allowed.has(id))) return null;
-  return ids;
+  // Produto fora do catálogo autorizado invalida a decisão. Produtos demais não: a
+  // Vendedora pode apresentar várias opções num turno, e recusar a resposta inteira
+  // por isso (invalid_decision) jogava o turno no fallback. Ficam os primeiros.
+  if (ids.some((id) => !allowed.has(id))) return null;
+  return ids.slice(0, MAX_PRODUCTS);
 }
 
 function cleanCommercialState(value: unknown): Record<string, string | null> | null {
