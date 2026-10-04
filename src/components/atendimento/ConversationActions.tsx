@@ -46,6 +46,7 @@ import {
   subscribeQuotes,
   type Quote,
 } from "@/data/quotes";
+import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
 import { formatBRL, type Conversation, type Lead, type Message } from "@/data/mock";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +106,7 @@ export function ConversationActions({
   const [modal, setModal] = useState<Modal>(null);
   const { takeOver, takingOver } = useTakeOver(conversation.id);
   const [quoteBusy, setQuoteBusy] = useState(false);
+  const [quoteForm, setQuoteForm] = useState<{ productId?: string; reason?: string } | null>(null);
   const followup = useManualFollowup(conversation.id, onFollowupUpdated);
   const pendingQuote = usePendingQuote(lead.id);
   const locked = closed || disabled;
@@ -164,24 +166,29 @@ export function ConversationActions({
     setQuoteBusy(true);
     const suggestion = await suggestQuoteProduct({ lead, messages });
     setQuoteBusy(false);
-    navigate({
-      to: "/orcamentos",
-      search: {
-        new: "1",
-        leadId: lead.id,
-        conversationId: conversation.id,
-        returnTo: "atendimento",
-        ...(suggestion
-          ? { suggestedProductId: suggestion.productId, suggestionReason: suggestion.reason }
-          : {}),
-      },
-    });
+    // O formulário abre por cima da conversa: o atendente não sai do atendimento.
+    setQuoteForm({ productId: suggestion?.productId, reason: suggestion?.reason });
   };
 
   const showTakeOver = !disabled && aiIsActive(conversation);
 
   return (
     <>
+      {quoteForm && (
+        <QuoteFormModal
+          defaultLeadId={lead.id}
+          defaultConversationId={conversation.id}
+          defaultProductId={quoteForm.productId}
+          suggestionReason={quoteForm.reason}
+          onCancel={() => setQuoteForm(null)}
+          onCreated={() => {
+            setQuoteForm(null);
+            toast.success("Orçamento salvo e pronto para enviar", {
+              description: "Envie pelo menu ⋯ ou pela seção Orçamentos, na aba Info.",
+            });
+          }}
+        />
+      )}
       {!locked && (
         <button
           type="button"
@@ -213,7 +220,7 @@ export function ConversationActions({
             )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuContent align="end" className="w-72">
           <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Venda
           </DropdownMenuLabel>
@@ -223,7 +230,7 @@ export function ConversationActions({
               onSelect={() => void sendPendingQuote()}
             >
               <Send className="h-4 w-4" />
-              <span className="min-w-0 flex-1 truncate">
+              <span className="min-w-0 flex-1">
                 Enviar orçamento · {formatBRL(pendingQuote.finalValue)}
               </span>
             </DropdownMenuItem>

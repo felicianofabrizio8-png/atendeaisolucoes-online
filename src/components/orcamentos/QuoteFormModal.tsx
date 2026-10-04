@@ -151,10 +151,8 @@ export function QuoteFormModal({
       setDefIncluded(inc);
       setDefGifts(gif);
       setDefCustomer(cus);
-      // Pré-preenche apenas se o usuário ainda não digitou nada.
-      setInclusosText((prev) => (prev ? prev : inc));
-      setBrindesText((prev) => (prev ? prev : gif));
-      setPorContaText((prev) => (prev ? prev : cus));
+      // Os textos longos (itens inclusos, brindes, por conta do cliente) não entram mais no
+      // orçamento: ficam nas respostas rápidas da empresa, enviadas quando fizer sentido.
       setDefaultsLoaded(true);
     })();
     return () => {
@@ -637,57 +635,6 @@ export function QuoteFormModal({
             )}
           </div>
 
-          {/* Itens inclusos / Brindes / Por conta do cliente — textos multilinha,
-              pré-preenchidos com os padrões da empresa. */}
-          <div className="md:col-span-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Conteúdo do orçamento
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={applyDefaultsNow}
-                  disabled={!defaultsLoaded}
-                  className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent disabled:opacity-50"
-                  title="Recarrega os textos padrão da empresa neste orçamento"
-                >
-                  <RotateCcw className="h-3 w-3" /> Aplicar padrão
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditDefaultsOpen(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
-                >
-                  <SettingsIcon className="h-3 w-3" /> Editar padrão
-                </button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <TextBlockField
-                label="✅ Itens inclusos"
-                placeholder={"Ex:\n• Piscina 8x4\n• Instalação\n• Filtro"}
-                value={inclusosText}
-                onChange={setInclusosText}
-              />
-              <TextBlockField
-                label="🎁 Brindes"
-                placeholder={"Ex:\n• Led colorido\n• Kit limpeza"}
-                value={brindesText}
-                onChange={setBrindesText}
-              />
-              <TextBlockField
-                label="⚠️ Por conta do cliente"
-                placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
-                value={porContaText}
-                onChange={setPorContaText}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              As quebras de linha, emojis e marcadores são preservados na mensagem do WhatsApp.
-            </p>
-          </div>
-
           {/* Observações */}
           <div className="md:col-span-2">
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
@@ -786,7 +733,7 @@ export function QuoteFormModal({
               {submitting
                 ? "Salvando…"
                 : defaultConversationId && defaultLeadId && defaultLeadId === leadId
-                  ? "Salvar e enviar"
+                  ? "Salvar e deixar pronto"
                   : "Salvar orçamento"}
             </button>
           </div>

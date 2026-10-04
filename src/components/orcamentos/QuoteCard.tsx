@@ -18,13 +18,20 @@ import {
 import { toast } from "sonner";
 import { formatBRL, timeAgo } from "@/data/mock";
 import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
-import { computeQuoteStatus, deleteQuote } from "@/data/quotes";
+import { computeQuoteStatus, deleteQuote, formatQuoteDate } from "@/data/quotes";
 import { cn } from "@/lib/utils";
 import type { Channel } from "@/data/mock";
 import type { Quote, QuoteStatus } from "@/data/quotes";
 import { SendWhatsAppModal, Chip } from "./SendWhatsAppModal";
 
-export function QuoteCard({ quote }: { quote: Quote }) {
+export function QuoteCard({
+  quote,
+  inConversation = false,
+}: {
+  quote: Quote;
+  /** Cartão exibido dentro da própria conversa: não repete o cliente nem "Abrir conversa". */
+  inConversation?: boolean;
+}) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
   const lead = leads.find((l) => l.id === quote.leadId);
 
@@ -101,10 +108,14 @@ export function QuoteCard({ quote }: { quote: Quote }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold truncate">{quote.productName}</div>
-            <div className="text-[12px] font-medium truncate">
-              {lead?.name ?? "— Cliente não selecionado —"}
-            </div>
-            <div className="text-[11px] text-muted-foreground truncate">{contactLine}</div>
+            {!inConversation && (
+              <>
+                <div className="text-[12px] font-medium truncate">
+                  {lead?.name ?? "— Cliente não selecionado —"}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">{contactLine}</div>
+              </>
+            )}
             <div className="text-[11px] text-muted-foreground">há {timeAgo(quote.createdAt)}</div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
@@ -124,7 +135,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
         <div className="flex flex-wrap gap-1.5 text-[11px]">
           <Chip>{quote.paymentMethod}</Chip>
           {quote.discount > 0 && <Chip>Desc. {formatBRL(quote.discount)}</Chip>}
-          <Chip>Válido até {new Date(quote.validUntil).toLocaleDateString("pt-BR")}</Chip>
+          <Chip>Válido até {formatQuoteDate(quote.validUntil)}</Chip>
           <StatusBadge status={status} />
         </div>
 
@@ -154,14 +165,16 @@ export function QuoteCard({ quote }: { quote: Quote }) {
             {quote.sent ? "Reenviar no WhatsApp" : "Enviar no WhatsApp"}
           </button>
           <div className="flex items-center gap-2">
-            <button
-              onClick={openConversation}
-              disabled={!hasClient}
-              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
-            >
-              <MessageCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              <span className="md:inline">Abrir conversa</span>
-            </button>
+            {!inConversation && (
+              <button
+                onClick={openConversation}
+                disabled={!hasClient}
+                className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
+              >
+                <MessageCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
+                <span className="md:inline">Abrir conversa</span>
+              </button>
+            )}
             <button
               onClick={copyMessage}
               aria-label="Copiar orçamento"

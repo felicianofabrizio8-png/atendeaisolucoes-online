@@ -113,6 +113,16 @@ export interface QuoteInput {
 }
 
 
+/**
+ * Data de validade para exibir. `valid_until` é só o dia (AAAA-MM-DD): interpretar como
+ * instante UTC mostrava o dia anterior no Brasil, inclusive na mensagem enviada ao cliente.
+ */
+export function formatQuoteDate(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value.split("-").reverse().join("/")
+    : new Date(value).toLocaleDateString("pt-BR");
+}
+
 export function buildQuoteMessage(args: {
   product: Product;
   finalValue: number;
@@ -122,7 +132,7 @@ export function buildQuoteMessage(args: {
   discount: number;
 }): string {
   const { product, finalValue, installments, paymentMethod, validUntil, discount } = args;
-  const validStr = new Date(validUntil).toLocaleDateString("pt-BR");
+  const validStr = formatQuoteDate(validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${product.name}* ficou em *${formatBRL(finalValue)}*.`);
   if (discount > 0) {
@@ -136,9 +146,9 @@ export function buildQuoteMessage(args: {
   } else {
     lines.push(`Forma de pagamento: *${paymentMethod}* (à vista).`);
   }
+  // Mensagem curta e neutra, para qualquer tipo de negócio: itens inclusos, garantia,
+  // pagamento e afins ficam nas respostas rápidas que cada empresa cadastra.
   lines.push(`Proposta válida até *${validStr}*.`);
-  lines.push("");
-  lines.push("Posso reservar para você?");
   return lines.join("\n");
 }
 

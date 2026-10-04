@@ -7,6 +7,8 @@ import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { AITimeline } from "@/components/AITimeline";
 import { useSalesAgentPanelMode } from "@/hooks/useSalesAgentPanelMode";
+import { listQuotes, subscribeQuotes } from "@/data/quotes";
+import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { AiComposer, type Attachment } from "./AiComposer";
 import { SiriOrb } from "./SiriOrb";
@@ -308,6 +310,8 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
         </div>
       )}
 
+      <ConversationQuotes leadId={lead.id} />
+
       <div className="mb-2 rounded-2xl border border-border p-3.5">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
           Relacionamento
@@ -320,6 +324,48 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
         <p className="mt-1 text-xs text-muted-foreground">{tier.reason}</p>
         <p className="mt-2 text-[11px] text-muted-foreground">{describeHistory(history)}</p>
       </div>
+    </div>
+  );
+}
+
+const MAX_CONVERSATION_QUOTES = 5;
+
+/**
+ * Orçamentos deste cliente, dentro da conversa: o pendente fica visível com o botão de
+ * enviar, e os enviados podem ser reenviados ou copiados — sem ir à tela Orçamentos.
+ * Usa a mesma lista (já filtrada pela empresa) e o mesmo cartão daquela tela.
+ */
+function ConversationQuotes({ leadId }: { leadId: string }) {
+  const quotes = useSyncExternalStore(subscribeQuotes, listQuotes, listQuotes);
+  const mine = useMemo(
+    () =>
+      quotes
+        .filter((quote) => quote.leadId === leadId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [quotes, leadId],
+  );
+
+  return (
+    <div data-testid="conversation-quotes" className="space-y-2">
+      <p className="text-[13px] font-bold">
+        Orçamentos{mine.length > 0 ? ` (${mine.length})` : ""}
+      </p>
+      {mine.length === 0 ? (
+        <p className="rounded-2xl border border-border bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground">
+          Nenhum orçamento para este cliente. Crie pelo menu ⋯ da conversa.
+        </p>
+      ) : (
+        <>
+          {mine.slice(0, MAX_CONVERSATION_QUOTES).map((quote) => (
+            <QuoteCard key={quote.id} quote={quote} inConversation />
+          ))}
+          {mine.length > MAX_CONVERSATION_QUOTES && (
+            <p className="text-[11px] text-muted-foreground">
+              Mostrando os {MAX_CONVERSATION_QUOTES} mais recentes de {mine.length}. Os demais estão na tela Orçamentos.
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
