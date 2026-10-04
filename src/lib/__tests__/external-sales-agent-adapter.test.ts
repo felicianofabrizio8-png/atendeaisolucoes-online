@@ -162,6 +162,18 @@ describe("external sales agent adapter", () => {
     expect(isExternalSalesAgentActive({ ...settings, sales_agent_v2_mode: "automatic" }, input.env)).toBe(false);
     expect(isExternalSalesAgentActive(settings, { ...input.env, EXTERNAL_SALES_AGENT_API_KEY: "" })).toBe(false);
   });
+  it("automático ligado na conversa usa a Vendedora externa sem liberar o automático da empresa", async () => {
+    const perConversation = { company_id: "company-1", sales_agent_v2_enabled: true, sales_agent_v2_mode: "automatic", sales_agent_v2_mode_source: "conversation" };
+    expect(isExternalSalesAgentActive(perConversation, input.env)).toBe(true);
+    // Sem `assisted` habilitado no ambiente, a conversa também não liga.
+    expect(isExternalSalesAgentActive(perConversation, { ...input.env, EXTERNAL_SALES_AGENT_MODES: "silent" })).toBe(false);
+    const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    const result = await callExternalSalesAgent({ ...input, fetchImpl, context: { ...context, settings: perConversation } as unknown as AgentContextBase });
+    expect(result).toMatchObject({ ok: true, decision: { kind: "reply" } });
+    // Automático da empresa inteira segue exigindo o opt-in do ambiente.
+    const companyWide = await callExternalSalesAgent({ ...input, fetchImpl, context: { ...context, settings: { ...perConversation, sales_agent_v2_mode_source: null } } as unknown as AgentContextBase });
+    expect(companyWide).toMatchObject({ enabled: false, reason: "mode_not_enabled" });
+  });
   it("regras ativas e aprendizados aprovados da empresa entram nos fatos enviados à Vendedora", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
     await callExternalSalesAgent({

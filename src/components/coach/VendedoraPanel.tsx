@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ALERT_LABEL, SEVERITY_STYLE, type CoachAlert } from "@/components/coach/coach-alerts";
 import type { CoachPanelMessage } from "@/components/coach/CoachPanel";
 import { SalesAgentAssistedCard, type AssistedSuggestion } from "@/components/coach/SalesAgentAssistedCard";
+import { ConversationAutoReplyToggle } from "@/components/coach/ConversationAutoReplyToggle";
 import { TeachModeDrawer, type TeachSourceSuggestion } from "@/components/coach/TeachModeDrawer";
 
 /**
@@ -43,6 +44,7 @@ export function VendedoraPanel({
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSuggestion, setHasSuggestion] = useState(false);
+  const [autoReply, setAutoReply] = useState(false);
   const [teachOpen, setTeachOpen] = useState(false);
   const [teachSource, setTeachSource] = useState<TeachSourceSuggestion | null>(null);
   const activeConversationRef = useRef(conversationId);
@@ -189,6 +191,8 @@ export function VendedoraPanel({
         </div>
       )}
 
+      <ConversationAutoReplyToggle conversationId={conversationId} onChange={setAutoReply} />
+
       <SalesAgentAssistedCard
         conversationId={conversationId}
         onInsertSuggestion={onInsertSuggestion}
@@ -199,7 +203,9 @@ export function VendedoraPanel({
 
       {!hasSuggestion && !humanActive && (
         <div data-testid="vendedora-panel-empty" className="text-xs text-muted-foreground italic">
-          Sem sugestão pendente. A Vendedora sugere quando o cliente mandar a próxima mensagem.
+          {autoReply
+            ? "A Vendedora responde sozinha quando o cliente mandar a próxima mensagem."
+            : "Sem sugestão pendente. A Vendedora sugere quando o cliente mandar a próxima mensagem."}
         </div>
       )}
 

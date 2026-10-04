@@ -70,7 +70,7 @@ import { callExternalSalesAgent, isExternalSalesAgentActive, type ExternalSalesA
 import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replies.repository";
 import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
-import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
+import { canSalesAgentSend, isConversationAutoReply, resolveSalesAgentMode, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
@@ -915,7 +915,12 @@ export async function runAgentTurn(params: {
   // responde como já faria. O fallback para o agente interno podia transferir a conversa
   // para humano de verdade (aguardando_humano) numa falha que é só da integração.
   // Silent não altera nada e automatic precisa responder: ambos mantêm o fallback.
-  if (external.enabled && !external.ok && resolveSalesAgentMode(params.ctx.settings) === "assisted") {
+  // Automático ligado só na conversa: a empresa é `assisted`, então vale a mesma regra — sem
+  // a Vendedora externa ninguém responde no lugar dela; o atendente que acompanha responde.
+  if (
+    external.enabled && !external.ok &&
+    (resolveSalesAgentMode(params.ctx.settings) === "assisted" || isConversationAutoReply(params.ctx.settings))
+  ) {
     return { kind: "skip", reason: "external_sales_agent_unavailable", fallback_reason: "external_sales_agent_unavailable" };
   }
   // A Vendedora externa falhou e o agente interno vai decidir: vale a triagem dele.
@@ -1520,6 +1525,22 @@ async function releaseAgentLock(conv: { id: string; company_id: string; lead_id:
   await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_lock_release_failed", {});
 }
 
+/** Automático ligado pelo atendente nesta conversa. Qualquer falha de leitura vale como desligado. */
+async function readConversationAutoReply(companyId: string, conversationId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("conversations")
+      .select("sales_agent_auto_reply")
+      .eq("id", conversationId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) return false;
+    return (data as { sales_agent_auto_reply?: boolean | null } | null)?.sales_agent_auto_reply === true;
+  } catch {
+    return false;
+  }
+}
+
 async function runAgentTickPass(
   conversationId: string,
   options: { force: boolean; deadlineAt: number },
@@ -1555,8 +1576,16 @@ async function runAgentTickPass(
     return { ok: true, action: "skipped", reason: "channel_unsupported" };
   }
 
-  const ctx = await loadAgentContext(conv.company_id);
-  if (!ctx) return { ok: false, action: "error", reason: "no_settings" };
+  const baseCtx = await loadAgentContext(conv.company_id);
+  if (!baseCtx) return { ok: false, action: "error", reason: "no_settings" };
+  // Automático por conversa: lido à parte para que a falta da coluna (migration ainda não
+  // aplicada) ou um erro de leitura só deixe a conversa no modo da empresa.
+  const conversationAutoReply =
+    resolveSalesAgentMode(baseCtx.settings) === "assisted" &&
+    (await readConversationAutoReply(conv.company_id, conv.id));
+  const withConversationMode = <T extends { settings: AgentSettings }>(value: T): T =>
+    conversationAutoReply ? { ...value, settings: withConversationAutoReply(value.settings, true) } : value;
+  const ctx = withConversationMode(baseCtx);
 
   const auditStartedAt = Date.now();
   const auditMode: SalesAgentAuditMode = resolveSalesAgentMode(ctx.settings) ?? "off";
@@ -1641,7 +1670,7 @@ async function runAgentTickPass(
 
   // Assistido: o cliente mandou outra mensagem, então a sugestão pendente anterior deixou
   // de ser a atual. Sai do cartão (não é apagada) antes de o turno gerar a nova.
-  if (v2Mode === "assisted") {
+  if (v2Mode === "assisted" || conversationAutoReply) {
     try {
       await supabaseAdmin
         .from("ai_suggestions_log")
@@ -1773,8 +1802,9 @@ async function runAgentTickPass(
         fallback_reason: audioState === "failed" ? "audio_transcription_failed" : "audio_transcription_pending",
       };
     } else {
-      const turnCtx = await loadAgentContext(conv.company_id, history);
-      if (!turnCtx) return { ok: false, action: "error", reason: "no_settings" };
+      const loadedTurnCtx = await loadAgentContext(conv.company_id, history);
+      if (!loadedTurnCtx) return { ok: false, action: "error", reason: "no_settings" };
+      const turnCtx = withConversationMode(loadedTurnCtx);
       // Percentuais citados em qualquer política cadastrada (ex.: entrada)
       // podem ser repetidos; os demais continuam bloqueados.
       const rules = ctx.grounding.commercialRules;

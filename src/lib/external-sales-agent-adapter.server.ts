@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { EXTERNAL_SALES_AGENT_MAX_MS, EXTERNAL_SALES_AGENT_MIN_MS } from "./agent-turn-budget";
 import { normalizeProductFacts, renderFactValue, UNIVERSAL_FACT_KEYS } from "./catalog-facts";
 import type { AgentContextBase, AgentDecision } from "./sales-agent-core";
-import { resolveSalesAgentMode, SALES_AGENT_MODES, type SalesAgentMode } from "./sales-agent-mode";
+import { isConversationAutoReply, resolveSalesAgentMode, SALES_AGENT_MODES, type SalesAgentMode, type SalesAgentModeSettings } from "./sales-agent-mode";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
 
 const DEFAULT_TIMEOUT_MS = EXTERNAL_SALES_AGENT_MAX_MS;
@@ -80,18 +80,27 @@ function enabledModes(env: Record<string, string | undefined>): Set<SalesAgentMo
   );
 }
 
+// O automático ligado pelo atendente numa conversa é uma escolha explícita dele dentro de
+// uma empresa em `assisted`: vale quando `assisted` está habilitado. O automático da empresa
+// inteira continua exigindo o opt-in em EXTERNAL_SALES_AGENT_MODES.
+function modeEnabled(env: Record<string, string | undefined>, settings: SalesAgentModeSettings): boolean {
+  const mode = resolveSalesAgentMode(settings);
+  if (mode === null) return false;
+  const enabled = enabledModes(env);
+  return enabled.has(mode) || (isConversationAutoReply(settings) && enabled.has("assisted"));
+}
+
 /**
  * A Vendedora externa atende este tenant neste modo? (allowlist, modo e configuração válida.)
  * Quando atende, é ela quem decide o turno com os dados cadastrados da empresa: o tick não
  * faz a triagem por palavra-chave antes de chamá-la.
  */
 export function isExternalSalesAgentActive(
-  settings: { company_id: string; sales_agent_v2_enabled?: boolean | null; sales_agent_v2_mode?: string | null },
+  settings: { company_id: string } & SalesAgentModeSettings,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (!configuredCompanyIds(env).has(settings.company_id)) return false;
-  const mode = resolveSalesAgentMode(settings);
-  return mode !== null && enabledModes(env).has(mode) && getConfig(env) !== null;
+  return modeEnabled(env, settings) && getConfig(env) !== null;
 }
 
 function getConfig(env: Record<string, string | undefined>) {
@@ -291,7 +300,7 @@ export async function callExternalSalesAgent(input: ExternalSalesAgentInput): Pr
     return result;
   }
   const mode = resolveSalesAgentMode(input.context.settings);
-  if (mode === null || !enabledModes(env).has(mode)) {
+  if (mode === null || !modeEnabled(env, input.context.settings)) {
     const result = { enabled: false as const, reason: "mode_not_enabled" as const, correlationId };
     await notify(input, result);
     return result;
