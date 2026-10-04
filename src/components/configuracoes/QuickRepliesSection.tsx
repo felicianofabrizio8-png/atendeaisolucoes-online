@@ -2,6 +2,7 @@
 // src/routes/configuracoes_.respostas-rapidas.tsx).
 
 import { useCallback, useEffect, useState } from "react";
+import { QuickReplyValidityBadge } from "@/components/quick-replies/QuickReplyValidityBadge";
 import {
   DndContext,
   closestCenter,
@@ -51,6 +52,7 @@ type FormState = {
   category: string;
   content: string;
   active: boolean;
+  validUntil: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -60,6 +62,7 @@ const EMPTY_FORM: FormState = {
   category: "",
   content: "",
   active: true,
+  validUntil: "",
 };
 
 function errorInfo(error: unknown) {
@@ -108,6 +111,7 @@ export function QuickRepliesSection() {
       category: q.category ?? "",
       content: q.content,
       active: q.active,
+      validUntil: q.valid_until ?? "",
     });
     setShowForm(true);
   };
@@ -130,6 +134,9 @@ export function QuickRepliesSection() {
         content: form.content,
         active: form.id ? form.active : true,
       };
+      // A validade só é gravada quando mudou: resposta sem prazo não toca nessa coluna.
+      const previousValidUntil = items.find((item) => item.id === form.id)?.valid_until ?? "";
+      if (form.validUntil !== previousValidUntil) payload.valid_until = form.validUntil || null;
       if (form.id) {
         console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: form.id, company_id: companyId, name: form.name });
         const saved = await updateQuickReply(companyId, form.id, payload);
@@ -360,6 +367,21 @@ export function QuickRepliesSection() {
                   O atendente poderá editar antes de enviar.
                 </p>
               </div>
+              <div>
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase">
+                  Válido até (opcional)
+                </label>
+                <input
+                  type="date"
+                  value={form.validUntil}
+                  onChange={(e) => setForm({ ...form, validUntil: e.target.value })}
+                  className="mt-1 w-full rounded-md bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Use em informação com prazo (entrega, promoção). Depois dessa data a IA deixa de usar
+                  esta resposta e encaminha a pergunta para um atendente.
+                </p>
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -432,7 +454,10 @@ function SortableRow({
       </button>
       <div className="text-lg w-7 text-center">{item.icon || "💬"}</div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">{item.name}</div>
+        <div className="text-sm font-semibold truncate">
+          {item.name}
+          <QuickReplyValidityBadge validUntil={item.valid_until} />
+        </div>
         <div className="text-[11px] text-muted-foreground truncate">
           {item.category ? <span className="mr-2">[{item.category}]</span> : null}
           {item.content.slice(0, 80)}
