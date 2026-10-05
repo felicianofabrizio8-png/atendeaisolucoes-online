@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Check, Loader2, Pencil, RotateCcw, Settings2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Pencil, RotateCcw, Settings2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -57,6 +57,35 @@ const emptyCustomer: QuoteCustomerDetails = {
   state: "",
   postalCode: "",
 };
+const BRAZILIAN_STATES = [
+  ["AC", "Acre"],
+  ["AL", "Alagoas"],
+  ["AP", "Amapá"],
+  ["AM", "Amazonas"],
+  ["BA", "Bahia"],
+  ["CE", "Ceará"],
+  ["DF", "Distrito Federal"],
+  ["ES", "Espírito Santo"],
+  ["GO", "Goiás"],
+  ["MA", "Maranhão"],
+  ["MT", "Mato Grosso"],
+  ["MS", "Mato Grosso do Sul"],
+  ["MG", "Minas Gerais"],
+  ["PA", "Pará"],
+  ["PB", "Paraíba"],
+  ["PR", "Paraná"],
+  ["PE", "Pernambuco"],
+  ["PI", "Piauí"],
+  ["RJ", "Rio de Janeiro"],
+  ["RN", "Rio Grande do Norte"],
+  ["RS", "Rio Grande do Sul"],
+  ["RO", "Rondônia"],
+  ["RR", "Roraima"],
+  ["SC", "Santa Catarina"],
+  ["SP", "São Paulo"],
+  ["SE", "Sergipe"],
+  ["TO", "Tocantins"],
+] as const;
 const inputClass =
   "quote-form-input w-full min-h-10 rounded-md border border-transparent bg-[#1d1d1d] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/50";
 function FormField({
@@ -181,8 +210,52 @@ export function QuoteFormModal({
   });
   const [editDefaultsOpen, setEditDefaultsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [stateMenuOpen, setStateMenuOpen] = useState(false);
 
   const selectedLead = leadId ? leads.find((lead) => lead.id === leadId) : undefined;
+  useEffect(() => {
+    const cep = customer.postalCode.replace(/\D/g, "");
+    if (cep.length !== 8) {
+      setCepLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setCepLoading(true);
+    void fetch(`https://viacep.com.br/ws/${cep}/json/`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("CEP indisponível");
+        return response.json() as Promise<{
+          erro?: boolean;
+          logradouro?: string;
+          bairro?: string;
+          localidade?: string;
+          uf?: string;
+        }>;
+      })
+      .then((address) => {
+        if (address.erro) {
+          toast.error("CEP não encontrado");
+          return;
+        }
+        setCustomer((current) => ({
+          ...current,
+          street: address.logradouro || current.street,
+          neighborhood: address.bairro || current.neighborhood,
+          city: address.localidade || current.city,
+          state: address.uf || current.state,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name !== "AbortError") {
+          toast.error("Não foi possível consultar o CEP");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCepLoading(false);
+      });
+    return () => controller.abort();
+  }, [customer.postalCode]);
   useEffect(() => {
     if (!selectedLead || quote?.customerDetails) return;
     setCustomer((current) =>
@@ -554,18 +627,57 @@ export function QuoteFormModal({
                       />
                     </FormField>
                     <FormField label="Estado">
-                      <input
-                        value={customer.state}
-                        onChange={(event) => changeCustomer("state", event.target.value)}
-                        className={inputClass}
-                      />
+                      <div className="relative">
+                        <button
+                          type="button"
+                          aria-label="Selecionar estado"
+                          aria-expanded={stateMenuOpen}
+                          onClick={() => setStateMenuOpen((open) => !open)}
+                          className={`${inputClass} flex items-center justify-between text-left`}
+                        >
+                          <span className={customer.state ? "text-white" : "text-white/40"}>
+                            {customer.state || "Selecione a UF"}
+                          </span>
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                        {stateMenuOpen && (
+                          <div className="absolute inset-x-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-md border border-white/15 bg-[#171717] p-1 shadow-xl">
+                            {BRAZILIAN_STATES.map(([uf, name]) => (
+                              <button
+                                type="button"
+                                key={uf}
+                                onClick={() => {
+                                  changeCustomer("state", uf);
+                                  setStateMenuOpen(false);
+                                }}
+                                className="flex w-full items-center justify-between rounded px-2.5 py-2 text-left text-sm hover:bg-white/10"
+                              >
+                                <span>{name}</span>
+                                <span className="font-semibold text-white/60">{uf}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </FormField>
                     <FormField label="CEP">
                       <input
                         value={customer.postalCode}
-                        onChange={(event) => changeCustomer("postalCode", event.target.value)}
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        placeholder="00000-000"
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/\D/g, "").slice(0, 8);
+                          changeCustomer(
+                            "postalCode",
+                            digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits,
+                          );
+                        }}
                         className={inputClass}
                       />
+                      {cepLoading && (
+                        <span className="mt-1 block text-xs text-white/50">Buscando endereço…</span>
+                      )}
                     </FormField>
                   </div>
                 </section>

@@ -15,20 +15,23 @@ import {
 import { LeadsTrend, RevenueTrend, SalesFunnel } from "@/components/dashboard/PerformancePanels";
 import { useDashboardData } from "@/components/dashboard/useDashboardData";
 import { useDashboardMetrics, type Periodo } from "@/components/dashboard/useDashboardMetrics";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
-    title: "Dashboard | Atende Aí",
+    title: "Atende Ai! — Vendas que não esperam",
     meta: [
       {
         name: "description",
-        content: "Receita, funil, fila de atendimento e eficiência de campanha em um só lugar.",
+        content:
+          "Atendimento e vendas com IA: organize conversas, priorize leads e avance cada oportunidade.",
       },
-      { property: "og:title", content: "Dashboard | Atende Aí" },
+      { property: "og:title", content: "Atende Ai! — Vendas que não esperam" },
       {
         property: "og:description",
-        content: "Central de comando de atendimentos, campanhas e resultados comerciais.",
+        content:
+          "Atendimento e vendas com IA para organizar conversas, priorizar leads e avançar oportunidades.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -41,6 +44,14 @@ const ROTULO: Record<Periodo, string> = {
   mes: "últimos 30 dias",
   ano: "últimos 12 meses",
 };
+
+function Index() {
+  const { user } = useAuth();
+  const demo =
+    typeof window !== "undefined" && window.localStorage.getItem("atendeai.demo") === "1";
+
+  return user || demo ? <Dashboard /> : <LandingPage />;
+}
 
 /**
  * Dashboard.
@@ -60,7 +71,7 @@ const ROTULO: Record<Periodo, string> = {
  * responder a uma pergunta diferente ao mesmo tempo — é assim que dashboard
  * vira quebra-cabeça.
  */
-function Index() {
+function Dashboard() {
   const { profile, company } = useAuth();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
 

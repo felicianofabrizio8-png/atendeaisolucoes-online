@@ -161,12 +161,18 @@ export function AppShell() {
   const handleSignOut = async () => {
     await signOut();
     window.localStorage.removeItem("atendeai.demo");
-    navigate({ to: "/login" });
+    await navigate({ to: "/", replace: true });
   };
 
   const enableDemo = () => {
     window.localStorage.setItem("atendeai.demo", "1");
     setDemoMode(true);
+  };
+
+  const leaveDemoForAuth = () => {
+    window.localStorage.removeItem("atendeai.demo");
+    setDemoMode(false);
+    window.location.replace("/");
   };
 
   const handleOpenSettings = () => {
@@ -299,7 +305,7 @@ export function AppShell() {
               {SettingsButton}
             </div>
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               className="w-full inline-flex items-center justify-center gap-1.5 h-9 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
             >
               <LogIn className="h-3.5 w-3.5" />
@@ -324,7 +330,7 @@ export function AppShell() {
             </div>
             {SettingsButton}
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               title="Entrar / Criar conta"
               aria-label="Entrar / Criar conta"
               className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"

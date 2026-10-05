@@ -1,4 +1,11 @@
-import { Outlet, Link, createRootRouteWithContext, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+  useLocation,
+} from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
@@ -10,9 +17,6 @@ import { CampaignRenderTrackerProvider } from "@/lib/marketing/useCampaignRender
 import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
 
 import appCss from "../styles.css?url";
-
-
-
 
 function NotFoundComponent() {
   return (
@@ -129,7 +133,6 @@ function RootComponent() {
   );
 }
 
-
 const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/callback"];
 
 function AuthGate() {
@@ -146,7 +149,6 @@ function AuthGate() {
   const demo =
     typeof window !== "undefined" && window.localStorage.getItem("atendeai.demo") === "1";
 
-
   if (isPublicRoute) {
     return <Outlet />;
   }
@@ -159,9 +161,13 @@ function AuthGate() {
     );
   }
 
+  if (location.pathname === "/" && !user && !demo) {
+    return <Outlet />;
+  }
+
   if (!user && !demo) {
     if (typeof window !== "undefined") {
-      window.location.replace("/login");
+      window.location.replace("/");
     }
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
