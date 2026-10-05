@@ -66,13 +66,22 @@ import {
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
+import { callExternalSalesAgent, isExternalSalesAgentActive, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
+import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replies.repository";
+import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
-import { canSalesAgentSend, resolveSalesAgentMode, type SalesAgentMode } from "./sales-agent-mode";
+import { canSalesAgentSend, isConversationAutoReply, resolveSalesAgentMode, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
+import { loadSellerState, saveSellerState } from "./sales-agent-seller-state.server";
+import { applyQuotedMessage, quotedExternalId, type QuotedSourceRow } from "./sales-agent-quoted-message";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
 import { resolveSalesAgentNormativeContext } from "./sales-agent-normative-resolver";
 import { buildSalesAgentAuditPayload, type SalesAgentAuditDecision, type SalesAgentAuditMode } from "./sales-agent-audit";
 import { authorizeSalesAgentReply } from "./sales-agent-execution";
-import { buildPendingAssistedSuggestion } from "./sales-agent-assisted";
+import {
+  ASSISTED_PENDING_CLASSIFICATION,
+  ASSISTED_SUPERSEDED_CLASSIFICATION,
+  buildPendingAssistedSuggestion,
+} from "./sales-agent-assisted";
 import type { NormativeCorrection } from "./sales-agent-normative-resolver";
 import {
   prepareSalesAgentAction,
@@ -510,6 +519,8 @@ export function runSafetyLayer(
   decision: AgentDecision,
   commercialTerms?: string | null,
 ): AgentDecision {
+  // A decisão da Vendedora externa já foi validada contra o que a empresa cadastrou.
+  if (decision.external_validated) return decision;
   if (decision.kind !== "reply" || !decision.message) return decision;
   const registeredPercentages = new Set(
     (commercialTerms?.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage),
@@ -534,6 +545,32 @@ export function runSafetyLayer(
     }
   }
   return decision;
+}
+
+/**
+ * Safety da resposta da Vendedora externa. A fonte de verdade é o que a própria empresa
+ * (company_id) cadastrou e foi enviado à Vendedora no turno — catálogo, perfil da IA,
+ * respostas rápidas, FAQ/base aprovada e regras comerciais — e não uma lista fixa de temas:
+ *  - percentual só passa se estiver em algum desses cadastros;
+ *  - termo comercial sensível (desconto, parcelamento, promessa...) só passa se a empresa
+ *    cadastrou algo sobre ele; sem cadastro, continua bloqueado e vai para humano.
+ * Números, preços e medidas já foram conferidos pela Vendedora contra os fatos citados.
+ */
+export function runExternalSafetyLayer(decision: AgentDecision, evidenceText: string): AgentDecision {
+  if (decision.kind !== "reply" || !decision.message) return { ...decision, external_validated: true };
+  const registered = new Set((evidenceText.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage));
+  const unregistered = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
+    (percentage) => !registered.has(canonicalPercentage(percentage)),
+  );
+  if (unregistered) {
+    return { kind: "handoff", reason: "safety_block: percentual sem cadastro da empresa", external_validated: true };
+  }
+  for (const { pattern, reason } of SAFETY_BLOCK_PATTERNS) {
+    if (pattern.test(decision.message) && !pattern.test(evidenceText)) {
+      return { kind: "handoff", reason: `safety_block: ${reason}`, external_validated: true };
+    }
+  }
+  return { ...decision, external_validated: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -565,6 +602,7 @@ export async function loadAgentContext(
           payment_methods:
             (aiProfile as { payment_methods?: string | null }).payment_methods ?? null,
           avg_lead_time: (aiProfile as { avg_lead_time?: string | null }).avg_lead_time ?? null,
+          business_hours: (aiProfile as { business_hours?: string | null }).business_hours ?? null,
           region: (aiProfile as { region?: string | null }).region ?? null,
           differentials: (aiProfile as { differentials?: string | null }).differentials ?? null,
           faq: Array.isArray((aiProfile as { faq?: unknown }).faq)
@@ -647,10 +685,18 @@ export async function runAgentTurn(params: {
   ctx: AgentContextBase;
   history: Array<{ role: "lead" | "agent" | "system"; text: string; productIds?: string[] }>;
   leadName: string | null;
+  onExternalSalesAgentResult?: (result: ExternalSalesAgentResult) => void | Promise<void>;
   sessionCorrections?: NormativeCorrection[];
   /** Turno com palavra de preço ambígua: só a comparação determinística responde. */
   priceSensitive?: boolean;
   salesStateScope?: Pick<ConversationSalesStateScope, "scopeType" | "scopeId">;
+  /** Prazo do tick (epoch ms). Cada etapa do turno usa só o que resta dele. */
+  deadlineAt?: number;
+  /**
+   * Triagem por palavra-chave que o tick deixou de fazer porque a Vendedora externa atende
+   * o tenant. Só é aplicada se ela falhar e o agente interno for assumir o turno.
+   */
+  deferredPrecheck?: () => AgentDecision | null;
   qualification?: {
     detected_pool_size: string | null;
     detected_interest: string | null;
@@ -850,11 +896,65 @@ export async function runAgentTurn(params: {
     },
   };
 
+  // Continuidade comercial: o estado que a Vendedora devolveu no turno anterior desta conversa.
+  const sellerStateConversationId =
+    params.salesStateScope?.scopeType === "whatsapp_conversation" && isExternalSalesAgentActive(params.ctx.settings)
+      ? params.salesStateScope.scopeId
+      : null;
+  const sellerState = sellerStateConversationId
+    ? await loadSellerState(params.ctx.settings.company_id, sellerStateConversationId)
+    : null;
+  const external = await callExternalSalesAgent({
+    companyId: params.ctx.settings.company_id,
+    conversationId: params.salesStateScope?.scopeId ?? null,
+    sellerState,
+    history: params.history,
+    leadName: params.leadName,
+    context: params.ctx,
+    budgetMs: externalSalesAgentBudgetMs(params.deadlineAt),
+    // Respostas rápidas ativas da empresa: só são lidas se a Vendedora externa for chamada.
+    loadQuickReplies: () => listActiveQuickRepliesForGrounding(params.ctx.settings.company_id, supabaseAdmin),
+    // O que a empresa ensinou e já está aprovado/ativo (mesmas listas do agente interno).
+    coachRules: normative.grounding.activeCoachRules ?? [],
+    learnings: normative.grounding.approvedCoachLearnings,
+  });
+  if (params.onExternalSalesAgentResult) {
+    try { await params.onExternalSalesAgentResult(external); } catch { console.warn("[EXTERNAL_SALES_AGENT_AUDIT_FAILED]"); }
+  }
+  if (external.enabled && external.ok) {
+    // `silent` só avalia e não altera nada da conversa; nos demais modos o estado é guardado.
+    if (sellerStateConversationId && external.sellerState && resolveSalesAgentMode(params.ctx.settings) !== "silent") {
+      await saveSellerState(params.ctx.settings.company_id, sellerStateConversationId, external.sellerState);
+    }
+    return runExternalSafetyLayer(external.decision, external.evidenceText);
+  }
+  // Assistido: se a Vendedora externa falha, o turno termina sem sugestão e o atendente
+  // responde como já faria. O fallback para o agente interno podia transferir a conversa
+  // para humano de verdade (aguardando_humano) numa falha que é só da integração.
+  // Silent não altera nada e automatic precisa responder: ambos mantêm o fallback.
+  // Automático ligado só na conversa: a empresa é `assisted`, então vale a mesma regra — sem
+  // a Vendedora externa ninguém responde no lugar dela; o atendente que acompanha responde.
+  if (
+    external.enabled && !external.ok &&
+    (resolveSalesAgentMode(params.ctx.settings) === "assisted" || isConversationAutoReply(params.ctx.settings))
+  ) {
+    return { kind: "skip", reason: "external_sales_agent_unavailable", fallback_reason: "external_sales_agent_unavailable" };
+  }
+  // A Vendedora externa falhou e o agente interno vai decidir: vale a triagem dele.
+  if (external.enabled && !external.ok) {
+    const deferred = params.deferredPrecheck?.();
+    if (deferred) return deferred;
+  }
+
   const core = new SalesAgentCore(async (payload) => {
     let res: Response;
+    // Só o que resta do tick (menos a margem e o pós-decisão). Sem tempo útil, não chama o provedor:
+    // a falha segue o caminho seguro existente (política cadastrada ou handoff).
+    const timeoutMs = internalLlmTimeoutMs(params.deadlineAt);
+    if (timeoutMs === null) return { ok: false, reason: "gateway_budget_exhausted" };
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20_000);
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
       res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -1220,8 +1320,20 @@ export type AgentTickResult = {
   reason?: string;
 };
 
+/**
+ * Marca, em `ai_suggestions_log`, a resposta que a Vendedora externa daria no modo
+ * silent. Não é `v2_status:pending`: não entra na fila de aprovação do modo assistido.
+ */
+export const EXTERNAL_SILENT_CLASSIFICATION = "external_silent";
+
 /** Reprocessamentos extras quando o cliente escreve enquanto o turno roda. */
 export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
+/**
+ * Prazo total do tick. Rodando via waitUntil, o Worker tem ~30 s depois da
+ * resposta; o lock precisa ser liberado antes disso.
+ */
+export const AGENT_TICK_BUDGET_MS = 40_000;
+const AGENT_CATCHUP_MIN_BUDGET_MS = 10_000;
 
 /**
  * Um turno completo + recuperação de mensagens rápidas.
@@ -1233,13 +1345,20 @@ export const MAX_AGENT_TICK_CATCHUP_RUNS = 2;
  * de novo (limitado), sem a checagem de "já respondida" — a resposta
  * anterior foi gerada sem ver essa mensagem.
  */
-export async function runAgentTick(conversationId: string): Promise<AgentTickResult> {
-  let pass = await runAgentTickOnce(conversationId, { force: false });
+export async function runAgentTick(
+  conversationId: string,
+  options: { budgetMs?: number } = {},
+): Promise<AgentTickResult> {
+  const deadlineAt = Date.now() + (options.budgetMs ?? AGENT_TICK_BUDGET_MS);
+  let pass = await runAgentTickOnce(conversationId, { force: false, deadlineAt });
   for (let run = 0; run < MAX_AGENT_TICK_CATCHUP_RUNS; run += 1) {
     if (!pass.snapshot) break;
+    // Sem orçamento para um turno inteiro, não pega o lock: o isolate seria
+    // encerrado no meio e deixaria ai_handling=true.
+    if (deadlineAt - Date.now() < AGENT_CATCHUP_MIN_BUDGET_MS) break;
     const newer = await hasLeadMessageAfter(pass.snapshot);
     if (!newer) break;
-    const next = await runAgentTickOnce(conversationId, { force: true });
+    const next = await runAgentTickOnce(conversationId, { force: true, deadlineAt });
     if (!next.snapshot && next.result.reason === "lock_busy") break;
     pass = next;
   }
@@ -1270,10 +1389,11 @@ type HistoryRow = {
   at: string;
   source_subtype?: string | null;
   source_metadata?: unknown;
+  external_id?: string | null;
 };
 
 /** Linha de `messages` → item de histórico do agente (produtos, esclarecimento, transcrição). */
-function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string } {
+function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string; notice?: string } {
   const metadata =
     row.source_metadata && typeof row.source_metadata === "object" && !Array.isArray(row.source_metadata)
       ? (row.source_metadata as Record<string, unknown>)
@@ -1295,6 +1415,8 @@ function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarifica
     text,
     ...(productIds.length > 0 ? { productIds } : {}),
     ...(clarification ? { clarification } : {}),
+    // Aviso automático do sistema (ex.: "vou passar para um atendente"), não uma fala da venda.
+    ...(typeof metadata.sales_agent_notice === "string" ? { notice: metadata.sales_agent_notice } : {}),
   };
 }
 
@@ -1398,7 +1520,7 @@ async function countRecentAutoReplies(
 
 async function runAgentTickOnce(
   conversationId: string,
-  options: { force: boolean },
+  options: { force: boolean; deadlineAt: number },
 ): Promise<{ result: AgentTickResult; snapshot: AgentTickSnapshot | null }> {
   let snapshot: AgentTickSnapshot | null = null;
   const result = await runAgentTickPass(conversationId, options, (value) => {
@@ -1407,9 +1529,41 @@ async function runAgentTickOnce(
   return { result, snapshot };
 }
 
+async function releaseAgentLock(conv: { id: string; company_id: string; lead_id: string }): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await supabaseAdmin
+        .from("conversations")
+        .update({ ai_handling: false })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id);
+      if (!error) return;
+    } catch {
+      // tenta de novo
+    }
+  }
+  await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_lock_release_failed", {});
+}
+
+/** Automático ligado pelo atendente nesta conversa. Qualquer falha de leitura vale como desligado. */
+async function readConversationAutoReply(companyId: string, conversationId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("conversations")
+      .select("sales_agent_auto_reply")
+      .eq("id", conversationId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) return false;
+    return (data as { sales_agent_auto_reply?: boolean | null } | null)?.sales_agent_auto_reply === true;
+  } catch {
+    return false;
+  }
+}
+
 async function runAgentTickPass(
   conversationId: string,
-  options: { force: boolean },
+  options: { force: boolean; deadlineAt: number },
   recordSnapshot: (snapshot: AgentTickSnapshot) => void,
 ): Promise<AgentTickResult> {
   const { data: conv } = await supabaseAdmin
@@ -1442,8 +1596,16 @@ async function runAgentTickPass(
     return { ok: true, action: "skipped", reason: "channel_unsupported" };
   }
 
-  const ctx = await loadAgentContext(conv.company_id);
-  if (!ctx) return { ok: false, action: "error", reason: "no_settings" };
+  const baseCtx = await loadAgentContext(conv.company_id);
+  if (!baseCtx) return { ok: false, action: "error", reason: "no_settings" };
+  // Automático por conversa: lido à parte para que a falta da coluna (migration ainda não
+  // aplicada) ou um erro de leitura só deixe a conversa no modo da empresa.
+  const conversationAutoReply =
+    resolveSalesAgentMode(baseCtx.settings) === "assisted" &&
+    (await readConversationAutoReply(conv.company_id, conv.id));
+  const withConversationMode = <T extends { settings: AgentSettings }>(value: T): T =>
+    conversationAutoReply ? { ...value, settings: withConversationAutoReply(value.settings, true) } : value;
+  const ctx = withConversationMode(baseCtx);
 
   const auditStartedAt = Date.now();
   const auditMode: SalesAgentAuditMode = resolveSalesAgentMode(ctx.settings) ?? "off";
@@ -1503,6 +1665,26 @@ async function runAgentTickPass(
   );
   if (!guard.ok) {
     await logEvent(conv.company_id, conv.id, conv.lead_id, `skipped_${guard.reason}`, {});
+    // Vendedora 2.0 respondendo sozinha e o limite de respostas automáticas acabou: em vez de
+    // deixar o cliente sem resposta e sem aviso, a conversa passa para a equipe (uma vez só —
+    // depois disso o status "aguardando_humano" já segura os próximos turnos).
+    if (guard.reason === "rate_limit" && resolveSalesAgentMode(ctx.settings) === "automatic") {
+      const { data: handed } = await supabaseAdmin
+        .from("conversations")
+        .update({ ai_status: "aguardando_humano" })
+        .eq("id", conv.id)
+        .eq("company_id", conv.company_id)
+        .select("id")
+        .maybeSingle();
+      if (handed) {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "handoff_human", {
+          source: "auto_reply_limit",
+          reason: "auto_reply_limit_reached",
+        });
+        await sendHandoffNotice(conv, ctx.settings, "automatic");
+        return { ok: true, action: "handoff", reason: "auto_reply_limit_reached" };
+      }
+    }
     return { ok: true, action: "skipped", reason: guard.reason };
   }
 
@@ -1526,12 +1708,31 @@ async function runAgentTickPass(
     return { ok: true, action: "skipped", reason: "lock_busy" };
   }
 
-  try {
+  // Assistido: o cliente mandou outra mensagem, então a sugestão pendente anterior deixou
+  // de ser a atual. Sai do cartão (não é apagada) antes de o turno gerar a nova.
+  if (v2Mode === "assisted" || conversationAutoReply) {
+    try {
+      await supabaseAdmin
+        .from("ai_suggestions_log")
+        .update({ classification: ASSISTED_SUPERSEDED_CLASSIFICATION })
+        .eq("company_id", conv.company_id)
+        .eq("conversation_id", conv.id)
+        .eq("classification", ASSISTED_PENDING_CLASSIFICATION);
+    } catch {
+      console.warn("[SALES_AGENT_SUPERSEDE_PENDING_FAILED]");
+    }
+  }
+
+  // Passado o prazo, o turno é abandonado: o lock é liberado já e o que
+  // ainda estiver rodando não envia nem altera a conversa.
+  let abandoned = false;
+  const abandonedResult: AgentTickResult = { ok: true, action: "skipped", reason: "turn_deadline" };
+  const lockedTurn = (async (): Promise<AgentTickResult> => {
     // Histórico do DB (não confia no body)
     const readHistoryRows = async (): Promise<HistoryRow[]> => {
       const { data } = await supabaseAdmin
         .from("messages")
-        .select("role, text, at, source_subtype, source_metadata")
+        .select("role, text, at, source_subtype, source_metadata, external_id")
         .eq("company_id", conv.company_id)
         .eq("conversation_id", conv.id)
         .order("at", { ascending: false })
@@ -1557,7 +1758,38 @@ async function runAgentTickPass(
       conversationId: conv.id,
       lastMessageAt: msgs[0]?.at ?? null,
     });
+    const orderedRows = [...msgs].reverse();
     const history = [...msgs].reverse().map(toAgentHistoryItem);
+    // Cliente respondeu a uma mensagem específica (ex.: a foto de um produto): a pergunta
+    // passa a carregar a mensagem citada e os produtos dela. Falha aqui não derruba o turno.
+    // Só para empresa atendida pela Vendedora 2.0: o fluxo anterior segue como estava.
+    try {
+      if (!isExternalSalesAgentActive(ctx.settings)) throw null;
+      const byExternalId = new Map<string, QuotedSourceRow>();
+      for (const row of orderedRows) if (row.external_id) byExternalId.set(row.external_id, row);
+      for (let index = 0; index < orderedRows.length; index += 1) {
+        const row = orderedRows[index];
+        if (row.role !== "lead") continue;
+        const quotedId = quotedExternalId(row.source_metadata);
+        if (!quotedId) continue;
+        let quoted = byExternalId.get(quotedId) ?? null;
+        if (!quoted) {
+          // Mensagem citada mais antiga que a janela do histórico.
+          const { data } = await supabaseAdmin
+            .from("messages")
+            .select("external_id, text, source_metadata")
+            .eq("company_id", conv.company_id)
+            .eq("conversation_id", conv.id)
+            .eq("external_id", quotedId)
+            .limit(1)
+            .maybeSingle();
+          quoted = (data as QuotedSourceRow | null) ?? null;
+        }
+        history[index] = applyQuotedMessage(history[index], quoted);
+      }
+    } catch (error) {
+      if (error !== null) console.warn("[SALES_AGENT_QUOTED_MESSAGE_FAILED]");
+    }
 
     const lastLeadMsg = [...history].reverse().find((m) => m.role === "lead");
     if (!lastLeadMsg) {
@@ -1579,13 +1811,17 @@ async function runAgentTickPass(
     // Palavra de preço ambígua ("barato", "menor preço") não encaminha direto:
     // o LLM distingue comparação de negociação e só a comparação
     // determinística do catálogo pode responder esse turno.
+    // Tenant atendido pela Vendedora externa: quem decide é ela, com os dados que a empresa
+    // cadastrou (garantia, pagamento, frete, contrato...). Uma palavra-chave não transfere a
+    // conversa antes de ela ser consultada; se ela falhar, a triagem volta (deferredPrecheck).
+    const externalActive = isExternalSalesAgentActive(ctx.settings);
     const triggerCheck: { needed: boolean; reason?: string; priceSensitive?: boolean } =
-      audioUnavailable
+      audioUnavailable || externalActive
         ? { needed: false }
         : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
             deferPriceSensitive: true,
           });
-    const readyToClose = !audioUnavailable && detectReadyToClose(lastLeadMsg.text);
+    const readyToClose = !audioUnavailable && !externalActive && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
       await qualifyAndPersist({
         companyId: conv.company_id,
@@ -1637,8 +1873,9 @@ async function runAgentTickPass(
         fallback_reason: audioState === "failed" ? "audio_transcription_failed" : "audio_transcription_pending",
       };
     } else {
-      const turnCtx = await loadAgentContext(conv.company_id, history);
-      if (!turnCtx) return { ok: false, action: "error", reason: "no_settings" };
+      const loadedTurnCtx = await loadAgentContext(conv.company_id, history);
+      if (!loadedTurnCtx) return { ok: false, action: "error", reason: "no_settings" };
+      const turnCtx = withConversationMode(loadedTurnCtx);
       // Percentuais citados em qualquer política cadastrada (ex.: entrada)
       // podem ser repetidos; os demais continuam bloqueados.
       const rules = ctx.grounding.commercialRules;
@@ -1649,7 +1886,35 @@ async function runAgentTickPass(
           history,
           leadName: lead?.name ?? null,
           salesStateScope: { scopeType: "whatsapp_conversation", scopeId: conv.id },
+          deadlineAt: options.deadlineAt,
           qualification: currentQual,
+          deferredPrecheck: externalActive
+            ? () => {
+                if (detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules).needed) {
+                  return { kind: "handoff", reason: "pre_check" };
+                }
+                return detectReadyToClose(lastLeadMsg.text) ? { kind: "handoff", reason: "ready_to_close" } : null;
+              }
+            : undefined,
+          onExternalSalesAgentResult: async (external) => {
+            // Sucesso também audita: no silent o turno termina em external_silent
+            // sem nenhum outro evento.
+            await logEvent(conv.company_id, conv.id, conv.lead_id, "ai_flow_step", {
+              audit_kind: "external_sales_agent",
+              result: external.enabled ? (external.ok ? "external_ok" : "external_fallback") : "external_disabled",
+              ...(external.enabled && external.ok
+                ? { decision: external.decision.kind }
+                : { reason: external.reason }),
+              ...(external.enabled && external.timing
+                ? { budget_ms: external.timing.budgetMs, duration_ms: external.timing.durationMs }
+                : {}),
+              ...(external.enabled && !external.ok && external.httpStatus
+                ? { http_status: external.httpStatus } : {}),
+              ...(external.enabled && !external.ok && external.invalidResponseCode
+                ? { invalid_response_code: external.invalidResponseCode } : {}),
+              correlation_id: external.correlationId,
+            });
+          },
         }),
         [
           rules.commercialTerms,
@@ -1665,6 +1930,8 @@ async function runAgentTickPass(
     }
     auditFallbackReason = decision.fallback_reason ?? null;
 
+    if (abandoned) return abandonedResult;
+
     // Qualifica SEMPRE (handoff ou reply) com base no que veio do LLM + heurística
     await qualifyAndPersist({
       companyId: conv.company_id,
@@ -1675,6 +1942,31 @@ async function runAgentTickPass(
       decision,
       persist: !silent,
     });
+
+    if (decision.external_silent) {
+      // Silent: a resposta da Vendedora externa não é enviada. Fica no log de sugestões
+      // (mesma tabela e RLS das sugestões da IA, visível em /ia) para avaliação humana;
+      // o ai_flow_events continua só com códigos. Falha aqui nunca altera o turno.
+      if (decision.kind === "reply" && decision.message) {
+        try {
+          const { error } = await supabaseAdmin.from("ai_suggestions_log").insert({
+            company_id: conv.company_id,
+            conversation_id: conv.id,
+            lead_id: conv.lead_id,
+            generated_text: decision.message,
+            classification: EXTERNAL_SILENT_CLASSIFICATION,
+            model: "vendedora-externa",
+            was_sent: false,
+            was_edited: false,
+            sent_text: null,
+          });
+          if (error) console.warn("[EXTERNAL_SALES_AGENT_SILENT_LOG_FAILED]");
+        } catch {
+          console.warn("[EXTERNAL_SALES_AGENT_SILENT_LOG_FAILED]");
+        }
+      }
+      return { ok: true, action: "skipped", reason: "external_silent" };
+    }
 
     if (decision.kind === "handoff" && silent) {
       await writeSalesAgentAudit(
@@ -1753,12 +2045,15 @@ async function runAgentTickPass(
           mode: v2Mode,
           reason: authorization.reason,
           suggested_products: decision.suggested_products ?? [],
+          // Nomes dos cadastros que embasaram a sugestão (o cartão mostra ao atendente).
+          evidence_labels: decision.evidence_labels ?? [],
         });
         return { ok: true, action: "skipped", reason: authorization.reason };
       }
     }
 
     // O turno do LLM leva segundos: um humano pode ter assumido nesse meio tempo.
+    if (abandoned) return abandonedResult;
     if (await humanTookOver(conv.company_id, conv.id)) {
       await logEvent(conv.company_id, conv.id, conv.lead_id, "skipped_human_active", {
         reason: "human_took_over_during_turn",
@@ -1895,12 +2190,21 @@ async function runAgentTickPass(
     }
 
     return { ok: true, action: "replied" };
+  })();
+  lockedTurn.catch(() => undefined);
+
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"deadline">((resolve) => {
+    deadlineTimer = setTimeout(() => resolve("deadline"), Math.max(0, options.deadlineAt - Date.now()));
+  });
+  try {
+    const outcome = await Promise.race([lockedTurn, deadline]);
+    if (outcome !== "deadline") return outcome;
+    abandoned = true;
+    await logEvent(conv.company_id, conv.id, conv.lead_id, "agent_turn_deadline", {});
+    return { ok: false, action: "error", reason: "turn_deadline" };
   } finally {
-    // Libera lock
-    await supabaseAdmin
-      .from("conversations")
-      .update({ ai_handling: false })
-      .eq("id", conv.id)
-      .eq("company_id", conv.company_id);
+    clearTimeout(deadlineTimer);
+    await releaseAgentLock(conv);
   }
 }

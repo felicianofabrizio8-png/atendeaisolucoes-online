@@ -180,6 +180,7 @@ export interface AgentContext {
     products: string | null;
     payment_methods: string | null;
     avg_lead_time: string | null;
+    business_hours?: string | null;
     region: string | null;
     differentials: string | null;
     faq: Array<{ q?: string; a?: string }>;
@@ -231,6 +232,12 @@ export interface AgentDecision {
   product_image_ids?: string[];
   grounding_sources?: SalesAgentGroundingSource[];
   learning_ids_used?: string[];
+  external_silent?: boolean;
+  /** Decisão da Vendedora externa já passou pela safety layer com a evidência cadastrada da empresa. */
+  external_validated?: boolean;
+  /** Nomes dos cadastros da empresa que embasaram a resposta da Vendedora (só rótulos). */
+  evidence_labels?: string[];
+  next_action?: string | null;
   /** Código do fallback determinístico acionado neste turno (diagnóstico/auditoria). */
   fallback_reason?: string;
   /** Pergunta de esclarecimento enviada no lugar de handoff (registrada na mensagem). */
@@ -367,6 +374,8 @@ interface ToolReply {
   suggest_products?: string[];
   send_product_images?: string[];
   learning_ids_used?: string[];
+  external_silent?: boolean;
+  next_action?: string | null;
   /** Plano comercial do turno (estágio, próxima ação, contexto do cliente). */
   sales_plan?: unknown;
   /** Fatos de produto afirmados na mensagem, ligados à chave do fato em Produtos. */

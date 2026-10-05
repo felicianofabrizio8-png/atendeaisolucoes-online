@@ -50,12 +50,15 @@ export function SendWhatsAppModal({
   phone,
   onClose,
   onSent,
+  onDone,
 }: {
   quote: Quote;
   leadName: string;
   phone: string;
   onClose: () => void;
   onSent: (conversationId?: string) => void;
+  /** Called after every selected block has been sent successfully. */
+  onDone?: () => void;
 }) {
   const product = getProduct(quote.productId);
   const availableImages = product?.images ?? [];
@@ -255,6 +258,7 @@ export function SendWhatsAppModal({
     });
     if (okCount > 0 && !failedKey) {
       toast.success(`${okCount} mensagem(ns) enviada(s)`);
+      onDone?.();
       return;
     }
     if (okCount > 0 && failedKey) {

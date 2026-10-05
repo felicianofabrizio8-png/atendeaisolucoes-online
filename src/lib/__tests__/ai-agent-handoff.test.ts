@@ -4,6 +4,7 @@ import {
   interpretSalesAgentTurn,
   redactSalesAgentDecision,
   resolveSalesAgentCatalogSearch,
+  runExternalSafetyLayer,
   runSafetyLayer,
 } from "@/lib/ai-agent.server";
 import { detectReadyToClose } from "@/lib/ai-qualifier.server";
@@ -106,6 +107,46 @@ describe("Sales Agent handoff boundaries", () => {
     expect(runSafetyLayer({ kind: "reply", message })).toMatchObject({
       kind: "handoff",
       reason,
+    });
+  });
+
+  // Vendedora externa: a evidência é o que a empresa cadastrou (qualquer fonte enviada a ela).
+  describe("safety da Vendedora externa pelos dados cadastrados da empresa", () => {
+    const evidence = [
+      "Formas de pagamento: 50% na assinatura e 50% na chegada. Até 12x no cartão.",
+      "Garantia: 2 anos contra defeito de fabricação.",
+      "Desconto: 5% para pagamento à vista no Pix.",
+    ].join("\n");
+
+    it.each([
+      "A entrada é de 50% na assinatura.",
+      "No Pix à vista você tem 5% de desconto.",
+      "A garantia é de 2 anos contra defeito de fabricação.",
+    ])("aceita o que a empresa cadastrou: %s", (message) => {
+      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence)).toEqual({ kind: "reply", message, external_validated: true });
+    });
+
+    it.each([
+      ["Consigo 10% de desconto para você.", "safety_block: percentual sem cadastro da empresa"],
+      ["Garanto que chega amanhã.", "safety_block: fez promessa"],
+      ["Tenho uma condição especial.", "safety_block: condição comercial nova"],
+    ])("continua bloqueando o que não tem cadastro: %s", (message, reason) => {
+      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence)).toMatchObject({ kind: "handoff", reason });
+    });
+
+    it("sem cadastro sobre desconto, falar em desconto continua indo para humano", () => {
+      expect(runExternalSafetyLayer({ kind: "reply", message: "Posso oferecer desconto." }, "Garantia: 2 anos."))
+        .toMatchObject({ kind: "handoff", reason: "safety_block: ofereceu desconto" });
+    });
+
+    it("o dado de uma empresa não libera a resposta de outra", () => {
+      const message = "A entrada é de 50% na assinatura.";
+      expect(runExternalSafetyLayer({ kind: "reply", message }, "Pagamento: 30% de entrada.")).toMatchObject({ kind: "handoff" });
+    });
+
+    it("a decisão já validada não passa de novo pela lista fixa", () => {
+      const validated = runExternalSafetyLayer({ kind: "reply", message: "No Pix à vista você tem 5% de desconto." }, evidence);
+      expect(runSafetyLayer(validated)).toEqual(validated);
     });
   });
 

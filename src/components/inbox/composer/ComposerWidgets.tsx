@@ -1,6 +1,7 @@
 import type { LibraryPick } from "@/lib/inbox/types";
 import { openSettings } from "@/lib/settings-dialog";
-import { Zap } from "lucide-react";
+import { Pencil, Zap } from "lucide-react";
+import { QuickReplyValidityBadge } from "@/components/quick-replies/QuickReplyValidityBadge";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Virtuoso } from "react-virtuoso";
@@ -272,6 +273,28 @@ export function QuickRepliesButton({
     };
   }, [open]);
 
+  // Edição rápida pelo próprio raio: texto e validade, sem sair da conversa.
+  const [editing, setEditing] = useState<{ id: string; content: string; validUntil: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const saveEditing = async (original: QuickReply) => {
+    if (!companyId || !editing || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      const saved = await updateQuickReply(companyId, original.id, {
+        content: editing.content,
+        // A validade só é gravada quando mudou.
+        ...(editing.validUntil !== (original.valid_until ?? "") ? { valid_until: editing.validUntil || null } : {}),
+      });
+      setItems((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+      setEditing(null);
+      toast.success("Resposta rápida atualizada");
+    } catch {
+      toast.error("Não foi possível salvar a resposta rápida");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const normalize = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const q = normalize(query.trim());
@@ -336,27 +359,79 @@ export function QuickRepliesButton({
               : "Nenhuma resposta encontrada."}
           </div>
         ) : (
-          filtered.map((it) => (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => {
-                onPick(it.content);
-                setOpen(false);
-                setQuery("");
-              }}
-              className="w-full flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-accent text-left border-b border-border/40 last:border-b-0"
-              title={it.category ?? undefined}
-            >
-              <span className="text-lg w-6 text-center shrink-0">{it.icon || "💬"}</span>
-              <span className="flex-1 min-w-0">
-                <span className="block font-medium truncate">{it.name}</span>
-                <span className="block text-[11px] text-muted-foreground line-clamp-2">
-                  {it.content}
-                </span>
-              </span>
-            </button>
-          ))
+          filtered.map((it) =>
+            editing?.id === it.id ? (
+              <div key={it.id} className="px-3 py-2.5 border-b border-border/40 space-y-2" data-testid="quick-reply-edit">
+                <div className="text-xs font-semibold">{it.name}</div>
+                <textarea
+                  value={editing.content}
+                  onChange={(e) => setEditing({ ...editing, content: e.target.value })}
+                  rows={4}
+                  className="w-full rounded-md bg-input px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring resize-y"
+                />
+                <label className="block text-[11px] text-muted-foreground">
+                  Válido até (opcional)
+                  <input
+                    type="date"
+                    value={editing.validUntil}
+                    onChange={(e) => setEditing({ ...editing, validUntil: e.target.value })}
+                    className="mt-1 w-full rounded-md bg-input px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    disabled={savingEdit}
+                    className="rounded-md bg-secondary px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveEditing(it)}
+                    disabled={savingEdit || !editing.content.trim()}
+                    className="rounded-md bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    {savingEdit ? "Salvando…" : "Salvar"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={it.id} className="flex items-stretch border-b border-border/40 last:border-b-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPick(it.content);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className="flex-1 min-w-0 flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-accent text-left"
+                  title={it.category ?? undefined}
+                >
+                  <span className="text-lg w-6 text-center shrink-0">{it.icon || "💬"}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium truncate">
+                      {it.name}
+                      <QuickReplyValidityBadge validUntil={it.valid_until} />
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground line-clamp-2">
+                      {it.content}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing({ id: it.id, content: it.content, validUntil: it.valid_until ?? "" })}
+                  className="shrink-0 px-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  title="Editar texto e validade"
+                  aria-label={`Editar ${it.name}`}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ),
+          )
         )}
       </div>
     </div>

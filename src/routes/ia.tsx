@@ -742,7 +742,7 @@ function ConfiguracoesIA() {
                     <Input
                       type="number"
                       min={1}
-                      max={20}
+                      max={100}
                       value={automation.ai_max_auto_replies}
                       onChange={(e) =>
                         setAuto("ai_max_auto_replies", Number(e.target.value) || 5)

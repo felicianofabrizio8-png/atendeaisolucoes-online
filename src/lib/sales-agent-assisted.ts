@@ -2,6 +2,9 @@ export type AssistedSuggestionStatus = "pending" | "approved" | "rejected";
 export type AssistedSuggestionAction = "approve" | "reject";
 
 const STATUS_PREFIX = "v2_status:";
+export const ASSISTED_PENDING_CLASSIFICATION = `${STATUS_PREFIX}pending`;
+/** Sugestão que deixou de ser a atual porque o cliente mandou outra mensagem. */
+export const ASSISTED_SUPERSEDED_CLASSIFICATION = `${STATUS_PREFIX}superseded`;
 
 export type AssistedSuggestionInput = {
   companyId: string;
@@ -76,6 +79,8 @@ export function getAssistedSuggestionStatus(
 ): AssistedSuggestionStatus {
   if (wasSent) return "approved";
   if (classification === statusMarker("rejected")) return "rejected";
+  // Substituída não é pendente: não aparece no cartão nem pode ser aprovada.
+  if (classification === ASSISTED_SUPERSEDED_CLASSIFICATION) return "rejected";
   if (classification === statusMarker("approved")) return "approved";
   return "pending";
 }

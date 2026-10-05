@@ -133,6 +133,11 @@ export interface QuoteInput {
   unitPrice?: number;
 }
 
+/** Formats a date-only quote validity without shifting it across time zones. */
+export function formatQuoteDate(value: string): string {
+  return quoteDate(value);
+}
+
 export function buildQuoteMessage(args: {
   product: Product;
   finalValue: number;
@@ -157,8 +162,6 @@ export function buildQuoteMessage(args: {
     lines.push(`Forma de pagamento: *${paymentMethod}* (à vista).`);
   }
   lines.push(`Proposta válida até *${validStr}*.`);
-  lines.push("");
-  lines.push("Posso reservar para você?");
   return lines.join("\n");
 }
 

@@ -30,10 +30,13 @@ export function QuoteCard({
   quote,
   requestedAction,
   onActionHandled,
+  inConversation = false,
 }: {
   quote: Quote;
   requestedAction?: "send" | "edit" | "details";
   onActionHandled?: () => void;
+  /** Card rendered inside the current conversation. */
+  inConversation?: boolean;
 }) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
   const lead = leads.find((l) => l.id === quote.leadId);
@@ -96,12 +99,14 @@ export function QuoteCard({
             <div className="min-w-0">
               <h2
                 className="truncate text-base font-bold leading-tight sm:text-lg"
-                title={customerName}
+                title={inConversation ? quote.productName : customerName}
               >
-                {customerName ?? "Sem cliente"}
+                {inConversation ? quote.productName : (customerName ?? "Sem cliente")}
               </h2>
               <p className="truncate text-sm font-semibold text-muted-foreground sm:text-base">
-                {quote.customerDetails?.phone1 || lead?.phone || lead?.handle || "Sem telefone"}
+                {inConversation
+                  ? `${quote.paymentMethod} · ${formatBRL(quote.finalValue)}`
+                  : quote.customerDetails?.phone1 || lead?.phone || lead?.handle || "Sem telefone"}
               </p>
             </div>
           </div>
@@ -250,6 +255,7 @@ export function QuoteCard({
           leadName={customerName || lead.name}
           phone={phone}
           onClose={() => setWaOpen(false)}
+          onDone={inConversation ? () => setWaOpen(false) : undefined}
           onSent={() => {
             /* Keep the send dialog and block progress visible. */
           }}

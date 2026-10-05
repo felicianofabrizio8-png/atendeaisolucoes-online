@@ -663,3 +663,246 @@ describe("runAgentTick · comparação de preço ponta a ponta", () => {
     }
   });
 });
+
+describe("runAgentTick · liberação do lock ai_handling", () => {
+  function lockReleases(): Call[] {
+    return calls().filter(
+      (c) => c.table === "conversations" && c.op === "update" && c.values?.ai_handling === false,
+    );
+  }
+
+  it("libera o lock e audita quando o turno passa do prazo", async () => {
+    install({});
+    decideSpy.mockImplementation(() => new Promise<AgentDecision>(() => undefined));
+    const result = await runAgentTick(CONV, { budgetMs: 200 });
+    expect(result).toMatchObject({ ok: false, action: "error", reason: "turn_deadline" });
+    expect(lockReleases()).toHaveLength(1);
+    expect(lockReleases()[0].filters).toEqual(
+      expect.arrayContaining([["id", "eq", CONV], ["company_id", "eq", COMPANY]]),
+    );
+    expect(events()).toContain("agent_turn_deadline");
+    expect(postGraph).not.toHaveBeenCalled();
+  });
+
+  it("turno abandonado pelo prazo não envia nem altera status depois", async () => {
+    install({});
+    let finish: ((decision: AgentDecision) => void) | null = null;
+    decideSpy.mockImplementation(
+      () => new Promise<AgentDecision>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await runAgentTick(CONV, { budgetMs: 200 });
+    expect(finish).not.toBeNull();
+    finish!(reply);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(postGraph).not.toHaveBeenCalled();
+    expect(statusUpdates()).toEqual([]);
+  });
+
+  it("libera o lock quando o turno lança erro", async () => {
+    install({});
+    decideSpy.mockRejectedValue(new Error("boom"));
+    await runAgentTick(CONV).catch(() => undefined);
+    expect(lockReleases()).toHaveLength(1);
+  });
+
+  it("tenta liberar de novo e audita quando o update do lock falha", async () => {
+    install({});
+    const base = state.handler as (c: Call) => Reply;
+    state.handler = (call: Call): Reply =>
+      call.table === "conversations" && call.op === "update" && call.values?.ai_handling === false
+        ? { data: null, error: { message: "db down" } }
+        : base(call);
+    await runAgentTick(CONV);
+    expect(lockReleases()).toHaveLength(2);
+    expect(events()).toContain("ai_lock_release_failed");
+  });
+
+  it("não inicia turno de recuperação sem orçamento para concluí-lo", async () => {
+    install({ newerLeadMessage: [true] });
+    const result = await runAgentTick(CONV, { budgetMs: 5_000 });
+    expect(result).toMatchObject({ action: "replied" });
+    expect(decideSpy).toHaveBeenCalledTimes(1);
+    expect(lockReleases()).toHaveLength(1);
+  });
+});
+
+describe("runAgentTick · Vendedora externa decide com os dados cadastrados da empresa", () => {
+  const external = (body: Record<string, unknown>) => {
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ selected_products: [], handoff: { required: false, reason: null }, ...body }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+  const cleanup = () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  };
+  const handoffs = () =>
+    calls().filter((c) => c.table === "conversations" && c.op === "update" && c.values?.ai_status === "aguardando_humano");
+  const pendingInserts = () => calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+
+  it("palavra-chave do cliente (garantia) não transfere antes de a Vendedora ser consultada", async () => {
+    install({
+      settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" },
+      histories: [[{ role: "lead", text: "E a garantia do Item Um", at: "2026-09-30T12:00:00Z" }]],
+    });
+    const fetchMock = external({ response: "Vou te explicar a cobertura." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(pendingInserts()).toHaveLength(1);
+      expect(handoffs()).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("percentual cadastrado pela empresa nas regras comerciais é aceito na resposta", async () => {
+    install({
+      settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" },
+      commercial: { payment_policy: "Entrada de 50% e o restante na entrega." },
+    });
+    external({ response: "A entrada é de 50%." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(pendingInserts()[0]?.values).toMatchObject({ generated_text: "A entrada é de 50%." });
+      expect(handoffs()).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("percentual sem nenhum cadastro da empresa continua indo para humano e não vira sugestão", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    external({ response: "Consigo 15% para você." });
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "handoff" });
+      expect(pendingInserts()).toHaveLength(0);
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("nova mensagem do cliente tira do cartão a sugestão pendente anterior antes de gerar a nova", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    external({ response: "Olá!" });
+    try {
+      await runAgentTick(CONV);
+      const log = calls().filter((c) => c.table === "ai_suggestions_log");
+      const superseded = log.findIndex((c) => c.op === "update" && c.values?.classification === "v2_status:superseded");
+      const inserted = log.findIndex((c) => c.op === "insert" && c.values?.classification === "v2_status:pending");
+      expect(superseded).toBeGreaterThanOrEqual(0);
+      expect(inserted).toBeGreaterThan(superseded);
+      expect(log[superseded].filters).toEqual(
+        expect.arrayContaining([
+          ["company_id", "eq", COMPANY],
+          ["conversation_id", "eq", CONV],
+          ["classification", "eq", "v2_status:pending"],
+        ]),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("runAgentTick · auditoria da Vendedora externa", () => {
+  it("turno assisted com falha da Vendedora externa termina sem sugestão e sem handoff", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    decideSpy.mockResolvedValue({ kind: "handoff", reason: "catalog_unvalidated_objective_claim" });
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 502 })));
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "no_message" });
+      expect(decideSpy).not.toHaveBeenCalled();
+      expect(calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert")).toHaveLength(0);
+      expect(
+        calls().filter((c) => c.table === "conversations" && c.op === "update" && c.values?.ai_status === "aguardando_humano"),
+      ).toHaveLength(0);
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+  it("turno assisted com resposta externa vira sugestão pendente e nada é enviado", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" } });
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ response: "Olá!", selected_products: [], handoff: { required: false, reason: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      const pending = calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+      expect(pending).toHaveLength(1);
+      expect(pending[0].values).toMatchObject({ generated_text: "Olá!", classification: "v2_status:pending", was_sent: false });
+      expect(decideSpy).not.toHaveBeenCalled();
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+  it("turno silent com resposta externa válida registra ai_flow_event e libera o lock", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "silent" } });
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", COMPANY);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", "https://seller.example.test/v1/sales/turn");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ response: "Olá!", selected_products: [], handoff: { required: false, reason: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "external_silent" });
+      // A resposta que seria enviada fica registrada para avaliação, fora da fila de aprovação.
+      const silentReply = calls().find((c) => c.table === "ai_suggestions_log" && c.op === "insert");
+      expect(silentReply?.values).toMatchObject({
+        generated_text: "Olá!",
+        classification: "external_silent",
+        was_sent: false,
+      });
+      const audit = calls().find(
+        (c) => c.table === "ai_flow_events" && (c.values?.payload as Record<string, unknown>)?.audit_kind === "external_sales_agent",
+      );
+      expect(audit?.values?.payload).toMatchObject({ result: "external_ok", decision: "reply" });
+      expect(
+        calls().filter((c) => c.table === "conversations" && c.op === "update" && c.values?.ai_handling === false),
+      ).toHaveLength(1);
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+});

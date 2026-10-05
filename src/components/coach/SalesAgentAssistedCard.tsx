@@ -2,11 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-interface AssistedSuggestion {
+export interface AssistedSuggestion {
   id: string;
   conversation_id: string;
   generated_text: string;
   created_at: string;
+  /** O que embasou a resposta: nomes de produtos e de cadastros da empresa. */
+  basis?: { products?: string[]; company?: string[] } | null;
+}
+
+/** "Com base em: …" em linguagem do atendente (sem códigos técnicos); null se não houver. */
+export function describeSuggestionBasis(basis: AssistedSuggestion["basis"]): string | null {
+  const names = [...(basis?.products ?? []), ...(basis?.company ?? [])].filter(
+    (name): name is string => typeof name === "string" && name.trim().length > 0,
+  );
+  return names.length > 0 ? names.join(" · ") : null;
 }
 
 type AssistedAction = "approve" | "reject";
@@ -23,11 +33,14 @@ export function SalesAgentAssistedCard({
   onInsertSuggestion,
   composerHasDraft = false,
   onPendingChange,
+  onRejected,
 }: {
   conversationId: string;
   onInsertSuggestion?: (text: string) => void;
   composerHasDraft?: boolean;
   onPendingChange?: (hasPending: boolean) => void;
+  /** Com este callback o botão vira "Rejeitar e ensinar": chamado depois de a rejeição ser gravada. */
+  onRejected?: (suggestion: AssistedSuggestion) => void;
 }) {
   const [suggestion, setSuggestion] = useState<AssistedSuggestion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,6 +147,8 @@ export function SalesAgentAssistedCard({
 
       if (action === "approve") {
         onInsertSuggestion?.(suggestion.generated_text);
+      } else {
+        onRejected?.(suggestion);
       }
       setSuggestion(null);
     } catch (caught) {
@@ -195,6 +210,11 @@ export function SalesAgentAssistedCard({
       <div className="whitespace-pre-wrap rounded bg-background/70 p-2 text-base leading-relaxed lg:text-xs">
         {suggestion.generated_text}
       </div>
+      {describeSuggestionBasis(suggestion.basis) && (
+        <div data-testid="v2-assisted-basis" className="mt-1.5 text-[11px] text-muted-foreground">
+          Com base em: {describeSuggestionBasis(suggestion.basis)}
+        </div>
+      )}
 
       {composerHasDraft && (
         <div
@@ -235,7 +255,7 @@ export function SalesAgentAssistedCard({
           ) : (
             <X className="h-3 w-3" />
           )}
-          Rejeitar
+          {onRejected ? "Rejeitar e ensinar" : "Rejeitar"}
         </button>
       </div>
 

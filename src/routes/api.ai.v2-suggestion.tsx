@@ -57,6 +57,50 @@ async function assistedModeIsActive(companyId: string): Promise<boolean> {
   return settings?.sales_agent_v2_enabled === true && settings.sales_agent_v2_mode === "assisted";
 }
 
+/**
+ * O que embasou a sugestão, para o atendente: nomes dos produtos sugeridos e dos cadastros
+ * da empresa citados. Vem do evento do turno que gerou a sugestão, sempre da mesma empresa.
+ * Qualquer falha aqui devolve vazio — a sugestão continua aparecendo.
+ */
+async function loadSuggestionBasis(
+  companyId: string,
+  conversationId: string,
+  since: string,
+): Promise<{ products: string[]; company: string[] }> {
+  const empty = { products: [], company: [] };
+  try {
+    const { data: event } = await supabaseAdmin
+      .from("ai_flow_events")
+      .select("payload")
+      .eq("company_id", companyId)
+      .eq("conversation_id", conversationId)
+      .eq("event_type", "auto_reply_v2_gated")
+      .gte("created_at", since)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const payload = (event as { payload?: unknown } | null)?.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return empty;
+    const source = payload as Record<string, unknown>;
+    const strings = (value: unknown) =>
+      Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+    const company = strings(source.evidence_labels).slice(0, 6);
+    const productIds = strings(source.suggested_products).slice(0, 5);
+    if (productIds.length === 0) return { products: [], company };
+    const { data: rows } = await supabaseAdmin
+      .from("products")
+      .select("id, name")
+      .eq("company_id", companyId)
+      .in("id", productIds);
+    const names = new Map(
+      (Array.isArray(rows) ? rows : []).map((row) => [String((row as { id: unknown }).id), String((row as { name: unknown }).name ?? "")]),
+    );
+    return { products: productIds.map((id) => names.get(id) ?? "").filter(Boolean), company };
+  } catch {
+    return empty;
+  }
+}
+
 export const Route = createFileRoute("/api/ai/v2-suggestion")({
   server: {
     handlers: {
@@ -104,6 +148,7 @@ export const Route = createFileRoute("/api/ai/v2-suggestion")({
             conversation_id: suggestion.conversation_id,
             generated_text: suggestion.generated_text,
             created_at: suggestion.created_at,
+            basis: await loadSuggestionBasis(authentication.companyId, conversationId, suggestion.created_at),
           },
         });
       },
@@ -170,15 +215,21 @@ export const Route = createFileRoute("/api/ai/v2-suggestion")({
           return Response.json({ error: transition.code }, { status });
         }
 
-        const { error: updateError } = await supabaseAdmin
+        const { data: updated, error: updateError } = await supabaseAdmin
           .from("ai_suggestions_log")
           .update(transition.update)
           .eq("id", body.suggestionId)
           .eq("company_id", authentication.companyId)
-          .eq("was_sent", false);
+          .eq("was_sent", false)
+          .eq("classification", "v2_status:pending")
+          .select("id")
+          .maybeSingle();
 
         if (updateError) {
           return Response.json({ error: "falha ao atualizar sugestão" }, { status: 500 });
+        }
+        if (!updated) {
+          return Response.json({ error: "suggestion_not_pending" }, { status: 409 });
         }
 
         await logEvent(

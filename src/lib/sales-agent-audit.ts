@@ -32,6 +32,15 @@ export type SalesAgentAuditPayload = {
 };
 
 const SAFE_RESULT = /^[a-zA-Z0-9_.:-]{1,120}$/;
+// Audit fields are operational codes, never free-form model explanations.
+const SAFE_BLOCK_CODES = new Set([
+  "approval_required", "v2_silent", "pre_check", "human_active",
+  "no_message", "send_failed", "simulated", "catalog_unvalidated_objective_claim",
+  "suggestion_persist_error", "memory_error", "catalog_error",
+  "company_id_required", "invalid_input", "access_denied", "product_not_found",
+  "product_inactive", "ambiguous_product", "price_unavailable",
+  "data_unavailable", "invalid_value", "query_error", "action_not_allowed",
+]);
 
 function safeCode(value: string, fallback: string): string {
   const raw = value.trim();
@@ -44,6 +53,11 @@ function safeCode(value: string, fallback: string): string {
     return fallback;
   const normalized = raw.replace(/[^a-zA-Z0-9_.:-]/g, "_").slice(0, 120);
   return SAFE_RESULT.test(normalized) ? normalized : fallback;
+}
+
+function operationalCode(value: string, fallback: string): string {
+  const raw = value.trim();
+  return /^[a-z][a-z0-9_:-]{0,63}$/.test(raw) ? safeCode(raw, fallback) : fallback;
 }
 
 function safePositiveInteger(value: number): number {
@@ -69,15 +83,19 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
     decision: input.decision,
     product_ids: productIds,
     tools,
-    result: safeCode(input.result, "redacted_result"),
-    blocked: input.blocked ? safeCode(input.blocked, "redacted_block") : null,
+    result: operationalCode(input.result, "redacted_result"),
+    blocked: input.blocked
+      ? SAFE_BLOCK_CODES.has(input.blocked.trim())
+        ? input.blocked.trim()
+        : "redacted_block"
+      : null,
     latency_ms: safePositiveInteger(input.latencyMs),
     tokens_available:
       input.tokensAvailable === null || input.tokensAvailable === undefined
         ? null
         : safePositiveInteger(input.tokensAvailable),
     ...(input.fallbackReason
-      ? { fallback_reason: safeCode(input.fallbackReason, "redacted_fallback") }
+      ? { fallback_reason: operationalCode(input.fallbackReason, "redacted_fallback") }
       : {}),
   };
 }

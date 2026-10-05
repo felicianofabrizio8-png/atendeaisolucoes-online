@@ -88,9 +88,9 @@ describe("grants das RPCs de feedback do Coach", () => {
 });
 
 describe("segurança estrutural das RPCs", () => {
-  const v2Def = FULL_SQL.slice(
-    FULL_SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.submit_coach_suggestion_feedback_v2"),
-  );
+  const v2Start = FULL_SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.submit_coach_suggestion_feedback_v2");
+  const v2End = FULL_SQL.indexOf("$$;", v2Start);
+  const v2Def = FULL_SQL.slice(v2Start, v2End === -1 ? FULL_SQL.length : v2End);
 
   it("v2 é SECURITY DEFINER com search_path fixo", () => {
     expect(v2Def).toMatch(/SECURITY DEFINER/);

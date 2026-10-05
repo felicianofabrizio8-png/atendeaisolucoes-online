@@ -12,6 +12,8 @@ export type QuickReply = {
   content: string;
   sort_order: number;
   active: boolean;
+  /** Último dia em que a informação vale (AAAA-MM-DD). Sem data, não vence. */
+  valid_until?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -23,6 +25,8 @@ export type QuickReplyInput = {
   content: string;
   sort_order?: number;
   active?: boolean;
+  /** Só é gravado quando informado (AAAA-MM-DD ou null para tirar a validade). */
+  valid_until?: string | null;
 };
 
 export async function listQuickReplies(
@@ -55,7 +59,8 @@ export async function createQuickReply(
       content: input.content,
       sort_order: input.sort_order ?? 0,
       active: input.active ?? true,
-    })
+      ...(input.valid_until ? { valid_until: input.valid_until } : {}),
+    } as never)
     .select("*")
     .single();
   if (error) throw error;
@@ -82,6 +87,9 @@ export async function updateQuickReply(
   if (patch.content !== undefined) row.content = patch.content;
   if (patch.sort_order !== undefined) row.sort_order = patch.sort_order;
   if (patch.active !== undefined) row.active = patch.active;
+  if (patch.valid_until !== undefined) {
+    (row as { valid_until?: string | null }).valid_until = patch.valid_until || null;
+  }
   const { error } = await supabase
     .from("quick_replies")
     .update(row)

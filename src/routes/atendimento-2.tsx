@@ -2,6 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Clock3, MessageCircle, Sparkles } from "lucide-react";
 import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendimentoData";
+import type { Message } from "@/data/mock";
+import { getSharedContacts, sharedContactsPreview } from "@/lib/whatsapp/shared-contacts";
+import { SharedContactList } from "@/components/inbox/message/SharedContactCard";
 
 
 export const Route = createFileRoute("/atendimento-2")({
@@ -35,6 +38,10 @@ function statusLabel(status: string) {
     fechado: "Ganha",
     perdido: "Perdida",
   }[status] ?? status;
+}
+
+function messagePreview(message: Message) {
+  return sharedContactsPreview(message) ?? message.text;
 }
 
 function contactTitle(contact: AtendimentoContact) {
@@ -94,7 +101,7 @@ function ConversationList({
                   <span>{statusLabel(contact.lead.status)}</span>
                 </span>
                 <span className="mt-1 block truncate text-xs text-muted-foreground">
-                  {lastMessage?.text || "Nenhuma mensagem"}
+                  {(lastMessage && messagePreview(lastMessage)) || "Nenhuma mensagem"}
                 </span>
               </span>
             </button>
@@ -126,6 +133,7 @@ function ConversationView({ contact }: { contact: AtendimentoContact }) {
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-6">
         {contact.messages.map((message) => {
           const mine = message.role === "agent";
+          const shared = getSharedContacts(message);
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
@@ -135,7 +143,11 @@ function ConversationView({ contact }: { contact: AtendimentoContact }) {
                     : "rounded-bl-md border border-border bg-card text-foreground"
                 }`}
               >
-                <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                {shared.length > 0 ? (
+                  <SharedContactList contacts={shared} />
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                )}
                 <p className={`mt-2 text-[10px] ${mine ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                   {relativeTime(message.at)}
                 </p>

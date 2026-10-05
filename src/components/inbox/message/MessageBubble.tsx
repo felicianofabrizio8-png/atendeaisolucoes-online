@@ -1,4 +1,6 @@
 import { getUnsupportedPlaceholder } from "@/lib/inbox/unsupported-placeholder";
+import { getSharedContacts } from "@/lib/whatsapp/shared-contacts";
+import { SharedContactList } from "./SharedContactCard";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { extractLegacyMetaMedia } from "../../../../supabase/functions/meta-webhook/media";
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -897,6 +899,18 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
   }
 
   const text = message.text ?? "";
+
+  // Contato compartilhado: nome/telefone vêm de source_metadata.raw.contacts
+  // (inclusive mensagens antigas). Sem dados recuperáveis, cai no placeholder.
+  const sharedContacts = getSharedContacts(message);
+  if (sharedContacts.length > 0) {
+    return (
+      <>
+        {replyNode}
+        <SharedContactList contacts={sharedContacts} />
+      </>
+    );
+  }
 
   // Placeholder amigável para tipos ainda não renderizados nativamente
   // (documentos sem download, localização, contatos, enquetes, stickers legados,

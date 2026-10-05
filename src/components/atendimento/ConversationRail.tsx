@@ -5,6 +5,7 @@ import { ContactAvatar } from "./ContactAvatar";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
 import type { FollowupCycleView } from "@/lib/atendimento/followup-view";
+import { sharedContactsPreview } from "@/lib/whatsapp/shared-contacts";
 
 export function ConversationRail({
   contacts,
@@ -112,7 +113,7 @@ export function ConversationRail({
                       <span className="mt-0.5 flex items-center gap-1.5">
                         <span className="truncate text-xs text-muted-foreground">
                           {last?.role === "agent" ? "Você: " : ""}
-                          {last?.text ?? "—"}
+                          {(last && (sharedContactsPreview(last) ?? last.text)) ?? "—"}
                         </span>
                         {conversation.unread ? (
                           <span className="ml-auto shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground tabular-nums">

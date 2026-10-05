@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   canSalesAgentSend,
+  isConversationAutoReply,
   resolveSalesAgentMode,
+  withConversationAutoReply,
   salesAgentModeReason,
 } from "../sales-agent-mode";
 
@@ -36,5 +38,22 @@ describe("sales-agent-mode", () => {
     expect(mode).toBe("silent");
     expect(canSalesAgentSend(mode)).toBe(false);
     expect(salesAgentModeReason(mode!)).toBe("v2_silent");
+  });
+
+  it("automático por conversa só vale em empresa no modo assistido", () => {
+    const assisted = { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted" };
+    const on = withConversationAutoReply(assisted, true);
+    expect(resolveSalesAgentMode(on)).toBe("automatic");
+    expect(isConversationAutoReply(on)).toBe(true);
+    expect(canSalesAgentSend(resolveSalesAgentMode(on))).toBe(true);
+    // Desligado na conversa: continua sugerindo.
+    expect(withConversationAutoReply(assisted, false)).toBe(assisted);
+    // Silent e legado não passam a responder por causa da conversa.
+    const silent = { sales_agent_v2_enabled: true, sales_agent_v2_mode: "silent" };
+    expect(withConversationAutoReply(silent, true)).toBe(silent);
+    const legacy = { sales_agent_v2_enabled: false, sales_agent_v2_mode: "assisted" };
+    expect(withConversationAutoReply(legacy, true)).toBe(legacy);
+    // Automático da empresa inteira não é confundido com o da conversa.
+    expect(isConversationAutoReply({ sales_agent_v2_enabled: true, sales_agent_v2_mode: "automatic" })).toBe(false);
   });
 });
