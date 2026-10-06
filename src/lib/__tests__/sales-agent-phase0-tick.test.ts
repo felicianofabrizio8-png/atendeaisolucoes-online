@@ -906,3 +906,129 @@ describe("runAgentTick · auditoria da Vendedora externa", () => {
     }
   });
 });
+
+describe("runAgentTick · botão mestre da Vendedora IA", () => {
+  const SELLER = "https://seller.example.test/v1/sales/turn";
+  const stubExternal = (eligible: string = COMPANY) => {
+    vi.stubEnv("EXTERNAL_SALES_AGENT_COMPANY_IDS", eligible);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_ENDPOINT", SELLER);
+    vi.stubEnv("EXTERNAL_SALES_AGENT_API_KEY", "k");
+    vi.stubEnv("EXTERNAL_SALES_AGENT_MODES", "silent,assisted,automatic");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ response: "Posso ajudar?", selected_products: [], handoff: { required: false, reason: null } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+  const cleanup = () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  };
+  const sellerCalls = (fetchMock: ReturnType<typeof stubExternal>) =>
+    fetchMock.mock.calls.filter(([url]) => String(url) === SELLER);
+  const writes = () => calls().filter((c) => c.op !== "select");
+  const pendingSuggestions = () =>
+    calls().filter((c) => c.table === "ai_suggestions_log" && c.op === "insert" && c.values?.classification === "v2_status:pending");
+  const off = (mode: string) => ({ sales_agent_v2_enabled: true, sales_agent_v2_mode: mode, sales_agent_master_enabled: false });
+
+  it("OFF em empresa da Vendedora: zero chamadas à Vendedora e zero resposta automática do agente interno", async () => {
+    for (const mode of ["silent", "assisted", "automatic"]) {
+      install({ settings: off(mode) });
+      const fetchMock = stubExternal();
+      try {
+        const result = await runAgentTick(CONV);
+        expect(result).toEqual({ ok: true, action: "skipped", reason: "sales_agent_master_disabled" });
+        // Nenhuma chamada HTTP: nem à Vendedora, nem a qualquer provedor de LLM.
+        expect(sellerCalls(fetchMock)).toHaveLength(0);
+        expect(fetchMock).not.toHaveBeenCalled();
+        // O agente interno não decide nem envia nada ao cliente.
+        expect(decideSpy).not.toHaveBeenCalled();
+        expect(postGraph).not.toHaveBeenCalled();
+        expect(sentTexts()).toEqual([]);
+        expect(insertedAgentMessages()).toEqual([]);
+      } finally {
+        cleanup();
+      }
+    }
+  });
+
+  it("OFF: a conversa fica com a equipe — sem lock, sem sugestão, sem mudança de status nem do automático da conversa", async () => {
+    install({ settings: off("assisted") });
+    const fetchMock = stubExternal();
+    try {
+      await runAgentTick(CONV);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(pendingSuggestions()).toEqual([]);
+      expect(statusUpdates()).toEqual([]);
+      expect(writes()).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("OFF com o pré-atendimento ligado: o agente interno continua sem responder", async () => {
+    install({ settings: { ...off("automatic"), ai_auto_reply_enabled: true, ai_after_hours_only: false } });
+    const fetchMock = stubExternal();
+    try {
+      const result = await runAgentTick(CONV);
+      expect(result).toMatchObject({ action: "skipped", reason: "sales_agent_master_disabled" });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(decideSpy).not.toHaveBeenCalled();
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ON: o modo da empresa vale exatamente como antes", async () => {
+    install({ settings: { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted", sales_agent_master_enabled: true } });
+    const fetchMock = stubExternal();
+    try {
+      const result = await runAgentTick(CONV);
+      expect(sellerCalls(fetchMock)).toHaveLength(1);
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(pendingSuggestions()).toHaveLength(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("empresa que não usa a Vendedora: o botão é ignorado e o agente interno responde como sempre", async () => {
+    const outcomes: unknown[] = [];
+    for (const master of [false, true, undefined]) {
+      install({ settings: master === undefined ? {} : { sales_agent_master_enabled: master } });
+      // A lista da Vendedora tem só outra empresa.
+      const fetchMock = stubExternal("outra-empresa");
+      try {
+        const result = await runAgentTick(CONV);
+        expect(sellerCalls(fetchMock)).toHaveLength(0);
+        expect(decideSpy).toHaveBeenCalledOnce();
+        outcomes.push({ result, sent: sentTexts() });
+      } finally {
+        cleanup();
+        decideSpy.mockClear();
+        postGraph.mockClear();
+      }
+    }
+    expect(outcomes[0]).toMatchObject({ result: { ok: true, action: "replied" } });
+    expect(outcomes[0]).toEqual(outcomes[1]);
+    expect(outcomes[0]).toEqual(outcomes[2]);
+  });
+
+  it("empresa que não usa a Vendedora mantém o próprio modo mesmo com o botão gravado como desligado", async () => {
+    install({ settings: off("assisted") });
+    const fetchMock = stubExternal("outra-empresa");
+    try {
+      const result = await runAgentTick(CONV);
+      expect(sellerCalls(fetchMock)).toHaveLength(0);
+      // Modo assistido com o agente interno: a resposta vira sugestão, como já era.
+      expect(result).toMatchObject({ action: "skipped", reason: "v2_assisted_approval_required" });
+      expect(postGraph).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+});

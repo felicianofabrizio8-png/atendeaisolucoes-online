@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { isCompanySalesAgentMasterOff } from "@/lib/sales-agent-master.server";
 import {
   transitionAssistedSuggestion,
   type AssistedSuggestionAction,
@@ -48,6 +49,8 @@ async function authenticateCompany(
 }
 
 async function assistedModeIsActive(companyId: string): Promise<boolean> {
+  // Vendedora IA desligada no botão mestre: sugestão pendente dela não aparece nem é aprovada.
+  if (await isCompanySalesAgentMasterOff(companyId)) return false;
   const { data: settings } = await supabaseAdmin
     .from("company_settings")
     .select("sales_agent_v2_enabled, sales_agent_v2_mode")

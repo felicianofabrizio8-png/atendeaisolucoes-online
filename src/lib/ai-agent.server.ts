@@ -66,11 +66,11 @@ import {
 import { resolveWhatsappSendCredentials } from "./whatsapp/send-credentials";
 import { resolveSalesAgentLlmConfig } from "./sales-agent-config.server";
 import { sendWhatsappProductImages } from "./sales-agent-product-images.server";
-import { callExternalSalesAgent, isExternalSalesAgentActive, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
+import { callExternalSalesAgent, isExternalSalesAgentActive, isExternalSalesAgentEligible, type ExternalSalesAgentResult } from "./external-sales-agent-adapter.server";
 import { listActiveQuickRepliesForGrounding } from "./quick-replies/quick-replies.repository";
 import { externalSalesAgentBudgetMs, internalLlmTimeoutMs } from "./agent-turn-budget";
 import { MAX_SALES_AGENT_PRODUCT_IMAGES } from "./sales-agent-product-images";
-import { canSalesAgentSend, isConversationAutoReply, resolveSalesAgentMode, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
+import { canSalesAgentSend, isConversationAutoReply, isSalesAgentMasterOff, resolveSalesAgentMode, SALES_AGENT_MASTER_OFF_REASON, withConversationAutoReply, type SalesAgentMode } from "./sales-agent-mode";
 import { loadSellerState, saveSellerState } from "./sales-agent-seller-state.server";
 import { applyQuotedMessage, quotedExternalId, type QuotedSourceRow } from "./sales-agent-quoted-message";
 import { AUDIO_UNAVAILABLE_REPLY, classifyLeadAudio, isAudioPlaceholder } from "./sales-agent-media";
@@ -591,8 +591,15 @@ export async function loadAgentContext(
     ],
   );
   if (!settings) return null;
+  // O botão mestre da Vendedora só existe para empresa que a usa: fora da lista ele é
+  // ignorado, e a empresa segue exatamente como sempre.
+  const agentSettings = settings as AgentSettings;
+  const effectiveSettings: AgentSettings =
+    isSalesAgentMasterOff(agentSettings) && !isExternalSalesAgentEligible(companyId)
+      ? { ...agentSettings, sales_agent_master_enabled: true }
+      : agentSettings;
   return {
-    settings: settings as AgentSettings,
+    settings: effectiveSettings,
     companyName: company?.name ?? "—",
     aiProfile: aiProfile
       ? {
@@ -1598,6 +1605,12 @@ async function runAgentTickPass(
 
   const baseCtx = await loadAgentContext(conv.company_id);
   if (!baseCtx) return { ok: false, action: "error", reason: "no_settings" };
+  // Vendedora IA desligada no botão mestre (empresa que a usa): ninguém responde no lugar
+  // dela. O turno termina aqui, sem Vendedora, sem agente interno e sem tocar na conversa:
+  // o atendimento fica com a equipe até religarem.
+  if (isSalesAgentMasterOff(baseCtx.settings)) {
+    return { ok: true, action: "skipped", reason: SALES_AGENT_MASTER_OFF_REASON };
+  }
   // Automático por conversa: lido à parte para que a falta da coluna (migration ainda não
   // aplicada) ou um erro de leitura só deixe a conversa no modo da empresa.
   const conversationAutoReply =

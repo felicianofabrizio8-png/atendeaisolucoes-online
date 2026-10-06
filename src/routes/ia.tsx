@@ -22,6 +22,7 @@ import { AIAnalyticsDashboard } from "@/components/AIAnalyticsDashboard";
 import { AIFollowupPanel } from "@/components/AIFollowupPanel";
 import { WhatsappTemplatesPanel } from "@/components/WhatsappTemplatesPanel";
 import { SalesTrainingChat } from "@/components/ai/SalesTrainingChat";
+import { SalesAgentMasterSwitch } from "@/components/ai/SalesAgentMasterSwitch";
 import { toast } from "sonner";
 
 
@@ -361,6 +362,8 @@ function ConfiguracoesIA() {
         <Sparkles className="h-5 w-5 text-primary shrink-0" />
         <h1 className="text-base md:text-xl font-semibold truncate">IA de Atendimento</h1>
       </header>
+
+      <SalesAgentMasterSwitch companyId={companyId} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 w-full min-w-0">
         {/* Mobile: select dropdown for tabs (no horizontal scroll) */}

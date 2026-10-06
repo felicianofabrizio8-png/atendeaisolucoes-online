@@ -6,7 +6,8 @@ import { isSalesAgentServingAttendants } from "@/lib/sales-agent-mode";
 /**
  * Qual painel de IA o atendente desta empresa vê:
  *  - "vendedora": a empresa usa a Vendedora 2.0 (assistido/automático) — painel só dela;
- *  - "coach": a empresa continua no fluxo anterior (Coach);
+ *  - "coach": a empresa continua no fluxo anterior (Coach), inclusive quando desligou a
+ *    Vendedora IA no botão mestre;
  *  - "loading"/"error": ainda não se sabe. Nenhum painel é montado nesses estados, para
  *    que o Coach nunca gere uma segunda resposta numa empresa que usa a Vendedora 2.0.
  * A decisão é sempre da configuração da empresa (company_id), nunca global.
@@ -30,7 +31,8 @@ export function useSalesAgentPanelMode(): { mode: SalesAgentPanelMode; retry: ()
       try {
         const { data, error } = await supabase
           .from("company_settings")
-          .select("sales_agent_v2_enabled, sales_agent_v2_mode")
+          // `*`: o botão mestre da Vendedora vem junto e, antes da migration dele, a leitura não falha.
+          .select("*")
           .eq("company_id", companyId)
           .maybeSingle();
         if (cancelled) return;
