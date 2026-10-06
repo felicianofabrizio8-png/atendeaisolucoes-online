@@ -92,6 +92,7 @@ import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
 import { Route as ApiAiSuggestReplyRouteImport } from './routes/api.ai.suggest-reply'
 import { Route as ApiAiSuggestProductRouteImport } from './routes/api.ai.suggest-product'
 import { Route as ApiAiSuggestRouteImport } from './routes/api.ai.suggest'
+import { Route as ApiAiSalesAgentMasterRouteImport } from './routes/api.ai.sales-agent-master'
 import { Route as ApiAiReadinessRouteImport } from './routes/api.ai.readiness'
 import { Route as ApiAiProposeKnowledgeRouteImport } from './routes/api.ai.propose-knowledge'
 import { Route as ApiAiPilotToggleRouteImport } from './routes/api.ai.pilot-toggle'
@@ -580,6 +581,11 @@ const ApiAiSuggestRoute = ApiAiSuggestRouteImport.update({
   path: '/api/ai/suggest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiSalesAgentMasterRoute = ApiAiSalesAgentMasterRouteImport.update({
+  id: '/api/ai/sales-agent-master',
+  path: '/api/ai/sales-agent-master',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiReadinessRoute = ApiAiReadinessRouteImport.update({
   id: '/api/ai/readiness',
   path: '/api/ai/readiness',
@@ -788,6 +794,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/readiness': typeof ApiAiReadinessRoute
+  '/api/ai/sales-agent-master': typeof ApiAiSalesAgentMasterRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
@@ -902,6 +909,7 @@ export interface FileRoutesByTo {
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/readiness': typeof ApiAiReadinessRoute
+  '/api/ai/sales-agent-master': typeof ApiAiSalesAgentMasterRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
@@ -1018,6 +1026,7 @@ export interface FileRoutesById {
   '/api/ai/pilot-toggle': typeof ApiAiPilotToggleRoute
   '/api/ai/propose-knowledge': typeof ApiAiProposeKnowledgeRoute
   '/api/ai/readiness': typeof ApiAiReadinessRoute
+  '/api/ai/sales-agent-master': typeof ApiAiSalesAgentMasterRoute
   '/api/ai/suggest': typeof ApiAiSuggestRoute
   '/api/ai/suggest-product': typeof ApiAiSuggestProductRoute
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
@@ -1135,6 +1144,7 @@ export interface FileRouteTypes {
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
     | '/api/ai/readiness'
+    | '/api/ai/sales-agent-master'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
@@ -1249,6 +1259,7 @@ export interface FileRouteTypes {
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
     | '/api/ai/readiness'
+    | '/api/ai/sales-agent-master'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
@@ -1364,6 +1375,7 @@ export interface FileRouteTypes {
     | '/api/ai/pilot-toggle'
     | '/api/ai/propose-knowledge'
     | '/api/ai/readiness'
+    | '/api/ai/sales-agent-master'
     | '/api/ai/suggest'
     | '/api/ai/suggest-product'
     | '/api/ai/suggest-reply'
@@ -1475,6 +1487,7 @@ export interface RootRouteChildren {
   ApiAiPilotToggleRoute: typeof ApiAiPilotToggleRoute
   ApiAiProposeKnowledgeRoute: typeof ApiAiProposeKnowledgeRoute
   ApiAiReadinessRoute: typeof ApiAiReadinessRoute
+  ApiAiSalesAgentMasterRoute: typeof ApiAiSalesAgentMasterRoute
   ApiAiSuggestRoute: typeof ApiAiSuggestRoute
   ApiAiSuggestProductRoute: typeof ApiAiSuggestProductRoute
   ApiAiSuggestReplyRoute: typeof ApiAiSuggestReplyRoute
@@ -2132,6 +2145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiSuggestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/sales-agent-master': {
+      id: '/api/ai/sales-agent-master'
+      path: '/api/ai/sales-agent-master'
+      fullPath: '/api/ai/sales-agent-master'
+      preLoaderRoute: typeof ApiAiSalesAgentMasterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/readiness': {
       id: '/api/ai/readiness'
       path: '/api/ai/readiness'
@@ -2410,6 +2430,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiPilotToggleRoute: ApiAiPilotToggleRoute,
   ApiAiProposeKnowledgeRoute: ApiAiProposeKnowledgeRoute,
   ApiAiReadinessRoute: ApiAiReadinessRoute,
+  ApiAiSalesAgentMasterRoute: ApiAiSalesAgentMasterRoute,
   ApiAiSuggestRoute: ApiAiSuggestRoute,
   ApiAiSuggestProductRoute: ApiAiSuggestProductRoute,
   ApiAiSuggestReplyRoute: ApiAiSuggestReplyRoute,

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getLeadById } from "@/data/leadRepo";
+import { resolveSalesAgentMode } from "@/lib/sales-agent-mode";
 import { timeAgo } from "@/data/mock";
 import { num, useInView } from "./charts/primitives";
 import type { DashboardData } from "./useDashboardData";
@@ -23,14 +24,15 @@ export function AICommand({ data }: { data: DashboardData }) {
     if (!companyId) return;
     let cancelled = false;
     void supabase.from("company_settings")
-      .select("ai_auto_reply_enabled, sales_agent_v2_enabled, sales_agent_v2_mode")
+      // `*`: inclui o botão mestre da Vendedora sem falhar antes da migration dele.
+      .select("*")
       .eq("company_id", companyId)
       .maybeSingle()
       .then(({ data: settings, error }) => {
         if (cancelled) return;
         const label = error || !settings ? "Estado indisponível"
-          : settings.sales_agent_v2_enabled && settings.sales_agent_v2_mode === "silent" ? "Em avaliação"
-          : settings.sales_agent_v2_enabled && settings.sales_agent_v2_mode === "assisted" ? "Assistida"
+          : resolveSalesAgentMode(settings) === "silent" ? "Em avaliação"
+          : resolveSalesAgentMode(settings) === "assisted" ? "Assistida"
           : settings.ai_auto_reply_enabled ? "Respostas habilitadas" : "Respostas desativadas";
         setMode({ companyId, label });
       });

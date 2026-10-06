@@ -205,3 +205,29 @@ describe("painel de IA conforme a configuração da empresa", () => {
     expect(drawer).toHaveTextContent("null|Como posso pagar?|Parcelamos em até 3x.");
   });
 });
+
+describe("botão mestre da Vendedora IA desligado na empresa", () => {
+  it(
+    "o painel da Vendedora não é montado; o Coach continua funcionando",
+    async () => {
+      db.settings = { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted", sales_agent_master_enabled: false };
+      stubFetch();
+      render(<CoachPanel conversationId="conversation-1" messages={[lead("m1", "Oi")]} />);
+
+      // A sugestão pendente da Vendedora é barrada no servidor (rota v2-suggestion).
+      await screen.findByTestId("coach-panel-legacy");
+      expect(screen.getByText("Coach IA")).toBeInTheDocument();
+      expect(screen.queryByTestId("vendedora-panel")).toBeNull();
+      expect(screen.queryByText("Vendedora IA")).toBeNull();
+    },
+    10_000,
+  );
+
+  it("religado: a empresa volta para o painel da Vendedora", async () => {
+    db.settings = { sales_agent_v2_enabled: true, sales_agent_v2_mode: "assisted", sales_agent_master_enabled: true };
+    stubFetch();
+    render(<CoachPanel conversationId="conversation-1" messages={[lead("m1", "Oi")]} />);
+    await screen.findByTestId("vendedora-panel");
+    expect(screen.queryByTestId("coach-panel-legacy")).toBeNull();
+  });
+});

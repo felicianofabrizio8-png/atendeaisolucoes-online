@@ -9,6 +9,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { isCompanySalesAgentMasterOff } from "@/lib/sales-agent-master.server";
 import {
   releaseConversationToAi,
   type ConversationControlClient,
@@ -60,7 +61,13 @@ export const Route = createFileRoute("/api/ai/agent-takeover")({
             .select("sales_agent_v2_enabled, sales_agent_v2_mode")
             .eq("company_id", profile.company_id)
             .maybeSingle();
-          if (!settings || resolveSalesAgentMode(settings) !== "assisted") {
+          // Vendedora IA desligada no botão mestre: o controle some da conversa, mas o valor
+          // gravado nela é preservado e volta a valer quando a empresa religar.
+          if (
+            !settings ||
+            resolveSalesAgentMode(settings) !== "assisted" ||
+            (await isCompanySalesAgentMasterOff(profile.company_id))
+          ) {
             return Response.json({ ok: true, available: false, enabled: false });
           }
           if (body.action === "auto_reply_status") {

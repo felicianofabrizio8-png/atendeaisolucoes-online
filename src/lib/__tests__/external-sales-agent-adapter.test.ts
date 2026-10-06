@@ -398,3 +398,48 @@ describe("external sales agent adapter", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+describe("botão mestre da Vendedora IA no adaptador", () => {
+  const withMaster = (value: boolean | null | undefined, mode = "assisted") =>
+    ({ ...context, settings: { ...context.settings, sales_agent_v2_mode: mode, sales_agent_master_enabled: value } }) as unknown as AgentContextBase;
+
+  it("desligado: nenhuma chamada HTTP, em nenhum modo, nem com automático na conversa", async () => {
+    for (const mode of ["silent", "assisted", "automatic"]) {
+      const fetchImpl = vi.fn();
+      const onResult = vi.fn();
+      const env = { ...input.env, EXTERNAL_SALES_AGENT_MODES: "silent,assisted,automatic" };
+      const result = await callExternalSalesAgent({ ...input, env, context: withMaster(false, mode), fetchImpl, onResult });
+      expect(result).toMatchObject({ enabled: false, reason: "mode_not_enabled" });
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(onResult).toHaveBeenCalledOnce();
+    }
+    const perConversation = withMaster(false, "automatic");
+    (perConversation.settings as unknown as Record<string, unknown>).sales_agent_v2_mode_source = "conversation";
+    const fetchImpl = vi.fn();
+    await callExternalSalesAgent({ ...input, context: perConversation, fetchImpl });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(isExternalSalesAgentActive({ ...context.settings, sales_agent_master_enabled: false } as never, input.env)).toBe(false);
+  });
+
+  it("ligado, nulo ou coluna ausente: o comportamento atual é mantido", async () => {
+    for (const value of [true, null, undefined]) {
+      const fetchImpl = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+      const result = await callExternalSalesAgent({ ...input, context: withMaster(value), fetchImpl });
+      expect(result).toMatchObject({ enabled: true, ok: true });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(isExternalSalesAgentActive({ ...context.settings, sales_agent_master_enabled: value } as never, input.env)).toBe(true);
+    }
+  });
+
+  it("o botão vale por empresa: desligar uma não afeta a outra", async () => {
+    const env = { ...input.env, EXTERNAL_SALES_AGENT_COMPANY_IDS: "company-1,company-2" };
+    const other = { ...context, settings: { ...context.settings, company_id: "company-2", sales_agent_master_enabled: true } } as unknown as AgentContextBase;
+    const offFetch = vi.fn();
+    const onFetch = vi.fn().mockResolvedValue(response({ response: "Posso ajudar?" }));
+    await callExternalSalesAgent({ ...input, env, context: withMaster(false), fetchImpl: offFetch });
+    await callExternalSalesAgent({ ...input, env, companyId: "company-2", context: other, fetchImpl: onFetch });
+    expect(offFetch).not.toHaveBeenCalled();
+    expect(onFetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(String((onFetch.mock.calls[0] as [string, RequestInit])[1].body)).company_id).toBe("company-2");
+  });
+});

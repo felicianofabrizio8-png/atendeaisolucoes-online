@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getReadiness, getHealth } from "@/lib/ai-readiness.server";
+import { isExternalSalesAgentEligible } from "@/lib/external-sales-agent-adapter.server";
 
 async function authedCompanyId(request: Request): Promise<string | null> {
   const h = request.headers.get("authorization") ?? "";
@@ -30,7 +31,13 @@ export const Route = createFileRoute("/api/ai/readiness")({
           getReadiness(companyId),
           getHealth(companyId),
         ]);
-        return Response.json({ ok: true, readiness, health });
+        // Empresa que usa a Vendedora IA: só para ela a tela mostra o botão mestre.
+        return Response.json({
+          ok: true,
+          readiness,
+          health,
+          salesAgentEligible: isExternalSalesAgentEligible(companyId),
+        });
       },
     },
   },

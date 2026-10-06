@@ -111,6 +111,8 @@ export interface AgentSettings {
   ai_handoff_message?: string | null;
   sales_agent_v2_enabled?: boolean;
   sales_agent_v2_mode?: string;
+  /** Botão mestre da Vendedora IA da empresa; só `false` desliga. */
+  sales_agent_master_enabled?: boolean | null;
 }
 
 export interface SalesAgentGrounding {

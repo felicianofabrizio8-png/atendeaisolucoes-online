@@ -72,6 +72,14 @@ function configuredCompanyIds(env: Record<string, string | undefined>): Set<stri
   return new Set((env.EXTERNAL_SALES_AGENT_COMPANY_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
 }
 
+/** A empresa está na lista das que usam a Vendedora externa (EXTERNAL_SALES_AGENT_COMPANY_IDS)? */
+export function isExternalSalesAgentEligible(
+  companyId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return configuredCompanyIds(env).has(companyId);
+}
+
 // Modos do tenant em que a Vendedora externa atua. Padrão: `silent` (só avalia) e
 // `assisted` (a resposta vira sugestão para o atendente aprovar). `automatic` — ela
 // mesma responde o cliente — exige opt-in explícito em EXTERNAL_SALES_AGENT_MODES.
