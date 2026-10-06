@@ -256,7 +256,7 @@ function OnboardingPage() {
         </div>
         <h1 className="text-2xl md:text-3xl font-semibold">Configure sua empresa</h1>
         <p className="text-sm text-muted-foreground">
-          Conclua as etapas abaixo para começar a atender clientes pelo Atende Ai!
+          Conclua as etapas abaixo para começar a atender clientes pela Lume.
         </p>
       </header>
 

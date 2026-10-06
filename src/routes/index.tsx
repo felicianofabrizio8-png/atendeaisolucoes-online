@@ -20,14 +20,14 @@ import { LandingPage } from "@/components/landing/LandingPage";
 export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
-    title: "Atende Ai! — Vendas que não esperam",
+    title: "Lume — Vendas que não esperam",
     meta: [
       {
         name: "description",
         content:
           "Atendimento e vendas com IA: organize conversas, priorize leads e avance cada oportunidade.",
       },
-      { property: "og:title", content: "Atende Ai! — Vendas que não esperam" },
+      { property: "og:title", content: "Lume — Vendas que não esperam" },
       {
         property: "og:description",
         content:

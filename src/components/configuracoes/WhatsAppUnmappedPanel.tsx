@@ -79,7 +79,7 @@ export function WhatsAppUnmappedPanel() {
           </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Existem mensagens chegando para um número do seu Business Manager que ainda{" "}
-            <strong>não está conectado</strong> ao Atende Ai. Conecte esse número como uma nova
+            <strong>não está conectado</strong> à Lume. Conecte esse número como uma nova
             integração WhatsApp, ou peça para o cliente usar o número oficialmente divulgado.
           </p>
         </div>

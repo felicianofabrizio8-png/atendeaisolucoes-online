@@ -678,7 +678,7 @@ function CampaignDetailPage() {
 
         <TimelineGroup
           title="Sistema & IA"
-          subtitle="Eventos internos do Atende Ai"
+          subtitle="Eventos internos da Lume"
           events={timeline.filter((e) => e.source === "system")}
           emptyLabel="Nenhuma atividade registrada."
         />

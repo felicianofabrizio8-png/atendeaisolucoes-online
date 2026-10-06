@@ -45,16 +45,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { title: "Atende Ai! — Vendas que não esperam" },
+      { title: "Lume — Vendas que não esperam" },
       {
         name: "description",
         content:
           "Plataforma de atendimento e vendas com IA para WhatsApp, Instagram e Facebook. Responda leads em segundos, qualifique automaticamente e feche mais negócios.",
       },
-      { name: "author", content: "Atende Ai!" },
+      { name: "author", content: "Lume" },
       {
         property: "og:title",
-        content: "Atende Ai! — Vendas que não esperam",
+        content: "Lume — Vendas que não esperam",
       },
       {
         property: "og:description",
@@ -62,23 +62,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "IA que atende seus leads no WhatsApp em segundos, qualifica e passa para o vendedor na hora certa.",
       },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "Atende Ai!" },
-      { property: "og:image", content: "/icon-512.png" },
+      { property: "og:site_name", content: "Lume" },
+      { property: "og:image", content: "/lume-social.png" },
       { name: "twitter:card", content: "summary" },
       {
         name: "twitter:title",
-        content: "Atende Ai! — Vendas que não esperam",
+        content: "Lume — Vendas que não esperam",
       },
       {
         name: "twitter:description",
         content:
           "IA que atende seus leads no WhatsApp em segundos, qualifica e passa para o vendedor na hora certa.",
       },
-      { name: "twitter:image", content: "/icon-512.png" },
-      { name: "theme-color", content: "#22d3ee" },
+      { name: "twitter:image", content: "/lume-social.png" },
+      { name: "theme-color", content: "#000000" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "Atende Ai!" },
+      { name: "apple-mobile-web-app-title", content: "Lume" },
     ],
     links: [
       {
@@ -86,6 +86,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "manifest", href: "/manifest.json" },
+      { rel: "icon", type: "image/svg+xml", href: "/lume-icon.svg" },
       { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
       { rel: "icon", type: "image/png", sizes: "32x32", href: "/icon-32.png" },
       { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },

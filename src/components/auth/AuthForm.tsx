@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { LumeLogo } from "@/components/brand/LumeLogo";
 
 export type AuthMode = "signin" | "signup" | "forgot";
 
@@ -83,13 +84,7 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
   return (
     <div className="text-white">
       <div className="mb-7 flex flex-col items-center text-center">
-        <img
-          src="/icon-64.png"
-          alt=""
-          width="64"
-          height="64"
-          className="mb-5 h-16 w-16 object-contain drop-shadow-[0_8px_24px_rgba(175,108,236,0.32)]"
-        />
+        <LumeLogo variant="lockup" aria-label="Lume" className="mb-5 h-12 w-[164px] text-white" />
         <h2
           id="auth-form-title"
           className="text-balance text-[28px] font-semibold leading-tight tracking-[-0.045em] sm:text-[32px]"

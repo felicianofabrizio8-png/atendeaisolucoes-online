@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronRight, Menu, MessageCircle, X } from "lucide-
 import FUIHeroWithBorders from "@/components/ui/herowith-logos";
 import FUIBentoGridDark from "@/components/ui/bento";
 import { AuthDialog } from "@/components/auth/AuthDialog";
+import { LumeLogo } from "@/components/brand/LumeLogo";
 import "./landing.css";
 
 const navigation = [
@@ -22,19 +23,10 @@ function LandingHeader({ onOpenAuth }: { onOpenAuth: (mode: "signin" | "signup")
       >
         <a
           href="#inicio"
-          aria-label="Atende Ai! — voltar ao início"
+          aria-label="Lume — voltar ao início"
           className="inline-flex shrink-0 items-center gap-2.5 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-300 lg:justify-self-start"
         >
-          <img
-            src="/icon-64.png"
-            alt=""
-            width="39"
-            height="39"
-            className="h-10 w-10 object-contain"
-          />
-          <span className="text-[19px] font-bold tracking-tight text-white">
-            Atende Ai<span className="text-violet-300">!</span>
-          </span>
+          <LumeLogo variant="lockup" aria-hidden="true" className="h-9 w-[126px] text-white" />
         </a>
 
         <div className="hidden items-center gap-8 lg:flex lg:justify-self-center">
@@ -332,14 +324,7 @@ export function LandingPage() {
       <footer className="border-t border-white/10 px-5 py-8 sm:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 text-sm text-white/45 sm:flex-row sm:items-center">
           <div className="flex items-center gap-2">
-            <img
-              src="/icon-64.png"
-              alt=""
-              width="28"
-              height="28"
-              className="h-7 w-7 object-contain"
-            />
-            <span className="font-semibold text-white/80">Atende Ai!</span>
+            <LumeLogo variant="lockup" aria-label="Lume" className="h-7 w-[98px] text-white" />
             <span className="ml-2">Vendas que não esperam.</span>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
