@@ -1,18 +1,7 @@
 import { useState } from "react";
-import {
-  ArrowRight,
-  BarChart3,
-  Bot,
-  CalendarClock,
-  Check,
-  ChevronRight,
-  FileText,
-  Menu,
-  MessageCircle,
-  Target,
-  X,
-} from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Menu, MessageCircle, X } from "lucide-react";
 import FUIHeroWithBorders from "@/components/ui/herowith-logos";
+import FUIBentoGridDark from "@/components/ui/bento";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import "./landing.css";
 
@@ -22,58 +11,11 @@ const navigation = [
   { label: "Plataforma", href: "#plataforma" },
 ];
 
-const benefits = [
-  {
-    icon: MessageCircle,
-    title: "Converse sem perder o contexto",
-    description:
-      "Reúna o histórico dos atendimentos e encontre rapidamente quem precisa de resposta.",
-    accent: "text-violet-300",
-    background: "bg-violet-300/10",
-  },
-  {
-    icon: Bot,
-    title: "IA que ajuda a responder",
-    description: "Receba sugestões de mensagens e informações úteis para continuar a conversa.",
-    accent: "text-violet-300",
-    background: "bg-violet-300/10",
-  },
-  {
-    icon: Target,
-    title: "Priorize as oportunidades",
-    description:
-      "Identifique leads quentes e concentre a equipe nas conversas com maior potencial.",
-    accent: "text-amber-300",
-    background: "bg-amber-300/10",
-  },
-  {
-    icon: CalendarClock,
-    title: "Lembre da próxima ação",
-    description: "Organize retornos e follow-ups para que um bom contato não fique para trás.",
-    accent: "text-emerald-300",
-    background: "bg-emerald-300/10",
-  },
-  {
-    icon: FileText,
-    title: "Orçamentos no fluxo da venda",
-    description: "Monte propostas com seus produtos e mantenha a negociação perto da conversa.",
-    accent: "text-pink-300",
-    background: "bg-pink-300/10",
-  },
-  {
-    icon: BarChart3,
-    title: "Enxergue o que acontece",
-    description: "Acompanhe atendimento, funil e resultados em uma visão clara da operação.",
-    accent: "text-fuchsia-300",
-    background: "bg-fuchsia-300/10",
-  },
-];
-
 function LandingHeader({ onOpenAuth }: { onOpenAuth: (mode: "signin" | "signup") => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="absolute inset-x-0 top-0 z-30 bg-[#09060e]/70 backdrop-blur-xl">
+    <header className="absolute inset-x-0 top-0 z-30">
       <nav
         aria-label="Navegação principal"
         className="mx-auto flex h-[76px] max-w-7xl items-center justify-between gap-6 px-5 sm:px-8 lg:grid lg:grid-cols-[1fr_auto_1fr]"
@@ -275,37 +217,8 @@ export function LandingPage() {
       <main>
         <FUIHeroWithBorders onCreateAccount={() => openAuth("signup")} />
 
-        <section id="vantagens" className="relative bg-[#08050c] px-5 py-24 sm:px-8 sm:py-32">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-12 max-w-3xl sm:mb-16">
-              <span className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-300">
-                Feito para quem vende
-              </span>
-              <h2 className="mt-5 text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">
-                Mais clareza para sua equipe. Mais atenção para cada cliente.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-white/55 sm:text-lg">
-                Do primeiro contato ao fechamento, mantenha conversas, oportunidades e próximas
-                ações no mesmo lugar.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {benefits.map(({ icon: Icon, title, description, accent, background }) => (
-                <article
-                  key={title}
-                  className="group rounded-[28px] border border-white/10 bg-white/[0.035] p-7 transition-colors hover:border-white/20 hover:bg-white/[0.06] sm:p-8"
-                >
-                  <div
-                    className={`mb-7 flex h-12 w-12 items-center justify-center rounded-2xl ${background} ${accent}`}
-                  >
-                    <Icon className="h-6 w-6" aria-hidden="true" />
-                  </div>
-                  <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-white/55">{description}</p>
-                </article>
-              ))}
-            </div>
-          </div>
+        <section id="vantagens" className="relative bg-black px-5 py-24 sm:px-8 sm:py-32">
+          <FUIBentoGridDark />
         </section>
 
         <section id="plataforma" className="bg-[#170e22] px-5 py-24 sm:px-8 sm:py-32">
@@ -349,7 +262,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="como-funciona" className="bg-[#08050c] px-5 py-24 sm:px-8 sm:py-32">
+        <section id="como-funciona" className="bg-black px-5 py-24 sm:px-8 sm:py-32">
           <div className="mx-auto max-w-7xl">
             <div className="mx-auto mb-14 max-w-2xl text-center">
               <span className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-300">
@@ -395,11 +308,7 @@ export function LandingPage() {
         </section>
 
         <section className="px-5 pb-24 sm:px-8 sm:pb-32">
-          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[36px] border border-white/15 bg-[radial-gradient(circle_at_85%_20%,rgba(144,82,180,0.18),transparent_35%),linear-gradient(120deg,#120b18,#2c183c_70%,#472760)] px-7 py-16 text-center sm:px-12 sm:py-20">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-[36px] border border-white/10"
-            />
+          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_85%_20%,rgba(144,82,180,0.18),transparent_35%),linear-gradient(120deg,#120b18,#2c183c_70%,#472760)] px-7 py-16 text-center sm:px-12 sm:py-20">
             <div className="relative">
               <h2 className="mx-auto max-w-3xl text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">
                 Dê à sua equipe um jeito melhor de atender.

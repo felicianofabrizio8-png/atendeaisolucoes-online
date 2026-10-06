@@ -1,6 +1,6 @@
 .landing-page {
   color-scheme: dark;
-  background: #08050c;
+  background: #000;
 }
 
 /* O Radix reserva uma margem extra ao travar o scroll; a página já tem gutter. */
