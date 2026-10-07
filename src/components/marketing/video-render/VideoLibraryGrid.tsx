@@ -88,7 +88,7 @@ export function VideoLibraryGrid({ refreshKey }: Props) {
   if (videos.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        Nenhum vídeo ainda. Gere um vídeo na aba <strong>Gerar vídeo</strong>.
+        Nenhum vídeo ainda. Gere um vídeo em <strong>Criar &gt; Gerar conteúdo</strong>.
       </div>
     );
   }

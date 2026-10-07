@@ -71,7 +71,8 @@ export function MarketingSchedule({ companyId }: Props) {
   if (grouped.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Nenhum conteúdo agendado. Aprove um conteúdo e agende na aba <strong>Aprovação</strong>.
+        Nenhum conteúdo agendado. Aprove um conteúdo e agende em{" "}
+        <strong>Publicar &gt; Para revisar</strong>.
       </div>
     );
   }
@@ -79,7 +80,7 @@ export function MarketingSchedule({ companyId }: Props) {
   return (
     <div className="space-y-4">
       <div className="text-xs text-muted-foreground">
-        Fase 1: apenas planejamento. A publicação automática não está ativa.
+        Conteúdos aprovados entram na fila de publicação automática quando o canal estiver conectado.
       </div>
       {grouped.map(([day, items]) => (
         <div key={day} className="rounded-lg border bg-card overflow-hidden">

@@ -111,7 +111,7 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
   if (rows.length === 0) {
     return (
       <div className="rounded-md border bg-muted/40 p-4 text-sm text-muted-foreground">
-        Nenhum áudio cadastrado. Faça upload em <strong>Biblioteca &gt; Áudios</strong>.
+        Nenhum áudio cadastrado. Faça upload em <strong>Acervo &gt; Áudios</strong>.
       </div>
     );
   }
