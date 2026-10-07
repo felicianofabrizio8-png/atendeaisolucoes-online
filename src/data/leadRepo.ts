@@ -186,6 +186,7 @@ type DbLead = {
   tags: string[] | null;
   estimated_value: number | string | null;
   product: string | null;
+  assigned_to?: string | null;
   next_action_label: string | null;
   next_action_due_at: string | null;
   loss_reason: string | null;
@@ -199,6 +200,7 @@ function toLead(r: DbLead): Lead {
   return {
     id: r.id,
     name: r.name,
+    assignedTo: r.assigned_to ?? undefined,
     phone: r.phone ?? undefined,
     handle: r.handle ?? undefined,
     channel: r.channel,
@@ -318,7 +320,7 @@ function toMessage(r: DbMessage): Message {
 }
 
 const LEAD_SELECT =
-  "id,company_id,name,phone,handle,channel,status,tags,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at";
+  "id,company_id,name,phone,handle,channel,status,tags,assigned_to,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at";
 const CONVERSATION_SELECT =
   "id,company_id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections";
 type InboxLatestMessagesRpc = (
@@ -539,6 +541,38 @@ export async function loadRemote(companyId: string, slaMinutes = 30) {
   } finally {
     loadingPromise = null;
   }
+}
+
+// Realtime cannot deliver a row after RLS makes it invisible. Revalidate cached
+// contacts explicitly so transfers/revocations also remove their local history.
+export async function refreshTeamScope(companyId: string) {
+  if (mode !== "remote" || realtimeCompanyId !== companyId) return;
+  const generation = realtimeGeneration;
+  const checkedIds = remoteLeads.map((lead) => lead.id);
+  const visible = new Map<string, string | null>();
+  for (let offset = 0; offset < checkedIds.length; offset += 100) {
+    const { data, error } = await supabase.from("leads").select("id,assigned_to")
+      .eq("company_id", companyId).in("id", checkedIds.slice(offset, offset + 100));
+    if (error) throw error;
+    for (const row of data ?? []) visible.set(row.id, row.assigned_to);
+  }
+  if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
+  const checked = new Set(checkedIds);
+  remoteLeads = remoteLeads.filter((lead) => !checked.has(lead.id) || visible.has(lead.id))
+    .map((lead) => visible.has(lead.id) ? { ...lead, assignedTo: visible.get(lead.id) ?? undefined } : lead);
+  const allowedLeads = new Set(remoteLeads.map((lead) => lead.id));
+  const removed = remoteConversations.filter((conversation) => !allowedLeads.has(conversation.leadId));
+  remoteConversations = remoteConversations.filter((conversation) => allowedLeads.has(conversation.leadId));
+  const removedIds = new Set(removed.map((conversation) => conversation.id));
+  remoteMessages = remoteMessages.filter((message) => !removedIds.has(message.conversationId));
+  for (const id of removedIds) {
+    olderHasMore.delete(id);
+    olderLoading.delete(id);
+    recentLoaded.delete(id);
+    pendingConversationMessages.delete(id);
+  }
+  idxRebuild(messagesIndex, remoteMessages);
+  notify();
 }
 
 export function isRemoteLoaded() {

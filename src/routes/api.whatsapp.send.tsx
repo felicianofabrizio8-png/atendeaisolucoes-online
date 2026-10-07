@@ -2,6 +2,7 @@
 // na integração da empresa do usuário autenticado.
 // Também persiste a mensagem em `messages` (role=agent) e atualiza a conversa.
 
+import { authorizeTeamRequest } from "@/lib/team/api-access.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
@@ -166,6 +167,10 @@ export const Route = createFileRoute("/api/whatsapp/send")({
         if (targetLead.status === "perdido") {
           return Response.json({ error: "conversa fechada não aceita novas mensagens" }, { status: 409 });
         }
+
+        const scopedRequest = new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify({ conversationId }) });
+        const denied = await authorizeTeamRequest(scopedRequest);
+        if (denied) return denied;
 
         // 24h window guard — fora da janela só pode enviar template Utility.
         if (conversationId) {

@@ -7,7 +7,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   PerformanceQuerySchema,
   DEFAULT_PAGE_SIZE,
@@ -78,7 +78,7 @@ function translateError(err: unknown): Error {
 // ---------------------------------------------------------------------------
 
 export const listLearningPerformanceFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => PerformanceQuerySchema.parse(data ?? {}))
   .handler(async ({ data, context }) => {
     const pageSize = Math.min(MAX_PAGE_SIZE, data.pageSize ?? DEFAULT_PAGE_SIZE);
@@ -131,7 +131,7 @@ const summaryInput = z.object({
 });
 
 export const getLearningPerformanceSummaryFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => summaryInput.parse(data ?? {}))
   .handler(async ({ data, context }) => {
     const { data: json, error } = await context.supabase.rpc(
@@ -223,7 +223,7 @@ function strList(v: unknown): string[] {
 }
 
 export const getLearningPerformanceDetailFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => detailInput.parse(data))
   .handler(async ({ data, context }) => {
     const limit = data.limit ?? 15;

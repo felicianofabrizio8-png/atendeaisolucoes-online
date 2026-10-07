@@ -9,6 +9,8 @@ import {
 } from "react";
 import { ArrowLeft, Bot, Hand, Loader2, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
+import { ConversationOwner } from "@/components/team/ConversationOwner";
+import { useLeadAssignment } from "@/hooks/useLeadAssignment";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
 import { refetchConversationMessages } from "@/data/leadRepo";
@@ -78,6 +80,7 @@ export function ChatThread({
 }) {
   const { lead, conversation, history, hue } = contact;
   const conversationId = conversation.id;
+  const assignment = useLeadAssignment(simulated ? undefined : lead.id);
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { isAdmin } = useIsAdmin();
@@ -127,7 +130,7 @@ export function ChatThread({
   const commercialClosed =
     closedHere || lead.status === "fechado" || lead.status === "perdido" || !!lead.closedAt;
   const communicationClosed = lostHere || lead.status === "perdido";
-  const locked = communicationClosed || simulated;
+  const locked = communicationClosed || simulated || !assignment.canReply;
 
   // Troca de conversa: zera o estado efêmero e recupera o rascunho dela.
   useEffect(() => {
@@ -419,6 +422,7 @@ export function ChatThread({
         )}
         {actions}
       </header>
+      {!simulated && <ConversationOwner leadId={lead.id} />}
 
       {/* IA pediu humano: é a única faixa que merece interromper a leitura. */}
       {!simulated && conversation.aiStatus === "aguardando_humano" && (

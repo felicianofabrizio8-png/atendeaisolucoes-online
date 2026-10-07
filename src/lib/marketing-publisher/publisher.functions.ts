@@ -4,7 +4,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const RetrySchema = z.object({ id: z.string().uuid() });
 
@@ -20,7 +20,7 @@ const ListSchema = z
 const OPERATIONAL = ["queued", "publishing", "failed", "cancelled"] as const;
 
 export const listMarketingPublications = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((raw) => ListSchema.parse(raw))
   .handler(async ({ data, context }) => {
     const { supabase } = context as { supabase: any };
@@ -36,7 +36,7 @@ export const listMarketingPublications = createServerFn({ method: "GET" })
   });
 
 export const getPublisherStats = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { PublisherAgent } = await import("./PublisherAgent.server");
     const ctx = context as { userId: string; supabase: any };
@@ -60,7 +60,7 @@ export const getPublisherStats = createServerFn({ method: "GET" })
   });
 
 export const retryPublication = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((raw) => RetrySchema.parse(raw))
   .handler(async ({ data, context }) => {
     const ctx = context as { userId: string; supabase: any };

@@ -4,7 +4,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isRealDelivery, isSimulation } from "@/lib/outbound/MetaOutboundContract";
 
@@ -71,7 +71,7 @@ async function activateOne(
 }
 
 export const activateCampaignOnMeta = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) => Input.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

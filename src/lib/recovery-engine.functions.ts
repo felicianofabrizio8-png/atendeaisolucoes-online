@@ -22,7 +22,7 @@
 // ============================================================================
 
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   assessRecovery,
   buildDashboardCards,
@@ -65,7 +65,7 @@ const EMPTY: RecoveryEngineResult = {
 type Db = any;
 
 export const getRecoveryEngine = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("admin")])
   .handler(async ({ context }): Promise<RecoveryEngineResult> => {
     const ctx = context as unknown as { supabase: Db; userId: string };
     const db = ctx.supabase;

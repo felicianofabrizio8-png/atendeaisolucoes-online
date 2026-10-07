@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
 import {
   extractSessionTrainingCorrections,
@@ -81,7 +81,7 @@ async function assertSession(
 }
 
 export const createTrainingSession = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .handler(async ({ context }) => {
     const companyId = await getTenant(context.supabase, context.userId);
     const { data, error } = await context.supabase
@@ -94,7 +94,7 @@ export const createTrainingSession = createServerFn({ method: "POST" })
   });
 
 export const getTrainingSession = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => SessionInput.parse(input))
   .handler(async ({ data: input, context }) => {
     const companyId = await getTenant(context.supabase, context.userId);
@@ -112,7 +112,7 @@ export const getTrainingSession = createServerFn({ method: "GET" })
   });
 
 export const sendTrainingMessage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => SendInput.parse(input))
   .handler(async ({ data: input, context }) => {
     const companyId = await getTenant(context.supabase, context.userId);
@@ -210,7 +210,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
   });
 
 export const reviewTrainingResponse = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => ReviewInput.parse(input))
   .handler(async ({ data: input, context }) => {
     const review = normalizeTrainingReview(input);
@@ -283,14 +283,14 @@ async function promoteTrainingLearning(
 }
 
 export const createTrainingLearningCandidate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => TrainingLearningInput.parse(input))
   .handler(({ data, context }) =>
     promoteTrainingLearning(context.supabase, context.userId, data.messageId, "create_training_learning_candidate"),
   );
 
 export const approveTrainingLearningCandidate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => TrainingLearningInput.parse(input))
   .handler(({ data, context }) =>
     promoteTrainingLearning(context.supabase, context.userId, data.messageId, "approve_training_learning_candidate"),

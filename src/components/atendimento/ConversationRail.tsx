@@ -1,4 +1,5 @@
 import { Search, X } from "lucide-react";
+import { OwnerBadge } from "@/components/team/ConversationOwner";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/data/mock";
 import { ContactAvatar } from "./ContactAvatar";
@@ -110,6 +111,7 @@ export function ConversationRail({
                           {timeAgo(conversation.lastMessageAt)}
                         </span>
                       </span>
+                      <OwnerBadge userId={lead.assignedTo} />
                       <span className="mt-0.5 flex items-center gap-1.5">
                         <span className="truncate text-xs text-muted-foreground">
                           {last?.role === "agent" ? "Você: " : ""}

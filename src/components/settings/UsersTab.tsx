@@ -1,595 +1,327 @@
-// Aba "Usuários e Permissões" do popup de Configurações — gestão só para admins.
-// Movida de src/routes/configuracoes_.usuarios.tsx.
-
-import { useEffect, useState, useCallback } from "react";
-import {
-  UserPlus,
-  Trash2,
-  Copy,
-  Check,
-  Loader2,
-  ShieldCheck,
-  ShieldAlert,
-  Mail,
-  Clock,
-} from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Copy, Loader2, ShieldCheck, UserPlus, X } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 import {
-  listCompanyUsers,
-  listCompanyInvites,
-  inviteUser,
+  PERMISSIONS,
+  ADMIN_ONLY_PERMISSIONS,
+  type Permission,
+  type TeamRole,
+} from "@/lib/team/permissions";
+import {
   cancelInvite,
-  changeUserRole,
-  removeUser,
+  inviteUser,
+  listCompanyInvites,
+  listCompanyUsers,
+  updateTeamMember,
+  type TeamUser,
 } from "@/lib/users.functions";
-import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SettingsTabHeader } from "./settings-ui";
 
-type Role = "admin" | "atendente" | "financeiro";
-
-interface UserRow {
-  id: string;
-  displayName: string | null;
-  email: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-  role: Role | null;
-}
-
-interface InviteRow {
-  id: string;
-  email: string;
-  role: Role;
-  token: string;
-  expires_at: string;
-  accepted_at: string | null;
-  cancelled_at: string | null;
-  created_at: string;
-}
-
-const ROLE_LABELS: Record<Role, string> = {
+const field = "w-full rounded-xl border border-border bg-input px-3 py-2 text-sm";
+const button =
+  "inline-flex items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-sm disabled:opacity-50";
+const labels: Record<TeamRole, string> = {
   admin: "Administrador",
   atendente: "Atendente",
   financeiro: "Financeiro",
 };
 
-const ROLE_BADGE: Record<Role, string> = {
-  admin: "bg-primary/10 text-primary border-primary/20",
-  atendente: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  financeiro: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-};
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
-function formatRelative(iso: string | null): string {
-  if (!iso) return "Nunca";
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "Agora";
-  if (min < 60) return `${min}min atrás`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h atrás`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d atrás`;
-  return formatDate(iso);
-}
-
-const HEADER_TITLE = "Usuários e Permissões";
-const HEADER_DESCRIPTION = "Gerencie quem tem acesso à empresa e seus papéis";
-
 export function UsersTab() {
-  const { user, loading: authLoading } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [invites, setInvites] = useState<InviteRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [showInvite, setShowInvite] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<UserRow | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  // Check admin
-  useEffect(() => {
-    if (authLoading || !user) return;
-    (async () => {
-      const { data: companyId } = await supabase.rpc("current_company_id");
-      if (!companyId) {
-        setIsAdmin(false);
-        return;
-      }
-      const { data } = await supabase.rpc("has_role", {
-        _user_id: user.id,
-        _company_id: companyId as string,
-        _role: "admin",
-      });
-      setIsAdmin(Boolean(data));
-    })();
-  }, [user, authLoading]);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
+  const { user, profile } = useAuth();
+  const access = useTeamAccess();
+  const cache = useQueryClient();
+  const [editing, setEditing] = useState<TeamUser | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<TeamRole>("atendente");
+  const [busy, setBusy] = useState(false);
+  const query = useQuery({
+    queryKey: ["team-users", profile?.company_id],
+    enabled: access.isAdmin && access.access?.schemaReady === true,
+    queryFn: async () => ({ ...(await listCompanyUsers()), ...(await listCompanyInvites()) }),
+  });
+  async function refresh() {
+    await Promise.all([
+      cache.invalidateQueries({ queryKey: ["team-users"] }),
+      cache.invalidateQueries({ queryKey: ["team-access"] }),
+      cache.invalidateQueries({ queryKey: ["team-directory"] }),
+    ]);
+  }
+  async function perform(action: () => Promise<unknown>) {
+    setBusy(true);
     try {
-      const [u, i] = await Promise.all([listCompanyUsers(), listCompanyInvites()]);
-      setUsers(u.users as UserRow[]);
-      setInvites(i.invites as InviteRow[]);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao carregar usuários");
+      await action();
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (isAdmin) void reload();
-  }, [isAdmin, reload]);
-
-  if (!authLoading && !user) {
+  }
+  if (access.isPending) return <Loader2 className="animate-spin" />;
+  if (!access.isAdmin)
+    return (
+      <p className="text-sm text-muted-foreground">Apenas administradores gerenciam a equipe.</p>
+    );
+  if (access.access?.schemaReady === false)
     return (
       <>
-        <SettingsTabHeader title={HEADER_TITLE} description={HEADER_DESCRIPTION} />
-        <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-          Faça login para gerenciar usuários e permissões.
-        </div>
+        <SettingsTabHeader
+          title="Equipe e permissões"
+          description="A atualização da equipe está pronta para ser ativada."
+        />
+        <p className="rounded-2xl border border-border bg-card p-4 text-sm">
+          A migração de equipe precisa ser aplicada ao Supabase antes de convidar atendentes. Sua
+          conta administradora continua com acesso ao sistema.
+        </p>
       </>
     );
-  }
-
-  if (authLoading || isAdmin === null) {
-    return (
-      <div className="py-16 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <>
-        <SettingsTabHeader title={HEADER_TITLE} description={HEADER_DESCRIPTION} />
-        <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-          <ShieldAlert className="h-10 w-10 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Acesso restrito</h3>
-          <p className="text-xs text-muted-foreground max-w-sm">
-            Apenas administradores podem gerenciar usuários e permissões.
-          </p>
-        </div>
-      </>
-    );
-  }
-
-  const adminCount = users.filter((u) => u.role === "admin").length;
-
-  const handleChangeRole = async (target: UserRow, newRole: Role) => {
-    if (target.role === newRole) return;
-    setBusy(target.id);
-    setErr(null);
-    try {
-      await changeUserRole({ data: { userId: target.id, role: newRole } });
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao alterar papel");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!confirmRemove) return;
-    setBusy(confirmRemove.id);
-    setErr(null);
-    try {
-      await removeUser({ data: { userId: confirmRemove.id } });
-      setConfirmRemove(null);
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao remover usuário");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleCancelInvite = async (id: string) => {
-    setBusy(id);
-    setErr(null);
-    try {
-      await cancelInvite({ data: { inviteId: id } });
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao cancelar convite");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const copyInviteLink = async (token: string, id: string) => {
-    const url = `${window.location.origin}/login?invite=${token}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      /* noop */
-    }
-  };
-
   return (
     <>
       <SettingsTabHeader
-        title={HEADER_TITLE}
-        description={HEADER_DESCRIPTION}
+        title="Equipe e permissões"
+        description="Cada pessoa tem sua conta, seus atendimentos e os acessos que você definir."
         action={
-          <button
-            onClick={() => setShowInvite(true)}
-            className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium inline-flex items-center gap-1.5 hover:opacity-90 shrink-0"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
+          <button className={button} onClick={() => setInviteOpen(true)}>
+            <UserPlus className="h-4 w-4" />
             Convidar
           </button>
         }
       />
-
-      <div className="space-y-6">
-        {err && (
-          <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-            {err}
-          </div>
-        )}
-
-        {/* Users */}
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Usuários ativos ({users.length})
-            </h3>
-            <span className="text-[11px] text-muted-foreground">
-              {adminCount} admin{adminCount === 1 ? "" : "s"}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="rounded-lg border border-border bg-card p-8 grid place-items-center">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border bg-card divide-y divide-border">
-              {users.map((u) => {
-                const isSelf = u.id === user?.id;
-                const isLastAdmin = u.role === "admin" && adminCount <= 1;
-                return (
-                  <div
-                    key={u.id}
-                    className="p-3 md:p-4 flex flex-col md:flex-row md:items-center gap-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">
-                          {u.displayName || u.email || "Sem nome"}
-                        </span>
-                        {isSelf && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                            você
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate">
-                        {u.email}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-3">
-                        <span>Entrou em {formatDate(u.createdAt)}</span>
-                        <span className="inline-flex items-center gap-1">
-                          <Clock className="h-2.5 w-2.5" />
-                          {formatRelative(u.lastSeenAt)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={u.role ?? ""}
-                        onChange={(e) => handleChangeRole(u, e.target.value as Role)}
-                        disabled={busy === u.id || isLastAdmin}
-                        title={
-                          isLastAdmin
-                            ? "Não é possível rebaixar o último administrador"
-                            : ""
-                        }
-                        className={cn(
-                          "h-8 px-2 rounded-md border text-xs bg-background min-w-[140px]",
-                          u.role && ROLE_BADGE[u.role],
-                          (busy === u.id || isLastAdmin) && "opacity-60 cursor-not-allowed",
-                        )}
-                      >
-                        {!u.role && <option value="">— sem papel —</option>}
-                        <option value="admin">Administrador</option>
-                        <option value="atendente">Atendente</option>
-                        <option value="financeiro">Financeiro</option>
-                      </select>
-
-                      <button
-                        onClick={() => setConfirmRemove(u)}
-                        disabled={isSelf || isLastAdmin || busy === u.id}
-                        title={
-                          isSelf
-                            ? "Você não pode remover a si mesmo"
-                            : isLastAdmin
-                              ? "Não é possível remover o último administrador"
-                              : "Remover da empresa"
-                        }
-                        className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Pending invites */}
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Convites
-          </h3>
-          {invites.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
-              Nenhum convite enviado.
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border bg-card divide-y divide-border">
-              {invites.map((inv) => {
-                const expired = new Date(inv.expires_at) < new Date();
-                const status = inv.accepted_at
-                  ? { label: "Aceito", color: "text-emerald-600" }
-                  : inv.cancelled_at
-                    ? { label: "Cancelado", color: "text-muted-foreground" }
-                    : expired
-                      ? { label: "Expirado", color: "text-destructive" }
-                      : { label: "Pendente", color: "text-amber-600" };
-                const active = !inv.accepted_at && !inv.cancelled_at && !expired;
-                return (
-                  <div
-                    key={inv.id}
-                    className="p-3 md:p-4 flex flex-col md:flex-row md:items-center gap-3"
-                  >
-                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{inv.email}</div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "px-1.5 py-0.5 rounded border text-[10px]",
-                            ROLE_BADGE[inv.role],
-                          )}
-                        >
-                          {ROLE_LABELS[inv.role]}
-                        </span>
-                        <span className={status.color}>{status.label}</span>
-                        <span>· expira {formatDate(inv.expires_at)}</span>
-                      </div>
-                    </div>
-                    {active && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => copyInviteLink(inv.token, inv.id)}
-                          className="h-8 px-2.5 rounded-md border border-border text-xs inline-flex items-center gap-1.5 hover:bg-muted/50"
-                        >
-                          {copiedId === inv.id ? (
-                            <>
-                              <Check className="h-3 w-3 text-emerald-600" />
-                              Copiado
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3 w-3" />
-                              Copiar link
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleCancelInvite(inv.id)}
-                          disabled={busy === inv.id}
-                          className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
-          <ShieldCheck className="h-3 w-3 mt-0.5 shrink-0" />
-          Todas as alterações são validadas no servidor e registradas no log de
-          auditoria. Sempre deve existir pelo menos um administrador por empresa.
+      {query.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {query.error.message}
         </p>
-      </div>
-
-      {/* Invite dialog */}
-      {showInvite && (
-        <InviteDialog
-          onClose={() => setShowInvite(false)}
-          onCreated={async () => {
-            setShowInvite(false);
-            await reload();
-          }}
-        />
       )}
-
-      {/* Remove confirmation */}
-      {confirmRemove && (
-        <ConfirmDialog
-          title="Remover usuário?"
-          message={
-            <>
-              <strong>{confirmRemove.displayName || confirmRemove.email}</strong>{" "}
-              perderá acesso à empresa. Esta ação pode ser revertida convidando o
-              usuário novamente.
-            </>
-          }
-          confirmLabel="Remover"
-          danger
-          busy={busy === confirmRemove.id}
-          onConfirm={handleRemove}
-          onCancel={() => setConfirmRemove(null)}
-        />
-      )}
-    </>
-  );
-}
-
-function InviteDialog({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("atendente");
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setErr(null);
-    try {
-      await inviteUser({ data: { email, role } });
-      onCreated();
-    } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : "Falha ao convidar");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-4">
-      <form
-        onSubmit={submit}
-        className="bg-card border border-border rounded-lg shadow-lg w-full max-w-sm p-5 space-y-4"
-      >
-        <div>
-          <h3 className="text-sm font-semibold">Convidar usuário</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Geraremos um link de convite válido por 7 dias.
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">E-mail</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="pessoa@empresa.com"
-            className="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">Papel</label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
+      {query.isPending && <Loader2 className="animate-spin" />}
+      <div className="space-y-3">
+        {query.data?.users.map((member) => (
+          <div
+            key={member.id}
+            className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4"
           >
-            <option value="atendente">Atendente</option>
-            <option value="financeiro">Financeiro</option>
-            <option value="admin">Administrador</option>
-          </select>
-        </div>
-
-        {err && (
-          <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-2.5 py-1.5">
-            {err}
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-muted font-semibold">
+              {(member.displayName || member.email || "U").slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                {member.displayName || member.email}
+                {member.id === user?.id ? " (você)" : ""}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {member.active ? labels[member.role ?? "atendente"] : "Acesso desativado"}
+              </p>
+            </div>
+            <button
+              className={button}
+              onClick={() => setEditing({ ...member, permissions: [...member.permissions] })}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Permissões
+            </button>
           </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="h-8 px-3 rounded-md border border-border text-xs hover:bg-muted/50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
-            Enviar convite
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ConfirmDialog({
-  title,
-  message,
-  confirmLabel,
-  danger,
-  busy,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  message: React.ReactNode;
-  confirmLabel: string;
-  danger?: boolean;
-  busy?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-4">
-      <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-sm p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-xs text-muted-foreground mt-1.5">{message}</p>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="h-8 px-3 rounded-md border border-border text-xs hover:bg-muted/50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className={cn(
-              "h-8 px-3 rounded-md text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-60",
-              danger
-                ? "bg-destructive text-destructive-foreground"
-                : "bg-primary text-primary-foreground",
-            )}
-          >
-            {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-            {confirmLabel}
-          </button>
-        </div>
+        ))}
       </div>
-    </div>
+      <h3 className="mb-3 mt-7 text-sm font-semibold">Convites</h3>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Copie o link e compartilhe com a pessoa convidada. Ele é válido por 7 dias e exige o e-mail
+        informado.
+      </p>
+      {query.data?.invites.map((invite) => {
+        const pending =
+          !invite.accepted_at && !invite.cancelled_at && new Date(invite.expires_at) > new Date();
+        return (
+          <div
+            key={invite.id}
+            className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-sm"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate">{invite.email}</p>
+              <span className="text-xs text-muted-foreground">
+                {labels[invite.role]} ·{" "}
+                {invite.accepted_at
+                  ? "Aceito"
+                  : invite.cancelled_at
+                    ? "Cancelado"
+                    : pending
+                      ? "Pendente"
+                      : "Expirado"}
+              </span>
+            </div>
+            {pending && (
+              <>
+                <button
+                  className={button}
+                  aria-label={`Copiar convite para ${invite.email}`}
+                  onClick={() =>
+                    void navigator.clipboard
+                      .writeText(
+                        `${window.location.origin}/convite?token=${encodeURIComponent(invite.token)}`,
+                      )
+                      .then(() => toast.success("Link copiado"))
+                      .catch(() => toast.error("Não foi possível copiar"))
+                  }
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+                <button
+                  disabled={busy}
+                  className={button}
+                  aria-label={`Cancelar convite para ${invite.email}`}
+                  onClick={() =>
+                    void perform(() => cancelInvite({ data: { inviteId: invite.id } }))
+                  }
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="rounded-3xl bg-background" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Convidar para a equipe</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void perform(async () => {
+                await inviteUser({ data: { email, role } });
+                setInviteOpen(false);
+                setEmail("");
+                toast.success("Convite criado. Copie o link na lista de convites.");
+              });
+            }}
+          >
+            <label className="block space-y-1 text-sm">
+              <span>E-mail</span>
+              <input
+                type="email"
+                required
+                className={field}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span>Perfil</span>
+              <select
+                className={field}
+                value={role}
+                onChange={(e) => setRole(e.target.value as TeamRole)}
+              >
+                {Object.entries(labels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Após a pessoa entrar, você pode personalizar suas permissões.
+            </p>
+            <button disabled={busy} className={button + " bg-primary text-primary-foreground"}>
+              Criar convite
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[85dvh] overflow-y-auto rounded-3xl bg-background"
+          aria-describedby={undefined}
+        >
+          <DialogHeader>
+            <DialogTitle>Permissões de {editing?.displayName || editing?.email}</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void perform(async () => {
+                  await updateTeamMember(editing);
+                  setEditing(null);
+                  toast.success("Permissões atualizadas");
+                });
+              }}
+            >
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editing.active}
+                  disabled={editing.id === user?.id}
+                  onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
+                />
+                Acesso ativo à empresa
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span>Perfil</span>
+                <select
+                  className={field}
+                  value={editing.role ?? "atendente"}
+                  onChange={(e) => setEditing({ ...editing, role: e.target.value as TeamRole })}
+                >
+                  {Object.entries(labels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {editing.role === "admin" ? (
+                <p className="rounded-xl bg-muted p-3 text-sm">
+                  Administradores têm acesso completo e podem gerenciar a equipe. A empresa sempre
+                  precisa de um administrador ativo.
+                </p>
+              ) : (
+                <fieldset className="space-y-3">
+                  <legend className="mb-3 text-sm font-semibold">Acessos permitidos</legend>
+                  <p className="text-xs text-muted-foreground">
+                    Motor da IA, campanhas, integrações e gestão da equipe são exclusivos de
+                    administradores.
+                  </p>
+                  {Object.entries(PERMISSIONS)
+                    .filter(([key]) => !ADMIN_ONLY_PERMISSIONS.includes(key as Permission))
+                    .map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={editing.permissions.includes(key as Permission)}
+                          onChange={(e) =>
+                            setEditing({
+                              ...editing,
+                              permissions: e.target.checked
+                                ? [...editing.permissions, key as Permission]
+                                : editing.permissions.filter((p) => p !== key),
+                            })
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                </fieldset>
+              )}
+              <button disabled={busy} className={button + " bg-primary text-primary-foreground"}>
+                {busy ? "Salvando…" : "Salvar permissões"}
+              </button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

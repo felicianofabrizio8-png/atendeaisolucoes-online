@@ -5,7 +5,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const AuditSchema = z.object({
   action: z.string().min(1).max(64),
@@ -29,7 +29,7 @@ async function getCompanyId(supabase: unknown, userId: string): Promise<string |
 }
 
 export const logAudit = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("member")])
   .inputValidator((input) => AuditSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -55,7 +55,7 @@ export const logAudit = createServerFn({ method: "POST" })
   });
 
 export const logError = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("member")])
   .inputValidator((input) => ErrorSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

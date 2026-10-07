@@ -16,7 +16,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { prepareStaticBrandComposition } from "./static-brand-composer.server";
 import {
@@ -72,7 +72,7 @@ export interface PrepareBrandCompositionResult {
 }
 
 export const prepareBrandComposition = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data, context }): Promise<PrepareBrandCompositionResult> => {
     const sb = context.supabase as SB;

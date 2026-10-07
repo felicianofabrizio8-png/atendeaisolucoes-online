@@ -27,6 +27,7 @@ import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as IaRouteImport } from './routes/ia'
 import { Route as ExecutivoRouteImport } from './routes/executivo'
 import { Route as CriativosRouteImport } from './routes/criativos'
+import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as Atendimento2RouteImport } from './routes/atendimento-2'
 import { Route as AtendimentoRouteImport } from './routes/atendimento'
@@ -215,6 +216,11 @@ const ExecutivoRoute = ExecutivoRouteImport.update({
 const CriativosRoute = CriativosRouteImport.update({
   id: '/criativos',
   path: '/criativos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConviteRoute = ConviteRouteImport.update({
+  id: '/convite',
+  path: '/convite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -744,6 +750,7 @@ export interface FileRoutesByFullPath {
   '/atendimento': typeof AtendimentoRoute
   '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
+  '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
   '/ia': typeof IaRoute
@@ -860,6 +867,7 @@ export interface FileRoutesByTo {
   '/atendimento': typeof AtendimentoRoute
   '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
+  '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
   '/ia': typeof IaRoute
@@ -976,6 +984,7 @@ export interface FileRoutesById {
   '/atendimento': typeof AtendimentoRoute
   '/atendimento-2': typeof Atendimento2Route
   '/configuracoes': typeof ConfiguracoesRoute
+  '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
   '/ia': typeof IaRoute
@@ -1094,6 +1103,7 @@ export interface FileRouteTypes {
     | '/atendimento'
     | '/atendimento-2'
     | '/configuracoes'
+    | '/convite'
     | '/criativos'
     | '/executivo'
     | '/ia'
@@ -1210,6 +1220,7 @@ export interface FileRouteTypes {
     | '/atendimento'
     | '/atendimento-2'
     | '/configuracoes'
+    | '/convite'
     | '/criativos'
     | '/executivo'
     | '/ia'
@@ -1325,6 +1336,7 @@ export interface FileRouteTypes {
     | '/atendimento'
     | '/atendimento-2'
     | '/configuracoes'
+    | '/convite'
     | '/criativos'
     | '/executivo'
     | '/ia'
@@ -1442,6 +1454,7 @@ export interface RootRouteChildren {
   AtendimentoRoute: typeof AtendimentoRoute
   Atendimento2Route: typeof Atendimento2Route
   ConfiguracoesRoute: typeof ConfiguracoesRoute
+  ConviteRoute: typeof ConviteRoute
   CriativosRoute: typeof CriativosRoute
   ExecutivoRoute: typeof ExecutivoRoute
   IaRoute: typeof IaRoute
@@ -1667,6 +1680,13 @@ declare module '@tanstack/react-router' {
       path: '/criativos'
       fullPath: '/criativos'
       preLoaderRoute: typeof CriativosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/convite': {
+      id: '/convite'
+      path: '/convite'
+      fullPath: '/convite'
+      preLoaderRoute: typeof ConviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -2385,6 +2405,7 @@ const rootRouteChildren: RootRouteChildren = {
   AtendimentoRoute: AtendimentoRoute,
   Atendimento2Route: Atendimento2Route,
   ConfiguracoesRoute: ConfiguracoesRoute,
+  ConviteRoute: ConviteRoute,
   CriativosRoute: CriativosRoute,
   ExecutivoRoute: ExecutivoRoute,
   IaRoute: IaRoute,

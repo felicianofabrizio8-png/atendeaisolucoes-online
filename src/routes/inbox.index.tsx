@@ -17,6 +17,7 @@ import {
 import { seedMockProductsIntoCompany, loadProductsRemote } from "@/data/products";
 import { useAuth } from "@/auth/AuthContext";
 import { getSettings, subscribeSettings } from "@/data/settings";
+import { OwnerBadge } from "@/components/team/ConversationOwner";
 import { cn } from "@/lib/utils";
 import { Search, AlertTriangle, XCircle, Filter, X, Sparkles, Loader2, MessageCircle, Instagram, Facebook, MessageSquare } from "lucide-react";
 import { QualificationInline } from "@/components/QualificationBadges";
@@ -842,6 +843,7 @@ function ConversationCard({
           </p>
 
           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+            <OwnerBadge userId={lead.assignedTo} />
             <OriginBadge origin={origin} />
             {origin !== "whatsapp" && <ChannelBadge channel={c.channel} />}
             {needsReply && (

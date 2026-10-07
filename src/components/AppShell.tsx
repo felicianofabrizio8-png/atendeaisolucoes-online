@@ -31,14 +31,15 @@ import {
   toggleSidebar,
 } from "@/lib/appearance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { loadRemote, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
+import { loadRemote, refreshTeamScope, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { openSettings } from "@/lib/settings-dialog";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
+import { AccessDenied } from "@/components/team/AccessDenied";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { LumeLogo } from "@/components/brand/LumeLogo";
@@ -88,7 +89,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, company, signOut } = useAuth();
-  const { isAdmin } = useIsAdmin();
+  const access = useTeamAccess();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -129,22 +130,41 @@ export function AppShell() {
 
   // Quando logar, carrega dados reais e desativa demo. Quando deslogar/demo, volta pro mock.
   useEffect(() => {
-    if (user && profile) {
+    if (user && profile && access.access?.active) {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
-      loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
-      loadProductsRemote(profile.company_id).catch((e) =>
+      if (access.can("conversations.read")) loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+      else setRepoMode("demo");
+      if (access.can("products.view")) loadProductsRemote(profile.company_id).catch((e) =>
         console.error("loadProductsRemote failed", e),
       );
-      loadQuotesRemote(profile.company_id).catch((e) =>
+      else setProductsMode("demo");
+      if (access.can("quotes.manage")) loadQuotesRemote(profile.company_id).catch((e) =>
         console.error("loadQuotesRemote failed", e),
       );
+      else setQuotesMode("demo");
     } else {
       setRepoMode("demo");
       setProductsMode("demo");
       setQuotesMode("demo");
     }
-  }, [user, profile]);
+  }, [user, profile, access.access]);
+
+  useEffect(() => {
+    if (!profile || !access.can("conversations.read") || !access.access?.schemaReady) return;
+    let running = false;
+    const refresh = async () => {
+      if (running) return;
+      running = true;
+      try { await refreshTeamScope(profile.company_id); }
+      catch (error) { console.error("team scope refresh failed", error); }
+      finally { running = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [profile, access.access]);
 
   // /login não usa o shell.
   // /login e o callback OAuth Meta não usam o shell (callback roda em popup).
@@ -209,7 +229,7 @@ export function AppShell() {
   const renderNavList = (collapsible: boolean) => (
     <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
       {nav
-        .filter((item) => !item.adminOnly || isAdmin)
+        .filter((item) => (!user && demoMode) || access.canOpen(item.to))
         .map((item) => {
           const Icon = item.icon;
           const active =
@@ -419,7 +439,7 @@ export function AppShell() {
           {renderNavList(true)}
 
           <div className="sidebar-when-expanded">
-            <NeuralIntelligencePanel />
+            {access.can("ai.manage") && <NeuralIntelligencePanel />}
           </div>
           {/* O painel neural não cabe em 72px. Em vez de sumir sem aviso, vira
               um atalho que reabre a sidebar onde ele mora. */}
@@ -464,7 +484,7 @@ export function AppShell() {
                 <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
                 {renderBrand(false)}
                 {renderNavList(false)}
-                <NeuralIntelligencePanel />
+                {access.can("ai.manage") && <NeuralIntelligencePanel />}
                 {FooterPanel}
               </SheetContent>
             </Sheet>
@@ -492,7 +512,7 @@ export function AppShell() {
               : "overflow-hidden pb-0")
           }
         >
-          <Outlet />
+          {(!user && demoMode) || access.canOpen(location.pathname) ? <Outlet /> : <AccessDenied access={access} />}
         </div>
 
         {showBottomNav ? (

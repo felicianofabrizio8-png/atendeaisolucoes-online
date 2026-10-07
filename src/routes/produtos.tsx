@@ -57,6 +57,7 @@ import {
   type AttributeSuggestion,
 } from "@/components/products/ProductAttributesField";
 import { CatalogAuditPanel } from "@/components/products/CatalogAuditPanel";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 
 export const Route = createFileRoute("/produtos")({
   // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.
@@ -80,6 +81,8 @@ function useProducts(): Product[] {
 // duas superfícies em sincronia.
 
 function ProductsPage() {
+  const access = useTeamAccess();
+  const canEdit = access.can("products.manage");
   const navigate = useNavigate();
   const products = useProducts();
   const [editing, setEditing] = useState<Product | null>(null);
@@ -131,7 +134,7 @@ function ProductsPage() {
               : `${products.length} produtos`}
           </p>
         </div>
-        <button
+        {canEdit && <><button
           onClick={() => setCreating(true)}
           aria-label="Novo produto"
           className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
@@ -144,7 +147,7 @@ function ProductsPage() {
           className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90"
         >
           <Plus className="h-5 w-5" />
-        </button>
+        </button></>}
       </header>
 
       <div className="p-3 md:p-6 space-y-4 md:space-y-6">
@@ -168,7 +171,7 @@ function ProductsPage() {
           )}
         </div>
 
-        {!query.trim() && <CatalogAuditPanel products={products} onEdit={setEditing} />}
+        {canEdit && !query.trim() && <CatalogAuditPanel products={products} onEdit={setEditing} />}
 
         {products.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center">
@@ -200,6 +203,8 @@ function ProductsPage() {
                   product={p}
                   query={query}
                   index={idx}
+                  canEdit={canEdit}
+                  canQuote={access.can("quotes.manage")}
                   onEdit={() => setEditing(p)}
                   onDelete={() => setConfirmDelete(p)}
                   onDuplicate={() => {
@@ -235,7 +240,7 @@ function ProductsPage() {
           </section>
         ))}
 
-        {!query.trim() && products.length > 0 && (
+        {access.can("quotes.manage") && !query.trim() && products.length > 0 && (
           <div className="pt-2">
             <Link to="/orcamentos" search={{}} className="text-xs text-primary hover:underline">
               → Criar orçamento com estes produtos
@@ -244,7 +249,7 @@ function ProductsPage() {
         )}
       </div>
 
-      {(creating || editing) && (
+      {canEdit && (creating || editing) && (
         <ProductFormModal
           product={editing}
           dimensionRequiredCategories={dimensionRequiredCategories}
@@ -257,7 +262,7 @@ function ProductsPage() {
         />
       )}
 
-      {confirmDelete && (
+      {canEdit && confirmDelete && (
         <ConfirmDeleteModal
           product={confirmDelete}
           onClose={() => setConfirmDelete(null)}
@@ -322,6 +327,8 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 }
 
 interface ProductCardProps {
+  canEdit: boolean;
+  canQuote: boolean;
   product: Product;
   query: string;
   index: number;
@@ -332,6 +339,8 @@ interface ProductCardProps {
 }
 
 function ProductCard({
+  canEdit,
+  canQuote,
   product,
   query,
   index,
@@ -383,10 +392,10 @@ function ProductCard({
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-center gap-1.5 p-2.5">
-          <CardIconButton label="Visualizar" onClick={onQuote}>
+          {canQuote && <CardIconButton label="Criar orçamento" onClick={onQuote}>
             <Eye className="h-3.5 w-3.5" />
-          </CardIconButton>
-          <CardIconButton label="Editar" onClick={onEdit}>
+          </CardIconButton>}
+          {canEdit && <><CardIconButton label="Editar" onClick={onEdit}>
             <Pencil className="h-3.5 w-3.5" />
           </CardIconButton>
           <CardIconButton label="Duplicar" onClick={onDuplicate}>
@@ -394,7 +403,7 @@ function ProductCard({
           </CardIconButton>
           <CardIconButton label="Excluir" onClick={onDelete} destructive>
             <Trash2 className="h-3.5 w-3.5" />
-          </CardIconButton>
+          </CardIconButton></>}
         </div>
       </div>
 

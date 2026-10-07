@@ -144,6 +144,15 @@ vi.mock("@/auth/AuthContext", () => ({
   useAuth: () => ({ user: { id: "user-a" }, profile: { id: "user-a", company_id: "company-a" } }),
 }));
 vi.mock("@/hooks/useIsAdmin", () => ({ useIsAdmin: () => ({ isAdmin: true, isLoading: false }) }));
+const teamAssignment = vi.hoisted(() => ({ canReply: true }));
+vi.mock("@/hooks/useLeadAssignment", () => ({
+  useTeamDirectory: () => ({ data: [{ id: "user-a", name: "Atendente A", canReply: true }] }),
+  useLeadAssignment: () => ({
+    ready: true, userId: "user-a", assignedTo: teamAssignment.canReply ? "user-a" : "user-b",
+    canReply: teamAssignment.canReply, canClaim: false, canTransfer: false,
+    isError: false, isPending: false,
+  }),
+}));
 vi.mock("@/hooks/useManualFollowup", () => ({
   useManualFollowup: () => ({
     run: vi.fn(),
@@ -260,6 +269,7 @@ function setRemoteSnapshot(overrides: Partial<typeof repoMock.state> = {}) {
 
 describe("Atendimento 2.0 runtime", () => {
   beforeEach(() => {
+    teamAssignment.canReply = true;
     repoMock.reset();
     manualSendMock.sendManualText.mockReset();
     aiSuggestMock.suggestAiReply.mockReset();
@@ -445,6 +455,19 @@ describe("Atendimento 2.0 runtime", () => {
     const composer = screen.getByLabelText("Mensagem") as HTMLTextAreaElement;
     expect(composer.disabled).toBe(true);
     expect(screen.getByPlaceholderText("Conversa encerrada.")).toBeTruthy();
+  });
+
+  it("blocks replies and AI suggestions when another attendant owns the conversation", () => {
+    teamAssignment.canReply = false;
+    setRemoteSnapshot();
+    render(React.createElement(RouteView));
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).disabled).toBe(true);
+    expect(screen.getByText("Somente o responsável pode responder. Solicite a transferência.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Mensagem"), { target: { value: "Não enviar" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sugerir com IA" }));
+    expect(manualSendMock.sendManualText).not.toHaveBeenCalled();
+    expect(aiSuggestMock.suggestAiReply).not.toHaveBeenCalled();
   });
 
   it("gera sugestão com IA no composer sem enviar automaticamente", async () => {

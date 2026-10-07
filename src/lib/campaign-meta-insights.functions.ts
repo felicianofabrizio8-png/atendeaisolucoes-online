@@ -7,7 +7,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const Input = z.object({ campaignId: z.string().uuid() });
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -66,7 +66,7 @@ function extractMessages(actions: ActionItem[] | undefined): number {
 }
 
 export const syncCampaignInsightsFromMeta = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) => Input.parse(input))
   .handler(async ({ data, context }): Promise<CampaignInsightsResult> => {
     const { supabase, userId } = context;

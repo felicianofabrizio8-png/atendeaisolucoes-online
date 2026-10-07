@@ -3,7 +3,7 @@
 // Sem efeitos colaterais — apenas leitura.
 
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 async function getCompanyAndAdmin(
   supabase: unknown,
@@ -75,7 +75,7 @@ export interface HealthSummary {
 }
 
 export const getHealthSummary = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .handler(async ({ context }): Promise<HealthSummary> => {
     const { supabase, userId } = context;
     const { companyId, isAdmin } = await getCompanyAndAdmin(supabase, userId);

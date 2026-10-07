@@ -1,7 +1,7 @@
 // Coach Learnings — Server Functions (TanStack Start).
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   archiveCoachLearningRpc,
   CoachLearningRepoError,
@@ -104,7 +104,7 @@ async function getCompanyIdSafe(
 const listInput = z.object({ includeArchived: z.boolean().optional() });
 
 export const listCoachLearningsFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => listInput.parse(data ?? {}))
   .handler(async ({ data, context }) => {
     const rows = await listCoachLearnings(context.supabase, {
@@ -114,7 +114,7 @@ export const listCoachLearningsFn = createServerFn({ method: "GET" })
   });
 
 export const analyzeHistoricalLearningsFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .handler(async ({ context }) => {
     const companyId = await getCompanyIdSafe(context.supabase, context.userId);
     if (!companyId) throw new Error("company_not_found");
@@ -134,7 +134,7 @@ export const analyzeHistoricalLearningsFn = createServerFn({ method: "POST" })
 const getInput = z.object({ id: z.string().uuid() });
 
 export const getCoachLearningFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => getInput.parse(data))
   .handler(async ({ data, context }) => {
     const [row, versions] = await Promise.all([
@@ -162,7 +162,7 @@ const FIELD_FOR_CODE: Record<string, "title" | "rule_structured" | "origin" | nu
 };
 
 export const createCoachLearningFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => createInput.parse(data))
   .handler(async ({ data, context }) => {
     const t0 = Date.now();
@@ -287,7 +287,7 @@ const updateInput = z.object({
 });
 
 export const updateCoachLearningFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => updateInput.parse(data))
   .handler(async ({ data, context }) => {
     const version = await updateCoachLearningRpc(
@@ -308,7 +308,7 @@ export const updateCoachLearningFn = createServerFn({ method: "POST" })
 const archiveInput = z.object({ id: z.string().uuid() });
 
 export const archiveCoachLearningFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => archiveInput.parse(data))
   .handler(async ({ data, context }) => {
     await archiveCoachLearningRpc(context.supabase, data.id);
@@ -332,7 +332,7 @@ const teachExtractInput = z.object({
 });
 
 export const teachModeExtractFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => teachExtractInput.parse(data))
   .handler(async ({ data, context }) => {
     try {
@@ -377,7 +377,7 @@ const feedbackInput = z.object({
 
 /** Registra uso positivo — botão 👍 confirma que os learnings foram úteis. */
 export const submitLearningFeedbackFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => feedbackInput.parse(data))
   .handler(async ({ data, context }) => {
     const count = await incrementLearningUsage(context.supabase, data.learningIds);
@@ -415,7 +415,7 @@ export interface SuggestionFeedbackResult {
  * cliente — a RPC o deriva de `auth.uid()`.
  */
 export const submitSuggestionFeedbackFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => suggestionFeedbackInput.parse(data))
   .handler(async ({ data, context }): Promise<SuggestionFeedbackResult> => {
     const { data: result, error } = await context.supabase.rpc(
@@ -458,7 +458,7 @@ const findSimilarInput = z.object({
  * A empresa é resolvida no servidor pela RPC via `current_company_id()`.
  */
 export const findSimilarCoachLearningFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => findSimilarInput.parse(data))
   .handler(async ({ data, context }) => {
     const candidates = await findSimilarCoachLearning(context.supabase, data);
@@ -473,7 +473,7 @@ const restoreInput = z.object({
 });
 
 export const restoreCoachLearningVersionFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => restoreInput.parse(data))
   .handler(async ({ data, context }) => {
     const version = await restoreCoachLearningVersion(
@@ -497,7 +497,7 @@ const retrievalInput = z.object({
  * Idempotente por (learning_id, generation_ref).
  */
 export const recordCoachLearningRetrievalFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((data: unknown) => retrievalInput.parse(data))
   .handler(async ({ data, context }) => {
     const inserted = await recordCoachLearningRetrieval(

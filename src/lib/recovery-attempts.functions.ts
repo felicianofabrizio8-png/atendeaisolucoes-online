@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import { buildAttemptMetrics, type RecoveryAttemptMetrics } from "@/lib/recovery-exec/metrics";
 import type { RecoveryAttempt } from "@/lib/recovery-exec/types";
 
@@ -52,7 +52,7 @@ function parsePeriod(input: unknown): MetricPeriod {
 }
 
 export const getRecoveryAttemptMetrics = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("admin")])
   .inputValidator((input: { period?: string } | undefined) => ({ period: parsePeriod(input) }))
   .handler(async ({ data, context }): Promise<RecoveryAttemptMetricsResult> => {
     const now = Date.now();

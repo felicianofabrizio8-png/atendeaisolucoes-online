@@ -22,7 +22,7 @@ const mock = vi.hoisted(() => ({
 function resultFor(table: string, filters: Record<string, unknown>, single: boolean) {
   const rows = table === "leads" ? mock.leads : mock.conversations;
   const filtered = rows.filter((row) =>
-    Object.entries(filters).every(([key, value]) => row[key] === value),
+    Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value),
   );
   const error = mock.errors[table] ?? null;
   return single ? { data: filtered[0] ?? null, error } : { data: filtered, error };
@@ -32,6 +32,7 @@ function query(table: string) {
   const filters: Record<string, unknown> = {};
   const builder = {
     select: vi.fn(() => builder),
+    in: vi.fn((key: string, values: unknown[]) => { filters[key] = values; return builder; }),
     eq: vi.fn((key: string, value: unknown) => {
       filters[key] = value;
       return builder;
@@ -161,6 +162,19 @@ beforeEach(() => {
 });
 
 describe("leadRepo — reconciliação de Realtime", () => {
+  it("removes contacts and cached history when a transfer revokes visibility", async () => {
+    mock.leads = [lead(), lead("lead-2")];
+    mock.conversations = [conversation(), conversation("conv-2", "lead-2")];
+    mock.messages = [message(), message("msg-2", "conv-2")];
+    const repo = await load();
+    mock.leads = [{ ...lead("lead-2"), assigned_to: "user-b" }];
+    await repo.refreshTeamScope(companyId);
+    expect(repo.getLeadById("lead-1")).toBeUndefined();
+    expect(repo.getConversationById("conv-1")).toBeUndefined();
+    expect(repo.getMessagesFor("conv-1")).toHaveLength(0);
+    expect(repo.getMessagesFor("conv-2")).toHaveLength(1);
+    expect(repo.getLeadById("lead-2")?.assignedTo).toBe("user-b");
+  });
   it("preserva o bump imediato quando conversation e lead já estão carregados", async () => {
     mock.leads = [lead()];
     mock.conversations = [conversation()];

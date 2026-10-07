@@ -11,7 +11,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -184,7 +184,7 @@ async function fetchScopes(token: string): Promise<string[]> {
 
 // ----------------- LIST AD ACCOUNTS -----------------
 export const listMetaAdAccounts = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
@@ -242,7 +242,7 @@ export const listMetaAdAccounts = createServerFn({ method: "POST" })
 
 // ----------------- LIST META PAGES -----------------
 export const listMetaPages = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
@@ -276,7 +276,7 @@ export const listMetaPages = createServerFn({ method: "GET" })
 
 // ----------------- SELECT AD ACCOUNT -----------------
 export const selectMetaAdAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) =>
     z
       .object({
@@ -318,7 +318,7 @@ export const selectMetaAdAccount = createServerFn({ method: "POST" })
 
 // ----------------- CLEAR MANUAL AD ACCOUNT -----------------
 export const clearMetaAdAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
@@ -350,7 +350,7 @@ export const clearMetaAdAccount = createServerFn({ method: "POST" })
 // Recebe um token colado pelo admin e roda debug_token + /me + /me/adaccounts.
 // NÃO salva nada. NÃO retorna o token. Loga apenas suffix mascarado.
 export const diagnoseMetaToken = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) =>
     z.object({ token: z.string().min(20).max(4096) }).parse(input),
   )
@@ -422,7 +422,7 @@ export const diagnoseMetaToken = createServerFn({ method: "POST" })
 // NÃO altera meta_pages.page_access_token.
 // Recusa se token não for USER/SYSTEM_USER ou não passar nas validações.
 export const adoptMetaUserToken = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) =>
     z.object({ token: z.string().min(20).max(4096) }).parse(input),
   )
@@ -489,7 +489,7 @@ export const adoptMetaUserToken = createServerFn({ method: "POST" })
 
 // ----------------- VERIFY PERSISTED USER TOKEN -----------------
 export const verifyPersistedMetaUserToken = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) =>
     z.object({ expectedTokenSuffix: z.string().min(3).max(16).optional() }).parse(input ?? {}),
   )
@@ -569,7 +569,7 @@ export const verifyPersistedMetaUserToken = createServerFn({ method: "POST" })
 
 // ----------------- SELECT PAGE -----------------
 export const selectMetaPage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) =>
     z.object({
       pageId: z.string().min(1).max(64).regex(/^[0-9]+$/),
@@ -602,7 +602,7 @@ export const selectMetaPage = createServerFn({ method: "POST" })
 
 // ----------------- READINESS CHECKLIST -----------------
 export const getMetaPublishReadiness = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const companyId = await getCompanyId(supabase as never, userId);
@@ -657,7 +657,7 @@ export const getMetaPublishReadiness = createServerFn({ method: "GET" })
 
 // ----------------- ENABLE/DISABLE BETA (admin) -----------------
 export const setMetaBetaFlag = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) => z.object({ enabled: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

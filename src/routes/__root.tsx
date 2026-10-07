@@ -134,7 +134,7 @@ function RootComponent() {
   );
 }
 
-const PUBLIC_ROUTES = ["/login", "/privacy", "/reset-password", "/auth/meta/callback"];
+const PUBLIC_ROUTES = ["/convite", "/login", "/privacy", "/reset-password", "/auth/meta/callback"];
 
 function AuthGate() {
   const { loading, user } = useAuth();
