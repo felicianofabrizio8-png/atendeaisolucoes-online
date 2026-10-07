@@ -596,7 +596,7 @@ Categoria: ${product.category ?? "-"}`
 A promoção está vinculada ao produto "${product.name}". Toda a campanha (Story, Feed, Reel, WhatsApp) DEVE permanecer focada exclusivamente nesse produto. É PROIBIDO citar, comparar ou sugerir outros modelos, tamanhos, linhas ou produtos da empresa, salvo se estiver explicitamente pedido nas instruções extras.`
       : "";
 
-    const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira especializada em marketing para PISCINAS, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
+    const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
 
 ${knowledgeBlock}
 
@@ -662,7 +662,7 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 # TEXTO VISUAL DA CAMPANHA (image_texts) — obrigatório
 Além dos 4 formatos, você produz UM ÚNICO bloco \`image_texts\` que será usado como texto sobreposto na imagem/vídeo. É o MESMO overlay para Feed e Story — não crie versões diferentes.
 Regras rigorosas (leitura em <1s no celular):
-- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Piscina dos sonhos", "Conforto para família", "Qualidade Solário".
+- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Uma escolha inteligente", "Conforto para família", "Qualidade que permanece".
 - \`subheadline\`: opcional, no máximo 45 caracteres, entre 3 e 8 palavras, UMA frase curta, complementa o headline SEM repetir literalmente. Deixe vazio se não conseguir cumprir.
 - \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça os modelos", "Fale conosco".
 NÃO use nenhuma das frases proibidas. NÃO repita os textos visuais recentes abaixo. Não é uma legenda — é o texto grande da peça visual.

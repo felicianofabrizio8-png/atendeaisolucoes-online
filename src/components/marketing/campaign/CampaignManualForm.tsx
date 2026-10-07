@@ -97,7 +97,7 @@ export function CampaignManualForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
           <Label>Título *</Label>
-          <Input value={v.title} onChange={set("title")} maxLength={80} placeholder="Ex.: Piscina 3x2 com instalação" />
+          <Input value={v.title} onChange={set("title")} maxLength={80} placeholder="Ex.: Produto com entrega rápida" />
         </div>
         <div>
           <Label>Subtítulo</Label>
@@ -121,7 +121,7 @@ export function CampaignManualForm({
         </div>
         <div>
           <Label>Hashtags</Label>
-          <Input value={v.hashtags} onChange={set("hashtags")} placeholder="#piscina #verao" />
+          <Input value={v.hashtags} onChange={set("hashtags")} placeholder="#novidade #oferta" />
         </div>
         <div>
           <Label>Telefone</Label>

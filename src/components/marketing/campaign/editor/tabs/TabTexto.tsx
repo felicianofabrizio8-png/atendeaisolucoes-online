@@ -68,7 +68,7 @@ export function TabTexto({
           rows={2}
           onChange={(e) => onSubheadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Piscinas com qualidade e instalação rápida"
+          placeholder="Ex.: Qualidade que faz diferença"
         />
       </div>
       <div>

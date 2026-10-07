@@ -155,7 +155,7 @@ export function CampaignTextReview({
               maxLength={SUB_MAX}
               rows={2}
               onChange={(e) => setSubheadline(e.target.value)}
-              placeholder="Ex.: Piscinas com qualidade e instalação rápida"
+              placeholder="Ex.: Qualidade que faz diferença"
             />
           </div>
           <div>
