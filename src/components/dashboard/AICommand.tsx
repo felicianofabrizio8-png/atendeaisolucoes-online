@@ -23,20 +23,29 @@ export function AICommand({ data }: { data: DashboardData }) {
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    void supabase.from("company_settings")
+    void supabase
+      .from("company_settings")
       // `*`: inclui o botão mestre da Vendedora sem falhar antes da migration dele.
       .select("*")
       .eq("company_id", companyId)
       .maybeSingle()
       .then(({ data: settings, error }) => {
         if (cancelled) return;
-        const label = error || !settings ? "Estado indisponível"
-          : resolveSalesAgentMode(settings) === "silent" ? "Em avaliação"
-          : resolveSalesAgentMode(settings) === "assisted" ? "Assistida"
-          : settings.ai_auto_reply_enabled ? "Respostas habilitadas" : "Respostas desativadas";
+        const label =
+          error || !settings
+            ? "Estado indisponível"
+            : resolveSalesAgentMode(settings) === "silent"
+              ? "Em avaliação"
+              : resolveSalesAgentMode(settings) === "assisted"
+                ? "Assistida"
+                : settings.ai_auto_reply_enabled
+                  ? "Respostas habilitadas"
+                  : "Respostas desativadas";
         setMode({ companyId, label });
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
   const active = data.conversations.filter((item) => item.aiHandling).length;
   const completed = data.conversations.filter((item) => item.aiStatus === "pre_atendido_ia").length;
@@ -58,7 +67,7 @@ export function AICommand({ data }: { data: DashboardData }) {
   return (
     <section
       aria-labelledby="ai-title"
-      className="viz-fade-up col-span-12 overflow-hidden rounded-2xl border border-border bg-card/60"
+      className="viz-fade-up col-span-12 overflow-hidden rounded-2xl border border-border bg-card shadow-sm shadow-foreground/5"
       style={{ animationDelay: "300ms" }}
     >
       <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_240px]">
