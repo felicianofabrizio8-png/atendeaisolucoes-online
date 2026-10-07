@@ -23,6 +23,8 @@ import { AIFollowupPanel } from "@/components/AIFollowupPanel";
 import { WhatsappTemplatesPanel } from "@/components/WhatsappTemplatesPanel";
 import { SalesTrainingChat } from "@/components/ai/SalesTrainingChat";
 import { SalesAgentMasterSwitch } from "@/components/ai/SalesAgentMasterSwitch";
+import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
+import { iaTabOptions, type IaTabId } from "@/lib/ia-tabs";
 import { toast } from "sonner";
 
 
@@ -344,17 +346,13 @@ function ConfiguracoesIA() {
 
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
 
-  const TAB_OPTIONS: { value: string; label: string }[] = [
-    { value: "perfil", label: "Perfil" },
-    { value: "faq", label: "FAQ" },
-    { value: "aprendizados", label: `Aprendizados${pendingCount ? ` (${pendingCount})` : ""}` },
-    { value: "uso", label: "Uso & Logs" },
-    { value: "analytics", label: "Analytics" },
-    { value: "followup", label: "Follow-up" },
-    { value: "templates", label: "Templates" },
-    { value: "automacao", label: "Automação" },
-    { value: "treinamento", label: "Treinamento" },
-  ];
+  const TAB_OPTIONS = iaTabOptions(pendingCount);
+  const TAB_ICONS: Partial<Record<IaTabId, typeof Bot>> = {
+    analytics: BarChart3,
+    followup: Bell,
+    templates: MessageSquareText,
+    automacao: Bot,
+  };
 
   return (
     <div className="p-3 md:p-6 max-w-5xl mx-auto space-y-4 w-full max-w-full min-w-0 overflow-x-hidden">
@@ -382,26 +380,16 @@ function ConfiguracoesIA() {
           </Select>
         </div>
         {/* Desktop: full tabs list */}
-        <TabsList className="hidden md:inline-flex h-9 justify-center gap-1 p-1 rounded-lg">
-          <TabsTrigger value="perfil" className="shrink-0">Perfil</TabsTrigger>
-          <TabsTrigger value="faq" className="shrink-0">FAQ</TabsTrigger>
-          <TabsTrigger value="aprendizados" className="shrink-0">
-            Aprendizados{pendingCount ? ` (${pendingCount})` : ""}
-          </TabsTrigger>
-          <TabsTrigger value="uso" className="shrink-0">Uso & Logs</TabsTrigger>
-          <TabsTrigger value="analytics" className="shrink-0">
-            <BarChart3 className="h-3.5 w-3.5 mr-1" /> Analytics
-          </TabsTrigger>
-          <TabsTrigger value="followup" className="shrink-0">
-            <Bell className="h-3.5 w-3.5 mr-1" /> Follow-up
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="shrink-0">
-            <MessageSquareText className="h-3.5 w-3.5 mr-1" /> Templates
-          </TabsTrigger>
-          <TabsTrigger value="automacao" className="shrink-0">
-            <Bot className="h-3.5 w-3.5 mr-1" /> Automação
-          </TabsTrigger>
-          <TabsTrigger value="treinamento" className="shrink-0">Treinamento</TabsTrigger>
+        <TabsList className="hidden md:flex md:flex-wrap h-auto w-fit max-w-full justify-start gap-1 p-1 rounded-lg">
+          {TAB_OPTIONS.map((t) => {
+            const Icon = TAB_ICONS[t.value];
+            return (
+              <TabsTrigger key={t.value} value={t.value} className="shrink-0">
+                {Icon ? <Icon className="h-3.5 w-3.5 mr-1" /> : null}
+                {t.label}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
 
@@ -488,6 +476,11 @@ function ConfiguracoesIA() {
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar perfil
             </Button>
           </div>
+        </TabsContent>
+
+        {/* ---------- BASE DE CONHECIMENTO ---------- */}
+        <TabsContent value="conhecimento" className="space-y-4">
+          <MarketingKnowledgeBase companyId={companyId} />
         </TabsContent>
 
         {/* ---------- FAQ ---------- */}

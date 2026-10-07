@@ -100,7 +100,7 @@ const FIELDS: FieldDef[] = [
   {
     key: "extra_notes",
     label: "Observações adicionais",
-    placeholder: "Qualquer contexto extra útil para a IA.",
+    placeholder: "Qualquer contexto extra útil para as IAs de atendimento e de marketing.",
     rows: 3,
   },
 ];
@@ -152,7 +152,7 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
       const res = await upsertMarketingKnowledgeBase({ data: values });
       const kb = res.kb as MarketingKnowledgeBaseRow;
       setUpdatedAt(kb.updated_at);
-      toast.success("Base de conhecimento salva. A IA já usará este contexto.");
+      toast.success("Base de conhecimento salva. As IAs de atendimento e de marketing já usam este contexto.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar base.");
     } finally {
@@ -174,11 +174,13 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
         <div className="flex items-start gap-3">
           <BookMarked className="h-5 w-5 text-primary mt-0.5" />
           <div className="text-sm">
-            <div className="font-semibold">Base de conhecimento da marca</div>
+            <div className="font-semibold">Base de conhecimento da empresa</div>
             <p className="text-muted-foreground">
-              Este conteúdo é usado como contexto obrigatório em <strong>todas</strong> as
-              gerações de conteúdo com IA. Preencha o que fizer sentido para a sua empresa —
-              campos vazios são simplesmente ignorados.
+              Fonte única de conhecimento da empresa: as <strong>IAs de atendimento</strong>{" "}
+              consultam este conteúdo ao responder clientes e orientar a equipe, e o{" "}
+              <strong>Marketing IA</strong> o usa como contexto obrigatório em todas as gerações
+              de conteúdo. Preencha o que fizer sentido para a sua empresa — campos vazios são
+              simplesmente ignorados.
             </p>
           </div>
         </div>
